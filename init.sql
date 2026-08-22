@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS questions (
     question_number INTEGER NOT NULL,
 
     question_text TEXT NOT NULL,
+    question_type TEXT NOT NULL DEFAULT 'choice',
     correct_letters TEXT,
     correct_text TEXT,
 
@@ -48,6 +49,21 @@ CREATE TABLE IF NOT EXISTS choices (
     label TEXT NOT NULL,          -- "A", "B", "C", etc.
     text TEXT NOT NULL,
     is_correct INTEGER NOT NULL DEFAULT 0,
+
+    FOREIGN KEY (question_id)
+        REFERENCES questions(id)
+        ON DELETE CASCADE
+);
+
+/* =====================================================
+   MATCHING PAIRS (Term/prompt -> matching answer)
+===================================================== */
+CREATE TABLE IF NOT EXISTS matching_pairs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question_id INTEGER NOT NULL,
+    pair_order INTEGER NOT NULL,
+    left_text TEXT NOT NULL,
+    right_text TEXT NOT NULL,
 
     FOREIGN KEY (question_id)
         REFERENCES questions(id)
@@ -124,6 +140,9 @@ CREATE INDEX IF NOT EXISTS idx_questions_quiz
 
 CREATE INDEX IF NOT EXISTS idx_choices_question
     ON choices (question_id);
+
+CREATE INDEX IF NOT EXISTS idx_matching_pairs_question
+    ON matching_pairs (question_id);
 
 CREATE INDEX IF NOT EXISTS idx_attempts_quiz
     ON attempts (quiz_id);

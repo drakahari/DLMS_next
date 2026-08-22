@@ -3756,7 +3756,7 @@ def edit_quiz(quiz_id):
 
     questions = cur.execute(
         """
-        SELECT id, question_number, question_text
+        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type
         FROM questions
         WHERE quiz_id = ?
         ORDER BY question_number, id
@@ -3777,11 +3777,23 @@ def edit_quiz(quiz_id):
             (q["id"],)
         ).fetchall()
 
+        pairs = cur.execute(
+            """
+            SELECT id, pair_order, left_text, right_text
+            FROM matching_pairs
+            WHERE question_id = ?
+            ORDER BY pair_order, id
+            """,
+            (q["id"],)
+        ).fetchall() if q["question_type"] == "matching" else []
+
         question_list.append({
             "id": q["id"],
             "number": q["question_number"],
             "text": q["question_text"],
-            "choices": choices
+            "type": q["question_type"],
+            "choices": choices,
+            "pairs": pairs
         })
 
     conn.close()
@@ -3940,6 +3952,24 @@ def edit_quiz(quiz_id):
                                       name="question_{{ q.id }}">{{ q.text }}</textarea>
                         </label>
 
+                        {% if q.type == "matching" %}
+                        <div class="build-choice-heading">
+                            <span>Matching Pairs</span>
+                            <small>Edit either side of each pair. The right-side answers are shuffled during play.</small>
+                        </div>
+                        <div class="matching-pairs-list">
+                        {% for pair in q.pairs %}
+                            <div class="build-match-pair">
+                                <span class="match-number">{{ loop.index }}</span>
+                                <input type="text" name="match_left_{{ pair['id'] }}" value="{{ pair['left_text'] }}">
+                                <span class="match-arrow">↔</span>
+                                <input type="text" name="match_right_{{ pair['id'] }}" value="{{ pair['right_text'] }}">
+                                <span></span>
+                            </div>
+                        {% endfor %}
+                        </div>
+                        <button class="build-add-choice" type="submit" name="action" value="add_match_pair_{{ q.id }}">＋ Add Pair</button>
+                        {% else %}
                         <div class="build-choice-heading">
                             <span>Answer Choices</span>
                             <small>Select Correct for every valid answer.</small>
@@ -3987,6 +4017,7 @@ def edit_quiz(quiz_id):
                                     name="action"
                                     value="add_choices_{{ q.id }}">＋ Add Choices</button>
                         </div>
+                        {% endif %}
                     </article>
                     {% endfor %}
                 </div>
@@ -4029,6 +4060,8 @@ document.getElementById("edit-quiz-form").addEventListener("submit", function(e)
     const questions = document.querySelectorAll(".question-block");
 
     for (let i = 0; i < questions.length; i++) {
+        const checkboxes = questions[i].querySelectorAll('input[type="checkbox"]');
+        if (checkboxes.length === 0) continue;
         const checked = questions[i].querySelectorAll('input[type="checkbox"]:checked');
 
         if (checked.length === 0) {
@@ -4365,7 +4398,7 @@ def rebuild_quiz_json_from_db(quiz_id):
 
     questions = cur.execute(
         """
-        SELECT id, question_number, question_text
+        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type
         FROM questions
         WHERE quiz_id = ?
         ORDER BY question_number, id
@@ -4376,6 +4409,27 @@ def rebuild_quiz_json_from_db(quiz_id):
     quiz_data = []
 
     for q in questions:
+        if q["question_type"] == "matching":
+            pairs = cur.execute(
+                """
+                SELECT left_text, right_text
+                FROM matching_pairs
+                WHERE question_id = ?
+                ORDER BY pair_order, id
+                """,
+                (q["id"],)
+            ).fetchall()
+            quiz_data.append({
+                "number": q["question_number"],
+                "type": "matching",
+                "question": q["question_text"],
+                "pairs": [
+                    {"left": pair["left_text"], "right": pair["right_text"]}
+                    for pair in pairs
+                ]
+            })
+            continue
+
         choices = cur.execute(
             """
             SELECT label, text, is_correct
@@ -4386,14 +4440,11 @@ def rebuild_quiz_json_from_db(quiz_id):
             (q["id"],)
         ).fetchall()
 
-        correct_letters = [
-            c["label"]
-            for c in choices
-            if c["is_correct"]
-        ]
+        correct_letters = [c["label"] for c in choices if c["is_correct"]]
 
         quiz_data.append({
             "number": q["question_number"],
+            "type": "choice",
             "question": q["question_text"],
             "choices": [
                 {
@@ -4573,6 +4624,25 @@ def save_edited_quiz(quiz_id):
             (new_choice_text, is_correct, choice_id)
         )
 
+    matching_pairs = cur.execute(
+        """
+        SELECT mp.id
+        FROM matching_pairs mp
+        JOIN questions q ON q.id = mp.question_id
+        WHERE q.quiz_id = ?
+        """,
+        (quiz_id,)
+    ).fetchall()
+
+    for pair in matching_pairs:
+        pair_id = pair[0]
+        left_text = request.form.get(f"match_left_{pair_id}", "").strip()
+        right_text = request.form.get(f"match_right_{pair_id}", "").strip()
+        cur.execute(
+            "UPDATE matching_pairs SET left_text = ?, right_text = ? WHERE id = ?",
+            (left_text, right_text, pair_id)
+        )
+
     # =========================
     # ADD NEW QUESTION
     # =========================
@@ -4609,6 +4679,28 @@ def save_edited_quiz(quiz_id):
         rebuild_quiz_json_from_db(quiz_id)
         rebuild_quiz_html_from_registry(quiz_id)
 
+        return redirect(f"/edit_quiz/{quiz_id}")
+
+    # =========================
+    # ADD PAIR TO MATCHING QUESTION
+    # =========================
+    if action.startswith("add_match_pair_"):
+        try:
+            question_id = int(action.replace("add_match_pair_", "", 1))
+        except ValueError:
+            conn.rollback(); conn.close()
+            flash("Invalid matching question.", "error")
+            return redirect(f"/edit_quiz/{quiz_id}")
+
+        row = cur.execute("SELECT MAX(pair_order) FROM matching_pairs WHERE question_id = ?", (question_id,)).fetchone()
+        next_order = (row[0] or 0) + 1
+        cur.execute(
+            "INSERT INTO matching_pairs(question_id, pair_order, left_text, right_text) VALUES (?, ?, ?, ?)",
+            (question_id, next_order, "New term", "New match")
+        )
+        conn.commit(); conn.close()
+        rebuild_quiz_json_from_db(quiz_id)
+        rebuild_quiz_html_from_registry(quiz_id)
         return redirect(f"/edit_quiz/{quiz_id}")
 
     # =========================
@@ -4678,7 +4770,7 @@ def save_edited_quiz(quiz_id):
     # =========================
     questions = cur.execute(
         """
-        SELECT id, question_number
+        SELECT id, question_number, COALESCE(question_type, 'choice') AS question_type
         FROM questions
         WHERE quiz_id = ?
         ORDER BY question_number
@@ -4687,20 +4779,24 @@ def save_edited_quiz(quiz_id):
     ).fetchall()
 
     for q in questions:
-        correct_count = cur.execute(
-            """
-            SELECT COUNT(*)
-            FROM choices
-            WHERE question_id = ?
-            AND is_correct = 1
-            """,
-            (q[0],)
-        ).fetchone()[0]
+        if q["question_type"] == "matching":
+            pair_rows = cur.execute(
+                "SELECT left_text, right_text FROM matching_pairs WHERE question_id = ?",
+                (q["id"],)
+            ).fetchall()
+            if len(pair_rows) < 2 or any(not (r[0] or "").strip() or not (r[1] or "").strip() for r in pair_rows):
+                conn.rollback(); conn.close()
+                flash(f"Question {q['question_number']} must have at least two complete matching pairs.", "error")
+                return redirect(url_for("edit_quiz", quiz_id=quiz_id))
+            continue
 
+        correct_count = cur.execute(
+            "SELECT COUNT(*) FROM choices WHERE question_id = ? AND is_correct = 1",
+            (q["id"],)
+        ).fetchone()[0]
         if correct_count == 0:
-            conn.rollback()
-            conn.close()
-            flash(f"Question {q[1]} must have at least one correct answer.", "error")
+            conn.rollback(); conn.close()
+            flash(f"Question {q['question_number']} must have at least one correct answer.", "error")
             return redirect(url_for("edit_quiz", quiz_id=quiz_id))
 
     conn.commit()
@@ -5049,39 +5145,52 @@ def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
 
     quiz_id = cur.lastrowid  # ✅ CAPTURE DB ID
 
-    # Insert questions + choices
+    # Insert questions + question-specific answer data
     for q in quiz_data:
         question_number = q.get("number")
         question_text = q.get("question") or q.get("text") or ""
-        q_choices = q.get("choices", [])
+        question_type = (q.get("type") or "choice").strip().lower()
+        if question_type not in {"choice", "matching"}:
+            question_type = "choice"
 
         cur.execute(
             """
             INSERT INTO questions (
                 quiz_id,
                 question_number,
-                question_text
+                question_text,
+                question_type
             )
-            VALUES (?, ?, ?)
+            VALUES (?, ?, ?, ?)
             """,
-            (quiz_id, question_number, question_text),
+            (quiz_id, question_number, question_text, question_type),
         )
 
         question_id = cur.lastrowid
 
-        for c in q_choices:
-            cur.execute(
-                """
-                INSERT INTO choices (question_id, label, text, is_correct)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    question_id,
-                    c.get("label"),
-                    c.get("text"),
-                    1 if c.get("is_correct") else 0,
-                ),
-            )
+        if question_type == "matching":
+            for pair_order, pair in enumerate(q.get("pairs", []), start=1):
+                cur.execute(
+                    """
+                    INSERT INTO matching_pairs (question_id, pair_order, left_text, right_text)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (question_id, pair_order, pair.get("left", ""), pair.get("right", "")),
+                )
+        else:
+            for c in q.get("choices", []):
+                cur.execute(
+                    """
+                    INSERT INTO choices (question_id, label, text, is_correct)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        question_id,
+                        c.get("label"),
+                        c.get("text"),
+                        1 if c.get("is_correct") else 0,
+                    ),
+                )
 
     conn.commit()
     conn.close()
@@ -6353,22 +6462,43 @@ def create_short_quiz_page():
                             <h3 class="question-heading">Question {{ q.number }}</h3>
                             <button type="button" class="build-icon-danger btn-delete" onclick="deleteQuestion(this)" title="Delete question" aria-label="Delete question">×</button>
                         </div>
+                        <div class="build-two-column-fields">
+                            <label class="build-field">
+                                <span>Question Type</span>
+                                <select class="question-type" name="question_type_{{ q.number }}" onchange="changeQuestionType(this)">
+                                    <option value="choice">Multiple Choice / Multi-Select</option>
+                                    <option value="matching">Matching</option>
+                                </select>
+                            </label>
+                        </div>
                         <label class="build-field">
-                            <span>Question Text</span>
+                            <span>Question Text / Instructions</span>
                             <textarea class="question-text" name="question_{{ q.number }}" placeholder="Enter question text here..."></textarea>
                         </label>
-                        <div class="build-choice-heading"><span>Answer Choices</span><small>Select Correct for every valid answer.</small></div>
-                        <ul class="choices-list build-choice-list">
-                        {% for label in q.choices %}
-                            <li>
-                                <b class="choice-label">{{ label }}.</b>
-                                <input type="text" class="choice-text" name="choice_{{ q.number }}_{{ label }}" placeholder="Option {{ label }}">
-                                <label class="build-correct-toggle"><input type="checkbox" class="choice-correct" name="correct_{{ q.number }}_{{ label }}"><span>Correct</span></label>
-                                <button type="button" class="build-choice-delete btn-delete" onclick="deleteChoice(this)" title="Delete choice" aria-label="Delete choice">×</button>
-                            </li>
-                        {% endfor %}
-                        </ul>
-                        <button class="build-add-choice" type="button" onclick="addChoice(this)">＋ Add Choice</button>
+                        <div class="choice-editor">
+                            <div class="build-choice-heading"><span>Answer Choices</span><small>Select Correct for every valid answer.</small></div>
+                            <ul class="choices-list build-choice-list">
+                            {% for label in q.choices %}
+                                <li>
+                                    <b class="choice-label">{{ label }}.</b>
+                                    <input type="text" class="choice-text" name="choice_{{ q.number }}_{{ label }}" placeholder="Option {{ label }}">
+                                    <label class="build-correct-toggle"><input type="checkbox" class="choice-correct" name="correct_{{ q.number }}_{{ label }}"><span>Correct</span></label>
+                                    <button type="button" class="build-choice-delete btn-delete" onclick="deleteChoice(this)" title="Delete choice" aria-label="Delete choice">×</button>
+                                </li>
+                            {% endfor %}
+                            </ul>
+                            <button class="build-add-choice" type="button" onclick="addChoice(this)">＋ Add Choice</button>
+                        </div>
+                        <div class="matching-editor" hidden>
+                            <div class="build-choice-heading"><span>Matching Pairs</span><small>Each left item must have one matching right item. Answers are shuffled during play.</small></div>
+                            <div class="matching-pairs-list">
+                                <div class="build-match-pair"><span class="match-number">1</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">2</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">3</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">4</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                            </div>
+                            <button class="build-add-choice" type="button" onclick="addMatchPair(this)">＋ Add Pair</button>
+                        </div>
                     </article>
                     {% endfor %}
                 </div>
@@ -6392,6 +6522,45 @@ function getChoiceLabel(index) {
     return String.fromCharCode(65 + index);
 }
 
+function renumberMatchPairs(question, qNumber) {
+    const pairs = question.querySelectorAll(".build-match-pair");
+    pairs.forEach((pair, pIndex) => {
+        pair.querySelector(".match-number").textContent = pIndex + 1;
+        const left = pair.querySelector(".match-left");
+        const right = pair.querySelector(".match-right");
+        left.name = `match_left_${qNumber}_${pIndex + 1}`;
+        right.name = `match_right_${qNumber}_${pIndex + 1}`;
+    });
+}
+
+function changeQuestionType(select) {
+    const question = select.closest(".question-block");
+    const isMatching = select.value === "matching";
+    question.querySelector(".choice-editor").hidden = isMatching;
+    question.querySelector(".matching-editor").hidden = !isMatching;
+    renumberQuestions();
+}
+
+function addMatchPair(button) {
+    const question = button.closest(".question-block");
+    const list = question.querySelector(".matching-pairs-list");
+    const row = document.createElement("div");
+    row.className = "build-match-pair";
+    row.innerHTML = `<span class="match-number"></span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button>`;
+    list.appendChild(row);
+    renumberQuestions();
+}
+
+function deleteMatchPair(button) {
+    const question = button.closest(".question-block");
+    if (question.querySelectorAll(".build-match-pair").length <= 2) {
+        alert("A matching question needs at least two pairs.");
+        return;
+    }
+    button.closest(".build-match-pair").remove();
+    renumberQuestions();
+}
+
 function renumberQuestions() {
     const questions = document.querySelectorAll(".question-block");
 
@@ -6401,10 +6570,15 @@ function renumberQuestions() {
 
         question.querySelector(".question-heading").textContent = `Question ${qNumber}`;
 
+        const questionType = question.querySelector(".question-type");
+        questionType.name = `question_type_${qNumber}`;
+
         const questionText = question.querySelector(".question-text");
         const savedQuestionText = questionText.value;
         questionText.name = `question_${qNumber}`;
         questionText.value = savedQuestionText;
+
+        renumberMatchPairs(question, qNumber);
 
         const choices = question.querySelectorAll(".choices-list li");
 
@@ -6429,57 +6603,15 @@ function renumberQuestions() {
 
 function addQuestion() {
     const container = document.getElementById("questions-container");
-    const qNumber = document.querySelectorAll(".question-block").length + 1;
+    const template = document.querySelector(".question-block");
+    const block = template.cloneNode(true);
 
-    const block = document.createElement("div");
-    block.className = "build-question-card question-block";
-    block.dataset.questionNumber = qNumber;
-    
-    block.innerHTML = `
-        <h3 class="question-heading">Question ${qNumber}</h3>
-
-        <button type="button"
-                class="btn-delete"
-                onclick="deleteQuestion(this)"
-                >
-            🗑 Delete Question
-        </button>
-
-        <textarea class="question-text"
-                  name="question_${qNumber}"
-                  placeholder="Enter question text here..."
-                  ></textarea>
-
-        <ul class="choices-list">
-            ${["A", "B", "C", "D"].map(label => `
-                <li >
-                    <b class="choice-label">${label}.</b>
-
-                    <input type="text"
-                           class="choice-text"
-                           name="choice_${qNumber}_${label}"
-                           placeholder="Option ${label}"
-                           >
-
-                    <input type="checkbox"
-                           class="choice-correct"
-                           name="correct_${qNumber}_${label}">
-                    Correct
-
-                    <button type="button"
-                            class="btn-delete"
-                            onclick="deleteChoice(this)"
-                            >
-                        ❌
-                    </button>
-                </li>
-            `).join("")}
-        </ul>
-
-        <button type="button" onclick="addChoice(this)">
-            ➕ Add Choice
-        </button>
-    `;
+    block.querySelectorAll("input[type='text'], textarea").forEach(el => el.value = "");
+    block.querySelectorAll("input[type='checkbox']").forEach(el => el.checked = false);
+    const typeSelect = block.querySelector(".question-type");
+    typeSelect.value = "choice";
+    block.querySelector(".choice-editor").hidden = false;
+    block.querySelector(".matching-editor").hidden = true;
 
     container.appendChild(block);
     renumberQuestions();
@@ -6559,8 +6691,7 @@ shortQuizForm.addEventListener("submit", function(e) {
 
     for (let i = 0; i < questions.length; i++) {
         const questionText = questions[i].querySelector(".question-text").value.trim();
-        const choiceRows = questions[i].querySelectorAll(".choices-list li");
-        const checked = questions[i].querySelectorAll(".choice-correct:checked");
+        const questionType = questions[i].querySelector(".question-type").value;
 
         if (!questionText) {
             e.preventDefault();
@@ -6569,35 +6700,38 @@ shortQuizForm.addEventListener("submit", function(e) {
             return;
         }
 
-        let hasChoiceText = false;
-
-        choiceRows.forEach(row => {
-            const choiceText = row.querySelector(".choice-text").value.trim();
-
-            if (choiceText) {
-                hasChoiceText = true;
+        if (questionType === "matching") {
+            const pairRows = Array.from(questions[i].querySelectorAll(".build-match-pair"));
+            const completed = pairRows.filter(row => row.querySelector(".match-left").value.trim() && row.querySelector(".match-right").value.trim());
+            const partial = pairRows.find(row => Boolean(row.querySelector(".match-left").value.trim()) !== Boolean(row.querySelector(".match-right").value.trim()));
+            if (partial || completed.length < 2) {
+                e.preventDefault();
+                alert(`Question ${i + 1} needs at least two complete matching pairs.`);
+                questions[i].scrollIntoView({ behavior: "smooth", block: "center" });
+                return;
             }
-        });
+            continue;
+        }
 
+        const choiceRows = questions[i].querySelectorAll(".choices-list li");
+        const checked = questions[i].querySelectorAll(".choice-correct:checked");
+        let hasChoiceText = false;
+        choiceRows.forEach(row => { if (row.querySelector(".choice-text").value.trim()) hasChoiceText = true; });
         if (!hasChoiceText) {
             e.preventDefault();
             alert(`Question ${i + 1} needs at least one answer choice.`);
             questions[i].scrollIntoView({ behavior: "smooth", block: "center" });
             return;
         }
-
         if (checked.length === 0) {
             e.preventDefault();
             alert(`Question ${i + 1} must have at least one correct answer selected.`);
             questions[i].scrollIntoView({ behavior: "smooth", block: "center" });
             return;
         }
-
         for (const box of checked) {
             const choiceRow = box.closest("li");
-            const choiceText = choiceRow.querySelector(".choice-text").value.trim();
-
-            if (!choiceText) {
+            if (!choiceRow.querySelector(".choice-text").value.trim()) {
                 e.preventDefault();
                 alert(`Question ${i + 1} has a correct answer selected, but that answer choice is blank.`);
                 choiceRow.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -6668,53 +6802,69 @@ def save_short_quiz():
 
     for qnum in question_numbers:
         question_text = request.form.get(f"question_{qnum}", "").strip()
+        question_type = request.form.get(f"question_type_{qnum}", "choice").strip().lower()
 
-        # Skip completely blank questions
         if not question_text:
+            continue
+
+        if question_type == "matching":
+            pairs = []
+            pair_prefix = f"match_left_{qnum}_"
+            pair_indexes = sorted(
+                int(key.replace(pair_prefix, ""))
+                for key in request.form.keys()
+                if key.startswith(pair_prefix) and key.replace(pair_prefix, "").isdigit()
+            )
+
+            for pair_index in pair_indexes:
+                left = request.form.get(f"match_left_{qnum}_{pair_index}", "").strip()
+                right = request.form.get(f"match_right_{qnum}_{pair_index}", "").strip()
+                if not left and not right:
+                    continue
+                if not left or not right:
+                    flash(f"Question {qnum} has an incomplete matching pair.", "error")
+                    return redirect("/create_short_quiz")
+                pairs.append({"left": left, "right": right})
+
+            if len(pairs) < 2:
+                flash(f"Question {qnum} needs at least two matching pairs.", "error")
+                return redirect("/create_short_quiz")
+
+            quiz_data.append({
+                "number": len(quiz_data) + 1,
+                "type": "matching",
+                "question": question_text,
+                "pairs": pairs
+            })
             continue
 
         choices = []
         correct_letters = []
-
-        # Dynamically detect all submitted choices for this question
         choice_prefix = f"choice_{qnum}_"
-
         choice_labels = sorted(
-            [
-                key.replace(choice_prefix, "")
-                for key in request.form.keys()
-                if key.startswith(choice_prefix)
-            ],
+            [key.replace(choice_prefix, "") for key in request.form.keys() if key.startswith(choice_prefix)],
             key=lambda label: ord(label[0]) if label else 999
         )
 
         for label in choice_labels:
             choice_text = request.form.get(f"choice_{qnum}_{label}", "").strip()
             is_correct = bool(request.form.get(f"correct_{qnum}_{label}"))
-
-            # Skip blank answer choices
             if not choice_text:
                 continue
-
             if is_correct:
                 correct_letters.append(label)
-
-            choices.append({
-                "label": label,
-                "text": choice_text,
-                "is_correct": is_correct
-            })
+            choices.append({"label": label, "text": choice_text, "is_correct": is_correct})
 
         if not choices:
             flash(f"Question {qnum} must have at least one answer choice.", "error")
             return redirect("/create_short_quiz")
-
         if not correct_letters:
             flash(f"Question {qnum} must have at least one correct answer.", "error")
             return redirect("/create_short_quiz")
 
         quiz_data.append({
             "number": len(quiz_data) + 1,
+            "type": "choice",
             "question": question_text,
             "choices": choices,
             "correct": correct_letters
@@ -9509,32 +9659,38 @@ def record_attempt():
 
             # 🔑 Pull authoritative question snapshot from DB
             cur.execute("""
-                SELECT q.question_text, q.id
+                SELECT q.question_text, q.id, COALESCE(q.question_type, 'choice') AS question_type
                 FROM questions q
                 WHERE q.quiz_id = ? AND q.question_number = ?
             """, (quiz_id, aqn))
             qrow = cur.fetchone()
 
-            question_text = qrow["question_text"] if qrow else ""
+            question_text = qrow["question_text"] if qrow else (md.get("question") or "")
             question_id = qrow["id"] if qrow else None
+            question_type = qrow["question_type"] if qrow else md.get("questionType", "choice")
 
             if not question_id:
                 print(f"[WARN] Missing question snapshot for quiz_id={quiz_id}, qnum={aqn}")
 
 
-            # Pull choices
+            # Pull answer snapshot. Matching questions use their term/pair rows.
             choices_text = ""
-            if question_id:
+            if question_id and question_type == "matching":
+                cur.execute("""
+                    SELECT left_text, right_text
+                    FROM matching_pairs
+                    WHERE question_id = ?
+                    ORDER BY pair_order, id
+                """, (question_id,))
+                choices_text = "\n".join(f"{r['left_text']} ↔ {r['right_text']}" for r in cur.fetchall())
+            elif question_id:
                 cur.execute("""
                     SELECT label, text
                     FROM choices
                     WHERE question_id = ?
                     ORDER BY label
                 """, (question_id,))
-                choices_text = "\n".join(
-                    f"{r['label']} — {r['text']}"
-                    for r in cur.fetchall()
-                )
+                choices_text = "\n".join(f"{r['label']} — {r['text']}" for r in cur.fetchall())
 
             correct_letters = md.get("correctLetters") or []
             selected_letters = md.get("selectedLetters") or []
@@ -9553,7 +9709,10 @@ def record_attempt():
             correct_text = ""
             selected_text = ""
 
-            if question_id:
+            if question_type == "matching":
+                correct_text = "\n".join(str(x) for x in (md.get("correctText") or []))
+                selected_text = "\n".join(str(x) for x in (md.get("selectedText") or []))
+            elif question_id:
                 # Resolve correct text
                 cur.execute("""
                     SELECT label, text
@@ -13019,6 +13178,33 @@ def ensure_schema(conn):
         print("[DB MIGRATION] Adding registry_id column to quizzes")
         cur.execute("ALTER TABLE quizzes ADD COLUMN registry_id INTEGER")
         conn.commit()
+
+    # =================================================
+    # QUESTIONS TABLE MIGRATION (QUESTION TYPE)
+    # =================================================
+    cur.execute("PRAGMA table_info(questions)")
+    question_cols = {row[1] for row in cur.fetchall()}
+
+    if "question_type" not in question_cols:
+        print("[DB MIGRATION] Adding question_type column to questions")
+        cur.execute("ALTER TABLE questions ADD COLUMN question_type TEXT NOT NULL DEFAULT 'choice'")
+        conn.commit()
+
+    # =================================================
+    # MATCHING PAIRS TABLE
+    # =================================================
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS matching_pairs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question_id INTEGER NOT NULL,
+            pair_order INTEGER NOT NULL,
+            left_text TEXT NOT NULL,
+            right_text TEXT NOT NULL,
+            FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_matching_pairs_question ON matching_pairs(question_id)")
+    conn.commit()
 
 
 

@@ -5,6 +5,7 @@ let quiz = [];
 let index = 0;
 let examMode = false;
 let userAnswers = {};
+let matchingOptionOrders = {};
 let studyAnkiSelections = new Set();
 let paused = false;
 let examTimer = null;
@@ -53,6 +54,7 @@ async function loadQuiz() {
         const res = await fetch(file);
         if (!res.ok) throw new Error("HTTP " + res.status);
         quiz = await res.json();
+        quiz = quiz.map(q => ({ ...q, type: (q.type || "choice").toLowerCase() }));
         console.log("Quiz loaded. Questions:", quiz.length);
     } catch (err) {
         console.error("Failed to load quiz:", err);
@@ -146,8 +148,27 @@ function renderQuestion() {
 
     if (!choicesEl) return;
 
+    // Matching v1 is intentionally kept out of AI/Anki single-choice helpers.
+    // Those workflows assume A-Z choices and can be extended separately later.
+    const studyAiBtn = document.getElementById("studyAiBtn");
+    const studyAnkiBtn = document.getElementById("studyAnkiBtn");
+    if (studyAiBtn) studyAiBtn.style.display = (!examMode && q.type !== "matching") ? "inline-block" : "none";
+    if (studyAnkiBtn) studyAnkiBtn.style.display = (!examMode && q.type !== "matching") ? "inline-block" : "none";
+
+    if (q.type === "matching") {
+        renderMatchingQuestion(q, key, selected, choicesEl);
+        updateProgressBar();
+        updateNavButtons();
+        updatePauseButtonUI();
+        updateTimerLabelUI();
+        updateStudyModeBadge();
+        updateStudyAnkiButton();
+        updateStudyAnkiExportButton();
+        return;
+    }
+
     let html = "";
-    q.choices.forEach((choice, i) => {
+    (q.choices || []).forEach((choice, i) => {
         const label = choice.label;
         const choiceText = choice.text;
         let cls = "choice";
@@ -184,6 +205,49 @@ if (examMode && selected.includes(i)) {
     updateStudyModeBadge();
     updateStudyAnkiButton();
     updateStudyAnkiExportButton();
+}
+
+function shuffledIndexes(length) {
+    const arr = Array.from({length}, (_, i) => i);
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+function renderMatchingQuestion(q, key, selected, choicesEl) {
+    const pairs = Array.isArray(q.pairs) ? q.pairs : [];
+    if (!matchingOptionOrders[key] || matchingOptionOrders[key].length !== pairs.length) {
+        matchingOptionOrders[key] = shuffledIndexes(pairs.length);
+    }
+    const answers = (selected && typeof selected === "object" && !Array.isArray(selected)) ? selected : {};
+    const order = matchingOptionOrders[key];
+    const options = order.map(idx => `<option value="${idx}">${escapeHtml(pairs[idx].right)}</option>`).join("");
+    choicesEl.innerHTML = `<div class="matching-question"><div class="matching-instructions">Choose the matching answer for each item.</div>${pairs.map((pair, leftIndex) => {
+        const chosen = answers[leftIndex] === undefined ? "" : String(answers[leftIndex]);
+        let cls = "matching-row";
+        if (!examMode && chosen !== "") cls += Number(chosen) === leftIndex ? " matching-correct" : " matching-wrong";
+        return `<div class="${cls}"><div class="matching-left"><span class="matching-left-number">${leftIndex + 1}</span>${escapeHtml(pair.left)}</div><select class="matching-select" onchange="selectMatch(${leftIndex}, this.value)"><option value="">Select a match…</option>${options}</select></div>`;
+    }).join("")}</div>`;
+    choicesEl.querySelectorAll(".matching-select").forEach((select, idx) => {
+        if (answers[idx] !== undefined) select.value = String(answers[idx]);
+    });
+}
+
+function selectMatch(leftIndex, rightIndexValue) {
+    if (!quiz.length) return;
+    const key = `q${index}`;
+    let answers = userAnswers[key];
+    if (!answers || Array.isArray(answers) || typeof answers !== "object") answers = {};
+    if (rightIndexValue === "") delete answers[leftIndex];
+    else answers[leftIndex] = Number(rightIndexValue);
+    userAnswers[key] = answers;
+    if (!examMode) renderQuestion();
+}
+
+function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));
 }
 
 /* =====================================================
@@ -530,6 +594,7 @@ function startQuiz(isExam) {
     examMode = isExam;
     index = 0;
     userAnswers = {};
+    matchingOptionOrders = {};
     studyAnkiSelections.clear();
 
     if (examMode) {
@@ -708,13 +773,42 @@ function submitQuiz(force = false) {
         for (let i = 0; i < quiz.length; i++) {
             const q = quiz[i];
 
-            if (!q || !q.correct) {
-                console.warn("Question missing 'correct' field:", q);
-                continue;
-            }
+            if (!q) continue;
 
             const key = `q${i}`;
             let ans = userAnswers[key];
+
+            if (q.type === "matching") {
+                const pairs = Array.isArray(q.pairs) ? q.pairs : [];
+                const matchAns = (ans && typeof ans === "object" && !Array.isArray(ans)) ? ans : {};
+                const isCorrect = pairs.length >= 2 && pairs.every((pair, pairIndex) => Number(matchAns[pairIndex]) === pairIndex);
+                if (isCorrect) {
+                    correct++;
+                } else {
+                    missed.push({
+                        attemptQuestionNumber: i + 1,
+                        number: q.number || (i + 1),
+                        question: q.question,
+                        questionType: "matching",
+                        choices: pairs.map((pair, pairIndex) => ({ label: String(pairIndex + 1), text: `${pair.left} ↔ ${pair.right}` })),
+                        correctLetters: [],
+                        correctText: pairs.map(pair => `${pair.left} ↔ ${pair.right}`),
+                        selectedIndexes: [],
+                        selectedLetters: [],
+                        selectedText: pairs.map((pair, pairIndex) => {
+                            const chosenIndex = matchAns[pairIndex];
+                            const chosen = pairs[chosenIndex];
+                            return `${pair.left} ↔ ${chosen ? chosen.right : "[No answer]"}`;
+                        })
+                    });
+                }
+                continue;
+            }
+
+            if (!q.correct || !Array.isArray(q.correct)) {
+                console.warn("Choice question missing 'correct' field:", q);
+                continue;
+            }
 
             // Normalize answer to an array of indexes
             if (!Array.isArray(ans)) {
