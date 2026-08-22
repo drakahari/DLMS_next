@@ -216,6 +216,8 @@ os.makedirs(LOGO_TEMP_FOLDER, exist_ok=True)
 #STATIC_LOGO_FOLDER = os.path.join(app.root_path, "static", "logos")
 
 BACKGROUND_FOLDER = os.path.join(APP_DATA_DIR, "static", "bg")
+CONTENT_PACK_FOLDER = os.path.join(APP_DATA_DIR, "content_packs")
+
 
 for d in [
     UPLOAD_FOLDER,
@@ -223,6 +225,7 @@ for d in [
     QUIZ_FOLDER,
     CONFIG_FOLDER,
     BACKGROUND_FOLDER,
+    CONTENT_PACK_FOLDER,
     LOGO_FOLDER,
     LAW_FOLDER,
     LAW_CASES_FOLDER,
@@ -232,6 +235,160 @@ for d in [
 ]:
     os.makedirs(d, exist_ok=True)
 
+
+
+
+# =========================
+# CONTENT PACK FRAMEWORK
+# =========================
+CONTENT_PACK_SCHEMA_VERSION = 1
+
+def _safe_pack_child(pack_root, relative_path):
+    """Resolve a pack-relative path without allowing traversal outside the pack."""
+    pack_root = os.path.realpath(pack_root)
+    candidate = os.path.realpath(os.path.join(pack_root, relative_path))
+    if candidate != pack_root and not candidate.startswith(pack_root + os.sep):
+        raise ValueError("Content pack path escapes its pack directory")
+    return candidate
+
+
+def discover_content_packs():
+    """
+    Discover valid content packs under APP_DATA_DIR/content_packs.
+
+    A pack is a directory containing manifest.json. Invalid packs are skipped
+    rather than preventing DLMS from starting.
+    """
+    packs = {}
+    os.makedirs(CONTENT_PACK_FOLDER, exist_ok=True)
+
+    try:
+        entries = sorted(os.listdir(CONTENT_PACK_FOLDER))
+    except OSError as exc:
+        print(f"[CONTENT PACKS] Unable to list {CONTENT_PACK_FOLDER}: {exc}")
+        return packs
+
+    for entry in entries:
+        pack_root = os.path.join(CONTENT_PACK_FOLDER, entry)
+        manifest_path = os.path.join(pack_root, "manifest.json")
+        if not os.path.isdir(pack_root) or not os.path.isfile(manifest_path):
+            continue
+
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f) or {}
+
+            pack_id = str(manifest.get("id") or "").strip().lower()
+            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", pack_id):
+                raise ValueError("manifest id must contain only lowercase letters, numbers, _ or -")
+
+            schema_version = int(manifest.get("schema_version", 0))
+            if schema_version != CONTENT_PACK_SCHEMA_VERSION:
+                raise ValueError(
+                    f"unsupported schema_version {schema_version}; "
+                    f"expected {CONTENT_PACK_SCHEMA_VERSION}"
+                )
+
+            datasets = manifest.get("datasets") or []
+            if not isinstance(datasets, list):
+                raise ValueError("datasets must be a list")
+
+            manifest["_root"] = pack_root
+            manifest["_manifest_path"] = manifest_path
+            packs[pack_id] = manifest
+
+        except Exception as exc:
+            print(f"[CONTENT PACKS] Skipping invalid pack {entry!r}: {exc}")
+
+    return packs
+
+
+def get_content_pack(pack_id):
+    return discover_content_packs().get(str(pack_id or "").strip().lower())
+
+
+def load_content_pack_dataset(pack_id, dataset_id):
+    """Load and validate one JSON dataset declared in a pack manifest."""
+    pack = get_content_pack(pack_id)
+    if not pack:
+        raise FileNotFoundError(f"Content pack {pack_id!r} is not installed")
+
+    dataset_id = str(dataset_id or "").strip()
+    descriptor = next(
+        (item for item in pack.get("datasets", [])
+         if str(item.get("id") or "").strip() == dataset_id),
+        None
+    )
+    if not descriptor:
+        raise KeyError(f"Dataset {dataset_id!r} is not declared by pack {pack_id!r}")
+
+    rel_path = str(descriptor.get("path") or "").strip()
+    if not rel_path:
+        raise ValueError("Dataset descriptor is missing path")
+
+    dataset_path = _safe_pack_child(pack["_root"], rel_path)
+    if not os.path.isfile(dataset_path):
+        raise FileNotFoundError(f"Dataset file not found: {rel_path}")
+
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        data = json.load(f) or {}
+
+    if int(data.get("schema_version", 0)) != CONTENT_PACK_SCHEMA_VERSION:
+        raise ValueError("Dataset schema version is not supported")
+
+    terms = data.get("terms") or []
+    if not isinstance(terms, list):
+        raise ValueError("Dataset terms must be a list")
+
+    cleaned = []
+    seen = set()
+    for item in terms:
+        if not isinstance(item, dict):
+            continue
+        term = str(item.get("term") or "").strip()
+        definition = str(item.get("definition") or "").strip()
+        if not term or not definition:
+            continue
+        key = (term.casefold(), definition.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append({
+            "term": term,
+            "definition": definition,
+            "category": str(item.get("category") or "").strip(),
+            "explanation": str(item.get("explanation") or "").strip(),
+        })
+
+    data["terms"] = cleaned
+    data["_descriptor"] = descriptor
+    data["_pack"] = pack
+    return data
+
+
+def content_pack_summary():
+    packs = discover_content_packs()
+    summary = []
+    for pack_id, pack in packs.items():
+        dataset_count = len(pack.get("datasets") or [])
+        summary.append({
+            "id": pack_id,
+            "name": pack.get("name") or pack_id,
+            "version": pack.get("version") or "",
+            "description": pack.get("description") or "",
+            "modules": pack.get("modules") or [],
+            "dataset_count": dataset_count,
+        })
+    return summary
+
+
+@app.context_processor
+def inject_content_pack_state():
+    packs = discover_content_packs()
+    return {
+        "content_packs": packs,
+        "medical_pack_installed": "medical" in packs,
+    }
 
 
 PORTAL_CONFIG = os.path.join(CONFIG_FOLDER, "portal.json")
@@ -1366,8 +1523,307 @@ def home():
     return render_template_string(
     html,
     portal_title=portal_title,
-    app_version=APP_VERSION
+    app_version=APP_VERSION,
+    installed_content_packs=content_pack_summary()
 )
+
+
+
+# =========================
+# CONTENT PACKS - STATUS
+# =========================
+@app.route("/content-packs")
+def content_packs_page():
+    packs = content_pack_summary()
+    return render_template_string("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Packs - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home content-packs-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark">◇</div>
+            <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+        </div>
+        <nav class="dashboard-nav">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item active" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        </nav>
+        <div class="dashboard-sidebar-version">Content Packs</div>
+    </aside>
+
+    <main class="dashboard-main content-packs-main">
+        <header class="dashboard-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <div><div class="medical-eyebrow">EXTENSIONS</div><h1>Content Packs</h1>
+            <p>Optional study content stays separate from the DLMS application.</p></div>
+        </header>
+
+        <section class="dashboard-panel pack-install-panel">
+            <div class="pack-install-heading">
+                <div><span class="medical-eyebrow">INSTALL LOCATION</span><h2>Content Pack Folder</h2></div>
+                <span class="pack-count-pill">{{ packs|length }} installed</span>
+            </div>
+            <code class="pack-path">{{ pack_folder }}</code>
+            <p>Extract a content-pack ZIP so its folder containing <strong>manifest.json</strong> sits directly inside this directory, then reload this page.</p>
+        </section>
+
+        <section class="pack-card-grid">
+        {% if packs %}
+            {% for pack in packs %}
+            <article class="dashboard-panel pack-card">
+                <div class="pack-card-top">
+                    <div class="pack-card-icon">{% if pack.id == 'medical' %}✚{% else %}⬡{% endif %}</div>
+                    <div><span class="medical-eyebrow">INSTALLED PACK</span><h2>{{ pack.name }}</h2></div>
+                </div>
+                <p>{{ pack.description }}</p>
+                <div class="pack-meta">
+                    <span>Version <strong>{{ pack.version }}</strong></span>
+                    <span>{{ pack.dataset_count }} dataset{% if pack.dataset_count != 1 %}s{% endif %}</span>
+                </div>
+                {% if pack.id == "medical" %}
+                <a class="medical-primary-button" href="/medical">Open Medical Study</a>
+                {% endif %}
+            </article>
+            {% endfor %}
+        {% else %}
+            <article class="dashboard-panel pack-empty-card">
+                <h2>No content packs installed</h2>
+                <p>DLMS core is working normally. Optional content appears here after a pack is placed in the folder above.</p>
+            </article>
+        {% endif %}
+        </section>
+    </main>
+</div>
+<script>
+const menuButton=document.getElementById("menuButton");
+const sidebar=document.getElementById("dashboardSidebar");
+if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+</script>
+</body></html>
+    """, packs=packs, pack_folder=CONTENT_PACK_FOLDER)
+
+
+# =========================
+# MEDICAL STUDY - CONTENT PACK
+# =========================
+@app.route("/medical")
+def medical_study_home():
+    pack = get_content_pack("medical")
+    if not pack:
+        return render_template_string("""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Medical Study - DLMS</title>
+<link rel="stylesheet" href="/static/style.css"></head>
+<body><div class="container"><div class="card"><h1>Medical Study Pack Not Installed</h1>
+<p>Install the DLMS Medical Study Pack in:</p><pre>{{ pack_folder }}</pre>
+<a href="/content-packs">View Content Packs</a></div></div></body></html>
+        """, pack_folder=CONTENT_PACK_FOLDER), 404
+
+    datasets = []
+    for descriptor in pack.get("datasets", []):
+        dataset_id = str(descriptor.get("id") or "").strip()
+        try:
+            data = load_content_pack_dataset("medical", dataset_id)
+            datasets.append({
+                "id": dataset_id,
+                "title": descriptor.get("title") or data.get("title") or dataset_id,
+                "description": descriptor.get("description") or data.get("description") or "",
+                "type": descriptor.get("type") or data.get("type") or "matching",
+                "term_count": len(data.get("terms") or []),
+                "category": data.get("category") or "",
+            })
+        except Exception as exc:
+            print(f"[MEDICAL PACK] Dataset {dataset_id!r} unavailable: {exc}")
+
+    return render_template_string("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical Study - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-study-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark">✚</div>
+            <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+        </div>
+        <nav class="dashboard-nav">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            <a class="dashboard-nav-item active" href="/medical" aria-current="page"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        </nav>
+        <div class="dashboard-sidebar-version">{{ pack.name }} v{{ pack.version }}</div>
+    </aside>
+
+    <main class="dashboard-main medical-main">
+        <header class="dashboard-header medical-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <div><div class="medical-eyebrow">MEDICAL STUDY</div><h1>{{ pack.name }}</h1>
+            <p>{{ pack.description }}</p></div>
+        </header>
+
+        <section class="medical-summary-grid">
+            <article class="dashboard-stat-card"><span>Pack Version</span><strong>{{ pack.version }}</strong><small>independent of DLMS core</small></article>
+            <article class="dashboard-stat-card"><span>Datasets</span><strong>{{ datasets|length }}</strong><small>available study banks</small></article>
+            <article class="dashboard-stat-card"><span>Total Terms</span><strong>{{ total_terms }}</strong><small>across installed datasets</small></article>
+        </section>
+
+        <section class="medical-dataset-grid">
+        {% for dataset in datasets %}
+            <article class="dashboard-panel medical-dataset-card">
+                <div class="medical-dataset-heading">
+                    <div class="medical-dataset-icon">✚</div>
+                    <div><span class="medical-eyebrow">{{ dataset.category or "TERMINOLOGY" }}</span>
+                    <h2>{{ dataset.title }}</h2></div>
+                </div>
+                <p>{{ dataset.description }}</p>
+                <div class="medical-dataset-meta"><span>{{ dataset.term_count }} terms</span><span>{{ dataset.type|capitalize }}</span></div>
+
+                <form method="POST" action="/medical/generate" class="medical-generator-form">
+                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                    <label><span>Pairs Per Round</span>
+                        <input type="number" name="round_size" min="2" max="{{ dataset.term_count }}" value="{{ 10 if dataset.term_count >= 10 else dataset.term_count }}">
+                    </label>
+                    <label><span>Direction</span>
+                        <select name="direction">
+                            <option value="random" selected>Random Each Attempt</option>
+                            <option value="term_to_definition">Term → Definition</option>
+                            <option value="definition_to_term">Definition → Term</option>
+                        </select>
+                    </label>
+                    <button class="medical-primary-button" type="submit">Create Practice Quiz</button>
+                </form>
+            </article>
+        {% else %}
+            <article class="dashboard-panel pack-empty-card"><h2>No usable datasets</h2>
+            <p>The Medical pack is detected, but no valid datasets could be loaded.</p></article>
+        {% endfor %}
+        </section>
+    </main>
+</div>
+<script>
+const menuButton=document.getElementById("menuButton");
+const sidebar=document.getElementById("dashboardSidebar");
+if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+</script>
+</body></html>
+    """, pack=pack, datasets=datasets, total_terms=sum(d["term_count"] for d in datasets))
+
+
+@app.route("/medical/generate", methods=["POST"])
+def medical_generate_quiz():
+    pack = get_content_pack("medical")
+    if not pack:
+        flash("Medical Study Pack is not installed.", "error")
+        return redirect("/content-packs")
+
+    dataset_id = request.form.get("dataset_id", "").strip()
+    direction = request.form.get("direction", "random").strip()
+    if direction not in {"term_to_definition", "definition_to_term", "random"}:
+        direction = "random"
+
+    try:
+        data = load_content_pack_dataset("medical", dataset_id)
+    except Exception as exc:
+        flash(f"Unable to load medical dataset: {exc}", "error")
+        return redirect("/medical")
+
+    terms = data.get("terms") or []
+    if len(terms) < 2:
+        flash("This medical dataset does not contain enough terms.", "error")
+        return redirect("/medical")
+
+    try:
+        round_size = int(request.form.get("round_size", "10"))
+    except (TypeError, ValueError):
+        round_size = 10
+    round_size = max(2, min(round_size, min(100, len(terms))))
+
+    title = str(data.get("title") or data["_descriptor"].get("title") or "Medical Practice").strip()
+    quiz_title = f"{title} — {round_size}-Pair Practice"
+    source = data.get("source") or {}
+
+    pairs = [{"left": item["term"], "right": item["definition"]} for item in terms]
+    quiz_data = [{
+        "number": 1,
+        "type": "matching",
+        "question": str(data.get("question_text") or "Match each medical term with its correct definition.").strip(),
+        "pairs": pairs,
+        "round_size": round_size,
+        "direction": direction,
+        "source": {
+            "organization": source.get("organization") or pack.get("publisher") or "",
+            "dataset": source.get("dataset") or title,
+            "version": source.get("version") or pack.get("version") or "",
+            "url": source.get("url") or "",
+            "license": source.get("license") or "",
+        },
+    }]
+
+    ts = int(time.time())
+    safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "medical"
+    html_name = f"medical_{safe_id}_{ts}.html"
+    json_name = f"medical_{safe_id}_{ts}.json"
+    json_path = os.path.join(DATA_FOLDER, json_name)
+    html_path = os.path.join(QUIZ_FOLDER, html_name)
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(quiz_data, f, indent=4, ensure_ascii=False)
+
+    quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
+    add_quiz_to_registry(
+        quiz_id=quiz_id,
+        html=html_name,
+        title=quiz_title,
+        logo=None,
+        exam_minutes=90
+    )
+    build_quiz_html(
+        html_name, json_name, html_path, get_portal_title(),
+        quiz_title, None, quiz_id, 90
+    )
+
+    flash(
+        f"Created {quiz_title} from {len(terms)} available terms. "
+        f"Each attempt shows {round_size} pairs.",
+        "success"
+    )
+    return redirect(f"/quizzes/{html_name}")
 
 
 # =========================
@@ -1411,6 +1867,9 @@ def law_study_home():
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -1425,6 +1884,7 @@ def law_study_home():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -1672,6 +2132,9 @@ def law_create_case_review():
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        {% endif %}
         <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
         <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -1687,6 +2150,7 @@ def law_create_case_review():
 
     <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
         <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
         <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
         <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
@@ -2213,6 +2677,9 @@ def law_import_case_packet():
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        {% endif %}
         <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
         <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -2228,6 +2695,7 @@ def law_import_case_packet():
 
     <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
         <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
         <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
         <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
@@ -2427,6 +2895,9 @@ def law_saved_imports():
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        {% endif %}
         <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
         <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -2442,6 +2913,7 @@ def law_saved_imports():
 
     <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
         <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
         <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
         <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
@@ -2613,6 +3085,9 @@ def law_view_saved_import(filename):
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        {% endif %}
         <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
         <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -2626,6 +3101,7 @@ def law_view_saved_import(filename):
     <div class="dashboard-nav-section-label"><span>System</span></div>
     <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
         <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
         <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
         <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
@@ -2907,6 +3383,9 @@ def law_case_reviews():
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        {% endif %}
         <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
         <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -2922,6 +3401,7 @@ def law_case_reviews():
 
     <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
         <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
         <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
         <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
@@ -3123,6 +3603,9 @@ def law_view_case_review(case_id):
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        {% endif %}
         <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
         <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -3136,6 +3619,7 @@ def law_view_case_review(case_id):
     <div class="dashboard-nav-section-label"><span>System</span></div>
     <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
         <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
         <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
         <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
@@ -3840,6 +4324,9 @@ def edit_quiz(quiz_id):
             <a class="dashboard-nav-item active" href="/library" aria-current="page"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -3854,6 +4341,7 @@ def edit_quiz(quiz_id):
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -5660,6 +6148,9 @@ def quiz_library():
             <a class="dashboard-nav-item active" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -5674,6 +6165,7 @@ def quiz_library():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -6110,6 +6602,9 @@ def upload_page():
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -6123,6 +6618,7 @@ def upload_page():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -6276,6 +6772,9 @@ def paste_page():
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -6289,6 +6788,7 @@ def paste_page():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -6523,6 +7023,9 @@ def matching_bank_import():
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -6537,6 +7040,7 @@ def matching_bank_import():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -6656,6 +7160,9 @@ def create_short_quiz_page():
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -6669,6 +7176,7 @@ def create_short_quiz_page():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -11089,6 +11597,9 @@ def anki_tools():
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -11103,6 +11614,7 @@ def anki_tools():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -11427,6 +11939,9 @@ def anki_custom_deck():
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
 
@@ -11442,6 +11957,7 @@ def anki_custom_deck():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
@@ -11797,6 +12313,9 @@ def anki_law_tools():
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
             <div class="dashboard-nav-group">
@@ -11810,6 +12329,7 @@ def anki_law_tools():
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>

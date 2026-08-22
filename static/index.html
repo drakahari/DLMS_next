@@ -46,6 +46,12 @@
                 <span class="dashboard-nav-icon">⚖</span>
                 <span>Law Study</span>
             </a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical">
+                <span class="dashboard-nav-icon">✚</span>
+                <span>Medical Study</span>
+            </a>
+            {% endif %}
             <a class="dashboard-nav-item" href="/history">
                 <span class="dashboard-nav-icon">↶</span>
                 <span>History</span>
@@ -69,6 +75,10 @@
             <a class="dashboard-nav-item" href="/settings">
                 <span class="dashboard-nav-icon">⚙</span>
                 <span>Settings</span>
+            </a>
+            <a class="dashboard-nav-item" href="/content-packs">
+                <span class="dashboard-nav-icon">⬡</span>
+                <span>Content Packs</span>
             </a>
             <a class="dashboard-nav-item" href="/help">
                 <span class="dashboard-nav-icon">?</span>
@@ -137,6 +147,16 @@
                 </div>
                 <div class="dashboard-action-arrow">›</div>
             </a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-action-card" href="/medical">
+                <div class="dashboard-action-icon icon-cyan">✚</div>
+                <div class="dashboard-action-copy">
+                    <h2>Medical Study</h2>
+                    <p>Generate practice from installed medical terminology and anatomy packs.</p>
+                </div>
+                <div class="dashboard-action-arrow">›</div>
+            </a>
+            {% endif %}
 
             <a class="dashboard-action-card" href="/history">
                 <div class="dashboard-action-icon icon-purple">↶</div>

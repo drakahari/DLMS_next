@@ -6416,3 +6416,183 @@ a.settings-hub-card:hover {
     box-shadow: 0 0 0 3px rgba(46, 137, 255, 0.10);
 }
 
+
+/* =========================================================
+   CONTENT PACKS / MEDICAL STUDY
+   ========================================================= */
+.medical-main,
+.content-packs-main {
+    min-width: 0;
+    padding-bottom: 36px;
+}
+
+.medical-eyebrow {
+    display: block;
+    margin-bottom: 6px;
+    color: #74c9ff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.25px;
+    text-transform: uppercase;
+}
+
+.medical-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin: 18px 0;
+}
+
+.medical-dataset-grid,
+.pack-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 18px;
+    margin-top: 18px;
+}
+
+.medical-dataset-card,
+.pack-card,
+.pack-empty-card,
+.pack-install-panel {
+    padding: 22px;
+}
+
+.medical-dataset-heading,
+.pack-card-top,
+.pack-install-heading {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+}
+
+.pack-install-heading {
+    justify-content: space-between;
+}
+
+.medical-dataset-icon,
+.pack-card-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    border-radius: 13px;
+    background: rgba(30, 126, 213, .18);
+    border: 1px solid rgba(95, 174, 255, .30);
+    color: #8ad8ff;
+    font-size: 23px;
+    font-weight: 800;
+}
+
+.medical-dataset-heading h2,
+.pack-card-top h2,
+.pack-install-heading h2 {
+    margin: 0;
+}
+
+.medical-dataset-card > p,
+.pack-card > p,
+.pack-install-panel > p {
+    color: #aebed2;
+    line-height: 1.55;
+}
+
+.medical-dataset-meta,
+.pack-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 14px 0;
+}
+
+.medical-dataset-meta span,
+.pack-meta span,
+.pack-count-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 9px;
+    border: 1px solid rgba(95, 160, 235, .20);
+    border-radius: 999px;
+    background: rgba(12, 35, 67, .55);
+    color: #bfd4ee;
+    font-size: 12px;
+}
+
+.medical-generator-form {
+    display: grid;
+    grid-template-columns: minmax(130px, .65fr) minmax(190px, 1fr);
+    gap: 12px;
+    align-items: end;
+    margin-top: 18px;
+}
+
+.medical-generator-form label {
+    display: grid;
+    gap: 7px;
+    color: #dbe9fb;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.medical-generator-form input,
+.medical-generator-form select {
+    width: 100%;
+    min-height: 43px;
+    box-sizing: border-box;
+    padding: 9px 11px;
+    color: #eaf3ff;
+    background: rgba(3, 13, 30, .78);
+    border: 1px solid rgba(91, 146, 215, .42);
+    border-radius: 8px;
+    font: inherit;
+    color-scheme: dark;
+}
+
+.medical-primary-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 43px;
+    box-sizing: border-box;
+    padding: 10px 15px;
+    border: 1px solid rgba(74, 173, 255, .32);
+    border-radius: 9px;
+    background: linear-gradient(135deg, #1674d2, #169dbb);
+    color: #fff !important;
+    font-weight: 800;
+    text-decoration: none !important;
+    cursor: pointer;
+}
+
+.medical-generator-form .medical-primary-button {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin: 0;
+}
+
+.pack-path {
+    display: block;
+    margin: 16px 0 8px;
+    padding: 13px 15px;
+    overflow-x: auto;
+    border: 1px solid rgba(89, 150, 220, .26);
+    border-radius: 9px;
+    background: rgba(2, 10, 23, .72);
+    color: #9bd8ff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: nowrap;
+}
+
+@media (max-width: 850px) {
+    .medical-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .medical-generator-form {
+        grid-template-columns: 1fr;
+    }
+}
+
