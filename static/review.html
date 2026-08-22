@@ -209,6 +209,65 @@ async function copyTextToClipboard(text) {
 /* =====================================================
    LOAD REVIEW DATA
 ===================================================== */
+function parseMatchingLines(text) {
+    if (!text) return null;
+
+    const lines = String(text)
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+
+    if (lines.length < 2 || !lines.every(line => line.includes("↔"))) {
+        return null;
+    }
+
+    return lines.map(line => {
+        const arrowIndex = line.indexOf("↔");
+        return {
+            left: line.slice(0, arrowIndex).trim(),
+            right: line.slice(arrowIndex + 1).trim()
+        };
+    });
+}
+
+function formatReviewAnswer(text, correctText = null, compareAgainstCorrect = false) {
+    const pairs = parseMatchingLines(text);
+
+    // Preserve the existing display for normal choice questions.
+    if (!pairs) {
+        return escapeHtml(text || "(No correct answer recorded)");
+    }
+
+    let correctMap = null;
+    if (compareAgainstCorrect) {
+        const correctPairs = parseMatchingLines(correctText);
+        if (correctPairs) {
+            correctMap = new Map(correctPairs.map(pair => [pair.left, pair.right]));
+        }
+    }
+
+    const rows = pairs.map(pair => {
+        let stateClass = "";
+        let stateIcon = "";
+
+        if (correctMap && correctMap.has(pair.left)) {
+            const isCorrect = correctMap.get(pair.left) === pair.right;
+            stateClass = isCorrect ? " is-correct" : " is-incorrect";
+            stateIcon = `<span class="review-match-state" aria-label="${isCorrect ? "Correct" : "Incorrect"}">${isCorrect ? "✓" : "✕"}</span>`;
+        }
+
+        return `
+            <div class="review-match-row${stateClass}">
+                <span class="review-match-left">${escapeHtml(pair.left)}</span>
+                <span class="review-match-arrow" aria-hidden="true">↔</span>
+                <span class="review-match-right">${escapeHtml(pair.right)}</span>
+                ${stateIcon}
+            </div>`;
+    }).join("");
+
+    return `<div class="review-match-list">${rows}</div>`;
+}
+
 async function loadReview() {
     const info = document.getElementById("info");
     const box  = document.getElementById("reviewArea");
@@ -274,9 +333,9 @@ async function loadReview() {
         missed.forEach((m, index) => {
             const qnum = escapeHtml(m.attempt_question_number);
             const questionText = escapeHtml(m.question_text || "");
-            const correctText = escapeHtml(m.correct_text || "(No correct answer recorded)");
+            const correctText = formatReviewAnswer(m.correct_text, m.correct_text, false);
             const selectedText = m.selected_text
-                ? escapeHtml(m.selected_text)
+                ? formatReviewAnswer(m.selected_text, m.correct_text, true)
                 : "<i>(No answer recorded)</i>";
 
             html += `

@@ -6244,3 +6244,73 @@ a.settings-hub-card:hover {
 .matching-row.matching-correct { outline:2px solid rgba(55, 190, 110, .7); }
 .matching-row.matching-wrong { outline:2px solid rgba(220, 75, 75, .75); }
 @media (max-width:700px) { .build-match-pair { grid-template-columns:28px 1fr 32px; } .build-match-pair .match-arrow { display:none; } .build-match-pair .match-right { grid-column:2 / 3; } .build-match-pair .build-choice-delete { grid-column:3; grid-row:1 / span 2; } .matching-row { grid-template-columns:1fr; gap:10px; } }
+
+/* Matching answer layout in Attempt Review */
+.review-match-list {
+    display: grid;
+    gap: 7px;
+}
+
+.review-match-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.45fr) auto;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.025);
+}
+
+.review-match-left {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.review-match-arrow {
+    opacity: .68;
+    font-weight: 800;
+}
+
+.review-match-right {
+    overflow-wrap: anywhere;
+}
+
+.review-match-state {
+    width: 20px;
+    text-align: center;
+    font-weight: 900;
+}
+
+.review-answer-panel.incorrect .review-match-row.is-correct {
+    color: #c8f9dc;
+    border: 1px solid rgba(57,205,117,.20);
+    background: rgba(20,105,61,.13);
+}
+
+.review-answer-panel.incorrect .review-match-row.is-incorrect {
+    color: #ffd2d6;
+    border: 1px solid rgba(240,91,106,.24);
+    background: rgba(131,31,43,.16);
+}
+
+@media (max-width: 700px) {
+    .review-match-row {
+        grid-template-columns: 1fr auto;
+        gap: 4px 8px;
+    }
+
+    .review-match-left,
+    .review-match-right {
+        grid-column: 1;
+    }
+
+    .review-match-arrow {
+        display: none;
+    }
+
+    .review-match-state {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        align-self: center;
+    }
+}
