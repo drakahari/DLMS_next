@@ -54,7 +54,7 @@ async function loadQuiz() {
         const res = await fetch(file);
         if (!res.ok) throw new Error("HTTP " + res.status);
         quiz = await res.json();
-        quiz = quiz.map(q => ({ ...q, type: (q.type || "choice").toLowerCase() }));
+        quiz = quiz.map(q => prepareQuestionForAttempt({ ...q, type: (q.type || "choice").toLowerCase() }));
         console.log("Quiz loaded. Questions:", quiz.length);
     } catch (err) {
         console.error("Failed to load quiz:", err);
@@ -124,6 +124,23 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 
+
+
+function prepareQuestionForAttempt(q) {
+    if (q.type !== "matching" || !Array.isArray(q.pairs)) return q;
+    let pairs = q.pairs.map(pair => ({...pair}));
+    const requested = Number(q.round_size);
+    if (Number.isFinite(requested) && requested >= 2 && requested < pairs.length) {
+        const order = shuffledIndexes(pairs.length).slice(0, Math.floor(requested));
+        pairs = order.map(i => pairs[i]);
+    }
+    let direction = q.direction || "term_to_definition";
+    if (direction === "random") direction = Math.random() < 0.5 ? "term_to_definition" : "definition_to_term";
+    if (direction === "definition_to_term") {
+        pairs = pairs.map(pair => ({ left: pair.right, right: pair.left }));
+    }
+    return { ...q, pairs, active_direction: direction };
+}
 
 /* =====================================================
    RENDER QUESTION

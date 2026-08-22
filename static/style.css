@@ -6314,3 +6314,105 @@ a.settings-hub-card:hover {
         align-self: center;
     }
 }
+
+
+/* =========================================================
+   BUILD QUIZ FORM CONTROL VISIBILITY FIX
+   Keeps text/select/number/url controls readable in the dark
+   Build Quiz workspace, including Firefox/autofill states.
+   ========================================================= */
+.build-modern-page input[type="text"],
+.build-modern-page input[type="url"],
+.build-modern-page input[type="number"],
+.build-modern-page input[type="file"],
+.build-modern-page textarea,
+.build-modern-page select {
+    width: 100%;
+    box-sizing: border-box;
+    color: #eaf3ff !important;
+    background: rgba(3, 13, 30, 0.78) !important;
+    border: 1px solid rgba(91, 146, 215, 0.42);
+    border-radius: 8px;
+    font: inherit;
+    caret-color: #ffffff;
+    color-scheme: dark;
+}
+
+.build-modern-page input[type="text"],
+.build-modern-page input[type="url"],
+.build-modern-page input[type="number"],
+.build-modern-page select {
+    min-height: 44px;
+    padding: 10px 12px;
+}
+
+.build-modern-page input[type="file"] {
+    min-height: 46px;
+    padding: 8px 10px;
+}
+
+.build-modern-page select option {
+    color: #eaf3ff;
+    background: #071426;
+}
+
+.build-modern-page input::placeholder,
+.build-modern-page textarea::placeholder {
+    color: #91a2b7 !important;
+    opacity: 1;
+}
+
+.build-modern-page input:focus,
+.build-modern-page textarea:focus,
+.build-modern-page select:focus {
+    outline: none;
+    border-color: rgba(75, 164, 255, 0.82);
+    background: rgba(5, 19, 42, 0.90) !important;
+    box-shadow: 0 0 0 3px rgba(46, 137, 255, 0.10);
+}
+
+/* Browser autofill can otherwise inject dark text/background. */
+.build-modern-page input:-webkit-autofill,
+.build-modern-page input:-webkit-autofill:hover,
+.build-modern-page input:-webkit-autofill:focus,
+.build-modern-page textarea:-webkit-autofill,
+.build-modern-page select:-webkit-autofill {
+    -webkit-text-fill-color: #eaf3ff !important;
+    caret-color: #ffffff;
+    box-shadow: 0 0 0 1000px #071426 inset !important;
+    transition: background-color 9999s ease-out 0s;
+}
+
+
+/* =========================================================
+   BUILD QUIZ DEFAULT TEXT INPUT FIX
+   HTML <input> elements without a type attribute default to
+   text, but do not match input[type="text"] selectors.
+   ========================================================= */
+.build-modern-page input:not([type]) {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 10px 12px;
+    color: #eaf3ff !important;
+    background: rgba(3, 13, 30, 0.78) !important;
+    border: 1px solid rgba(91, 146, 215, 0.42);
+    border-radius: 8px;
+    font: inherit;
+    caret-color: #ffffff;
+    color-scheme: dark;
+}
+
+.build-modern-page input:not([type])::placeholder {
+    color: #91a2b7 !important;
+    opacity: 1;
+}
+
+.build-modern-page input:not([type]):focus {
+    outline: none;
+    color: #eaf3ff !important;
+    border-color: rgba(75, 164, 255, 0.82);
+    background: rgba(5, 19, 42, 0.90) !important;
+    box-shadow: 0 0 0 3px rgba(46, 137, 255, 0.10);
+}
+

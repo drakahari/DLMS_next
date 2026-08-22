@@ -1,5 +1,5 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
-import os, re, json, time, sqlite3, sys, shutil, signal, threading
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -88,7 +88,7 @@ def get_app_data_dir(app_name: str = "DLMS") -> str:
     return path
 
 APP_NAME = "DLMS"
-APP_VERSION = "3.0.0"
+APP_VERSION = "2.5.0"
 APP_DATA_DIR = get_app_data_dir(APP_NAME)
 
 # =========================
@@ -3756,7 +3756,7 @@ def edit_quiz(quiz_id):
 
     questions = cur.execute(
         """
-        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type
+        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type, matching_round_size, COALESCE(matching_direction, 'term_to_definition') AS matching_direction, source_organization, source_dataset, source_version, source_url, source_license
         FROM questions
         WHERE quiz_id = ?
         ORDER BY question_number, id
@@ -3793,7 +3793,13 @@ def edit_quiz(quiz_id):
             "text": q["question_text"],
             "type": q["question_type"],
             "choices": choices,
-            "pairs": pairs
+            "pairs": pairs,
+            "round_size": q["matching_round_size"],
+            "direction": q["matching_direction"],
+            "source": {
+                "organization": q["source_organization"], "dataset": q["source_dataset"],
+                "version": q["source_version"], "url": q["source_url"], "license": q["source_license"]
+            }
         })
 
     conn.close()
@@ -3957,6 +3963,28 @@ def edit_quiz(quiz_id):
                             <span>Matching Pairs</span>
                             <small>Edit either side of each pair. The right-side answers are shuffled during play.</small>
                         </div>
+                        <div class="build-two-column-fields matching-settings-grid">
+                            <label class="build-field">
+                                <span>Pairs Per Round</span>
+                                <input type="number" name="matching_round_size_{{ q.id }}" min="2" max="100" value="{{ q.round_size or '' }}" placeholder="All pairs">
+                                <small>Leave blank to show every pair.</small>
+                            </label>
+                            <label class="build-field">
+                                <span>Direction</span>
+                                <select name="matching_direction_{{ q.id }}">
+                                    <option value="term_to_definition" {% if q.direction == 'term_to_definition' %}selected{% endif %}>Term → Definition</option>
+                                    <option value="definition_to_term" {% if q.direction == 'definition_to_term' %}selected{% endif %}>Definition → Term</option>
+                                    <option value="random" {% if q.direction == 'random' %}selected{% endif %}>Random Each Attempt</option>
+                                </select>
+                            </label>
+                        </div>
+                        {% if q.source.organization or q.source.dataset %}
+                        <div class="build-tip-card matching-source-card">
+                            <strong>Content source</strong>
+                            <span>{{ q.source.organization or '' }}{% if q.source.dataset %} — {{ q.source.dataset }}{% endif %}{% if q.source.version %} ({{ q.source.version }}){% endif %}</span>
+                            {% if q.source.license %}<small>License/terms: {{ q.source.license }}</small>{% endif %}
+                        </div>
+                        {% endif %}
                         <div class="matching-pairs-list">
                         {% for pair in q.pairs %}
                             <div class="build-match-pair">
@@ -3964,7 +3992,7 @@ def edit_quiz(quiz_id):
                                 <input type="text" name="match_left_{{ pair['id'] }}" value="{{ pair['left_text'] }}">
                                 <span class="match-arrow">↔</span>
                                 <input type="text" name="match_right_{{ pair['id'] }}" value="{{ pair['right_text'] }}">
-                                <span></span>
+                                <button type="submit" form="delete-match-pair-{{ pair.id }}" class="build-choice-delete btn-delete" onclick="return confirm('Delete this matching pair?');" title="Delete pair" aria-label="Delete pair">×</button>
                             </div>
                         {% endfor %}
                         </div>
@@ -4050,6 +4078,11 @@ def edit_quiz(quiz_id):
             <form id="delete-choice-{{ c.id }}"
                   method="POST"
                   action="/delete_choice/{{ quiz['id'] }}/{{ c.id }}"></form>
+            {% endfor %}
+            {% for pair in q.pairs %}
+            <form id="delete-match-pair-{{ pair.id }}"
+                  method="POST"
+                  action="/delete_match_pair/{{ quiz['id'] }}/{{ pair.id }}"></form>
             {% endfor %}
         {% endfor %}
     </main>
@@ -4398,7 +4431,7 @@ def rebuild_quiz_json_from_db(quiz_id):
 
     questions = cur.execute(
         """
-        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type
+        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type, matching_round_size, COALESCE(matching_direction, 'term_to_definition') AS matching_direction, source_organization, source_dataset, source_version, source_url, source_license
         FROM questions
         WHERE quiz_id = ?
         ORDER BY question_number, id
@@ -4419,15 +4452,27 @@ def rebuild_quiz_json_from_db(quiz_id):
                 """,
                 (q["id"],)
             ).fetchall()
-            quiz_data.append({
+            item = {
                 "number": q["question_number"],
                 "type": "matching",
                 "question": q["question_text"],
                 "pairs": [
                     {"left": pair["left_text"], "right": pair["right_text"]}
                     for pair in pairs
-                ]
-            })
+                ],
+                "round_size": q["matching_round_size"],
+                "direction": q["matching_direction"],
+            }
+            source = {
+                "organization": q["source_organization"],
+                "dataset": q["source_dataset"],
+                "version": q["source_version"],
+                "url": q["source_url"],
+                "license": q["source_license"],
+            }
+            if any(source.values()):
+                item["source"] = source
+            quiz_data.append(item)
             continue
 
         choices = cur.execute(
@@ -4587,18 +4632,34 @@ def save_edited_quiz(quiz_id):
         save_registry(registry)
 
     questions = cur.execute(
-        "SELECT id FROM questions WHERE quiz_id = ?",
+        "SELECT id, COALESCE(question_type, 'choice') FROM questions WHERE quiz_id = ?",
         (quiz_id,)
     ).fetchall()
 
     for q in questions:
         question_id = q[0]
+        question_type = q[1]
         new_question_text = request.form.get(f"question_{question_id}", "").strip()
-
-        cur.execute(
-            "UPDATE questions SET question_text = ? WHERE id = ?",
-            (new_question_text, question_id)
-        )
+        if question_type == "matching":
+            raw_round_size = request.form.get(f"matching_round_size_{question_id}", "").strip()
+            try:
+                round_size = int(raw_round_size) if raw_round_size else None
+            except ValueError:
+                round_size = None
+            if round_size is not None:
+                round_size = max(2, min(round_size, 100))
+            direction = request.form.get(f"matching_direction_{question_id}", "term_to_definition").strip()
+            if direction not in {"term_to_definition", "definition_to_term", "random"}:
+                direction = "term_to_definition"
+            cur.execute(
+                "UPDATE questions SET question_text = ?, matching_round_size = ?, matching_direction = ? WHERE id = ?",
+                (new_question_text, round_size, direction, question_id)
+            )
+        else:
+            cur.execute(
+                "UPDATE questions SET question_text = ? WHERE id = ?",
+                (new_question_text, question_id)
+            )
 
     choices = cur.execute(
         """
@@ -4965,6 +5026,34 @@ def delete_choice_from_question(quiz_id, choice_id):
 
 
 # =========================
+# DELETE MATCHING PAIR FROM QUESTION
+# =========================
+@app.route("/delete_match_pair/<int:quiz_id>/<int:pair_id>", methods=["POST"])
+def delete_match_pair_from_question(quiz_id, pair_id):
+    conn = get_db()
+    cur = conn.cursor()
+    row = cur.execute("SELECT question_id FROM matching_pairs WHERE id = ?", (pair_id,)).fetchone()
+    if not row:
+        conn.close()
+        return redirect(f"/edit_quiz/{quiz_id}")
+    question_id = row[0]
+    pair_count = cur.execute("SELECT COUNT(*) FROM matching_pairs WHERE question_id = ?", (question_id,)).fetchone()[0]
+    if pair_count <= 2:
+        conn.close()
+        flash("A matching question must retain at least two pairs.", "error")
+        return redirect(f"/edit_quiz/{quiz_id}")
+    cur.execute("DELETE FROM matching_pairs WHERE id = ?", (pair_id,))
+    remaining = cur.execute("SELECT id FROM matching_pairs WHERE question_id = ? ORDER BY pair_order, id", (question_id,)).fetchall()
+    for idx, item in enumerate(remaining, start=1):
+        cur.execute("UPDATE matching_pairs SET pair_order = ? WHERE id = ?", (idx, item[0]))
+    conn.commit()
+    conn.close()
+    rebuild_quiz_json_from_db(quiz_id)
+    rebuild_quiz_html_from_registry(quiz_id)
+    return redirect(f"/edit_quiz/{quiz_id}")
+
+
+# =========================
 # DELETE QUIZ (AUTHORITATIVE)
 # =========================
 @app.route("/delete_quiz/<int:quiz_id>", methods=["POST"])
@@ -5159,11 +5248,26 @@ def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
                 quiz_id,
                 question_number,
                 question_text,
-                question_type
+                question_type,
+                matching_round_size,
+                matching_direction,
+                source_organization,
+                source_dataset,
+                source_version,
+                source_url,
+                source_license
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (quiz_id, question_number, question_text, question_type),
+            (
+                quiz_id, question_number, question_text, question_type,
+                q.get("round_size"), q.get("direction", "term_to_definition"),
+                (q.get("source") or {}).get("organization"),
+                (q.get("source") or {}).get("dataset"),
+                (q.get("source") or {}).get("version"),
+                (q.get("source") or {}).get("url"),
+                (q.get("source") or {}).get("license"),
+            ),
         )
 
         question_id = cur.lastrowid
@@ -6086,6 +6190,15 @@ def upload_page():
                     </div>
                     <span class="build-option-arrow" aria-hidden="true">›</span>
                 </a>
+                <a class="build-option-card" href="/matching_bank_import">
+                    <div class="build-option-icon" aria-hidden="true">⇄</div>
+                    <div>
+                        <span class="build-method-label">MATCHING BANK</span>
+                        <h2>Import matching pairs</h2>
+                        <p>Load a CSV terminology bank, choose round size and direction, and retain source metadata.</p>
+                    </div>
+                    <span class="build-option-arrow" aria-hidden="true">›</span>
+                </a>
                 <div class="build-tip-card">
                     <strong>Not sure which to use?</strong>
                     <span>Paste Text is best for copied exam material. Manual Entry is best for a smaller custom set.</span>
@@ -6305,6 +6418,183 @@ if (shutdownBtn) {
 # =========================
 # CREATE SHORT QUIZ PAGE
 # =========================
+# =========================
+# MATCHING BANK - CSV IMPORT
+# =========================
+@app.route("/matching_bank_import", methods=["GET", "POST"])
+def matching_bank_import():
+    if request.method == "POST":
+        quiz_title = request.form.get("quiz_title", "").strip()
+        question_text = request.form.get("question_text", "Match each term with its correct definition.").strip()
+        direction = request.form.get("direction", "term_to_definition").strip()
+        if direction not in {"term_to_definition", "definition_to_term", "random"}:
+            direction = "term_to_definition"
+        raw_round_size = request.form.get("round_size", "10").strip()
+        try:
+            round_size = max(2, min(int(raw_round_size), 100))
+        except (TypeError, ValueError):
+            round_size = 10
+
+        source = {
+            "organization": request.form.get("source_organization", "").strip(),
+            "dataset": request.form.get("source_dataset", "").strip(),
+            "version": request.form.get("source_version", "").strip(),
+            "url": request.form.get("source_url", "").strip(),
+            "license": request.form.get("source_license", "").strip(),
+        }
+        upload = request.files.get("csv_file")
+        if not quiz_title or not upload or not upload.filename:
+            flash("Quiz title and CSV file are required.", "error")
+            return redirect("/matching_bank_import")
+        try:
+            text = upload.stream.read().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            flash("CSV must be UTF-8 encoded.", "error")
+            return redirect("/matching_bank_import")
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames:
+            flash("CSV is missing a header row.", "error")
+            return redirect("/matching_bank_import")
+        normalized = {name.strip().lower(): name for name in reader.fieldnames if name}
+        term_col = normalized.get("term") or normalized.get("left")
+        def_col = normalized.get("definition") or normalized.get("right") or normalized.get("match")
+        if not term_col or not def_col:
+            flash("CSV must contain term + definition columns (left + right are also accepted).", "error")
+            return redirect("/matching_bank_import")
+        pairs = []
+        seen = set()
+        for row in reader:
+            left = (row.get(term_col) or "").strip()
+            right = (row.get(def_col) or "").strip()
+            if not left or not right:
+                continue
+            key = (left.casefold(), right.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append({"left": left, "right": right})
+        if len(pairs) < 2:
+            flash("The CSV needs at least two complete unique pairs.", "error")
+            return redirect("/matching_bank_import")
+        round_size = min(round_size, len(pairs))
+        quiz_data = [{
+            "number": 1,
+            "type": "matching",
+            "question": question_text or "Match each term with its correct definition.",
+            "pairs": pairs,
+            "round_size": round_size,
+            "direction": direction,
+            "source": source,
+        }]
+        ts = int(time.time())
+        html_name = f"matching_bank_{ts}.html"
+        json_name = f"matching_bank_{ts}.json"
+        json_path = os.path.join(DATA_FOLDER, json_name)
+        html_path = os.path.join(QUIZ_FOLDER, html_name)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(quiz_data, f, indent=4, ensure_ascii=False)
+        quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
+        add_quiz_to_registry(quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None, exam_minutes=90)
+        build_quiz_html(html_name, json_name, html_path, get_portal_title(), quiz_title, None, quiz_id, 90)
+        flash(f"Matching bank imported: {len(pairs)} pairs; {round_size} shown per attempt.", "success")
+        return redirect(f"/edit_quiz/{quiz_id}")
+
+    return render_template_string("""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Import Matching Bank - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home build-modern-page">
+<div class="dashboard-shell">
+
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                    <path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                    <path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div>
+                <div class="dashboard-brand-title">DLMS</div>
+                <div class="dashboard-brand-subtitle">Training Center</div>
+            </div>
+        </div>
+
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <div class="dashboard-nav-submenu">
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        </nav>
+
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button">
+            <span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span>
+        </button>
+        <div class="dashboard-sidebar-version">Build Quiz</div>
+    </aside>
+
+    <main class="dashboard-main build-modern-main">
+        <header class="dashboard-header build-page-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <div>
+                <div class="build-eyebrow">BUILD QUIZ</div>
+                <h1>Import Matching Bank</h1>
+                <p>Import a CSV bank without manually entering each pair.</p>
+            </div>
+        </header>
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endif %}{% endwith %}
+<form class="build-workspace" method="POST" enctype="multipart/form-data"><section class="dashboard-panel build-section"><div class="build-section-heading"><div class="build-step-number">1</div><div><h2>Matching Bank</h2><p>Required CSV headers: <strong>term,definition</strong>. The aliases <strong>left,right</strong> also work.</p></div></div>
+<div class="build-two-column-fields"><label class="build-field"><span>Quiz Title</span><input name="quiz_title" required placeholder="Medical Terminology — Foundations"></label><label class="build-field"><span>CSV File</span><input type="file" name="csv_file" accept=".csv,text/csv" required></label><label class="build-field"><span>Pairs Per Round</span><input type="number" name="round_size" min="2" max="100" value="10"></label><label class="build-field"><span>Direction</span><select name="direction"><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option><option value="random">Random Each Attempt</option></select></label></div>
+<label class="build-field"><span>Instructions</span><input name="question_text" value="Match each term with its correct definition."></label></section>
+<section class="dashboard-panel build-section"><div class="build-section-heading"><div class="build-step-number">2</div><div><h2>Source &amp; Provenance</h2><p>Optional for custom banks; complete these fields for distributed sourced content.</p></div></div><div class="build-two-column-fields"><label class="build-field"><span>Source Organization</span><input name="source_organization" placeholder="U.S. National Library of Medicine"></label><label class="build-field"><span>Dataset</span><input name="source_dataset" placeholder="Medical Subject Headings (MeSH)"></label><label class="build-field"><span>Version</span><input name="source_version" placeholder="2026"></label><label class="build-field"><span>License / Terms</span><input name="source_license" placeholder="NLM MeSH Terms and Conditions"></label></div><label class="build-field"><span>Source URL</span><input type="url" name="source_url" placeholder="https://..."></label></section>
+<div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Options</a><button class="build-primary-button" type="submit">Import Matching Bank</button></div>
+</form>
+</main>
+</div>
+
+<script>
+const menuButton = document.getElementById("menuButton");
+const sidebar = document.getElementById("dashboardSidebar");
+if (menuButton && sidebar) {
+    menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));
+    document.addEventListener("click", event => {
+        if (window.innerWidth > 820 || !sidebar.classList.contains("open")) return;
+        if (sidebar.contains(event.target) || menuButton.contains(event.target)) return;
+        sidebar.classList.remove("open");
+    });
+}
+
+const shutdownBtn = document.getElementById("shutdownBtn");
+if (shutdownBtn) {
+    shutdownBtn.addEventListener("click", async () => {
+        if (!confirm("SHUTDOWN DLMS\\n\\nThis will stop the application.\\n\\nYou will need to restart it manually.\\n\\nContinue?")) return;
+        try {
+            await fetch("/api/shutdown", { method: "POST" });
+            document.body.innerHTML = '<div class="shutdown-screen"><div class="shutdown-screen-card"><h1>DLMS has been shut down.</h1><p>You can close this browser tab.</p></div></div>';
+        } catch (err) {
+            alert("DLMS may already be shutting down.");
+        }
+    });
+}
+</script>
+</body>
+</html>
+    """)
+
 @app.route("/create_short_quiz")
 def create_short_quiz_page():
     portal_title = get_portal_title()
@@ -6491,6 +6781,10 @@ def create_short_quiz_page():
                         </div>
                         <div class="matching-editor" hidden>
                             <div class="build-choice-heading"><span>Matching Pairs</span><small>Each left item must have one matching right item. Answers are shuffled during play.</small></div>
+                            <div class="build-two-column-fields matching-settings-grid">
+                                <label class="build-field"><span>Pairs Per Round</span><input type="number" class="matching-round-size" min="2" max="100" placeholder="All pairs"><small>Leave blank to show every pair.</small></label>
+                                <label class="build-field"><span>Direction</span><select class="matching-direction"><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option><option value="random">Random Each Attempt</option></select></label>
+                            </div>
                             <div class="matching-pairs-list">
                                 <div class="build-match-pair"><span class="match-number">1</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
                                 <div class="build-match-pair"><span class="match-number">2</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
@@ -6572,6 +6866,10 @@ function renumberQuestions() {
 
         const questionType = question.querySelector(".question-type");
         questionType.name = `question_type_${qNumber}`;
+        const roundSize = block.querySelector(".matching-round-size");
+        const direction = block.querySelector(".matching-direction");
+        if (roundSize) roundSize.name = `matching_round_size_${qNumber}`;
+        if (direction) direction.name = `matching_direction_${qNumber}`;
 
         const questionText = question.querySelector(".question-text");
         const savedQuestionText = questionText.value;
@@ -6830,11 +7128,23 @@ def save_short_quiz():
                 flash(f"Question {qnum} needs at least two matching pairs.", "error")
                 return redirect("/create_short_quiz")
 
+            raw_round_size = request.form.get(f"matching_round_size_{qnum}", "").strip()
+            try:
+                round_size = int(raw_round_size) if raw_round_size else None
+            except ValueError:
+                round_size = None
+            if round_size is not None:
+                round_size = max(2, min(round_size, len(pairs)))
+            direction = request.form.get(f"matching_direction_{qnum}", "term_to_definition").strip()
+            if direction not in {"term_to_definition", "definition_to_term", "random"}:
+                direction = "term_to_definition"
             quiz_data.append({
                 "number": len(quiz_data) + 1,
                 "type": "matching",
                 "question": question_text,
-                "pairs": pairs
+                "pairs": pairs,
+                "round_size": round_size,
+                "direction": direction
             })
             continue
 
@@ -13189,6 +13499,23 @@ def ensure_schema(conn):
         print("[DB MIGRATION] Adding question_type column to questions")
         cur.execute("ALTER TABLE questions ADD COLUMN question_type TEXT NOT NULL DEFAULT 'choice'")
         conn.commit()
+
+    question_migrations = {
+        "matching_round_size": "INTEGER",
+        "matching_direction": "TEXT NOT NULL DEFAULT 'term_to_definition'",
+        "source_organization": "TEXT",
+        "source_dataset": "TEXT",
+        "source_version": "TEXT",
+        "source_url": "TEXT",
+        "source_license": "TEXT",
+    }
+    cur.execute("PRAGMA table_info(questions)")
+    question_cols = {row[1] for row in cur.fetchall()}
+    for col, definition in question_migrations.items():
+        if col not in question_cols:
+            print(f"[DB MIGRATION] Adding questions.{col}")
+            cur.execute(f"ALTER TABLE questions ADD COLUMN {col} {definition}")
+    conn.commit()
 
     # =================================================
     # MATCHING PAIRS TABLE

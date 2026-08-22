@@ -28,6 +28,13 @@ CREATE TABLE IF NOT EXISTS questions (
 
     question_text TEXT NOT NULL,
     question_type TEXT NOT NULL DEFAULT 'choice',
+    matching_round_size INTEGER,
+    matching_direction TEXT NOT NULL DEFAULT 'term_to_definition',
+    source_organization TEXT,
+    source_dataset TEXT,
+    source_version TEXT,
+    source_url TEXT,
+    source_license TEXT,
     correct_letters TEXT,
     correct_text TEXT,
 
