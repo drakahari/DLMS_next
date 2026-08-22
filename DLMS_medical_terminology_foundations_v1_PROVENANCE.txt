@@ -1,0 +1,67 @@
+DLMS Medical Terminology — Foundations v1
+===========================================
+
+Contents
+--------
+112 matching pairs:
+- Combining forms
+- Common medical suffixes
+- Common medical prefixes
+
+This file is designed for the DLMS Matching Bank importer. DLMS uses the
+term and definition columns; the category column is retained for future
+filtering/curation and is safely ignored by the current importer.
+
+Recommended DLMS import settings
+--------------------------------
+Quiz Title:
+Medical Terminology — Foundations
+
+Pairs Per Round:
+10
+
+Direction:
+Random Each Attempt
+
+Instructions:
+Match each medical word part with its meaning.
+
+Recommended provenance fields
+-----------------------------
+Source Organization:
+U.S. National Library of Medicine (NLM); NorQuest College
+
+Dataset:
+SPECIALIST Lexicon / Lexical Tools; The Language of Medical Terminology
+
+Version:
+NLM SPECIALIST 2025 reference; NorQuest OER 2022; DLMS Foundations v1 (2026-08-22)
+
+License / Terms:
+NLM SPECIALIST NLP Tools Terms and Conditions; terminology meanings independently
+curated/paraphrased for DLMS and cross-checked against the NorQuest College OER
+The Language of Medical Terminology (CC BY-NC-SA 4.0). No NCI text is copied
+into this v1 bank.
+
+Source URL:
+https://lhncbc.nlm.nih.gov/LSG/Projects/lexicon/current/
+
+Provenance notes
+----------------
+- NLM's SPECIALIST Lexicon and Lexical Tools are distributed as open resources
+  subject to NLM's attribution/redistribution terms.
+- NLM documentation describes NC.DB as a database of neoclassical combining
+  forms with morpheme, meaning, and type fields.
+- The NorQuest College OER was used as a secondary educational cross-check for
+  common combining forms, prefixes, and suffixes.
+- The short definitions in this CSV were curated/paraphrased for DLMS rather
+  than copied as long-form source text.
+- Similar or duplicate meanings were deliberately reduced where possible so a
+  randomized matching round is less likely to contain ambiguous answer choices.
+- This is a study aid, not a clinical reference.
+
+Suggested next version
+----------------------
+After this bank is proven in DLMS, split content into system-specific banks
+(e.g., cardiovascular, respiratory, renal, neuro, GI) and add ordinary medical
+terms/signs/symptoms in addition to word parts.
