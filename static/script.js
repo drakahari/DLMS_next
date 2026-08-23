@@ -130,7 +130,8 @@ function prepareQuestionForAttempt(q) {
     if (q.type !== "matching" || !Array.isArray(q.pairs)) return q;
     let pairs = q.pairs.map(pair => ({
         ...pair,
-        verification: (pair && typeof pair.verification === "object" && pair.verification) ? {...pair.verification} : {}
+        verification: (pair && typeof pair.verification === "object" && pair.verification) ? {...pair.verification} : {},
+        source: (pair && typeof pair.source === "object" && pair.source) ? {...pair.source} : {}
     }));
     const requested = Number(q.round_size);
     if (Number.isFinite(requested) && requested >= 2 && requested < pairs.length) {
@@ -376,19 +377,48 @@ function renderMatchingQuestion(q, key, selected, choicesEl) {
             const isCorrect = Number(chosen) === leftIndex;
             const correctText = escapeHtml(pair.right);
             const category = pair.category ? `<span class="matching-study-chip">${escapeHtml(pair.category)}</span>` : "";
-            const verification = pair.verification || {};
-            const verified = verification.status === "source-checked"
+            const verification = (pair.verification && typeof pair.verification === "object")
+                ? pair.verification : {};
+            const source = (pair.source && typeof pair.source === "object")
+                ? pair.source
+                : ((q.source && typeof q.source === "object") ? q.source : {});
+            const verificationStatus = String(verification.status || "").toLowerCase();
+            const isSourceChecked = [
+                "source-checked",
+                "source-aligned",
+                "source-basis-verified",
+                "verified"
+            ].includes(verificationStatus);
+            const verified = isSourceChecked
                 ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
             const explanation = pair.explanation
                 ? `<div class="matching-study-explanation">${escapeHtml(pair.explanation)}</div>` : "";
-            const referenceBasis = verification.reference_basis
-                ? `<div class="matching-study-source">Reference basis: ${escapeHtml(verification.reference_basis)}</div>` : "";
+
+            const referenceText =
+                verification.reference_basis
+                || source.dataset
+                || source.work
+                || source.organization
+                || "";
+            const sourceUrls = Array.isArray(verification.source_urls)
+                ? verification.source_urls.filter(Boolean)
+                : [];
+            const sourceUrl = sourceUrls[0] || source.url || "";
+
+            const referenceBasis = referenceText
+                ? `<div class="matching-study-source"><strong>Reference basis:</strong> ${escapeHtml(referenceText)}</div>`
+                : "";
+            const sourceLink = sourceUrl
+                ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a></div>`
+                : "";
+
             feedback = `<div class="matching-study-feedback ${isCorrect ? "is-correct" : "is-wrong"}">
                 <div class="matching-study-feedback-title">${isCorrect ? "✓ Correct" : "✕ Not quite"}</div>
                 ${isCorrect ? "" : `<div class="matching-study-correct-answer"><strong>Correct match:</strong> ${correctText}</div>`}
                 <div class="matching-study-meta">${category}${verified}</div>
                 ${explanation}
                 ${referenceBasis}
+                ${sourceLink}
             </div>`;
         }
         return `<div class="${cls}"><div class="matching-left"><span class="matching-left-number">${leftIndex + 1}</span>${escapeHtml(pair.left)}</div><select class="matching-select" onchange="selectMatch(${leftIndex}, this.value)"><option value="">Select a match…</option>${options}</select>${feedback}</div>`;

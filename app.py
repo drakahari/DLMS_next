@@ -292,6 +292,26 @@ def discover_content_packs():
             datasets = manifest.get("datasets") or []
             if not isinstance(datasets, list):
                 raise ValueError("datasets must be a list")
+            invalid_dataset_entries = [
+                item for item in datasets
+                if not isinstance(item, dict)
+            ]
+            if invalid_dataset_entries:
+                raise ValueError(
+                    "datasets entries must be descriptor objects, not string paths"
+                )
+
+            image_datasets = manifest.get("image_datasets") or []
+            if not isinstance(image_datasets, list):
+                raise ValueError("image_datasets must be a list")
+            invalid_image_entries = [
+                item for item in image_datasets
+                if not isinstance(item, dict)
+            ]
+            if invalid_image_entries:
+                raise ValueError(
+                    "image_datasets entries must be descriptor objects, not string paths"
+                )
 
             manifest["_root"] = pack_root
             manifest["_manifest_path"] = manifest_path
@@ -1768,6 +1788,11 @@ def content_packs_page():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -1834,50 +1859,344 @@ if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classLis
 
 
 # =========================
+# DEFAULT MEDICAL CONTENT PACK AI PROMPT
+# =========================
+DEFAULT_MEDICAL_CONTENT_PACK_PROMPT = r"""You are creating a self-contained DLMS Medical Study add-on content pack for educational study.
+
+REQUESTED TOPIC
+{{topic}}
+
+CONTENT REQUEST
+{{content_request}}
+
+DIFFICULTY / DEPTH
+{{difficulty}}
+
+TARGET SIZE
+{{size_guidance}}
+
+NON-NEGOTIABLE ACCURACY AND SOURCE RULES
+1. Research the requested topic before creating the pack. Do not rely on memory alone when authoritative sources can be checked.
+2. Do not invent facts, definitions, citations, URLs, licenses, authors, image provenance, anatomical labels, or source claims.
+3. If a fact or asset cannot be verified, OMIT it. Do not guess and do not fill gaps with plausible-sounding material.
+4. Prefer authoritative educational and government sources with clear reuse rights, such as:
+   - OpenStax material with an explicitly compatible open license
+   - NIH, NLM, NCI, CDC, or other U.S. Government material when the individual asset is confirmed public domain or otherwise reusable
+   - Wikimedia Commons ONLY when the exact file page clearly states a compatible license and provenance
+   - Other reputable OER sources with explicit redistribution rights
+5. For bundled images, use ONLY exact original files that are Public Domain, CC0, CC BY, or CC BY-SA, or another license that clearly permits redistribution in this pack.
+6. Do NOT use copyrighted "all rights reserved" images, fair-use-only images, unclear-license images, stock imagery, watermarked imagery, or images copied from search-result thumbnails.
+7. Do NOT use AI-generated or synthetic anatomy, histology, pathology, or microscopy images as authoritative medical study images.
+8. Record image-level creator, source page, exact license, attribution, dimensions, and whether DLMS modified the image.
+9. When an image license is share-alike, preserve all required share-alike obligations.
+10. Do not claim physician review, faculty review, clinical validation, or peer review unless such review actually occurred and can be documented.
+11. Label source-checked educational wording as "source-aligned" or "source-basis-verified", not "clinically validated".
+12. This is foundational educational material, not clinical decision support, diagnosis, or treatment guidance.
+
+STUDY QUALITY RULES
+- Matching definitions must be concise enough to work well as matching choices.
+- Avoid multiple definitions in the same dataset that are so similar that matching becomes arbitrary.
+- Each term should have:
+  - term
+  - concise definition
+  - category
+  - a separate Study Mode explanation when a useful source-supported teaching point is available
+  - verification metadata
+- The explanation must add educational value rather than merely repeating the definition.
+- Prefer an empty explanation over unsupported filler.
+- Use standard medical terminology and preserve meaningful distinctions.
+- If sources disagree, use the consensus/standard educational framing or omit the disputed item and document the issue.
+
+DLMS PACK ARCHITECTURE
+Create an ADD-ON pack. Do not overwrite the base DLMS Medical Study Pack.
+
+The root folder MUST be:
+DLMS_Medical_<TOPIC_SLUG>/
+
+The root manifest.json MUST include:
+{
+  "schema_version": 1,
+  "id": "medical_<topic_slug>",
+  "name": "DLMS Medical — <Readable Topic>",
+  "version": "1.0.0",
+  "requires_dlms": ">=3.0.0",
+  "publisher": "User-generated DLMS study pack",
+  "content_domain": "medical",
+  "extends": "medical",
+  "description": "...",
+  "modules": ["terminology"],
+  "datasets": [],
+  "image_datasets": []
+}
+
+Use a lowercase unique id containing only letters, numbers, underscores, or hyphens.
+
+MATCHING DATASET FORMAT
+Each matching dataset is JSON and MUST use this structure:
+{
+  "schema_version": 1,
+  "id": "unique_dataset_id",
+  "title": "Readable title",
+  "category": "Readable category",
+  "type": "matching",
+  "description": "What the student will study",
+  "question_text": "Match each term with its best definition.",
+  "source": {
+    "organization": "...",
+    "dataset": "...",
+    "version": "...",
+    "url": "https://...",
+    "license": "...",
+    "verification_status": "source-basis-verified"
+  },
+  "verification": {
+    "status": "source-aligned",
+    "verified_date": "YYYY-MM-DD",
+    "method": "...",
+    "sources": ["https://..."],
+    "clinical_peer_reviewed": false
+  },
+  "terms": [
+    {
+      "term": "...",
+      "definition": "...",
+      "category": "...",
+      "explanation": "...",
+      "verification": {
+        "status": "source-aligned",
+        "verified_date": "YYYY-MM-DD",
+        "reference_basis": "...",
+        "source_urls": ["https://..."],
+        "wording": "DLMS-authored concise wording; concept aligned to cited open reference",
+        "clinical_peer_reviewed": false
+      }
+    }
+  ]
+}
+
+IMAGE / HOTSPOT DATASET FORMAT
+Only create an image dataset when you can legally bundle the exact source image in the output pack.
+
+Each image dataset MUST use:
+{
+  "schema_version": 1,
+  "id": "unique_image_dataset_id",
+  "title": "Readable title",
+  "category": "Anatomy, Histology, Cell Biology, etc.",
+  "type": "hotspot",
+  "description": "...",
+  "source": {
+    "organization": "...",
+    "work": "...",
+    "url": "exact source page URL",
+    "license": "exact reusable license",
+    "attribution": "required attribution"
+  },
+  "reference": {
+    "organization": "...",
+    "work": "...",
+    "url": "https://...",
+    "license": "..."
+  },
+  "images": [
+    {
+      "id": "stable_image_id",
+      "file": "images/<category>/<filename>",
+      "width": 0,
+      "height": 0,
+      "alt_text": "...",
+      "source_url": "exact source page URL",
+      "license": "...",
+      "attribution": "...",
+      "modified": false,
+      "modification_note": "",
+      "hotspots": [
+        {
+          "id": "stable_structure_id",
+          "label": "Structure name",
+          "prompt": "Identify the ...",
+          "explanation": "Source-supported Study Mode teaching point.",
+          "shape": {
+            "type": "circle",
+            "x": 0.5,
+            "y": 0.5,
+            "radius": 0.05
+          },
+          "calibration_status": "needs-dlms-editor-review",
+          "verification": {
+            "status": "source-aligned",
+            "reference_basis": "...",
+            "source_url": "https://...",
+            "clinical_peer_reviewed": false
+          }
+        }
+      ]
+    }
+  ]
+}
+
+IMPORTANT HOTSPOT RULE
+Do NOT pretend guessed hotspot coordinates are final. If you cannot accurately calibrate against the exact bundled image, provide conservative starter regions and set:
+"calibration_status": "needs-dlms-editor-review"
+DLMS includes a Hotspot Calibration Editor for final circle/polygon calibration.
+
+PACK FILE LAYOUT
+At minimum:
+DLMS_Medical_<TOPIC_SLUG>/
+├── manifest.json
+├── data/
+│   ├── <matching datasets>.json
+│   └── anatomy_or_images/
+│       └── <image datasets>.json
+├── images/
+│   └── <exact legally reusable source image files>
+├── LICENSES/
+├── PROVENANCE.txt
+├── SOURCE_POLICY.md
+└── VALIDATION_REPORT.md
+
+MANIFEST REGISTRATION
+Every matching JSON file must be listed in manifest.json "datasets".
+Every hotspot/image JSON file must be listed in manifest.json "image_datasets".
+Do not declare an image dataset unless its referenced image file is actually included.
+
+CRITICAL MANIFEST RULE:
+"datasets" and "image_datasets" MUST be arrays of descriptor OBJECTS.
+They MUST NOT be arrays of filename/path strings.
+
+CORRECT:
+"datasets": [
+  {
+    "id": "liver_histology_foundations",
+    "title": "Liver Histology — Foundations",
+    "type": "matching",
+    "path": "data/liver_histology_foundations.json",
+    "description": "..."
+  }
+]
+
+WRONG — DO NOT DO THIS:
+"datasets": [
+  "data/liver_histology_foundations.json"
+]
+
+The same object-descriptor rule applies to "image_datasets".
+
+VALIDATION REPORT
+Before presenting the pack, verify and report:
+- every JSON file parses
+- every declared file exists
+- no duplicate term within a dataset
+- no duplicate definition within a dataset
+- every term and definition is non-empty
+- every dataset has source metadata
+- every bundled image has exact provenance and a compatible redistribution license
+- every image path resolves inside the pack
+- every hotspot uses normalized coordinates from 0 to 1
+- all uncertain hotspot geometry is explicitly marked for DLMS editor review
+- clinical_peer_reviewed is false unless documented otherwise
+
+DELIVERABLE
+If your environment can create files:
+1. Build the complete folder.
+2. Include the exact legally reusable image files when image content was requested and verified.
+3. ZIP the root folder.
+4. Give the user ONE downloadable ZIP.
+5. Also provide a concise source/license summary and validation result.
+
+If your environment cannot create downloadable files:
+- Output every required text file in clearly named fenced code blocks.
+- Give exact source URLs for any omitted image assets.
+- Clearly state that the pack is incomplete until those exact assets are legally obtained and placed at the declared paths.
+- Do NOT claim the pack is installation-ready.
+
+INSTALLATION TARGET
+The completed add-on folder is placed directly under:
+APP_DATA_DIR/content_packs/
+
+Example:
+content_packs/
+├── DLMS_Medical_Pack/
+└── DLMS_Medical_<TOPIC_SLUG>/
+
+Do not nest the add-on folder inside another folder of the same name.
+
+FINAL RESPONSE
+Keep commentary short. Provide the finished pack first when possible, then the source/license summary, validation status, and any hotspot-calibration items that still require DLMS editor review.
+"""
+
+
+# =========================
 # MEDICAL STUDY - CONTENT PACK
 # =========================
+def _is_medical_content_pack(pack_id, pack):
+    """True for the base medical pack and DLMS Medical add-on packs."""
+    return (
+        pack_id == "medical"
+        or str(pack.get("content_domain") or "").strip().lower() == "medical"
+        or str(pack.get("extends") or "").strip().lower() == "medical"
+    )
+
+
 def _medical_pack_page_data():
-    """Return the installed Medical Pack plus validated text/image dataset summaries."""
-    pack = get_content_pack("medical")
+    """Return base Medical Pack plus validated datasets from installed medical add-on packs."""
+    packs = discover_content_packs()
+    pack = packs.get("medical")
     if not pack:
         return None, [], []
 
-    datasets = []
-    for descriptor in pack.get("datasets", []):
-        dataset_id = str(descriptor.get("id") or "").strip()
-        try:
-            data = load_content_pack_dataset("medical", dataset_id)
-            datasets.append({
-                "id": dataset_id,
-                "title": descriptor.get("title") or data.get("title") or dataset_id,
-                "description": descriptor.get("description") or data.get("description") or "",
-                "type": descriptor.get("type") or data.get("type") or "matching",
-                "term_count": len(data.get("terms") or []),
-                "category": data.get("category") or "",
-            })
-        except Exception as exc:
-            print(f"[MEDICAL PACK] Dataset {dataset_id!r} unavailable: {exc}")
+    medical_packs = [
+        (pack_id, candidate)
+        for pack_id, candidate in packs.items()
+        if _is_medical_content_pack(pack_id, candidate)
+    ]
+    medical_packs.sort(key=lambda item: (item[0] != "medical", str(item[1].get("name") or item[0]).casefold()))
 
+    datasets = []
     image_datasets = []
-    for descriptor in pack.get("image_datasets", []):
-        dataset_id = str(descriptor.get("id") or "").strip()
-        try:
-            data = load_content_pack_image_dataset("medical", dataset_id)
-            image_count = len(data.get("images") or [])
-            hotspot_count = sum(
-                len(img.get("hotspots") or [])
-                for img in (data.get("images") or [])
-            )
-            image_datasets.append({
-                "id": dataset_id,
-                "title": descriptor.get("title") or data.get("title") or dataset_id,
-                "description": descriptor.get("description") or data.get("description") or "",
-                "image_count": image_count,
-                "hotspot_count": hotspot_count,
-                "category": data.get("category") or "Anatomy",
-            })
-        except Exception as exc:
-            print(f"[MEDICAL PACK] Image dataset {dataset_id!r} unavailable: {exc}")
+
+    for pack_id, source_pack in medical_packs:
+        for descriptor in source_pack.get("datasets", []):
+            if not isinstance(descriptor, dict):
+                print(f"[MEDICAL PACK] Skipping invalid dataset descriptor in {pack_id!r}: {descriptor!r}")
+                continue
+            dataset_id = str(descriptor.get("id") or "").strip()
+            try:
+                data = load_content_pack_dataset(pack_id, dataset_id)
+                datasets.append({
+                    "pack_id": pack_id,
+                    "pack_name": source_pack.get("name") or pack_id,
+                    "id": dataset_id,
+                    "title": descriptor.get("title") or data.get("title") or dataset_id,
+                    "description": descriptor.get("description") or data.get("description") or "",
+                    "type": descriptor.get("type") or data.get("type") or "matching",
+                    "term_count": len(data.get("terms") or []),
+                    "category": data.get("category") or "",
+                })
+            except Exception as exc:
+                print(f"[MEDICAL PACK] Dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
+
+        for descriptor in source_pack.get("image_datasets", []):
+            if not isinstance(descriptor, dict):
+                print(f"[MEDICAL PACK] Skipping invalid image dataset descriptor in {pack_id!r}: {descriptor!r}")
+                continue
+            dataset_id = str(descriptor.get("id") or "").strip()
+            try:
+                data = load_content_pack_image_dataset(pack_id, dataset_id)
+                image_count = len(data.get("images") or [])
+                hotspot_count = sum(len(img.get("hotspots") or []) for img in (data.get("images") or []))
+                image_datasets.append({
+                    "pack_id": pack_id,
+                    "pack_name": source_pack.get("name") or pack_id,
+                    "id": dataset_id,
+                    "title": descriptor.get("title") or data.get("title") or dataset_id,
+                    "description": descriptor.get("description") or data.get("description") or "",
+                    "image_count": image_count,
+                    "hotspot_count": hotspot_count,
+                    "category": data.get("category") or "Anatomy",
+                })
+            except Exception as exc:
+                print(f"[MEDICAL PACK] Image dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
 
     return pack, datasets, image_datasets
 
@@ -2000,6 +2319,22 @@ def medical_study_home():
                 </div>
             </a>
         </section>
+
+        <section class="dashboard-panel medical-ai-builder-teaser">
+            <div class="medical-ai-builder-teaser-icon">AI</div>
+            <div class="medical-ai-builder-teaser-copy">
+                <span class="medical-eyebrow">CUSTOM CONTENT</span>
+                <h2>AI Content Pack Builder</h2>
+                <p>Describe what you want to study and let DLMS build a controlled research prompt that requires source-verified, legally reusable material in the exact DLMS add-on pack format.</p>
+                <div class="medical-ai-builder-points">
+                    <span>✓ authoritative sources</span>
+                    <span>✓ open-license checks</span>
+                    <span>✓ DLMS-ready schema</span>
+                    <span>✓ no invented content</span>
+                </div>
+            </div>
+            <a class="medical-primary-button medical-ai-builder-open" href="/medical/ai-builder">Build Custom Content</a>
+        </section>
     </main>
 </div>
 <script>
@@ -2017,6 +2352,257 @@ if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classLis
         total_terms=total_terms,
         total_images=total_images,
         total_hotspots=total_hotspots,
+        medical_section="home",
+    )
+
+
+
+@app.route("/medical/ai-builder", methods=["GET", "POST"])
+def medical_ai_content_builder():
+    pack, datasets, image_datasets = _medical_pack_page_data()
+    if not pack:
+        return _medical_not_installed()
+
+    cfg = load_portal_config()
+    topic = ""
+    difficulty = "Foundational"
+    size = "Standard"
+    ai_provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
+    if ai_provider not in {"chatgpt", "claude", "gemini", "local"}:
+        ai_provider = "chatgpt"
+
+    include_matching = True
+    include_anatomy = False
+    include_histology = False
+    generated_prompt = ""
+
+    if request.method == "POST":
+        topic = request.form.get("topic", "").strip()
+        difficulty = request.form.get("difficulty", "Foundational").strip()
+        size = request.form.get("size", "Standard").strip()
+        ai_provider = request.form.get("ai_provider", ai_provider).strip().lower()
+
+        if difficulty not in {"Foundational", "Intermediate", "Comprehensive"}:
+            difficulty = "Foundational"
+        if size not in {"Compact", "Standard", "Large"}:
+            size = "Standard"
+        if ai_provider not in {"chatgpt", "claude", "gemini", "local"}:
+            ai_provider = "chatgpt"
+
+        include_matching = "include_matching" in request.form
+        include_anatomy = "include_anatomy" in request.form
+        include_histology = "include_histology" in request.form
+
+        requested = []
+        if include_matching:
+            requested.append("Create one or more terminology/matching datasets appropriate to the topic, with concise definitions and source-supported Study Mode explanations.")
+        if include_anatomy:
+            requested.append("When the topic has appropriate anatomy or other visual structures, include legally redistributable image/hotspot datasets and bundle the exact source image files.")
+        if include_histology:
+            requested.append("Include histology, microscopy, cell, or tissue image-identification material when appropriate, using only exact legally redistributable authoritative images.")
+        if not requested:
+            requested.append("Create the most appropriate DLMS medical study material for this topic, prioritizing terminology/matching and omitting unsupported content types.")
+
+        size_map = {
+            "Compact": "Keep the pack focused: roughly 20–40 high-value matching terms per dataset and 5–10 well-defined hotspots per usable image.",
+            "Standard": "Aim for useful study depth: roughly 40–80 matching terms per dataset and 6–15 well-defined hotspots per usable image.",
+            "Large": "Build broad coverage without padding: roughly 80–150 matching terms per dataset when authoritative material supports that many distinct concepts; use multiple focused datasets rather than one ambiguous mega-set.",
+        }
+
+        if topic:
+            generated_prompt = (
+                DEFAULT_MEDICAL_CONTENT_PACK_PROMPT
+                .replace("{{topic}}", topic)
+                .replace("{{content_request}}", "\n".join(f"- {item}" for item in requested))
+                .replace("{{difficulty}}", difficulty)
+                .replace("{{size_guidance}}", size_map[size])
+            )
+        else:
+            generated_prompt = "Enter a medical study topic before generating the prompt."
+
+    provider_urls = {
+        "chatgpt": "https://chatgpt.com/",
+        "claude": "https://claude.ai/",
+        "gemini": "https://gemini.google.com/",
+        "local": str(cfg.get("ai_custom_url") or "").strip(),
+    }
+    ai_provider_url = provider_urls.get(ai_provider, "")
+
+    template = r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Content Pack Builder - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-study-page medical-ai-builder-page">
+<div class="dashboard-shell">
+    """ + _MEDICAL_SIDEBAR + r"""
+
+    <main class="dashboard-main medical-main">
+        <header class="dashboard-header medical-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <div>
+                <div class="medical-eyebrow">MEDICAL STUDY · CUSTOM CONTENT</div>
+                <h1>AI Content Pack Builder</h1>
+                <p>Tell DLMS what you want to study. DLMS creates the controlled research and packaging prompt; your selected AI provider does the sourcing and content-pack assembly.</p>
+            </div>
+        </header>
+
+        <section class="dashboard-panel medical-ai-builder-panel">
+            <div class="medical-ai-builder-heading">
+                <div>
+                    <span class="medical-eyebrow">CONTENT REQUEST</span>
+                    <h2>What would you like to study?</h2>
+                    <p>The topic is the only required field. The defaults are designed for a strong, source-disciplined study pack.</p>
+                </div>
+                <span class="medical-ai-safety-pill">Source-first workflow</span>
+            </div>
+
+            <form method="POST" action="/medical/ai-builder" class="medical-ai-builder-form">
+                <label class="medical-ai-topic-field">
+                    <span>Study Topic</span>
+                    <input type="text" name="topic" value="{{ topic }}" required placeholder="Examples: Cranial nerves, renal physiology, liver histology, cardiac conduction">
+                </label>
+
+                <div class="medical-ai-controls-grid">
+                    <label><span>Difficulty / Depth</span>
+                        <select name="difficulty">
+                            {% for item in ["Foundational", "Intermediate", "Comprehensive"] %}
+                            <option value="{{ item }}" {% if difficulty == item %}selected{% endif %}>{{ item }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label><span>Approximate Size</span>
+                        <select name="size">
+                            {% for item in ["Compact", "Standard", "Large"] %}
+                            <option value="{{ item }}" {% if size == item %}selected{% endif %}>{{ item }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label><span>AI Provider</span>
+                        <select name="ai_provider">
+                            <option value="chatgpt" {% if ai_provider == "chatgpt" %}selected{% endif %}>ChatGPT</option>
+                            <option value="claude" {% if ai_provider == "claude" %}selected{% endif %}>Claude</option>
+                            <option value="gemini" {% if ai_provider == "gemini" %}selected{% endif %}>Gemini</option>
+                            <option value="local" {% if ai_provider == "local" %}selected{% endif %}>Local / Custom</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="medical-ai-options-label">
+                    <span class="medical-eyebrow">CONTENT TYPES</span>
+                    <h3>Include when appropriate</h3>
+                </div>
+                <div class="medical-ai-option-grid">
+                    <label class="medical-ai-option-card">
+                        <input type="checkbox" name="include_matching" {% if include_matching %}checked{% endif %}>
+                        <div><strong>Terminology &amp; Matching</strong><span>Terms, definitions, categories, and Study Mode explanations.</span></div>
+                    </label>
+                    <label class="medical-ai-option-card">
+                        <input type="checkbox" name="include_anatomy" {% if include_anatomy %}checked{% endif %}>
+                        <div><strong>Anatomy &amp; Image Hotspots</strong><span>Only when exact legally reusable images can be bundled.</span></div>
+                    </label>
+                    <label class="medical-ai-option-card">
+                        <input type="checkbox" name="include_histology" {% if include_histology %}checked{% endif %}>
+                        <div><strong>Histology / Cells / Microscopy</strong><span>Source-verified tissue and cellular image-identification material.</span></div>
+                    </label>
+                </div>
+
+                <div class="medical-ai-action-row">
+                    <button class="medical-primary-button" type="submit">Generate AI Prompt</button>
+                    <a class="medical-ai-quiet-link" href="/medical">← Back to Medical Study</a>
+                </div>
+            </form>
+        </section>
+
+        <section class="dashboard-panel medical-ai-rules-card">
+            <div><span class="medical-eyebrow">BUILT-IN GUARDRAILS</span><h2>What DLMS tells the AI to enforce</h2></div>
+            <div class="medical-ai-rules-grid">
+                <span>Authoritative source research</span>
+                <span>No invented facts or citations</span>
+                <span>Open / redistributable assets only</span>
+                <span>No synthetic medical images</span>
+                <span>Exact DLMS JSON schemas</span>
+                <span>Separate Study Mode explanations</span>
+                <span>Image-level license provenance</span>
+                <span>Validation report before release</span>
+            </div>
+        </section>
+
+        {% if generated_prompt %}
+        <section class="dashboard-panel medical-ai-prompt-panel">
+            <div class="medical-ai-builder-heading">
+                <div>
+                    <span class="medical-eyebrow">GENERATED PROMPT</span>
+                    <h2>Ready for {{ ai_provider|capitalize }}</h2>
+                    <p>You can edit anything below before copying it. The source, licensing, anti-hallucination, schema, and validation rules are already included.</p>
+                </div>
+                <span class="medical-ai-safety-pill">Editable</span>
+            </div>
+
+            <textarea id="medicalContentPrompt" class="medical-ai-prompt-box" rows="28">{{ generated_prompt }}</textarea>
+
+            <div class="medical-ai-action-row">
+                {% if ai_provider_url %}
+                <button type="button" class="medical-primary-button" onclick="copyMedicalPromptAndOpen('{{ ai_provider_url }}')">Copy Prompt &amp; Open AI</button>
+                {% endif %}
+                <button type="button" class="medical-ai-secondary-button" onclick="copyMedicalPrompt()">Copy Prompt</button>
+            </div>
+
+            {% if not ai_provider_url %}
+            <p class="medical-ai-provider-note">Local / Custom is selected, but no custom AI URL is configured in Settings → AI Integration.</p>
+            {% endif %}
+
+            <div class="medical-ai-install-note">
+                <strong>Expected result:</strong> a separate add-on folder such as <code>DLMS_Medical_Cranial_Nerves</code>.
+                Place that folder directly inside <code>APP_DATA_DIR/content_packs/</code>, restart/refresh DLMS, and its datasets will appear alongside the base Medical Pack.
+            </div>
+        </section>
+        {% endif %}
+    </main>
+</div>
+
+<script>
+function selectMedicalPrompt() {
+    const box = document.getElementById("medicalContentPrompt");
+    if (!box) return null;
+    box.focus(); box.select(); box.setSelectionRange(0, box.value.length); return box;
+}
+function copyMedicalPrompt(showAlert=true) {
+    const box = selectMedicalPrompt();
+    if (!box) return false;
+    let copied=false;
+    try { copied=document.execCommand("copy"); } catch(err) { copied=false; }
+    if(showAlert) alert(copied ? "Prompt copied to clipboard." : "Automatic copy failed. The prompt is selected; press Ctrl+C to copy it.");
+    return copied;
+}
+function copyMedicalPromptAndOpen(url) {
+    const copied=copyMedicalPrompt(false);
+    if(!copied) alert("Automatic copy failed. The prompt is selected; press Ctrl+C manually after the AI site opens.");
+    if(url) window.open(url,"_blank","noopener,noreferrer");
+}
+const menuButton=document.getElementById("menuButton");
+const sidebar=document.getElementById("dashboardSidebar");
+if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+</script>
+</body></html>
+"""
+    return render_template_string(
+        template,
+        pack=pack,
+        topic=topic,
+        difficulty=difficulty,
+        size=size,
+        ai_provider=ai_provider,
+        ai_provider_url=ai_provider_url,
+        include_matching=include_matching,
+        include_anatomy=include_anatomy,
+        include_histology=include_histology,
+        generated_prompt=generated_prompt,
         medical_section="home",
     )
 
@@ -2077,9 +2663,11 @@ def medical_matching():
                 <div class="medical-dataset-meta">
                     <span>{{ dataset.term_count }} terms</span>
                     <span>{{ dataset.type|capitalize }}</span>
+                    {% if dataset.pack_id != "medical" %}<span>Pack: {{ dataset.pack_name }}</span>{% endif %}
                 </div>
 
                 <form method="POST" action="/medical/generate" class="medical-generator-form">
+                    <input type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
                     <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
                     <label><span>Pairs Per Round</span>
                         <input type="number" name="round_size" min="2" max="{{ dataset.term_count }}" value="{{ 10 if dataset.term_count >= 10 else dataset.term_count }}">
@@ -2195,8 +2783,10 @@ def medical_anatomy():
                 <div class="medical-dataset-meta">
                     <span>{{ dataset.image_count }} image{% if dataset.image_count != 1 %}s{% endif %}</span>
                     <span>{{ dataset.hotspot_count }} structures</span>
+                    {% if dataset.pack_id != "medical" %}<span>Pack: {{ dataset.pack_name }}</span>{% endif %}
                 </div>
                 <form method="POST" action="/medical/anatomy/generate">
+                    <input type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
                     <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
                     <button class="medical-primary-button" type="submit">Create Anatomy Quiz</button>
                 </form>
@@ -2234,17 +2824,18 @@ if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classLis
 
 @app.route("/medical/anatomy/generate", methods=["POST"])
 def medical_generate_anatomy_quiz():
-    pack = get_content_pack("medical")
-    if not pack:
-        flash("Medical Study Pack is not installed.", "error")
+    pack_id = request.form.get("pack_id", "medical").strip().lower() or "medical"
+    pack = get_content_pack(pack_id)
+    if not pack or not _is_medical_content_pack(pack_id, pack):
+        flash("Requested Medical Study content pack is not installed.", "error")
         return redirect("/content-packs")
 
     dataset_id = request.form.get("dataset_id", "").strip()
     try:
-        data = load_content_pack_image_dataset("medical", dataset_id)
+        data = load_content_pack_image_dataset(pack_id, dataset_id)
     except Exception as exc:
         flash(f"Unable to load anatomy dataset: {exc}", "error")
-        return redirect("/medical")
+        return redirect("/medical/anatomy")
 
     runtime_questions = []
     db_questions = []
@@ -2253,7 +2844,7 @@ def medical_generate_anatomy_quiz():
     for image in data.get("images", []):
         image_url = url_for(
             "content_pack_asset",
-            pack_id="medical",
+            pack_id=pack_id,
             asset_path=image.get("file")
         )
         source = image.get("source") or data.get("source") or {}
@@ -2306,15 +2897,16 @@ def medical_generate_anatomy_quiz():
 
     if not runtime_questions:
         flash("This anatomy dataset contains no usable hotspots.", "error")
-        return redirect("/medical")
+        return redirect("/medical/anatomy")
 
     title = str(data.get("title") or data["_descriptor"].get("title") or "Medical Anatomy").strip()
     quiz_title = f"{title} — Hotspot Practice"
 
     ts = int(time.time())
+    safe_pack = re.sub(r"[^a-z0-9]+", "_", pack_id.lower()).strip("_") or "medical"
     safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "anatomy"
-    html_name = f"medical_anatomy_{safe_id}_{ts}.html"
-    json_name = f"medical_anatomy_{safe_id}_{ts}.json"
+    html_name = f"medical_anatomy_{safe_pack}_{safe_id}_{ts}.html"
+    json_name = f"medical_anatomy_{safe_pack}_{safe_id}_{ts}.json"
     json_path = os.path.join(DATA_FOLDER, json_name)
     html_path = os.path.join(QUIZ_FOLDER, html_name)
 
@@ -2339,9 +2931,10 @@ def medical_generate_anatomy_quiz():
 
 @app.route("/medical/generate", methods=["POST"])
 def medical_generate_quiz():
-    pack = get_content_pack("medical")
-    if not pack:
-        flash("Medical Study Pack is not installed.", "error")
+    pack_id = request.form.get("pack_id", "medical").strip().lower() or "medical"
+    pack = get_content_pack(pack_id)
+    if not pack or not _is_medical_content_pack(pack_id, pack):
+        flash("Requested Medical Study content pack is not installed.", "error")
         return redirect("/content-packs")
 
     dataset_id = request.form.get("dataset_id", "").strip()
@@ -2350,15 +2943,15 @@ def medical_generate_quiz():
         direction = "random"
 
     try:
-        data = load_content_pack_dataset("medical", dataset_id)
+        data = load_content_pack_dataset(pack_id, dataset_id)
     except Exception as exc:
         flash(f"Unable to load medical dataset: {exc}", "error")
-        return redirect("/medical")
+        return redirect("/medical/matching")
 
     terms = data.get("terms") or []
     if len(terms) < 2:
         flash("This medical dataset does not contain enough terms.", "error")
-        return redirect("/medical")
+        return redirect("/medical/matching")
 
     try:
         round_size = int(request.form.get("round_size", "10"))
@@ -2375,8 +2968,13 @@ def medical_generate_quiz():
             "left": item["term"],
             "right": item["definition"],
             "category": item.get("category", ""),
-            "explanation": item.get("explanation", ""),
-            "verification": item.get("verification") or {},
+            "explanation": (
+                item.get("explanation")
+                or item.get("study_explanation")
+                or ""
+            ),
+            "verification": item.get("verification") or data.get("verification") or {},
+            "source": item.get("source") or source or {},
         }
         for item in terms
     ]
@@ -2397,9 +2995,10 @@ def medical_generate_quiz():
     }]
 
     ts = int(time.time())
+    safe_pack = re.sub(r"[^a-z0-9]+", "_", pack_id.lower()).strip("_") or "medical"
     safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "medical"
-    html_name = f"medical_{safe_id}_{ts}.html"
-    json_name = f"medical_{safe_id}_{ts}.json"
+    html_name = f"medical_{safe_pack}_{safe_id}_{ts}.html"
+    json_name = f"medical_{safe_pack}_{safe_id}_{ts}.json"
     json_path = os.path.join(DATA_FOLDER, json_name)
     html_path = os.path.join(QUIZ_FOLDER, html_name)
 
@@ -2465,6 +3064,11 @@ def law_study_home():
             <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -4922,6 +5526,11 @@ def edit_quiz(quiz_id):
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -6766,6 +7375,11 @@ def quiz_library():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -7220,6 +7834,11 @@ def upload_page():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -7390,6 +8009,11 @@ def paste_page():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -7641,6 +8265,11 @@ def matching_bank_import():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -7784,6 +8413,11 @@ def create_short_quiz_page():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -12242,6 +12876,11 @@ def anki_tools():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -12584,6 +13223,11 @@ def anki_custom_deck():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
@@ -12958,6 +13602,11 @@ def anki_law_tools():
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+            </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
