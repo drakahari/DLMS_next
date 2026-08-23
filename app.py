@@ -358,6 +358,7 @@ def load_content_pack_dataset(pack_id, dataset_id):
             "definition": definition,
             "category": str(item.get("category") or "").strip(),
             "explanation": str(item.get("explanation") or "").strip(),
+            "verification": item.get("verification") if isinstance(item.get("verification"), dict) else {},
         })
 
     data["terms"] = cleaned
@@ -1703,6 +1704,23 @@ def medical_study_home():
             <article class="dashboard-stat-card"><span>Total Terms</span><strong>{{ total_terms }}</strong><small>across installed datasets</small></article>
         </section>
 
+        {% if image_framework %}
+        <section class="dashboard-panel medical-image-framework-card">
+            <div class="medical-dataset-heading">
+                <div class="medical-dataset-icon">◎</div>
+                <div>
+                    <span class="medical-eyebrow">IMAGE CONTENT FRAMEWORK</span>
+                    <h2>{{ image_framework.get("name", "Anatomy Image / Hotspot Schema") }}</h2>
+                </div>
+            </div>
+            <p>{{ image_framework.get("description", "") }}</p>
+            <div class="medical-dataset-meta">
+                <span>Schema {{ image_framework.get("schema_version", 1) }}</span>
+                <span>{{ image_framework.get("status", "ready")|capitalize }}</span>
+            </div>
+        </section>
+        {% endif %}
+
         <section class="medical-dataset-grid">
         {% for dataset in datasets %}
             <article class="dashboard-panel medical-dataset-card">
@@ -1742,7 +1760,12 @@ const sidebar=document.getElementById("dashboardSidebar");
 if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
 </script>
 </body></html>
-    """, pack=pack, datasets=datasets, total_terms=sum(d["term_count"] for d in datasets))
+    """,
+        pack=pack,
+        datasets=datasets,
+        total_terms=sum(d["term_count"] for d in datasets),
+        image_framework=pack.get("image_framework") or {}
+    )
 
 
 @app.route("/medical/generate", methods=["POST"])
@@ -1778,7 +1801,16 @@ def medical_generate_quiz():
     quiz_title = f"{title} — {round_size}-Pair Practice"
     source = data.get("source") or {}
 
-    pairs = [{"left": item["term"], "right": item["definition"]} for item in terms]
+    pairs = [
+        {
+            "left": item["term"],
+            "right": item["definition"],
+            "category": item.get("category", ""),
+            "explanation": item.get("explanation", ""),
+            "verification": item.get("verification") or {},
+        }
+        for item in terms
+    ]
     quiz_data = [{
         "number": 1,
         "type": "matching",
@@ -4263,7 +4295,7 @@ def edit_quiz(quiz_id):
 
         pairs = cur.execute(
             """
-            SELECT id, pair_order, left_text, right_text
+            SELECT id, pair_order, left_text, right_text, category, explanation, verification_json
             FROM matching_pairs
             WHERE question_id = ?
             ORDER BY pair_order, id
@@ -4933,7 +4965,7 @@ def rebuild_quiz_json_from_db(quiz_id):
         if q["question_type"] == "matching":
             pairs = cur.execute(
                 """
-                SELECT left_text, right_text
+                SELECT left_text, right_text, category, explanation, verification_json
                 FROM matching_pairs
                 WHERE question_id = ?
                 ORDER BY pair_order, id
@@ -4945,7 +4977,16 @@ def rebuild_quiz_json_from_db(quiz_id):
                 "type": "matching",
                 "question": q["question_text"],
                 "pairs": [
-                    {"left": pair["left_text"], "right": pair["right_text"]}
+                    {
+                        "left": pair["left_text"],
+                        "right": pair["right_text"],
+                        "category": pair["category"] or "",
+                        "explanation": pair["explanation"] or "",
+                        "verification": (
+                            json.loads(pair["verification_json"])
+                            if pair["verification_json"] else {}
+                        ),
+                    }
                     for pair in pairs
                 ],
                 "round_size": q["matching_round_size"],
@@ -5764,10 +5805,21 @@ def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
             for pair_order, pair in enumerate(q.get("pairs", []), start=1):
                 cur.execute(
                     """
-                    INSERT INTO matching_pairs (question_id, pair_order, left_text, right_text)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO matching_pairs (
+                        question_id, pair_order, left_text, right_text,
+                        category, explanation, verification_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (question_id, pair_order, pair.get("left", ""), pair.get("right", "")),
+                    (
+                        question_id,
+                        pair_order,
+                        pair.get("left", ""),
+                        pair.get("right", ""),
+                        pair.get("category", ""),
+                        pair.get("explanation", ""),
+                        json.dumps(pair.get("verification") or {}, ensure_ascii=False),
+                    ),
                 )
         else:
             for c in q.get("choices", []):
@@ -14047,9 +14099,24 @@ def ensure_schema(conn):
             pair_order INTEGER NOT NULL,
             left_text TEXT NOT NULL,
             right_text TEXT NOT NULL,
+            category TEXT,
+            explanation TEXT,
+            verification_json TEXT,
             FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
         )
     """)
+    cur.execute("PRAGMA table_info(matching_pairs)")
+    matching_pair_cols = {row[1] for row in cur.fetchall()}
+    matching_pair_migrations = {
+        "category": "TEXT",
+        "explanation": "TEXT",
+        "verification_json": "TEXT",
+    }
+    for col, definition in matching_pair_migrations.items():
+        if col not in matching_pair_cols:
+            print(f"[DB MIGRATION] Adding matching_pairs.{col}")
+            cur.execute(f"ALTER TABLE matching_pairs ADD COLUMN {col} {definition}")
+
     cur.execute("CREATE INDEX IF NOT EXISTS idx_matching_pairs_question ON matching_pairs(question_id)")
     conn.commit()
 

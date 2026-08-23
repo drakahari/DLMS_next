@@ -6596,3 +6596,78 @@ a.settings-hub-card:hover {
     }
 }
 
+
+/* =========================================================
+   MEDICAL v0.4 — VERIFIED STUDY FEEDBACK / IMAGE FRAMEWORK
+   ========================================================= */
+.matching-study-feedback {
+    grid-column: 1 / -1;
+    margin-top: 10px;
+    padding: 11px 13px;
+    border: 1px solid rgba(119, 157, 199, .25);
+    border-radius: 9px;
+    background: rgba(5, 18, 37, .72);
+    line-height: 1.45;
+}
+
+.matching-study-feedback.is-correct {
+    border-color: rgba(72, 190, 137, .36);
+}
+
+.matching-study-feedback.is-wrong {
+    border-color: rgba(235, 102, 110, .38);
+}
+
+.matching-study-feedback-title {
+    margin-bottom: 5px;
+    font-weight: 850;
+    color: #ecf5ff;
+}
+
+.matching-study-correct-answer {
+    margin: 5px 0 8px;
+    color: #d8e7f7;
+}
+
+.matching-study-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0;
+}
+
+.matching-study-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 2px 8px;
+    border: 1px solid rgba(111, 160, 214, .28);
+    border-radius: 999px;
+    background: rgba(23, 60, 102, .45);
+    color: #c7dcf4;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.matching-study-chip.verified {
+    border-color: rgba(72, 190, 137, .35);
+    background: rgba(30, 103, 73, .35);
+    color: #bdf0d3;
+}
+
+.matching-study-explanation {
+    margin-top: 8px;
+    color: #e4edf8;
+}
+
+.matching-study-source {
+    margin-top: 7px;
+    color: #93a9c2;
+    font-size: 11px;
+}
+
+.medical-image-framework-card {
+    margin: 18px 0;
+    padding: 22px;
+    border-style: dashed;
+}
