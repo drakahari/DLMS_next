@@ -857,7 +857,7 @@ def content_pack_management_summary():
             matching = len(pack.get("datasets") or [])
             image = len(pack.get("image_datasets") or [])
             mixed = len(pack.get("quiz_datasets") or [])
-            protected = bool(pack.get("protected")) or pack_id == "medical"
+            protected = bool(pack.get("protected"))
             generated = _content_pack_tracked_quiz_count(pack_id)
             rows.append({
                 "folder": folder,
@@ -900,6 +900,24 @@ def content_pack_management_summary():
     return rows
 
 
+def _is_medical_pack_manifest(pack_id, pack):
+    """Return True when an installed pack declares itself as medical content."""
+    if not isinstance(pack, dict):
+        return False
+    return (
+        str(pack.get("content_domain") or "").strip().lower() == "medical"
+        or str(pack.get("extends") or "").strip().lower() == "medical"
+        # Backward compatibility for the original Medical Study Pack manifest.
+        or str(pack_id or "").strip().lower() == "medical"
+    )
+
+
+def _medical_content_available(packs=None):
+    """Medical Study is available whenever at least one medical-domain pack is installed."""
+    packs = packs if isinstance(packs, dict) else discover_content_packs()
+    return any(_is_medical_pack_manifest(pack_id, pack) for pack_id, pack in packs.items())
+
+
 def content_pack_summary():
     packs = discover_content_packs()
     summary = []
@@ -925,7 +943,7 @@ def inject_content_pack_state():
     packs = discover_content_packs()
     return {
         "content_packs": packs,
-        "medical_pack_installed": "medical" in packs,
+        "medical_pack_installed": _medical_content_available(packs),
     }
 
 
@@ -1304,7 +1322,7 @@ def admin_hotspot_editor():
         HOTSPOT_EDITOR_TEMPLATE,
         catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset,
         selected_kind=selected_kind, editor_data=editor_data, load_error=load_error,
-        medical_pack_installed=bool(get_content_pack("medical")),
+        medical_pack_installed=_medical_content_available(),
     )
 
 
@@ -2461,7 +2479,7 @@ def content_packs_page():
                                 <div><strong>Pack ID</strong><span>{{ pack.id or 'Unavailable' }}</span></div>
                                 <div><strong>Datasets</strong><span>{{ pack.dataset_count }}</span></div>
                                 <div><strong>Validation</strong><span>{{ pack.status_detail }}</span></div>
-                                <div><strong>Deletion behavior</strong><span>{% if pack.protected %}This core/managed pack is protected from deletion.{% else %}Source files are removed; generated quizzes and history remain. Legacy image references are snapshotted first.{% endif %}</span></div>
+                                <div><strong>Deletion behavior</strong><span>{% if pack.protected %}This pack explicitly declares itself protected in its manifest.{% else %}Source files are removed; generated quizzes and history remain. Legacy image references are snapshotted first.{% endif %}</span></div>
                             </div>
                             {% if pack.description %}<p class="content-pack-description">{{ pack.description }}</p>{% endif %}
                         </td>
@@ -2525,7 +2543,7 @@ document.getElementById("deletePackDialog")?.addEventListener("click",(event)=>{
 });
 </script>
 </body></html>
-    """, packs=packs, pack_folder=CONTENT_PACK_FOLDER, medical_pack_installed=bool(get_content_pack("medical")))
+    """, packs=packs, pack_folder=CONTENT_PACK_FOLDER, medical_pack_installed=_medical_content_available())
 
 
 @app.route("/content-packs/delete", methods=["POST"])
@@ -2552,12 +2570,12 @@ def delete_content_pack():
         with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = json.load(f) or {}
         pack_id = str(manifest.get("id") or "").strip().lower()
-        protected = bool(manifest.get("protected")) or pack_id == "medical"
+        protected = bool(manifest.get("protected"))
     except Exception:
         manifest = {}
 
     if protected:
-        flash("This managed/core Content Pack is protected and cannot be deleted here.", "error")
+        flash("This Content Pack declares itself protected and cannot be deleted here.", "error")
         return redirect("/content-packs")
 
     try:
@@ -2625,7 +2643,7 @@ STUDY QUALITY RULES
 - If sources disagree, use the consensus/standard educational framing or omit the disputed item and document the issue.
 
 DLMS PACK ARCHITECTURE
-Create an ADD-ON pack. Do not overwrite the base DLMS Medical Study Pack.
+Create an independent Medical-domain Study Pack. Do not overwrite any existing installed Study Pack.
 
 The root folder MUST be:
 DLMS_Medical_<TOPIC_SLUG>/
@@ -2833,8 +2851,9 @@ APP_DATA_DIR/content_packs/
 
 Example:
 content_packs/
-├── DLMS_Medical_Pack/
 └── DLMS_Medical_<TOPIC_SLUG>/
+
+Medical Study Packs are optional and independently installable/removable. Do not assume a base Medical pack is present.
 
 Do not nest the add-on folder inside another folder of the same name.
 
@@ -2847,27 +2866,33 @@ Keep commentary short. Provide the finished pack first when possible, then the s
 # MEDICAL STUDY - CONTENT PACK
 # =========================
 def _is_medical_content_pack(pack_id, pack):
-    """True for the base medical pack and DLMS Medical add-on packs."""
-    return (
-        pack_id == "medical"
-        or str(pack.get("content_domain") or "").strip().lower() == "medical"
-        or str(pack.get("extends") or "").strip().lower() == "medical"
-    )
+    """True for any installed pack that declares medical study content."""
+    return _is_medical_pack_manifest(pack_id, pack)
 
 
 def _medical_pack_page_data():
-    """Return base Medical Pack plus validated datasets from installed medical add-on packs."""
+    """Aggregate validated datasets from every installed medical-domain Study Pack."""
     packs = discover_content_packs()
-    pack = packs.get("medical")
-    if not pack:
-        return None, [], []
-
     medical_packs = [
         (pack_id, candidate)
         for pack_id, candidate in packs.items()
         if _is_medical_content_pack(pack_id, candidate)
     ]
+    if not medical_packs:
+        return None, [], []
+
+    # Keep the historical base pack first when installed, but never require it.
     medical_packs.sort(key=lambda item: (item[0] != "medical", str(item[1].get("name") or item[0]).casefold()))
+
+    if len(medical_packs) == 1:
+        pack = dict(medical_packs[0][1])
+    else:
+        pack = {
+            "id": "medical_collection",
+            "name": "DLMS Medical Study",
+            "version": f"{len(medical_packs)} installed packs",
+            "description": "Aggregated medical study content from installed Medical-domain Study Packs.",
+        }
 
     datasets = []
     image_datasets = []
@@ -2922,9 +2947,11 @@ def _medical_not_installed():
     return render_template_string("""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Medical Study - DLMS</title>
 <link rel="stylesheet" href="/static/style.css"></head>
-<body><div class="container"><div class="card"><h1>Medical Study Pack Not Installed</h1>
-<p>Install the DLMS Medical Study Pack in:</p><pre>{{ pack_folder }}</pre>
-<a href="/content-packs">View Content Packs</a></div></div></body></html>
+<body><div class="container"><div class="card"><h1>No Medical Study Packs Installed</h1>
+<p>Medical Study is optional. Install any DLMS Study Pack whose content domain is <strong>medical</strong>, or create one with the AI Study Pack Builder.</p>
+<pre>{{ pack_folder }}</pre>
+<p><a href="/content-packs">View Content Packs</a> · <a href="/study-packs/ai-builder?domain=Medical&amp;from=medical">Create Medical Study Content</a></p>
+</div></div></body></html>
     """, pack_folder=CONTENT_PACK_FOLDER), 404
 
 
@@ -3916,7 +3943,7 @@ function toggleDatasetDetails(id){
 </script>
 </body>
 </html>
-""", packs=packs, medical_pack_installed=bool(get_content_pack("medical")))
+""", packs=packs, medical_pack_installed=_medical_content_available())
 
 
 
@@ -4216,7 +4243,7 @@ document.getElementById('studyDomain')?.addEventListener('change', (event) => {
         from_section=from_section,
         back_url=back_url,
         back_label=back_label,
-        medical_pack_installed=bool(get_content_pack("medical")),
+        medical_pack_installed=_medical_content_available(),
     )
 
 
@@ -9114,7 +9141,7 @@ def image_quiz_builder():
 
     return render_template_string(
         IMAGE_QUIZ_BUILDER_TEMPLATE, draft=draft,
-        medical_pack_installed=bool(get_content_pack("medical"))
+        medical_pack_installed=_medical_content_available()
     )
 
 

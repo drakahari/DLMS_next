@@ -7893,3 +7893,35 @@ a.settings-hub-card:hover {
         grid-template-columns: 1fr;
     }
 }
+
+
+/* =========================================================
+   STUDY PACK TOOLBAR LINK STATE FIX
+   ========================================================= */
+.study-pack-toolbar-actions .study-pack-manage-link,
+.study-pack-toolbar-actions .study-pack-manage-link:link,
+.study-pack-toolbar-actions .study-pack-manage-link:visited {
+    box-sizing: border-box;
+    min-height: 36px;
+    padding: 8px 12px;
+    margin: 0;
+    border: 1px solid rgba(91,146,215,.35);
+    border-radius: 10px;
+    background: rgba(17,47,82,.76);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,.20);
+}
+.study-pack-toolbar-actions .study-pack-manage-link:hover {
+    color: #ffffff;
+    text-decoration: none;
+    background: linear-gradient(135deg, var(--blue-1), var(--blue-2));
+}
+.study-pack-toolbar-actions .study-pack-manage-link:active {
+    color: #ffffff;
+    text-decoration: none;
+    transform: scale(.98);
+}
