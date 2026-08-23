@@ -217,6 +217,7 @@ os.makedirs(LOGO_TEMP_FOLDER, exist_ok=True)
 
 BACKGROUND_FOLDER = os.path.join(APP_DATA_DIR, "static", "bg")
 CONTENT_PACK_FOLDER = os.path.join(APP_DATA_DIR, "content_packs")
+QUIZ_ASSET_FOLDER = os.path.join(APP_DATA_DIR, "quiz_assets")
 IMAGE_BUILDER_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "image_builder_drafts")
 
 
@@ -227,6 +228,7 @@ for d in [
     CONFIG_FOLDER,
     BACKGROUND_FOLDER,
     CONTENT_PACK_FOLDER,
+    QUIZ_ASSET_FOLDER,
     IMAGE_BUILDER_DRAFT_FOLDER,
     LOGO_FOLDER,
     LAW_FOLDER,
@@ -599,17 +601,28 @@ def _quiz_dataset_runtime(pack_id, data):
     return runtime_questions, db_questions
 
 
-def _create_quiz_from_runtime(quiz_title, runtime_questions, db_questions, filename_prefix="study_image", exam_minutes=90):
+def _create_quiz_from_runtime(quiz_title, runtime_questions, db_questions, filename_prefix="study_image", exam_minutes=90, source_pack_id=None, source_dataset_id=None):
     if not runtime_questions:
         raise ValueError("No usable questions were produced")
     ts = int(time.time() * 1000)
     safe_prefix = re.sub(r"[^a-z0-9_]+", "_", str(filename_prefix).lower()).strip("_") or "study"
     html_name = f"{safe_prefix}_{ts}.html"
     json_name = f"{safe_prefix}_{ts}.json"
+
+    if source_pack_id:
+        bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
+        runtime_questions, db_questions, _ = _snapshot_runtime_questions(
+            str(source_pack_id).strip().lower(), runtime_questions, db_questions, bucket
+        )
+
     with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
         json.dump(runtime_questions, f, indent=4, ensure_ascii=False)
     quiz_id = save_quiz_to_db(quiz_title, html_name, db_questions)
-    add_quiz_to_registry(quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None, exam_minutes=normalize_exam_minutes(exam_minutes))
+    add_quiz_to_registry(
+        quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None,
+        exam_minutes=normalize_exam_minutes(exam_minutes),
+        source_pack_id=source_pack_id, source_dataset_id=source_dataset_id
+    )
     build_quiz_html(html_name, json_name, os.path.join(QUIZ_FOLDER, html_name), get_portal_title(), quiz_title, None, quiz_id, normalize_exam_minutes(exam_minutes))
     return quiz_id, html_name
 
@@ -641,11 +654,261 @@ def content_pack_asset(pack_id, asset_path):
     )
 
 
+
+def _quiz_asset_url(bucket, relative_path):
+    rel = str(relative_path or "").replace("\\", "/").lstrip("/")
+    return f"/quiz-assets/{bucket}/{rel}"
+
+
+def _snapshot_one_pack_asset(pack_id, asset_url, bucket):
+    """Copy one content-pack asset into quiz-owned storage and return its stable runtime URL."""
+    asset_url = str(asset_url or "")
+    prefix = f"/content-packs/{pack_id}/assets/"
+    if not asset_url.startswith(prefix):
+        return asset_url, False
+
+    pack = get_content_pack(pack_id)
+    if not pack:
+        raise FileNotFoundError(f"Content pack {pack_id!r} is not installed")
+
+    rel = asset_url[len(prefix):].lstrip("/")
+    src = _safe_pack_child(pack["_root"], rel)
+    if not os.path.isfile(src):
+        raise FileNotFoundError(f"Content-pack asset not found: {rel}")
+
+    ext = os.path.splitext(src)[1].lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+        raise ValueError(f"Unsupported quiz asset type: {ext}")
+
+    dest_root = os.path.join(QUIZ_ASSET_FOLDER, bucket)
+    dest = _safe_pack_child(dest_root, rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if not os.path.isfile(dest):
+        shutil.copy2(src, dest)
+    return _quiz_asset_url(bucket, rel), True
+
+
+def _snapshot_pack_refs_recursive(pack_id, value, bucket):
+    """Recursively rewrite any runtime content-pack asset URLs to quiz-owned copies."""
+    changed = 0
+    if isinstance(value, dict):
+        out = {}
+        for key, item in value.items():
+            new_item, n = _snapshot_pack_refs_recursive(pack_id, item, bucket)
+            out[key] = new_item
+            changed += n
+        return out, changed
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            new_item, n = _snapshot_pack_refs_recursive(pack_id, item, bucket)
+            out.append(new_item)
+            changed += n
+        return out, changed
+    if isinstance(value, str):
+        new_value, did_change = _snapshot_one_pack_asset(pack_id, value, bucket)
+        return new_value, int(did_change)
+    return value, 0
+
+
+def _snapshot_runtime_questions(pack_id, runtime_questions, db_questions, bucket):
+    """Make generated image quizzes independent of the source content pack."""
+    runtime_copy, runtime_count = _snapshot_pack_refs_recursive(pack_id, runtime_questions, bucket)
+    db_copy, db_count = _snapshot_pack_refs_recursive(pack_id, db_questions, bucket)
+    return runtime_copy, db_copy, runtime_count + db_count
+
+
+@app.route("/quiz-assets/<asset_bucket>/<path:asset_path>")
+def quiz_asset(asset_bucket, asset_path):
+    """Serve quiz-owned snapshots independently of the source Study Pack."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,140}", str(asset_bucket or "")):
+        return "Invalid quiz asset bucket", 400
+    root = os.path.join(QUIZ_ASSET_FOLDER, asset_bucket)
+    try:
+        file_path = _safe_pack_child(root, asset_path)
+    except ValueError:
+        return "Invalid quiz asset path", 400
+    if not os.path.isfile(file_path):
+        return "Quiz asset not found", 404
+    if os.path.splitext(file_path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+        return "Unsupported quiz asset", 415
+    return send_from_directory(root, os.path.relpath(file_path, root))
+
+
+def _snapshot_existing_pack_dependencies(pack_id):
+    """
+    Before deleting a pack, migrate legacy runtime/DB/history JSON references
+    from /content-packs/<id>/assets/... to quiz-owned snapshots.
+    """
+    migrated_files = 0
+    migrated_refs = 0
+
+    # Runtime quiz JSON files.
+    if os.path.isdir(DATA_FOLDER):
+        for name in os.listdir(DATA_FOLDER):
+            if not name.lower().endswith(".json"):
+                continue
+            path = os.path.join(DATA_FOLDER, name)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+            except Exception:
+                continue
+            bucket = "legacy_" + re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(name)[0])[:110]
+            new_payload, count = _snapshot_pack_refs_recursive(pack_id, payload, bucket)
+            if count:
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(new_payload, f, indent=4, ensure_ascii=False)
+                migrated_files += 1
+                migrated_refs += count
+
+    # DB question media, so later quiz rebuilds stay independent.
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    columns = {r["name"] for r in cur.execute("PRAGMA table_info(questions)").fetchall()}
+    if "media_json" in columns:
+        rows = cur.execute("""
+            SELECT q.id AS question_id, q.quiz_id, q.media_json
+            FROM questions q
+            WHERE q.media_json IS NOT NULL AND q.media_json != ''
+        """).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["media_json"])
+            except Exception:
+                continue
+            bucket = f"legacy_quiz_{row['quiz_id']}"
+            new_payload, count = _snapshot_pack_refs_recursive(pack_id, payload, bucket)
+            if count:
+                cur.execute("UPDATE questions SET media_json = ? WHERE id = ?",
+                            (json.dumps(new_payload, ensure_ascii=False), row["question_id"]))
+                migrated_refs += count
+
+    # Saved hotspot-attempt response JSON, if this schema version has it.
+    answer_columns = {r["name"] for r in cur.execute("PRAGMA table_info(attempt_answers)").fetchall()}
+    if "response_json" in answer_columns:
+        rows = cur.execute("""
+            SELECT id, attempt_id, response_json
+            FROM attempt_answers
+            WHERE response_json IS NOT NULL AND response_json != ''
+        """).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["response_json"])
+            except Exception:
+                continue
+            bucket = "legacy_attempt_" + re.sub(r"[^A-Za-z0-9_.-]+", "_", str(row["attempt_id"]))[:100]
+            new_payload, count = _snapshot_pack_refs_recursive(pack_id, payload, bucket)
+            if count:
+                cur.execute("UPDATE attempt_answers SET response_json = ? WHERE id = ?",
+                            (json.dumps(new_payload, ensure_ascii=False), row["id"]))
+                migrated_refs += count
+
+    conn.commit()
+    conn.close()
+    return {"files": migrated_files, "references": migrated_refs}
+
+
+def _content_pack_tracked_quiz_count(pack_id):
+    return sum(
+        1 for item in load_registry()
+        if str(item.get("source_pack_id") or "").strip().lower() == str(pack_id or "").strip().lower()
+    )
+
+
+def _folder_size_bytes(path):
+    total = 0
+    for root_dir, _, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root_dir, name))
+            except OSError:
+                pass
+    return total
+
+
+def _format_bytes(value):
+    value = float(value or 0)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+
+
+def content_pack_management_summary():
+    discovered = discover_content_packs()
+    by_root = {os.path.realpath(p.get("_root")): (pid, p) for pid, p in discovered.items()}
+    rows = []
+    try:
+        entries = sorted(os.listdir(CONTENT_PACK_FOLDER), key=str.casefold)
+    except OSError:
+        entries = []
+
+    for folder in entries:
+        root = os.path.join(CONTENT_PACK_FOLDER, folder)
+        manifest_path = os.path.join(root, "manifest.json")
+        if not os.path.isdir(root) or not os.path.isfile(manifest_path):
+            continue
+
+        resolved = by_root.get(os.path.realpath(root))
+        if resolved:
+            pack_id, pack = resolved
+            matching = len(pack.get("datasets") or [])
+            image = len(pack.get("image_datasets") or [])
+            mixed = len(pack.get("quiz_datasets") or [])
+            protected = bool(pack.get("protected")) or pack_id == "medical"
+            generated = _content_pack_tracked_quiz_count(pack_id)
+            rows.append({
+                "folder": folder,
+                "id": pack_id,
+                "name": pack.get("name") or pack_id,
+                "version": pack.get("version") or "",
+                "description": pack.get("description") or "",
+                "domain": pack.get("content_domain") or pack.get("extends") or "General",
+                "matching_count": matching,
+                "image_count": image,
+                "mixed_count": mixed,
+                "dataset_count": matching + image + mixed,
+                "file_count": sum(len(files) for _, _, files in os.walk(root)),
+                "size": _format_bytes(_folder_size_bytes(root)),
+                "status": "Valid",
+                "status_detail": "Manifest and declared dataset structure passed DLMS discovery validation.",
+                "protected": protected,
+                "generated_quizzes": generated,
+            })
+        else:
+            name = folder
+            pack_id = ""
+            detail = "Manifest failed validation or conflicts with another installed pack id."
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f) or {}
+                name = raw.get("name") or folder
+                pack_id = str(raw.get("id") or "")
+            except Exception as exc:
+                detail = f"Manifest could not be read: {exc}"
+            rows.append({
+                "folder": folder, "id": pack_id, "name": name, "version": "",
+                "description": "", "domain": "Unknown", "matching_count": 0,
+                "image_count": 0, "mixed_count": 0, "dataset_count": 0,
+                "file_count": sum(len(files) for _, _, files in os.walk(root)),
+                "size": _format_bytes(_folder_size_bytes(root)),
+                "status": "Invalid", "status_detail": detail,
+                "protected": False, "generated_quizzes": 0,
+            })
+    return rows
+
+
 def content_pack_summary():
     packs = discover_content_packs()
     summary = []
     for pack_id, pack in packs.items():
-        dataset_count = len(pack.get("datasets") or [])
+        dataset_count = (
+            len(pack.get("datasets") or [])
+            + len(pack.get("image_datasets") or [])
+            + len(pack.get("quiz_datasets") or [])
+        )
         summary.append({
             "id": pack_id,
             "name": pack.get("name") or pack_id,
@@ -1976,7 +2239,7 @@ def normalize_exam_minutes(value, default=90):
     return min(minutes, 1440)
 
 
-def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90):
+def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, source_pack_id=None, source_dataset_id=None):
     """
     Canonical registry update:
     - quiz_id is the DATABASE quizzes.id (authoritative)
@@ -2024,7 +2287,9 @@ def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90):
             "title": title,
             "logo": logo,
             "exam_minutes": normalize_exam_minutes(exam_minutes),
-            "timestamp": int(time.time())
+            "timestamp": int(time.time()),
+            "source_pack_id": str(source_pack_id or "").strip() or None,
+            "source_dataset_id": str(source_dataset_id or "").strip() or None,
         })
 
         save_registry(kept)
@@ -2060,8 +2325,8 @@ def home():
 # =========================
 @app.route("/content-packs")
 def content_packs_page():
-    packs = content_pack_summary()
-    return render_template_string("""
+    packs = content_pack_management_summary()
+    return render_template_string(r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2107,55 +2372,207 @@ def content_packs_page():
     <main class="dashboard-main content-packs-main">
         <header class="dashboard-header">
             <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
-            <div><div class="medical-eyebrow">EXTENSIONS</div><h1>Content Packs</h1>
-            <p>Optional study content stays separate from the DLMS application.</p></div>
+            <div><div class="medical-eyebrow">CONTENT MANAGEMENT</div><h1>Content Packs</h1>
+            <p>Validate, inspect, open, and safely remove installed study content.</p></div>
         </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="content-pack-flashes">
+            {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
 
         <section class="dashboard-panel pack-install-panel">
             <div class="pack-install-heading">
                 <div><span class="medical-eyebrow">INSTALL LOCATION</span><h2>Content Pack Folder</h2></div>
-                <span class="pack-count-pill">{{ packs|length }} installed</span>
+                <span class="pack-count-pill">{{ packs|length }} installed folder{{ '' if packs|length == 1 else 's' }}</span>
             </div>
             <code class="pack-path">{{ pack_folder }}</code>
-            <p>Extract a content-pack ZIP so its folder containing <strong>manifest.json</strong> sits directly inside this directory, then reload this page.</p>
+            <p>Each pack should be one direct child folder containing <strong>manifest.json</strong>. Deleting a pack removes its source datasets and images; generated quizzes and history are preserved.</p>
         </section>
 
-        <section class="pack-card-grid">
-        {% if packs %}
-            {% for pack in packs %}
-            <article class="dashboard-panel pack-card">
-                <div class="pack-card-top">
-                    <div class="pack-card-icon">{% if pack.id == 'medical' %}✚{% else %}⬡{% endif %}</div>
-                    <div><span class="medical-eyebrow">INSTALLED PACK</span><h2>{{ pack.name }}</h2></div>
-                </div>
-                <p>{{ pack.description }}</p>
-                <div class="pack-meta">
-                    <span>Version <strong>{{ pack.version }}</strong></span>
-                    <span>{{ pack.dataset_count }} dataset{% if pack.dataset_count != 1 %}s{% endif %}</span>
-                </div>
-                {% if pack.id == "medical" %}
-                <a class="medical-primary-button" href="/medical">Open Medical Study</a>
-                {% else %}
-                <a class="medical-primary-button" href="/study-packs">Open in Study Packs</a>
-                {% endif %}
-            </article>
-            {% endfor %}
-        {% else %}
-            <article class="dashboard-panel pack-empty-card">
-                <h2>No content packs installed</h2>
-                <p>DLMS core is working normally. Optional content appears here after a pack is placed in the folder above.</p>
-            </article>
-        {% endif %}
+        <section class="dashboard-panel content-pack-manager">
+            <div class="content-pack-manager-heading">
+                <div><span class="medical-eyebrow">INSTALLED CONTENT</span><h2>Pack Manager</h2></div>
+                <a class="medical-primary-button" href="/study-packs">Open Study Packs</a>
+            </div>
+
+            {% if packs %}
+            <div class="content-pack-table-wrap">
+            <table class="content-pack-table">
+                <thead>
+                    <tr>
+                        <th>Pack</th>
+                        <th>Status</th>
+                        <th>Content</th>
+                        <th>Storage</th>
+                        <th>Quizzes</th>
+                        <th class="content-pack-actions-col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pack in packs %}
+                    <tr>
+                        <td>
+                            <div class="content-pack-name">
+                                <strong>{{ pack.name }}</strong>
+                                <span>{{ pack.domain }}{% if pack.version %} · v{{ pack.version }}{% endif %}</span>
+                                <small>{{ pack.folder }}</small>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="content-pack-status {{ 'is-valid' if pack.status == 'Valid' else 'is-invalid' }}">{{ pack.status }}</span>
+                            {% if pack.protected %}<span class="content-pack-protected">Protected</span>{% endif %}
+                        </td>
+                        <td>
+                            <div class="content-pack-counts">
+                                {% if pack.matching_count %}<span>{{ pack.matching_count }} matching</span>{% endif %}
+                                {% if pack.image_count %}<span>{{ pack.image_count }} image</span>{% endif %}
+                                {% if pack.mixed_count %}<span>{{ pack.mixed_count }} mixed</span>{% endif %}
+                                {% if not pack.dataset_count %}<span>—</span>{% endif %}
+                            </div>
+                        </td>
+                        <td><span class="content-pack-storage">{{ pack.size }}</span><small>{{ pack.file_count }} files</small></td>
+                        <td>
+                            <span class="content-pack-storage">{{ pack.generated_quizzes }}</span>
+                            <small>tracked generated</small>
+                        </td>
+                        <td class="content-pack-actions-col">
+                            <div class="content-pack-actions">
+                                {% if pack.status == 'Valid' %}
+                                <a class="content-pack-action" href="/study-packs">Open</a>
+                                {% endif %}
+                                <button type="button" class="content-pack-action" onclick="togglePackDetails('{{ loop.index }}')">Details</button>
+                                {% if pack.protected %}
+                                <span class="content-pack-action disabled">Delete</span>
+                                {% else %}
+                                <button type="button" class="content-pack-action danger" onclick='openDeletePack({{ pack.folder|tojson }},{{ pack.name|tojson }})'>Delete</button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="content-pack-detail-row" id="packDetails{{ loop.index }}" hidden>
+                        <td colspan="6">
+                            <div class="content-pack-details">
+                                <div><strong>Pack ID</strong><span>{{ pack.id or 'Unavailable' }}</span></div>
+                                <div><strong>Datasets</strong><span>{{ pack.dataset_count }}</span></div>
+                                <div><strong>Validation</strong><span>{{ pack.status_detail }}</span></div>
+                                <div><strong>Deletion behavior</strong><span>{% if pack.protected %}This core/managed pack is protected from deletion.{% else %}Source files are removed; generated quizzes and history remain. Legacy image references are snapshotted first.{% endif %}</span></div>
+                            </div>
+                            {% if pack.description %}<p class="content-pack-description">{{ pack.description }}</p>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="pack-empty-card"><h2>No content packs installed</h2><p>DLMS core is working normally. Install or create a Study Pack to manage it here.</p></div>
+            {% endif %}
         </section>
     </main>
 </div>
+
+<div class="content-pack-delete-backdrop" id="deletePackDialog" hidden>
+    <div class="content-pack-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="deletePackTitle">
+        <span class="medical-eyebrow">REMOVE STUDY CONTENT</span>
+        <h2 id="deletePackTitle">Delete Study Pack?</h2>
+        <p id="deletePackMessage"></p>
+        <div class="content-pack-delete-note">
+            <strong>Generated quizzes and attempt history are kept.</strong>
+            <span>Before removal, DLMS copies any legacy quiz images that still depend on this pack into quiz-owned storage.</span>
+        </div>
+        <form method="POST" action="/content-packs/delete" id="deletePackForm">
+            <input type="hidden" name="folder" id="deletePackFolder">
+            <label class="content-pack-confirm-check">
+                <input type="checkbox" name="confirm_delete" value="yes" required>
+                <span>I understand the installed source pack will be removed.</span>
+            </label>
+            <div class="content-pack-delete-actions">
+                <button type="button" class="medical-ai-secondary-button" onclick="closeDeletePack()">Cancel</button>
+                <button type="submit" class="content-pack-delete-button">Delete Study Pack</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 const menuButton=document.getElementById("menuButton");
 const sidebar=document.getElementById("dashboardSidebar");
 if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+
+function togglePackDetails(index){
+    const row=document.getElementById(`packDetails${index}`);
+    if(row) row.hidden=!row.hidden;
+}
+function openDeletePack(folder,name){
+    document.getElementById("deletePackFolder").value=folder;
+    document.getElementById("deletePackMessage").textContent=`Delete “${name}” from installed Content Packs?`;
+    document.getElementById("deletePackDialog").hidden=false;
+}
+function closeDeletePack(){
+    const dialog=document.getElementById("deletePackDialog");
+    dialog.hidden=true;
+    const check=dialog.querySelector('input[name="confirm_delete"]');
+    if(check) check.checked=false;
+}
+document.getElementById("deletePackDialog")?.addEventListener("click",(event)=>{
+    if(event.target.id==="deletePackDialog") closeDeletePack();
+});
 </script>
 </body></html>
-    """, packs=packs, pack_folder=CONTENT_PACK_FOLDER)
+    """, packs=packs, pack_folder=CONTENT_PACK_FOLDER, medical_pack_installed=bool(get_content_pack("medical")))
+
+
+@app.route("/content-packs/delete", methods=["POST"])
+def delete_content_pack():
+    folder = str(request.form.get("folder") or "").strip()
+    confirmed = request.form.get("confirm_delete") == "yes"
+    if not confirmed:
+        flash("Study Pack deletion was not confirmed.", "error")
+        return redirect("/content-packs")
+    if not folder or folder in {".", ".."} or os.path.basename(folder) != folder:
+        flash("Invalid Content Pack folder.", "error")
+        return redirect("/content-packs")
+
+    pack_root = os.path.realpath(os.path.join(CONTENT_PACK_FOLDER, folder))
+    content_root = os.path.realpath(CONTENT_PACK_FOLDER)
+    if os.path.dirname(pack_root) != content_root or not os.path.isdir(pack_root):
+        flash("Content Pack folder was not found.", "error")
+        return redirect("/content-packs")
+
+    manifest_path = os.path.join(pack_root, "manifest.json")
+    pack_id = ""
+    protected = False
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f) or {}
+        pack_id = str(manifest.get("id") or "").strip().lower()
+        protected = bool(manifest.get("protected")) or pack_id == "medical"
+    except Exception:
+        manifest = {}
+
+    if protected:
+        flash("This managed/core Content Pack is protected and cannot be deleted here.", "error")
+        return redirect("/content-packs")
+
+    try:
+        migration = {"files": 0, "references": 0}
+        if pack_id and get_content_pack(pack_id):
+            migration = _snapshot_existing_pack_dependencies(pack_id)
+        shutil.rmtree(pack_root)
+        message = f"Deleted Study Pack folder '{folder}'. Existing quizzes and history were kept."
+        if migration["references"]:
+            message += f" Preserved {migration['references']} legacy image reference(s) in quiz-owned storage."
+        flash(message, "success")
+    except Exception as exc:
+        flash(f"Study Pack was not deleted: {exc}", "error")
+
+    return redirect("/content-packs")
 
 
 # =========================
@@ -2972,6 +3389,11 @@ def medical_generate_anatomy_quiz():
     json_path = os.path.join(DATA_FOLDER, json_name)
     html_path = os.path.join(QUIZ_FOLDER, html_name)
 
+    bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
+    runtime_questions, db_questions, _ = _snapshot_runtime_questions(
+        pack_id, runtime_questions, db_questions, bucket
+    )
+
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(runtime_questions, f, indent=4, ensure_ascii=False)
 
@@ -2981,7 +3403,9 @@ def medical_generate_anatomy_quiz():
         html=html_name,
         title=quiz_title,
         logo=None,
-        exam_minutes=90
+        exam_minutes=90,
+        source_pack_id=pack_id,
+        source_dataset_id=dataset_id
     )
     build_quiz_html(
         html_name, json_name, html_path, get_portal_title(),
@@ -3073,7 +3497,9 @@ def medical_generate_quiz():
         html=html_name,
         title=quiz_title,
         logo=None,
-        exam_minutes=90
+        exam_minutes=90,
+        source_pack_id=pack_id,
+        source_dataset_id=dataset_id
     )
     build_quiz_html(
         html_name, json_name, html_path, get_portal_title(),
@@ -3302,28 +3728,36 @@ def study_packs_home():
     <div class="dashboard-sidebar-version">Study Packs</div>
 </aside>
 
-<main class="dashboard-main">
+<main class="dashboard-main study-packs-main">
     <header class="dashboard-header">
         <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
         <div>
             <div class="medical-eyebrow">CUSTOM STUDY CONTENT</div>
             <h1>Study Packs</h1>
-            <p>Use installed content packs for any subject—IT, certification study, science, history, medical topics, or your own course material.</p>
+            <p>Launch focused practice from installed study content without scrolling through large card grids.</p>
         </div>
     </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="content-pack-flashes">
+        {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
 
     <section class="study-pack-launch-grid">
         <a class="dashboard-panel study-pack-launch" href="/study-packs/ai-builder">
             <div class="study-pack-launch-icon">AI</div>
-            <div><span class="medical-eyebrow">CREATE</span><h2>AI Study Pack Builder</h2><p>Generate one rigorous, domain-aware prompt for a complete DLMS-ready pack, including multiple images when useful.</p></div>
+            <div><span class="medical-eyebrow">CREATE</span><h2>AI Study Pack Builder</h2><p>Create a source-disciplined DLMS pack prompt for any subject.</p></div>
         </a>
         <a class="dashboard-panel study-pack-launch" href="/study-packs/image-builder">
             <div class="study-pack-launch-icon">▧</div>
-            <div><span class="medical-eyebrow">BUILD</span><h2>Build from Images</h2><p>Upload your own images and create multiple-choice, multi-select, matching, or hotspot questions around them.</p></div>
+            <div><span class="medical-eyebrow">BUILD</span><h2>Build from Images</h2><p>Use your own images for regular questions, matching, or hotspots.</p></div>
         </a>
         <a class="dashboard-panel study-pack-launch" href="/admin/image-editor">
             <div class="study-pack-launch-icon">◎</div>
-            <div><span class="medical-eyebrow">EDIT</span><h2>Image Study Editor</h2><p>Hide labels, add simple text, and calibrate clickable regions for any image-based study pack.</p></div>
+            <div><span class="medical-eyebrow">EDIT</span><h2>Image Study Editor</h2><p>Prepare images and refine clickable regions without changing originals.</p></div>
         </a>
     </section>
 
@@ -3334,15 +3768,14 @@ def study_packs_home():
             <strong>{{ packs|length }} study pack{{ '' if packs|length == 1 else 's' }}</strong>
         </div>
         <div class="study-pack-toolbar-actions">
+            <a class="medical-ai-secondary-button study-pack-manage-link" href="/content-packs">Manage Packs</a>
             <button type="button" class="medical-ai-secondary-button" id="expandAllPacks">Expand All</button>
             <button type="button" class="medical-ai-secondary-button" id="collapseAllPacks">Collapse All</button>
         </div>
     </div>
 
     {% for pack in packs %}
-    <details class="dashboard-panel study-pack-section study-pack-collapsible"
-             data-pack-id="{{ pack.id }}"
-             {% if loop.first %}open{% endif %}>
+    <details class="dashboard-panel study-pack-section study-pack-collapsible" data-pack-id="{{ pack.id }}" {% if loop.first %}open{% endif %}>
         <summary class="study-pack-summary">
             <div class="study-pack-summary-main">
                 <span class="study-pack-chevron" aria-hidden="true">›</span>
@@ -3355,122 +3788,131 @@ def study_packs_home():
             <div class="study-pack-summary-meta">
                 <span class="pack-count-pill">{{ pack.datasets|length + pack.image_datasets|length + pack.quiz_datasets|length }} datasets</span>
                 {% if pack.datasets %}<span>{{ pack.datasets|length }} matching</span>{% endif %}
-                {% if pack.image_datasets %}<span>{{ pack.image_datasets|length }} image</span>{% endif %}{% if pack.quiz_datasets %}<span>{{ pack.quiz_datasets|length }} question set</span>{% endif %}
+                {% if pack.image_datasets %}<span>{{ pack.image_datasets|length }} image</span>{% endif %}
+                {% if pack.quiz_datasets %}<span>{{ pack.quiz_datasets|length }} mixed</span>{% endif %}
             </div>
         </summary>
 
-        <div class="study-pack-body">
-        {% if pack.quiz_datasets %}
-            <h3>Question sets</h3>
-            <div class="medical-dataset-grid">
-            {% for d in pack.quiz_datasets %}
-                <article class="medical-dataset-card">
-                    <span class="medical-eyebrow">{{ d.category|upper }} · MIXED QUIZ</span>
-                    <h3>{{ d.title }}</h3>
-                    <p>{{ d.description }}</p>
-                    <div class="medical-dataset-meta">
-                        <span>{{ d.question_count }} questions</span>
-                        {% if d.image_count %}<span>{{ d.image_count }} images</span>{% endif %}
-                        {% if d.hotspot_count %}<span>{{ d.hotspot_count }} hotspots</span>{% endif %}
-                    </div>
-                    <form method="POST" action="/study-packs/quiz/generate">
-                        <input type="hidden" name="pack_id" value="{{ pack.id }}">
-                        <input type="hidden" name="dataset_id" value="{{ d.id }}">
-                        <button class="medical-primary-button" type="submit">Create Practice Quiz</button>
-                    </form>
-                </article>
-            {% endfor %}
-            </div>
-        {% endif %}
+        <div class="study-pack-body study-pack-table-body">
+            <div class="study-dataset-table-wrap">
+            <table class="study-dataset-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Dataset</th>
+                        <th>Content</th>
+                        <th>Options</th>
+                        <th class="study-dataset-action-col">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for d in pack.quiz_datasets %}
+                    <tr>
+                        <td><span class="study-type-badge mixed">Mixed</span></td>
+                        <td>
+                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-mixed-{{ loop.index }}')">{{ d.title }}</button>
+                            {% if d.category %}<small>{{ d.category }}</small>{% endif %}
+                        </td>
+                        <td><span>{{ d.question_count }} questions</span>{% if d.image_count %}<small>{{ d.image_count }} images{% if d.hotspot_count %} · {{ d.hotspot_count }} hotspots{% endif %}</small>{% endif %}</td>
+                        <td><span class="study-options-muted">Ready to generate</span></td>
+                        <td class="study-dataset-action-col">
+                            <form method="POST" action="/study-packs/quiz/generate">
+                                <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                                <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                                <button class="study-table-primary" type="submit">Create Quiz</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr class="study-dataset-detail-row" id="dataset-{{ pack.id }}-mixed-{{ loop.index }}" hidden>
+                        <td colspan="5"><p>{{ d.description or 'No additional description supplied.' }}</p></td>
+                    </tr>
+                {% endfor %}
 
-        {% if pack.datasets %}
-            <h3>Matching / terminology</h3>
-            <div class="medical-dataset-grid">
-            {% for d in pack.datasets %}
-                <article class="medical-dataset-card">
-                    <span class="medical-eyebrow">{{ d.category or 'MATCHING' }}</span>
-                    <h3>{{ d.title }}</h3>
-                    <p>{{ d.description }}</p>
-                    <div class="medical-dataset-meta"><span>{{ d.term_count }} items</span></div>
-                    <form method="POST" action="/study-packs/generate">
-                        <input type="hidden" name="pack_id" value="{{ pack.id }}">
-                        <input type="hidden" name="dataset_id" value="{{ d.id }}">
-                        <label><span>Pairs Per Round</span><input type="number" name="round_size" min="2" max="{{ d.term_count }}" value="{{ 10 if d.term_count >= 10 else d.term_count }}"></label>
-                        <label><span>Direction</span>
-                            <select name="direction">
-                                <option value="random">Random Each Attempt</option>
-                                <option value="term_to_definition">Term → Definition</option>
-                                <option value="definition_to_term">Definition → Term</option>
-                            </select>
-                        </label>
-                        <button class="medical-primary-button" type="submit">Create Practice Quiz</button>
-                    </form>
-                </article>
-            {% endfor %}
-            </div>
-        {% endif %}
+                {% for d in pack.datasets %}
+                    <tr>
+                        <td><span class="study-type-badge matching">Matching</span></td>
+                        <td>
+                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-matching-{{ loop.index }}')">{{ d.title }}</button>
+                            {% if d.category %}<small>{{ d.category }}</small>{% endif %}
+                        </td>
+                        <td><span>{{ d.term_count }} items</span></td>
+                        <td>
+                            <div class="study-table-inline-form">
+                                <label><span>Pairs</span><input form="matchForm-{{ pack.id }}-{{ loop.index }}" type="number" name="round_size" min="2" max="{{ d.term_count }}" value="{{ 10 if d.term_count >= 10 else d.term_count }}"></label>
+                                <label><span>Direction</span>
+                                    <select form="matchForm-{{ pack.id }}-{{ loop.index }}" name="direction">
+                                        <option value="random">Random</option>
+                                        <option value="term_to_definition">Term → Definition</option>
+                                        <option value="definition_to_term">Definition → Term</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </td>
+                        <td class="study-dataset-action-col">
+                            <form id="matchForm-{{ pack.id }}-{{ loop.index }}" method="POST" action="/study-packs/generate">
+                                <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                                <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                                <button class="study-table-primary" type="submit">Create Quiz</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr class="study-dataset-detail-row" id="dataset-{{ pack.id }}-matching-{{ loop.index }}" hidden>
+                        <td colspan="5"><p>{{ d.description or 'No additional description supplied.' }}</p></td>
+                    </tr>
+                {% endfor %}
 
-        {% if pack.image_datasets %}
-            <h3>Images / diagrams</h3>
-            <div class="medical-dataset-grid">
-            {% for d in pack.image_datasets %}
-                <article class="medical-dataset-card">
-                    <span class="medical-eyebrow">{{ d.category|upper }} · IMAGE PRACTICE</span>
-                    <h3>{{ d.title }}</h3>
-                    <p>{{ d.description }}</p>
-                    <div class="medical-dataset-meta"><span>{{ d.image_count }} images</span><span>{{ d.hotspot_count }} targets</span></div>
-                    <form method="POST" action="/study-packs/image/generate">
-                        <input type="hidden" name="pack_id" value="{{ pack.id }}">
-                        <input type="hidden" name="dataset_id" value="{{ d.id }}">
-                        <button class="medical-primary-button" type="submit">Create Image Quiz</button>
-                    </form>
-                </article>
-            {% endfor %}
+                {% for d in pack.image_datasets %}
+                    <tr>
+                        <td><span class="study-type-badge image">Image</span></td>
+                        <td>
+                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-image-{{ loop.index }}')">{{ d.title }}</button>
+                            {% if d.category %}<small>{{ d.category }}</small>{% endif %}
+                        </td>
+                        <td><span>{{ d.image_count }} image{{ '' if d.image_count == 1 else 's' }}</span><small>{{ d.hotspot_count }} targets</small></td>
+                        <td><span class="study-options-muted">Hotspot practice</span></td>
+                        <td class="study-dataset-action-col">
+                            <form method="POST" action="/study-packs/image/generate">
+                                <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                                <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                                <button class="study-table-primary" type="submit">Create Quiz</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr class="study-dataset-detail-row" id="dataset-{{ pack.id }}-image-{{ loop.index }}" hidden>
+                        <td colspan="5"><p>{{ d.description or 'No additional description supplied.' }}</p></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
             </div>
-        {% endif %}
         </div>
     </details>
     {% endfor %}
     {% else %}
     <section class="dashboard-panel">
         <h2>No usable study packs yet</h2>
-        <p>Create one with the AI Study Pack Builder or install a content pack.</p>
+        <p>Create one with the AI Study Pack Builder, Build from Images, or install a compatible Content Pack.</p>
     </section>
     {% endif %}
 </main>
 </div>
 
 <script>
-const sidebar = document.getElementById('dashboardSidebar');
+const sidebar=document.getElementById('dashboardSidebar');
 document.getElementById('menuButton')?.addEventListener('click',()=>sidebar?.classList.toggle('open'));
 
-const packDetails = [...document.querySelectorAll('.study-pack-collapsible')];
-const stateKey = 'dlms.studyPacks.openState.v1';
-
-function readPackState() {
-    try { return JSON.parse(localStorage.getItem(stateKey) || '{}') || {}; }
-    catch (e) { return {}; }
+const packDetails=[...document.querySelectorAll('.study-pack-collapsible')];
+const stateKey='dlms.studyPacks.openState.v1';
+function readPackState(){try{return JSON.parse(localStorage.getItem(stateKey)||'{}')||{}}catch(e){return {}}}
+function savePackState(){const state={};packDetails.forEach(el=>state[el.dataset.packId]=el.open);try{localStorage.setItem(stateKey,JSON.stringify(state))}catch(e){}}
+const savedState=readPackState();
+packDetails.forEach(el=>{if(Object.prototype.hasOwnProperty.call(savedState,el.dataset.packId))el.open=!!savedState[el.dataset.packId];el.addEventListener('toggle',savePackState)});
+document.getElementById('expandAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=true);savePackState()});
+document.getElementById('collapseAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=false);savePackState()});
+function toggleDatasetDetails(id){
+    const row=document.getElementById(`dataset-${id}`);
+    if(row) row.hidden=!row.hidden;
 }
-function savePackState() {
-    const state = {};
-    packDetails.forEach(el => state[el.dataset.packId] = el.open);
-    try { localStorage.setItem(stateKey, JSON.stringify(state)); } catch (e) {}
-}
-const savedState = readPackState();
-packDetails.forEach(el => {
-    if (Object.prototype.hasOwnProperty.call(savedState, el.dataset.packId)) {
-        el.open = !!savedState[el.dataset.packId];
-    }
-    el.addEventListener('toggle', savePackState);
-});
-document.getElementById('expandAllPacks')?.addEventListener('click', () => {
-    packDetails.forEach(el => el.open = true);
-    savePackState();
-});
-document.getElementById('collapseAllPacks')?.addEventListener('click', () => {
-    packDetails.forEach(el => el.open = false);
-    savePackState();
-});
 </script>
 </body>
 </html>
@@ -3493,7 +3935,8 @@ def study_pack_generate_quiz_dataset():
         title = str(data.get("title") or data["_descriptor"].get("title") or "Study Questions").strip()
         _, html_name = _create_quiz_from_runtime(
             f"{title} — Practice", runtime_questions, db_questions,
-            filename_prefix=f"study_questions_{pack_id}_{dataset_id}", exam_minutes=90
+            filename_prefix=f"study_questions_{pack_id}_{dataset_id}", exam_minutes=90,
+            source_pack_id=pack_id, source_dataset_id=dataset_id
         )
         return redirect(f"/quizzes/{html_name}")
     except Exception as exc:
@@ -3519,7 +3962,7 @@ def study_pack_generate_matching():
     quiz_data=[{"number":1,"type":"matching","question":str(data.get("question_text") or "Match each item with its best answer.").strip(),"pairs":pairs,"round_size":round_size,"direction":direction,"source":{"organization":source.get("organization") or pack.get("publisher") or "","dataset":source.get("dataset") or title,"version":source.get("version") or pack.get("version") or "","url":source.get("url") or "","license":source.get("license") or ""}}]
     ts=int(time.time()); safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "dataset"; quiz_title=f"{title} — {round_size}-Pair Practice"; html_name=f"study_{safe_pack}_{safe_id}_{ts}.html"; json_name=f"study_{safe_pack}_{safe_id}_{ts}.json"; json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
     with open(json_path,"w",encoding="utf-8") as f: json.dump(quiz_data,f,indent=4,ensure_ascii=False)
-    quiz_id=save_quiz_to_db(quiz_title,html_name,quiz_data); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
+    quiz_id=save_quiz_to_db(quiz_title,html_name,quiz_data); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
     return redirect(f"/quizzes/{html_name}")
 
 
@@ -3540,8 +3983,10 @@ def study_pack_generate_image():
             db_questions.append({"number":qnum,"type":"choice","question":prompt+" [Image hotspot]","choices":[{"label":"A","text":label,"is_correct":True}],"source":{"organization":source.get("organization") or "","dataset":data.get("title") or dataset_id,"version":pack.get("version") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or ""}}); qnum+=1
     if not runtime_questions: flash("This image dataset contains no usable targets.","error"); return redirect("/study-packs")
     title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; ts=int(time.time()); safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"; html_name=f"study_image_{safe_pack}_{safe_id}_{ts}.html"; json_name=f"study_image_{safe_pack}_{safe_id}_{ts}.json"; json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
+    bucket=re.sub(r"[^A-Za-z0-9_.-]+","_",os.path.splitext(html_name)[0])[:120]
+    runtime_questions,db_questions,_=_snapshot_runtime_questions(pack_id,runtime_questions,db_questions,bucket)
     with open(json_path,"w",encoding="utf-8") as f: json.dump(runtime_questions,f,indent=4,ensure_ascii=False)
-    quiz_id=save_quiz_to_db(quiz_title,html_name,db_questions); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
+    quiz_id=save_quiz_to_db(quiz_title,html_name,db_questions); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
     return redirect(f"/quizzes/{html_name}")
 
 
@@ -7599,6 +8044,12 @@ def delete_quiz(quiz_id):
         if os.path.exists(jp):
             os.remove(jp)
 
+    if html_file:
+        asset_bucket = os.path.splitext(os.path.basename(html_file))[0]
+        asset_dir = os.path.join(QUIZ_ASSET_FOLDER, asset_bucket)
+        if os.path.isdir(asset_dir):
+            shutil.rmtree(asset_dir, ignore_errors=True)
+
     if logo_file:
         lp = os.path.join(LOGO_FOLDER, logo_file)
         if os.path.exists(lp):
@@ -7653,6 +8104,7 @@ def wipe_database():
     # -----------------------------
     quiz_dirs = [
         os.path.join(APP_DATA_DIR, "quizzes"),
+        QUIZ_ASSET_FOLDER,
         os.path.join(APP_DATA_DIR, "static", "logos"),
         os.path.join(APP_DATA_DIR, "static", "logos", "_temp"),
     ]
@@ -8794,7 +9246,8 @@ def image_quiz_builder_save():
         _, html_name = _create_quiz_from_runtime(
             f"{title} — Practice", runtime, db_questions,
             filename_prefix=f"user_image_{dataset_id}",
-            exam_minutes=request.form.get("exam_minutes")
+            exam_minutes=request.form.get("exam_minutes"),
+            source_pack_id=pack_id, source_dataset_id=dataset_id
         )
         shutil.rmtree(draft_root, ignore_errors=True)
         flash("Image study pack and quiz created successfully.", "success")
