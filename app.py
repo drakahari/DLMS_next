@@ -913,7 +913,7 @@ def _is_medical_pack_manifest(pack_id, pack):
 
 
 def _medical_content_available(packs=None):
-    """Medical Study is available whenever at least one medical-domain pack is installed."""
+    """Return whether Medical Study currently has installed Medical-domain content."""
     packs = packs if isinstance(packs, dict) else discover_content_packs()
     return any(_is_medical_pack_manifest(pack_id, pack) for pack_id, pack in packs.items())
 
@@ -943,7 +943,10 @@ def inject_content_pack_state():
     packs = discover_content_packs()
     return {
         "content_packs": packs,
-        "medical_pack_installed": _medical_content_available(packs),
+        # Medical Study is a built-in DLMS capability. Medical content packs
+        # are optional; this legacy template flag now means "show the feature."
+        "medical_pack_installed": True,
+        "medical_content_available": _medical_content_available(packs),
     }
 
 
@@ -1322,7 +1325,7 @@ def admin_hotspot_editor():
         HOTSPOT_EDITOR_TEMPLATE,
         catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset,
         selected_kind=selected_kind, editor_data=editor_data, load_error=load_error,
-        medical_pack_installed=_medical_content_available(),
+        medical_pack_installed=True,
     )
 
 
@@ -2543,7 +2546,7 @@ document.getElementById("deletePackDialog")?.addEventListener("click",(event)=>{
 });
 </script>
 </body></html>
-    """, packs=packs, pack_folder=CONTENT_PACK_FOLDER, medical_pack_installed=_medical_content_available())
+    """, packs=packs, pack_folder=CONTENT_PACK_FOLDER, medical_pack_installed=True)
 
 
 @app.route("/content-packs/delete", methods=["POST"])
@@ -2944,15 +2947,103 @@ def _medical_pack_page_data():
 
 
 def _medical_not_installed():
-    return render_template_string("""
-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Medical Study - DLMS</title>
-<link rel="stylesheet" href="/static/style.css"></head>
-<body><div class="container"><div class="card"><h1>No Medical Study Packs Installed</h1>
-<p>Medical Study is optional. Install any DLMS Study Pack whose content domain is <strong>medical</strong>, or create one with the AI Study Pack Builder.</p>
-<pre>{{ pack_folder }}</pre>
-<p><a href="/content-packs">View Content Packs</a> · <a href="/study-packs/ai-builder?domain=Medical&amp;from=medical">Create Medical Study Content</a></p>
-</div></div></body></html>
-    """, pack_folder=CONTENT_PACK_FOLDER), 404
+    """Render Medical Study as an available feature even when no content is installed."""
+    empty_pack = {
+        "name": "Medical Study",
+        "version": "No packs installed",
+    }
+    template = r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical Study - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-study-page">
+<div class="dashboard-shell">
+    """ + _MEDICAL_SIDEBAR + r"""
+
+    <main class="dashboard-main medical-main">
+        <header class="dashboard-header medical-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <div>
+                <div class="medical-eyebrow">MEDICAL STUDY</div>
+                <h1>Medical Study</h1>
+                <p>Medical Study is ready to use. Add a Medical-domain Study Pack when you want terminology, image, or mixed-question medical content.</p>
+            </div>
+        </header>
+
+        <section class="medical-summary-grid">
+            <article class="dashboard-stat-card">
+                <span>Installed Packs</span>
+                <strong>0</strong>
+                <small>medical content is optional</small>
+            </article>
+            <article class="dashboard-stat-card">
+                <span>Study Banks</span>
+                <strong>0</strong>
+                <small>install or create content to begin</small>
+            </article>
+            <article class="dashboard-stat-card">
+                <span>Image Sets</span>
+                <strong>0</strong>
+                <small>no medical images installed</small>
+            </article>
+        </section>
+
+        <section class="medical-section-launch-grid">
+            <a class="dashboard-panel medical-section-launch-card" href="/study-packs/ai-builder?domain=Medical&amp;from=medical">
+                <div class="medical-section-launch-icon">AI</div>
+                <div class="medical-section-launch-copy">
+                    <span class="medical-eyebrow">CREATE</span>
+                    <h2>Create a Medical Study Pack</h2>
+                    <p>Use the unified AI Study Pack Builder with Medical safeguards, source requirements, and image provenance rules automatically enabled.</p>
+                    <span class="medical-section-launch-action">Open AI Study Pack Builder →</span>
+                </div>
+            </a>
+
+            <a class="dashboard-panel medical-section-launch-card" href="/content-packs">
+                <div class="medical-section-launch-icon">⬡</div>
+                <div class="medical-section-launch-copy">
+                    <span class="medical-eyebrow">INSTALL / MANAGE</span>
+                    <h2>Content Packs</h2>
+                    <p>Manage installed Study Packs. Any valid pack declaring a Medical content domain will automatically appear in Medical Study.</p>
+                    <span class="medical-section-launch-action">Open Content Packs →</span>
+                </div>
+            </a>
+        </section>
+
+        <section class="dashboard-panel medical-ai-builder-panel">
+            <div class="medical-ai-builder-heading">
+                <div>
+                    <span class="medical-eyebrow">OPTIONAL CONTENT</span>
+                    <h2>No Medical Study Packs Installed</h2>
+                    <p>DLMS itself does not require or bundle medical subject matter. You can leave Medical Study empty, create your own pack, or install a Medical Study Pack later.</p>
+                </div>
+                <span class="medical-ai-safety-pill">Medical Study Ready</span>
+            </div>
+            <p class="medical-empty-pack-path"><strong>Study Pack folder:</strong> <code>{{ pack_folder }}</code></p>
+        </section>
+    </main>
+</div>
+
+<script>
+document.getElementById("menuButton")?.addEventListener("click", () => {
+    document.getElementById("dashboardSidebar")?.classList.toggle("open");
+});
+</script>
+</body>
+</html>
+"""
+    return render_template_string(
+        template,
+        pack=empty_pack,
+        pack_folder=CONTENT_PACK_FOLDER,
+        medical_section="home",
+    )
 
 
 _MEDICAL_SIDEBAR = r"""
@@ -3154,52 +3245,119 @@ def medical_matching():
             </article>
         </section>
 
-        <section class="medical-dataset-grid">
-        {% for dataset in datasets %}
-            <article class="dashboard-panel medical-dataset-card">
-                <div class="medical-dataset-heading">
-                    <div class="medical-dataset-icon">✚</div>
-                    <div>
-                        <span class="medical-eyebrow">{{ dataset.category or "TERMINOLOGY" }}</span>
-                        <h2>{{ dataset.title }}</h2>
-                    </div>
+        {% if datasets %}
+        <section class="dashboard-panel medical-compact-dataset-panel">
+            <div class="medical-compact-panel-heading">
+                <div>
+                    <span class="medical-eyebrow">INSTALLED TERMINOLOGY</span>
+                    <h2>Study Banks</h2>
+                    <p>Choose a bank, configure the round, and expand any row for its description and source pack.</p>
                 </div>
-                <p>{{ dataset.description }}</p>
-                <div class="medical-dataset-meta">
-                    <span>{{ dataset.term_count }} terms</span>
-                    <span>{{ dataset.type|capitalize }}</span>
-                    {% if dataset.pack_id != "medical" %}<span>Pack: {{ dataset.pack_name }}</span>{% endif %}
+                <div class="medical-compact-panel-actions">
+                    <button type="button" class="medical-ai-secondary-button" data-medical-expand="matching">Expand All</button>
+                    <button type="button" class="medical-ai-secondary-button" data-medical-collapse="matching">Collapse All</button>
                 </div>
-
-                <form method="POST" action="/medical/generate" class="medical-generator-form">
-                    <input type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
-                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
-                    <label><span>Pairs Per Round</span>
-                        <input type="number" name="round_size" min="2" max="{{ dataset.term_count }}" value="{{ 10 if dataset.term_count >= 10 else dataset.term_count }}">
-                    </label>
-                    <label><span>Direction</span>
-                        <select name="direction">
-                            <option value="random" selected>Random Each Attempt</option>
-                            <option value="term_to_definition">Term → Definition</option>
-                            <option value="definition_to_term">Definition → Term</option>
-                        </select>
-                    </label>
-                    <button class="medical-primary-button" type="submit">Create Practice Quiz</button>
-                </form>
-            </article>
-        {% else %}
-            <article class="dashboard-panel pack-empty-card">
-                <h2>No usable terminology datasets</h2>
-                <p>The Medical Pack is detected, but no valid terminology datasets could be loaded.</p>
-            </article>
-        {% endfor %}
+            </div>
+            <div class="study-dataset-table-wrap medical-dataset-table-wrap">
+                <table class="study-dataset-table medical-dataset-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Study Bank</th>
+                            <th>Terms</th>
+                            <th>Round Options</th>
+                            <th class="study-dataset-action-col">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for dataset in datasets %}
+                        <tr class="medical-dataset-main-row">
+                            <td><span class="study-type-badge matching">Matching</span></td>
+                            <td>
+                                <button type="button"
+                                        class="study-dataset-title-button medical-dataset-toggle"
+                                        data-medical-detail="matching-detail-{{ loop.index }}"
+                                        aria-expanded="false">
+                                    <span class="medical-row-caret">›</span>
+                                    {{ dataset.title }}
+                                </button>
+                                <small>{{ dataset.category or "Terminology" }}</small>
+                            </td>
+                            <td><strong>{{ dataset.term_count }}</strong><small>terms</small></td>
+                            <td>
+                                <form method="POST" action="/medical/generate" class="study-table-inline-form medical-table-generator-form">
+                                    <input type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
+                                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                                    <label><span>Pairs</span>
+                                        <input type="number" name="round_size" min="2" max="{{ dataset.term_count }}" value="{{ 10 if dataset.term_count >= 10 else dataset.term_count }}">
+                                    </label>
+                                    <label><span>Direction</span>
+                                        <select name="direction">
+                                            <option value="random" selected>Random</option>
+                                            <option value="term_to_definition">Term → Definition</option>
+                                            <option value="definition_to_term">Definition → Term</option>
+                                        </select>
+                                    </label>
+                            </td>
+                            <td class="study-dataset-action-col">
+                                    <button class="medical-primary-button study-table-primary" type="submit">Create Quiz</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <tr id="matching-detail-{{ loop.index }}" class="study-dataset-detail-row medical-dataset-detail-row" hidden>
+                            <td colspan="5">
+                                <div class="medical-dataset-detail-content">
+                                    <p>{{ dataset.description }}</p>
+                                    <div class="medical-dataset-detail-meta">
+                                        <span><strong>Category:</strong> {{ dataset.category or "Terminology" }}</span>
+                                        <span><strong>Dataset:</strong> {{ dataset.id }}</span>
+                                        <span><strong>Pack:</strong> {{ dataset.pack_name }}</span>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </section>
+        {% else %}
+        <section class="dashboard-panel pack-empty-card">
+            <h2>No usable terminology datasets</h2>
+            <p>No valid Medical terminology datasets are currently installed.</p>
+        </section>
+        {% endif %}
     </main>
 </div>
 <script>
 const menuButton=document.getElementById("menuButton");
 const sidebar=document.getElementById("dashboardSidebar");
 if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+
+function setMedicalDetail(toggle, open){
+    const targetId=toggle?.dataset?.medicalDetail;
+    const detail=targetId ? document.getElementById(targetId) : null;
+    if(!detail) return;
+    detail.hidden=!open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.querySelector(".medical-row-caret")?.classList.toggle("open", open);
+}
+document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>{
+    toggle.addEventListener("click",()=>{
+        const detail=document.getElementById(toggle.dataset.medicalDetail);
+        setMedicalDetail(toggle, !!detail?.hidden);
+    });
+});
+document.querySelectorAll("[data-medical-expand]").forEach(button=>{
+    button.addEventListener("click",()=>{
+        document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>setMedicalDetail(toggle,true));
+    });
+});
+document.querySelectorAll("[data-medical-collapse]").forEach(button=>{
+    button.addEventListener("click",()=>{
+        document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>setMedicalDetail(toggle,false));
+    });
+});
 </script>
 </body></html>
 """
@@ -3274,36 +3432,74 @@ def medical_anatomy():
         {% endif %}
 
         {% if image_datasets %}
-        <section class="medical-dataset-grid medical-anatomy-grid">
-        {% for dataset in image_datasets %}
-            <article class="dashboard-panel medical-dataset-card medical-anatomy-card">
-                <div class="medical-dataset-heading">
-                    <div class="medical-dataset-icon">◎</div>
-                    <div>
-                        <span class="medical-eyebrow">{{ dataset.category|upper }} · IMAGE PRACTICE</span>
-                        <h2>{{ dataset.title }}</h2>
-                    </div>
+        <section class="dashboard-panel medical-compact-dataset-panel">
+            <div class="medical-compact-panel-heading">
+                <div>
+                    <span class="medical-eyebrow">INSTALLED VISUAL CONTENT</span>
+                    <h2>Image Study Sets</h2>
+                    <p>Launch image practice directly from the table, or expand a row for dataset details and source pack information.</p>
                 </div>
-                <p>{{ dataset.description }}</p>
-                <div class="medical-dataset-meta">
-                    <span>{{ dataset.image_count }} image{% if dataset.image_count != 1 %}s{% endif %}</span>
-                    <span>{{ dataset.hotspot_count }} structures</span>
-                    {% if dataset.pack_id != "medical" %}<span>Pack: {{ dataset.pack_name }}</span>{% endif %}
+                <div class="medical-compact-panel-actions">
+                    <button type="button" class="medical-ai-secondary-button" data-medical-expand="anatomy">Expand All</button>
+                    <button type="button" class="medical-ai-secondary-button" data-medical-collapse="anatomy">Collapse All</button>
                 </div>
-                <form method="POST" action="/medical/anatomy/generate">
-                    <input type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
-                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
-                    <button class="medical-primary-button" type="submit">Create Anatomy Quiz</button>
-                </form>
-            </article>
-        {% endfor %}
+            </div>
+            <div class="study-dataset-table-wrap medical-dataset-table-wrap">
+                <table class="study-dataset-table medical-dataset-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Image Study Set</th>
+                            <th>Images</th>
+                            <th>Structures</th>
+                            <th class="study-dataset-action-col">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for dataset in image_datasets %}
+                        <tr class="medical-dataset-main-row">
+                            <td><span class="study-type-badge image">Image</span></td>
+                            <td>
+                                <button type="button"
+                                        class="study-dataset-title-button medical-dataset-toggle"
+                                        data-medical-detail="anatomy-detail-{{ loop.index }}"
+                                        aria-expanded="false">
+                                    <span class="medical-row-caret">›</span>
+                                    {{ dataset.title }}
+                                </button>
+                                <small>{{ dataset.category or "Visual Practice" }}</small>
+                            </td>
+                            <td><strong>{{ dataset.image_count }}</strong><small>image{% if dataset.image_count != 1 %}s{% endif %}</small></td>
+                            <td><strong>{{ dataset.hotspot_count }}</strong><small>structures</small></td>
+                            <td class="study-dataset-action-col">
+                                <form method="POST" action="/medical/anatomy/generate">
+                                    <input type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
+                                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                                    <button class="medical-primary-button study-table-primary" type="submit">Create Quiz</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <tr id="anatomy-detail-{{ loop.index }}" class="study-dataset-detail-row medical-dataset-detail-row" hidden>
+                            <td colspan="5">
+                                <div class="medical-dataset-detail-content">
+                                    <p>{{ dataset.description }}</p>
+                                    <div class="medical-dataset-detail-meta">
+                                        <span><strong>Category:</strong> {{ dataset.category or "Visual Practice" }}</span>
+                                        <span><strong>Dataset:</strong> {{ dataset.id }}</span>
+                                        <span><strong>Pack:</strong> {{ dataset.pack_name }}</span>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </section>
         {% else %}
-        <section class="medical-dataset-grid">
-            <article class="dashboard-panel pack-empty-card">
-                <h2>No usable image datasets</h2>
-                <p>The Medical Pack is installed, but no image datasets are currently available.</p>
-            </article>
+        <section class="dashboard-panel pack-empty-card">
+            <h2>No usable image datasets</h2>
+            <p>No valid Medical image datasets are currently installed.</p>
         </section>
         {% endif %}
     </main>
@@ -3312,6 +3508,31 @@ def medical_anatomy():
 const menuButton=document.getElementById("menuButton");
 const sidebar=document.getElementById("dashboardSidebar");
 if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+
+function setMedicalDetail(toggle, open){
+    const targetId=toggle?.dataset?.medicalDetail;
+    const detail=targetId ? document.getElementById(targetId) : null;
+    if(!detail) return;
+    detail.hidden=!open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.querySelector(".medical-row-caret")?.classList.toggle("open", open);
+}
+document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>{
+    toggle.addEventListener("click",()=>{
+        const detail=document.getElementById(toggle.dataset.medicalDetail);
+        setMedicalDetail(toggle, !!detail?.hidden);
+    });
+});
+document.querySelectorAll("[data-medical-expand]").forEach(button=>{
+    button.addEventListener("click",()=>{
+        document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>setMedicalDetail(toggle,true));
+    });
+});
+document.querySelectorAll("[data-medical-collapse]").forEach(button=>{
+    button.addEventListener("click",()=>{
+        document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>setMedicalDetail(toggle,false));
+    });
+});
 </script>
 </body></html>
 """
@@ -3943,7 +4164,7 @@ function toggleDatasetDetails(id){
 </script>
 </body>
 </html>
-""", packs=packs, medical_pack_installed=_medical_content_available())
+""", packs=packs, medical_pack_installed=True)
 
 
 
@@ -4243,7 +4464,7 @@ document.getElementById('studyDomain')?.addEventListener('change', (event) => {
         from_section=from_section,
         back_url=back_url,
         back_label=back_label,
-        medical_pack_installed=_medical_content_available(),
+        medical_pack_installed=True,
     )
 
 
@@ -9141,7 +9362,7 @@ def image_quiz_builder():
 
     return render_template_string(
         IMAGE_QUIZ_BUILDER_TEMPLATE, draft=draft,
-        medical_pack_installed=_medical_content_available()
+        medical_pack_installed=True
     )
 
 
