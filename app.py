@@ -1836,17 +1836,11 @@ if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classLis
 # =========================
 # MEDICAL STUDY - CONTENT PACK
 # =========================
-@app.route("/medical")
-def medical_study_home():
+def _medical_pack_page_data():
+    """Return the installed Medical Pack plus validated text/image dataset summaries."""
     pack = get_content_pack("medical")
     if not pack:
-        return render_template_string("""
-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Medical Study - DLMS</title>
-<link rel="stylesheet" href="/static/style.css"></head>
-<body><div class="container"><div class="card"><h1>Medical Study Pack Not Installed</h1>
-<p>Install the DLMS Medical Study Pack in:</p><pre>{{ pack_folder }}</pre>
-<a href="/content-packs">View Content Packs</a></div></div></body></html>
-        """, pack_folder=CONTENT_PACK_FOLDER), 404
+        return None, [], []
 
     datasets = []
     for descriptor in pack.get("datasets", []):
@@ -1870,7 +1864,10 @@ def medical_study_home():
         try:
             data = load_content_pack_image_dataset("medical", dataset_id)
             image_count = len(data.get("images") or [])
-            hotspot_count = sum(len(img.get("hotspots") or []) for img in (data.get("images") or []))
+            hotspot_count = sum(
+                len(img.get("hotspots") or [])
+                for img in (data.get("images") or [])
+            )
             image_datasets.append({
                 "id": dataset_id,
                 "title": descriptor.get("title") or data.get("title") or dataset_id,
@@ -1882,7 +1879,68 @@ def medical_study_home():
         except Exception as exc:
             print(f"[MEDICAL PACK] Image dataset {dataset_id!r} unavailable: {exc}")
 
+    return pack, datasets, image_datasets
+
+
+def _medical_not_installed():
     return render_template_string("""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Medical Study - DLMS</title>
+<link rel="stylesheet" href="/static/style.css"></head>
+<body><div class="container"><div class="card"><h1>Medical Study Pack Not Installed</h1>
+<p>Install the DLMS Medical Study Pack in:</p><pre>{{ pack_folder }}</pre>
+<a href="/content-packs">View Content Packs</a></div></div></body></html>
+    """, pack_folder=CONTENT_PACK_FOLDER), 404
+
+
+_MEDICAL_SIDEBAR = r"""
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand">
+        <div class="dashboard-brand-mark">✚</div>
+        <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+    </div>
+    <nav class="dashboard-nav">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+        <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        <a class="dashboard-nav-item active" href="/medical" {% if medical_section == "home" %}aria-current="page"{% endif %}>
+            <span class="dashboard-nav-icon">✚</span><span>Medical Study</span>
+        </a>
+        <div class="dashboard-nav-subitems medical-nav-subitems">
+            <a class="dashboard-nav-subitem {% if medical_section == 'matching' %}active{% endif %}" href="/medical/matching"
+               {% if medical_section == "matching" %}aria-current="page"{% endif %}>
+                <span class="dashboard-nav-subicon">↔</span><span>Terminology &amp; Matching</span>
+            </a>
+            <a class="dashboard-nav-subitem {% if medical_section == 'anatomy' %}active{% endif %}" href="/medical/anatomy"
+               {% if medical_section == "anatomy" %}aria-current="page"{% endif %}>
+                <span class="dashboard-nav-subicon">◎</span><span>Anatomy &amp; Images</span>
+            </a>
+        </div>
+        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+    </nav>
+    <div class="dashboard-nav-section-label"><span>System</span></div>
+    <nav class="dashboard-nav dashboard-nav-system">
+        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">{{ pack.name }} v{{ pack.version }}</div>
+</aside>
+"""
+
+
+@app.route("/medical")
+def medical_study_home():
+    pack, datasets, image_datasets = _medical_pack_page_data()
+    if not pack:
+        return _medical_not_installed()
+
+    total_terms = sum(d["term_count"] for d in datasets)
+    total_images = sum(d["image_count"] for d in image_datasets)
+    total_hotspots = sum(d["hotspot_count"] for d in image_datasets)
+
+    template = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1894,44 +1952,219 @@ def medical_study_home():
 </head>
 <body class="dashboard-home medical-study-page">
 <div class="dashboard-shell">
-    <aside class="dashboard-sidebar" id="dashboardSidebar">
-        <div class="dashboard-brand">
-            <div class="dashboard-brand-mark">✚</div>
-            <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
-        </div>
-        <nav class="dashboard-nav">
-            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
-            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
-            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
-            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
-            <a class="dashboard-nav-item active" href="/medical" aria-current="page"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
-            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
-            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
-        </nav>
-        <div class="dashboard-nav-section-label"><span>System</span></div>
-        <nav class="dashboard-nav dashboard-nav-system">
-            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
-            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
-            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
-        </nav>
-        <div class="dashboard-sidebar-version">{{ pack.name }} v{{ pack.version }}</div>
-    </aside>
+    """ + _MEDICAL_SIDEBAR + r"""
 
     <main class="dashboard-main medical-main">
         <header class="dashboard-header medical-header">
             <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
-            <div><div class="medical-eyebrow">MEDICAL STUDY</div><h1>{{ pack.name }}</h1>
-            <p>{{ pack.description }}</p></div>
+            <div>
+                <div class="medical-eyebrow">MEDICAL STUDY</div>
+                <h1>{{ pack.name }}</h1>
+                <p>Choose a study area. Terminology practice and visual anatomy are separated so each workspace stays focused as the Medical Pack grows.</p>
+            </div>
         </header>
 
         <section class="medical-summary-grid">
             <article class="dashboard-stat-card"><span>Pack Version</span><strong>{{ pack.version }}</strong><small>independent of DLMS core</small></article>
-            <article class="dashboard-stat-card"><span>Datasets</span><strong>{{ datasets|length }}</strong><small>available study banks</small></article>
-            <article class="dashboard-stat-card"><span>Total Terms</span><strong>{{ total_terms }}</strong><small>across installed datasets</small></article>
+            <article class="dashboard-stat-card"><span>Study Banks</span><strong>{{ datasets|length }}</strong><small>{{ total_terms }} terminology terms</small></article>
+            <article class="dashboard-stat-card"><span>Image Sets</span><strong>{{ image_datasets|length }}</strong><small>{{ total_hotspots }} visual structures</small></article>
+        </section>
+
+        <section class="medical-section-launch-grid">
+            <a class="dashboard-panel medical-section-launch-card" href="/medical/matching">
+                <div class="medical-section-launch-icon">↔</div>
+                <div class="medical-section-launch-copy">
+                    <span class="medical-eyebrow">TEXT STUDY</span>
+                    <h2>Terminology &amp; Matching</h2>
+                    <p>Practice foundational medical terminology and system-specific vocabulary with configurable matching rounds.</p>
+                    <div class="medical-dataset-meta">
+                        <span>{{ datasets|length }} study banks</span>
+                        <span>{{ total_terms }} terms</span>
+                    </div>
+                    <span class="medical-section-launch-action">Open Terminology &amp; Matching →</span>
+                </div>
+            </a>
+
+            <a class="dashboard-panel medical-section-launch-card" href="/medical/anatomy">
+                <div class="medical-section-launch-icon">◎</div>
+                <div class="medical-section-launch-copy">
+                    <span class="medical-eyebrow">VISUAL STUDY</span>
+                    <h2>Anatomy &amp; Images</h2>
+                    <p>Identify structures directly on source-documented anatomy images using calibrated circle and polygon hotspots.</p>
+                    <div class="medical-dataset-meta">
+                        <span>{{ image_datasets|length }} image sets</span>
+                        <span>{{ total_images }} images</span>
+                        <span>{{ total_hotspots }} structures</span>
+                    </div>
+                    <span class="medical-section-launch-action">Open Anatomy &amp; Images →</span>
+                </div>
+            </a>
+        </section>
+    </main>
+</div>
+<script>
+const menuButton=document.getElementById("menuButton");
+const sidebar=document.getElementById("dashboardSidebar");
+if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+</script>
+</body></html>
+"""
+    return render_template_string(
+        template,
+        pack=pack,
+        datasets=datasets,
+        image_datasets=image_datasets,
+        total_terms=total_terms,
+        total_images=total_images,
+        total_hotspots=total_hotspots,
+        medical_section="home",
+    )
+
+
+@app.route("/medical/matching")
+def medical_matching():
+    pack, datasets, image_datasets = _medical_pack_page_data()
+    if not pack:
+        return _medical_not_installed()
+
+    total_terms = sum(d["term_count"] for d in datasets)
+
+    template = r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terminology & Matching - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-study-page">
+<div class="dashboard-shell">
+    """ + _MEDICAL_SIDEBAR + r"""
+
+    <main class="dashboard-main medical-main">
+        <header class="dashboard-header medical-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <div>
+                <div class="medical-eyebrow">MEDICAL STUDY · TERMINOLOGY</div>
+                <h1>Terminology &amp; Matching</h1>
+                <p>Choose a source-documented study bank, then configure the number of pairs and matching direction for the practice round.</p>
+            </div>
+        </header>
+
+        <section class="medical-summary-grid medical-subpage-summary">
+            <article class="dashboard-stat-card"><span>Study Banks</span><strong>{{ datasets|length }}</strong><small>installed terminology datasets</small></article>
+            <article class="dashboard-stat-card"><span>Total Terms</span><strong>{{ total_terms }}</strong><small>across available study banks</small></article>
+            <article class="dashboard-stat-card medical-subpage-back-card">
+                <span>Medical Study</span>
+                <a href="/medical">← Back to Medical Study</a>
+                <small>choose another study area</small>
+            </article>
+        </section>
+
+        <section class="medical-dataset-grid">
+        {% for dataset in datasets %}
+            <article class="dashboard-panel medical-dataset-card">
+                <div class="medical-dataset-heading">
+                    <div class="medical-dataset-icon">✚</div>
+                    <div>
+                        <span class="medical-eyebrow">{{ dataset.category or "TERMINOLOGY" }}</span>
+                        <h2>{{ dataset.title }}</h2>
+                    </div>
+                </div>
+                <p>{{ dataset.description }}</p>
+                <div class="medical-dataset-meta">
+                    <span>{{ dataset.term_count }} terms</span>
+                    <span>{{ dataset.type|capitalize }}</span>
+                </div>
+
+                <form method="POST" action="/medical/generate" class="medical-generator-form">
+                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                    <label><span>Pairs Per Round</span>
+                        <input type="number" name="round_size" min="2" max="{{ dataset.term_count }}" value="{{ 10 if dataset.term_count >= 10 else dataset.term_count }}">
+                    </label>
+                    <label><span>Direction</span>
+                        <select name="direction">
+                            <option value="random" selected>Random Each Attempt</option>
+                            <option value="term_to_definition">Term → Definition</option>
+                            <option value="definition_to_term">Definition → Term</option>
+                        </select>
+                    </label>
+                    <button class="medical-primary-button" type="submit">Create Practice Quiz</button>
+                </form>
+            </article>
+        {% else %}
+            <article class="dashboard-panel pack-empty-card">
+                <h2>No usable terminology datasets</h2>
+                <p>The Medical Pack is detected, but no valid terminology datasets could be loaded.</p>
+            </article>
+        {% endfor %}
+        </section>
+    </main>
+</div>
+<script>
+const menuButton=document.getElementById("menuButton");
+const sidebar=document.getElementById("dashboardSidebar");
+if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+</script>
+</body></html>
+"""
+    return render_template_string(
+        template,
+        pack=pack,
+        datasets=datasets,
+        total_terms=total_terms,
+        medical_section="matching",
+    )
+
+
+@app.route("/medical/anatomy")
+def medical_anatomy():
+    pack, datasets, image_datasets = _medical_pack_page_data()
+    if not pack:
+        return _medical_not_installed()
+
+    total_images = sum(d["image_count"] for d in image_datasets)
+    total_hotspots = sum(d["hotspot_count"] for d in image_datasets)
+    image_framework = pack.get("image_framework") or {}
+
+    template = r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anatomy & Images - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-study-page">
+<div class="dashboard-shell">
+    """ + _MEDICAL_SIDEBAR + r"""
+
+    <main class="dashboard-main medical-main">
+        <header class="dashboard-header medical-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <div>
+                <div class="medical-eyebrow">MEDICAL STUDY · VISUAL PRACTICE</div>
+                <h1>Anatomy &amp; Images</h1>
+                <p>Practice structure identification directly on source-documented images. Hotspots can use calibrated circles or polygons to follow actual anatomy.</p>
+            </div>
+        </header>
+
+        <section class="medical-summary-grid medical-subpage-summary">
+            <article class="dashboard-stat-card"><span>Image Sets</span><strong>{{ image_datasets|length }}</strong><small>available visual datasets</small></article>
+            <article class="dashboard-stat-card"><span>Structures</span><strong>{{ total_hotspots }}</strong><small>across {{ total_images }} image{% if total_images != 1 %}s{% endif %}</small></article>
+            <article class="dashboard-stat-card medical-subpage-back-card">
+                <span>Medical Study</span>
+                <a href="/medical">← Back to Medical Study</a>
+                <small>choose another study area</small>
+            </article>
         </section>
 
         {% if image_framework %}
-        <section class="dashboard-panel medical-image-framework-card">
+        <section class="dashboard-panel medical-image-framework-card medical-image-framework-compact">
             <div class="medical-dataset-heading">
                 <div class="medical-dataset-icon">◎</div>
                 <div>
@@ -1961,7 +2194,7 @@ def medical_study_home():
                 <p>{{ dataset.description }}</p>
                 <div class="medical-dataset-meta">
                     <span>{{ dataset.image_count }} image{% if dataset.image_count != 1 %}s{% endif %}</span>
-                    <span>{{ dataset.hotspot_count }} verified structures</span>
+                    <span>{{ dataset.hotspot_count }} structures</span>
                 </div>
                 <form method="POST" action="/medical/anatomy/generate">
                     <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
@@ -1970,39 +2203,14 @@ def medical_study_home():
             </article>
         {% endfor %}
         </section>
-        {% endif %}
-
-        <section class="medical-dataset-grid">
-        {% for dataset in datasets %}
-            <article class="dashboard-panel medical-dataset-card">
-                <div class="medical-dataset-heading">
-                    <div class="medical-dataset-icon">✚</div>
-                    <div><span class="medical-eyebrow">{{ dataset.category or "TERMINOLOGY" }}</span>
-                    <h2>{{ dataset.title }}</h2></div>
-                </div>
-                <p>{{ dataset.description }}</p>
-                <div class="medical-dataset-meta"><span>{{ dataset.term_count }} terms</span><span>{{ dataset.type|capitalize }}</span></div>
-
-                <form method="POST" action="/medical/generate" class="medical-generator-form">
-                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
-                    <label><span>Pairs Per Round</span>
-                        <input type="number" name="round_size" min="2" max="{{ dataset.term_count }}" value="{{ 10 if dataset.term_count >= 10 else dataset.term_count }}">
-                    </label>
-                    <label><span>Direction</span>
-                        <select name="direction">
-                            <option value="random" selected>Random Each Attempt</option>
-                            <option value="term_to_definition">Term → Definition</option>
-                            <option value="definition_to_term">Definition → Term</option>
-                        </select>
-                    </label>
-                    <button class="medical-primary-button" type="submit">Create Practice Quiz</button>
-                </form>
-            </article>
         {% else %}
-            <article class="dashboard-panel pack-empty-card"><h2>No usable datasets</h2>
-            <p>The Medical pack is detected, but no valid datasets could be loaded.</p></article>
-        {% endfor %}
+        <section class="medical-dataset-grid">
+            <article class="dashboard-panel pack-empty-card">
+                <h2>No usable image datasets</h2>
+                <p>The Medical Pack is installed, but no image datasets are currently available.</p>
+            </article>
         </section>
+        {% endif %}
     </main>
 </div>
 <script>
@@ -2011,12 +2219,15 @@ const sidebar=document.getElementById("dashboardSidebar");
 if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
 </script>
 </body></html>
-    """,
+"""
+    return render_template_string(
+        template,
         pack=pack,
-        datasets=datasets,
         image_datasets=image_datasets,
-        total_terms=sum(d["term_count"] for d in datasets),
-        image_framework=pack.get("image_framework") or {}
+        total_images=total_images,
+        total_hotspots=total_hotspots,
+        image_framework=image_framework,
+        medical_section="anatomy",
     )
 
 

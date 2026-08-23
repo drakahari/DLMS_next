@@ -6941,3 +6941,151 @@ a.settings-hub-card:hover {
         padding-top: 18px;
     }
 }
+
+/* =========================================================
+   MEDICAL STUDY — LANDING + SUBPAGE NAVIGATION
+   ========================================================= */
+.medical-nav-subitems {
+    margin: -2px 0 8px 0;
+    padding-left: 42px;
+    display: grid;
+    gap: 3px;
+}
+
+.dashboard-nav-subitem {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    color: rgba(206, 222, 243, 0.68);
+    text-decoration: none;
+    font-size: 12.5px;
+    line-height: 1.25;
+    border: 1px solid transparent;
+    transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+
+.dashboard-nav-subitem:hover {
+    color: #eaf4ff;
+    text-decoration: none;
+    background: rgba(31, 102, 174, 0.14);
+}
+
+.dashboard-nav-subitem.active {
+    color: #dff1ff;
+    background: rgba(27, 108, 196, 0.23);
+    border-color: rgba(72, 157, 255, 0.24);
+}
+
+.dashboard-nav-subicon {
+    width: 16px;
+    flex: 0 0 16px;
+    text-align: center;
+    color: #71c5ff;
+    font-size: 13px;
+}
+
+.medical-section-launch-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 20px;
+}
+
+.medical-section-launch-card {
+    min-width: 0;
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    color: inherit;
+    text-decoration: none;
+    padding: 26px;
+    transition: transform .14s ease, border-color .14s ease, background .14s ease;
+}
+
+.medical-section-launch-card:hover {
+    color: inherit;
+    text-decoration: none;
+    transform: translateY(-3px);
+    border-color: rgba(72, 167, 255, 0.48);
+    background: linear-gradient(180deg, rgba(8, 28, 56, 0.88), rgba(6, 21, 43, 0.76));
+}
+
+.medical-section-launch-icon {
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    color: #83d2ff;
+    border: 1px solid rgba(72, 166, 255, 0.42);
+    background: rgba(18, 73, 128, 0.38);
+    font-size: 25px;
+    font-weight: 800;
+}
+
+.medical-section-launch-copy {
+    min-width: 0;
+    flex: 1;
+}
+
+.medical-section-launch-copy h2 {
+    margin: 5px 0 10px;
+    font-size: 25px;
+}
+
+.medical-section-launch-copy p {
+    margin: 0 0 18px;
+    color: #bdcade;
+}
+
+.medical-section-launch-action {
+    display: inline-block;
+    margin-top: 17px;
+    color: #6ec8ff;
+    font-weight: 750;
+    font-size: 14px;
+}
+
+.medical-subpage-summary .medical-subpage-back-card a {
+    color: #73c8ff;
+    font-size: 16px;
+    font-weight: 750;
+    text-decoration: none;
+    margin: 3px 0 2px;
+}
+
+.medical-subpage-summary .medical-subpage-back-card a:hover {
+    color: #b7e6ff;
+    text-decoration: none;
+}
+
+.medical-image-framework-compact {
+    margin-bottom: 18px;
+}
+
+@media (max-width: 900px) {
+    .medical-section-launch-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 760px) {
+    .medical-nav-subitems {
+        padding-left: 30px;
+    }
+
+    .medical-section-launch-card {
+        padding: 20px;
+    }
+}
+
+@media (max-width: 520px) {
+    .medical-section-launch-card {
+        flex-direction: column;
+    }
+}
+
