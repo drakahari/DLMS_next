@@ -1136,13 +1136,30 @@ def _validate_staged_content_pack(pack_root):
     ai_validation_path = os.path.join(pack_root, "PACK_VALIDATION.json")
     if os.path.isfile(ai_validation_path):
         ai_validation = _read_json_file(ai_validation_path, "PACK_VALIDATION.json", warnings)
-        checks.append(_content_pack_validation_record(
-            "AI validation file", "PASS" if isinstance(ai_validation, dict) else "WARN",
-            "present; independently revalidated by DLMS"
-        ))
+        ai_status = "PASS"
+        ai_detail = "present; independently revalidated by DLMS"
+        if not isinstance(ai_validation, dict):
+            ai_status = "WARN"
+            ai_detail = "present but not a usable JSON object"
+        else:
+            declared_pack_id = str(ai_validation.get("pack_id") or "").strip().lower()
+            overall_status = str(ai_validation.get("overall_status") or "").strip().upper()
+            ai_checks = ai_validation.get("checks")
+            ai_issues = []
+            if declared_pack_id and declared_pack_id != pack_id:
+                ai_issues.append(f"declares pack_id {declared_pack_id!r}, expected {pack_id!r}")
+            if overall_status and overall_status != "PASS":
+                ai_issues.append(f"overall_status is {overall_status}")
+            if ai_checks is not None and not isinstance(ai_checks, list):
+                ai_issues.append("checks is not a list")
+            if ai_issues:
+                ai_status = "WARN"
+                ai_detail = "; ".join(ai_issues)
+                warnings.append("PACK_VALIDATION.json self-check needs review: " + ai_detail)
+        checks.append(_content_pack_validation_record("AI self-validation", ai_status, ai_detail))
     else:
         warnings.append("PACK_VALIDATION.json is not included (optional for hand-built packs; required by current AI Builder prompt)")
-        checks.append(_content_pack_validation_record("AI validation file", "WARN", "not present"))
+        checks.append(_content_pack_validation_record("AI self-validation", "WARN", "not present"))
 
     checks.append(_content_pack_validation_record(
         "JSON parse check", "PASS" if not any("valid JSON" in e for e in errors) else "FAIL",
@@ -1190,6 +1207,7 @@ def _remove_content_pack_stage(token):
 
 
 def content_pack_management_summary():
+    """Return every installed pack folder, including invalid packs, with independent validation state."""
     discovered = discover_content_packs()
     by_root = {os.path.realpath(p.get("_root")): (pid, p) for pid, p in discovered.items()}
     rows = []
@@ -1200,57 +1218,93 @@ def content_pack_management_summary():
 
     for folder in entries:
         root = os.path.join(CONTENT_PACK_FOLDER, folder)
-        manifest_path = os.path.join(root, "manifest.json")
-        if not os.path.isdir(root) or not os.path.isfile(manifest_path):
+        if not os.path.isdir(root):
             continue
 
+        report = _validate_staged_content_pack(root)
+        manifest = report.get("manifest") if isinstance(report.get("manifest"), dict) else {}
         resolved = by_root.get(os.path.realpath(root))
-        if resolved:
-            pack_id, pack = resolved
-            matching = len(pack.get("datasets") or [])
-            image = len(pack.get("image_datasets") or [])
-            mixed = len(pack.get("quiz_datasets") or [])
-            protected = bool(pack.get("protected"))
-            generated = _content_pack_tracked_quiz_count(pack_id)
-            rows.append({
-                "folder": folder,
-                "id": pack_id,
-                "name": pack.get("name") or pack_id,
-                "version": pack.get("version") or "",
-                "description": pack.get("description") or "",
-                "domain": pack.get("content_domain") or pack.get("extends") or "General",
-                "matching_count": matching,
-                "image_count": image,
-                "mixed_count": mixed,
-                "dataset_count": matching + image + mixed,
-                "file_count": sum(len(files) for _, _, files in os.walk(root)),
-                "size": _format_bytes(_folder_size_bytes(root)),
-                "status": "Valid",
-                "status_detail": "Manifest and declared dataset structure passed DLMS discovery validation.",
-                "protected": protected,
-                "generated_quizzes": generated,
-            })
+        pack_id = str(report.get("pack_id") or manifest.get("id") or "").strip().lower()
+        runtime_pack = resolved[1] if resolved else {}
+        matching = len(manifest.get("datasets") or []) if isinstance(manifest.get("datasets") or [], list) else 0
+        image = len(manifest.get("image_datasets") or []) if isinstance(manifest.get("image_datasets") or [], list) else 0
+        mixed = len(manifest.get("quiz_datasets") or []) if isinstance(manifest.get("quiz_datasets") or [], list) else 0
+        protected = bool(manifest.get("protected"))
+        generated = _content_pack_tracked_quiz_count(pack_id) if pack_id and resolved else 0
+        if report.get("valid") and pack_id and not resolved:
+            report["valid"] = False
+            report.setdefault("errors", []).append("Pack is structurally valid but is not discoverable at runtime, usually because another installed folder uses the same pack id.")
+            report.setdefault("checks", []).append(_content_pack_validation_record("Runtime discovery", "FAIL", "pack id conflict or runtime discovery failure"))
+        warning_count = len(report.get("warnings") or [])
+        error_count = len(report.get("errors") or [])
+        if report.get("valid") and warning_count:
+            status = "Valid with warnings"
+            status_detail = f"DLMS validation passed with {warning_count} warning(s)."
+        elif report.get("valid"):
+            status = "Valid"
+            status_detail = "DLMS independent validation passed without warnings."
         else:
-            name = folder
-            pack_id = ""
-            detail = "Manifest failed validation or conflicts with another installed pack id."
-            try:
-                with open(manifest_path, "r", encoding="utf-8") as f:
-                    raw = json.load(f) or {}
-                name = raw.get("name") or folder
-                pack_id = str(raw.get("id") or "")
-            except Exception as exc:
-                detail = f"Manifest could not be read: {exc}"
-            rows.append({
-                "folder": folder, "id": pack_id, "name": name, "version": "",
-                "description": "", "domain": "Unknown", "matching_count": 0,
-                "image_count": 0, "mixed_count": 0, "dataset_count": 0,
-                "file_count": sum(len(files) for _, _, files in os.walk(root)),
-                "size": _format_bytes(_folder_size_bytes(root)),
-                "status": "Invalid", "status_detail": detail,
-                "protected": False, "generated_quizzes": 0,
-            })
+            status = "Invalid"
+            first_error = (report.get("errors") or ["Pack failed independent validation."])[0]
+            status_detail = first_error
+
+        try:
+            installed_at = datetime.fromtimestamp(os.path.getmtime(root)).strftime("%b %d, %Y %I:%M %p")
+        except OSError:
+            installed_at = "Unavailable"
+
+        rows.append({
+            "folder": folder,
+            "id": pack_id,
+            "name": manifest.get("name") or runtime_pack.get("name") or folder,
+            "version": manifest.get("version") or runtime_pack.get("version") or "",
+            "description": manifest.get("description") or runtime_pack.get("description") or "",
+            "domain": manifest.get("content_domain") or manifest.get("extends") or "General",
+            "matching_count": matching,
+            "image_count": image,
+            "mixed_count": mixed,
+            "dataset_count": matching + image + mixed,
+            "file_count": sum(len(files) for _, _, files in os.walk(root)),
+            "size": _format_bytes(_folder_size_bytes(root)),
+            "status": status,
+            "status_detail": status_detail,
+            "protected": protected,
+            "generated_quizzes": generated,
+            "warning_count": warning_count,
+            "error_count": error_count,
+            "validation_report": report,
+            "installed_at": installed_at,
+            "exportable": bool(report.get("valid")),
+        })
     return rows
+
+
+def _content_pack_folder_report(folder):
+    """Safely load one installed pack folder and return its independent validation report."""
+    folder = str(folder or "").strip()
+    if not folder or folder in {".", ".."} or os.path.basename(folder) != folder:
+        raise ValueError("Invalid Content Pack folder")
+    root = os.path.realpath(os.path.join(CONTENT_PACK_FOLDER, folder))
+    content_root = os.path.realpath(CONTENT_PACK_FOLDER)
+    if os.path.dirname(root) != content_root or not os.path.isdir(root):
+        raise FileNotFoundError("Content Pack folder was not found")
+    report = _validate_staged_content_pack(root)
+    pack_id = str(report.get("pack_id") or "").strip().lower()
+    discovered = get_content_pack(pack_id) if pack_id else None
+    if report.get("valid") and pack_id and (not discovered or os.path.realpath(discovered.get("_root") or "") != root):
+        report["valid"] = False
+        report.setdefault("errors", []).append("Pack is structurally valid but is not discoverable at runtime, usually because another installed folder uses the same pack id.")
+        report.setdefault("checks", []).append(_content_pack_validation_record("Runtime discovery", "FAIL", "pack id conflict or runtime discovery failure"))
+    report["folder"] = folder
+    report["root"] = root
+    report["file_count"] = sum(len(files) for _, _, files in os.walk(root))
+    report["size"] = _format_bytes(_folder_size_bytes(root))
+    report["generated_quizzes"] = _content_pack_tracked_quiz_count(pack_id) if pack_id and discovered else 0
+    try:
+        report["installed_at"] = datetime.fromtimestamp(os.path.getmtime(root)).strftime("%b %d, %Y %I:%M %p")
+    except OSError:
+        report["installed_at"] = "Unavailable"
+    return report
 
 
 def _is_medical_pack_manifest(pack_id, pack):
@@ -1572,6 +1626,7 @@ rebuildBtn.addEventListener("click", async () => {
 });
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """)
@@ -1820,7 +1875,8 @@ document.getElementById('saveEditsBtn').onclick=async()=>{try{const res=await fe
 document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));updatePrepVisibility();populateImages();
 const totalEditorHotspots=(EDITOR_DATA?.images||[]).reduce((n,im)=>n+((im.hotspots||[]).length),0);
 if(!totalEditorHotspots){document.getElementById('hotspotModeBtn').disabled=true;setMode('prep');setStatus('This question set has no clickable regions. Image Prep is available.');}else{setMode('hotspot');}
-</script></body></html>
+</script><script src="/static/nav-normalize.js"></script>
+</body></html>
 """
 
 
@@ -2794,6 +2850,7 @@ def content_pack_import_review(token):
 
 <section class="dashboard-panel pack-validation-panel">
 <div class="content-pack-manager-heading"><div><span class="medical-eyebrow">DLMS VALIDATION</span><h2>Validation Report</h2></div><span class="pack-count-pill">{{ report.dataset_count }} dataset{{ '' if report.dataset_count == 1 else 's' }}</span></div>
+<div class="pack-validation-summary-grid"><div><span>Passed</span><strong>{{ report.checks|selectattr('status','equalto','PASS')|list|length }}</strong></div><div><span>Warnings</span><strong>{{ report.warnings|length }}</strong></div><div><span>Errors</span><strong>{{ report.errors|length }}</strong></div></div>
 <div class="pack-validation-checks">
 {% for check in report.checks %}
 <div class="pack-validation-check"><span class="pack-validation-state {{ check.status|lower }}">{{ check.status }}</span><strong>{{ check.name }}</strong><span>{{ check.detail }}</span></div>
@@ -2821,6 +2878,7 @@ def content_pack_import_review(token):
 </section>
 </main></div>
 <script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script>
+<script src="/static/nav-normalize.js"></script>
 </body></html>
 """, token=token, metadata=metadata, report=report, medical_pack_installed=True)
 
@@ -2889,6 +2947,81 @@ def content_pack_import_cancel(token):
     return redirect("/content-packs")
 
 
+@app.route("/content-packs/details/<folder>")
+def content_pack_details(folder):
+    try:
+        report = _content_pack_folder_report(folder)
+    except Exception as exc:
+        flash(f"Content Pack details are unavailable: {exc}", "error")
+        return redirect("/content-packs")
+    manifest = report.get("manifest") or {}
+    matching = len(manifest.get("datasets") or []) if isinstance(manifest.get("datasets") or [], list) else 0
+    image = len(manifest.get("image_datasets") or []) if isinstance(manifest.get("image_datasets") or [], list) else 0
+    mixed = len(manifest.get("quiz_datasets") or []) if isinstance(manifest.get("quiz_datasets") or [], list) else 0
+    return render_template_string(r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Content Pack Details - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home content-packs-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+<div class="dashboard-brand"><div class="dashboard-brand-mark">⬡</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<nav class="dashboard-nav">
+<a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+<a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+<a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+<a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+<a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+<a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+<a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+<div class="dashboard-nav-group"><a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a><div class="dashboard-nav-submenu"><a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a><a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a></div></div>
+</nav>
+<div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system">
+<a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+<a class="dashboard-nav-item active" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+<a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+<a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+<a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+</nav><div class="dashboard-sidebar-version">Pack Details</div></aside>
+<main class="dashboard-main content-packs-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">CONTENT PACK REPORT</div><h1>{{ report.pack_name }}</h1><p>Installed Study Pack metadata and independent DLMS validation.</p></div></header>
+<section class="dashboard-panel pack-detail-hero"><div><span class="medical-eyebrow">{{ manifest.get('content_domain') or manifest.get('extends') or 'GENERAL' }}{% if manifest.get('version') %} · v{{ manifest.get('version') }}{% endif %}</span><h2>{{ report.pack_name }}</h2><p>{{ manifest.get('description') or 'No pack description provided.' }}</p></div><span class="content-pack-status {{ 'is-valid' if report.valid else 'is-invalid' }}">{{ 'Valid' if report.valid else 'Invalid' }}</span></section>
+<section class="pack-detail-stat-grid"><article class="dashboard-stat-card"><span>Datasets</span><strong>{{ matching + image + mixed }}</strong><small>{{ matching }} matching · {{ image }} image · {{ mixed }} mixed</small></article><article class="dashboard-stat-card"><span>Storage</span><strong>{{ report.size }}</strong><small>{{ report.file_count }} files</small></article><article class="dashboard-stat-card"><span>Generated Quizzes</span><strong>{{ report.generated_quizzes }}</strong><small>tracked from this pack</small></article><article class="dashboard-stat-card"><span>Warnings</span><strong>{{ report.warnings|length }}</strong><small>{{ report.errors|length }} blocking errors</small></article></section>
+<section class="dashboard-panel pack-validation-panel"><div class="content-pack-manager-heading"><div><span class="medical-eyebrow">INDEPENDENT VALIDATION</span><h2>Validation Report</h2></div><span class="pack-count-pill">{{ report.checks|length }} checks</span></div><div class="pack-validation-checks">{% for check in report.checks %}<div class="pack-validation-check"><span class="pack-validation-state {{ check.status|lower }}">{{ check.status }}</span><strong>{{ check.name }}</strong><span>{{ check.detail }}</span></div>{% endfor %}</div>{% if report.errors %}<div class="pack-validation-messages errors"><h3>Blocking problems</h3><ul>{% for item in report.errors %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}{% if report.warnings %}<div class="pack-validation-messages warnings"><h3>Warnings</h3><ul>{% for item in report.warnings %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}</section>
+<section class="dashboard-panel pack-detail-meta"><div><strong>Pack ID</strong><span>{{ report.pack_id or 'Unavailable' }}</span></div><div><strong>Folder</strong><span>{{ report.folder }}</span></div><div><strong>Installed / modified</strong><span>{{ report.installed_at }}</span></div><div><strong>Schema</strong><span>{{ manifest.get('schema_version', 'Unavailable') }}</span></div></section>
+<section class="pack-detail-actions"><a class="medical-ai-secondary-button" href="/content-packs">← Back to Content Packs</a>{% if report.valid %}<a class="medical-primary-button" href="/content-packs/export/{{ report.folder }}">Export Study Pack ZIP</a>{% endif %}</section>
+</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script>
+</body></html>
+""", report=report, manifest=manifest, matching=matching, image=image, mixed=mixed, medical_pack_installed=True)
+
+
+@app.route("/content-packs/export/<folder>")
+def export_content_pack(folder):
+    try:
+        report = _content_pack_folder_report(folder)
+        if not report.get("valid"):
+            raise ValueError("invalid Study Packs cannot be exported until validation errors are corrected")
+        pack_root = report["root"]
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            for walk_root, dirs, files in os.walk(pack_root):
+                dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(walk_root, d))]
+                for name in files:
+                    source = os.path.join(walk_root, name)
+                    if os.path.islink(source) or not os.path.isfile(source):
+                        continue
+                    relative = os.path.relpath(source, pack_root).replace(os.sep, "/")
+                    zf.write(source, arcname=f"{folder}/{relative}")
+        archive.seek(0)
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", folder).strip("._") or "DLMS_Study_Pack"
+        return Response(
+            archive.getvalue(),
+            mimetype="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'}
+        )
+    except Exception as exc:
+        flash(f"Study Pack export failed: {exc}", "error")
+        return redirect("/content-packs")
+
+
 @app.route("/content-packs")
 def content_packs_page():
     packs = content_pack_management_summary()
@@ -2925,12 +3058,18 @@ def content_packs_page():
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <div class="dashboard-nav-submenu"><a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a><a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a></div>
+            </div>
         </nav>
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system">
             <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
             <a class="dashboard-nav-item active" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
         <div class="dashboard-sidebar-version">Content Packs</div>
     </aside>
@@ -3009,7 +3148,7 @@ def content_packs_page():
                             </div>
                         </td>
                         <td>
-                            <span class="content-pack-status {{ 'is-valid' if pack.status == 'Valid' else 'is-invalid' }}">{{ pack.status }}</span>
+                            <span class="content-pack-status {{ 'is-invalid' if pack.status == 'Invalid' else ('is-warning' if pack.warning_count else 'is-valid') }}">{{ pack.status }}</span>
                             {% if pack.protected %}<span class="content-pack-protected">Protected</span>{% endif %}
                         </td>
                         <td>
@@ -3027,10 +3166,11 @@ def content_packs_page():
                         </td>
                         <td class="content-pack-actions-col">
                             <div class="content-pack-actions">
-                                {% if pack.status == 'Valid' %}
+                                {% if pack.exportable %}
                                 <a class="content-pack-action" href="/study-packs">Open</a>
+                                <a class="content-pack-action" href="/content-packs/export/{{ pack.folder }}">Export</a>
                                 {% endif %}
-                                <button type="button" class="content-pack-action" onclick="togglePackDetails('{{ loop.index }}')">Details</button>
+                                <a class="content-pack-action" href="/content-packs/details/{{ pack.folder }}">Details</a>
                                 {% if pack.protected %}
                                 <span class="content-pack-action disabled">Delete</span>
                                 {% else %}
@@ -3039,16 +3179,12 @@ def content_packs_page():
                             </div>
                         </td>
                     </tr>
-                    <tr class="content-pack-detail-row" id="packDetails{{ loop.index }}" hidden>
-                        <td colspan="6">
-                            <div class="content-pack-details">
-                                <div><strong>Pack ID</strong><span>{{ pack.id or 'Unavailable' }}</span></div>
-                                <div><strong>Datasets</strong><span>{{ pack.dataset_count }}</span></div>
-                                <div><strong>Validation</strong><span>{{ pack.status_detail }}</span></div>
-                                <div><strong>Deletion behavior</strong><span>{% if pack.protected %}This pack explicitly declares itself protected in its manifest.{% else %}Source files are removed; generated quizzes and history remain. Legacy image references are snapshotted first.{% endif %}</span></div>
-                            </div>
-                            {% if pack.description %}<p class="content-pack-description">{{ pack.description }}</p>{% endif %}
-                        </td>
+                    <tr class="content-pack-detail-row content-pack-inline-status-row">
+                        <td colspan="6"><div class="content-pack-inline-status">
+                            <span>{{ pack.status_detail }}</span>
+                            {% if pack.warning_count %}<span class="content-pack-inline-warning">{{ pack.warning_count }} warning{{ '' if pack.warning_count == 1 else 's' }}</span>{% endif %}
+                            {% if pack.error_count %}<span class="content-pack-inline-error">{{ pack.error_count }} error{{ '' if pack.error_count == 1 else 's' }}</span>{% endif %}
+                        </div></td>
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -3089,10 +3225,6 @@ const menuButton=document.getElementById("menuButton");
 const sidebar=document.getElementById("dashboardSidebar");
 if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
 
-function togglePackDetails(index){
-    const row=document.getElementById(`packDetails${index}`);
-    if(row) row.hidden=!row.hidden;
-}
 function openDeletePack(folder,name){
     document.getElementById("deletePackFolder").value=folder;
     document.getElementById("deletePackMessage").textContent=`Delete “${name}” from installed Content Packs?`;
@@ -3108,6 +3240,7 @@ document.getElementById("deletePackDialog")?.addEventListener("click",(event)=>{
     if(event.target.id==="deletePackDialog") closeDeletePack();
 });
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body></html>
     """, packs=packs, pack_folder=CONTENT_PACK_FOLDER, medical_pack_installed=True)
 
@@ -3598,6 +3731,7 @@ document.getElementById("menuButton")?.addEventListener("click", () => {
     document.getElementById("dashboardSidebar")?.classList.toggle("open");
 });
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """
@@ -3633,15 +3767,19 @@ _MEDICAL_SIDEBAR = r"""
                {% if medical_section == "anatomy" %}aria-current="page"{% endif %}>
                 <span class="dashboard-nav-subicon">◎</span><span>Anatomy &amp; Images</span>
             </a>
+            <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
         </div>
         <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
         <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        <div class="dashboard-nav-group"><a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a><div class="dashboard-nav-submenu"><a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a><a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a></div></div>
     </nav>
     <div class="dashboard-nav-section-label"><span>System</span></div>
     <nav class="dashboard-nav dashboard-nav-system">
         <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
         <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
         <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
     <div class="dashboard-sidebar-version">{{ pack.name }} v{{ pack.version }}</div>
 </aside>
@@ -3741,6 +3879,7 @@ const menuButton=document.getElementById("menuButton");
 const sidebar=document.getElementById("dashboardSidebar");
 if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body></html>
 """
     return render_template_string(
@@ -3922,6 +4061,7 @@ document.querySelectorAll("[data-medical-collapse]").forEach(button=>{
     });
 });
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body></html>
 """
     return render_template_string(
@@ -4097,6 +4237,7 @@ document.querySelectorAll("[data-medical-collapse]").forEach(button=>{
     });
 });
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body></html>
 """
     return render_template_string(
@@ -4579,15 +4720,19 @@ def study_packs_home():
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
         <a class="dashboard-nav-item active" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
         {% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}
         <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
         <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        <div class="dashboard-nav-group"><a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a><div class="dashboard-nav-submenu"><a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a><a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a></div></div>
     </nav>
     <div class="dashboard-nav-section-label"><span>System</span></div>
     <nav class="dashboard-nav dashboard-nav-system">
         <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
         <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
         <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
     <div class="dashboard-sidebar-version">Study Packs</div>
 </aside>
@@ -4778,6 +4923,7 @@ function toggleDatasetDetails(id){
     if(row) row.hidden=!row.hidden;
 }
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """, packs=packs, medical_pack_installed=True)
@@ -5062,6 +5208,7 @@ document.getElementById('studyDomain')?.addEventListener('change', (event) => {
     document.getElementById('medicalGuardrailNotice')?.classList.toggle('is-hidden', event.target.value !== 'Medical');
 });
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """,
@@ -5246,6 +5393,7 @@ document.getElementById("shutdownBtn").addEventListener("click", async () => {
     }
 });
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """, portal_title=portal_title, law_registry=law_registry, saved_cases=saved_cases, course_count=course_count)
@@ -5590,6 +5738,7 @@ if (shutdownBtn) {
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>""",
     portal_title=portal_title,
@@ -6087,6 +6236,7 @@ if (shutdownBtn) {
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>""",
     portal_title=portal_title,
@@ -6286,6 +6436,7 @@ if (shutdownBtn) {
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>""",
     portal_title=portal_title,
@@ -6451,6 +6602,7 @@ if (shutdownBtn) {
     });
 }
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """,
@@ -6778,6 +6930,7 @@ if (shutdownBtn) {
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>""",
     portal_title=portal_title,
@@ -7352,6 +7505,7 @@ if (shutdownBtn) {
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """,
@@ -7901,6 +8055,7 @@ if (shutdownBtn) {
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """, quiz=quiz, questions=question_list, exam_minutes=exam_minutes, app_version=APP_VERSION)
@@ -9898,6 +10053,7 @@ if (menuButton && sidebar) {
     });
 }
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """, quizzes=quizzes, grouped_quizzes=grouped_quizzes, folder_names=folder_names,
@@ -10154,7 +10310,8 @@ function collect(){const images=DRAFT.images.map(i=>{const alt=document.querySel
 document.getElementById('addQuestionBtn').onclick=addQuestion;document.getElementById('builderForm').addEventListener('submit',ev=>{const p=collect();if(!p.questions.length){ev.preventDefault();alert('Add at least one question.');return}for(let i=0;i<p.questions.length;i++){const q=p.questions[i];if(!q.question){ev.preventDefault();alert(`Question ${i+1} needs question text.`);return}if(q.type==='choice'&&(!q.choices||q.choices.length<2||!q.choices.some(c=>c.is_correct))){ev.preventDefault();alert(`Question ${i+1} needs at least two choices and one correct answer.`);return}if(q.type==='matching'&&(!q.pairs||q.pairs.length<2||q.pairs.some(x=>!x.left||!x.right))){ev.preventDefault();alert(`Question ${i+1} needs at least two complete matching pairs.`);return}if(q.type==='hotspot'&&(!q.target_label||!q.shape||(q.shape.type==='polygon'&&q.shape.points.length<3))){ev.preventDefault();alert(`Question ${i+1} needs a target label and valid hotspot region.`);return}}document.getElementById('builderPayload').value=JSON.stringify(p)});addQuestion();
 </script>
 {% endif %}
-</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script></body></html>
+</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script>
+</body></html>
 """
 
 @app.route("/upload")
@@ -10329,6 +10486,7 @@ if (shutdownBtn) {
     });
 }
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
     """, portal_title=portal_title)
@@ -10517,6 +10675,7 @@ if (shutdownBtn) {
     });
 }
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
     """, portal_title=portal_title, cfg=cfg)
@@ -10714,6 +10873,7 @@ if (shutdownBtn) {
     });
 }
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
     """)
@@ -11199,6 +11359,7 @@ if (shutdownBtn) {
     });
 }
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
     """,
@@ -12224,6 +12385,7 @@ function runDiff() {
         <button onclick="location.href='/'">🏠 Return To Dashboard</button>
     </div>
 </div>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """,
@@ -12402,7 +12564,8 @@ def process_paste():
                 </button>
             </div>
         </div>
-        </body>
+        <script src="/static/nav-normalize.js"></script>
+</body>
         </html>
         """, log_filename=log_filename), 400
 
@@ -12600,7 +12763,8 @@ def process_file():
                 </button>
             </div>
         </div>
-        </body>
+        <script src="/static/nav-normalize.js"></script>
+</body>
         </html>
         """, log_filename=log_filename), 400
 
@@ -12771,6 +12935,7 @@ def settings_page():
         <strong>Settings migration complete:</strong> Appearance, AI Integration, Parsing, Data &amp; History, and Reset &amp; Recovery now have dedicated pages. The original settings page remains available at <code>/settings/legacy</code> during this test phase as a hidden safety fallback.
     </div>
 </div>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """)
@@ -12864,6 +13029,7 @@ def settings_appearance_page():
         <strong>Safe migration behavior:</strong> saving this page changes only the dashboard title and background image. It does not touch parsing or AI settings.
     </div>
 </div>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """, cfg=cfg)
@@ -13095,6 +13261,7 @@ if (resetLawPromptBtn && lawAIPromptTemplate) {
     });
 }
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """, cfg=cfg, law_default_prompt=DEFAULT_LAW_AI_PROMPT)
@@ -13255,6 +13422,7 @@ def settings_parsing_page():
         <strong>Safe migration behavior:</strong> saving this page changes only parsing-related configuration. Appearance and AI settings are not modified.
     </div>
 </div>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """, cfg=cfg)
@@ -13364,6 +13532,7 @@ clearDBBtn.addEventListener("click", async () => {
     }
 });
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """)
@@ -13464,6 +13633,7 @@ Continue?`)) return;
     }
 });
 </script>
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """)
@@ -13864,6 +14034,7 @@ Continue?`)) return;
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 
@@ -15520,6 +15691,7 @@ if (window.location.hash === "#ankiPreview") {
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """,
@@ -15853,6 +16025,7 @@ if (window.location.hash === "#ankiPreview" || {{ "true" if preview_requested el
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """,
@@ -16211,6 +16384,7 @@ if (window.location.search.includes("preview=1")) {
 }
 </script>
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """,
@@ -17424,6 +17598,7 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
 <script src="/static/script.js"></script>
 
 
+<script src="/static/nav-normalize.js"></script>
 </body>
 </html>
 """
