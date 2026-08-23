@@ -8241,3 +8241,51 @@ a.settings-hub-card:hover {
 }
 
 .dashboard-nav-submenu.normalized-open { display: block; }
+
+
+/* =========================================================
+   BUTTON-LINK STATE NORMALIZATION
+   Prevent global/visited link colors from overriding button-like anchors.
+   ========================================================= */
+a.medical-ai-secondary-button,
+a.medical-ai-secondary-button:link,
+a.medical-ai-secondary-button:visited,
+a.medical-primary-button,
+a.medical-primary-button:link,
+a.medical-primary-button:visited {
+    color: #ffffff !important;
+    text-decoration: none !important;
+}
+
+a.medical-ai-secondary-button:hover,
+a.medical-ai-secondary-button:active,
+a.medical-primary-button:hover,
+a.medical-primary-button:active {
+    color: #ffffff !important;
+    text-decoration: none !important;
+}
+
+a.medical-ai-secondary-button:hover {
+    background: linear-gradient(135deg, var(--blue-1), var(--blue-2));
+    border-color: rgba(110,180,255,.46);
+}
+
+.pack-detail-actions > a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.pack-detail-actions > a:link,
+.pack-detail-actions > a:visited,
+.pack-detail-actions > a:hover,
+.pack-detail-actions > a:active {
+    color: #ffffff !important;
+    text-decoration: none !important;
+}
+
+/* Informational validation state for legacy/hand-built packs. */
+.pack-validation-state.info {
+    color: #9fd4ff;
+    border-color: rgba(96,165,250,.34);
+    background: rgba(20,72,120,.30);
+}

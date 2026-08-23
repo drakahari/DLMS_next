@@ -1158,8 +1158,11 @@ def _validate_staged_content_pack(pack_root):
                 warnings.append("PACK_VALIDATION.json self-check needs review: " + ai_detail)
         checks.append(_content_pack_validation_record("AI self-validation", ai_status, ai_detail))
     else:
-        warnings.append("PACK_VALIDATION.json is not included (optional for hand-built packs; required by current AI Builder prompt)")
-        checks.append(_content_pack_validation_record("AI self-validation", "WARN", "not present"))
+        checks.append(_content_pack_validation_record(
+            "Validation metadata",
+            "INFO",
+            "PACK_VALIDATION.json not present; optional for legacy/hand-built packs. Current AI Builder outputs include it."
+        ))
 
     checks.append(_content_pack_validation_record(
         "JSON parse check", "PASS" if not any("valid JSON" in e for e in errors) else "FAIL",
