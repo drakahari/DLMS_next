@@ -1,5 +1,5 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -219,6 +219,7 @@ BACKGROUND_FOLDER = os.path.join(APP_DATA_DIR, "static", "bg")
 CONTENT_PACK_FOLDER = os.path.join(APP_DATA_DIR, "content_packs")
 QUIZ_ASSET_FOLDER = os.path.join(APP_DATA_DIR, "quiz_assets")
 IMAGE_BUILDER_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "image_builder_drafts")
+CONTENT_PACK_STAGING_FOLDER = os.path.join(APP_DATA_DIR, "content_pack_staging")
 
 
 for d in [
@@ -230,6 +231,7 @@ for d in [
     CONTENT_PACK_FOLDER,
     QUIZ_ASSET_FOLDER,
     IMAGE_BUILDER_DRAFT_FOLDER,
+    CONTENT_PACK_STAGING_FOLDER,
     LOGO_FOLDER,
     LAW_FOLDER,
     LAW_CASES_FOLDER,
@@ -834,6 +836,357 @@ def _format_bytes(value):
         if value < 1024 or unit == "GB":
             return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
         value /= 1024
+
+
+
+CONTENT_PACK_IMPORT_MAX_FILES = 1000
+CONTENT_PACK_IMPORT_MAX_UNCOMPRESSED = 512 * 1024 * 1024
+CONTENT_PACK_IMPORT_MAX_SINGLE_FILE = 128 * 1024 * 1024
+CONTENT_PACK_IMPORT_TOKEN_RE = re.compile(r"^[a-f0-9]{32}$")
+
+
+def _content_pack_validation_record(name, status, detail):
+    return {"name": str(name), "status": str(status), "detail": str(detail)}
+
+
+def _safe_zip_member_name(name):
+    """Return a normalized safe archive member path or raise ValueError."""
+    raw = str(name or "").replace("\\", "/")
+    if not raw or raw.startswith("/") or re.match(r"^[A-Za-z]:/", raw):
+        raise ValueError("archive contains an absolute path")
+    parts = [p for p in raw.split("/") if p not in {"", "."}]
+    if not parts or any(p == ".." for p in parts):
+        raise ValueError("archive contains an unsafe relative path")
+    return "/".join(parts)
+
+
+def _inspect_content_pack_zip(zip_path):
+    """Security-check a pack ZIP and return its single top-level folder name."""
+    total_size = 0
+    file_count = 0
+    top_levels = set()
+    seen_names = set()
+
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        infos = archive.infolist()
+        if not infos:
+            raise ValueError("ZIP is empty")
+
+        for info in infos:
+            normalized = _safe_zip_member_name(info.filename)
+            top_levels.add(normalized.split("/", 1)[0])
+
+            # Reject duplicate normalized paths and Unix symlinks.
+            key = normalized.casefold()
+            if key in seen_names:
+                raise ValueError(f"ZIP contains duplicate path: {normalized}")
+            seen_names.add(key)
+            unix_mode = (info.external_attr >> 16) & 0xFFFF
+            if (unix_mode & 0o170000) == 0o120000:
+                raise ValueError(f"ZIP contains a symbolic link: {normalized}")
+
+            if info.is_dir():
+                continue
+            file_count += 1
+            total_size += int(info.file_size or 0)
+            if file_count > CONTENT_PACK_IMPORT_MAX_FILES:
+                raise ValueError(f"ZIP contains more than {CONTENT_PACK_IMPORT_MAX_FILES} files")
+            if int(info.file_size or 0) > CONTENT_PACK_IMPORT_MAX_SINGLE_FILE:
+                raise ValueError(f"ZIP member is too large: {normalized}")
+            if total_size > CONTENT_PACK_IMPORT_MAX_UNCOMPRESSED:
+                raise ValueError("ZIP expands beyond the permitted size limit")
+
+    if len(top_levels) != 1:
+        raise ValueError("ZIP must contain exactly one top-level Study Pack folder")
+    root_name = next(iter(top_levels))
+    if root_name in {".", ".."} or not root_name.strip():
+        raise ValueError("ZIP top-level folder name is invalid")
+    return {"root_name": root_name, "file_count": file_count, "uncompressed_bytes": total_size}
+
+
+def _extract_content_pack_zip(zip_path, stage_root):
+    """Safely extract a previously inspected Study Pack ZIP."""
+    os.makedirs(stage_root, exist_ok=False)
+    real_stage = os.path.realpath(stage_root)
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        for info in archive.infolist():
+            normalized = _safe_zip_member_name(info.filename)
+            target = os.path.realpath(os.path.join(stage_root, normalized))
+            if target != real_stage and not target.startswith(real_stage + os.sep):
+                raise ValueError("ZIP path escapes staging directory")
+            if info.is_dir():
+                os.makedirs(target, exist_ok=True)
+                continue
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with archive.open(info, "r") as src, open(target, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+
+def _read_json_file(path, label, errors):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        errors.append(f"{label} is not valid JSON: {exc}")
+        return None
+
+
+def _validate_staged_content_pack(pack_root):
+    """Independently validate a staged pack before installation."""
+    errors, warnings, checks = [], [], []
+    pack_root = os.path.realpath(pack_root)
+    manifest_path = os.path.join(pack_root, "manifest.json")
+
+    if not os.path.isfile(manifest_path):
+        errors.append("Top-level Study Pack folder is missing manifest.json")
+        return {"valid": False, "errors": errors, "warnings": warnings, "checks": checks, "manifest": {}}
+
+    manifest = _read_json_file(manifest_path, "manifest.json", errors)
+    if not isinstance(manifest, dict):
+        if manifest is not None:
+            errors.append("manifest.json must contain a JSON object")
+        return {"valid": False, "errors": errors, "warnings": warnings, "checks": checks, "manifest": {}}
+
+    schema = manifest.get("schema_version")
+    if schema == CONTENT_PACK_SCHEMA_VERSION:
+        checks.append(_content_pack_validation_record("Manifest schema", "PASS", f"schema_version {schema}"))
+    else:
+        errors.append(f"manifest schema_version must be {CONTENT_PACK_SCHEMA_VERSION}")
+        checks.append(_content_pack_validation_record("Manifest schema", "FAIL", f"found {schema!r}"))
+
+    pack_id = str(manifest.get("id") or "").strip().lower()
+    if re.fullmatch(r"[a-z0-9][a-z0-9_-]*", pack_id):
+        checks.append(_content_pack_validation_record("Pack ID", "PASS", pack_id))
+    else:
+        errors.append("manifest id must use lowercase letters, numbers, _ or -")
+        checks.append(_content_pack_validation_record("Pack ID", "FAIL", pack_id or "missing"))
+
+    descriptor_groups = [
+        ("datasets", "matching"),
+        ("image_datasets", "hotspot"),
+        ("quiz_datasets", "mixed"),
+    ]
+    descriptor_ids = set()
+    declared_paths = []
+    all_descriptors_valid = True
+    parsed_dataset_files = []
+
+    for key, kind in descriptor_groups:
+        entries = manifest.get(key) or []
+        if not isinstance(entries, list):
+            errors.append(f"{key} must be a list")
+            all_descriptors_valid = False
+            continue
+        for index, descriptor in enumerate(entries, 1):
+            if not isinstance(descriptor, dict):
+                errors.append(f"{key}[{index}] must be a descriptor object, not a path string")
+                all_descriptors_valid = False
+                continue
+            did = str(descriptor.get("id") or "").strip()
+            title = str(descriptor.get("title") or "").strip()
+            dtype = str(descriptor.get("type") or "").strip()
+            rel_path = str(descriptor.get("path") or "").strip()
+            if not did or not title or not dtype or not rel_path:
+                errors.append(f"{key}[{index}] requires id, title, type, and path")
+                all_descriptors_valid = False
+                continue
+            if did in descriptor_ids:
+                errors.append(f"duplicate dataset id: {did}")
+                all_descriptors_valid = False
+            descriptor_ids.add(did)
+            try:
+                dataset_path = _safe_pack_child(pack_root, rel_path)
+            except Exception:
+                errors.append(f"{key}[{index}] path escapes the pack: {rel_path}")
+                all_descriptors_valid = False
+                continue
+            declared_paths.append(rel_path)
+            if not os.path.isfile(dataset_path):
+                errors.append(f"declared dataset file is missing: {rel_path}")
+                all_descriptors_valid = False
+                continue
+            data = _read_json_file(dataset_path, rel_path, errors)
+            if isinstance(data, dict):
+                parsed_dataset_files.append((key, did, rel_path, data))
+
+    checks.append(_content_pack_validation_record(
+        "Dataset descriptors",
+        "PASS" if all_descriptors_valid else "FAIL",
+        f"{len(descriptor_ids)} descriptor(s) checked"
+    ))
+
+    # Validate dataset internals and all referenced image files.
+    referenced_files_ok = True
+    duplicates_ok = True
+    image_license_missing = 0
+    dataset_source_missing = 0
+
+    for group, did, rel_path, data in parsed_dataset_files:
+        if data.get("schema_version") != CONTENT_PACK_SCHEMA_VERSION:
+            errors.append(f"{rel_path}: schema_version must be {CONTENT_PACK_SCHEMA_VERSION}")
+
+        data_id = str(data.get("id") or "").strip()
+        if data_id and data_id != did:
+            errors.append(f"{rel_path}: dataset id {data_id!r} does not match manifest descriptor id {did!r}")
+
+        if not isinstance(data.get("source"), dict) or not data.get("source"):
+            dataset_source_missing += 1
+
+        if group == "datasets":
+            terms = data.get("terms") or []
+            if not isinstance(terms, list) or not terms:
+                errors.append(f"{rel_path}: matching dataset must contain terms")
+                continue
+            seen_terms, seen_definitions = set(), set()
+            for n, term in enumerate(terms, 1):
+                if not isinstance(term, dict):
+                    errors.append(f"{rel_path}: term {n} must be an object")
+                    continue
+                t = str(term.get("term") or "").strip()
+                d = str(term.get("definition") or "").strip()
+                if not t or not d:
+                    errors.append(f"{rel_path}: term {n} has an empty term or definition")
+                tk, dk = t.casefold(), d.casefold()
+                if tk in seen_terms or dk in seen_definitions:
+                    duplicates_ok = False
+                    errors.append(f"{rel_path}: duplicate term or definition detected near item {n}")
+                seen_terms.add(tk)
+                seen_definitions.add(dk)
+
+        elif group in {"image_datasets", "quiz_datasets"}:
+            images = data.get("images") or []
+            if group == "image_datasets" and (not isinstance(images, list) or not images):
+                errors.append(f"{rel_path}: image dataset must contain at least one image")
+                continue
+            if not isinstance(images, list):
+                errors.append(f"{rel_path}: images must be a list")
+                continue
+
+            image_ids = set()
+            for n, image in enumerate(images, 1):
+                if not isinstance(image, dict):
+                    errors.append(f"{rel_path}: image {n} must be an object")
+                    continue
+                image_id = str(image.get("id") or f"image_{n}").strip()
+                if image_id in image_ids:
+                    duplicates_ok = False
+                    errors.append(f"{rel_path}: duplicate image id {image_id}")
+                image_ids.add(image_id)
+                rel_image = str(image.get("file") or "").strip()
+                if not rel_image:
+                    errors.append(f"{rel_path}: image {n} is missing file")
+                    referenced_files_ok = False
+                    continue
+                try:
+                    image_path = _safe_pack_child(pack_root, rel_image)
+                except Exception:
+                    errors.append(f"{rel_path}: image path escapes pack: {rel_image}")
+                    referenced_files_ok = False
+                    continue
+                if not os.path.isfile(image_path):
+                    errors.append(f"{rel_path}: referenced image is missing: {rel_image}")
+                    referenced_files_ok = False
+
+                source = image.get("source") if isinstance(image.get("source"), dict) else {}
+                license_text = str(image.get("license") or source.get("license") or "").strip()
+                if not license_text:
+                    image_license_missing += 1
+
+                hotspots = image.get("hotspots") or []
+                if not isinstance(hotspots, list):
+                    errors.append(f"{rel_path}: hotspots for {rel_image} must be a list")
+                    continue
+                for h, hotspot in enumerate(hotspots, 1):
+                    if not isinstance(hotspot, dict):
+                        errors.append(f"{rel_path}: hotspot {h} for {rel_image} must be an object")
+                        continue
+                    shape = hotspot.get("shape")
+                    try:
+                        _validate_hotspot_shape(shape)
+                    except Exception as exc:
+                        errors.append(f"{rel_path}: invalid hotspot geometry for {rel_image}: {exc}")
+
+            if group == "quiz_datasets":
+                questions = data.get("questions") or []
+                if not isinstance(questions, list) or not questions:
+                    errors.append(f"{rel_path}: mixed question dataset must contain questions")
+
+    checks.append(_content_pack_validation_record(
+        "Referenced files", "PASS" if referenced_files_ok else "FAIL",
+        "all declared dataset/image paths resolved" if referenced_files_ok else "one or more files are missing or unsafe"
+    ))
+    checks.append(_content_pack_validation_record(
+        "Duplicate IDs / terms", "PASS" if duplicates_ok else "FAIL",
+        "no duplicate dataset/image IDs or matching terms/definitions found" if duplicates_ok else "duplicates were detected"
+    ))
+
+    if image_license_missing:
+        warnings.append(f"{image_license_missing} image record(s) do not contain explicit license metadata")
+        checks.append(_content_pack_validation_record("Image licenses", "WARN", f"{image_license_missing} image record(s) need review"))
+    else:
+        checks.append(_content_pack_validation_record("Image licenses", "PASS", "all image records include license metadata or no images are present"))
+
+    if dataset_source_missing:
+        warnings.append(f"{dataset_source_missing} dataset file(s) do not contain top-level source metadata")
+        checks.append(_content_pack_validation_record("Dataset sources", "WARN", f"{dataset_source_missing} dataset(s) need source review"))
+    else:
+        checks.append(_content_pack_validation_record("Dataset sources", "PASS", "top-level source metadata present"))
+
+    # AI self-validation is informative only; DLMS never trusts it in place of its own validation.
+    ai_validation_path = os.path.join(pack_root, "PACK_VALIDATION.json")
+    if os.path.isfile(ai_validation_path):
+        ai_validation = _read_json_file(ai_validation_path, "PACK_VALIDATION.json", warnings)
+        checks.append(_content_pack_validation_record(
+            "AI validation file", "PASS" if isinstance(ai_validation, dict) else "WARN",
+            "present; independently revalidated by DLMS"
+        ))
+    else:
+        warnings.append("PACK_VALIDATION.json is not included (optional for hand-built packs; required by current AI Builder prompt)")
+        checks.append(_content_pack_validation_record("AI validation file", "WARN", "not present"))
+
+    checks.append(_content_pack_validation_record(
+        "JSON parse check", "PASS" if not any("valid JSON" in e for e in errors) else "FAIL",
+        f"{1 + len(parsed_dataset_files)} JSON file(s) inspected"
+    ))
+    checks.append(_content_pack_validation_record("Top-level folder", "PASS", os.path.basename(pack_root)))
+
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "checks": checks,
+        "manifest": manifest,
+        "pack_id": pack_id,
+        "pack_name": str(manifest.get("name") or pack_id or os.path.basename(pack_root)),
+        "dataset_count": len(descriptor_ids),
+    }
+
+
+def _content_pack_stage_path(token):
+    if not CONTENT_PACK_IMPORT_TOKEN_RE.fullmatch(str(token or "")):
+        raise ValueError("Invalid import token")
+    return os.path.join(CONTENT_PACK_STAGING_FOLDER, token)
+
+
+def _load_staged_content_pack(token):
+    stage_dir = _content_pack_stage_path(token)
+    metadata_path = os.path.join(stage_dir, "stage.json")
+    if not os.path.isfile(metadata_path):
+        raise FileNotFoundError("Staged Content Pack was not found or has expired")
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+    pack_root = _safe_pack_child(stage_dir, metadata["root_name"])
+    if not os.path.isdir(pack_root):
+        raise FileNotFoundError("Staged Content Pack root folder is missing")
+    return stage_dir, pack_root, metadata
+
+
+def _remove_content_pack_stage(token):
+    try:
+        stage_dir = _content_pack_stage_path(token)
+    except Exception:
+        return
+    shutil.rmtree(stage_dir, ignore_errors=True)
 
 
 def content_pack_management_summary():
@@ -2344,6 +2697,198 @@ def home():
 # =========================
 # CONTENT PACKS - STATUS
 # =========================
+
+@app.route("/content-packs/import", methods=["POST"])
+def content_pack_import():
+    upload = request.files.get("pack_zip")
+    if not upload or not upload.filename:
+        flash("Choose a DLMS Study Pack ZIP to validate.", "error")
+        return redirect("/content-packs")
+    if not str(upload.filename).lower().endswith(".zip"):
+        flash("Content Packs must be uploaded as ZIP files.", "error")
+        return redirect("/content-packs")
+
+    if request.content_length and request.content_length > 256 * 1024 * 1024:
+        flash("Study Pack ZIP is too large. Maximum upload size is 256 MB.", "error")
+        return redirect("/content-packs")
+
+    token = secrets.token_hex(16)
+    stage_dir = _content_pack_stage_path(token)
+    os.makedirs(stage_dir, exist_ok=False)
+    zip_path = os.path.join(stage_dir, "upload.zip")
+
+    try:
+        upload.save(zip_path)
+        if not zipfile.is_zipfile(zip_path):
+            raise ValueError("uploaded file is not a valid ZIP archive")
+        inspection = _inspect_content_pack_zip(zip_path)
+        extract_root = os.path.join(stage_dir, "extracted")
+        _extract_content_pack_zip(zip_path, extract_root)
+        pack_root = _safe_pack_child(extract_root, inspection["root_name"])
+        report = _validate_staged_content_pack(pack_root)
+
+        metadata = {
+            "token": token,
+            "root_name": inspection["root_name"],
+            "extract_root": "extracted",
+            "uploaded_name": secure_filename(upload.filename) or "study_pack.zip",
+            "file_count": inspection["file_count"],
+            "uncompressed_bytes": inspection["uncompressed_bytes"],
+            "report": report,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        # Store only relative pack-root information; never trust client paths.
+        metadata["root_name"] = f"extracted/{inspection['root_name']}"
+        with open(os.path.join(stage_dir, "stage.json"), "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+        return redirect(url_for("content_pack_import_review", token=token))
+    except Exception as exc:
+        shutil.rmtree(stage_dir, ignore_errors=True)
+        flash(f"Study Pack ZIP could not be validated: {exc}", "error")
+        return redirect("/content-packs")
+
+
+@app.route("/content-packs/import/<token>")
+def content_pack_import_review(token):
+    try:
+        stage_dir, pack_root, metadata = _load_staged_content_pack(token)
+        # Revalidate on every review instead of trusting the saved report.
+        report = _validate_staged_content_pack(pack_root)
+        metadata["report"] = report
+    except Exception as exc:
+        flash(f"Study Pack validation session is unavailable: {exc}", "error")
+        return redirect("/content-packs")
+
+    return render_template_string(r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Validate Content Pack - DLMS</title>
+<link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home content-packs-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+<div class="dashboard-brand"><div class="dashboard-brand-mark">✓</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<nav class="dashboard-nav">
+<a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+<a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+<a class="dashboard-nav-item active" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+</nav>
+<div class="dashboard-sidebar-version">Pack Validation</div>
+</aside>
+<main class="dashboard-main content-packs-main">
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">CONTENT PACK IMPORT</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
+
+<section class="dashboard-panel pack-review-summary">
+<div>
+<span class="medical-eyebrow">{{ 'READY TO INSTALL' if report.valid else 'INSTALL BLOCKED' }}</span>
+<h2>{{ report.pack_name or metadata.uploaded_name }}</h2>
+<p>{{ metadata.uploaded_name }} · {{ metadata.file_count }} files · {{ "%.1f"|format(metadata.uncompressed_bytes / 1048576) }} MB expanded</p>
+</div>
+<span class="content-pack-status {{ 'is-valid' if report.valid else 'is-invalid' }}">{{ 'Valid' if report.valid else 'Invalid' }}</span>
+</section>
+
+<section class="dashboard-panel pack-validation-panel">
+<div class="content-pack-manager-heading"><div><span class="medical-eyebrow">DLMS VALIDATION</span><h2>Validation Report</h2></div><span class="pack-count-pill">{{ report.dataset_count }} dataset{{ '' if report.dataset_count == 1 else 's' }}</span></div>
+<div class="pack-validation-checks">
+{% for check in report.checks %}
+<div class="pack-validation-check"><span class="pack-validation-state {{ check.status|lower }}">{{ check.status }}</span><strong>{{ check.name }}</strong><span>{{ check.detail }}</span></div>
+{% endfor %}
+</div>
+{% if report.errors %}
+<div class="pack-validation-messages errors"><h3>Blocking problems</h3><ul>{% for item in report.errors %}<li>{{ item }}</li>{% endfor %}</ul></div>
+{% endif %}
+{% if report.warnings %}
+<div class="pack-validation-messages warnings"><h3>Warnings</h3><ul>{% for item in report.warnings %}<li>{{ item }}</li>{% endfor %}</ul></div>
+{% endif %}
+</section>
+
+<section class="dashboard-panel pack-review-actions">
+{% if report.valid %}
+<form method="POST" action="/content-packs/import/{{ token }}/install">
+<label class="content-pack-confirm-check"><input type="checkbox" name="confirm_install" value="yes" required><span>Install this validated Study Pack into DLMS.</span></label>
+<button class="medical-primary-button" type="submit">Install Study Pack</button>
+</form>
+{% else %}
+<p>Installation is disabled until the blocking validation problems are corrected.</p>
+{% endif %}
+<form method="POST" action="/content-packs/import/{{ token }}/cancel"><button class="medical-ai-secondary-button" type="submit">Cancel &amp; Remove Staging Files</button></form>
+<a class="medical-ai-quiet-link" href="/content-packs">← Back to Content Packs</a>
+</section>
+</main></div>
+<script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script>
+</body></html>
+""", token=token, metadata=metadata, report=report, medical_pack_installed=True)
+
+
+@app.route("/content-packs/import/<token>/install", methods=["POST"])
+def content_pack_import_install(token):
+    if request.form.get("confirm_install") != "yes":
+        flash("Study Pack installation was not confirmed.", "error")
+        return redirect(url_for("content_pack_import_review", token=token))
+
+    destination = None
+    pack_root = None
+    try:
+        stage_dir, pack_root, metadata = _load_staged_content_pack(token)
+        report = _validate_staged_content_pack(pack_root)
+        if not report["valid"]:
+            flash("Study Pack is no longer valid; installation was blocked.", "error")
+            return redirect(url_for("content_pack_import_review", token=token))
+
+        manifest = report["manifest"]
+        pack_id = str(manifest.get("id") or "").strip().lower()
+        current = discover_content_packs()
+        if pack_id in current:
+            raise ValueError(f"a Study Pack with id '{pack_id}' is already installed")
+
+        folder_name = os.path.basename(pack_root)
+        destination = os.path.realpath(os.path.join(CONTENT_PACK_FOLDER, folder_name))
+        if os.path.dirname(destination) != os.path.realpath(CONTENT_PACK_FOLDER):
+            raise ValueError("Study Pack destination is unsafe")
+        if os.path.exists(destination):
+            raise ValueError(f"destination folder '{folder_name}' already exists")
+
+        # Move only after all pre-install checks succeed.
+        shutil.move(pack_root, destination)
+
+        # Verify through normal runtime discovery. Roll back on failure.
+        installed = discover_content_packs().get(pack_id)
+        if not installed:
+            raise ValueError("DLMS could not discover the pack after installation")
+
+        _remove_content_pack_stage(token)
+        flash(f"Installed Study Pack '{installed.get('name') or pack_id}' successfully.", "success")
+        return redirect("/content-packs")
+    except Exception as exc:
+        # If the move occurred but runtime validation failed, restore the staged
+        # pack when possible so the review session remains usable.
+        try:
+            if destination and os.path.isdir(destination) and pack_root:
+                os.makedirs(os.path.dirname(pack_root), exist_ok=True)
+                if not os.path.exists(pack_root):
+                    shutil.move(destination, pack_root)
+        except Exception as rollback_exc:
+            print(f"[CONTENT PACKS] Import rollback failed: {rollback_exc}")
+        flash(f"Study Pack was not installed: {exc}", "error")
+        try:
+            _load_staged_content_pack(token)
+            return redirect(url_for("content_pack_import_review", token=token))
+        except Exception:
+            return redirect("/content-packs")
+
+
+@app.route("/content-packs/import/<token>/cancel", methods=["POST"])
+def content_pack_import_cancel(token):
+    _remove_content_pack_stage(token)
+    flash("Study Pack import cancelled; staging files were removed.", "success")
+    return redirect("/content-packs")
+
+
 @app.route("/content-packs")
 def content_packs_page():
     packs = content_pack_management_summary()
@@ -2406,6 +2951,24 @@ def content_packs_page():
         </div>
         {% endif %}
         {% endwith %}
+
+        <section class="dashboard-panel content-pack-upload-panel">
+            <div class="content-pack-upload-copy">
+                <span class="medical-eyebrow">INSTALL STUDY CONTENT</span>
+                <h2>Install Content Pack</h2>
+                <p>Select a DLMS Study Pack ZIP. DLMS stages and independently validates the archive first; nothing is installed until you review the report and confirm.</p>
+                <div class="content-pack-upload-guardrails">
+                    <span>One top-level pack folder</span>
+                    <span>Safe archive paths</span>
+                    <span>Manifest + JSON validation</span>
+                    <span>Referenced-file checks</span>
+                </div>
+            </div>
+            <form method="POST" action="/content-packs/import" enctype="multipart/form-data" class="content-pack-upload-form">
+                <label class="build-field"><span>Study Pack ZIP</span><input type="file" name="pack_zip" accept=".zip,application/zip" required><small>The ZIP is validated before installation.</small></label>
+                <button class="medical-primary-button" type="submit">Validate ZIP</button>
+            </form>
+        </section>
 
         <section class="dashboard-panel pack-install-panel">
             <div class="pack-install-heading">
@@ -3825,6 +4388,9 @@ manifest.json MUST include descriptor OBJECTS, never path strings:
   ],
   "image_datasets": [
     {"id":"image_dataset_id","title":"Readable title","type":"hotspot","path":"data/images/dataset.json","description":"..."}
+  ],
+  "quiz_datasets": [
+    {"id":"mixed_dataset_id","title":"Readable title","type":"quiz","path":"data/questions/dataset.json","description":"..."}
   ]
 }
 
@@ -3881,22 +4447,72 @@ DLMS_Study_<TOPIC_SLUG>/
 └── VALIDATION_REPORT.md
 
 VALIDATION BEFORE DELIVERY
+You MUST validate the finished pack after all files are created. Do not merely state that it should validate.
 - every JSON file parses
-- every manifest dataset/image_datasets entry is a descriptor OBJECT with id/title/type/path
-- every declared file exists
-- no duplicate term or duplicate definition within a matching dataset
+- manifest.json uses schema_version 1
+- datasets, image_datasets, and quiz_datasets (when used) contain descriptor OBJECTS, never path strings
+- every descriptor has id, title, type, path, and the declared file exists
+- every dataset file id matches its manifest descriptor id
+- there are no duplicate dataset IDs, image IDs, matching terms, or matching definitions
 - every term and definition is non-empty
 - every dataset has source metadata
-- every bundled image has exact provenance and compatible redistribution rights
-- every image path resolves inside the pack
-- every hotspot uses normalized coordinates 0..1
-- uncertain geometry is marked for editor review
+- every bundled image exists at its declared path
+- every bundled image records exact provenance and redistribution/license metadata
+- every hotspot uses valid normalized coordinates from 0 through 1
+- uncertain hotspot geometry is marked needs-dlms-editor-review
+- the ZIP contains exactly ONE top-level Study Pack folder
+- the top-level Study Pack folder directly contains manifest.json
+- no archive path is absolute, uses .. traversal, or escapes the Study Pack folder
+
+REQUIRED MACHINE-READABLE VALIDATION FILE
+Include PACK_VALIDATION.json at the root of the Study Pack. This is an AI self-check for the user and does NOT replace DLMS's independent installer validation.
+
+Use this structure:
+{
+  "schema_version": 1,
+  "validator": "AI self-validation",
+  "pack_id": "<same id as manifest.json>",
+  "validated_at": "YYYY-MM-DD",
+  "overall_status": "PASS",
+  "checks": [
+    {"name":"Manifest schema","status":"PASS","detail":"schema_version 1"},
+    {"name":"Dataset descriptors","status":"PASS","detail":"All descriptor entries are objects with id/title/type/path"},
+    {"name":"Referenced files","status":"PASS","detail":"All declared dataset and image files exist"},
+    {"name":"Duplicate IDs","status":"PASS","detail":"No duplicate dataset/image IDs or matching terms/definitions"},
+    {"name":"Image licenses","status":"PASS","detail":"Every bundled image has verified redistribution/license metadata"},
+    {"name":"JSON parse check","status":"PASS","detail":"Every JSON file parses successfully"},
+    {"name":"Top-level folder","status":"PASS","detail":"Exactly one top-level DLMS Study Pack folder contains manifest.json"}
+  ],
+  "errors": [],
+  "warnings": []
+}
+
+If ANY required check fails:
+- set overall_status to "FAIL"
+- identify the exact error in errors
+- FIX the pack and rerun validation before delivery
+- do not describe the ZIP as installation-ready while overall_status is FAIL
+
+Also include the human-readable VALIDATION_REPORT.md, but PACK_VALIDATION.json is required for AI-generated packs.
+
+FINAL RESPONSE VALIDATION SUMMARY
+In the response that accompanies the ZIP, print this concise summary using the actual results from the completed pack:
+PACK VALIDATION
+Manifest schema: PASS
+Dataset descriptors: PASS
+Referenced files: PASS
+Duplicate IDs: PASS
+Image licenses: PASS
+JSON parse check: PASS
+Top-level folder: PASS
+
+Do not print PASS for a check you did not actually perform.
 
 DELIVERABLE
-If file creation is available, build the complete folder, include the exact permitted assets, ZIP the root folder, and provide ONE downloadable ZIP plus a concise validation/source summary. If file creation is unavailable, do not claim the result is installation-ready.
+If file creation is available, build the complete folder, include the exact permitted assets, include PACK_VALIDATION.json, ZIP the single root folder, and provide ONE downloadable ZIP plus the concise validation/source summary. If file creation is unavailable, do not claim the result is installation-ready.
 
 INSTALLATION
-Place the single extracted root folder directly under APP_DATA_DIR/content_packs/. Never nest the same root folder inside itself.
+The ZIP must contain exactly one root folder named DLMS_Study_<TOPIC_SLUG>/ with manifest.json directly inside it. DLMS can then validate and install that ZIP from Content Packs. Never nest the same root folder inside itself.
 """
 
 

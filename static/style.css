@@ -8069,3 +8069,74 @@ a.settings-hub-card:hover {
         padding-left: 18px;
     }
 }
+
+
+/* =========================================================
+   CONTENT PACK ZIP INSTALLER + VALIDATION REVIEW
+   ========================================================= */
+.content-pack-upload-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(310px, .75fr);
+    gap: 24px;
+    align-items: center;
+    margin-bottom: 18px;
+}
+.content-pack-upload-copy h2 { margin: 4px 0 7px; }
+.content-pack-upload-copy p { margin: 0; color: #aebed1; line-height: 1.5; }
+.content-pack-upload-guardrails {
+    display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px;
+}
+.content-pack-upload-guardrails span {
+    padding: 5px 8px; border-radius: 999px;
+    border: 1px solid rgba(78, 148, 220, .27);
+    background: rgba(10, 37, 67, .57);
+    color: #a9c9e9; font-size: 11px;
+}
+.content-pack-upload-form {
+    display: grid; gap: 10px; padding: 15px;
+    border: 1px solid rgba(78, 148, 220, .25);
+    border-radius: 12px; background: rgba(3, 15, 32, .44);
+}
+.content-pack-upload-form button { margin: 0; width: 100%; }
+.pack-review-summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    margin-bottom: 18px;
+}
+.pack-review-summary h2 { margin: 4px 0; }
+.pack-review-summary p { margin: 0; color: #9fb2c8; }
+.pack-validation-panel { padding: 0; overflow: hidden; }
+.pack-validation-checks { display: grid; }
+.pack-validation-check {
+    display: grid;
+    grid-template-columns: 64px minmax(170px, .55fr) minmax(0, 1fr);
+    gap: 12px; align-items: center;
+    padding: 11px 18px; border-top: 1px solid rgba(77,139,205,.14);
+}
+.pack-validation-check > strong { color: #e7f1fc; }
+.pack-validation-check > span:last-child { color: #9fb2c8; font-size: 13px; }
+.pack-validation-state {
+    display: inline-flex; justify-content: center; padding: 4px 7px;
+    border-radius: 999px; font-size: 10px; font-weight: 800;
+    letter-spacing: .05em; border: 1px solid rgba(100,150,210,.28);
+}
+.pack-validation-state.pass { color:#77e6ba; border-color:rgba(52,211,153,.35); background:rgba(8,78,59,.38); }
+.pack-validation-state.warn { color:#ffd487; border-color:rgba(245,177,66,.35); background:rgba(101,68,9,.32); }
+.pack-validation-state.fail { color:#ff9baa; border-color:rgba(239,68,68,.36); background:rgba(104,25,36,.38); }
+.pack-validation-messages { margin: 15px 18px 18px; padding: 13px 16px; border-radius: 10px; }
+.pack-validation-messages h3 { margin: 0 0 8px; font-size: 15px; }
+.pack-validation-messages ul { margin: 0; padding-left: 20px; }
+.pack-validation-messages li { margin: 5px 0; line-height: 1.4; }
+.pack-validation-messages.errors { border:1px solid rgba(239,68,68,.32); background:rgba(91,22,31,.27); color:#ffc1ca; }
+.pack-validation-messages.warnings { border:1px solid rgba(245,177,66,.28); background:rgba(91,64,17,.22); color:#f3d7a5; }
+.pack-review-actions {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+    margin-top: 18px;
+}
+.pack-review-actions form { margin: 0; }
+.pack-review-actions .content-pack-confirm-check { margin-bottom: 10px; }
+
+@media (max-width: 850px) {
+    .content-pack-upload-panel { grid-template-columns: 1fr; }
+    .pack-validation-check { grid-template-columns: 58px 1fr; }
+    .pack-validation-check > span:last-child { grid-column: 2; }
+}
