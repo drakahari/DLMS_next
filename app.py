@@ -1,5 +1,5 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -217,6 +217,7 @@ os.makedirs(LOGO_TEMP_FOLDER, exist_ok=True)
 
 BACKGROUND_FOLDER = os.path.join(APP_DATA_DIR, "static", "bg")
 CONTENT_PACK_FOLDER = os.path.join(APP_DATA_DIR, "content_packs")
+IMAGE_BUILDER_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "image_builder_drafts")
 
 
 for d in [
@@ -226,6 +227,7 @@ for d in [
     CONFIG_FOLDER,
     BACKGROUND_FOLDER,
     CONTENT_PACK_FOLDER,
+    IMAGE_BUILDER_DRAFT_FOLDER,
     LOGO_FOLDER,
     LAW_FOLDER,
     LAW_CASES_FOLDER,
@@ -312,6 +314,12 @@ def discover_content_packs():
                 raise ValueError(
                     "image_datasets entries must be descriptor objects, not string paths"
                 )
+
+            quiz_datasets = manifest.get("quiz_datasets") or []
+            if not isinstance(quiz_datasets, list):
+                raise ValueError("quiz_datasets must be a list")
+            if any(not isinstance(item, dict) for item in quiz_datasets):
+                raise ValueError("quiz_datasets entries must be descriptor objects, not string paths")
 
             manifest["_root"] = pack_root
             manifest["_manifest_path"] = manifest_path
@@ -437,6 +445,173 @@ def load_content_pack_image_dataset(pack_id, dataset_id):
     data["_descriptor"] = descriptor
     data["_pack"] = pack
     return data
+
+
+def load_content_pack_quiz_dataset(pack_id, dataset_id):
+    """Load a generic mixed-question dataset declared by an installed content pack."""
+    pack = get_content_pack(pack_id)
+    if not pack:
+        raise FileNotFoundError(f"Content pack {pack_id!r} is not installed")
+    dataset_id = str(dataset_id or "").strip()
+    descriptor = next(
+        (item for item in (pack.get("quiz_datasets") or [])
+         if isinstance(item, dict) and str(item.get("id") or "").strip() == dataset_id),
+        None
+    )
+    if not descriptor:
+        raise KeyError(f"Quiz dataset {dataset_id!r} is not declared by pack {pack_id!r}")
+    rel_path = str(descriptor.get("path") or "").strip()
+    if not rel_path:
+        raise ValueError("Quiz dataset descriptor is missing path")
+    dataset_path = _safe_pack_child(pack["_root"], rel_path)
+    if not os.path.isfile(dataset_path):
+        raise FileNotFoundError(f"Quiz dataset file not found: {rel_path}")
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        data = json.load(f) or {}
+    if int(data.get("schema_version", 0)) != CONTENT_PACK_SCHEMA_VERSION:
+        raise ValueError("Quiz dataset schema version is not supported")
+
+    images = data.get("images") or []
+    if not isinstance(images, list):
+        raise ValueError("Quiz dataset images must be a list")
+    image_ids = set()
+    for image in images:
+        if not isinstance(image, dict):
+            raise ValueError("Each quiz dataset image must be an object")
+        image_id = str(image.get("id") or "").strip()
+        rel_file = str(image.get("file") or "").strip()
+        if not image_id or not rel_file:
+            raise ValueError("Each quiz dataset image requires id and file")
+        if image_id in image_ids:
+            raise ValueError(f"Duplicate image id: {image_id}")
+        image_ids.add(image_id)
+        if not os.path.isfile(_safe_pack_child(pack["_root"], rel_file)):
+            raise FileNotFoundError(f"Pack image not found: {rel_file}")
+        if not isinstance(image.get("hotspots") or [], list):
+            raise ValueError("Image hotspots must be a list")
+
+    questions = data.get("questions") or []
+    if not isinstance(questions, list) or not questions:
+        raise ValueError("Quiz dataset must contain at least one question")
+    allowed = {"choice", "matching", "hotspot"}
+    cleaned = []
+    for raw in questions:
+        if not isinstance(raw, dict):
+            continue
+        qtype = str(raw.get("type") or "choice").strip().lower()
+        question = str(raw.get("question") or "").strip()
+        if qtype not in allowed or not question:
+            continue
+        image_id = str(raw.get("image_id") or "").strip()
+        if image_id and image_id not in image_ids:
+            raise ValueError(f"Question references unknown image id: {image_id}")
+        item = dict(raw)
+        item["type"] = qtype
+        item["question"] = question
+        cleaned.append(item)
+    if not cleaned:
+        raise ValueError("Quiz dataset has no usable questions")
+    data["questions"] = cleaned
+    data["_descriptor"] = descriptor
+    data["_pack"] = pack
+    data["_dataset_path"] = dataset_path
+    return data
+
+
+def _quiz_dataset_runtime(pack_id, data):
+    images = {str(im.get("id")): im for im in (data.get("images") or []) if isinstance(im, dict)}
+    runtime_questions, db_questions = [], []
+    pack = data.get("_pack") or {}
+    for raw in data.get("questions") or []:
+        qtype = str(raw.get("type") or "choice").strip().lower()
+        image = images.get(str(raw.get("image_id") or "").strip())
+        source = (raw.get("source") if isinstance(raw.get("source"), dict) else {}) or \
+                 ((image or {}).get("source") if isinstance((image or {}).get("source"), dict) else {}) or \
+                 (data.get("source") if isinstance(data.get("source"), dict) else {})
+        media = {}
+        if image:
+            media = {
+                "image_url": url_for("content_pack_asset", pack_id=pack_id, asset_path=image.get("file")),
+                "image_alt": image.get("alt_text") or data.get("title") or "Study image",
+                "image_edits": image.get("edits") or [],
+                "image_source": {
+                    "organization": source.get("organization") or "",
+                    "work": source.get("work") or "",
+                    "url": source.get("url") or image.get("source_url") or "",
+                    "license": source.get("license") or image.get("license") or "",
+                    "attribution": source.get("attribution") or image.get("attribution") or "",
+                },
+            }
+        common = {
+            "type": qtype, "question": raw.get("question") or "",
+            "explanation": raw.get("explanation") or "", **media
+        }
+        db_source = {
+            "organization": source.get("organization") or "",
+            "dataset": source.get("dataset") or data.get("title") or "",
+            "version": source.get("version") or pack.get("version") or "",
+            "url": source.get("url") or "",
+            "license": source.get("license") or "",
+        }
+
+        if qtype == "matching":
+            pairs = []
+            for pair in raw.get("pairs") or []:
+                if not isinstance(pair, dict): continue
+                left, right = str(pair.get("left") or "").strip(), str(pair.get("right") or "").strip()
+                if left and right:
+                    pairs.append({"left": left, "right": right})
+            if len(pairs) < 2: continue
+            runtime = {**common, "pairs": pairs, "round_size": raw.get("round_size"), "direction": raw.get("direction") or "term_to_definition"}
+            db = {**runtime, "source": db_source, "media": media}
+        elif qtype == "hotspot":
+            if not image: continue
+            hotspot_id = str(raw.get("hotspot_id") or "").strip()
+            hotspot = next((h for h in (image.get("hotspots") or []) if isinstance(h, dict) and str(h.get("id") or "").strip() == hotspot_id), None)
+            if not hotspot: continue
+            label = str(hotspot.get("label") or raw.get("target_label") or "").strip()
+            if not label: continue
+            runtime = {**common, "type": "hotspot", "target": hotspot.get("shape") or {}, "target_label": label, "verification": hotspot.get("verification") or {}}
+            db = {
+                "type": "choice", "question": (raw.get("question") or "") + " [Image hotspot]",
+                "choices": [{"label": "A", "text": label, "is_correct": True}],
+                "explanation": raw.get("explanation") or "", "source": db_source, "media": media,
+            }
+        else:
+            choices, correct = [], []
+            for choice in raw.get("choices") or []:
+                if not isinstance(choice, dict): continue
+                text = str(choice.get("text") or "").strip()
+                if not text: continue
+                label = chr(65 + len(choices))
+                is_correct = bool(choice.get("is_correct"))
+                choices.append({"label": label, "text": text, "is_correct": is_correct})
+                if is_correct: correct.append(label)
+            if len(choices) < 2 or not correct: continue
+            runtime = {**common, "type": "choice", "choices": choices, "correct": correct}
+            db = {**runtime, "source": db_source, "media": media}
+
+        runtime_questions.append(runtime)
+        db_questions.append(db)
+
+    for n, q in enumerate(runtime_questions, 1): q["number"] = n
+    for n, q in enumerate(db_questions, 1): q["number"] = n
+    return runtime_questions, db_questions
+
+
+def _create_quiz_from_runtime(quiz_title, runtime_questions, db_questions, filename_prefix="study_image", exam_minutes=90):
+    if not runtime_questions:
+        raise ValueError("No usable questions were produced")
+    ts = int(time.time() * 1000)
+    safe_prefix = re.sub(r"[^a-z0-9_]+", "_", str(filename_prefix).lower()).strip("_") or "study"
+    html_name = f"{safe_prefix}_{ts}.html"
+    json_name = f"{safe_prefix}_{ts}.json"
+    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
+        json.dump(runtime_questions, f, indent=4, ensure_ascii=False)
+    quiz_id = save_quiz_to_db(quiz_title, html_name, db_questions)
+    add_quiz_to_registry(quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None, exam_minutes=normalize_exam_minutes(exam_minutes))
+    build_quiz_html(html_name, json_name, os.path.join(QUIZ_FOLDER, html_name), get_portal_title(), quiz_title, None, quiz_id, normalize_exam_minutes(exam_minutes))
+    return quiz_id, html_name
 
 
 @app.route("/content-packs/<pack_id>/assets/<path:asset_path>")
@@ -773,22 +948,28 @@ rebuildBtn.addEventListener("click", async () => {
 def _hotspot_editor_catalog():
     catalog = []
     for pack_id, pack in discover_content_packs().items():
-        for descriptor in (pack.get("image_datasets") or []):
-            dataset_id = str(descriptor.get("id") or "").strip()
-            if not dataset_id:
-                continue
-            try:
-                data = load_content_pack_image_dataset(pack_id, dataset_id)
-            except Exception as exc:
-                print(f"[HOTSPOT EDITOR] Unable to load {pack_id}/{dataset_id}: {exc}")
-                continue
-            catalog.append({
-                "pack_id": pack_id,
-                "pack_name": pack.get("name") or pack_id,
-                "dataset_id": dataset_id,
-                "title": descriptor.get("title") or data.get("title") or dataset_id,
-                "images": len(data.get("images") or []),
-            })
+        for kind, key in (("hotspot", "image_datasets"), ("quiz", "quiz_datasets")):
+            for descriptor in (pack.get(key) or []):
+                dataset_id = str(descriptor.get("id") or "").strip()
+                if not dataset_id:
+                    continue
+                try:
+                    data = load_content_pack_image_dataset(pack_id, dataset_id) if kind == "hotspot" else load_content_pack_quiz_dataset(pack_id, dataset_id)
+                except Exception as exc:
+                    print(f"[IMAGE EDITOR] Unable to load {pack_id}/{kind}/{dataset_id}: {exc}")
+                    continue
+                images = data.get("images") or []
+                if not images:
+                    continue
+                catalog.append({
+                    "pack_id": pack_id,
+                    "pack_name": pack.get("name") or pack_id,
+                    "dataset_id": dataset_id,
+                    "dataset_kind": kind,
+                    "title": descriptor.get("title") or data.get("title") or dataset_id,
+                    "images": len(images),
+                    "hotspots": sum(len(im.get("hotspots") or []) for im in images if isinstance(im, dict)),
+                })
     return catalog
 
 
@@ -823,27 +1004,45 @@ def admin_hotspot_editor():
     catalog = _hotspot_editor_catalog()
     selected_pack = request.args.get("pack", "").strip()
     selected_dataset = request.args.get("dataset", "").strip()
+    selected_kind = request.args.get("kind", "").strip().lower()
+    if selected_kind not in {"hotspot", "quiz"}:
+        selected_kind = ""
     if (not selected_pack or not selected_dataset) and catalog:
         selected_pack = catalog[0]["pack_id"]
         selected_dataset = catalog[0]["dataset_id"]
-    editor_data=None; load_error=None
+        selected_kind = catalog[0]["dataset_kind"]
+    if not selected_kind and selected_pack and selected_dataset:
+        match = next((c for c in catalog if c["pack_id"] == selected_pack and c["dataset_id"] == selected_dataset), None)
+        selected_kind = (match or {}).get("dataset_kind") or "hotspot"
+
+    editor_data = None
+    load_error = None
     if selected_pack and selected_dataset:
         try:
-            data=load_content_pack_image_dataset(selected_pack,selected_dataset)
-            images=[]
+            data = load_content_pack_quiz_dataset(selected_pack, selected_dataset) if selected_kind == "quiz" else load_content_pack_image_dataset(selected_pack, selected_dataset)
+            images = []
             for image in data.get("images") or []:
                 images.append({
                     "id": image.get("id") or image.get("file"),
                     "file": image.get("file") or "",
                     "url": url_for("content_pack_asset", pack_id=selected_pack, asset_path=image.get("file")),
-                    "alt_text": image.get("alt_text") or data.get("title") or "Anatomy image",
+                    "alt_text": image.get("alt_text") or data.get("title") or "Study image",
                     "hotspots": image.get("hotspots") or [],
                     "edits": image.get("edits") or [],
                 })
-            editor_data={"pack_id":selected_pack,"dataset_id":selected_dataset,"title":data.get("title") or selected_dataset,"images":images}
+            editor_data = {
+                "pack_id": selected_pack, "dataset_id": selected_dataset,
+                "dataset_kind": selected_kind, "title": data.get("title") or selected_dataset,
+                "images": images,
+            }
         except Exception as exc:
-            load_error=str(exc)
-    return render_template_string(HOTSPOT_EDITOR_TEMPLATE, catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset, editor_data=editor_data, load_error=load_error)
+            load_error = str(exc)
+    return render_template_string(
+        HOTSPOT_EDITOR_TEMPLATE,
+        catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset,
+        selected_kind=selected_kind, editor_data=editor_data, load_error=load_error,
+        medical_pack_installed=bool(get_content_pack("medical")),
+    )
 
 
 @app.route("/admin/image-editor/hotspot/save", methods=["POST"])
@@ -858,8 +1057,10 @@ def admin_hotspot_save():
         shape=_validate_hotspot_shape(payload.get("shape"))
         pack=get_content_pack(pack_id)
         if not pack: raise FileNotFoundError("Content pack is not installed")
-        descriptor=next((d for d in (pack.get("image_datasets") or []) if str(d.get("id") or "").strip()==dataset_id),None)
-        if not descriptor: raise KeyError("Image dataset is not declared by this pack")
+        dataset_kind=str(payload.get("dataset_kind") or "hotspot").strip().lower()
+        descriptor_key="quiz_datasets" if dataset_kind=="quiz" else "image_datasets"
+        descriptor=next((d for d in (pack.get(descriptor_key) or []) if isinstance(d,dict) and str(d.get("id") or "").strip()==dataset_id),None)
+        if not descriptor: raise KeyError("Image-capable dataset is not declared by this pack")
         dataset_path=_safe_pack_child(pack["_root"],str(descriptor.get("path") or "").strip())
         with open(dataset_path,"r",encoding="utf-8") as f: data=json.load(f)
         target_image=next((im for im in (data.get("images") or []) if str(im.get("id") or im.get("file") or "")==image_id),None)
@@ -918,8 +1119,10 @@ def admin_image_edits_save():
 
         pack=get_content_pack(pack_id)
         if not pack: raise FileNotFoundError("Content pack is not installed")
-        descriptor=next((d for d in (pack.get("image_datasets") or []) if isinstance(d,dict) and str(d.get("id") or "").strip()==dataset_id),None)
-        if not descriptor: raise KeyError("Image dataset is not declared by this pack")
+        dataset_kind=str(payload.get("dataset_kind") or "hotspot").strip().lower()
+        descriptor_key="quiz_datasets" if dataset_kind=="quiz" else "image_datasets"
+        descriptor=next((d for d in (pack.get(descriptor_key) or []) if isinstance(d,dict) and str(d.get("id") or "").strip()==dataset_id),None)
+        if not descriptor: raise KeyError("Image-capable dataset is not declared by this pack")
         dataset_path=_safe_pack_child(pack["_root"],str(descriptor.get("path") or "").strip())
         with open(dataset_path,"r",encoding="utf-8") as f: data=json.load(f)
         target_image=next((im for im in (data.get("images") or []) if isinstance(im,dict) and str(im.get("id") or im.get("file") or "")==image_id),None)
@@ -948,7 +1151,7 @@ HOTSPOT_EDITOR_TEMPLATE = r"""
 <nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>{% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}</nav>
 <div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item active" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Image Study Editor</div></aside>
 <main class="dashboard-main hotspot-editor-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">MAINTENANCE · IMAGE STUDY</div><h1>Image Study Editor</h1><p>Prepare study images without altering the original file: mask unwanted text, add simple labels, and calibrate clickable regions for image-based quizzes.</p></div></header>
-<section class="dashboard-panel hotspot-editor-picker"><form method="GET" action="/admin/image-editor"><label><span>Installed image dataset</span><select id="datasetKey">{% for item in catalog %}<option value="{{ item.pack_id }}::{{ item.dataset_id }}" {% if item.pack_id == selected_pack and item.dataset_id == selected_dataset %}selected{% endif %}>{{ item.pack_name }} — {{ item.title }}</option>{% endfor %}</select></label><input type="hidden" name="pack" id="packField" value="{{ selected_pack }}"><input type="hidden" name="dataset" id="datasetField" value="{{ selected_dataset }}"><button type="submit">Load Dataset</button></form>{% if load_error %}<div class="flash error">{{ load_error }}</div>{% endif %}{% if not catalog %}<p>No installed content pack currently declares an image dataset.</p>{% endif %}</section>
+<section class="dashboard-panel hotspot-editor-picker"><form method="GET" action="/admin/image-editor"><label><span>Installed image dataset</span><select id="datasetKey">{% for item in catalog %}<option value="{{ item.pack_id }}::{{ item.dataset_kind }}::{{ item.dataset_id }}" {% if item.pack_id == selected_pack and item.dataset_id == selected_dataset and item.dataset_kind == selected_kind %}selected{% endif %}>{{ item.pack_name }} — {{ item.title }}{% if item.dataset_kind == 'quiz' %} · Question Set{% endif %}</option>{% endfor %}</select></label><input type="hidden" name="pack" id="packField" value="{{ selected_pack }}"><input type="hidden" name="kind" id="kindField" value="{{ selected_kind }}"><input type="hidden" name="dataset" id="datasetField" value="{{ selected_dataset }}"><button type="submit">Load Dataset</button></form>{% if load_error %}<div class="flash error">{{ load_error }}</div>{% endif %}{% if not catalog %}<p>No installed content pack currently declares an image dataset.</p>{% endif %}</section>
 {% if editor_data %}<section class="dashboard-panel hotspot-editor-workspace">
 <div class="image-editor-mode-tabs"><button type="button" id="hotspotModeBtn" class="active">Clickable Regions</button><button type="button" id="prepModeBtn">Image Prep</button></div>
 <div class="hotspot-editor-toolbar"><label><span>Image</span><select id="imageSelect"></select></label><label class="hotspot-only"><span>Target / Structure</span><select id="hotspotSelect"></select></label><label class="hotspot-only"><span>Shape</span><select id="shapeMode"><option value="polygon">Polygon</option><option value="circle">Circle</option></select></label><label class="hotspot-only" id="radiusControl"><span>Circle radius <strong id="radiusValue">0.050</strong></span><input id="circleRadius" type="range" min="0.01" max="0.30" step="0.005" value="0.05"></label></div>
@@ -973,11 +1176,13 @@ function inside(x,y,s){if(!s)return false;if(s.type==='circle'){const dx=x-s.x,d
 function updatePrepVisibility(){const isText=document.getElementById('prepTool').value==='text';['textValueLabel','textSizeLabel','textToneLabel'].forEach(id=>document.getElementById(id).hidden=!isText);['maskStyleLabel','maskWidthLabel','maskHeightLabel'].forEach(id=>document.getElementById(id).hidden=isText)}
 function setMode(mode){editorMode=mode;document.getElementById('hotspotPanel').hidden=mode!=='hotspot';document.getElementById('prepPanel').hidden=mode!=='prep';document.querySelectorAll('.hotspot-only').forEach(el=>el.style.display=mode==='hotspot'?'':'none');document.getElementById('hotspotModeBtn').classList.toggle('active',mode==='hotspot');document.getElementById('prepModeBtn').classList.toggle('active',mode==='prep');testMode=false;marker.hidden=true;draw();setStatus(mode==='hotspot'?'Clickable-region mode.':'Image-prep mode: click the image to place the selected overlay.')}
 img.addEventListener('click',ev=>{const p=norm(ev);if(editorMode==='prep'){const tool=document.getElementById('prepTool').value;if(tool==='mask'){const w=Number(document.getElementById('maskW').value),h=Number(document.getElementById('maskH').value);imageEdits.push({type:'mask',x:Math.max(0,Math.min(1-w,p[0]-w/2)),y:Math.max(0,Math.min(1-h,p[1]-h/2)),w,h,style:document.getElementById('maskStyle').value})}else{const text=document.getElementById('textValue').value.trim();if(!text){setStatus('Enter label text first.','error');return}imageEdits.push({type:'text',x:p[0],y:p[1],text,size:Number(document.getElementById('textSize').value)||18,tone:document.getElementById('textTone').value})}draw();setStatus('Overlay added. Save Image Prep when finished.');return}if(testMode){const ok=inside(p[0],p[1],currentShape());marker.hidden=false;marker.style.left=`${p[0]*100}%`;marker.style.top=`${p[1]*100}%`;marker.className='hotspot-editor-test-marker '+(ok?'inside':'outside');setStatus(ok?'✓ Test click is inside the region.':'✕ Test click is outside the region.',ok?'success':'error');return}marker.hidden=true;if(shapeMode.value==='polygon')points.push(p);else circleCenter=p;draw()});
-imageSelect.addEventListener('change',loadImage);hotspotSelect.addEventListener('change',loadHotspot);shapeMode.addEventListener('change',()=>{testMode=false;marker.hidden=true;draw()});radius.addEventListener('input',draw);document.getElementById('datasetKey').addEventListener('change',e=>{const [p,d]=e.target.value.split('::');document.getElementById('packField').value=p;document.getElementById('datasetField').value=d});document.getElementById('hotspotModeBtn').onclick=()=>setMode('hotspot');document.getElementById('prepModeBtn').onclick=()=>setMode('prep');document.getElementById('loadExistingBtn').onclick=loadExisting;document.getElementById('undoBtn').onclick=()=>{if(shapeMode.value==='polygon')points.pop();else circleCenter=null;draw()};document.getElementById('clearBtn').onclick=()=>{points=[];circleCenter=null;marker.hidden=true;testMode=false;draw()};document.getElementById('testBtn').onclick=()=>{if(!currentShape()){setStatus('Draw a valid region before testing.','error');return}testMode=!testMode;setStatus(testMode?'Test mode enabled. Click anywhere on the image.':'Test mode disabled.')};
+imageSelect.addEventListener('change',loadImage);hotspotSelect.addEventListener('change',loadHotspot);shapeMode.addEventListener('change',()=>{testMode=false;marker.hidden=true;draw()});radius.addEventListener('input',draw);document.getElementById('datasetKey').addEventListener('change',e=>{const [p,k,d]=e.target.value.split('::');document.getElementById('packField').value=p;document.getElementById('kindField').value=k;document.getElementById('datasetField').value=d});document.getElementById('hotspotModeBtn').onclick=()=>setMode('hotspot');document.getElementById('prepModeBtn').onclick=()=>setMode('prep');document.getElementById('loadExistingBtn').onclick=loadExisting;document.getElementById('undoBtn').onclick=()=>{if(shapeMode.value==='polygon')points.pop();else circleCenter=null;draw()};document.getElementById('clearBtn').onclick=()=>{points=[];circleCenter=null;marker.hidden=true;testMode=false;draw()};document.getElementById('testBtn').onclick=()=>{if(!currentShape()){setStatus('Draw a valid region before testing.','error');return}testMode=!testMode;setStatus(testMode?'Test mode enabled. Click anywhere on the image.':'Test mode disabled.')};
 document.getElementById('prepTool').addEventListener('change',updatePrepVisibility);document.getElementById('maskW').addEventListener('input',e=>document.getElementById('maskWVal').textContent=Number(e.target.value).toFixed(2));document.getElementById('maskH').addEventListener('input',e=>document.getElementById('maskHVal').textContent=Number(e.target.value).toFixed(2));document.getElementById('undoEditBtn').onclick=()=>{imageEdits.pop();draw()};document.getElementById('clearEditsBtn').onclick=()=>{if(confirm('Clear all image-prep overlays for this image?')){imageEdits=[];draw()}};
-document.getElementById('saveBtn').onclick=async()=>{const shape=currentShape();if(!currentHotspot||!shape){setStatus('Choose a target and draw a valid region first.','error');return}if(!confirm(`Save ${shape.type} geometry for ${currentHotspot.label}?`))return;try{const res=await fetch('/admin/image-editor/hotspot/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pack_id:EDITOR_DATA.pack_id,dataset_id:EDITOR_DATA.dataset_id,image_id:currentImage.id,hotspot_id:currentHotspot.id,shape})});const b=await res.json();if(!res.ok)throw new Error(b.error||'Save failed');currentHotspot.shape=shape;setStatus(`✓ Saved ${currentHotspot.label}. Backup: ${b.backup_created?'created':'already exists'}.`,'success')}catch(e){setStatus('Save failed: '+e.message,'error')}};
-document.getElementById('saveEditsBtn').onclick=async()=>{try{const res=await fetch('/admin/image-editor/edits/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pack_id:EDITOR_DATA.pack_id,dataset_id:EDITOR_DATA.dataset_id,image_id:currentImage.id,edits:imageEdits})});const b=await res.json();if(!res.ok)throw new Error(b.error||'Save failed');currentImage.edits=JSON.parse(JSON.stringify(b.edits||[]));setStatus(`✓ Image prep saved. ${imageEdits.length} overlay(s).`,'success')}catch(e){setStatus('Image prep save failed: '+e.message,'error')}};
-document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));updatePrepVisibility();populateImages();setMode('hotspot');
+document.getElementById('saveBtn').onclick=async()=>{const shape=currentShape();if(!currentHotspot||!shape){setStatus('Choose a target and draw a valid region first.','error');return}if(!confirm(`Save ${shape.type} geometry for ${currentHotspot.label}?`))return;try{const res=await fetch('/admin/image-editor/hotspot/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pack_id:EDITOR_DATA.pack_id,dataset_id:EDITOR_DATA.dataset_id,dataset_kind:EDITOR_DATA.dataset_kind,image_id:currentImage.id,hotspot_id:currentHotspot.id,shape})});const b=await res.json();if(!res.ok)throw new Error(b.error||'Save failed');currentHotspot.shape=shape;setStatus(`✓ Saved ${currentHotspot.label}. Backup: ${b.backup_created?'created':'already exists'}.`,'success')}catch(e){setStatus('Save failed: '+e.message,'error')}};
+document.getElementById('saveEditsBtn').onclick=async()=>{try{const res=await fetch('/admin/image-editor/edits/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pack_id:EDITOR_DATA.pack_id,dataset_id:EDITOR_DATA.dataset_id,dataset_kind:EDITOR_DATA.dataset_kind,image_id:currentImage.id,edits:imageEdits})});const b=await res.json();if(!res.ok)throw new Error(b.error||'Save failed');currentImage.edits=JSON.parse(JSON.stringify(b.edits||[]));setStatus(`✓ Image prep saved. ${imageEdits.length} overlay(s).`,'success')}catch(e){setStatus('Image prep save failed: '+e.message,'error')}};
+document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));updatePrepVisibility();populateImages();
+const totalEditorHotspots=(EDITOR_DATA?.images||[]).reduce((n,im)=>n+((im.hotspots||[]).length),0);
+if(!totalEditorHotspots){document.getElementById('hotspotModeBtn').disabled=true;setMode('prep');setStatus('This question set has no clickable regions. Image Prep is available.');}else{setMode('hotspot');}
 </script></body></html>
 """
 
@@ -3022,29 +3227,41 @@ Place the single extracted root folder directly under APP_DATA_DIR/content_packs
 
 
 def _study_pack_catalog():
-    result=[]
+    result = []
     for pack_id, pack in discover_content_packs().items():
-        datasets=[]; image_datasets=[]
+        datasets, image_datasets, quiz_datasets = [], [], []
         for d in pack.get("datasets") or []:
-            if not isinstance(d,dict): continue
-            did=str(d.get("id") or "").strip()
+            if not isinstance(d, dict): continue
+            did = str(d.get("id") or "").strip()
             if not did: continue
             try:
-                data=load_content_pack_dataset(pack_id,did)
-                datasets.append({"id":did,"title":d.get("title") or data.get("title") or did,"description":d.get("description") or data.get("description") or "","term_count":len(data.get("terms") or []),"category":data.get("category") or ""})
-            except Exception as exc: print(f"[STUDY PACKS] Skipping {pack_id}/{did}: {exc}")
+                data = load_content_pack_dataset(pack_id, did)
+                datasets.append({"id": did, "title": d.get("title") or data.get("title") or did, "description": d.get("description") or data.get("description") or "", "term_count": len(data.get("terms") or []), "category": data.get("category") or ""})
+            except Exception as exc:
+                print(f"[STUDY PACKS] Skipping {pack_id}/{did}: {exc}")
         for d in pack.get("image_datasets") or []:
-            if not isinstance(d,dict): continue
-            did=str(d.get("id") or "").strip()
+            if not isinstance(d, dict): continue
+            did = str(d.get("id") or "").strip()
             if not did: continue
             try:
-                data=load_content_pack_image_dataset(pack_id,did)
-                images=data.get("images") or []
-                image_datasets.append({"id":did,"title":d.get("title") or data.get("title") or did,"description":d.get("description") or data.get("description") or "","image_count":len(images),"hotspot_count":sum(len(i.get("hotspots") or []) for i in images),"category":data.get("category") or "Image Study"})
-            except Exception as exc: print(f"[STUDY PACKS] Skipping image {pack_id}/{did}: {exc}")
-        if datasets or image_datasets:
-            result.append({"id":pack_id,"name":pack.get("name") or pack_id,"version":pack.get("version") or "","description":pack.get("description") or "","domain":pack.get("content_domain") or ("medical" if pack_id=="medical" else "general"),"datasets":datasets,"image_datasets":image_datasets})
-    return sorted(result,key=lambda p:p["name"].casefold())
+                data = load_content_pack_image_dataset(pack_id, did)
+                images = data.get("images") or []
+                image_datasets.append({"id": did, "title": d.get("title") or data.get("title") or did, "description": d.get("description") or data.get("description") or "", "image_count": len(images), "hotspot_count": sum(len(i.get("hotspots") or []) for i in images), "category": data.get("category") or "Image Study"})
+            except Exception as exc:
+                print(f"[STUDY PACKS] Skipping image {pack_id}/{did}: {exc}")
+        for d in pack.get("quiz_datasets") or []:
+            if not isinstance(d, dict): continue
+            did = str(d.get("id") or "").strip()
+            if not did: continue
+            try:
+                data = load_content_pack_quiz_dataset(pack_id, did)
+                qs, images = data.get("questions") or [], data.get("images") or []
+                quiz_datasets.append({"id": did, "title": d.get("title") or data.get("title") or did, "description": d.get("description") or data.get("description") or "", "question_count": len(qs), "image_count": len(images), "hotspot_count": sum(1 for q in qs if str(q.get("type") or "") == "hotspot"), "category": data.get("category") or "Question Set"})
+            except Exception as exc:
+                print(f"[STUDY PACKS] Skipping questions {pack_id}/{did}: {exc}")
+        if datasets or image_datasets or quiz_datasets:
+            result.append({"id": pack_id, "name": pack.get("name") or pack_id, "version": pack.get("version") or "", "description": pack.get("description") or "", "domain": pack.get("content_domain") or ("medical" if pack_id == "medical" else "general"), "datasets": datasets, "image_datasets": image_datasets, "quiz_datasets": quiz_datasets})
+    return sorted(result, key=lambda p: p["name"].casefold())
 
 
 @app.route("/study-packs")
@@ -3100,6 +3317,10 @@ def study_packs_home():
             <div class="study-pack-launch-icon">AI</div>
             <div><span class="medical-eyebrow">CREATE</span><h2>AI Study Pack Builder</h2><p>Generate one rigorous, domain-aware prompt for a complete DLMS-ready pack, including multiple images when useful.</p></div>
         </a>
+        <a class="dashboard-panel study-pack-launch" href="/study-packs/image-builder">
+            <div class="study-pack-launch-icon">▧</div>
+            <div><span class="medical-eyebrow">BUILD</span><h2>Build from Images</h2><p>Upload your own images and create multiple-choice, multi-select, matching, or hotspot questions around them.</p></div>
+        </a>
         <a class="dashboard-panel study-pack-launch" href="/admin/image-editor">
             <div class="study-pack-launch-icon">◎</div>
             <div><span class="medical-eyebrow">EDIT</span><h2>Image Study Editor</h2><p>Hide labels, add simple text, and calibrate clickable regions for any image-based study pack.</p></div>
@@ -3132,13 +3353,36 @@ def study_packs_home():
                 </div>
             </div>
             <div class="study-pack-summary-meta">
-                <span class="pack-count-pill">{{ pack.datasets|length + pack.image_datasets|length }} datasets</span>
+                <span class="pack-count-pill">{{ pack.datasets|length + pack.image_datasets|length + pack.quiz_datasets|length }} datasets</span>
                 {% if pack.datasets %}<span>{{ pack.datasets|length }} matching</span>{% endif %}
-                {% if pack.image_datasets %}<span>{{ pack.image_datasets|length }} image</span>{% endif %}
+                {% if pack.image_datasets %}<span>{{ pack.image_datasets|length }} image</span>{% endif %}{% if pack.quiz_datasets %}<span>{{ pack.quiz_datasets|length }} question set</span>{% endif %}
             </div>
         </summary>
 
         <div class="study-pack-body">
+        {% if pack.quiz_datasets %}
+            <h3>Question sets</h3>
+            <div class="medical-dataset-grid">
+            {% for d in pack.quiz_datasets %}
+                <article class="medical-dataset-card">
+                    <span class="medical-eyebrow">{{ d.category|upper }} · MIXED QUIZ</span>
+                    <h3>{{ d.title }}</h3>
+                    <p>{{ d.description }}</p>
+                    <div class="medical-dataset-meta">
+                        <span>{{ d.question_count }} questions</span>
+                        {% if d.image_count %}<span>{{ d.image_count }} images</span>{% endif %}
+                        {% if d.hotspot_count %}<span>{{ d.hotspot_count }} hotspots</span>{% endif %}
+                    </div>
+                    <form method="POST" action="/study-packs/quiz/generate">
+                        <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                        <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                        <button class="medical-primary-button" type="submit">Create Practice Quiz</button>
+                    </form>
+                </article>
+            {% endfor %}
+            </div>
+        {% endif %}
+
         {% if pack.datasets %}
             <h3>Matching / terminology</h3>
             <div class="medical-dataset-grid">
@@ -3233,6 +3477,28 @@ document.getElementById('collapseAllPacks')?.addEventListener('click', () => {
 """, packs=packs, medical_pack_installed=bool(get_content_pack("medical")))
 
 
+
+
+@app.route("/study-packs/quiz/generate", methods=["POST"])
+def study_pack_generate_quiz_dataset():
+    pack_id = str(request.form.get("pack_id") or "").strip().lower()
+    dataset_id = str(request.form.get("dataset_id") or "").strip()
+    pack = get_content_pack(pack_id)
+    if not pack:
+        flash("Study pack is not installed.", "error")
+        return redirect("/study-packs")
+    try:
+        data = load_content_pack_quiz_dataset(pack_id, dataset_id)
+        runtime_questions, db_questions = _quiz_dataset_runtime(pack_id, data)
+        title = str(data.get("title") or data["_descriptor"].get("title") or "Study Questions").strip()
+        _, html_name = _create_quiz_from_runtime(
+            f"{title} — Practice", runtime_questions, db_questions,
+            filename_prefix=f"study_questions_{pack_id}_{dataset_id}", exam_minutes=90
+        )
+        return redirect(f"/quizzes/{html_name}")
+    except Exception as exc:
+        flash(f"Unable to build question-set quiz: {exc}", "error")
+        return redirect("/study-packs")
 
 
 @app.route("/study-packs/generate", methods=["POST"])
@@ -5937,7 +6203,7 @@ def edit_quiz(quiz_id):
 
     questions = cur.execute(
         """
-        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type, matching_round_size, COALESCE(matching_direction, 'term_to_definition') AS matching_direction, source_organization, source_dataset, source_version, source_url, source_license
+        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type, matching_round_size, COALESCE(matching_direction, 'term_to_definition') AS matching_direction, source_organization, source_dataset, source_version, source_url, source_license, explanation, media_json
         FROM questions
         WHERE quiz_id = ?
         ORDER BY question_number, id
@@ -6662,7 +6928,14 @@ def rebuild_quiz_json_from_db(quiz_id):
                 ],
                 "round_size": q["matching_round_size"],
                 "direction": q["matching_direction"],
+                "explanation": q["explanation"] or "",
             }
+            try:
+                media = json.loads(q["media_json"] or "{}")
+            except Exception:
+                media = {}
+            if isinstance(media, dict):
+                item.update(media)
             source = {
                 "organization": q["source_organization"],
                 "dataset": q["source_dataset"],
@@ -6687,10 +6960,11 @@ def rebuild_quiz_json_from_db(quiz_id):
 
         correct_letters = [c["label"] for c in choices if c["is_correct"]]
 
-        quiz_data.append({
+        choice_item = {
             "number": q["question_number"],
             "type": "choice",
             "question": q["question_text"],
+            "explanation": q["explanation"] or "",
             "choices": [
                 {
                     "label": c["label"],
@@ -6700,7 +6974,23 @@ def rebuild_quiz_json_from_db(quiz_id):
                 for c in choices
             ],
             "correct": correct_letters
-        })
+        }
+        try:
+            media = json.loads(q["media_json"] or "{}")
+        except Exception:
+            media = {}
+        if isinstance(media, dict):
+            choice_item.update(media)
+        source = {
+            "organization": q["source_organization"],
+            "dataset": q["source_dataset"],
+            "version": q["source_version"],
+            "url": q["source_url"],
+            "license": q["source_license"],
+        }
+        if any(source.values()):
+            choice_item["source"] = source
+        quiz_data.append(choice_item)
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(quiz_data, f, indent=4)
@@ -7455,9 +7745,11 @@ def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
                 source_dataset,
                 source_version,
                 source_url,
-                source_license
+                source_license,
+                explanation,
+                media_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 quiz_id, question_number, question_text, question_type,
@@ -7467,6 +7759,12 @@ def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
                 (q.get("source") or {}).get("version"),
                 (q.get("source") or {}).get("url"),
                 (q.get("source") or {}).get("license"),
+                q.get("explanation") or "",
+                json.dumps(q.get("media") or {
+                    key: q.get(key)
+                    for key in ("image_url", "image_alt", "image_edits", "image_source")
+                    if q.get(key) is not None
+                }, ensure_ascii=False),
             ),
         )
 
@@ -8296,6 +8594,252 @@ if (menuButton && sidebar) {
 # =========================
 # UPLOAD PAGE
 # =========================
+
+# =========================
+# BUILD FROM IMAGES
+# =========================
+def _safe_image_builder_draft(draft_id):
+    draft_id = str(draft_id or "").strip()
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", draft_id):
+        raise ValueError("Invalid image-builder draft")
+    path = _safe_pack_child(IMAGE_BUILDER_DRAFT_FOLDER, draft_id)
+    if not os.path.isdir(path):
+        raise FileNotFoundError("Image-builder draft not found")
+    return path
+
+
+@app.route("/image-builder/drafts/<draft_id>/<path:filename>")
+def image_builder_draft_asset(draft_id, filename):
+    try:
+        draft_root = _safe_image_builder_draft(draft_id)
+        file_path = _safe_pack_child(draft_root, filename)
+    except Exception:
+        return "Draft image not found", 404
+    if not os.path.isfile(file_path):
+        return "Draft image not found", 404
+    if os.path.splitext(file_path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+        return "Unsupported image", 415
+    return send_from_directory(draft_root, os.path.relpath(file_path, draft_root))
+
+
+@app.route("/study-packs/image-builder", methods=["GET", "POST"])
+def image_quiz_builder():
+    draft = None
+    if request.method == "POST":
+        files = [f for f in request.files.getlist("study_images") if f and f.filename]
+        if not files:
+            flash("Choose at least one image.", "error")
+            return redirect("/study-packs/image-builder")
+        if len(files) > 12:
+            flash("Upload at most 12 images at one time.", "error")
+            return redirect("/study-packs/image-builder")
+
+        draft_id = f"{int(time.time())}_{secrets.token_hex(5)}"
+        draft_root = os.path.join(IMAGE_BUILDER_DRAFT_FOLDER, draft_id)
+        os.makedirs(draft_root, exist_ok=False)
+        images, used = [], set()
+        for n, uploaded in enumerate(files, 1):
+            original = secure_filename(uploaded.filename or "")
+            ext = os.path.splitext(original)[1].lower()
+            if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+                shutil.rmtree(draft_root, ignore_errors=True)
+                flash("Images must be PNG, JPG/JPEG, or WEBP.", "error")
+                return redirect("/study-packs/image-builder")
+            base = re.sub(r"[^A-Za-z0-9_-]+", "_", os.path.splitext(original)[0]).strip("_") or f"image_{n}"
+            filename = f"{base}{ext}"
+            counter = 2
+            while filename.casefold() in used:
+                filename = f"{base}_{counter}{ext}"
+                counter += 1
+            used.add(filename.casefold())
+            uploaded.save(os.path.join(draft_root, filename))
+            images.append({
+                "id": f"image_{n}", "filename": filename,
+                "original_name": uploaded.filename,
+                "url": url_for("image_builder_draft_asset", draft_id=draft_id, filename=filename),
+            })
+        draft = {"id": draft_id, "images": images}
+
+    return render_template_string(
+        IMAGE_QUIZ_BUILDER_TEMPLATE, draft=draft,
+        medical_pack_installed=bool(get_content_pack("medical"))
+    )
+
+
+@app.route("/study-packs/image-builder/save", methods=["POST"])
+def image_quiz_builder_save():
+    draft_id = str(request.form.get("draft_id") or "").strip()
+    title = str(request.form.get("pack_title") or "").strip()
+    subject = str(request.form.get("subject") or "General").strip()
+    description = str(request.form.get("description") or "").strip()
+    source_note = str(request.form.get("source_note") or "").strip()
+    rights_ok = bool(request.form.get("rights_ok"))
+    if not title:
+        return "Study pack title is required", 400
+    if not rights_ok:
+        return "Confirm permission to use the uploaded images.", 400
+
+    try:
+        draft_root = _safe_image_builder_draft(draft_id)
+        payload = json.loads(str(request.form.get("builder_payload") or ""))
+    except Exception as exc:
+        return f"Invalid image-builder data: {exc}", 400
+
+    images_payload = payload.get("images") or []
+    questions_payload = payload.get("questions") or []
+    if not images_payload or not questions_payload:
+        return "At least one image and one question are required.", 400
+
+    ts = int(time.time())
+    title_slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_")[:60] or "Image_Study"
+    pack_id = f"user_{title_slug.lower()}_{ts}"
+    pack_root = os.path.join(CONTENT_PACK_FOLDER, f"DLMS_Study_{title_slug}_{ts}")
+    images_root = os.path.join(pack_root, "images")
+    data_root = os.path.join(pack_root, "data")
+    os.makedirs(images_root, exist_ok=False)
+    os.makedirs(data_root, exist_ok=True)
+
+    try:
+        image_records, image_map = [], {}
+        for n, raw in enumerate(images_payload, 1):
+            image_id = str(raw.get("id") or f"image_{n}").strip()
+            filename = secure_filename(str(raw.get("filename") or ""))
+            src = _safe_pack_child(draft_root, filename)
+            if not filename or not os.path.isfile(src):
+                raise FileNotFoundError(f"Draft image missing: {filename}")
+            shutil.copy2(src, os.path.join(images_root, filename))
+            rec = {
+                "id": image_id, "file": f"images/{filename}",
+                "alt_text": str(raw.get("alt_text") or raw.get("original_name") or title).strip(),
+                "edits": [], "hotspots": [],
+                "source": {
+                    "organization": "User supplied",
+                    "work": str(raw.get("original_name") or filename),
+                    "attribution": source_note or "User-supplied image for personal study",
+                    "license": "User-supplied; redistribution rights not asserted by DLMS",
+                    "redistribution_status": "not-cleared-for-redistribution",
+                },
+            }
+            image_records.append(rec)
+            image_map[image_id] = rec
+
+        cleaned, qnum = [], 1
+        for raw in questions_payload:
+            if not isinstance(raw, dict): continue
+            qtype = str(raw.get("type") or "choice").strip().lower()
+            question = str(raw.get("question") or "").strip()
+            image_id = str(raw.get("image_id") or "").strip()
+            explanation = str(raw.get("explanation") or "").strip()
+            if qtype not in {"choice", "matching", "hotspot"} or not question or image_id not in image_map:
+                continue
+
+            if qtype == "matching":
+                pairs = []
+                for pair in raw.get("pairs") or []:
+                    left = str((pair or {}).get("left") or "").strip()
+                    right = str((pair or {}).get("right") or "").strip()
+                    if left and right: pairs.append({"left": left, "right": right})
+                if len(pairs) < 2:
+                    raise ValueError(f"Question {qnum} needs at least two complete matching pairs")
+                cleaned.append({"id": f"q{qnum}", "type": "matching", "question": question, "image_id": image_id, "pairs": pairs, "direction": "term_to_definition", "explanation": explanation})
+            elif qtype == "hotspot":
+                shape = _validate_hotspot_shape(raw.get("shape"))
+                label = str(raw.get("target_label") or "").strip()
+                if not label:
+                    raise ValueError(f"Question {qnum} needs a hotspot target label")
+                hotspot_id = f"hotspot_{qnum}"
+                image_map[image_id]["hotspots"].append({
+                    "id": hotspot_id, "label": label, "prompt": question,
+                    "shape": shape, "explanation": explanation,
+                    "calibration": {"tool": "DLMS Build from Images", "updated_at": datetime.now().isoformat(timespec="seconds")},
+                })
+                cleaned.append({"id": f"q{qnum}", "type": "hotspot", "question": question, "image_id": image_id, "hotspot_id": hotspot_id, "target_label": label, "explanation": explanation})
+            else:
+                choices = []
+                for choice in raw.get("choices") or []:
+                    text = str((choice or {}).get("text") or "").strip()
+                    if text:
+                        choices.append({"label": chr(65 + len(choices)), "text": text, "is_correct": bool((choice or {}).get("is_correct"))})
+                if len(choices) < 2 or not any(c["is_correct"] for c in choices):
+                    raise ValueError(f"Question {qnum} needs at least two choices and one correct answer")
+                cleaned.append({"id": f"q{qnum}", "type": "choice", "question": question, "image_id": image_id, "choices": choices, "explanation": explanation})
+            qnum += 1
+
+        if not cleaned:
+            raise ValueError("No usable questions were submitted")
+
+        dataset_id = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")[:64] or "image_questions"
+        dataset = {
+            "schema_version": 1, "id": dataset_id, "title": title, "type": "quiz",
+            "category": subject or "General",
+            "description": description or f"User-created image-supported question set for {title}.",
+            "source": {"organization": "User supplied", "dataset": title, "license": "User-supplied study material", "notes": source_note},
+            "images": image_records, "questions": cleaned,
+        }
+        dataset_rel = f"data/{dataset_id}.json"
+        with open(os.path.join(pack_root, dataset_rel), "w", encoding="utf-8") as f:
+            json.dump(dataset, f, indent=2, ensure_ascii=False); f.write("\n")
+        manifest = {
+            "schema_version": 1, "id": pack_id, "name": title, "version": "1.0.0",
+            "publisher": "DLMS user", "content_domain": subject or "General",
+            "description": dataset["description"], "datasets": [], "image_datasets": [],
+            "quiz_datasets": [{"id": dataset_id, "title": title, "type": "quiz", "path": dataset_rel, "description": dataset["description"]}],
+            "user_supplied_assets": True, "redistribution_status": "not-cleared-for-redistribution",
+        }
+        with open(os.path.join(pack_root, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2, ensure_ascii=False); f.write("\n")
+
+        data = load_content_pack_quiz_dataset(pack_id, dataset_id)
+        runtime, db_questions = _quiz_dataset_runtime(pack_id, data)
+        _, html_name = _create_quiz_from_runtime(
+            f"{title} — Practice", runtime, db_questions,
+            filename_prefix=f"user_image_{dataset_id}",
+            exam_minutes=request.form.get("exam_minutes")
+        )
+        shutil.rmtree(draft_root, ignore_errors=True)
+        flash("Image study pack and quiz created successfully.", "success")
+        return redirect(f"/quizzes/{html_name}")
+    except Exception as exc:
+        shutil.rmtree(pack_root, ignore_errors=True)
+        return f"Unable to create image study pack: {exc}", 400
+
+
+IMAGE_QUIZ_BUILDER_TEMPLATE = r"""
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Build from Images - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home image-builder-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▧</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>{% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}</nav>
+<div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a></nav><div class="dashboard-sidebar-version">Build from Images</div></aside>
+<main class="dashboard-main image-builder-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">IMAGE-BASED QUIZ BUILDER</div><h1>Build from Images</h1><p>Use images exactly as they are, attach questions below them, or create clickable hotspot questions. Editing is optional.</p></div></header>
+
+{% if not draft %}
+<section class="dashboard-panel image-builder-intro"><div class="image-builder-step-badge">1</div><div><span class="build-method-label">UPLOAD</span><h2>Choose one or more images</h2><p>Upload clean diagrams, screenshots, photographs, figures, or other study images. You can use them as-is.</p></div>
+<form method="POST" enctype="multipart/form-data" class="image-builder-upload-form"><label class="build-field"><span>Study Images</span><input type="file" name="study_images" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple required><small>PNG, JPG/JPEG, or WEBP · up to 12 images.</small></label><button class="build-primary-button" type="submit">Upload &amp; Continue</button></form></section>
+<section class="image-builder-feature-grid"><div class="dashboard-panel"><strong>Use As-Is</strong><p>No editing is required. The image can simply appear above a normal question.</p></div><div class="dashboard-panel"><strong>Normal Questions</strong><p>Create multiple-choice, multi-select, or matching questions tied to an image.</p></div><div class="dashboard-panel"><strong>Clickable Regions</strong><p>Create a hotspot target now and refine it later in Image Study Editor if needed.</p></div></section>
+{% else %}
+<form method="POST" action="/study-packs/image-builder/save" id="builderForm"><input type="hidden" name="draft_id" value="{{ draft.id }}"><input type="hidden" name="builder_payload" id="builderPayload">
+<section class="dashboard-panel image-builder-settings"><div class="image-builder-section-heading"><div class="image-builder-step-badge">2</div><div><span class="build-method-label">STUDY PACK</span><h2>Name and organize the study material</h2></div></div>
+<div class="image-builder-settings-grid"><label class="build-field"><span>Study Pack / Quiz Title</span><input name="pack_title" required placeholder="Example: OSI Model Diagram Review"></label><label class="build-field"><span>Subject / Domain</span><select name="subject"><option>IT / Cybersecurity</option><option>General</option><option>Science</option><option>Medical</option><option>History</option><option>Language</option><option>Other</option></select></label><label class="build-field"><span>Exam Mode Timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label><label class="build-field image-builder-wide"><span>Description <em>Optional</em></span><input name="description" placeholder="What this image study pack covers"></label><label class="build-field image-builder-wide"><span>Source / Credit Note <em>Optional</em></span><input name="source_note" placeholder="Example: My own diagram, instructor-provided image, vendor documentation screenshot"></label></div></section>
+<section class="dashboard-panel image-builder-images"><div class="image-builder-section-heading"><div class="image-builder-step-badge">3</div><div><span class="build-method-label">IMAGES</span><h2>Your uploaded images</h2><p>These are used as-is. You can edit them later in Image Study Editor.</p></div></div><div class="image-builder-thumb-grid">{% for image in draft.images %}<article class="image-builder-thumb"><img src="{{ image.url }}" alt="{{ image.original_name }}"><strong>{{ image.original_name }}</strong><input class="image-alt-input" data-image-id="{{ image.id }}" value="{{ image.original_name }}" placeholder="Accessible image description"></article>{% endfor %}</div></section>
+<section class="dashboard-panel image-builder-questions"><div class="image-builder-section-heading"><div class="image-builder-step-badge">4</div><div><span class="build-method-label">QUESTIONS</span><h2>Add questions to the images</h2><p>The same image can be reused for several different question types.</p></div><button type="button" class="build-primary-button" id="addQuestionBtn">+ Add Question</button></div><div id="questionList"></div></section>
+<section class="dashboard-panel image-builder-finish"><label class="image-builder-rights"><input type="checkbox" name="rights_ok" required><span>I have permission to use these uploaded images for my study material. DLMS will mark the generated pack as user-supplied and not cleared for redistribution.</span></label><div class="image-builder-submit-row"><button class="build-primary-button" type="submit">Create Study Pack &amp; Quiz</button><a class="medical-ai-quiet-link" href="/study-packs/image-builder">Start Over</a></div></section></form>
+
+<script>
+const DRAFT={{ draft|tojson }};let qCounter=0;const list=document.getElementById('questionList');
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+function imageOptions(){return DRAFT.images.map(i=>`<option value="${esc(i.id)}">${esc(i.original_name)}</option>`).join('')}
+function choiceRow(){return `<div class="image-builder-choice-row"><input type="checkbox" class="choice-correct" title="Correct answer"><input type="text" class="choice-text" placeholder="Answer choice"><button type="button" class="image-builder-small-delete" onclick="this.parentElement.remove()">×</button></div>`}
+function pairRow(){return `<div class="image-builder-pair-row"><input class="pair-left" placeholder="Left item"><span>↔</span><input class="pair-right" placeholder="Matching answer"><button type="button" class="image-builder-small-delete" onclick="this.parentElement.remove()">×</button></div>`}
+function addQuestion(){qCounter++;const el=document.createElement('article');el.className='image-builder-question-card';el.innerHTML=`<div class="image-builder-question-head"><strong>Question ${qCounter}</strong><button type="button" class="image-builder-small-delete" onclick="this.closest('.image-builder-question-card').remove()">Remove</button></div><div class="image-builder-question-grid"><label class="build-field"><span>Image</span><select class="q-image">${imageOptions()}</select></label><label class="build-field"><span>Question Type</span><select class="q-type"><option value="choice">Multiple Choice / Multi-select</option><option value="matching">Matching</option><option value="hotspot">Clickable Hotspot</option></select></label><label class="build-field image-builder-wide"><span>Question</span><textarea class="q-text" rows="2" placeholder="Ask a question about the selected image"></textarea></label><label class="build-field image-builder-wide"><span>Study Mode Explanation <em>Optional</em></span><textarea class="q-explanation" rows="2" placeholder="Explain why the answer is correct"></textarea></label></div><div class="q-choice-editor"><div class="image-builder-subhead"><strong>Answer choices</strong><span>Check every correct answer. One checked = multiple choice; more than one = multi-select.</span></div><div class="choice-list">${choiceRow()}${choiceRow()}${choiceRow()}${choiceRow()}</div><button type="button" class="medical-ai-secondary-button add-choice">+ Choice</button></div><div class="q-matching-editor" hidden><div class="image-builder-subhead"><strong>Matching pairs</strong><span>Add at least two pairs.</span></div><div class="pair-list">${pairRow()}${pairRow()}</div><button type="button" class="medical-ai-secondary-button add-pair">+ Pair</button></div><div class="q-hotspot-editor" hidden><div class="image-builder-subhead"><strong>Clickable target</strong><span>Choose a circle or polygon, then click the image to define the region.</span></div><div class="image-builder-hotspot-controls"><label class="build-field"><span>Target Label</span><input class="hotspot-label" placeholder="Example: Firewall"></label><label class="build-field"><span>Shape</span><select class="hotspot-shape"><option value="circle">Circle</option><option value="polygon">Polygon</option></select></label><label class="build-field"><span>Circle Radius <b class="radius-readout">0.060</b></span><input type="range" class="hotspot-radius" min="0.015" max="0.30" step="0.005" value="0.06"></label></div><div class="image-builder-hotspot-stage"><img class="hotspot-preview" draggable="false"><svg viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon></polygon><circle></circle><g></g></svg></div><div class="image-builder-hotspot-actions"><button type="button" class="medical-ai-secondary-button clear-hotspot">Clear Region</button><span class="hotspot-status">Circle: click the target center.</span></div></div>`;list.appendChild(el);initQuestion(el)}
+function initQuestion(el){const type=el.querySelector('.q-type'),imageSel=el.querySelector('.q-image'),choiceEd=el.querySelector('.q-choice-editor'),matchEd=el.querySelector('.q-matching-editor'),hotEd=el.querySelector('.q-hotspot-editor'),img=el.querySelector('.hotspot-preview'),svg=el.querySelector('.image-builder-hotspot-stage svg'),poly=svg.querySelector('polygon'),circle=svg.querySelector('circle'),handles=svg.querySelector('g');el._shape={center:null,points:[]};function refreshImage(){const i=DRAFT.images.find(x=>x.id===imageSel.value)||DRAFT.images[0];if(i)img.src=i.url}function refreshType(){choiceEd.hidden=type.value!=='choice';matchEd.hidden=type.value!=='matching';hotEd.hidden=type.value!=='hotspot';if(type.value==='hotspot')refreshImage()}function draw(){const kind=el.querySelector('.hotspot-shape').value,r=Number(el.querySelector('.hotspot-radius').value);poly.setAttribute('points','');circle.setAttribute('r','0');handles.innerHTML='';if(kind==='circle'&&el._shape.center){circle.setAttribute('cx',el._shape.center[0]*1000);circle.setAttribute('cy',el._shape.center[1]*1000);circle.setAttribute('r',r*1000)}if(kind==='polygon'&&el._shape.points.length){poly.setAttribute('points',el._shape.points.map(p=>`${p[0]*1000},${p[1]*1000}`).join(' '));el._shape.points.forEach(p=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',p[0]*1000);c.setAttribute('cy',p[1]*1000);c.setAttribute('r','8');c.setAttribute('class','image-builder-hotspot-handle');handles.appendChild(c)})}}type.addEventListener('change',refreshType);imageSel.addEventListener('change',refreshImage);el.querySelector('.add-choice').onclick=()=>el.querySelector('.choice-list').insertAdjacentHTML('beforeend',choiceRow());el.querySelector('.add-pair').onclick=()=>el.querySelector('.pair-list').insertAdjacentHTML('beforeend',pairRow());el.querySelector('.hotspot-shape').addEventListener('change',()=>{el._shape={center:null,points:[]};draw()});el.querySelector('.hotspot-radius').addEventListener('input',e=>{el.querySelector('.radius-readout').textContent=Number(e.target.value).toFixed(3);draw()});el.querySelector('.clear-hotspot').onclick=()=>{el._shape={center:null,points:[]};draw()};img.addEventListener('click',ev=>{const r=img.getBoundingClientRect(),x=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)),y=Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height));if(el.querySelector('.hotspot-shape').value==='circle')el._shape.center=[x,y];else el._shape.points.push([x,y]);draw()});refreshType();refreshImage()}
+function collect(){const images=DRAFT.images.map(i=>{const alt=document.querySelector(`.image-alt-input[data-image-id="${i.id}"]`);return {...i,alt_text:alt?.value||i.original_name}}),questions=[];document.querySelectorAll('.image-builder-question-card').forEach(el=>{const type=el.querySelector('.q-type').value,q={type,image_id:el.querySelector('.q-image').value,question:el.querySelector('.q-text').value.trim(),explanation:el.querySelector('.q-explanation').value.trim()};if(type==='choice')q.choices=[...el.querySelectorAll('.image-builder-choice-row')].map(r=>({text:r.querySelector('.choice-text').value.trim(),is_correct:r.querySelector('.choice-correct').checked})).filter(c=>c.text);if(type==='matching')q.pairs=[...el.querySelectorAll('.image-builder-pair-row')].map(r=>({left:r.querySelector('.pair-left').value.trim(),right:r.querySelector('.pair-right').value.trim()})).filter(p=>p.left||p.right);if(type==='hotspot'){q.target_label=el.querySelector('.hotspot-label').value.trim();const kind=el.querySelector('.hotspot-shape').value;q.shape=kind==='circle'?(el._shape.center?{type:'circle',x:el._shape.center[0],y:el._shape.center[1],radius:Number(el.querySelector('.hotspot-radius').value)}:null):{type:'polygon',points:el._shape.points}}questions.push(q)});return {images,questions}}
+document.getElementById('addQuestionBtn').onclick=addQuestion;document.getElementById('builderForm').addEventListener('submit',ev=>{const p=collect();if(!p.questions.length){ev.preventDefault();alert('Add at least one question.');return}for(let i=0;i<p.questions.length;i++){const q=p.questions[i];if(!q.question){ev.preventDefault();alert(`Question ${i+1} needs question text.`);return}if(q.type==='choice'&&(!q.choices||q.choices.length<2||!q.choices.some(c=>c.is_correct))){ev.preventDefault();alert(`Question ${i+1} needs at least two choices and one correct answer.`);return}if(q.type==='matching'&&(!q.pairs||q.pairs.length<2||q.pairs.some(x=>!x.left||!x.right))){ev.preventDefault();alert(`Question ${i+1} needs at least two complete matching pairs.`);return}if(q.type==='hotspot'&&(!q.target_label||!q.shape||(q.shape.type==='polygon'&&q.shape.points.length<3))){ev.preventDefault();alert(`Question ${i+1} needs a target label and valid hotspot region.`);return}}document.getElementById('builderPayload').value=JSON.stringify(p)});addQuestion();
+</script>
+{% endif %}
+</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script></body></html>
+"""
+
 @app.route("/upload")
 def upload_page():
     portal_title = get_portal_title()
@@ -8428,6 +8972,11 @@ def upload_page():
                         <h2>Import matching pairs</h2>
                         <p>Load a CSV terminology bank, choose round size and direction, and retain source metadata.</p>
                     </div>
+                    <span class="build-option-arrow" aria-hidden="true">›</span>
+                </a>
+                <a class="build-option-card build-option-card-image" href="/study-packs/image-builder">
+                    <div class="build-option-icon" aria-hidden="true">▧</div>
+                    <div><span class="build-method-label">IMAGE STUDY</span><h2>Build from image(s)</h2><p>Use images as-is for normal questions, or add clickable regions when you want hotspot practice.</p></div>
                     <span class="build-option-arrow" aria-hidden="true">›</span>
                 </a>
                 <div class="build-tip-card">
@@ -15841,6 +16390,8 @@ def ensure_schema(conn):
         "source_version": "TEXT",
         "source_url": "TEXT",
         "source_license": "TEXT",
+        "explanation": "TEXT",
+        "media_json": "TEXT",
     }
     cur.execute("PRAGMA table_info(questions)")
     question_cols = {row[1] for row in cur.fetchall()}

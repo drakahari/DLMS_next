@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS questions (
     source_version TEXT,
     source_url TEXT,
     source_license TEXT,
+    explanation TEXT,
+    media_json TEXT,
     correct_letters TEXT,
     correct_text TEXT,
 

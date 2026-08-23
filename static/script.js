@@ -149,6 +149,22 @@ function prepareQuestionForAttempt(q) {
 /* =====================================================
    RENDER QUESTION
 ===================================================== */
+function renderQuestionMedia(q) {
+    if (!q || !q.image_url) return "";
+    const source = (q.image_source && typeof q.image_source === "object") ? q.image_source : {};
+    const attribution = source.attribution
+        ? `<div class="question-media-attribution">${escapeHtml(source.attribution)}${source.license ? ` · ${escapeHtml(source.license)}` : ""}</div>`
+        : "";
+    return `<div class="question-media-block">
+        <div class="question-media-wrap">
+            <img class="question-media-image" src="${escapeHtml(q.image_url)}" alt="${escapeHtml(q.image_alt || "Question image")}" draggable="false">
+            ${renderImageStudyEdits(q.image_edits)}
+        </div>
+        ${attribution}
+    </div>`;
+}
+
+
 function renderQuestion() {
     if (!quiz.length) return;
 
@@ -223,7 +239,7 @@ if (examMode && selected.includes(i)) {
         `;
     });
 
-    choicesEl.innerHTML = html;
+    choicesEl.innerHTML = renderQuestionMedia(q) + html;
 
     // Study mode: immediately show correct/incorrect colors
    if (!examMode && selected.length > 0) {
@@ -385,7 +401,7 @@ function renderMatchingQuestion(q, key, selected, choicesEl) {
     const answers = (selected && typeof selected === "object" && !Array.isArray(selected)) ? selected : {};
     const order = matchingOptionOrders[key];
     const options = order.map(idx => `<option value="${idx}">${escapeHtml(pairs[idx].right)}</option>`).join("");
-    choicesEl.innerHTML = `<div class="matching-question"><div class="matching-instructions">Choose the matching answer for each item.</div>${pairs.map((pair, leftIndex) => {
+    choicesEl.innerHTML = renderQuestionMedia(q) + `<div class="matching-question"><div class="matching-instructions">Choose the matching answer for each item.</div>${pairs.map((pair, leftIndex) => {
         const chosen = answers[leftIndex] === undefined ? "" : String(answers[leftIndex]);
         let cls = "matching-row";
         if (!examMode && chosen !== "") cls += Number(chosen) === leftIndex ? " matching-correct" : " matching-wrong";
@@ -685,6 +701,19 @@ function applyStudyFeedback() {
             buttons[idx].classList.add("wrong-choice");     // red
         }
     });
+
+    const choicesEl = document.getElementById("choices");
+    if (choicesEl) {
+        choicesEl.querySelector(".choice-study-explanation")?.remove();
+        if (selected.length && (q.explanation || (q.source && q.source.url))) {
+            const source = (q.source && typeof q.source === "object") ? q.source : {};
+            const explanation = q.explanation
+                ? `<div class="matching-study-explanation">${escapeHtml(q.explanation)}</div>` : "";
+            const sourceLine = source.url
+                ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.dataset || source.url)}</a></div>` : "";
+            choicesEl.insertAdjacentHTML("beforeend", `<div class="matching-study-feedback choice-study-explanation">${explanation}${sourceLine}</div>`);
+        }
+    }
 }
 
 
