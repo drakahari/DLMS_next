@@ -961,7 +961,17 @@ function submitQuiz(force = false) {
                         correctText: [q.target_label || "Target structure"],
                         selectedIndexes: [],
                         selectedLetters: [],
-                        selectedText: [point ? "Incorrect image location selected" : "[No answer]"]
+                        selectedText: [point ? "Image location selected" : "[No answer]"],
+                        hotspot: {
+                            selected: point ? {x: Number(point.x), y: Number(point.y)} : null,
+                            target: q.target || {},
+                            targetLabel: q.target_label || "Target structure",
+                            imageUrl: q.image_url || "",
+                            imageAlt: q.image_alt || "Anatomy image",
+                            explanation: q.explanation || "",
+                            verification: q.verification || {},
+                            imageSource: q.image_source || {}
+                        }
                     });
                 }
                 continue;

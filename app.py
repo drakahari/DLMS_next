@@ -10768,17 +10768,31 @@ def record_attempt():
             """, (quiz_id, aqn))
             qrow = cur.fetchone()
 
-            question_text = qrow["question_text"] if qrow else (md.get("question") or "")
+            submitted_question_type = str(md.get("questionType") or "").strip().lower()
             question_id = qrow["id"] if qrow else None
-            question_type = qrow["question_type"] if qrow else md.get("questionType", "choice")
+
+            # Hotspot quizzes deliberately use a lightweight choice surrogate in
+            # the canonical questions table. Preserve the runtime type supplied by
+            # the quiz player so History/Review can reconstruct the image response.
+            if submitted_question_type == "hotspot":
+                question_type = "hotspot"
+                question_text = md.get("question") or (qrow["question_text"] if qrow else "")
+            else:
+                question_type = qrow["question_type"] if qrow else (submitted_question_type or "choice")
+                question_text = qrow["question_text"] if qrow else (md.get("question") or "")
 
             if not question_id:
                 print(f"[WARN] Missing question snapshot for quiz_id={quiz_id}, qnum={aqn}")
 
 
             # Pull answer snapshot. Matching questions use their term/pair rows.
+            # Hotspots carry their visual response snapshot in response_json.
             choices_text = ""
-            if question_id and question_type == "matching":
+            response_json = ""
+            if question_type == "hotspot":
+                hotspot_data = md.get("hotspot") if isinstance(md.get("hotspot"), dict) else {}
+                response_json = json.dumps(hotspot_data, ensure_ascii=False)
+            elif question_id and question_type == "matching":
                 cur.execute("""
                     SELECT left_text, right_text
                     FROM matching_pairs
@@ -10812,7 +10826,10 @@ def record_attempt():
             correct_text = ""
             selected_text = ""
 
-            if question_type == "matching":
+            if question_type == "hotspot":
+                correct_text = "\n".join(str(x) for x in (md.get("correctText") or []))
+                selected_text = "\n".join(str(x) for x in (md.get("selectedText") or []))
+            elif question_type == "matching":
                 correct_text = "\n".join(str(x) for x in (md.get("correctText") or []))
                 selected_text = "\n".join(str(x) for x in (md.get("selectedText") or []))
             elif question_id:
@@ -10849,8 +10866,10 @@ def record_attempt():
                     correct_letters,
                     correct_text,
                     selected_letters,
-                    selected_text
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    selected_text,
+                    question_type,
+                    response_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 missed_attempt_ref,
                 aqn,
@@ -10860,6 +10879,8 @@ def record_attempt():
                 correct_text,
                 ",".join(selected_letters),
                 selected_text,
+                question_type,
+                response_json,
             ))
 
 
@@ -13424,7 +13445,9 @@ def api_missed_questions():
             correct_text,
             correct_letters,
             selected_text,
-            selected_letters
+            selected_letters,
+            COALESCE(question_type, 'choice') AS question_type,
+            response_json
         FROM missed_questions
         WHERE attempt_id = ?
         ORDER BY attempt_question_number
@@ -13442,6 +13465,11 @@ def api_missed_questions():
             "correct_letters": r["correct_letters"],
             "selected_text": r["selected_text"],
             "selected_letters": r["selected_letters"],
+            "question_type": r["question_type"],
+            "response_data": (
+                json.loads(r["response_json"])
+                if r["response_json"] else None
+            ),
         }
         for r in rows
     ])
@@ -14212,7 +14240,9 @@ def ensure_schema(conn):
                 selected_letters TEXT,
                 selected_text TEXT,
                 correct_text TEXT,
-                attempt_question_number INTEGER
+                attempt_question_number INTEGER,
+                question_type TEXT DEFAULT 'choice',
+                response_json TEXT
             );
         """)
 
@@ -14233,7 +14263,9 @@ def ensure_schema(conn):
                 selected_letters,
                 selected_text,
                 correct_text,
-                attempt_question_number
+                attempt_question_number,
+                question_type,
+                response_json
             )
             SELECT
                 id,
@@ -14245,7 +14277,9 @@ def ensure_schema(conn):
                 {col_or_null("selected_letters")},
                 {col_or_null("selected_text")},
                 {col_or_null("correct_text")},
-                {col_or_null("attempt_question_number")}
+                {col_or_null("attempt_question_number")},
+                {col_or_null("question_type")},
+                {col_or_null("response_json")}
             FROM missed_questions_old;
         """
 
@@ -14275,6 +14309,8 @@ def ensure_schema(conn):
     add_col("selected_text", "TEXT")
     add_col("correct_text", "TEXT")
     add_col("attempt_question_number", "INTEGER")
+    add_col("question_type", "TEXT DEFAULT 'choice'")
+    add_col("response_json", "TEXT")
 
     for sql in migrations:
         print("[DB MIGRATION]", sql)

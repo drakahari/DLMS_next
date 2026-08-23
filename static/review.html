@@ -83,7 +83,7 @@
 
         <section id="reviewArea" class="review-question-list"></section>
 
-        <section class="review-bulk-panel dashboard-panel">
+        <section id="reviewBulkPanel" class="review-bulk-panel dashboard-panel">
             <div class="review-bulk-copy">
                 <span class="review-eyebrow">BULK ACTIONS</span>
                 <h2>Work with selected questions</h2>
@@ -268,6 +268,64 @@ function formatReviewAnswer(text, correctText = null, compareAgainstCorrect = fa
     return `<div class="review-match-list">${rows}</div>`;
 }
 
+function hotspotCenter(shape) {
+    if (!shape || typeof shape !== "object") return {x: 0.5, y: 0.5};
+    if (shape.type === "circle") {
+        return {x: Number(shape.x), y: Number(shape.y)};
+    }
+    if (shape.type === "polygon" && Array.isArray(shape.points) && shape.points.length) {
+        const sum = shape.points.reduce((acc, p) => ({
+            x: acc.x + Number(p[0]),
+            y: acc.y + Number(p[1])
+        }), {x: 0, y: 0});
+        return {x: sum.x / shape.points.length, y: sum.y / shape.points.length};
+    }
+    return {x: 0.5, y: 0.5};
+}
+
+function renderHotspotReview(item) {
+    const data = item && item.response_data && typeof item.response_data === "object"
+        ? item.response_data : {};
+    const selected = data.selected && typeof data.selected === "object" ? data.selected : null;
+    const target = data.target && typeof data.target === "object" ? data.target : {};
+    const correct = hotspotCenter(target);
+    const imageUrl = escapeHtml(data.imageUrl || "");
+    const imageAlt = escapeHtml(data.imageAlt || "Anatomy image");
+    const targetLabel = escapeHtml(data.targetLabel || item.correct_text || "Target structure");
+    const explanation = data.explanation ? `<p class="review-hotspot-explanation">${escapeHtml(data.explanation)}</p>` : "";
+    const verification = data.verification || {};
+    const reference = verification.reference_basis
+        ? `<div class="review-hotspot-reference">Reference basis: ${escapeHtml(verification.reference_basis)}</div>` : "";
+    const source = data.imageSource || {};
+    const attribution = source.attribution
+        ? `<div class="review-hotspot-attribution">${escapeHtml(source.attribution)}${source.license ? ` · ${escapeHtml(source.license)}` : ""}</div>` : "";
+
+    const selectedMarker = selected && Number.isFinite(Number(selected.x)) && Number.isFinite(Number(selected.y))
+        ? `<span class="review-hotspot-marker selected" style="left:${Number(selected.x) * 100}%;top:${Number(selected.y) * 100}%" aria-label="Your click"></span>`
+        : "";
+    const correctMarker = Number.isFinite(correct.x) && Number.isFinite(correct.y)
+        ? `<span class="review-hotspot-marker correct" style="left:${correct.x * 100}%;top:${correct.y * 100}%" aria-label="Correct target"></span>`
+        : "";
+
+    return `
+        <div class="review-hotspot-block">
+            <div class="review-hotspot-image-wrap">
+                <img src="${imageUrl}" alt="${imageAlt}" class="review-hotspot-image">
+                ${selectedMarker}
+                ${correctMarker}
+            </div>
+            ${attribution}
+            <div class="review-hotspot-legend">
+                <span><i class="review-hotspot-dot selected"></i>Your click</span>
+                <span><i class="review-hotspot-dot correct"></i>Correct target</span>
+            </div>
+            <div class="review-hotspot-answer"><strong>Correct structure:</strong> ${targetLabel}</div>
+            ${selected ? "" : '<div class="review-hotspot-no-answer">No image location was selected.</div>'}
+            ${explanation}
+            ${reference}
+        </div>`;
+}
+
 async function loadReview() {
     const info = document.getElementById("info");
     const box  = document.getElementById("reviewArea");
@@ -333,10 +391,13 @@ async function loadReview() {
         missed.forEach((m, index) => {
             const qnum = escapeHtml(m.attempt_question_number);
             const questionText = escapeHtml(m.question_text || "");
+            const questionType = String(m.question_type || "choice").toLowerCase();
+            const isHotspot = questionType === "hotspot";
             const correctText = formatReviewAnswer(m.correct_text, m.correct_text, false);
             const selectedText = m.selected_text
                 ? formatReviewAnswer(m.selected_text, m.correct_text, true)
                 : "<i>(No answer recorded)</i>";
+            const hotspotReview = isHotspot ? renderHotspotReview(m) : "";
 
             html += `
             <article class="review-question-card">
@@ -345,6 +406,7 @@ async function loadReview() {
                         <span class="review-question-kicker">MISSED QUESTION</span>
                         <h2>Question ${qnum}</h2>
                     </div>
+                    ${isHotspot ? '<span class="review-question-type-badge">Image hotspot</span>' : `
                     <div class="review-question-selectors">
                         <label>
                             <input type="checkbox"
@@ -360,11 +422,12 @@ async function loadReview() {
                                 onchange="syncSelectAllAI()">
                             <span>AI</span>
                         </label>
-                    </div>
+                    </div>`}
                 </div>
 
                 <div class="review-question-text">${questionText}</div>
 
+                ${isHotspot ? hotspotReview : `
                 <div class="review-answer-grid">
                     <section class="review-answer-panel correct">
                         <span class="review-answer-label">CORRECT ANSWER</span>
@@ -384,11 +447,17 @@ async function loadReview() {
                     <button type="button" onclick="openAIExplain(${index}, this)">
                         🤖 Explain with AI
                     </button>
-                </div>
+                </div>`}
             </article>`;
         });
 
         box.innerHTML = html;
+
+        const bulkPanel = document.getElementById("reviewBulkPanel");
+        if (bulkPanel) {
+            const hasTextQuestions = missed.some(m => String(m.question_type || "choice").toLowerCase() !== "hotspot");
+            bulkPanel.hidden = !hasTextQuestions;
+        }
 
     } catch (err) {
         console.error(err);

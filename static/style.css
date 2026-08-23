@@ -6759,3 +6759,132 @@ a.settings-hub-card:hover {
         height: 18px;
     }
 }
+
+/* =========================================================
+   DLMS 3.0 — HOTSPOT HISTORY / REVIEW
+   ========================================================= */
+.review-question-type-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 4px 10px;
+    border: 1px solid rgba(77, 181, 222, .34);
+    border-radius: 999px;
+    background: rgba(20, 86, 116, .30);
+    color: #bfeaff;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.review-hotspot-block {
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid rgba(83, 151, 217, .25);
+    border-radius: 14px;
+    background: rgba(5, 16, 35, .62);
+}
+
+.review-hotspot-image-wrap {
+    position: relative;
+    width: min(100%, 660px);
+    margin: 0 auto;
+    user-select: none;
+}
+
+.review-hotspot-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 62vh;
+    object-fit: contain;
+    border: 1px solid rgba(91, 151, 214, .28);
+    border-radius: 12px;
+    background: rgba(245, 248, 252, .96);
+}
+
+.review-hotspot-marker {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+.review-hotspot-marker.selected {
+    width: 22px;
+    height: 22px;
+    border: 3px solid #fff;
+    background: rgba(238, 82, 92, .95);
+    box-shadow: 0 0 0 4px rgba(238, 82, 92, .25);
+}
+
+.review-hotspot-marker.correct {
+    width: 30px;
+    height: 30px;
+    border: 3px solid #43d98d;
+    background: rgba(67, 217, 141, .12);
+    box-shadow: 0 0 0 5px rgba(67, 217, 141, .14);
+}
+
+.review-hotspot-attribution,
+.review-hotspot-reference {
+    margin-top: 7px;
+    color: #91a8c0;
+    font-size: 11px;
+    line-height: 1.45;
+    text-align: center;
+}
+
+.review-hotspot-legend {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 12px 0;
+    color: #c7d6e8;
+    font-size: 12px;
+}
+
+.review-hotspot-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.review-hotspot-dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.review-hotspot-dot.selected { background: #ee525c; }
+.review-hotspot-dot.correct {
+    background: transparent;
+    border: 2px solid #43d98d;
+}
+
+.review-hotspot-answer,
+.review-hotspot-no-answer,
+.review-hotspot-explanation {
+    width: min(100%, 660px);
+    box-sizing: border-box;
+    margin: 10px auto 0;
+    color: #e3edf8;
+    line-height: 1.55;
+}
+
+.review-hotspot-no-answer {
+    color: #f1b8bd;
+    font-style: italic;
+}
+
+.review-hotspot-explanation {
+    padding-top: 10px;
+    border-top: 1px solid rgba(100, 151, 205, .18);
+}
+
+.review-bulk-panel[hidden] {
+    display: none !important;
+}
+
