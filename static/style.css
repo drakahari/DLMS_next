@@ -6888,3 +6888,56 @@ a.settings-hub-card:hover {
     display: none !important;
 }
 
+
+
+/* DLMS 3.0 - optional source metadata + hotspot calibration editor */
+.build-optional-source{overflow:hidden}.build-optional-source>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 0;color:#eaf3ff}.build-optional-source>summary::-webkit-details-marker{display:none}.build-optional-source>summary::after{content:"▾";font-size:18px;color:#70c8ff;transition:transform .15s ease}.build-optional-source[open]>summary::after{transform:rotate(180deg)}.build-optional-source-title{font-size:18px;font-weight:800}.build-optional-source-hint{margin-left:auto;color:#96aac1;font-size:12px;font-weight:650}.build-optional-source-body{margin-top:18px;padding-top:18px;border-top:1px solid rgba(99,154,216,.22)}.build-optional-source-copy{margin:0 0 16px;color:#aebfd2;line-height:1.5}.hotspot-editor-main{min-width:0}.hotspot-editor-picker form,.hotspot-editor-toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:end}.hotspot-editor-picker label,.hotspot-editor-toolbar label{display:flex;flex-direction:column;gap:7px;min-width:190px;color:#c9d9ea;font-size:12px;font-weight:750}.hotspot-editor-picker select,.hotspot-editor-toolbar select,.hotspot-editor-toolbar input[type=range]{min-height:42px;padding:8px 10px;color:#eaf3ff;background:rgba(3,13,30,.86);border:1px solid rgba(91,146,215,.42);border-radius:9px}.hotspot-editor-toolbar #radiusControl{min-width:230px}.hotspot-editor-actions{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 10px}.hotspot-editor-help{color:#aebfd2;margin:8px 0 14px}.hotspot-editor-stage{position:relative;width:min(100%,800px);margin:0 auto;line-height:0;user-select:none}.hotspot-editor-stage img{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;background:#eef2f6;border:1px solid rgba(91,146,215,.38);border-radius:14px;cursor:crosshair}.hotspot-editor-stage svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}#polygonShape,#circleShape{fill:rgba(52,211,153,.18);stroke:#34d399;stroke-width:4;vector-effect:non-scaling-stroke}.hotspot-editor-handle{fill:#eaf3ff;stroke:#1fa875;stroke-width:4;vector-effect:non-scaling-stroke}.hotspot-editor-test-marker{position:absolute;width:18px;height:18px;border-radius:50%;transform:translate(-50%,-50%);border:3px solid #fff;pointer-events:none}.hotspot-editor-test-marker.inside{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.28)}.hotspot-editor-test-marker.outside{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.28)}.hotspot-editor-status{width:min(100%,800px);margin:12px auto 0;padding:10px 12px;border-radius:9px;color:#bdd0e4;background:rgba(4,16,34,.76);border:1px solid rgba(88,143,205,.28);line-height:1.45}.hotspot-editor-status.success{color:#bff4d5;border-color:rgba(46,200,126,.42)}.hotspot-editor-status.error{color:#ffd0d4;border-color:rgba(235,93,104,.46)}.hotspot-editor-json{width:min(100%,800px);margin:14px auto 0;color:#9fb4ca}.hotspot-editor-json pre{white-space:pre-wrap;background:rgba(1,8,19,.8);padding:12px;border-radius:9px;overflow:auto}@media(max-width:700px){.build-optional-source>summary{align-items:flex-start}.build-optional-source-hint{display:none}.hotspot-editor-picker form,.hotspot-editor-toolbar{display:grid;grid-template-columns:1fr}.hotspot-editor-toolbar label{min-width:0}.hotspot-editor-stage img{max-height:64vh}}
+
+
+/* =========================================================
+   HOTSPOT EDITOR — CONTROL LABEL ALIGNMENT POLISH
+   ========================================================= */
+.hotspot-editor-picker,
+.hotspot-editor-workspace {
+    padding-top: 22px;
+}
+
+.hotspot-editor-picker form,
+.hotspot-editor-toolbar {
+    align-items: flex-end;
+}
+
+.hotspot-editor-picker label,
+.hotspot-editor-toolbar label {
+    margin: 0;
+    padding: 0;
+}
+
+.hotspot-editor-picker label > span,
+.hotspot-editor-toolbar label > span {
+    display: block;
+    margin: 0 0 8px;
+    line-height: 1.25;
+}
+
+.hotspot-editor-picker select,
+.hotspot-editor-toolbar select {
+    margin: 0;
+}
+
+.hotspot-editor-toolbar #radiusControl {
+    justify-content: flex-end;
+}
+
+.hotspot-editor-toolbar #radiusControl input[type="range"] {
+    width: 100%;
+    min-height: 42px;
+    padding: 0;
+}
+
+@media (max-width: 700px) {
+    .hotspot-editor-picker,
+    .hotspot-editor-workspace {
+        padding-top: 18px;
+    }
+}

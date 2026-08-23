@@ -690,7 +690,12 @@ def admin_maintenance():
 
         <p id="rebuildStatus" style="margin-top:10px;"></p>
 
-        <br>
+        <hr style="margin:24px 0; opacity:.35">
+        <h2>Anatomy Hotspot Calibration</h2>
+        <p style="opacity:.8;">Open installed image datasets, draw precise circle or polygon hit regions, test them, and save the geometry directly into the installed content pack.</p>
+        <button onclick="location.href='/admin/hotspots'">◎ Open Hotspot Editor</button>
+
+        <br><br>
 
         <button onclick="location.href='/'">
             ⬅ Back To Dashboard
@@ -740,6 +745,130 @@ rebuildBtn.addEventListener("click", async () => {
 """)
 
 
+
+
+# =========================
+# HOTSPOT CALIBRATION EDITOR
+# =========================
+def _hotspot_editor_catalog():
+    catalog = []
+    for pack_id, pack in discover_content_packs().items():
+        for descriptor in (pack.get("image_datasets") or []):
+            dataset_id = str(descriptor.get("id") or "").strip()
+            if not dataset_id:
+                continue
+            try:
+                data = load_content_pack_image_dataset(pack_id, dataset_id)
+            except Exception as exc:
+                print(f"[HOTSPOT EDITOR] Unable to load {pack_id}/{dataset_id}: {exc}")
+                continue
+            catalog.append({
+                "pack_id": pack_id,
+                "pack_name": pack.get("name") or pack_id,
+                "dataset_id": dataset_id,
+                "title": descriptor.get("title") or data.get("title") or dataset_id,
+                "images": len(data.get("images") or []),
+            })
+    return catalog
+
+
+def _validate_hotspot_shape(shape):
+    if not isinstance(shape, dict):
+        raise ValueError("Shape must be an object")
+    shape_type = str(shape.get("type") or "").strip().lower()
+    if shape_type == "circle":
+        x = float(shape.get("x")); y = float(shape.get("y")); radius = float(shape.get("radius"))
+        if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < radius <= 0.5):
+            raise ValueError("Circle coordinates must be normalized and radius must be > 0")
+        return {"type":"circle","x":round(x,6),"y":round(y,6),"radius":round(radius,6)}
+    if shape_type == "polygon":
+        points = shape.get("points")
+        if not isinstance(points, list) or len(points) < 3:
+            raise ValueError("Polygon needs at least three points")
+        cleaned=[]
+        for point in points:
+            if not isinstance(point,(list,tuple)) or len(point)!=2:
+                raise ValueError("Each polygon point must contain x and y")
+            x,y=float(point[0]),float(point[1])
+            if not (0 <= x <= 1 and 0 <= y <= 1):
+                raise ValueError("Polygon coordinates must be normalized from 0 to 1")
+            cleaned.append([round(x,6),round(y,6)])
+        return {"type":"polygon","points":cleaned}
+    raise ValueError("Shape type must be circle or polygon")
+
+
+@app.route("/admin/hotspots")
+def admin_hotspot_editor():
+    catalog = _hotspot_editor_catalog()
+    selected_pack = request.args.get("pack", "").strip()
+    selected_dataset = request.args.get("dataset", "").strip()
+    if (not selected_pack or not selected_dataset) and catalog:
+        selected_pack = catalog[0]["pack_id"]
+        selected_dataset = catalog[0]["dataset_id"]
+    editor_data=None; load_error=None
+    if selected_pack and selected_dataset:
+        try:
+            data=load_content_pack_image_dataset(selected_pack,selected_dataset)
+            images=[]
+            for image in data.get("images") or []:
+                images.append({
+                    "id": image.get("id") or image.get("file"),
+                    "file": image.get("file") or "",
+                    "url": url_for("content_pack_asset", pack_id=selected_pack, asset_path=image.get("file")),
+                    "alt_text": image.get("alt_text") or data.get("title") or "Anatomy image",
+                    "hotspots": image.get("hotspots") or [],
+                })
+            editor_data={"pack_id":selected_pack,"dataset_id":selected_dataset,"title":data.get("title") or selected_dataset,"images":images}
+        except Exception as exc:
+            load_error=str(exc)
+    return render_template_string(HOTSPOT_EDITOR_TEMPLATE, catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset, editor_data=editor_data, load_error=load_error)
+
+
+@app.route("/admin/hotspots/save", methods=["POST"])
+def admin_hotspot_save():
+    payload=request.get_json(force=True) or {}
+    pack_id=str(payload.get("pack_id") or "").strip().lower()
+    dataset_id=str(payload.get("dataset_id") or "").strip()
+    image_id=str(payload.get("image_id") or "").strip()
+    hotspot_id=str(payload.get("hotspot_id") or "").strip()
+    try:
+        shape=_validate_hotspot_shape(payload.get("shape"))
+        pack=get_content_pack(pack_id)
+        if not pack: raise FileNotFoundError("Content pack is not installed")
+        descriptor=next((d for d in (pack.get("image_datasets") or []) if str(d.get("id") or "").strip()==dataset_id),None)
+        if not descriptor: raise KeyError("Image dataset is not declared by this pack")
+        dataset_path=_safe_pack_child(pack["_root"],str(descriptor.get("path") or "").strip())
+        with open(dataset_path,"r",encoding="utf-8") as f: data=json.load(f)
+        target_image=next((im for im in (data.get("images") or []) if str(im.get("id") or im.get("file") or "")==image_id),None)
+        if not target_image: raise KeyError("Image record not found")
+        target_hotspot=next((h for h in (target_image.get("hotspots") or []) if str(h.get("id") or "")==hotspot_id),None)
+        if not target_hotspot: raise KeyError("Hotspot record not found")
+        backup_path=dataset_path+".pre_editor.bak"
+        backup_created=False
+        if not os.path.exists(backup_path): shutil.copy2(dataset_path,backup_path); backup_created=True
+        target_hotspot["shape"]=shape
+        target_hotspot["calibration"]={"tool":"DLMS Hotspot Calibration Editor","updated_at":datetime.now().isoformat(timespec="seconds")}
+        tmp_path=dataset_path+".tmp"
+        with open(tmp_path,"w",encoding="utf-8") as f:
+            json.dump(data,f,indent=2,ensure_ascii=False); f.write("\n")
+        os.replace(tmp_path,dataset_path)
+        return jsonify({"ok":True,"shape":shape,"backup_created":backup_created})
+    except Exception as exc:
+        return jsonify({"error":str(exc)}),400
+
+
+HOTSPOT_EDITOR_TEMPLATE = r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Hotspot Editor - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home hotspot-editor-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">◎</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item active" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Hotspot Editor</div></aside>
+<main class="dashboard-main hotspot-editor-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">MAINTENANCE · ANATOMY</div><h1>Hotspot Calibration Editor</h1><p>Draw the actual clickable anatomy region instead of approximating it with a large circle.</p></div></header>
+<section class="dashboard-panel hotspot-editor-picker"><form method="GET" action="/admin/hotspots"><label><span>Installed image dataset</span><select id="datasetKey">{% for item in catalog %}<option value="{{ item.pack_id }}::{{ item.dataset_id }}" {% if item.pack_id == selected_pack and item.dataset_id == selected_dataset %}selected{% endif %}>{{ item.pack_name }} — {{ item.title }}</option>{% endfor %}</select></label><input type="hidden" name="pack" id="packField" value="{{ selected_pack }}"><input type="hidden" name="dataset" id="datasetField" value="{{ selected_dataset }}"><button type="submit">Load Dataset</button></form>{% if load_error %}<div class="flash error">{{ load_error }}</div>{% endif %}{% if not catalog %}<p>No installed content pack currently declares an image dataset.</p>{% endif %}</section>
+{% if editor_data %}<section class="dashboard-panel hotspot-editor-workspace"><div class="hotspot-editor-toolbar"><label><span>Image</span><select id="imageSelect"></select></label><label><span>Structure</span><select id="hotspotSelect"></select></label><label><span>Shape</span><select id="shapeMode"><option value="polygon">Polygon</option><option value="circle">Circle</option></select></label><label id="radiusControl"><span>Circle radius <strong id="radiusValue">0.050</strong></span><input id="circleRadius" type="range" min="0.01" max="0.20" step="0.005" value="0.05"></label></div><div class="hotspot-editor-actions"><button type="button" id="loadExistingBtn">Load Existing</button><button type="button" id="undoBtn">Undo Point</button><button type="button" id="clearBtn">Clear</button><button type="button" id="testBtn">Test Shape</button><button type="button" id="saveBtn" class="build-primary-button">Save Hotspot</button></div><p class="hotspot-editor-help">Polygon mode: click around the true outer boundary of the structure. Three or more points are required.</p><div class="hotspot-editor-stage"><img id="editorImage" alt="Anatomy hotspot calibration image" draggable="false"><svg id="editorSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon id="polygonShape"></polygon><circle id="circleShape"></circle><g id="pointHandles"></g></svg><div id="testMarker" class="hotspot-editor-test-marker" hidden></div></div><div class="hotspot-editor-status" id="editorStatus">Choose a structure, then load its existing shape or begin drawing.</div><details class="hotspot-editor-json"><summary>Current normalized geometry</summary><pre id="geometryPreview">{}</pre></details></section>{% endif %}<div class="review-return-row"><a class="review-return-link" href="/admin/maintenance">← Back to Maintenance</a></div></main></div>
+{% if editor_data %}<script>
+const EDITOR_DATA={{ editor_data|tojson }};let currentImage=null,currentHotspot=null,points=[],circleCenter=null,testMode=false;const imageSelect=document.getElementById('imageSelect'),hotspotSelect=document.getElementById('hotspotSelect'),shapeMode=document.getElementById('shapeMode'),radius=document.getElementById('circleRadius'),radiusValue=document.getElementById('radiusValue'),img=document.getElementById('editorImage'),poly=document.getElementById('polygonShape'),circle=document.getElementById('circleShape'),handles=document.getElementById('pointHandles'),statusEl=document.getElementById('editorStatus'),preview=document.getElementById('geometryPreview'),marker=document.getElementById('testMarker');
+function setStatus(t,k=''){statusEl.textContent=t;statusEl.className='hotspot-editor-status '+k;}function currentShape(){if(shapeMode.value==='circle'){if(!circleCenter)return null;return {type:'circle',x:circleCenter[0],y:circleCenter[1],radius:Number(radius.value)}}return points.length>=3?{type:'polygon',points:points}:null;}function draw(){const s=currentShape();preview.textContent=JSON.stringify(s||{},null,2);poly.setAttribute('points','');circle.setAttribute('r','0');handles.innerHTML='';if(shapeMode.value==='polygon'&&points.length){poly.setAttribute('points',points.map(p=>`${p[0]*1000},${p[1]*1000}`).join(' '));points.forEach(p=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',p[0]*1000);c.setAttribute('cy',p[1]*1000);c.setAttribute('r','8');c.setAttribute('class','hotspot-editor-handle');handles.appendChild(c)})}else if(shapeMode.value==='circle'&&circleCenter){circle.setAttribute('cx',circleCenter[0]*1000);circle.setAttribute('cy',circleCenter[1]*1000);circle.setAttribute('r',Number(radius.value)*1000)}radiusValue.textContent=Number(radius.value).toFixed(3);document.getElementById('radiusControl').style.display=shapeMode.value==='circle'?'flex':'none';}function populateImages(){imageSelect.innerHTML='';EDITOR_DATA.images.forEach((im,i)=>{const o=document.createElement('option');o.value=i;o.textContent=im.id||im.file;imageSelect.appendChild(o)});loadImage()}function loadImage(){currentImage=EDITOR_DATA.images[Number(imageSelect.value)||0];img.src=currentImage.url;img.alt=currentImage.alt_text||'Anatomy image';hotspotSelect.innerHTML='';(currentImage.hotspots||[]).forEach((h,i)=>{const o=document.createElement('option');o.value=i;o.textContent=h.label||h.id;hotspotSelect.appendChild(o)});loadHotspot()}function loadHotspot(){currentHotspot=(currentImage.hotspots||[])[Number(hotspotSelect.value)||0]||null;if(!currentHotspot){points=[];circleCenter=null;draw();return}loadExisting()}function loadExisting(){const s=currentHotspot&&currentHotspot.shape||{};points=[];circleCenter=null;if(s.type==='polygon'&&Array.isArray(s.points)){shapeMode.value='polygon';points=s.points.map(p=>[Number(p[0]),Number(p[1])])}else if(s.type==='circle'){shapeMode.value='circle';circleCenter=[Number(s.x),Number(s.y)];radius.value=Number(s.radius)||.05}draw();setStatus(`Loaded ${currentHotspot.label}: ${s.type||'no shape'}.`)}function norm(ev){const r=img.getBoundingClientRect();return [Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height))]}function inside(x,y,s){if(!s)return false;if(s.type==='circle'){const dx=x-s.x,dy=y-s.y;return dx*dx+dy*dy<=s.radius*s.radius}if(s.type==='polygon'){let z=false,p=s.points;for(let i=0,j=p.length-1;i<p.length;j=i++){const xi=p[i][0],yi=p[i][1],xj=p[j][0],yj=p[j][1];if(((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/((yj-yi)||Number.EPSILON)+xi))z=!z}return z}return false}img.addEventListener('click',ev=>{const p=norm(ev);if(testMode){const ok=inside(p[0],p[1],currentShape());marker.hidden=false;marker.style.left=`${p[0]*100}%`;marker.style.top=`${p[1]*100}%`;marker.className='hotspot-editor-test-marker '+(ok?'inside':'outside');setStatus(ok?'✓ Test click is inside the hotspot.':'✕ Test click is outside the hotspot.',ok?'success':'error');return}marker.hidden=true;if(shapeMode.value==='polygon')points.push(p);else circleCenter=p;draw()});imageSelect.addEventListener('change',loadImage);hotspotSelect.addEventListener('change',loadHotspot);shapeMode.addEventListener('change',()=>{points=[];circleCenter=null;testMode=false;marker.hidden=true;draw();setStatus(shapeMode.value==='polygon'?'Polygon mode: click around the structure boundary.':'Circle mode: click the center, then adjust radius.')});radius.addEventListener('input',draw);document.getElementById('loadExistingBtn').onclick=loadExisting;document.getElementById('undoBtn').onclick=()=>{if(shapeMode.value==='polygon')points.pop();else circleCenter=null;draw()};document.getElementById('clearBtn').onclick=()=>{points=[];circleCenter=null;marker.hidden=true;testMode=false;draw();setStatus('Shape cleared.')};document.getElementById('testBtn').onclick=()=>{testMode=!testMode;marker.hidden=true;setStatus(testMode?'Test mode ON: click the image to see whether that location is accepted.':'Test mode OFF: drawing enabled.')};document.getElementById('saveBtn').onclick=async()=>{const shape=currentShape();if(!shape){setStatus('Create a valid shape before saving.','error');return}if(!currentHotspot){setStatus('No hotspot selected.','error');return}if(!confirm(`Save ${shape.type} geometry for ${currentHotspot.label}?`))return;try{const res=await fetch('/admin/hotspots/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pack_id:EDITOR_DATA.pack_id,dataset_id:EDITOR_DATA.dataset_id,image_id:currentImage.id,hotspot_id:currentHotspot.id,shape})});const b=await res.json();if(!res.ok)throw new Error(b.error||'Save failed');currentHotspot.shape=shape;setStatus(`✓ Saved ${currentHotspot.label}. Backup: ${b.backup_created?'created':'already exists'}.`,'success')}catch(e){setStatus('Save failed: '+e.message,'error')}};populateImages();draw();
+</script>{% endif %}<script>const ds=document.getElementById('datasetKey');if(ds)ds.addEventListener('change',()=>{const [p,d]=ds.value.split('::');document.getElementById('packField').value=p;document.getElementById('datasetField').value=d});const mb=document.getElementById('menuButton'),sb=document.getElementById('dashboardSidebar');if(mb&&sb)mb.addEventListener('click',()=>sb.classList.toggle('open'));</script></body></html>
+"""
 
 
 # =========================
@@ -1994,10 +2123,6 @@ def medical_generate_anatomy_quiz():
         quiz_title, None, quiz_id, 90
     )
 
-    flash(
-        f"Created {quiz_title} with {len(runtime_questions)} image-identification questions.",
-        "success"
-    )
     return redirect(f"/quizzes/{html_name}")
 
 
@@ -2083,11 +2208,6 @@ def medical_generate_quiz():
         quiz_title, None, quiz_id, 90
     )
 
-    flash(
-        f"Created {quiz_title} from {len(terms)} available terms. "
-        f"Each attempt shows {round_size} pairs.",
-        "success"
-    )
     return redirect(f"/quizzes/{html_name}")
 
 
@@ -7349,7 +7469,13 @@ def matching_bank_import():
 <form class="build-workspace" method="POST" enctype="multipart/form-data"><section class="dashboard-panel build-section"><div class="build-section-heading"><div class="build-step-number">1</div><div><h2>Matching Bank</h2><p>Required CSV headers: <strong>term,definition</strong>. The aliases <strong>left,right</strong> also work.</p></div></div>
 <div class="build-two-column-fields"><label class="build-field"><span>Quiz Title</span><input type="text" name="quiz_title" required placeholder="Medical Terminology — Foundations"></label><label class="build-field"><span>CSV File</span><input type="file" name="csv_file" accept=".csv,text/csv" required></label><label class="build-field"><span>Pairs Per Round</span><input type="number" name="round_size" min="2" max="100" value="10"></label><label class="build-field"><span>Direction</span><select name="direction"><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option><option value="random">Random Each Attempt</option></select></label></div>
 <label class="build-field"><span>Instructions</span><input type="text" name="question_text" value="Match each term with its correct definition."></label></section>
-<section class="dashboard-panel build-section"><div class="build-section-heading"><div class="build-step-number">2</div><div><h2>Source &amp; Provenance</h2><p>Optional for custom banks; complete these fields for distributed sourced content.</p></div></div><div class="build-two-column-fields"><label class="build-field"><span>Source Organization</span><input type="text" name="source_organization" placeholder="U.S. National Library of Medicine"></label><label class="build-field"><span>Dataset</span><input type="text" name="source_dataset" placeholder="Medical Subject Headings (MeSH)"></label><label class="build-field"><span>Version</span><input type="text" name="source_version" placeholder="2026"></label><label class="build-field"><span>License / Terms</span><input type="text" name="source_license" placeholder="NLM MeSH Terms and Conditions"></label></div><label class="build-field"><span>Source URL</span><input type="url" name="source_url" placeholder="https://..."></label></section>
+<details class="dashboard-panel build-section build-optional-source">
+<summary><span class="build-optional-source-title">Optional Source Metadata</span><span class="build-optional-source-hint">For third-party or distributable banks</span></summary>
+<div class="build-optional-source-body">
+<p class="build-optional-source-copy">Most personal CSV imports can leave this section blank. Use it when you want the quiz to retain attribution, version, licensing, or source information.</p>
+<div class="build-two-column-fields"><label class="build-field"><span>Source Organization</span><input type="text" name="source_organization" placeholder="Organization or author"></label><label class="build-field"><span>Dataset / Work</span><input type="text" name="source_dataset" placeholder="Dataset, book, course, or collection"></label><label class="build-field"><span>Version</span><input type="text" name="source_version" placeholder="Version or publication year"></label><label class="build-field"><span>License / Terms</span><input type="text" name="source_license" placeholder="License or reuse terms"></label></div><label class="build-field"><span>Source URL</span><input type="url" name="source_url" placeholder="https://..."></label>
+</div>
+</details>
 <div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Options</a><button class="build-primary-button" type="submit">Import Matching Bank</button></div>
 </form>
 </main>
