@@ -60,3 +60,8 @@ packs instead of preventing DLMS from starting.
 - Medical v0.1.0 contains terminology only; image directories are placeholders.
 - Generated medical practice quizzes are normal DLMS quizzes and therefore
   appear in the Quiz Library/history.
+
+
+## DLMS 3.0 generic Study Packs
+
+DLMS can now use matching and image/hotspot datasets from any installed content pack through `/study-packs`. The AI Study Pack Builder generates schema-controlled prompts for arbitrary subjects, and the Image Study Editor supports non-destructive mask/text overlays plus hotspot calibration. Multiple images are supported in one image dataset; each image retains its own targets and source metadata.

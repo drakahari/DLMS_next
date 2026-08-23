@@ -277,6 +277,22 @@ function hotspotCenter(shape) {
     return {x: 0.5, y: 0.5};
 }
 
+function renderImageStudyEdits(edits) {
+    if (!Array.isArray(edits) || !edits.length) return "";
+    return `<div class="quiz-image-edit-overlay">${edits.map(edit => {
+        if (!edit || typeof edit !== "object") return "";
+        if (edit.type === "mask") {
+            const style = ["blur","white","black"].includes(edit.style) ? edit.style : "blur";
+            return `<span class="quiz-image-edit mask ${style}" style="left:${Number(edit.x)*100}%;top:${Number(edit.y)*100}%;width:${Number(edit.w)*100}%;height:${Number(edit.h)*100}%"></span>`;
+        }
+        if (edit.type === "text") {
+            const tone = edit.tone === "dark" ? "dark" : "light";
+            return `<span class="quiz-image-edit text ${tone}" style="left:${Number(edit.x)*100}%;top:${Number(edit.y)*100}%;font-size:${Math.max(10,Math.min(48,Number(edit.size)||18))}px">${escapeHtml(edit.text || "")}</span>`;
+        }
+        return "";
+    }).join("")}</div>`;
+}
+
 function renderHotspotQuestion(q, key, selected, choicesEl) {
     const answer = (selected && typeof selected === "object" && !Array.isArray(selected)) ? selected : null;
     const hasAnswer = answer && Number.isFinite(Number(answer.x)) && Number.isFinite(Number(answer.y));
@@ -324,6 +340,7 @@ function renderHotspotQuestion(q, key, selected, choicesEl) {
             <div class="matching-instructions">Click the requested structure on the image.</div>
             <div class="hotspot-image-wrap" onclick="selectHotspot(event)">
                 <img class="hotspot-image" src="${escapeHtml(q.image_url || "")}" alt="${escapeHtml(q.image_alt || "Anatomy image")}" draggable="false">
+                ${renderImageStudyEdits(q.image_edits)}
                 ${marker}
                 ${correctMarker}
             </div>
@@ -997,7 +1014,8 @@ function submitQuiz(force = false) {
                             target: q.target || {},
                             targetLabel: q.target_label || "Target structure",
                             imageUrl: q.image_url || "",
-                            imageAlt: q.image_alt || "Anatomy image",
+                            imageAlt: q.image_alt || "Study image",
+                            imageEdits: q.image_edits || [],
                             explanation: q.explanation || "",
                             verification: q.verification || {},
                             imageSource: q.image_source || {}

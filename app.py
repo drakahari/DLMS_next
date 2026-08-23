@@ -711,9 +711,9 @@ def admin_maintenance():
         <p id="rebuildStatus" style="margin-top:10px;"></p>
 
         <hr style="margin:24px 0; opacity:.35">
-        <h2>Anatomy Hotspot Calibration</h2>
-        <p style="opacity:.8;">Open installed image datasets, draw precise circle or polygon hit regions, test them, and save the geometry directly into the installed content pack.</p>
-        <button onclick="location.href='/admin/hotspots'">◎ Open Hotspot Editor</button>
+        <h2>Image Study Editor</h2>
+        <p style="opacity:.8;">Prepare images for study, hide or add simple text overlays, draw precise circle or polygon hit regions, test them, and save the study metadata directly into an installed content pack.</p>
+        <button onclick="location.href='/admin/image-editor'">◎ Open Image Study Editor</button>
 
         <br><br>
 
@@ -817,6 +817,7 @@ def _validate_hotspot_shape(shape):
     raise ValueError("Shape type must be circle or polygon")
 
 
+@app.route("/admin/image-editor")
 @app.route("/admin/hotspots")
 def admin_hotspot_editor():
     catalog = _hotspot_editor_catalog()
@@ -837,6 +838,7 @@ def admin_hotspot_editor():
                     "url": url_for("content_pack_asset", pack_id=selected_pack, asset_path=image.get("file")),
                     "alt_text": image.get("alt_text") or data.get("title") or "Anatomy image",
                     "hotspots": image.get("hotspots") or [],
+                    "edits": image.get("edits") or [],
                 })
             editor_data={"pack_id":selected_pack,"dataset_id":selected_dataset,"title":data.get("title") or selected_dataset,"images":images}
         except Exception as exc:
@@ -844,6 +846,7 @@ def admin_hotspot_editor():
     return render_template_string(HOTSPOT_EDITOR_TEMPLATE, catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset, editor_data=editor_data, load_error=load_error)
 
 
+@app.route("/admin/image-editor/hotspot/save", methods=["POST"])
 @app.route("/admin/hotspots/save", methods=["POST"])
 def admin_hotspot_save():
     payload=request.get_json(force=True) or {}
@@ -867,7 +870,7 @@ def admin_hotspot_save():
         backup_created=False
         if not os.path.exists(backup_path): shutil.copy2(dataset_path,backup_path); backup_created=True
         target_hotspot["shape"]=shape
-        target_hotspot["calibration"]={"tool":"DLMS Hotspot Calibration Editor","updated_at":datetime.now().isoformat(timespec="seconds")}
+        target_hotspot["calibration"]={"tool":"DLMS Image Study Editor","updated_at":datetime.now().isoformat(timespec="seconds")}
         tmp_path=dataset_path+".tmp"
         with open(tmp_path,"w",encoding="utf-8") as f:
             json.dump(data,f,indent=2,ensure_ascii=False); f.write("\n")
@@ -877,22 +880,111 @@ def admin_hotspot_save():
         return jsonify({"error":str(exc)}),400
 
 
+@app.route("/admin/image-editor/edits/save", methods=["POST"])
+def admin_image_edits_save():
+    """Persist non-destructive study-image masks and text labels in the image dataset JSON."""
+    payload = request.get_json(force=True) or {}
+    pack_id = str(payload.get("pack_id") or "").strip().lower()
+    dataset_id = str(payload.get("dataset_id") or "").strip()
+    image_id = str(payload.get("image_id") or "").strip()
+    edits = payload.get("edits") or []
+    try:
+        if not isinstance(edits, list) or len(edits) > 200:
+            raise ValueError("Image edits must be a list of at most 200 items")
+        cleaned = []
+        for raw in edits:
+            if not isinstance(raw, dict):
+                continue
+            kind = str(raw.get("type") or "").strip().lower()
+            if kind == "mask":
+                x=float(raw.get("x")); y=float(raw.get("y")); w=float(raw.get("w")); h=float(raw.get("h"))
+                style=str(raw.get("style") or "blur").strip().lower()
+                if style not in {"blur","white","black"}: style="blur"
+                if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1 and x+w <= 1.001 and y+h <= 1.001):
+                    raise ValueError("Mask rectangle must use normalized coordinates inside the image")
+                cleaned.append({"type":"mask","x":round(x,6),"y":round(y,6),"w":round(w,6),"h":round(h,6),"style":style})
+            elif kind == "text":
+                x=float(raw.get("x")); y=float(raw.get("y")); text=str(raw.get("text") or "").strip()
+                size=int(raw.get("size") or 18)
+                tone=str(raw.get("tone") or "light").strip().lower()
+                if tone not in {"light","dark"}: tone="light"
+                if not text: raise ValueError("Text label cannot be empty")
+                if len(text) > 180: raise ValueError("Text label is too long")
+                if not (0 <= x <= 1 and 0 <= y <= 1): raise ValueError("Text position must be normalized")
+                size=max(10,min(size,48))
+                cleaned.append({"type":"text","x":round(x,6),"y":round(y,6),"text":text,"size":size,"tone":tone})
+            else:
+                raise ValueError("Unsupported image edit type")
+
+        pack=get_content_pack(pack_id)
+        if not pack: raise FileNotFoundError("Content pack is not installed")
+        descriptor=next((d for d in (pack.get("image_datasets") or []) if isinstance(d,dict) and str(d.get("id") or "").strip()==dataset_id),None)
+        if not descriptor: raise KeyError("Image dataset is not declared by this pack")
+        dataset_path=_safe_pack_child(pack["_root"],str(descriptor.get("path") or "").strip())
+        with open(dataset_path,"r",encoding="utf-8") as f: data=json.load(f)
+        target_image=next((im for im in (data.get("images") or []) if isinstance(im,dict) and str(im.get("id") or im.get("file") or "")==image_id),None)
+        if not target_image: raise KeyError("Image record not found")
+        backup_path=dataset_path+".pre_editor.bak"
+        backup_created=False
+        if not os.path.exists(backup_path): shutil.copy2(dataset_path,backup_path); backup_created=True
+        target_image["edits"] = cleaned
+        target_image["edit_metadata"] = {"tool":"DLMS Image Study Editor","updated_at":datetime.now().isoformat(timespec="seconds"),"non_destructive":True}
+        tmp_path=dataset_path+".tmp"
+        with open(tmp_path,"w",encoding="utf-8") as f:
+            json.dump(data,f,indent=2,ensure_ascii=False); f.write("\\n")
+        os.replace(tmp_path,dataset_path)
+        return jsonify({"ok":True,"edits":cleaned,"backup_created":backup_created})
+    except Exception as exc:
+        return jsonify({"error":str(exc)}),400
+
+
 HOTSPOT_EDITOR_TEMPLATE = r"""
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Hotspot Editor - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Image Study Editor - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home hotspot-editor-page"><div class="dashboard-shell">
-<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">◎</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item active" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Hotspot Editor</div></aside>
-<main class="dashboard-main hotspot-editor-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">MAINTENANCE · ANATOMY</div><h1>Hotspot Calibration Editor</h1><p>Draw the actual clickable anatomy region instead of approximating it with a large circle.</p></div></header>
-<section class="dashboard-panel hotspot-editor-picker"><form method="GET" action="/admin/hotspots"><label><span>Installed image dataset</span><select id="datasetKey">{% for item in catalog %}<option value="{{ item.pack_id }}::{{ item.dataset_id }}" {% if item.pack_id == selected_pack and item.dataset_id == selected_dataset %}selected{% endif %}>{{ item.pack_name }} — {{ item.title }}</option>{% endfor %}</select></label><input type="hidden" name="pack" id="packField" value="{{ selected_pack }}"><input type="hidden" name="dataset" id="datasetField" value="{{ selected_dataset }}"><button type="submit">Load Dataset</button></form>{% if load_error %}<div class="flash error">{{ load_error }}</div>{% endif %}{% if not catalog %}<p>No installed content pack currently declares an image dataset.</p>{% endif %}</section>
-{% if editor_data %}<section class="dashboard-panel hotspot-editor-workspace"><div class="hotspot-editor-toolbar"><label><span>Image</span><select id="imageSelect"></select></label><label><span>Structure</span><select id="hotspotSelect"></select></label><label><span>Shape</span><select id="shapeMode"><option value="polygon">Polygon</option><option value="circle">Circle</option></select></label><label id="radiusControl"><span>Circle radius <strong id="radiusValue">0.050</strong></span><input id="circleRadius" type="range" min="0.01" max="0.20" step="0.005" value="0.05"></label></div><div class="hotspot-editor-actions"><button type="button" id="loadExistingBtn">Load Existing</button><button type="button" id="undoBtn">Undo Point</button><button type="button" id="clearBtn">Clear</button><button type="button" id="testBtn">Test Shape</button><button type="button" id="saveBtn" class="build-primary-button">Save Hotspot</button></div><p class="hotspot-editor-help">Polygon mode: click around the true outer boundary of the structure. Three or more points are required.</p><div class="hotspot-editor-stage"><img id="editorImage" alt="Anatomy hotspot calibration image" draggable="false"><svg id="editorSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon id="polygonShape"></polygon><circle id="circleShape"></circle><g id="pointHandles"></g></svg><div id="testMarker" class="hotspot-editor-test-marker" hidden></div></div><div class="hotspot-editor-status" id="editorStatus">Choose a structure, then load its existing shape or begin drawing.</div><details class="hotspot-editor-json"><summary>Current normalized geometry</summary><pre id="geometryPreview">{}</pre></details></section>{% endif %}<div class="review-return-row"><a class="review-return-link" href="/admin/maintenance">← Back to Maintenance</a></div></main></div>
-{% if editor_data %}<script>
-const EDITOR_DATA={{ editor_data|tojson }};let currentImage=null,currentHotspot=null,points=[],circleCenter=null,testMode=false;const imageSelect=document.getElementById('imageSelect'),hotspotSelect=document.getElementById('hotspotSelect'),shapeMode=document.getElementById('shapeMode'),radius=document.getElementById('circleRadius'),radiusValue=document.getElementById('radiusValue'),img=document.getElementById('editorImage'),poly=document.getElementById('polygonShape'),circle=document.getElementById('circleShape'),handles=document.getElementById('pointHandles'),statusEl=document.getElementById('editorStatus'),preview=document.getElementById('geometryPreview'),marker=document.getElementById('testMarker');
-function setStatus(t,k=''){statusEl.textContent=t;statusEl.className='hotspot-editor-status '+k;}function currentShape(){if(shapeMode.value==='circle'){if(!circleCenter)return null;return {type:'circle',x:circleCenter[0],y:circleCenter[1],radius:Number(radius.value)}}return points.length>=3?{type:'polygon',points:points}:null;}function draw(){const s=currentShape();preview.textContent=JSON.stringify(s||{},null,2);poly.setAttribute('points','');circle.setAttribute('r','0');handles.innerHTML='';if(shapeMode.value==='polygon'&&points.length){poly.setAttribute('points',points.map(p=>`${p[0]*1000},${p[1]*1000}`).join(' '));points.forEach(p=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',p[0]*1000);c.setAttribute('cy',p[1]*1000);c.setAttribute('r','8');c.setAttribute('class','hotspot-editor-handle');handles.appendChild(c)})}else if(shapeMode.value==='circle'&&circleCenter){circle.setAttribute('cx',circleCenter[0]*1000);circle.setAttribute('cy',circleCenter[1]*1000);circle.setAttribute('r',Number(radius.value)*1000)}radiusValue.textContent=Number(radius.value).toFixed(3);document.getElementById('radiusControl').style.display=shapeMode.value==='circle'?'flex':'none';}function populateImages(){imageSelect.innerHTML='';EDITOR_DATA.images.forEach((im,i)=>{const o=document.createElement('option');o.value=i;o.textContent=im.id||im.file;imageSelect.appendChild(o)});loadImage()}function loadImage(){currentImage=EDITOR_DATA.images[Number(imageSelect.value)||0];img.src=currentImage.url;img.alt=currentImage.alt_text||'Anatomy image';hotspotSelect.innerHTML='';(currentImage.hotspots||[]).forEach((h,i)=>{const o=document.createElement('option');o.value=i;o.textContent=h.label||h.id;hotspotSelect.appendChild(o)});loadHotspot()}function loadHotspot(){currentHotspot=(currentImage.hotspots||[])[Number(hotspotSelect.value)||0]||null;if(!currentHotspot){points=[];circleCenter=null;draw();return}loadExisting()}function loadExisting(){const s=currentHotspot&&currentHotspot.shape||{};points=[];circleCenter=null;if(s.type==='polygon'&&Array.isArray(s.points)){shapeMode.value='polygon';points=s.points.map(p=>[Number(p[0]),Number(p[1])])}else if(s.type==='circle'){shapeMode.value='circle';circleCenter=[Number(s.x),Number(s.y)];radius.value=Number(s.radius)||.05}draw();setStatus(`Loaded ${currentHotspot.label}: ${s.type||'no shape'}.`)}function norm(ev){const r=img.getBoundingClientRect();return [Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height))]}function inside(x,y,s){if(!s)return false;if(s.type==='circle'){const dx=x-s.x,dy=y-s.y;return dx*dx+dy*dy<=s.radius*s.radius}if(s.type==='polygon'){let z=false,p=s.points;for(let i=0,j=p.length-1;i<p.length;j=i++){const xi=p[i][0],yi=p[i][1],xj=p[j][0],yj=p[j][1];if(((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/((yj-yi)||Number.EPSILON)+xi))z=!z}return z}return false}img.addEventListener('click',ev=>{const p=norm(ev);if(testMode){const ok=inside(p[0],p[1],currentShape());marker.hidden=false;marker.style.left=`${p[0]*100}%`;marker.style.top=`${p[1]*100}%`;marker.className='hotspot-editor-test-marker '+(ok?'inside':'outside');setStatus(ok?'✓ Test click is inside the hotspot.':'✕ Test click is outside the hotspot.',ok?'success':'error');return}marker.hidden=true;if(shapeMode.value==='polygon')points.push(p);else circleCenter=p;draw()});imageSelect.addEventListener('change',loadImage);hotspotSelect.addEventListener('change',loadHotspot);shapeMode.addEventListener('change',()=>{points=[];circleCenter=null;testMode=false;marker.hidden=true;draw();setStatus(shapeMode.value==='polygon'?'Polygon mode: click around the structure boundary.':'Circle mode: click the center, then adjust radius.')});radius.addEventListener('input',draw);document.getElementById('loadExistingBtn').onclick=loadExisting;document.getElementById('undoBtn').onclick=()=>{if(shapeMode.value==='polygon')points.pop();else circleCenter=null;draw()};document.getElementById('clearBtn').onclick=()=>{points=[];circleCenter=null;marker.hidden=true;testMode=false;draw();setStatus('Shape cleared.')};document.getElementById('testBtn').onclick=()=>{testMode=!testMode;marker.hidden=true;setStatus(testMode?'Test mode ON: click the image to see whether that location is accepted.':'Test mode OFF: drawing enabled.')};document.getElementById('saveBtn').onclick=async()=>{const shape=currentShape();if(!shape){setStatus('Create a valid shape before saving.','error');return}if(!currentHotspot){setStatus('No hotspot selected.','error');return}if(!confirm(`Save ${shape.type} geometry for ${currentHotspot.label}?`))return;try{const res=await fetch('/admin/hotspots/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pack_id:EDITOR_DATA.pack_id,dataset_id:EDITOR_DATA.dataset_id,image_id:currentImage.id,hotspot_id:currentHotspot.id,shape})});const b=await res.json();if(!res.ok)throw new Error(b.error||'Save failed');currentHotspot.shape=shape;setStatus(`✓ Saved ${currentHotspot.label}. Backup: ${b.backup_created?'created':'already exists'}.`,'success')}catch(e){setStatus('Save failed: '+e.message,'error')}};populateImages();draw();
-</script>{% endif %}<script>const ds=document.getElementById('datasetKey');if(ds)ds.addEventListener('change',()=>{const [p,d]=ds.value.split('::');document.getElementById('packField').value=p;document.getElementById('datasetField').value=d});const mb=document.getElementById('menuButton'),sb=document.getElementById('dashboardSidebar');if(mb&&sb)mb.addEventListener('click',()=>sb.classList.toggle('open'));</script></body></html>
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+<div class="dashboard-brand"><div class="dashboard-brand-mark">◎</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>{% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}</nav>
+<div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item active" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Image Study Editor</div></aside>
+<main class="dashboard-main hotspot-editor-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">MAINTENANCE · IMAGE STUDY</div><h1>Image Study Editor</h1><p>Prepare study images without altering the original file: mask unwanted text, add simple labels, and calibrate clickable regions for image-based quizzes.</p></div></header>
+<section class="dashboard-panel hotspot-editor-picker"><form method="GET" action="/admin/image-editor"><label><span>Installed image dataset</span><select id="datasetKey">{% for item in catalog %}<option value="{{ item.pack_id }}::{{ item.dataset_id }}" {% if item.pack_id == selected_pack and item.dataset_id == selected_dataset %}selected{% endif %}>{{ item.pack_name }} — {{ item.title }}</option>{% endfor %}</select></label><input type="hidden" name="pack" id="packField" value="{{ selected_pack }}"><input type="hidden" name="dataset" id="datasetField" value="{{ selected_dataset }}"><button type="submit">Load Dataset</button></form>{% if load_error %}<div class="flash error">{{ load_error }}</div>{% endif %}{% if not catalog %}<p>No installed content pack currently declares an image dataset.</p>{% endif %}</section>
+{% if editor_data %}<section class="dashboard-panel hotspot-editor-workspace">
+<div class="image-editor-mode-tabs"><button type="button" id="hotspotModeBtn" class="active">Clickable Regions</button><button type="button" id="prepModeBtn">Image Prep</button></div>
+<div class="hotspot-editor-toolbar"><label><span>Image</span><select id="imageSelect"></select></label><label class="hotspot-only"><span>Target / Structure</span><select id="hotspotSelect"></select></label><label class="hotspot-only"><span>Shape</span><select id="shapeMode"><option value="polygon">Polygon</option><option value="circle">Circle</option></select></label><label class="hotspot-only" id="radiusControl"><span>Circle radius <strong id="radiusValue">0.050</strong></span><input id="circleRadius" type="range" min="0.01" max="0.30" step="0.005" value="0.05"></label></div>
+<div id="hotspotPanel"><div class="hotspot-editor-actions"><button type="button" id="loadExistingBtn">Load Existing</button><button type="button" id="undoBtn">Undo Point</button><button type="button" id="clearBtn">Clear Shape</button><button type="button" id="testBtn">Test Shape</button><button type="button" id="saveBtn" class="build-primary-button">Save Region</button></div><p class="hotspot-editor-help">Polygon: click around the true clickable boundary. Circle: click the center and adjust the radius.</p></div>
+<div id="prepPanel" hidden><div class="image-prep-controls"><label><span>Prep tool</span><select id="prepTool"><option value="mask">Hide / cover text</option><option value="text">Add text label</option></select></label><label id="maskStyleLabel"><span>Cover style</span><select id="maskStyle"><option value="blur">Blur</option><option value="white">White box</option><option value="black">Black box</option></select></label><label id="maskWidthLabel"><span>Width <strong id="maskWVal">0.18</strong></span><input id="maskW" type="range" min="0.03" max="0.60" step="0.01" value="0.18"></label><label id="maskHeightLabel"><span>Height <strong id="maskHVal">0.07</strong></span><input id="maskH" type="range" min="0.02" max="0.35" step="0.01" value="0.07"></label><label id="textValueLabel" hidden><span>Text</span><input id="textValue" type="text" maxlength="180" placeholder="Label text"></label><label id="textSizeLabel" hidden><span>Text size</span><input id="textSize" type="number" min="10" max="48" value="18"></label><label id="textToneLabel" hidden><span>Label style</span><select id="textTone"><option value="light">Light</option><option value="dark">Dark</option></select></label></div><div class="hotspot-editor-actions"><button type="button" id="undoEditBtn">Undo Last Edit</button><button type="button" id="clearEditsBtn">Clear Image Edits</button><button type="button" id="saveEditsBtn" class="build-primary-button">Save Image Prep</button></div><p class="hotspot-editor-help">Edits are non-destructive overlays stored in the content-pack JSON. The original source image is never modified.</p></div>
+<div class="hotspot-editor-stage"><img id="editorImage" alt="Study image" draggable="false"><div id="editorOverlay" class="image-edit-overlay"></div><svg id="editorSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon id="polygonShape"></polygon><circle id="circleShape"></circle><g id="pointHandles"></g></svg><div id="testMarker" class="hotspot-editor-test-marker" hidden></div></div><div class="hotspot-editor-status" id="editorStatus">Choose an image and editing mode.</div><details class="hotspot-editor-json"><summary>Current geometry / image-prep metadata</summary><pre id="geometryPreview">{}</pre></details></section>{% endif %}
+<div class="review-return-row"><a class="review-return-link" href="/admin/maintenance">← Back to Maintenance</a></div></main></div>
+<script>
+const EDITOR_DATA={{ editor_data|tojson }};let currentImage=null,currentHotspot=null,points=[],circleCenter=null,testMode=false,editorMode='hotspot',imageEdits=[];
+const imageSelect=document.getElementById('imageSelect'),hotspotSelect=document.getElementById('hotspotSelect'),shapeMode=document.getElementById('shapeMode'),radius=document.getElementById('circleRadius'),radiusValue=document.getElementById('radiusValue'),img=document.getElementById('editorImage'),poly=document.getElementById('polygonShape'),circle=document.getElementById('circleShape'),handles=document.getElementById('pointHandles'),statusEl=document.getElementById('editorStatus'),preview=document.getElementById('geometryPreview'),marker=document.getElementById('testMarker'),overlay=document.getElementById('editorOverlay');
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;')}
+function setStatus(t,k=''){statusEl.textContent=t;statusEl.className='hotspot-editor-status '+k}
+function currentShape(){if(shapeMode.value==='circle'){if(!circleCenter)return null;return {type:'circle',x:circleCenter[0],y:circleCenter[1],radius:Number(radius.value)}}return points.length>=3?{type:'polygon',points:points}:null}
+function renderEdits(){overlay.innerHTML='';imageEdits.forEach((e,i)=>{const d=document.createElement('div');d.className='image-edit-item '+(e.type==='mask'?'mask '+(e.style||'blur'):'text '+(e.tone||'light'));d.dataset.index=i;if(e.type==='mask'){d.style.left=`${e.x*100}%`;d.style.top=`${e.y*100}%`;d.style.width=`${e.w*100}%`;d.style.height=`${e.h*100}%`}else{d.style.left=`${e.x*100}%`;d.style.top=`${e.y*100}%`;d.style.fontSize=`${e.size||18}px`;d.textContent=e.text||''}overlay.appendChild(d)})}
+function draw(){const s=currentShape();preview.textContent=JSON.stringify(editorMode==='hotspot'?(s||{}):imageEdits,null,2);poly.setAttribute('points','');circle.setAttribute('r','0');handles.innerHTML='';if(editorMode==='hotspot'){if(shapeMode.value==='polygon'&&points.length){poly.setAttribute('points',points.map(p=>`${p[0]*1000},${p[1]*1000}`).join(' '));points.forEach(p=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',p[0]*1000);c.setAttribute('cy',p[1]*1000);c.setAttribute('r','8');c.setAttribute('class','hotspot-editor-handle');handles.appendChild(c)})}else if(shapeMode.value==='circle'&&circleCenter){circle.setAttribute('cx',circleCenter[0]*1000);circle.setAttribute('cy',circleCenter[1]*1000);circle.setAttribute('r',Number(radius.value)*1000)}radiusValue.textContent=Number(radius.value).toFixed(3)}renderEdits();document.getElementById('radiusControl').style.display=editorMode==='hotspot'&&shapeMode.value==='circle'?'flex':'none'}
+function populateImages(){imageSelect.innerHTML='';EDITOR_DATA.images.forEach((im,i)=>{const o=document.createElement('option');o.value=i;o.textContent=im.id||im.file;imageSelect.appendChild(o)});loadImage()}
+function loadImage(){currentImage=EDITOR_DATA.images[Number(imageSelect.value)||0];img.src=currentImage.url;img.alt=currentImage.alt_text||'Study image';imageEdits=JSON.parse(JSON.stringify(currentImage.edits||[]));hotspotSelect.innerHTML='';(currentImage.hotspots||[]).forEach((h,i)=>{const o=document.createElement('option');o.value=i;o.textContent=h.label||h.id;hotspotSelect.appendChild(o)});loadHotspot();renderEdits()}
+function loadHotspot(){currentHotspot=(currentImage.hotspots||[])[Number(hotspotSelect.value)||0]||null;if(!currentHotspot){points=[];circleCenter=null;draw();return}loadExisting()}
+function loadExisting(){const s=currentHotspot&&currentHotspot.shape||{};points=[];circleCenter=null;if(s.type==='polygon'&&Array.isArray(s.points)){shapeMode.value='polygon';points=s.points.map(p=>[Number(p[0]),Number(p[1])])}else if(s.type==='circle'){shapeMode.value='circle';circleCenter=[Number(s.x),Number(s.y)];radius.value=Number(s.radius)||.05}draw();setStatus(`Loaded ${currentHotspot?.label||'target'}: ${s.type||'no shape'}.`)}
+function norm(ev){const r=img.getBoundingClientRect();return [Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height))]}
+function inside(x,y,s){if(!s)return false;if(s.type==='circle'){const dx=x-s.x,dy=y-s.y;return dx*dx+dy*dy<=s.radius*s.radius}if(s.type==='polygon'){let z=false,p=s.points;for(let i=0,j=p.length-1;i<p.length;j=i++){const xi=p[i][0],yi=p[i][1],xj=p[j][0],yj=p[j][1];if(((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/((yj-yi)||Number.EPSILON)+xi))z=!z}return z}return false}
+function updatePrepVisibility(){const isText=document.getElementById('prepTool').value==='text';['textValueLabel','textSizeLabel','textToneLabel'].forEach(id=>document.getElementById(id).hidden=!isText);['maskStyleLabel','maskWidthLabel','maskHeightLabel'].forEach(id=>document.getElementById(id).hidden=isText)}
+function setMode(mode){editorMode=mode;document.getElementById('hotspotPanel').hidden=mode!=='hotspot';document.getElementById('prepPanel').hidden=mode!=='prep';document.querySelectorAll('.hotspot-only').forEach(el=>el.style.display=mode==='hotspot'?'':'none');document.getElementById('hotspotModeBtn').classList.toggle('active',mode==='hotspot');document.getElementById('prepModeBtn').classList.toggle('active',mode==='prep');testMode=false;marker.hidden=true;draw();setStatus(mode==='hotspot'?'Clickable-region mode.':'Image-prep mode: click the image to place the selected overlay.')}
+img.addEventListener('click',ev=>{const p=norm(ev);if(editorMode==='prep'){const tool=document.getElementById('prepTool').value;if(tool==='mask'){const w=Number(document.getElementById('maskW').value),h=Number(document.getElementById('maskH').value);imageEdits.push({type:'mask',x:Math.max(0,Math.min(1-w,p[0]-w/2)),y:Math.max(0,Math.min(1-h,p[1]-h/2)),w,h,style:document.getElementById('maskStyle').value})}else{const text=document.getElementById('textValue').value.trim();if(!text){setStatus('Enter label text first.','error');return}imageEdits.push({type:'text',x:p[0],y:p[1],text,size:Number(document.getElementById('textSize').value)||18,tone:document.getElementById('textTone').value})}draw();setStatus('Overlay added. Save Image Prep when finished.');return}if(testMode){const ok=inside(p[0],p[1],currentShape());marker.hidden=false;marker.style.left=`${p[0]*100}%`;marker.style.top=`${p[1]*100}%`;marker.className='hotspot-editor-test-marker '+(ok?'inside':'outside');setStatus(ok?'✓ Test click is inside the region.':'✕ Test click is outside the region.',ok?'success':'error');return}marker.hidden=true;if(shapeMode.value==='polygon')points.push(p);else circleCenter=p;draw()});
+imageSelect.addEventListener('change',loadImage);hotspotSelect.addEventListener('change',loadHotspot);shapeMode.addEventListener('change',()=>{testMode=false;marker.hidden=true;draw()});radius.addEventListener('input',draw);document.getElementById('datasetKey').addEventListener('change',e=>{const [p,d]=e.target.value.split('::');document.getElementById('packField').value=p;document.getElementById('datasetField').value=d});document.getElementById('hotspotModeBtn').onclick=()=>setMode('hotspot');document.getElementById('prepModeBtn').onclick=()=>setMode('prep');document.getElementById('loadExistingBtn').onclick=loadExisting;document.getElementById('undoBtn').onclick=()=>{if(shapeMode.value==='polygon')points.pop();else circleCenter=null;draw()};document.getElementById('clearBtn').onclick=()=>{points=[];circleCenter=null;marker.hidden=true;testMode=false;draw()};document.getElementById('testBtn').onclick=()=>{if(!currentShape()){setStatus('Draw a valid region before testing.','error');return}testMode=!testMode;setStatus(testMode?'Test mode enabled. Click anywhere on the image.':'Test mode disabled.')};
+document.getElementById('prepTool').addEventListener('change',updatePrepVisibility);document.getElementById('maskW').addEventListener('input',e=>document.getElementById('maskWVal').textContent=Number(e.target.value).toFixed(2));document.getElementById('maskH').addEventListener('input',e=>document.getElementById('maskHVal').textContent=Number(e.target.value).toFixed(2));document.getElementById('undoEditBtn').onclick=()=>{imageEdits.pop();draw()};document.getElementById('clearEditsBtn').onclick=()=>{if(confirm('Clear all image-prep overlays for this image?')){imageEdits=[];draw()}};
+document.getElementById('saveBtn').onclick=async()=>{const shape=currentShape();if(!currentHotspot||!shape){setStatus('Choose a target and draw a valid region first.','error');return}if(!confirm(`Save ${shape.type} geometry for ${currentHotspot.label}?`))return;try{const res=await fetch('/admin/image-editor/hotspot/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pack_id:EDITOR_DATA.pack_id,dataset_id:EDITOR_DATA.dataset_id,image_id:currentImage.id,hotspot_id:currentHotspot.id,shape})});const b=await res.json();if(!res.ok)throw new Error(b.error||'Save failed');currentHotspot.shape=shape;setStatus(`✓ Saved ${currentHotspot.label}. Backup: ${b.backup_created?'created':'already exists'}.`,'success')}catch(e){setStatus('Save failed: '+e.message,'error')}};
+document.getElementById('saveEditsBtn').onclick=async()=>{try{const res=await fetch('/admin/image-editor/edits/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pack_id:EDITOR_DATA.pack_id,dataset_id:EDITOR_DATA.dataset_id,image_id:currentImage.id,edits:imageEdits})});const b=await res.json();if(!res.ok)throw new Error(b.error||'Save failed');currentImage.edits=JSON.parse(JSON.stringify(b.edits||[]));setStatus(`✓ Image prep saved. ${imageEdits.length} overlay(s).`,'success')}catch(e){setStatus('Image prep save failed: '+e.message,'error')}};
+document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));updatePrepVisibility();populateImages();setMode('hotspot');
+</script></body></html>
 """
 
 
+
 # =========================
-# SHUTDOWN APPLICATION
+# CONTENT PACKS - STATUS
 # =========================
 @app.route("/api/shutdown", methods=["POST"])
 def shutdown_app():
@@ -1785,13 +1877,14 @@ def content_packs_page():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -1837,6 +1930,8 @@ def content_packs_page():
                 </div>
                 {% if pack.id == "medical" %}
                 <a class="medical-primary-button" href="/medical">Open Medical Study</a>
+                {% else %}
+                <a class="medical-primary-button" href="/study-packs">Open in Study Packs</a>
                 {% endif %}
             </article>
             {% endfor %}
@@ -2221,6 +2316,7 @@ _MEDICAL_SIDEBAR = r"""
         <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
         <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
         <a class="dashboard-nav-item active" href="/medical" {% if medical_section == "home" %}aria-current="page"{% endif %}>
             <span class="dashboard-nav-icon">✚</span><span>Medical Study</span>
@@ -2324,7 +2420,7 @@ def medical_study_home():
             <div class="medical-ai-builder-teaser-icon">AI</div>
             <div class="medical-ai-builder-teaser-copy">
                 <span class="medical-eyebrow">CUSTOM CONTENT</span>
-                <h2>AI Content Pack Builder</h2>
+                <h2>AI Study Pack Builder</h2>
                 <p>Describe what you want to study and let DLMS build a controlled research prompt that requires source-verified, legally reusable material in the exact DLMS add-on pack format.</p>
                 <div class="medical-ai-builder-points">
                     <span>✓ authoritative sources</span>
@@ -2333,7 +2429,7 @@ def medical_study_home():
                     <span>✓ no invented content</span>
                 </div>
             </div>
-            <a class="medical-primary-button medical-ai-builder-open" href="/medical/ai-builder">Build Custom Content</a>
+            <a class="medical-primary-button medical-ai-builder-open" href="/study-packs/ai-builder?domain=Medical&amp;from=medical">Build Custom Content</a>
         </section>
     </main>
 </div>
@@ -2359,252 +2455,12 @@ if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classLis
 
 @app.route("/medical/ai-builder", methods=["GET", "POST"])
 def medical_ai_content_builder():
-    pack, datasets, image_datasets = _medical_pack_page_data()
-    if not pack:
-        return _medical_not_installed()
-
-    cfg = load_portal_config()
-    topic = ""
-    difficulty = "Foundational"
-    size = "Standard"
-    ai_provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
-    if ai_provider not in {"chatgpt", "claude", "gemini", "local"}:
-        ai_provider = "chatgpt"
-
-    include_matching = True
-    include_anatomy = False
-    include_histology = False
-    generated_prompt = ""
-
-    if request.method == "POST":
-        topic = request.form.get("topic", "").strip()
-        difficulty = request.form.get("difficulty", "Foundational").strip()
-        size = request.form.get("size", "Standard").strip()
-        ai_provider = request.form.get("ai_provider", ai_provider).strip().lower()
-
-        if difficulty not in {"Foundational", "Intermediate", "Comprehensive"}:
-            difficulty = "Foundational"
-        if size not in {"Compact", "Standard", "Large"}:
-            size = "Standard"
-        if ai_provider not in {"chatgpt", "claude", "gemini", "local"}:
-            ai_provider = "chatgpt"
-
-        include_matching = "include_matching" in request.form
-        include_anatomy = "include_anatomy" in request.form
-        include_histology = "include_histology" in request.form
-
-        requested = []
-        if include_matching:
-            requested.append("Create one or more terminology/matching datasets appropriate to the topic, with concise definitions and source-supported Study Mode explanations.")
-        if include_anatomy:
-            requested.append("When the topic has appropriate anatomy or other visual structures, include legally redistributable image/hotspot datasets and bundle the exact source image files.")
-        if include_histology:
-            requested.append("Include histology, microscopy, cell, or tissue image-identification material when appropriate, using only exact legally redistributable authoritative images.")
-        if not requested:
-            requested.append("Create the most appropriate DLMS medical study material for this topic, prioritizing terminology/matching and omitting unsupported content types.")
-
-        size_map = {
-            "Compact": "Keep the pack focused: roughly 20–40 high-value matching terms per dataset and 5–10 well-defined hotspots per usable image.",
-            "Standard": "Aim for useful study depth: roughly 40–80 matching terms per dataset and 6–15 well-defined hotspots per usable image.",
-            "Large": "Build broad coverage without padding: roughly 80–150 matching terms per dataset when authoritative material supports that many distinct concepts; use multiple focused datasets rather than one ambiguous mega-set.",
-        }
-
-        if topic:
-            generated_prompt = (
-                DEFAULT_MEDICAL_CONTENT_PACK_PROMPT
-                .replace("{{topic}}", topic)
-                .replace("{{content_request}}", "\n".join(f"- {item}" for item in requested))
-                .replace("{{difficulty}}", difficulty)
-                .replace("{{size_guidance}}", size_map[size])
-            )
-        else:
-            generated_prompt = "Enter a medical study topic before generating the prompt."
-
-    provider_urls = {
-        "chatgpt": "https://chatgpt.com/",
-        "claude": "https://claude.ai/",
-        "gemini": "https://gemini.google.com/",
-        "local": str(cfg.get("ai_custom_url") or "").strip(),
-    }
-    ai_provider_url = provider_urls.get(ai_provider, "")
-
-    template = r"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Content Pack Builder - DLMS</title>
-<link rel="stylesheet" href="/static/style.css">
-<link rel="icon" href="/static/favicon.ico">
-</head>
-<body class="dashboard-home medical-study-page medical-ai-builder-page">
-<div class="dashboard-shell">
-    """ + _MEDICAL_SIDEBAR + r"""
-
-    <main class="dashboard-main medical-main">
-        <header class="dashboard-header medical-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
-            <div>
-                <div class="medical-eyebrow">MEDICAL STUDY · CUSTOM CONTENT</div>
-                <h1>AI Content Pack Builder</h1>
-                <p>Tell DLMS what you want to study. DLMS creates the controlled research and packaging prompt; your selected AI provider does the sourcing and content-pack assembly.</p>
-            </div>
-        </header>
-
-        <section class="dashboard-panel medical-ai-builder-panel">
-            <div class="medical-ai-builder-heading">
-                <div>
-                    <span class="medical-eyebrow">CONTENT REQUEST</span>
-                    <h2>What would you like to study?</h2>
-                    <p>The topic is the only required field. The defaults are designed for a strong, source-disciplined study pack.</p>
-                </div>
-                <span class="medical-ai-safety-pill">Source-first workflow</span>
-            </div>
-
-            <form method="POST" action="/medical/ai-builder" class="medical-ai-builder-form">
-                <label class="medical-ai-topic-field">
-                    <span>Study Topic</span>
-                    <input type="text" name="topic" value="{{ topic }}" required placeholder="Examples: Cranial nerves, renal physiology, liver histology, cardiac conduction">
-                </label>
-
-                <div class="medical-ai-controls-grid">
-                    <label><span>Difficulty / Depth</span>
-                        <select name="difficulty">
-                            {% for item in ["Foundational", "Intermediate", "Comprehensive"] %}
-                            <option value="{{ item }}" {% if difficulty == item %}selected{% endif %}>{{ item }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label><span>Approximate Size</span>
-                        <select name="size">
-                            {% for item in ["Compact", "Standard", "Large"] %}
-                            <option value="{{ item }}" {% if size == item %}selected{% endif %}>{{ item }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label><span>AI Provider</span>
-                        <select name="ai_provider">
-                            <option value="chatgpt" {% if ai_provider == "chatgpt" %}selected{% endif %}>ChatGPT</option>
-                            <option value="claude" {% if ai_provider == "claude" %}selected{% endif %}>Claude</option>
-                            <option value="gemini" {% if ai_provider == "gemini" %}selected{% endif %}>Gemini</option>
-                            <option value="local" {% if ai_provider == "local" %}selected{% endif %}>Local / Custom</option>
-                        </select>
-                    </label>
-                </div>
-
-                <div class="medical-ai-options-label">
-                    <span class="medical-eyebrow">CONTENT TYPES</span>
-                    <h3>Include when appropriate</h3>
-                </div>
-                <div class="medical-ai-option-grid">
-                    <label class="medical-ai-option-card">
-                        <input type="checkbox" name="include_matching" {% if include_matching %}checked{% endif %}>
-                        <div><strong>Terminology &amp; Matching</strong><span>Terms, definitions, categories, and Study Mode explanations.</span></div>
-                    </label>
-                    <label class="medical-ai-option-card">
-                        <input type="checkbox" name="include_anatomy" {% if include_anatomy %}checked{% endif %}>
-                        <div><strong>Anatomy &amp; Image Hotspots</strong><span>Only when exact legally reusable images can be bundled.</span></div>
-                    </label>
-                    <label class="medical-ai-option-card">
-                        <input type="checkbox" name="include_histology" {% if include_histology %}checked{% endif %}>
-                        <div><strong>Histology / Cells / Microscopy</strong><span>Source-verified tissue and cellular image-identification material.</span></div>
-                    </label>
-                </div>
-
-                <div class="medical-ai-action-row">
-                    <button class="medical-primary-button" type="submit">Generate AI Prompt</button>
-                    <a class="medical-ai-quiet-link" href="/medical">← Back to Medical Study</a>
-                </div>
-            </form>
-        </section>
-
-        <section class="dashboard-panel medical-ai-rules-card">
-            <div><span class="medical-eyebrow">BUILT-IN GUARDRAILS</span><h2>What DLMS tells the AI to enforce</h2></div>
-            <div class="medical-ai-rules-grid">
-                <span>Authoritative source research</span>
-                <span>No invented facts or citations</span>
-                <span>Open / redistributable assets only</span>
-                <span>No synthetic medical images</span>
-                <span>Exact DLMS JSON schemas</span>
-                <span>Separate Study Mode explanations</span>
-                <span>Image-level license provenance</span>
-                <span>Validation report before release</span>
-            </div>
-        </section>
-
-        {% if generated_prompt %}
-        <section class="dashboard-panel medical-ai-prompt-panel">
-            <div class="medical-ai-builder-heading">
-                <div>
-                    <span class="medical-eyebrow">GENERATED PROMPT</span>
-                    <h2>Ready for {{ ai_provider|capitalize }}</h2>
-                    <p>You can edit anything below before copying it. The source, licensing, anti-hallucination, schema, and validation rules are already included.</p>
-                </div>
-                <span class="medical-ai-safety-pill">Editable</span>
-            </div>
-
-            <textarea id="medicalContentPrompt" class="medical-ai-prompt-box" rows="28">{{ generated_prompt }}</textarea>
-
-            <div class="medical-ai-action-row">
-                {% if ai_provider_url %}
-                <button type="button" class="medical-primary-button" onclick="copyMedicalPromptAndOpen('{{ ai_provider_url }}')">Copy Prompt &amp; Open AI</button>
-                {% endif %}
-                <button type="button" class="medical-ai-secondary-button" onclick="copyMedicalPrompt()">Copy Prompt</button>
-            </div>
-
-            {% if not ai_provider_url %}
-            <p class="medical-ai-provider-note">Local / Custom is selected, but no custom AI URL is configured in Settings → AI Integration.</p>
-            {% endif %}
-
-            <div class="medical-ai-install-note">
-                <strong>Expected result:</strong> a separate add-on folder such as <code>DLMS_Medical_Cranial_Nerves</code>.
-                Place that folder directly inside <code>APP_DATA_DIR/content_packs/</code>, restart/refresh DLMS, and its datasets will appear alongside the base Medical Pack.
-            </div>
-        </section>
-        {% endif %}
-    </main>
-</div>
-
-<script>
-function selectMedicalPrompt() {
-    const box = document.getElementById("medicalContentPrompt");
-    if (!box) return null;
-    box.focus(); box.select(); box.setSelectionRange(0, box.value.length); return box;
-}
-function copyMedicalPrompt(showAlert=true) {
-    const box = selectMedicalPrompt();
-    if (!box) return false;
-    let copied=false;
-    try { copied=document.execCommand("copy"); } catch(err) { copied=false; }
-    if(showAlert) alert(copied ? "Prompt copied to clipboard." : "Automatic copy failed. The prompt is selected; press Ctrl+C to copy it.");
-    return copied;
-}
-function copyMedicalPromptAndOpen(url) {
-    const copied=copyMedicalPrompt(false);
-    if(!copied) alert("Automatic copy failed. The prompt is selected; press Ctrl+C manually after the AI site opens.");
-    if(url) window.open(url,"_blank","noopener,noreferrer");
-}
-const menuButton=document.getElementById("menuButton");
-const sidebar=document.getElementById("dashboardSidebar");
-if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
-</script>
-</body></html>
-"""
-    return render_template_string(
-        template,
-        pack=pack,
-        topic=topic,
-        difficulty=difficulty,
-        size=size,
-        ai_provider=ai_provider,
-        ai_provider_url=ai_provider_url,
-        include_matching=include_matching,
-        include_anatomy=include_anatomy,
-        include_histology=include_histology,
-        generated_prompt=generated_prompt,
-        medical_section="home",
-    )
+    """Compatibility entry point: use the unified Study Pack AI Builder."""
+    query = {"domain": "Medical", "from": "medical"}
+    topic = str(request.values.get("topic") or "").strip()
+    if topic:
+        query["topic"] = topic
+    return redirect(url_for("study_pack_ai_builder", **query))
 
 
 @app.route("/medical/matching")
@@ -2863,7 +2719,8 @@ def medical_generate_anatomy_quiz():
                 "type": "hotspot",
                 "question": prompt,
                 "image_url": image_url,
-                "image_alt": image.get("alt_text") or data.get("title") or "Anatomy image",
+                "image_alt": image.get("alt_text") or data.get("title") or "Study image",
+                "image_edits": image.get("edits") or [],
                 "target": hotspot.get("shape") or {},
                 "target_label": label,
                 "explanation": hotspot.get("explanation") or "",
@@ -3022,6 +2879,639 @@ def medical_generate_quiz():
 
 
 # =========================
+# GENERIC STUDY PACK PLATFORM
+# =========================
+DEFAULT_STUDY_CONTENT_PACK_PROMPT = r"""You are creating a self-contained DLMS Study Pack for educational use.
+
+SUBJECT / DOMAIN
+{{domain}}
+
+REQUESTED TOPIC
+{{topic}}
+
+CONTENT REQUEST
+{{content_request}}
+
+DIFFICULTY / DEPTH
+{{difficulty}}
+
+TARGET SIZE
+{{size_guidance}}
+
+IMAGE REQUEST
+{{image_guidance}}
+
+SOURCE AND ACCURACY RULES
+1. Research the requested topic before creating the pack. Prefer authoritative primary documentation, reputable open educational resources, standards bodies, government sources, and official vendor/project documentation.
+2. Do not invent facts, commands, quotations, citations, URLs, versions, licenses, authors, image provenance, labels, or source claims.
+3. If a fact or asset cannot be verified, omit it rather than guessing.
+4. Every dataset must include useful source metadata. Each Study Mode explanation must add supported teaching value rather than merely repeating the definition.
+5. For redistributable images, use only exact files with a clearly compatible license such as Public Domain, CC0, CC BY, or CC BY-SA. Record creator, exact source page, exact license, attribution, dimensions, and modification status.
+6. Never copy images from search-result thumbnails or from sources with unclear rights.
+7. Real screenshots/photos must be legitimately redistributable. If a requested real image cannot be redistributed, omit it and document why.
+8. Educational diagrams may be newly drawn when the domain permits it, but mark them clearly as "DLMS-created educational schematic" and never imply that a schematic is an authentic screenshot, specimen, photograph, or authoritative medical image.
+9. For medical/anatomical/histology/pathology content, do NOT use synthetic or AI-generated images as authoritative identification material; use source-verified open images only.
+10. The pack is study material, not professional, clinical, legal, financial, or operational decision support.
+
+STUDY QUALITY RULES
+- Matching definitions must be concise and unambiguous.
+- Avoid padding a dataset with weak or duplicative terms.
+- Each term should include term, definition, category, explanation when source-supported, and verification/source metadata.
+- For technical content, exact commands/configuration examples must be checked against the cited version/source.
+- Image questions should identify visually meaningful regions; do not create arbitrary hotspots.
+
+MULTI-IMAGE RULES
+- A single image dataset may contain multiple images.
+- Each image has its own hotspot list and source metadata.
+- DLMS will turn hotspots across all images in the dataset into individual quiz questions, so multiple requested images are supported naturally.
+- Use multiple datasets instead when the images represent substantially different subtopics.
+- Do not combine unrelated diagrams into one giant composite image merely to reduce file count.
+
+DLMS PACK ARCHITECTURE
+Create an ADD-ON pack. Do not overwrite DLMS core or an existing pack.
+Root folder: DLMS_Study_<TOPIC_SLUG>/
+
+manifest.json MUST include descriptor OBJECTS, never path strings:
+{
+  "schema_version": 1,
+  "id": "study_<topic_slug>",
+  "name": "DLMS Study — <Readable Topic>",
+  "version": "1.0.0",
+  "requires_dlms": ">=3.0.0",
+  "publisher": "User-generated DLMS study pack",
+  "content_domain": "{{domain_slug}}",
+  "description": "...",
+  "datasets": [
+    {"id":"dataset_id","title":"Readable title","type":"matching","path":"data/dataset.json","description":"..."}
+  ],
+  "image_datasets": [
+    {"id":"image_dataset_id","title":"Readable title","type":"hotspot","path":"data/images/dataset.json","description":"..."}
+  ]
+}
+
+MATCHING DATASET FORMAT
+{
+  "schema_version": 1,
+  "id": "unique_dataset_id",
+  "title": "Readable title",
+  "category": "Readable category",
+  "type": "matching",
+  "description": "...",
+  "question_text": "Match each item with its best answer.",
+  "source": {"organization":"...","dataset":"...","version":"...","url":"https://...","license":"...","verification_status":"source-basis-verified"},
+  "verification": {"status":"source-aligned","verified_date":"YYYY-MM-DD","method":"...","sources":["https://..."]},
+  "terms": [
+    {"term":"...","definition":"...","category":"...","explanation":"...","verification":{"status":"source-aligned","reference_basis":"...","source_urls":["https://..."]}}
+  ]
+}
+
+IMAGE / HOTSPOT DATASET FORMAT
+{
+  "schema_version": 1,
+  "id": "unique_image_dataset_id",
+  "title": "Readable title",
+  "category": "Diagram / Hardware / Anatomy / Map / etc.",
+  "type": "hotspot",
+  "description": "...",
+  "source": {"organization":"...","work":"...","url":"exact source page","license":"...","attribution":"..."},
+  "images": [
+    {
+      "id":"stable_image_id",
+      "file":"images/category/file.png",
+      "width":0,"height":0,"alt_text":"...",
+      "source_url":"...","license":"...","attribution":"...","modified":false,"modification_note":"",
+      "edits": [],
+      "hotspots":[
+        {"id":"target_id","label":"Target name","prompt":"Identify ...","explanation":"...","shape":{"type":"circle","x":0.5,"y":0.5,"radius":0.05},"calibration_status":"needs-dlms-editor-review","verification":{"status":"source-aligned","reference_basis":"...","source_url":"https://..."}}
+      ]
+    }
+  ]
+}
+
+IMAGE PREP
+DLMS has an Image Study Editor that can non-destructively hide labels/text with blur/white/black masks, add simple text labels, and calibrate circle/polygon clickable regions. If exact hotspot geometry cannot be confidently calibrated, use conservative starter regions and set calibration_status to "needs-dlms-editor-review".
+
+PACK FILE LAYOUT
+DLMS_Study_<TOPIC_SLUG>/
+├── manifest.json
+├── data/
+├── images/
+├── LICENSES/
+├── PROVENANCE.txt
+├── SOURCE_POLICY.md
+└── VALIDATION_REPORT.md
+
+VALIDATION BEFORE DELIVERY
+- every JSON file parses
+- every manifest dataset/image_datasets entry is a descriptor OBJECT with id/title/type/path
+- every declared file exists
+- no duplicate term or duplicate definition within a matching dataset
+- every term and definition is non-empty
+- every dataset has source metadata
+- every bundled image has exact provenance and compatible redistribution rights
+- every image path resolves inside the pack
+- every hotspot uses normalized coordinates 0..1
+- uncertain geometry is marked for editor review
+
+DELIVERABLE
+If file creation is available, build the complete folder, include the exact permitted assets, ZIP the root folder, and provide ONE downloadable ZIP plus a concise validation/source summary. If file creation is unavailable, do not claim the result is installation-ready.
+
+INSTALLATION
+Place the single extracted root folder directly under APP_DATA_DIR/content_packs/. Never nest the same root folder inside itself.
+"""
+
+
+def _study_pack_catalog():
+    result=[]
+    for pack_id, pack in discover_content_packs().items():
+        datasets=[]; image_datasets=[]
+        for d in pack.get("datasets") or []:
+            if not isinstance(d,dict): continue
+            did=str(d.get("id") or "").strip()
+            if not did: continue
+            try:
+                data=load_content_pack_dataset(pack_id,did)
+                datasets.append({"id":did,"title":d.get("title") or data.get("title") or did,"description":d.get("description") or data.get("description") or "","term_count":len(data.get("terms") or []),"category":data.get("category") or ""})
+            except Exception as exc: print(f"[STUDY PACKS] Skipping {pack_id}/{did}: {exc}")
+        for d in pack.get("image_datasets") or []:
+            if not isinstance(d,dict): continue
+            did=str(d.get("id") or "").strip()
+            if not did: continue
+            try:
+                data=load_content_pack_image_dataset(pack_id,did)
+                images=data.get("images") or []
+                image_datasets.append({"id":did,"title":d.get("title") or data.get("title") or did,"description":d.get("description") or data.get("description") or "","image_count":len(images),"hotspot_count":sum(len(i.get("hotspots") or []) for i in images),"category":data.get("category") or "Image Study"})
+            except Exception as exc: print(f"[STUDY PACKS] Skipping image {pack_id}/{did}: {exc}")
+        if datasets or image_datasets:
+            result.append({"id":pack_id,"name":pack.get("name") or pack_id,"version":pack.get("version") or "","description":pack.get("description") or "","domain":pack.get("content_domain") or ("medical" if pack_id=="medical" else "general"),"datasets":datasets,"image_datasets":image_datasets})
+    return sorted(result,key=lambda p:p["name"].casefold())
+
+
+@app.route("/study-packs")
+def study_packs_home():
+    packs = _study_pack_catalog()
+    return render_template_string(r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Study Packs - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home study-packs-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand">
+        <div class="dashboard-brand-mark">▣</div>
+        <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+    </div>
+    <nav class="dashboard-nav">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+        <a class="dashboard-nav-item active" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        {% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}
+        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+    </nav>
+    <div class="dashboard-nav-section-label"><span>System</span></div>
+    <nav class="dashboard-nav dashboard-nav-system">
+        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">Study Packs</div>
+</aside>
+
+<main class="dashboard-main">
+    <header class="dashboard-header">
+        <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+        <div>
+            <div class="medical-eyebrow">CUSTOM STUDY CONTENT</div>
+            <h1>Study Packs</h1>
+            <p>Use installed content packs for any subject—IT, certification study, science, history, medical topics, or your own course material.</p>
+        </div>
+    </header>
+
+    <section class="study-pack-launch-grid">
+        <a class="dashboard-panel study-pack-launch" href="/study-packs/ai-builder">
+            <div class="study-pack-launch-icon">AI</div>
+            <div><span class="medical-eyebrow">CREATE</span><h2>AI Study Pack Builder</h2><p>Generate one rigorous, domain-aware prompt for a complete DLMS-ready pack, including multiple images when useful.</p></div>
+        </a>
+        <a class="dashboard-panel study-pack-launch" href="/admin/image-editor">
+            <div class="study-pack-launch-icon">◎</div>
+            <div><span class="medical-eyebrow">EDIT</span><h2>Image Study Editor</h2><p>Hide labels, add simple text, and calibrate clickable regions for any image-based study pack.</p></div>
+        </a>
+    </section>
+
+    {% if packs %}
+    <div class="study-pack-toolbar">
+        <div>
+            <span class="medical-eyebrow">INSTALLED CONTENT</span>
+            <strong>{{ packs|length }} study pack{{ '' if packs|length == 1 else 's' }}</strong>
+        </div>
+        <div class="study-pack-toolbar-actions">
+            <button type="button" class="medical-ai-secondary-button" id="expandAllPacks">Expand All</button>
+            <button type="button" class="medical-ai-secondary-button" id="collapseAllPacks">Collapse All</button>
+        </div>
+    </div>
+
+    {% for pack in packs %}
+    <details class="dashboard-panel study-pack-section study-pack-collapsible"
+             data-pack-id="{{ pack.id }}"
+             {% if loop.first %}open{% endif %}>
+        <summary class="study-pack-summary">
+            <div class="study-pack-summary-main">
+                <span class="study-pack-chevron" aria-hidden="true">›</span>
+                <div>
+                    <span class="medical-eyebrow">{{ pack.domain|upper }} · {{ pack.version }}</span>
+                    <h2>{{ pack.name }}</h2>
+                    <p>{{ pack.description }}</p>
+                </div>
+            </div>
+            <div class="study-pack-summary-meta">
+                <span class="pack-count-pill">{{ pack.datasets|length + pack.image_datasets|length }} datasets</span>
+                {% if pack.datasets %}<span>{{ pack.datasets|length }} matching</span>{% endif %}
+                {% if pack.image_datasets %}<span>{{ pack.image_datasets|length }} image</span>{% endif %}
+            </div>
+        </summary>
+
+        <div class="study-pack-body">
+        {% if pack.datasets %}
+            <h3>Matching / terminology</h3>
+            <div class="medical-dataset-grid">
+            {% for d in pack.datasets %}
+                <article class="medical-dataset-card">
+                    <span class="medical-eyebrow">{{ d.category or 'MATCHING' }}</span>
+                    <h3>{{ d.title }}</h3>
+                    <p>{{ d.description }}</p>
+                    <div class="medical-dataset-meta"><span>{{ d.term_count }} items</span></div>
+                    <form method="POST" action="/study-packs/generate">
+                        <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                        <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                        <label><span>Pairs Per Round</span><input type="number" name="round_size" min="2" max="{{ d.term_count }}" value="{{ 10 if d.term_count >= 10 else d.term_count }}"></label>
+                        <label><span>Direction</span>
+                            <select name="direction">
+                                <option value="random">Random Each Attempt</option>
+                                <option value="term_to_definition">Term → Definition</option>
+                                <option value="definition_to_term">Definition → Term</option>
+                            </select>
+                        </label>
+                        <button class="medical-primary-button" type="submit">Create Practice Quiz</button>
+                    </form>
+                </article>
+            {% endfor %}
+            </div>
+        {% endif %}
+
+        {% if pack.image_datasets %}
+            <h3>Images / diagrams</h3>
+            <div class="medical-dataset-grid">
+            {% for d in pack.image_datasets %}
+                <article class="medical-dataset-card">
+                    <span class="medical-eyebrow">{{ d.category|upper }} · IMAGE PRACTICE</span>
+                    <h3>{{ d.title }}</h3>
+                    <p>{{ d.description }}</p>
+                    <div class="medical-dataset-meta"><span>{{ d.image_count }} images</span><span>{{ d.hotspot_count }} targets</span></div>
+                    <form method="POST" action="/study-packs/image/generate">
+                        <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                        <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                        <button class="medical-primary-button" type="submit">Create Image Quiz</button>
+                    </form>
+                </article>
+            {% endfor %}
+            </div>
+        {% endif %}
+        </div>
+    </details>
+    {% endfor %}
+    {% else %}
+    <section class="dashboard-panel">
+        <h2>No usable study packs yet</h2>
+        <p>Create one with the AI Study Pack Builder or install a content pack.</p>
+    </section>
+    {% endif %}
+</main>
+</div>
+
+<script>
+const sidebar = document.getElementById('dashboardSidebar');
+document.getElementById('menuButton')?.addEventListener('click',()=>sidebar?.classList.toggle('open'));
+
+const packDetails = [...document.querySelectorAll('.study-pack-collapsible')];
+const stateKey = 'dlms.studyPacks.openState.v1';
+
+function readPackState() {
+    try { return JSON.parse(localStorage.getItem(stateKey) || '{}') || {}; }
+    catch (e) { return {}; }
+}
+function savePackState() {
+    const state = {};
+    packDetails.forEach(el => state[el.dataset.packId] = el.open);
+    try { localStorage.setItem(stateKey, JSON.stringify(state)); } catch (e) {}
+}
+const savedState = readPackState();
+packDetails.forEach(el => {
+    if (Object.prototype.hasOwnProperty.call(savedState, el.dataset.packId)) {
+        el.open = !!savedState[el.dataset.packId];
+    }
+    el.addEventListener('toggle', savePackState);
+});
+document.getElementById('expandAllPacks')?.addEventListener('click', () => {
+    packDetails.forEach(el => el.open = true);
+    savePackState();
+});
+document.getElementById('collapseAllPacks')?.addEventListener('click', () => {
+    packDetails.forEach(el => el.open = false);
+    savePackState();
+});
+</script>
+</body>
+</html>
+""", packs=packs, medical_pack_installed=bool(get_content_pack("medical")))
+
+
+
+
+@app.route("/study-packs/generate", methods=["POST"])
+def study_pack_generate_matching():
+    pack_id=str(request.form.get("pack_id") or "").strip().lower(); dataset_id=str(request.form.get("dataset_id") or "").strip(); direction=str(request.form.get("direction") or "random").strip()
+    if direction not in {"term_to_definition","definition_to_term","random"}: direction="random"
+    pack=get_content_pack(pack_id)
+    if not pack: flash("Study pack is not installed.","error"); return redirect("/study-packs")
+    try: data=load_content_pack_dataset(pack_id,dataset_id)
+    except Exception as exc: flash(f"Unable to load study dataset: {exc}","error"); return redirect("/study-packs")
+    terms=data.get("terms") or []
+    if len(terms)<2: flash("This dataset does not contain enough items.","error"); return redirect("/study-packs")
+    try: round_size=int(request.form.get("round_size","10"))
+    except (TypeError,ValueError): round_size=10
+    round_size=max(2,min(round_size,min(100,len(terms))))
+    title=str(data.get("title") or data["_descriptor"].get("title") or "Study Practice").strip(); source=data.get("source") or {}
+    pairs=[{"left":i["term"],"right":i["definition"],"category":i.get("category","") ,"explanation":i.get("explanation") or i.get("study_explanation") or "","verification":i.get("verification") or data.get("verification") or {},"source":i.get("source") or source or {}} for i in terms]
+    quiz_data=[{"number":1,"type":"matching","question":str(data.get("question_text") or "Match each item with its best answer.").strip(),"pairs":pairs,"round_size":round_size,"direction":direction,"source":{"organization":source.get("organization") or pack.get("publisher") or "","dataset":source.get("dataset") or title,"version":source.get("version") or pack.get("version") or "","url":source.get("url") or "","license":source.get("license") or ""}}]
+    ts=int(time.time()); safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "dataset"; quiz_title=f"{title} — {round_size}-Pair Practice"; html_name=f"study_{safe_pack}_{safe_id}_{ts}.html"; json_name=f"study_{safe_pack}_{safe_id}_{ts}.json"; json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
+    with open(json_path,"w",encoding="utf-8") as f: json.dump(quiz_data,f,indent=4,ensure_ascii=False)
+    quiz_id=save_quiz_to_db(quiz_title,html_name,quiz_data); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
+    return redirect(f"/quizzes/{html_name}")
+
+
+@app.route("/study-packs/image/generate", methods=["POST"])
+def study_pack_generate_image():
+    pack_id=str(request.form.get("pack_id") or "").strip().lower(); dataset_id=str(request.form.get("dataset_id") or "").strip(); pack=get_content_pack(pack_id)
+    if not pack: flash("Study pack is not installed.","error"); return redirect("/study-packs")
+    try: data=load_content_pack_image_dataset(pack_id,dataset_id)
+    except Exception as exc: flash(f"Unable to load image dataset: {exc}","error"); return redirect("/study-packs")
+    runtime_questions=[]; db_questions=[]; qnum=1
+    for image in data.get("images") or []:
+        image_url=url_for("content_pack_asset",pack_id=pack_id,asset_path=image.get("file")); source=image.get("source") or data.get("source") or {}; hotspots=list(image.get("hotspots") or []); random.shuffle(hotspots)
+        for hotspot in hotspots:
+            label=str(hotspot.get("label") or "").strip()
+            if not label: continue
+            prompt=str(hotspot.get("prompt") or f"Identify {label}.").strip()
+            runtime_questions.append({"number":qnum,"type":"hotspot","question":prompt,"image_url":image_url,"image_alt":image.get("alt_text") or data.get("title") or "Study image","image_edits":image.get("edits") or [],"target":hotspot.get("shape") or {},"target_label":label,"explanation":hotspot.get("explanation") or "","verification":hotspot.get("verification") or {},"image_source":{"organization":source.get("organization") or "","work":source.get("work") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or "","attribution":source.get("attribution") or image.get("attribution") or ""}})
+            db_questions.append({"number":qnum,"type":"choice","question":prompt+" [Image hotspot]","choices":[{"label":"A","text":label,"is_correct":True}],"source":{"organization":source.get("organization") or "","dataset":data.get("title") or dataset_id,"version":pack.get("version") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or ""}}); qnum+=1
+    if not runtime_questions: flash("This image dataset contains no usable targets.","error"); return redirect("/study-packs")
+    title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; ts=int(time.time()); safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"; html_name=f"study_image_{safe_pack}_{safe_id}_{ts}.html"; json_name=f"study_image_{safe_pack}_{safe_id}_{ts}.json"; json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
+    with open(json_path,"w",encoding="utf-8") as f: json.dump(runtime_questions,f,indent=4,ensure_ascii=False)
+    quiz_id=save_quiz_to_db(quiz_title,html_name,db_questions); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
+    return redirect(f"/quizzes/{html_name}")
+
+
+@app.route("/study-packs/ai-builder", methods=["GET","POST"])
+def study_pack_ai_builder():
+    cfg = load_portal_config()
+
+    allowed_domains = ["IT / Cybersecurity", "General", "Science", "Medical", "History", "Language", "Other"]
+    requested_domain = str(request.args.get("domain") or "").strip()
+    domain = requested_domain if requested_domain in allowed_domains else "IT / Cybersecurity"
+    from_section = str(request.args.get("from") or "").strip().lower()
+
+    topic = str(request.args.get("topic") or "").strip()
+    difficulty = "Foundational" if domain == "Medical" else "Intermediate"
+    size = "Standard"
+    image_count = "2–3"
+    image_style = "Mixed"
+    include_matching = True
+    include_images = True
+    generated_prompt = ""
+
+    ai_provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
+    if ai_provider not in {"chatgpt","claude","gemini","local"}:
+        ai_provider = "chatgpt"
+
+    if request.method == "POST":
+        topic = str(request.form.get("topic") or "").strip()
+        domain = str(request.form.get("domain") or "General").strip()
+        if domain not in allowed_domains:
+            domain = "General"
+        difficulty = str(request.form.get("difficulty") or "Intermediate").strip()
+        size = str(request.form.get("size") or "Standard").strip()
+        image_count = str(request.form.get("image_count") or "2–3").strip()
+        image_style = str(request.form.get("image_style") or "Mixed").strip()
+        ai_provider = str(request.form.get("ai_provider") or ai_provider).strip().lower()
+        from_section = str(request.form.get("from_section") or "").strip().lower()
+
+        include_matching = "include_matching" in request.form
+        include_images = "include_images" in request.form
+
+        if difficulty not in {"Foundational","Intermediate","Comprehensive"}:
+            difficulty = "Intermediate"
+        if size not in {"Compact","Standard","Large"}:
+            size = "Standard"
+        if image_count not in {"None","1","2–3","4–6"}:
+            image_count = "2–3"
+        if image_style not in {"Real / photographic","Diagram / schematic","Drawn educational illustration","Mixed"}:
+            image_style = "Mixed"
+        if ai_provider not in {"chatgpt","claude","gemini","local"}:
+            ai_provider = "chatgpt"
+
+        requested = []
+        if include_matching:
+            requested.append("Create one or more high-quality matching datasets with concise answers and source-supported Study Mode explanations.")
+        if include_images:
+            requested.append("Create image/diagram hotspot datasets when they genuinely improve learning, following the image count and style request below.")
+        if not requested:
+            requested.append("Choose the most appropriate DLMS study content types for this topic.")
+
+        size_map = {
+            "Compact": "Keep the pack focused: about 20–40 high-value matching items per dataset.",
+            "Standard": "Aim for useful depth: about 40–80 distinct matching items per dataset when supported.",
+            "Large": "Build broad coverage without padding; split large subjects into multiple focused datasets."
+        }
+
+        if include_images and image_count != "None":
+            image_guidance = (
+                f"Request {image_count} useful image(s) when possible. Preferred style: {image_style}. "
+                "Bundle exact legally reusable images and create separate hotspot lists for each image. "
+                "If multiple images cover different subtopics, create separate image datasets."
+            )
+        else:
+            image_guidance = "Do not create image datasets for this request."
+
+        domain_slug = re.sub(r"[^a-z0-9]+","_",domain.lower()).strip("_") or "general"
+
+        if topic:
+            generated_prompt = (
+                DEFAULT_STUDY_CONTENT_PACK_PROMPT
+                .replace("{{domain}}", domain)
+                .replace("{{domain_slug}}", domain_slug)
+                .replace("{{topic}}", topic)
+                .replace("{{content_request}}", "\\n".join(f"- {x}" for x in requested))
+                .replace("{{difficulty}}", difficulty)
+                .replace("{{size_guidance}}", size_map.get(size, size_map["Standard"]))
+                .replace("{{image_guidance}}", image_guidance)
+            )
+            if domain == "Medical":
+                generated_prompt += r"""
+
+MEDICAL-SPECIFIC SAFETY AND SOURCE REQUIREMENTS
+- Treat this as educational medical study content only.
+- Prefer authoritative medical/OER/government sources and exact source-verified terminology.
+- Do not invent clinical facts, diagnostic claims, citations, licenses, structures, or image provenance.
+- Do not use synthetic or AI-generated anatomy, histology, pathology, radiology, or microscopy images as authoritative identification material.
+- Use only exact legally redistributable medical images with source/license/creator attribution documented at image level.
+- Keep concise matching definitions separate from richer Study Mode explanations.
+- Mark uncertain image hotspot geometry for DLMS Image Study Editor review rather than pretending it is calibrated.
+"""
+        else:
+            generated_prompt = "Enter a study topic before generating the prompt."
+
+    providers = {
+        "chatgpt":"https://chatgpt.com/",
+        "claude":"https://claude.ai/",
+        "gemini":"https://gemini.google.com/",
+        "local":str(cfg.get("ai_custom_url") or "").strip()
+    }
+    ai_url = providers.get(ai_provider,"")
+    back_url = "/medical" if from_section == "medical" or domain == "Medical" else "/study-packs"
+    back_label = "Medical Study" if back_url == "/medical" else "Study Packs"
+
+    return render_template_string(r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AI Study Pack Builder - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-ai-builder-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand"><div class="dashboard-brand-mark">AI</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+    <nav class="dashboard-nav">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+        <a class="dashboard-nav-item active" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        {% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}
+        <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">AI Study Pack Builder</div>
+</aside>
+
+<main class="dashboard-main medical-main">
+    <header class="dashboard-header">
+        <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+        <div>
+            <div class="medical-eyebrow">ANY SUBJECT · CUSTOM CONTENT</div>
+            <h1>AI Study Pack Builder</h1>
+            <p>One domain-aware builder creates controlled DLMS-ready content-pack prompts for medical, IT, science, history, and other study subjects.</p>
+        </div>
+    </header>
+
+    <section class="dashboard-panel medical-ai-builder-panel">
+        <form method="POST" class="medical-ai-builder-form">
+            <input type="hidden" name="from_section" value="{{ from_section }}">
+            <label class="medical-ai-topic-field">
+                <span>What do you want to study?</span>
+                <input type="text" name="topic" value="{{ topic }}" required placeholder="Examples: AWS networking, cranial nerves, Linux permissions, cellular biology">
+            </label>
+
+            <div class="study-ai-grid">
+                <label><span>Subject / Domain</span>
+                    <select name="domain" id="studyDomain">
+                    {% for x in domains %}<option {% if domain==x %}selected{% endif %}>{{ x }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label><span>Difficulty</span><select name="difficulty">{% for x in ['Foundational','Intermediate','Comprehensive'] %}<option {% if difficulty==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+                <label><span>Pack Size</span><select name="size">{% for x in ['Compact','Standard','Large'] %}<option {% if size==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+                <label><span>Images Requested</span><select name="image_count">{% for x in ['None','1','2–3','4–6'] %}<option {% if image_count==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+                <label><span>Image Style</span><select name="image_style">{% for x in ['Real / photographic','Diagram / schematic','Drawn educational illustration','Mixed'] %}<option {% if image_style==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+                <label><span>AI Provider</span><select name="ai_provider"><option value="chatgpt" {% if ai_provider=='chatgpt' %}selected{% endif %}>ChatGPT</option><option value="claude" {% if ai_provider=='claude' %}selected{% endif %}>Claude</option><option value="gemini" {% if ai_provider=='gemini' %}selected{% endif %}>Gemini</option><option value="local" {% if ai_provider=='local' %}selected{% endif %}>Local / Custom</option></select></label>
+            </div>
+
+            <div id="medicalGuardrailNotice" class="study-ai-domain-notice {% if domain != 'Medical' %}is-hidden{% endif %}">
+                <strong>Medical safeguards enabled</strong>
+                <span>Medical selections automatically add stricter source, licensing, provenance, and non-synthetic-image requirements to the prompt.</span>
+            </div>
+
+            <div class="medical-ai-option-grid">
+                <label class="medical-ai-option-card"><input type="checkbox" name="include_matching" {% if include_matching %}checked{% endif %}><div><strong>Matching / Terminology</strong><span>Create source-supported matching datasets with Study Mode explanations.</span></div></label>
+                <label class="medical-ai-option-card"><input type="checkbox" name="include_images" {% if include_images %}checked{% endif %}><div><strong>Images / Diagrams</strong><span>Create one or multiple image-based hotspot datasets when useful.</span></div></label>
+            </div>
+
+            <div class="medical-ai-action-row">
+                <button class="medical-primary-button" type="submit">Generate AI Prompt</button>
+                <a class="medical-ai-quiet-link" href="{{ back_url }}">← Back to {{ back_label }}</a>
+            </div>
+        </form>
+    </section>
+
+    {% if generated_prompt %}
+    <section class="dashboard-panel medical-ai-prompt-panel">
+        <div class="medical-ai-builder-heading">
+            <div><span class="medical-eyebrow">GENERATED PROMPT</span><h2>Ready for {{ ai_provider|capitalize }}</h2><p>Edit if desired, then copy it to your AI provider.</p></div>
+            <span class="medical-ai-safety-pill">{{ 'Medical guardrails' if domain == 'Medical' else 'Source-first' }}</span>
+        </div>
+        <textarea id="studyPrompt" class="medical-ai-prompt-box" rows="30">{{ generated_prompt }}</textarea>
+        <div class="medical-ai-action-row">
+            {% if ai_url %}<button type="button" class="medical-primary-button" onclick="copyAndOpen('{{ ai_url }}')">Copy Prompt &amp; Open AI</button>{% endif %}
+            <button type="button" class="medical-ai-secondary-button" onclick="copyPrompt()">Copy Prompt</button>
+        </div>
+    </section>
+    {% endif %}
+</main>
+</div>
+
+<script>
+function box(){return document.getElementById('studyPrompt')}
+function selectP(){const b=box();if(!b)return null;b.focus();b.select();b.setSelectionRange(0,b.value.length);return b}
+function copyPrompt(show=true){const b=selectP();if(!b)return false;let ok=false;try{ok=document.execCommand('copy')}catch(e){}if(show)alert(ok?'Prompt copied.':'Prompt selected; press Ctrl+C.');return ok}
+function copyAndOpen(u){copyPrompt(false);window.open(u,'_blank','noopener,noreferrer')}
+document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));
+document.getElementById('studyDomain')?.addEventListener('change', (event) => {
+    document.getElementById('medicalGuardrailNotice')?.classList.toggle('is-hidden', event.target.value !== 'Medical');
+});
+</script>
+</body>
+</html>
+""",
+        topic=topic,
+        domain=domain,
+        domains=allowed_domains,
+        difficulty=difficulty,
+        size=size,
+        image_count=image_count,
+        image_style=image_style,
+        ai_provider=ai_provider,
+        include_matching=include_matching,
+        include_images=include_images,
+        generated_prompt=generated_prompt,
+        ai_url=ai_url,
+        from_section=from_section,
+        back_url=back_url,
+        back_label=back_label,
+        medical_pack_installed=bool(get_content_pack("medical")),
+    )
+
+
+
+
+# =========================
 # LAW STUDY MODULE - LANDING
 # =========================
 @app.route("/law")
@@ -3061,13 +3551,14 @@ def law_study_home():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -3331,6 +3822,7 @@ def law_create_case_review():
         <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
         {% if medical_pack_installed %}
         <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
@@ -3876,6 +4368,7 @@ def law_import_case_packet():
         <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
         {% if medical_pack_installed %}
         <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
@@ -4094,6 +4587,7 @@ def law_saved_imports():
         <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
         {% if medical_pack_installed %}
         <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
@@ -4284,6 +4778,7 @@ def law_view_saved_import(filename):
         <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
         {% if medical_pack_installed %}
         <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
@@ -4582,6 +5077,7 @@ def law_case_reviews():
         <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
         {% if medical_pack_installed %}
         <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
@@ -4802,6 +5298,7 @@ def law_view_case_review(case_id):
         <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
         <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
         <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
         <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
         {% if medical_pack_installed %}
         <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
@@ -5523,13 +6020,14 @@ def edit_quiz(quiz_id):
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item active" href="/library" aria-current="page"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -7372,13 +7870,14 @@ def quiz_library():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item active" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -7831,13 +8330,14 @@ def upload_page():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -8006,13 +8506,14 @@ def paste_page():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -8262,13 +8763,14 @@ def matching_bank_import():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -8410,13 +8912,14 @@ def create_short_quiz_page():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -12873,13 +13376,14 @@ def anki_tools():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -13220,13 +13724,14 @@ def anki_custom_deck():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
@@ -13599,13 +14104,14 @@ def anki_law_tools():
             <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
             <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
             <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
             <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
             {% if medical_pack_installed %}
             <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
             <div class="dashboard-nav-submenu medical-global-submenu">
                 <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
                 <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
-                <a class="dashboard-nav-subitem" href="/medical/ai-builder"><span class="dashboard-nav-subicon">↳</span><span>AI Content Pack Builder</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
             </div>
             {% endif %}
             <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
