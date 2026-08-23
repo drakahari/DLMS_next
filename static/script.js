@@ -172,8 +172,20 @@ function renderQuestion() {
     // Those workflows assume A-Z choices and can be extended separately later.
     const studyAiBtn = document.getElementById("studyAiBtn");
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
-    if (studyAiBtn) studyAiBtn.style.display = (!examMode && q.type !== "matching") ? "inline-block" : "none";
-    if (studyAnkiBtn) studyAnkiBtn.style.display = (!examMode && q.type !== "matching") ? "inline-block" : "none";
+    if (studyAiBtn) studyAiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
+    if (studyAnkiBtn) studyAnkiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
+
+    if (q.type === "hotspot") {
+        renderHotspotQuestion(q, key, selected, choicesEl);
+        updateProgressBar();
+        updateNavButtons();
+        updatePauseButtonUI();
+        updateTimerLabelUI();
+        updateStudyModeBadge();
+        updateStudyAnkiButton();
+        updateStudyAnkiExportButton();
+        return;
+    }
 
     if (q.type === "matching") {
         renderMatchingQuestion(q, key, selected, choicesEl);
@@ -225,6 +237,117 @@ if (examMode && selected.includes(i)) {
     updateStudyModeBadge();
     updateStudyAnkiButton();
     updateStudyAnkiExportButton();
+}
+
+
+function pointInHotspot(x, y, shape) {
+    if (!shape || typeof shape !== "object") return false;
+
+    if (shape.type === "circle") {
+        const dx = x - Number(shape.x);
+        const dy = y - Number(shape.y);
+        const radius = Number(shape.radius);
+        return Number.isFinite(radius) && (dx * dx + dy * dy) <= radius * radius;
+    }
+
+    if (shape.type === "polygon" && Array.isArray(shape.points) && shape.points.length >= 3) {
+        let inside = false;
+        const pts = shape.points;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+            const xi = Number(pts[i][0]), yi = Number(pts[i][1]);
+            const xj = Number(pts[j][0]), yj = Number(pts[j][1]);
+            const intersects = ((yi > y) !== (yj > y)) &&
+                (x < (xj - xi) * (y - yi) / ((yj - yi) || Number.EPSILON) + xi);
+            if (intersects) inside = !inside;
+        }
+        return inside;
+    }
+
+    return false;
+}
+
+function hotspotCenter(shape) {
+    if (!shape || typeof shape !== "object") return {x: 0.5, y: 0.5};
+    if (shape.type === "circle") return {x: Number(shape.x), y: Number(shape.y)};
+    if (shape.type === "polygon" && Array.isArray(shape.points) && shape.points.length) {
+        const sum = shape.points.reduce((acc, p) => ({x: acc.x + Number(p[0]), y: acc.y + Number(p[1])}), {x: 0, y: 0});
+        return {x: sum.x / shape.points.length, y: sum.y / shape.points.length};
+    }
+    return {x: 0.5, y: 0.5};
+}
+
+function renderHotspotQuestion(q, key, selected, choicesEl) {
+    const answer = (selected && typeof selected === "object" && !Array.isArray(selected)) ? selected : null;
+    const hasAnswer = answer && Number.isFinite(Number(answer.x)) && Number.isFinite(Number(answer.y));
+    const isCorrect = hasAnswer ? pointInHotspot(Number(answer.x), Number(answer.y), q.target) : false;
+
+    let marker = "";
+    if (hasAnswer) {
+        marker = `<span class="hotspot-click-marker ${(!examMode && isCorrect) ? "correct" : (!examMode ? "wrong" : "")}"
+            style="left:${Number(answer.x) * 100}%;top:${Number(answer.y) * 100}%"></span>`;
+    }
+
+    let correctMarker = "";
+    if (!examMode && hasAnswer && !isCorrect) {
+        const center = hotspotCenter(q.target);
+        correctMarker = `<span class="hotspot-correct-marker"
+            style="left:${center.x * 100}%;top:${center.y * 100}%"></span>`;
+    }
+
+    let feedback = "";
+    if (!examMode && hasAnswer) {
+        const verification = q.verification || {};
+        const verified = verification.status === "source-checked"
+            ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
+        const explanation = q.explanation
+            ? `<div class="matching-study-explanation">${escapeHtml(q.explanation)}</div>` : "";
+        const referenceBasis = verification.reference_basis
+            ? `<div class="matching-study-source">Reference basis: ${escapeHtml(verification.reference_basis)}</div>` : "";
+
+        feedback = `<div class="matching-study-feedback ${isCorrect ? "is-correct" : "is-wrong"}">
+            <div class="matching-study-feedback-title">${isCorrect ? "✓ Correct" : "✕ Not quite"}</div>
+            <div class="matching-study-correct-answer"><strong>Structure:</strong> ${escapeHtml(q.target_label || "")}</div>
+            <div class="matching-study-meta">${verified}</div>
+            ${explanation}
+            ${referenceBasis}
+        </div>`;
+    }
+
+    const source = q.image_source || {};
+    const attribution = source.attribution
+        ? `<div class="hotspot-attribution">${escapeHtml(source.attribution)}${source.license ? ` · ${escapeHtml(source.license)}` : ""}</div>`
+        : "";
+
+    choicesEl.innerHTML = `
+        <div class="hotspot-question">
+            <div class="matching-instructions">Click the requested structure on the image.</div>
+            <div class="hotspot-image-wrap" onclick="selectHotspot(event)">
+                <img class="hotspot-image" src="${escapeHtml(q.image_url || "")}" alt="${escapeHtml(q.image_alt || "Anatomy image")}" draggable="false">
+                ${marker}
+                ${correctMarker}
+            </div>
+            ${attribution}
+            ${feedback}
+        </div>`;
+}
+
+function selectHotspot(event) {
+    if (!quiz.length) return;
+    const q = quiz[index];
+    if (!q || q.type !== "hotspot") return;
+
+    const wrap = event.currentTarget;
+    const img = wrap.querySelector(".hotspot-image");
+    if (!img) return;
+
+    const rect = img.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+
+    userAnswers[`q${index}`] = {x, y};
+    renderQuestion();
 }
 
 function shuffledIndexes(length) {
@@ -817,6 +940,32 @@ function submitQuiz(force = false) {
 
             const key = `q${i}`;
             let ans = userAnswers[key];
+
+            if (q.type === "hotspot") {
+                const point = (ans && typeof ans === "object" && !Array.isArray(ans)) ? ans : null;
+                const isCorrect = point &&
+                    Number.isFinite(Number(point.x)) &&
+                    Number.isFinite(Number(point.y)) &&
+                    pointInHotspot(Number(point.x), Number(point.y), q.target);
+
+                if (isCorrect) {
+                    correct++;
+                } else {
+                    missed.push({
+                        attemptQuestionNumber: i + 1,
+                        number: q.number || (i + 1),
+                        question: q.question,
+                        questionType: "hotspot",
+                        choices: [{label: "A", text: q.target_label || "Target structure"}],
+                        correctLetters: ["A"],
+                        correctText: [q.target_label || "Target structure"],
+                        selectedIndexes: [],
+                        selectedLetters: [],
+                        selectedText: [point ? "Incorrect image location selected" : "[No answer]"]
+                    });
+                }
+                continue;
+            }
 
             if (q.type === "matching") {
                 const pairs = Array.isArray(q.pairs) ? q.pairs : [];

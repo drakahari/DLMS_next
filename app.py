@@ -1,5 +1,5 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -88,7 +88,7 @@ def get_app_data_dir(app_name: str = "DLMS") -> str:
     return path
 
 APP_NAME = "DLMS"
-APP_VERSION = "2.5.0"
+APP_VERSION = "3.0.0"
 APP_DATA_DIR = get_app_data_dir(APP_NAME)
 
 # =========================
@@ -365,6 +365,85 @@ def load_content_pack_dataset(pack_id, dataset_id):
     data["_descriptor"] = descriptor
     data["_pack"] = pack
     return data
+
+
+
+def load_content_pack_image_dataset(pack_id, dataset_id):
+    """Load one image/hotspot dataset declared by an installed content pack."""
+    pack = get_content_pack(pack_id)
+    if not pack:
+        raise FileNotFoundError(f"Content pack {pack_id!r} is not installed")
+
+    dataset_id = str(dataset_id or "").strip()
+    descriptor = next(
+        (item for item in (pack.get("image_datasets") or [])
+         if str(item.get("id") or "").strip() == dataset_id),
+        None
+    )
+    if not descriptor:
+        raise KeyError(f"Image dataset {dataset_id!r} is not declared by pack {pack_id!r}")
+
+    rel_path = str(descriptor.get("path") or "").strip()
+    if not rel_path:
+        raise ValueError("Image dataset descriptor is missing path")
+
+    dataset_path = _safe_pack_child(pack["_root"], rel_path)
+    if not os.path.isfile(dataset_path):
+        raise FileNotFoundError(f"Image dataset file not found: {rel_path}")
+
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        data = json.load(f) or {}
+
+    if int(data.get("schema_version", 0)) != CONTENT_PACK_SCHEMA_VERSION:
+        raise ValueError("Image dataset schema version is not supported")
+
+    images = data.get("images") or []
+    if not isinstance(images, list) or not images:
+        raise ValueError("Image dataset must contain at least one image")
+
+    for image in images:
+        if not isinstance(image, dict):
+            raise ValueError("Each image record must be an object")
+        rel_file = str(image.get("file") or "").strip()
+        if not rel_file:
+            raise ValueError("Image record is missing file")
+        image_path = _safe_pack_child(pack["_root"], rel_file)
+        if not os.path.isfile(image_path):
+            raise FileNotFoundError(f"Pack image not found: {rel_file}")
+        hotspots = image.get("hotspots") or []
+        if not isinstance(hotspots, list) or not hotspots:
+            raise ValueError(f"Image {rel_file!r} has no hotspots")
+
+    data["_descriptor"] = descriptor
+    data["_pack"] = pack
+    return data
+
+
+@app.route("/content-packs/<pack_id>/assets/<path:asset_path>")
+def content_pack_asset(pack_id, asset_path):
+    """Serve a file from an installed content pack without allowing path traversal."""
+    pack = get_content_pack(pack_id)
+    if not pack:
+        return "Content pack not found", 404
+
+    try:
+        file_path = _safe_pack_child(pack["_root"], asset_path)
+    except ValueError:
+        return "Invalid content-pack asset path", 400
+
+    if not os.path.isfile(file_path):
+        return "Content-pack asset not found", 404
+
+    allowed = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext not in allowed:
+        return "Unsupported content-pack asset type", 415
+
+    return send_from_directory(
+        os.path.dirname(file_path),
+        os.path.basename(file_path),
+        conditional=True
+    )
 
 
 def content_pack_summary():
@@ -1656,6 +1735,24 @@ def medical_study_home():
         except Exception as exc:
             print(f"[MEDICAL PACK] Dataset {dataset_id!r} unavailable: {exc}")
 
+    image_datasets = []
+    for descriptor in pack.get("image_datasets", []):
+        dataset_id = str(descriptor.get("id") or "").strip()
+        try:
+            data = load_content_pack_image_dataset("medical", dataset_id)
+            image_count = len(data.get("images") or [])
+            hotspot_count = sum(len(img.get("hotspots") or []) for img in (data.get("images") or []))
+            image_datasets.append({
+                "id": dataset_id,
+                "title": descriptor.get("title") or data.get("title") or dataset_id,
+                "description": descriptor.get("description") or data.get("description") or "",
+                "image_count": image_count,
+                "hotspot_count": hotspot_count,
+                "category": data.get("category") or "Anatomy",
+            })
+        except Exception as exc:
+            print(f"[MEDICAL PACK] Image dataset {dataset_id!r} unavailable: {exc}")
+
     return render_template_string("""
 <!DOCTYPE html>
 <html lang="en">
@@ -1721,6 +1818,31 @@ def medical_study_home():
         </section>
         {% endif %}
 
+        {% if image_datasets %}
+        <section class="medical-dataset-grid medical-anatomy-grid">
+        {% for dataset in image_datasets %}
+            <article class="dashboard-panel medical-dataset-card medical-anatomy-card">
+                <div class="medical-dataset-heading">
+                    <div class="medical-dataset-icon">◎</div>
+                    <div>
+                        <span class="medical-eyebrow">{{ dataset.category|upper }} · IMAGE PRACTICE</span>
+                        <h2>{{ dataset.title }}</h2>
+                    </div>
+                </div>
+                <p>{{ dataset.description }}</p>
+                <div class="medical-dataset-meta">
+                    <span>{{ dataset.image_count }} image{% if dataset.image_count != 1 %}s{% endif %}</span>
+                    <span>{{ dataset.hotspot_count }} verified structures</span>
+                </div>
+                <form method="POST" action="/medical/anatomy/generate">
+                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                    <button class="medical-primary-button" type="submit">Create Anatomy Quiz</button>
+                </form>
+            </article>
+        {% endfor %}
+        </section>
+        {% endif %}
+
         <section class="medical-dataset-grid">
         {% for dataset in datasets %}
             <article class="dashboard-panel medical-dataset-card">
@@ -1763,9 +1885,120 @@ if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classLis
     """,
         pack=pack,
         datasets=datasets,
+        image_datasets=image_datasets,
         total_terms=sum(d["term_count"] for d in datasets),
         image_framework=pack.get("image_framework") or {}
     )
+
+
+
+@app.route("/medical/anatomy/generate", methods=["POST"])
+def medical_generate_anatomy_quiz():
+    pack = get_content_pack("medical")
+    if not pack:
+        flash("Medical Study Pack is not installed.", "error")
+        return redirect("/content-packs")
+
+    dataset_id = request.form.get("dataset_id", "").strip()
+    try:
+        data = load_content_pack_image_dataset("medical", dataset_id)
+    except Exception as exc:
+        flash(f"Unable to load anatomy dataset: {exc}", "error")
+        return redirect("/medical")
+
+    runtime_questions = []
+    db_questions = []
+    qnum = 1
+
+    for image in data.get("images", []):
+        image_url = url_for(
+            "content_pack_asset",
+            pack_id="medical",
+            asset_path=image.get("file")
+        )
+        source = image.get("source") or data.get("source") or {}
+
+        hotspots = list(image.get("hotspots") or [])
+        random.shuffle(hotspots)
+
+        for hotspot in hotspots:
+            label = str(hotspot.get("label") or "").strip()
+            if not label:
+                continue
+            prompt = str(hotspot.get("prompt") or f"Identify the {label}.").strip()
+
+            runtime_questions.append({
+                "number": qnum,
+                "type": "hotspot",
+                "question": prompt,
+                "image_url": image_url,
+                "image_alt": image.get("alt_text") or data.get("title") or "Anatomy image",
+                "target": hotspot.get("shape") or {},
+                "target_label": label,
+                "explanation": hotspot.get("explanation") or "",
+                "verification": hotspot.get("verification") or {},
+                "image_source": {
+                    "organization": source.get("organization") or "",
+                    "work": source.get("work") or "",
+                    "url": source.get("url") or image.get("source_url") or "",
+                    "license": source.get("license") or image.get("license") or "",
+                    "attribution": source.get("attribution") or image.get("attribution") or "",
+                }
+            })
+
+            # Database/history surrogate. Runtime scoring still uses hotspot geometry.
+            db_questions.append({
+                "number": qnum,
+                "type": "choice",
+                "question": prompt + " [Image hotspot]",
+                "choices": [
+                    {"label": "A", "text": label, "is_correct": True}
+                ],
+                "source": {
+                    "organization": source.get("organization") or "",
+                    "dataset": data.get("title") or dataset_id,
+                    "version": pack.get("version") or "",
+                    "url": source.get("url") or image.get("source_url") or "",
+                    "license": source.get("license") or image.get("license") or "",
+                }
+            })
+            qnum += 1
+
+    if not runtime_questions:
+        flash("This anatomy dataset contains no usable hotspots.", "error")
+        return redirect("/medical")
+
+    title = str(data.get("title") or data["_descriptor"].get("title") or "Medical Anatomy").strip()
+    quiz_title = f"{title} — Hotspot Practice"
+
+    ts = int(time.time())
+    safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "anatomy"
+    html_name = f"medical_anatomy_{safe_id}_{ts}.html"
+    json_name = f"medical_anatomy_{safe_id}_{ts}.json"
+    json_path = os.path.join(DATA_FOLDER, json_name)
+    html_path = os.path.join(QUIZ_FOLDER, html_name)
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(runtime_questions, f, indent=4, ensure_ascii=False)
+
+    quiz_id = save_quiz_to_db(quiz_title, html_name, db_questions)
+    add_quiz_to_registry(
+        quiz_id=quiz_id,
+        html=html_name,
+        title=quiz_title,
+        logo=None,
+        exam_minutes=90
+    )
+    build_quiz_html(
+        html_name, json_name, html_path, get_portal_title(),
+        quiz_title, None, quiz_id, 90
+    )
+
+    flash(
+        f"Created {quiz_title} with {len(runtime_questions)} image-identification questions.",
+        "success"
+    )
+    return redirect(f"/quizzes/{html_name}")
 
 
 @app.route("/medical/generate", methods=["POST"])

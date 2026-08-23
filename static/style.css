@@ -6671,3 +6671,91 @@ a.settings-hub-card:hover {
     padding: 22px;
     border-style: dashed;
 }
+
+
+/* =========================================================
+   MEDICAL v0.5 — ANATOMY HOTSPOT QUESTIONS
+   ========================================================= */
+.medical-anatomy-card {
+    border-color: rgba(79, 181, 213, .34);
+}
+
+.hotspot-question {
+    width: 100%;
+}
+
+.hotspot-image-wrap {
+    position: relative;
+    width: min(100%, 720px);
+    margin: 14px auto 8px;
+    cursor: crosshair;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+
+.hotspot-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 68vh;
+    object-fit: contain;
+    border: 1px solid rgba(87, 145, 207, .30);
+    border-radius: 14px;
+    background: rgba(245, 248, 252, .96);
+}
+
+.hotspot-click-marker,
+.hotspot-correct-marker {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+.hotspot-click-marker {
+    border: 3px solid #f5f8ff;
+    background: rgba(70, 153, 255, .82);
+    box-shadow: 0 0 0 3px rgba(16, 74, 134, .55);
+}
+
+.hotspot-click-marker.correct {
+    background: rgba(45, 195, 119, .92);
+    box-shadow: 0 0 0 4px rgba(45, 195, 119, .24);
+}
+
+.hotspot-click-marker.wrong {
+    background: rgba(238, 82, 92, .95);
+    box-shadow: 0 0 0 4px rgba(238, 82, 92, .24);
+}
+
+.hotspot-correct-marker {
+    width: 28px;
+    height: 28px;
+    border: 3px solid #3bd68a;
+    background: rgba(59, 214, 138, .12);
+    box-shadow: 0 0 0 5px rgba(59, 214, 138, .13);
+}
+
+.hotspot-attribution {
+    width: min(100%, 720px);
+    margin: 7px auto 0;
+    color: #91a8c0;
+    font-size: 10px;
+    line-height: 1.4;
+    text-align: center;
+}
+
+@media (max-width: 700px) {
+    .hotspot-image {
+        max-height: 62vh;
+    }
+
+    .hotspot-click-marker {
+        width: 18px;
+        height: 18px;
+    }
+}
