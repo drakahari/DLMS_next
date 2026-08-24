@@ -8354,7 +8354,82 @@ body.it-study-page .medical-ai-builder-teaser-icon {
     display:inline-flex; padding:5px 9px; border:1px solid rgba(87,151,222,.3);
     border-radius:999px; color:#a9c9e9; background:rgba(12,43,75,.48); font-size:11px;
 }
-.pdf-import-upload-form { display:grid; grid-template-columns:2fr 2fr 1fr; gap:14px; align-items:end; }
+.pdf-import-upload-form { display:grid; grid-template-columns:2fr 2fr 1fr; gap:14px; align-items:start; }
+
+/*
+   Smart PDF panels use the generic dashboard-panel shell, which intentionally
+   has no global padding because several older dashboard modules provide their
+   own internal spacing. Add padding only inside Smart PDF so headings, labels,
+   helper text, tables, and controls never sit on the panel border.
+*/
+.pdf-import-page .dashboard-panel {
+    box-sizing: border-box;
+    padding: 18px 20px;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.pdf-import-page .dashboard-panel > *,
+.pdf-import-page .build-field,
+.pdf-import-page .pdf-bank-panel-heading,
+.pdf-import-page .pdf-bank-panel-heading > div,
+.pdf-import-page .pdf-bank-row > *,
+.pdf-import-page .pdf-import-rights > span {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pdf-import-page .dashboard-panel h2,
+.pdf-import-page .dashboard-panel p,
+.pdf-import-page .dashboard-panel strong,
+.pdf-import-page .dashboard-panel small,
+.pdf-import-page .dashboard-panel span {
+    overflow-wrap: anywhere;
+}
+
+.pdf-import-page .build-field {
+    align-content: start;
+    align-self: start;
+}
+
+.pdf-import-page .build-field > span {
+    min-height: 17px;
+}
+
+/* Keep every form control inside its grid track, including native file inputs. */
+.pdf-import-page input,
+.pdf-import-page select,
+.pdf-import-page textarea {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pdf-import-page input[type="file"] {
+    width: 100%;
+}
+
+/* The generic Study table has an 820px minimum width. The terminology table
+   has narrower columns and can safely fit the Smart PDF content area sooner. */
+.pdf-import-page .pdf-term-table-wrap {
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.pdf-import-page .pdf-term-table {
+    min-width: 680px;
+}
+
+/* Maintain comfortable breathing room between a panel edge and full-width rows. */
+.pdf-import-page .pdf-bank-list,
+.pdf-import-page .pdf-import-question-list,
+.pdf-import-page .pdf-term-review-list {
+    min-width: 0;
+    max-width: 100%;
+}
+
 .pdf-import-rights { grid-column:1/-1; display:flex; gap:9px; align-items:flex-start; color:#b9c8da; font-size:13px; }
 .pdf-import-upload-form .build-submit-row { grid-column:1/-1; }
 .pdf-import-note strong { color:#d9ebff; }
@@ -8388,6 +8463,7 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .build-option-card-pdf .build-option-icon { font-size:12px; font-weight:900; letter-spacing:.04em; }
 
 @media (max-width:900px) {
+  .pdf-import-page .dashboard-panel { padding:16px; }
   .pdf-import-upload-form { grid-template-columns:1fr; }
   .pdf-import-upload-form .build-submit-row,.pdf-import-rights { grid-column:auto; }
   .pdf-import-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }

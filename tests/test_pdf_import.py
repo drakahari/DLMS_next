@@ -131,5 +131,126 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertEqual([q["original_number"] for q in selected], [1, 3])
 
 
+    def test_pdf_auto_detects_question_bank_and_glossary(self):
+        q_pages = [{"page": 1, "lines": [
+            "Question #1", "Which one?", "A. One", "B. Two",
+            "Correct Answer: B — Two", "Question #2", "Which next?",
+            "A. Three", "B. Four", "Correct Answer: A — Three",
+        ]}]
+        q_result = dlms._pdf_parse_question_bank(q_pages)
+        g_result = dlms._pdf_parse_glossary(q_pages)
+        kind, _ = dlms._pdf_detect_document_type(q_pages, q_result, g_result)
+        self.assertEqual(kind, "question_bank")
+
+        g_pages = [{"page": 1, "lines": [
+            "Access Control A process used to restrict access to authorized subjects.",
+            "Audit Trail A chronological record of system activities and events.",
+            "Business Continuity A capability that enables essential operations to continue after disruption.",
+            "Data Classification A process for organizing information according to sensitivity and handling requirements.",
+            "Encryption A method used to transform readable information into protected ciphertext.",
+        ]}]
+        q_result = dlms._pdf_parse_question_bank(g_pages)
+        g_result = dlms._pdf_parse_glossary(g_pages)
+        kind, _ = dlms._pdf_detect_document_type(g_pages, q_result, g_result)
+        self.assertEqual(kind, "glossary")
+
+    def test_glossary_parser_handles_inline_and_standalone_terms(self):
+        pages = [{"page": 1, "lines": [
+            "Access Control A process used to restrict access to authorized subjects.",
+            "Audit Trail",
+            "A chronological record of system activities and events.",
+            "Encryption A method used to transform readable information into protected ciphertext.",
+            "Risk Appetite The amount and type of risk an organization is willing to pursue or retain.",
+        ]}]
+        result = dlms._pdf_parse_glossary(pages)
+        found = {x["term"]: x for x in result["terms"]}
+        self.assertIn("Access Control", found)
+        self.assertIn("Audit Trail", found)
+        self.assertIn("chronological record", found["Audit Trail"]["definition"])
+        self.assertIn("Encryption", found)
+
+    def test_pdf_terminology_bank_selection_preserves_full_bank(self):
+        bank = {
+            "terms": [
+                {"number": i, "term": f"Term {i}", "definition": f"Definition {i}", "active": True}
+                for i in range(1, 41)
+            ],
+            "used_term_numbers": [1, 2, 3],
+        }
+        selected = dlms._select_pdf_term_bank_items(bank, mode="random", count=10)
+        self.assertEqual(len(selected), 10)
+        self.assertEqual(len(bank["terms"]), 40)
+        unused = dlms._select_pdf_term_bank_items(bank, mode="unused", count=5)
+        self.assertTrue(all(t["number"] not in {1, 2, 3} for t in unused))
+
+    def test_pdf_terminology_generates_matching_and_multiple_choice(self):
+        bank = {
+            "title": "Terms",
+            "source_name": "terms.pdf",
+            "terms": [
+                {"number": i, "term": f"Term {i}", "definition": f"Definition {i}", "active": True}
+                for i in range(1, 7)
+            ],
+        }
+        selected = bank["terms"][:4]
+        runtime, dbq = dlms._pdf_terms_matching_questions(bank, selected, "term_to_definition")
+        self.assertEqual(runtime[0]["type"], "matching")
+        self.assertEqual(len(runtime[0]["pairs"]), 4)
+
+        runtime, dbq = dlms._pdf_terms_mc_questions(bank, selected[:2], "definition_to_term")
+        self.assertEqual(len(runtime), 2)
+        self.assertTrue(all(q["type"] == "choice" for q in runtime))
+        self.assertTrue(all(len(q["choices"]) == 4 for q in runtime))
+        self.assertTrue(all(len(q["correct"]) == 1 for q in runtime))
+
+
+    def test_glossary_standalone_heading_uses_following_definition(self):
+        pages = [{"page": 1, "lines": [
+            "Audit Trail",
+            "A chronological record of system activities and events.",
+            "Encryption",
+            "A method used to transform readable information into protected ciphertext.",
+        ]}]
+        result = dlms._pdf_parse_glossary(pages)
+        found = {x["term"]: x["definition"] for x in result["terms"]}
+        self.assertEqual(
+            found["Audit Trail"],
+            "A chronological record of system activities and events."
+        )
+        self.assertEqual(
+            found["Encryption"],
+            "A method used to transform readable information into protected ciphertext."
+        )
+
+
+    def test_glossary_definition_sentence_is_not_promoted_to_inline_term(self):
+        pages = [{"page": 1, "lines": [
+            "Audit Trail",
+            "A chronological record of system activities and events.",
+            "Encryption",
+            "A method used to transform readable information into protected ciphertext.",
+        ]}]
+        result = dlms._pdf_parse_glossary(pages)
+        terms = [x["term"] for x in result["terms"]]
+        self.assertEqual(terms, ["Audit Trail", "Encryption"])
+
+
+    def test_glossary_inline_term_with_definition_prose_is_preserved(self):
+        pages = [{"page": 1, "lines": [
+            "Access Control A process used to restrict access to authorized subjects.",
+            "Encryption A method used to transform readable information into protected ciphertext.",
+        ]}]
+        result = dlms._pdf_parse_glossary(pages)
+        found = {x["term"]: x["definition"] for x in result["terms"]}
+        self.assertEqual(
+            found["Access Control"],
+            "A process used to restrict access to authorized subjects."
+        )
+        self.assertEqual(
+            found["Encryption"],
+            "A method used to transform readable information into protected ciphertext."
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -221,6 +221,7 @@ QUIZ_ASSET_FOLDER = os.path.join(APP_DATA_DIR, "quiz_assets")
 IMAGE_BUILDER_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "image_builder_drafts")
 PDF_IMPORT_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "pdf_import_drafts")
 PDF_QUESTION_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_question_banks")
+PDF_TERMINOLOGY_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_terminology_banks")
 CONTENT_PACK_STAGING_FOLDER = os.path.join(APP_DATA_DIR, "content_pack_staging")
 
 
@@ -235,6 +236,7 @@ for d in [
     IMAGE_BUILDER_DRAFT_FOLDER,
     PDF_IMPORT_DRAFT_FOLDER,
     PDF_QUESTION_BANK_FOLDER,
+    PDF_TERMINOLOGY_BANK_FOLDER,
     CONTENT_PACK_STAGING_FOLDER,
     LOGO_FOLDER,
     LAW_FOLDER,
@@ -10724,6 +10726,201 @@ def _pdf_bank_question_to_quiz(question, number, bank):
         },
     }
 
+
+# =========================================================
+# PERSISTENT PDF TERMINOLOGY BANKS
+# Kept separate from question-bank storage for backward compatibility.
+# =========================================================
+def _pdf_term_bank_safe_id(value):
+    value = re.sub(r"[^A-Za-z0-9_-]+", "", str(value or ""))
+    return value[:80]
+
+def _pdf_term_bank_path(bank_id):
+    bank_id = _pdf_term_bank_safe_id(bank_id)
+    if not bank_id:
+        raise ValueError("Invalid PDF terminology-bank id")
+    return _safe_pack_child(PDF_TERMINOLOGY_BANK_FOLDER, f"{bank_id}.json")
+
+def _save_pdf_terminology_bank(bank):
+    bank_id = _pdf_term_bank_safe_id(bank.get("id"))
+    if not bank_id:
+        raise ValueError("Terminology bank is missing an id")
+    os.makedirs(PDF_TERMINOLOGY_BANK_FOLDER, exist_ok=True)
+    bank["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    with open(_pdf_term_bank_path(bank_id), "w", encoding="utf-8") as f:
+        json.dump(bank, f, indent=2, ensure_ascii=False)
+
+def _load_pdf_terminology_bank(bank_id):
+    path = _pdf_term_bank_path(bank_id)
+    if not os.path.isfile(path):
+        raise FileNotFoundError("PDF terminology bank not found")
+    with open(path, "r", encoding="utf-8") as f:
+        bank = json.load(f) or {}
+    if not isinstance(bank.get("terms"), list):
+        raise ValueError("PDF terminology bank is malformed")
+    return bank
+
+def _list_pdf_terminology_banks():
+    os.makedirs(PDF_TERMINOLOGY_BANK_FOLDER, exist_ok=True)
+    banks = []
+    for name in sorted(os.listdir(PDF_TERMINOLOGY_BANK_FOLDER)):
+        if not name.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(PDF_TERMINOLOGY_BANK_FOLDER, name), "r", encoding="utf-8") as f:
+                bank = json.load(f) or {}
+            terms = bank.get("terms") or []
+            active = [t for t in terms if isinstance(t, dict) and t.get("active", True)]
+            banks.append({
+                "id": bank.get("id") or os.path.splitext(name)[0],
+                "kind": "terminology",
+                "title": bank.get("title") or "PDF Terminology Bank",
+                "source_name": bank.get("source_name") or "",
+                "term_count": len(terms),
+                "active_count": len(active),
+                "used_count": len(set(bank.get("used_term_numbers") or [])),
+                "generated_count": len(bank.get("generated_quizzes") or []),
+                "created_at": bank.get("created_at") or "",
+                "updated_at": bank.get("updated_at") or "",
+            })
+        except Exception as exc:
+            print(f"[PDF TERMS] Skipping invalid bank {name!r}: {exc}")
+    return banks
+
+def _pdf_term_bank_active_terms(bank):
+    active = [
+        t for t in (bank.get("terms") or [])
+        if isinstance(t, dict) and t.get("active", True)
+    ]
+    return sorted(active, key=lambda t: int(t.get("number") or 0))
+
+def _select_pdf_term_bank_items(bank, mode="random", count=25, start_number=1, end_number=None):
+    active = _pdf_term_bank_active_terms(bank)
+    if not active:
+        raise ValueError("This terminology bank has no active terms.")
+
+    mode = str(mode or "random").strip().lower()
+    try:
+        count = max(1, int(count))
+    except Exception:
+        count = 25
+    count = min(count, len(active))
+
+    if mode == "all":
+        return active
+
+    if mode == "range":
+        try:
+            start_number = int(start_number)
+            end_number = int(end_number)
+        except Exception:
+            raise ValueError("Term range requires valid start and end numbers.")
+        if end_number < start_number:
+            raise ValueError("Range end must be greater than or equal to range start.")
+        selected = [t for t in active if start_number <= int(t.get("number") or 0) <= end_number]
+        if not selected:
+            raise ValueError("No active terms fall within that range.")
+        return selected
+
+    if mode == "sequential":
+        try:
+            start_number = int(start_number)
+        except Exception:
+            start_number = 1
+        candidates = [t for t in active if int(t.get("number") or 0) >= start_number]
+        if not candidates:
+            raise ValueError("No active terms exist at or after that starting number.")
+        return candidates[:count]
+
+    if mode == "unused":
+        used = {int(n) for n in (bank.get("used_term_numbers") or []) if str(n).isdigit()}
+        candidates = [t for t in active if int(t.get("number") or 0) not in used]
+        if not candidates:
+            raise ValueError("All active terms in this bank have already been used.")
+        return random.sample(candidates, min(count, len(candidates)))
+
+    return random.sample(active, count)
+
+def _pdf_term_source(bank):
+    return {
+        "organization": "User-provided document",
+        "dataset": bank.get("source_name") or bank.get("title") or "PDF terminology bank",
+        "version": "",
+        "url": "",
+        "license": "User-provided; redistribution not cleared",
+    }
+
+def _pdf_terms_matching_questions(bank, selected, direction="random"):
+    pairs = [
+        {"left": str(t.get("term") or "").strip(), "right": str(t.get("definition") or "").strip()}
+        for t in selected
+        if str(t.get("term") or "").strip() and str(t.get("definition") or "").strip()
+    ]
+    if len(pairs) < 2:
+        raise ValueError("Matching practice requires at least two complete terms.")
+    q = {
+        "number": 1,
+        "type": "matching",
+        "question": "Match each term with its correct definition.",
+        "pairs": pairs,
+        "round_size": len(pairs),
+        "direction": direction if direction in {"random", "term_to_definition", "definition_to_term"} else "random",
+        "explanation": "Definitions are taken from the reviewed user-provided terminology bank.",
+        "source": _pdf_term_source(bank),
+    }
+    return [q], [dict(q)]
+
+def _pdf_terms_mc_questions(bank, selected, direction="definition_to_term"):
+    pool = _pdf_term_bank_active_terms(bank)
+    if len(pool) < 4:
+        raise ValueError("Multiple-choice terminology practice requires at least four active terms.")
+
+    runtime, db_questions = [], []
+    for number, target in enumerate(selected, 1):
+        target_term = str(target.get("term") or "").strip()
+        target_def = str(target.get("definition") or "").strip()
+        if not target_term or not target_def:
+            continue
+
+        distractor_pool = [t for t in pool if int(t.get("number") or 0) != int(target.get("number") or 0)]
+        distractors = random.sample(distractor_pool, 3)
+        option_terms = [target] + distractors
+        random.shuffle(option_terms)
+
+        choices = []
+        correct = []
+        for option in option_terms:
+            label = chr(65 + len(choices))
+            is_correct = int(option.get("number") or 0) == int(target.get("number") or 0)
+            if direction == "term_to_definition":
+                text = str(option.get("definition") or "").strip()
+            else:
+                text = str(option.get("term") or "").strip()
+            choices.append({"label": label, "text": text, "is_correct": is_correct})
+            if is_correct:
+                correct.append(label)
+
+        if direction == "term_to_definition":
+            question = f"Which definition best matches the term: {target_term}?"
+        else:
+            question = f"Which term best matches this definition? {target_def}"
+
+        q = {
+            "number": number,
+            "type": "choice",
+            "question": question,
+            "choices": choices,
+            "correct": correct,
+            "explanation": f"{target_term}: {target_def}",
+            "source": _pdf_term_source(bank),
+        }
+        runtime.append(q)
+        db_questions.append(dict(q))
+
+    if not runtime:
+        raise ValueError("No usable multiple-choice questions were generated.")
+    return runtime, db_questions
+
 # =========================================================
 # SMART PDF IMPORT — QUESTION BANK MVP
 # Isolated from the existing text/paste/CSV parsers.
@@ -11107,6 +11304,285 @@ def _pdf_parse_question_chunk(number, records):
         "keep": True,
     }
 
+
+def _pdf_glossary_term_like(text):
+    text = _pdf_clean_line(text)
+    if not text or len(text) < 2 or len(text) > 120:
+        return False
+    if re.search(r"[.!?;:]$", text):
+        return False
+    if re.match(r"^(?:question|correct answer|why the other options|chapter|page)\b", text, re.I):
+        return False
+    words = text.split()
+    if len(words) > 14:
+        return False
+
+    significant = [re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9)]+$", "", w) for w in words]
+    significant = [w for w in significant if w]
+    if not significant:
+        return False
+
+    titleish = 0
+    for word in significant:
+        raw = word.strip("()")
+        if not raw:
+            continue
+        if raw.isupper() or raw[:1].isupper() or re.fullmatch(r"[A-Z][A-Za-z0-9+/#.-]*", raw):
+            titleish += 1
+    return titleish >= max(1, int(len(significant) * 0.65))
+
+def _pdf_glossary_definition_like(text):
+    text = _pdf_clean_line(text)
+    if not text or len(text) < 18:
+        return False
+    words = text.split()
+    if len(words) < 4:
+        return False
+    return bool(
+        re.search(r"[.!?]$", text)
+        or re.match(r"^(?:\(\d+\)\s*)?(?:A|An|The|Any|Evidence|Process|Method|Technique|System|Tool|Software|Hardware)\b", text)
+        or re.search(r"\b(?:is|are|refers to|used to|means|describes|consists of|provides|allows|supports)\b", text, re.I)
+    )
+
+def _pdf_split_glossary_line(line):
+    """
+    Split a same-line 'Term Definition...' record conservatively.
+    Candidate term prefixes must look heading-like and the remaining text must
+    look like substantive definition prose.
+    """
+    line = _pdf_clean_line(line)
+    words = line.split()
+    if len(words) < 6:
+        return None
+
+    # Try short prefixes first so "Admissible Evidence Evidence that..." becomes
+    # "Admissible Evidence" + "Evidence that..." rather than swallowing prose.
+    max_prefix = min(12, len(words) - 4)
+    for cut in range(1, max_prefix + 1):
+        term = " ".join(words[:cut]).strip()
+        definition = " ".join(words[cut:]).strip()
+        if not _pdf_glossary_term_like(term):
+            continue
+        if not _pdf_glossary_definition_like(definition):
+            continue
+
+        # Avoid splitting multi-word terms after their first title-cased word.
+        # A plausible definition normally starts with prose (A/An/The/This/etc.),
+        # a numbered sense marker, or a repetition of the term's final word such
+        # as "Admissible Evidence Evidence that...".
+        first_token = definition.split()[0]
+        first = first_token.strip("()")
+        last_term = term.split()[-1].strip("()")
+        prose_starters = {
+            "a", "an", "the", "this", "these", "those", "it", "they", "any",
+            "one", "two", "evidence", "information", "data", "software", "hardware",
+            "process", "method", "technique", "system", "tool", "practice", "capability",
+        }
+        numbered = bool(re.fullmatch(r"\(?\d+[.)]?\)?", first_token))
+        repeated_last_word = bool(first and last_term and first.casefold() == last_term.casefold())
+        if not numbered and first.casefold() not in prose_starters and not repeated_last_word:
+            if first[:1].isupper():
+                continue
+        return term, definition
+    return None
+
+def _pdf_parse_glossary(pages):
+    """
+    Deterministic glossary/terminology parser.
+
+    Supported patterns:
+    - standalone heading followed by definition prose
+    - term and definition beginning on the same extracted line
+    - definition paragraph immediately preceding a standalone term (flagged REVIEW)
+
+    It intentionally keeps uncertain records editable instead of inventing content.
+    """
+    stream = _pdf_lines_to_stream(pages)
+    if not stream:
+        return {"terms": [], "summary": {"detected": 0, "complete": 0, "review": 0, "incomplete": 0}}
+
+    events = []
+    for idx, rec in enumerate(stream):
+        text = rec["text"]
+        split = _pdf_split_glossary_line(text)
+
+        # Distinguish a real inline glossary record such as:
+        #   "Access Control A process used to restrict access..."
+        # from a normal definition sentence such as:
+        #   "A chronological record of system activities and events."
+        #
+        # Looking at the whole line with _pdf_glossary_definition_like() was too
+        # aggressive because valid inline glossary records naturally contain
+        # definition-style prose after the term. Instead, only suppress splitting
+        # when the line itself begins like ordinary definition prose.
+        prose_definition_start = bool(re.match(
+            r"^(?:A|An|The|Any)\s+[a-z]|"
+            r"^(?:Evidence|Process|Method|Technique|System|Tool|Software|Hardware)\s+"
+            r"(?:that|which|used|designed|intended|provides|allows|supports)\b",
+            text,
+        ))
+
+        if split and not prose_definition_start:
+            events.append({
+                "index": idx,
+                "page": rec["page"],
+                "kind": "inline",
+                "term": split[0],
+                "inline_definition": split[1],
+            })
+        elif _pdf_glossary_term_like(text) and not _pdf_glossary_definition_like(text):
+            events.append({
+                "index": idx,
+                "page": rec["page"],
+                "kind": "standalone",
+                "term": text,
+                "inline_definition": "",
+            })
+
+    # Detect the less-common PDF reading order where a definition paragraph is
+    # emitted immediately before its standalone bold term. Claim that tail for
+    # the later term so it is not also swallowed by the previous entry.
+    reverse_claims = {}
+    claimed_indices = set()
+    for epos, event in enumerate(events):
+        if event["kind"] != "standalone":
+            continue
+        idx = event["index"]
+        next_idx = events[epos + 1]["index"] if epos + 1 < len(events) else len(stream)
+        forward = [r for r in stream[idx + 1:next_idx] if r.get("text")]
+        if forward:
+            continue
+        prev_event_idx = events[epos - 1]["index"] if epos > 0 else -1
+        j = idx - 1
+        tail_indices = []
+        while j > prev_event_idx and len(tail_indices) < 6:
+            text = str(stream[j].get("text") or "").strip()
+            if not text:
+                j -= 1
+                continue
+            tail_indices.append(j)
+            prev_j = j - 1
+            if prev_j <= prev_event_idx:
+                break
+            prev_text = str(stream[prev_j].get("text") or "").strip()
+            # A sentence-ending line before the collected tail is a reasonable
+            # paragraph boundary in selectable-text glossary PDFs.
+            if re.search(r"[.!?]$", prev_text):
+                break
+            j -= 1
+        tail_indices = sorted(tail_indices)
+        tail_text = _pdf_join_wrapped([stream[i]["text"] for i in tail_indices]).strip()
+        if _pdf_glossary_definition_like(tail_text):
+            reverse_claims[idx] = tail_indices
+            claimed_indices.update(tail_indices)
+
+    terms = []
+    for epos, event in enumerate(events):
+        idx = event["index"]
+        next_idx = events[epos + 1]["index"] if epos + 1 < len(events) else len(stream)
+        between = [
+            r for i, r in enumerate(stream[idx + 1:next_idx], start=idx + 1)
+            if r.get("text") and i not in claimed_indices
+        ]
+
+        definition_lines = []
+        issues = []
+        pages_used = {int(event["page"])}
+
+        if event["inline_definition"]:
+            definition_lines.append(event["inline_definition"])
+            definition_lines.extend(r["text"] for r in between)
+            pages_used.update(int(r["page"]) for r in between)
+        elif between:
+            definition_lines.extend(r["text"] for r in between)
+            pages_used.update(int(r["page"]) for r in between)
+
+        definition = _pdf_join_wrapped(definition_lines).strip()
+
+        # If a standalone term has no following definition, inspect the unclaimed
+        # prose immediately before it. This handles PDF reading order where the
+        # definition is emitted before the bold glossary heading.
+        if not definition and event["kind"] == "standalone" and idx in reverse_claims:
+            tail = [stream[i] for i in reverse_claims[idx]]
+            definition = _pdf_join_wrapped([r["text"] for r in tail]).strip()
+            pages_used.update(int(r["page"]) for r in tail)
+            issues.append("Definition appeared before the term in PDF reading order; review recommended.")
+
+        if not definition:
+            issues.append("No definition text was confidently associated with this term.")
+
+        status = "complete" if definition and not issues else ("review" if definition else "incomplete")
+        terms.append({
+            "number": len(terms) + 1,
+            "term": event["term"],
+            "definition": definition,
+            "pages": sorted(pages_used),
+            "status": status,
+            "issues": issues,
+        })
+
+    # Remove obvious false-positive headings and duplicate term records.
+    cleaned = []
+    seen = set()
+    for item in terms:
+        term = str(item.get("term") or "").strip()
+        definition = str(item.get("definition") or "").strip()
+        key = term.casefold()
+        if not term or key in seen:
+            continue
+        if term.casefold() in {"glossary", "terms", "definitions", "index"}:
+            continue
+        # A useful glossary record needs either a definition or a reviewable term.
+        if len(term) < 2:
+            continue
+        seen.add(key)
+        cleaned.append(item)
+
+    for n, item in enumerate(cleaned, 1):
+        item["number"] = n
+
+    summary = {
+        "detected": len(cleaned),
+        "complete": sum(1 for t in cleaned if t["status"] == "complete"),
+        "review": sum(1 for t in cleaned if t["status"] == "review"),
+        "incomplete": sum(1 for t in cleaned if t["status"] == "incomplete"),
+    }
+    return {"terms": cleaned, "summary": summary}
+
+def _pdf_detect_document_type(pages, question_result=None, glossary_result=None):
+    question_result = question_result if isinstance(question_result, dict) else _pdf_parse_question_bank(pages)
+    glossary_result = glossary_result if isinstance(glossary_result, dict) else _pdf_parse_glossary(pages)
+
+    stream = _pdf_lines_to_stream(pages)
+    question_markers = sum(1 for r in stream if re.match(r"^Question\s*#?\s*\d+", r["text"], re.I))
+    answer_markers = sum(1 for r in stream if re.search(r"Correct\s+Answer:", r["text"], re.I))
+    q_detected = int((question_result.get("summary") or {}).get("detected") or 0)
+    g_detected = int((glossary_result.get("summary") or {}).get("detected") or 0)
+
+    # Strong structural question-bank evidence always wins.
+    if question_markers >= 2 and answer_markers >= 1 and q_detected >= 2:
+        return "question_bank", {
+            "question_markers": question_markers,
+            "answer_markers": answer_markers,
+            "question_records": q_detected,
+            "glossary_records": g_detected,
+        }
+
+    if g_detected >= 4:
+        return "glossary", {
+            "question_markers": question_markers,
+            "answer_markers": answer_markers,
+            "question_records": q_detected,
+            "glossary_records": g_detected,
+        }
+
+    return "unknown", {
+        "question_markers": question_markers,
+        "answer_markers": answer_markers,
+        "question_records": q_detected,
+        "glossary_records": g_detected,
+    }
+
 def _pdf_parse_question_bank(pages):
     stream = _pdf_lines_to_stream(pages)
     starts = []
@@ -11283,25 +11759,40 @@ def pdf_import_page():
 </div>
 {% endif %}
 {% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · PREVIEW</div><h1>Import a Question-Bank PDF</h1><p>DLMS extracts selectable PDF text, detects question boundaries, choices, explicit answer keys, and explanations, then lets you repair anything before creating a quiz.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT</div><h1>Import Study Content from PDF</h1><p>DLMS can recognize structured question banks or glossary/terminology material, parse the full source, and let you review it before generating manageable quizzes.</p></div></header>
 <section class="dashboard-panel pdf-import-intro"><div><span class="build-method-label">SAFE ADDITIVE WORKFLOW</span><h2>Your existing parsers are untouched</h2><p>This is a separate importer. The original text upload, paste parser, CSV matching importer, manual builder, and image builder continue to work exactly as before.</p></div>
-<div class="pdf-import-badges"><span>Question # detection</span><span>A/B/C/D choices</span><span>Correct Answer markers</span><span>Cross-page questions</span><span>Inline repair</span></div></section>
+<div class="pdf-import-badges"><span>Question banks</span><span>Glossary / terminology</span><span>Automatic detection</span><span>Cross-page content</span><span>Inline repair</span></div></section>
 <section class="dashboard-panel">
 <form action="/pdf-import/analyze" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form">
 <label class="build-field"><span>PDF file</span><input type="file" name="pdf_file" accept=".pdf,application/pdf" required><small>Selectable-text PDFs work best. This preview does not perform OCR.</small></label>
-<label class="build-field"><span>Quiz title</span><input type="text" name="quiz_title" placeholder="Example: PenTest+ PDF Practice"><small>You can change this again on the review screen.</small></label>
+<label class="build-field"><span>Source bank title</span><input type="text" name="quiz_title" placeholder="Example: CISM Glossary or PenTest+ Practice"><small>You can change this again on the review screen.</small></label>
+<label class="build-field"><span>Content type</span><select name="pdf_content_type"><option value="auto">Auto-detect</option><option value="question_bank">Question bank</option><option value="glossary">Glossary / terminology</option></select><small>Choose manually if the PDF has an unusual layout.</small></label>
 <label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label>
 <label class="pdf-import-rights"><input type="checkbox" name="rights_ok" required><span>I have permission to use this document for my own study. DLMS will treat the imported material as user-provided and not cleared for redistribution.</span></label>
 <div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Quiz</a><button class="build-primary-button" type="submit">Analyze PDF</button></div>
 </form></section>
-<section class="dashboard-panel pdf-import-note"><strong>Current sample scope</strong><p>This importer targets structured multiple-choice question banks with explicit question markers and answer keys. It deliberately flags ambiguous or embedded-content questions instead of guessing.</p></section>
+<section class="dashboard-panel pdf-import-note"><strong>Current Smart PDF scope</strong><p>DLMS handles selectable-text multiple-choice question banks and glossary/terminology layouts. Ambiguous records are flagged for review instead of being guessed. OCR and arbitrary textbook/chapter interpretation are intentionally out of scope for this release candidate.</p></section>
 {% if banks %}
 <section class="dashboard-panel pdf-bank-list-panel">
-<div class="pdf-bank-panel-heading"><div><span class="build-method-label">SAVED SOURCE BANKS</span><h2>PDF Question Banks</h2><p>All reviewed source questions remain available here. Generate manageable quizzes without re-parsing the PDF.</p></div></div>
+<div class="pdf-bank-panel-heading"><div><span class="build-method-label">SAVED SOURCE BANKS</span><h2>Question Banks</h2><p>Reviewed source questions remain available here. Generate manageable quizzes without re-parsing the PDF.</p></div></div>
 <div class="pdf-bank-list">
 {% for bank in banks %}
 <a class="pdf-bank-row" href="/pdf-import/bank/{{ bank.id }}">
-<div><strong>{{ bank.title }}</strong><small>{{ bank.source_name }}</small></div>
+<div><strong>{{ bank.title }}</strong><small>Question bank · {{ bank.source_name }}</small></div>
+<div><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
+<span class="pdf-bank-open">Open →</span>
+</a>
+{% endfor %}
+</div>
+</section>
+{% endif %}
+{% if term_banks %}
+<section class="dashboard-panel pdf-bank-list-panel">
+<div class="pdf-bank-panel-heading"><div><span class="build-method-label">SAVED TERMINOLOGY</span><h2>Terminology Banks</h2><p>Reviewed glossary terms can generate matching or multiple-choice practice without re-parsing the PDF.</p></div></div>
+<div class="pdf-bank-list">
+{% for bank in term_banks %}
+<a class="pdf-bank-row" href="/pdf-import/terms/{{ bank.id }}">
+<div><strong>{{ bank.title }}</strong><small>Terminology bank · {{ bank.source_name }}</small></div>
 <div><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
 <span class="pdf-bank-open">Open →</span>
 </a>
@@ -11311,7 +11802,7 @@ def pdf_import_page():
 {% endif %}
 </main></div><script>document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));</script><script src="/static/nav-normalize.js"></script></body></html>
 """
-    return render_template_string(template, banks=_list_pdf_question_banks())
+    return render_template_string(template, banks=_list_pdf_question_banks(), term_banks=_list_pdf_terminology_banks())
 
 @app.route("/pdf-import/analyze", methods=["POST"])
 def pdf_import_analyze():
@@ -11336,18 +11827,44 @@ def pdf_import_analyze():
             raise ValueError("PDF exceeds the 64 MB Smart PDF Import limit.")
         pages = _pdf_extract_pages(temp_pdf)
         pages, removed_margins = _pdf_suppress_repeated_margins(pages)
-        result = _pdf_parse_question_bank(pages)
-        if not result["questions"]:
-            raise ValueError(
-                "No structured 'Question #N' question bank was detected. "
-                "This MVP intentionally does not guess at unknown PDF layouts."
+
+        requested_type = (request.form.get("pdf_content_type") or "auto").strip().lower()
+        question_result = _pdf_parse_question_bank(pages)
+        glossary_result = _pdf_parse_glossary(pages)
+
+        if requested_type == "question_bank":
+            document_type = "question_bank"
+            detection = {"forced": True}
+        elif requested_type == "glossary":
+            document_type = "glossary"
+            detection = {"forced": True}
+        else:
+            document_type, detection = _pdf_detect_document_type(
+                pages, question_result=question_result, glossary_result=glossary_result
             )
+
+        if document_type == "question_bank":
+            result = question_result
+            if not result.get("questions"):
+                raise ValueError("No structured question-bank records were detected.")
+        elif document_type == "glossary":
+            result = glossary_result
+            if not result.get("terms"):
+                raise ValueError("No glossary/terminology records were detected.")
+        else:
+            raise ValueError(
+                "DLMS could not confidently classify this PDF as a question bank or glossary. "
+                "Try again and choose the Content type manually."
+            )
+
         draft = {
             "id": draft_id,
             "created_at": datetime.now().isoformat(timespec="seconds"),
             "source_name": source_name,
             "source_kind": "user-provided-pdf",
             "redistribution_status": "not-cleared-for-redistribution",
+            "document_type": document_type,
+            "detection": detection,
             "quiz_title": (request.form.get("quiz_title") or "").strip() or os.path.splitext(source_name)[0],
             "exam_minutes": normalize_exam_minutes(request.form.get("exam_minutes")),
             "page_count": len(pages),
@@ -11369,6 +11886,49 @@ def pdf_import_analyze():
             pass
     return redirect(f"/pdf-import/review/{draft_id}")
 
+def _render_pdf_glossary_review(draft):
+    template = r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Review PDF Terminology - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+<style>
+.pdf-import-page *, .pdf-import-page *::before, .pdf-import-page *::after { box-sizing:border-box; }
+.pdf-import-page .dashboard-main,.pdf-import-page .dashboard-panel,.pdf-import-page .dashboard-header { min-width:0;max-width:100%; }
+.pdf-import-page input,.pdf-import-page textarea,.pdf-import-page select { width:100%;max-width:100%;min-width:0; }
+.pdf-term-review-list { display:grid;gap:12px; }
+.pdf-term-review-card { min-width:0; }
+.pdf-term-review-grid { display:grid;grid-template-columns:minmax(180px,.7fr) minmax(0,2fr);gap:12px;align-items:start; }
+.pdf-term-review-grid textarea { min-height:96px; }
+.pdf-term-page { color:#8299b3;font-size:11px; }
+@media(max-width:760px){.pdf-term-review-grid{grid-template-columns:1fr;}}
+</style></head>
+<body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Terminology Review</div></aside>
+<main class="dashboard-main pdf-import-main">
+{% with messages=get_flashed_messages(with_categories=true) %}{% if messages %}<div class="pdf-import-flash-stack">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · TERMINOLOGY</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. Review every detected term/definition pair before saving the reusable terminology bank.</p></div></header>
+<section class="pdf-import-summary-grid"><article class="dashboard-stat-card"><span>Detected</span><strong>{{ draft.summary.detected }}</strong><small>terms</small></article><article class="dashboard-stat-card"><span>Complete</span><strong>{{ draft.summary.complete }}</strong><small>ready</small></article><article class="dashboard-stat-card"><span>Review</span><strong>{{ draft.summary.review }}</strong><small>needs attention</small></article><article class="dashboard-stat-card"><span>Incomplete</span><strong>{{ draft.summary.incomplete }}</strong><small>repair or exclude</small></article></section>
+<div class="pdf-import-filter-row"><button type="button" data-filter="all" class="active">All</button><button type="button" data-filter="complete">Complete</button><button type="button" data-filter="review">Needs Review</button><button type="button" data-filter="incomplete">Incomplete</button></div>
+<form method="POST" action="/pdf-import/save/{{ draft.id }}" id="pdfTermReviewForm"><input type="hidden" name="term_review_payload" id="pdfTermReviewPayload">
+<section class="dashboard-panel pdf-import-finalize"><div class="build-two-column-fields"><label class="build-field"><span>Terminology bank title</span><input name="quiz_title" value="{{ draft.quiz_title }}" required></label><label class="build-field"><span>Default exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ draft.exam_minutes }}"></label></div><div class="pdf-import-source-note">Source: user-provided PDF · redistribution status: not cleared for redistribution</div></section>
+<div class="pdf-term-review-list">
+{% for t in draft.terms %}
+<article class="dashboard-panel pdf-term-review-card status-{{ t.status }}" data-status="{{ t.status }}" data-term-index="{{ loop.index0 }}" data-term-number="{{ t.number }}">
+<div class="pdf-import-question-head"><div><span class="pdf-status {{ t.status }}">{{ t.status|upper }}</span><strong>Term {{ t.number }}</strong><small class="pdf-term-page">PDF page{% if t.pages|length != 1 %}s{% endif %} {{ t.pages|join(", ") }}</small></div><label class="pdf-delete-toggle"><input type="checkbox" data-term-role="exclude"><span>Exclude term</span></label></div>
+{% if t.issues %}<div class="pdf-import-issues">{% for issue in t.issues %}<div>⚠ {{ issue }}</div>{% endfor %}</div>{% endif %}
+<div class="pdf-term-review-grid"><label class="build-field"><span>Term</span><input data-term-role="term" value="{{ t.term }}"></label><label class="build-field"><span>Definition</span><textarea data-term-role="definition" rows="4">{{ t.definition }}</textarea></label></div>
+</article>
+{% endfor %}
+</div>
+<section class="dashboard-panel pdf-import-create-bar"><div><strong>Save the complete reviewed terminology bank.</strong><span>Excluded records are preserved in the source bank but are never used for generated practice.</span></div><div class="build-submit-row"><a class="build-secondary-link" href="/pdf-import">Start Over</a><button class="build-primary-button" type="submit">Save Reviewed Terminology Bank</button></div></section>
+</form></main></div>
+<script>
+document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
+document.querySelectorAll(".pdf-import-filter-row button").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".pdf-import-filter-row button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");const f=btn.dataset.filter;document.querySelectorAll(".pdf-term-review-card").forEach(card=>card.hidden=f!=="all"&&card.dataset.status!==f)}));
+document.getElementById("pdfTermReviewForm")?.addEventListener("submit",()=>{const payload=[];document.querySelectorAll(".pdf-term-review-card").forEach(card=>payload.push({index:Number(card.dataset.termIndex||0),number:Number(card.dataset.termNumber||0),exclude:!!card.querySelector('[data-term-role="exclude"]')?.checked,term:card.querySelector('[data-term-role="term"]')?.value||"",definition:card.querySelector('[data-term-role="definition"]')?.value||""}));document.getElementById("pdfTermReviewPayload").value=JSON.stringify(payload)});
+</script><script src="/static/nav-normalize.js"></script></body></html>
+"""
+    return render_template_string(template, draft=draft)
+
 @app.route("/pdf-import/review/<draft_id>")
 def pdf_import_review(draft_id):
     try:
@@ -11376,6 +11936,9 @@ def pdf_import_review(draft_id):
     except Exception as exc:
         flash(str(exc), "error")
         return redirect("/pdf-import")
+
+    if draft.get("document_type") == "glossary":
+        return _render_pdf_glossary_review(draft)
 
     template = r"""
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -11597,6 +12160,82 @@ def pdf_import_save(draft_id):
     except Exception as exc:
         flash(str(exc), "error")
         return redirect("/pdf-import")
+
+    if draft.get("document_type") == "glossary":
+        bank_title = (request.form.get("quiz_title") or "").strip()
+        if not bank_title:
+            flash("Terminology bank title is required.", "error")
+            return redirect(f"/pdf-import/review/{draft_id}")
+
+        raw_payload = (request.form.get("term_review_payload") or "").strip()
+        try:
+            submitted_items = json.loads(raw_payload) if raw_payload else []
+        except Exception:
+            submitted_items = []
+        if not isinstance(submitted_items, list):
+            submitted_items = []
+
+        bank_terms = []
+        originals = draft.get("terms") or []
+        for idx, original in enumerate(originals):
+            submitted = next(
+                (x for x in submitted_items if isinstance(x, dict) and int(x.get("index", -1)) == idx),
+                None,
+            )
+            excluded = bool((submitted or {}).get("exclude"))
+            term = str((submitted or {}).get("term") if submitted is not None else original.get("term") or "").strip()
+            definition = str((submitted or {}).get("definition") if submitted is not None else original.get("definition") or "").strip()
+            valid = bool(term and definition)
+            if not excluded and not valid:
+                flash(
+                    f"Term {original.get('number')} needs both a term and definition. Repair it or exclude it.",
+                    "error",
+                )
+                return redirect(f"/pdf-import/review/{draft_id}")
+            bank_terms.append({
+                "number": idx + 1,
+                "term": term,
+                "definition": definition,
+                "pages": original.get("pages") or [],
+                "parser_status": original.get("status") or ("complete" if valid else "incomplete"),
+                "parser_issues": original.get("issues") or [],
+                "active": not excluded and valid,
+            })
+
+        if not bank_terms:
+            flash("No terminology records were available to save.", "error")
+            return redirect(f"/pdf-import/review/{draft_id}")
+
+        bank_id = "pdfterms_" + secrets.token_urlsafe(9).replace("-", "").replace("_", "")[:14]
+        bank = {
+            "schema_version": 1,
+            "id": bank_id,
+            "kind": "terminology",
+            "title": bank_title,
+            "source_name": draft.get("source_name") or "PDF import",
+            "source_kind": "user-provided-pdf",
+            "redistribution_status": "not-cleared-for-redistribution",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "default_exam_minutes": normalize_exam_minutes(request.form.get("exam_minutes")),
+            "page_count": draft.get("page_count") or 0,
+            "terms": bank_terms,
+            "used_term_numbers": [],
+            "generated_quizzes": [],
+        }
+        _save_pdf_terminology_bank(bank)
+        try:
+            os.remove(_pdf_import_draft_path(draft_id))
+        except OSError:
+            pass
+
+        active_count = len(_pdf_term_bank_active_terms(bank))
+        excluded_count = len(bank_terms) - active_count
+        flash(
+            f"Saved terminology bank '{bank_title}' with {active_count} active term(s)"
+            + (f" and {excluded_count} excluded source record(s)." if excluded_count else "."),
+            "success",
+        )
+        return redirect(f"/pdf-import/terms/{bank_id}")
 
     bank_title = (request.form.get("quiz_title") or "").strip()
     exam_minutes = normalize_exam_minutes(request.form.get("exam_minutes"))
@@ -12018,6 +12657,129 @@ def pdf_question_bank_generate(bank_id):
     except Exception as exc:
         flash(f"Could not generate quiz: {exc}", "error")
         return redirect(f"/pdf-import/bank/{bank_id}")
+
+
+@app.route("/pdf-import/terms")
+def pdf_terminology_banks_page():
+    return redirect("/pdf-import")
+
+
+@app.route("/pdf-import/terms/<bank_id>")
+def pdf_terminology_bank_page(bank_id):
+    try:
+        bank = _load_pdf_terminology_bank(bank_id)
+    except Exception as exc:
+        flash(str(exc), "error")
+        return redirect("/pdf-import")
+
+    terms = bank.get("terms") or []
+    active = _pdf_term_bank_active_terms(bank)
+    excluded = [t for t in terms if isinstance(t, dict) and not t.get("active", True)]
+    used = {int(n) for n in (bank.get("used_term_numbers") or []) if str(n).isdigit()}
+    max_number = max([int(t.get("number") or 0) for t in terms if isinstance(t, dict)] or [1])
+    default_count = min(25, len(active)) if active else 1
+
+    template = r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PDF Terminology Bank - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+<style>
+.pdf-import-page *, .pdf-import-page *::before, .pdf-import-page *::after { box-sizing:border-box; }
+.pdf-import-page .dashboard-main,.pdf-import-page .dashboard-panel,.pdf-import-page .dashboard-header { min-width:0;max-width:100%; }
+.pdf-import-page input,.pdf-import-page textarea,.pdf-import-page select{width:100%;max-width:100%;min-width:0;}
+.pdf-term-generator-form{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(120px,.55fr) minmax(190px,.9fr);gap:12px;align-items:end;margin-top:16px;}
+.pdf-term-generator-form .build-submit-row{grid-column:1/-1;}
+.pdf-term-table-wrap{overflow-x:auto;width:100%;}
+.pdf-term-table{width:100%;table-layout:fixed;}
+.pdf-term-table th:nth-child(1),.pdf-term-table td:nth-child(1){width:6%}.pdf-term-table th:nth-child(2),.pdf-term-table td:nth-child(2){width:13%}.pdf-term-table th:nth-child(3),.pdf-term-table td:nth-child(3){width:23%}.pdf-term-table th:nth-child(4),.pdf-term-table td:nth-child(4){width:46%}.pdf-term-table th:nth-child(5),.pdf-term-table td:nth-child(5){width:6%}.pdf-term-table th:nth-child(6),.pdf-term-table td:nth-child(6){width:6%}
+.pdf-term-table td{vertical-align:top;overflow-wrap:anywhere}.pdf-bank-excluded-row{opacity:.58}
+@media(max-width:1050px){.pdf-term-generator-form{grid-template-columns:1fr 1fr}.pdf-term-generator-form .build-submit-row{grid-column:1/-1}}
+@media(max-width:700px){.pdf-term-generator-form{grid-template-columns:1fr}.pdf-term-generator-form .build-submit-row{grid-column:auto}}
+</style></head>
+<body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">PDF Terminology Bank</div></aside>
+<main class="dashboard-main pdf-import-main">
+{% with messages=get_flashed_messages(with_categories=true) %}{% if messages %}<div class="pdf-import-flash-stack">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">PDF TERMINOLOGY BANK</div><h1>{{ bank.title }}</h1><p>{{ bank.source_name }} · The reviewed glossary stays intact while DLMS generates matching or multiple-choice practice from selected terms.</p></div></header>
+<section class="pdf-import-summary-grid"><article class="dashboard-stat-card"><span>Parsed</span><strong>{{ terms|length }}</strong><small>source terms</small></article><article class="dashboard-stat-card"><span>Active</span><strong>{{ active|length }}</strong><small>available</small></article><article class="dashboard-stat-card"><span>Used</span><strong>{{ used|length }}</strong><small>unique terms</small></article><article class="dashboard-stat-card"><span>Generated</span><strong>{{ bank.generated_quizzes|length }}</strong><small>quizzes</small></article></section>
+<section class="dashboard-panel pdf-bank-generator"><div class="pdf-bank-panel-heading"><div><span class="build-method-label">GENERATE PRACTICE</span><h2>Create Practice from Terminology Bank</h2><p>Choose a manageable set. The source bank remains unchanged.</p></div></div>
+<form method="POST" action="/pdf-import/terms/{{ bank.id }}/generate" class="pdf-term-generator-form">
+<label class="build-field"><span>Quiz title</span><input name="quiz_title" value="{{ bank.title }} — Practice" required></label>
+<label class="build-field"><span>Term count</span><input type="number" name="term_count" min="2" max="{{ active|length }}" value="{{ default_count }}" required></label>
+<label class="build-field"><span>Practice type</span><select name="practice_type"><option value="matching">Matching</option><option value="multiple_choice">Multiple choice</option></select></label>
+<label class="build-field"><span>Selection</span><select name="selection_mode"><option value="random">Random terms</option><option value="unused">Random unused terms</option><option value="sequential">Sequential from term number</option><option value="range">Specific term range</option><option value="all">All active terms</option></select></label>
+<label class="build-field"><span>Direction</span><select name="direction"><option value="random">Random each attempt (matching)</option><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option></select></label>
+<label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ bank.default_exam_minutes or 90 }}"></label>
+<label class="build-field"><span>Start term #</span><input type="number" name="start_number" min="1" max="{{ max_number }}" value="1"></label>
+<label class="build-field"><span>End term #</span><input type="number" name="end_number" min="1" max="{{ max_number }}" value="{{ [25,max_number]|min }}"></label>
+<div class="build-submit-row"><a class="build-secondary-link" href="/pdf-import">All PDF Banks</a><button class="build-primary-button" type="submit">Create Practice Quiz</button></div>
+</form></section>
+<section class="dashboard-panel pdf-bank-source-panel"><div class="pdf-bank-panel-heading"><div><span class="build-method-label">SOURCE INVENTORY</span><h2>Parsed Terminology</h2><p>{{ active|length }} active · {{ excluded|length }} excluded but preserved</p></div></div>
+<div class="pdf-term-table-wrap"><table class="study-dataset-table pdf-term-table"><thead><tr><th>#</th><th>Status</th><th>Term</th><th>Definition</th><th>Used</th><th>Page</th></tr></thead><tbody>
+{% for t in terms %}<tr class="{% if not t.active %}pdf-bank-excluded-row{% endif %}"><td>{{ t.number }}</td><td>{% if t.active %}<span class="pdf-status complete">ACTIVE</span>{% else %}<span class="pdf-status incomplete">EXCLUDED</span>{% endif %}</td><td><strong>{{ t.term }}</strong></td><td>{{ t.definition }}</td><td>{% if t.number in used %}Yes{% else %}No{% endif %}</td><td>{{ t.pages|join(", ") }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+</main></div><script>document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));</script><script src="/static/nav-normalize.js"></script></body></html>
+"""
+    return render_template_string(template, bank=bank, terms=terms, active=active, excluded=excluded, used=used, max_number=max_number, default_count=default_count)
+
+
+@app.route("/pdf-import/terms/<bank_id>/generate", methods=["POST"])
+def pdf_terminology_bank_generate(bank_id):
+    try:
+        bank = _load_pdf_terminology_bank(bank_id)
+        quiz_title = (request.form.get("quiz_title") or "").strip()
+        if not quiz_title:
+            raise ValueError("Quiz title is required.")
+        exam_minutes = normalize_exam_minutes(request.form.get("exam_minutes"))
+        mode = (request.form.get("selection_mode") or "random").strip().lower()
+        practice_type = (request.form.get("practice_type") or "matching").strip().lower()
+        direction = (request.form.get("direction") or "random").strip().lower()
+
+        selected = _select_pdf_term_bank_items(
+            bank,
+            mode=mode,
+            count=request.form.get("term_count") or 25,
+            start_number=request.form.get("start_number") or 1,
+            end_number=request.form.get("end_number"),
+        )
+
+        if practice_type == "multiple_choice":
+            mc_direction = direction if direction in {"term_to_definition", "definition_to_term"} else "definition_to_term"
+            runtime, db_questions = _pdf_terms_mc_questions(bank, selected, mc_direction)
+        else:
+            runtime, db_questions = _pdf_terms_matching_questions(bank, selected, direction)
+
+        quiz_id, _ = _create_quiz_from_runtime(
+            quiz_title,
+            runtime,
+            db_questions,
+            filename_prefix="pdf_terms",
+            exam_minutes=exam_minutes,
+        )
+
+        selected_numbers = [int(t.get("number") or 0) for t in selected]
+        used = {int(n) for n in (bank.get("used_term_numbers") or []) if str(n).isdigit()}
+        used.update(n for n in selected_numbers if n)
+        bank["used_term_numbers"] = sorted(used)
+        bank.setdefault("generated_quizzes", []).append({
+            "quiz_id": quiz_id,
+            "title": quiz_title,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "practice_type": practice_type,
+            "selection_mode": mode,
+            "direction": direction,
+            "term_count": len(selected),
+            "term_numbers": selected_numbers,
+        })
+        _save_pdf_terminology_bank(bank)
+
+        flash(
+            f"Created '{quiz_title}' from {len(selected)} terminology item(s). The source bank remains intact.",
+            "success",
+        )
+        return redirect(f"/edit_quiz/{quiz_id}")
+    except Exception as exc:
+        flash(f"Could not generate terminology practice: {exc}", "error")
+        return redirect(f"/pdf-import/terms/{bank_id}")
 
 
 @app.route("/upload")
