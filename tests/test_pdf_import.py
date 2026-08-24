@@ -80,5 +80,56 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertNotIn("Daily Debrief", cleaned[1]["lines"])
 
 
+    def test_pdf_bank_selection_preserves_source_and_limits_quiz_size(self):
+        bank = {
+            "questions": [
+                {
+                    "number": i,
+                    "original_number": i,
+                    "question": f"Question {i}",
+                    "choices": [{"label": "A", "text": "No"}, {"label": "B", "text": "Yes"}],
+                    "correct": "B",
+                    "active": True,
+                }
+                for i in range(1, 101)
+            ],
+            "used_question_numbers": [],
+        }
+        selected = dlms._select_pdf_bank_questions(bank, mode="random", count=20)
+        self.assertEqual(len(selected), 20)
+        self.assertEqual(len(bank["questions"]), 100)
+
+    def test_pdf_bank_unused_and_range_selection(self):
+        bank = {
+            "questions": [
+                {
+                    "number": i,
+                    "original_number": i,
+                    "question": f"Question {i}",
+                    "choices": [{"label": "A", "text": "No"}, {"label": "B", "text": "Yes"}],
+                    "correct": "B",
+                    "active": True,
+                }
+                for i in range(1, 11)
+            ],
+            "used_question_numbers": [1, 2, 3, 4],
+        }
+        unused = dlms._select_pdf_bank_questions(bank, mode="unused", count=3)
+        self.assertTrue(all(q["original_number"] not in {1,2,3,4} for q in unused))
+        ranged = dlms._select_pdf_bank_questions(bank, mode="range", start_number=4, end_number=7)
+        self.assertEqual([q["original_number"] for q in ranged], [4,5,6,7])
+
+    def test_pdf_bank_excluded_questions_are_not_selected(self):
+        bank = {
+            "questions": [
+                {"number": 1, "original_number": 1, "question": "One", "active": True},
+                {"number": 2, "original_number": 2, "question": "Two", "active": False},
+                {"number": 3, "original_number": 3, "question": "Three", "active": True},
+            ]
+        }
+        selected = dlms._select_pdf_bank_questions(bank, mode="all", count=50)
+        self.assertEqual([q["original_number"] for q in selected], [1, 3])
+
+
 if __name__ == "__main__":
     unittest.main()
