@@ -10,7 +10,7 @@
   const isActive = (key) => {
     if (key === 'dashboard') return path === '/';
     if (key === 'library') return path === '/library' || path.startsWith('/edit_quiz') || path.startsWith('/quiz/');
-    if (key === 'build') return path === '/upload';
+    if (key === 'build') return path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import' || path.startsWith('/pdf-import');
     if (key === 'study') return path.startsWith('/study-packs') && !medicalBuilder && !itBuilder;
     if (key === 'it') return path === '/it' || path.startsWith('/it/') || itBuilder;
     if (key === 'law') return path === '/law' || path.startsWith('/law/');
@@ -29,6 +29,7 @@
   const item = (key, href, icon, label) => `<a class="dashboard-nav-item${isActive(key) ? ' active' : ''}" href="${href}"${isActive(key) ? ' aria-current="page"' : ''}><span class="dashboard-nav-icon">${icon}</span><span>${label}</span></a>`;
   const sub = (href, icon, label, active=false) => `<a class="dashboard-nav-subitem${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="dashboard-nav-subicon">${icon}</span><span>${label}</span></a>`;
 
+  const buildOpen = isActive('build');
   const itOpen = isActive('it');
   const medicalOpen = isActive('medical');
   const ankiOpen = isActive('anki');
@@ -38,7 +39,7 @@
   primary.innerHTML = [
     item('dashboard','/','⌂','Dashboard'),
     item('library','/library','▤','Quiz Library'),
-    item('build','/upload','✎','Build Quiz'),
+    `<div class="dashboard-nav-group">${item('build','/upload','✎','Build Quiz')}${buildOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/upload','↳','Quiz Builder', path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import')}${sub('/pdf-import','↳','PDF Import & Banks', path.startsWith('/pdf-import'))}</div>` : ''}</div>`,
     item('study','/study-packs','▣','Study Packs'),
     item('it','/it','⌘','IT Study'),
     itOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/it/matching','↳','Concepts & Matching', path === '/it/matching')}${sub('/it/images','↳','Diagrams & Images', path === '/it/images')}${sub('/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&from=it','↳','AI Study Pack Builder', itBuilder)}</div>` : '',

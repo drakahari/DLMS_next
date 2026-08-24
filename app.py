@@ -10975,7 +10975,14 @@ def _pdf_clean_line(line):
     return line
 
 def _pdf_extract_pages(pdf_path):
-    """Extract selectable PDF text. No OCR is performed in this MVP."""
+    """
+    Extract selectable PDF text. No OCR is performed in this MVP.
+
+    The legacy plain-text ``lines`` representation is preserved exactly for the
+    existing question-bank parser. We also collect optional font/style metadata
+    for glossary PDFs. If style extraction is unavailable for a particular PDF,
+    Smart PDF Import simply falls back to the existing heuristic glossary parser.
+    """
     try:
         from pypdf import PdfReader
     except Exception as exc:
@@ -10988,7 +10995,46 @@ def _pdf_extract_pages(pdf_path):
     for page_number, page in enumerate(reader.pages, 1):
         text = page.extract_text() or ""
         lines = [_pdf_clean_line(line) for line in text.splitlines()]
-        pages.append({"page": page_number, "lines": [line for line in lines if line]})
+        page_record = {"page": page_number, "lines": [line for line in lines if line]}
+
+        # Style metadata is additive only. The question-bank parser never reads it.
+        fragments = []
+        try:
+            def _visitor_text(fragment_text, cm, tm, font_dict, font_size):
+                cleaned = _pdf_clean_line(str(fragment_text or "").replace("\\n", " "))
+                if not cleaned:
+                    return
+                font_name = str((font_dict or {}).get("/BaseFont") or "")
+                fragments.append({
+                    "text": cleaned,
+                    "x": float(tm[4]) if tm and len(tm) > 4 else 0.0,
+                    "y": float(tm[5]) if tm and len(tm) > 5 else 0.0,
+                    "font": font_name,
+                    "bold": bool(re.search(r"(?:bold|black|heavy|demi|semibold)", font_name, re.I)),
+                })
+
+            page.extract_text(visitor_text=_visitor_text)
+            styled_lines = []
+            for frag in fragments:
+                if styled_lines and abs(float(styled_lines[-1]["y"]) - float(frag["y"])) <= 1.25:
+                    styled_lines[-1]["fragments"].append(frag)
+                else:
+                    styled_lines.append({"y": frag["y"], "fragments": [frag]})
+
+            normalized_styled = []
+            for styled in styled_lines:
+                parts = sorted(styled["fragments"], key=lambda item: float(item.get("x") or 0.0))
+                text_parts = [str(item.get("text") or "").strip() for item in parts if str(item.get("text") or "").strip()]
+                line_text = _pdf_clean_line(" ".join(text_parts))
+                if not line_text:
+                    continue
+                normalized_styled.append({"text": line_text, "y": styled["y"], "fragments": parts})
+            if normalized_styled:
+                page_record["styled_lines"] = normalized_styled
+        except Exception:
+            pass
+
+        pages.append(page_record)
     return pages
 
 def _pdf_suppress_repeated_margins(pages):
@@ -11070,13 +11116,19 @@ def _pdf_suppress_repeated_margins(pages):
 
     cleaned = []
     for page in pages:
-        cleaned.append({
+        item = {
             "page": page["page"],
             "lines": [
                 line for line in page["lines"]
                 if re.sub(r"\s+", " ", line).strip().casefold() not in repeated
             ]
-        })
+        }
+        if isinstance(page.get("styled_lines"), list):
+            item["styled_lines"] = [
+                line for line in page["styled_lines"]
+                if re.sub(r"\s+", " ", str(line.get("text") or "")).strip().casefold() not in repeated
+            ]
+        cleaned.append(item)
     return cleaned, removed
 
 def _pdf_lines_to_stream(pages):
@@ -11402,6 +11454,118 @@ def _pdf_split_glossary_line(line):
         return term, definition
     return None
 
+
+def _pdf_styled_glossary_header(text):
+    """Return True for common glossary running headers and A-Z section dividers."""
+    text = _pdf_clean_line(text)
+    return bool(
+        re.fullmatch(r"(?:\d+\s+Glossary|Glossary\s+\d+)", text, re.I)
+        or re.fullmatch(r"[A-Z]", text)
+    )
+
+
+def _pdf_style_glossary_line(line):
+    """Return (term, first_definition_text) for a bold-term/regular-definition line."""
+    if not isinstance(line, dict):
+        return None
+    text = _pdf_clean_line(line.get("text"))
+    if not text or _pdf_styled_glossary_header(text):
+        return None
+    fragments = line.get("fragments") or []
+    if not isinstance(fragments, list) or len(fragments) < 2:
+        return None
+
+    term_parts, definition_parts = [], []
+    saw_regular = False
+    for frag in fragments:
+        frag_text = _pdf_clean_line(frag.get("text"))
+        if not frag_text:
+            continue
+        if not saw_regular and bool(frag.get("bold")):
+            term_parts.append(frag_text)
+            continue
+        saw_regular = True
+        definition_parts.append(frag_text)
+
+    term = _pdf_clean_line(" ".join(term_parts))
+    definition = _pdf_clean_line(" ".join(definition_parts))
+    if not term or not definition or len(term) > 180:
+        return None
+    return term, definition
+
+
+def _pdf_parse_glossary_styled(pages):
+    """
+    Use PDF font/style information when a source reliably distinguishes bold
+    glossary terms from regular definition prose. Returns None if the style
+    signal is too weak, leaving the existing heuristic parser as fallback.
+    """
+    styled_stream = []
+    styled_pages = 0
+    for page in pages:
+        styled_lines = page.get("styled_lines")
+        if not isinstance(styled_lines, list) or not styled_lines:
+            continue
+        styled_pages += 1
+        for line in styled_lines:
+            if isinstance(line, dict):
+                styled_stream.append({
+                    "page": int(page.get("page") or 0),
+                    "line": line,
+                    "text": _pdf_clean_line(line.get("text")),
+                })
+    if not styled_stream or not styled_pages:
+        return None
+
+    starts = []
+    for idx, rec in enumerate(styled_stream):
+        parsed = _pdf_style_glossary_line(rec["line"])
+        if parsed:
+            starts.append((idx, parsed[0], parsed[1], rec["page"]))
+    if len(starts) < 4:
+        return None
+
+    terms = []
+    for pos, (start_idx, term, first_definition, start_page) in enumerate(starts):
+        end_idx = starts[pos + 1][0] if pos + 1 < len(starts) else len(styled_stream)
+        definition_lines = [first_definition]
+        pages_used = {start_page}
+        for rec in styled_stream[start_idx + 1:end_idx]:
+            text = rec["text"]
+            if not text or _pdf_styled_glossary_header(text):
+                continue
+            definition_lines.append(text)
+            pages_used.add(rec["page"])
+        definition = _pdf_join_wrapped(definition_lines).strip()
+        issues = []
+        status = "complete"
+        if not definition:
+            status = "incomplete"
+            issues.append("No definition text was confidently associated with this term.")
+        terms.append({
+            "number": len(terms) + 1,
+            "term": term,
+            "definition": definition,
+            "pages": sorted(p for p in pages_used if p),
+            "status": status,
+            "issues": issues,
+        })
+
+    complete = sum(1 for item in terms if item["status"] == "complete")
+    if not terms or complete / max(1, len(terms)) < 0.90:
+        return None
+    return {
+        "terms": terms,
+        "summary": {
+            "detected": len(terms),
+            "complete": complete,
+            "review": sum(1 for item in terms if item["status"] == "review"),
+            "incomplete": sum(1 for item in terms if item["status"] == "incomplete"),
+        },
+        "parser_mode": "style-aware",
+    }
+
+
 def _pdf_parse_glossary(pages):
     """
     Deterministic glossary/terminology parser.
@@ -11413,6 +11577,10 @@ def _pdf_parse_glossary(pages):
 
     It intentionally keeps uncertain records editable instead of inventing content.
     """
+    styled_result = _pdf_parse_glossary_styled(pages)
+    if isinstance(styled_result, dict) and styled_result.get("terms"):
+        return styled_result
+
     stream = _pdf_lines_to_stream(pages)
     if not stream:
         return {"terms": [], "summary": {"detected": 0, "complete": 0, "review": 0, "incomplete": 0}}
@@ -12991,9 +13159,9 @@ def upload_page():
                 <a class="build-option-card build-option-card-pdf" href="/pdf-import">
                     <div class="build-option-icon" aria-hidden="true">PDF</div>
                     <div>
-                        <span class="build-method-label">SMART PDF IMPORT · PREVIEW</span>
-                        <h2>Analyze a question-bank PDF</h2>
-                        <p>Detect questions, choices, explicit answer keys, and explanations, then repair or delete anything before creating the quiz.</p>
+                        <span class="build-method-label">SMART PDF IMPORT</span>
+                        <h2>Import PDF study content</h2>
+                        <p>Parse question banks or glossary/terminology PDFs, review the extracted source, and manage reusable PDF source banks.</p>
                     </div>
                     <span class="build-option-arrow" aria-hidden="true">›</span>
                 </a>
