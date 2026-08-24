@@ -10625,6 +10625,14 @@ def _list_pdf_question_banks():
             print(f"[PDF BANKS] Skipping invalid bank {name!r}: {exc}")
     return banks
 
+def _delete_pdf_question_bank(bank_id):
+    bank = _load_pdf_question_bank(bank_id)
+    path = _pdf_bank_path(bank_id)
+    title = str(bank.get("title") or "PDF Question Bank").strip()
+    os.remove(path)
+    return title
+
+
 def _pdf_bank_active_questions(bank):
     active = [
         q for q in (bank.get("questions") or [])
@@ -10786,6 +10794,14 @@ def _list_pdf_terminology_banks():
         except Exception as exc:
             print(f"[PDF TERMS] Skipping invalid bank {name!r}: {exc}")
     return banks
+
+def _delete_pdf_terminology_bank(bank_id):
+    bank = _load_pdf_terminology_bank(bank_id)
+    path = _pdf_term_bank_path(bank_id)
+    title = str(bank.get("title") or "PDF Terminology Bank").strip()
+    os.remove(path)
+    return title
+
 
 def _pdf_term_bank_active_terms(bank):
     active = [
@@ -11772,37 +11788,111 @@ def pdf_import_page():
 <div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Quiz</a><button class="build-primary-button" type="submit">Analyze PDF</button></div>
 </form></section>
 <section class="dashboard-panel pdf-import-note"><strong>Current Smart PDF scope</strong><p>DLMS handles selectable-text multiple-choice question banks and glossary/terminology layouts. Ambiguous records are flagged for review instead of being guessed. OCR and arbitrary textbook/chapter interpretation are intentionally out of scope for this release candidate.</p></section>
+{% if banks or term_banks %}
+<div class="pdf-bank-toolbar">
+<div><strong>Saved PDF source banks</strong><span>Collapse large collections or enable management controls when you need them.</span></div>
+<div class="pdf-bank-toolbar-actions">
+<button type="button" class="pdf-bank-quiet-button" id="pdfExpandBanks">Expand All</button>
+<button type="button" class="pdf-bank-quiet-button" id="pdfCollapseBanks">Collapse All</button>
+<button type="button" class="pdf-bank-manage-button" id="pdfManageBanks" aria-pressed="false">Manage Banks</button>
+</div>
+</div>
+{% endif %}
+
 {% if banks %}
-<section class="dashboard-panel pdf-bank-list-panel">
-<div class="pdf-bank-panel-heading"><div><span class="build-method-label">SAVED SOURCE BANKS</span><h2>Question Banks</h2><p>Reviewed source questions remain available here. Generate manageable quizzes without re-parsing the PDF.</p></div></div>
+<details class="dashboard-panel pdf-bank-list-panel pdf-bank-collapsible" data-pdf-bank-section>
+<summary class="pdf-bank-section-summary">
+<div class="pdf-bank-section-copy"><span class="build-method-label">SAVED SOURCE BANKS</span><h2>Question Banks</h2><p>Reviewed source questions remain available here. Generate manageable quizzes without re-parsing the PDF.</p></div>
+<div class="pdf-bank-section-meta"><span>{{ banks|length }} bank{% if banks|length != 1 %}s{% endif %}</span><span class="pdf-bank-chevron">›</span></div>
+</summary>
+<div class="pdf-bank-section-body">
 <div class="pdf-bank-list">
 {% for bank in banks %}
-<a class="pdf-bank-row" href="/pdf-import/bank/{{ bank.id }}">
+<div class="pdf-bank-row">
+<a class="pdf-bank-row-main" href="/pdf-import/bank/{{ bank.id }}">
 <div><strong>{{ bank.title }}</strong><small>Question bank · {{ bank.source_name }}</small></div>
-<div><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
+<div class="pdf-bank-row-stats"><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
 <span class="pdf-bank-open">Open →</span>
 </a>
+<form class="pdf-bank-manage-action" method="POST" action="/pdf-import/bank/{{ bank.id }}/delete" onsubmit="return confirm('Delete source question bank “{{ bank.title|e }}”? Existing quizzes generated from it will remain available.');">
+<button class="pdf-bank-delete-button" type="submit">Delete</button>
+</form>
+</div>
 {% endfor %}
 </div>
-</section>
+</div>
+</details>
 {% endif %}
+
 {% if term_banks %}
-<section class="dashboard-panel pdf-bank-list-panel">
-<div class="pdf-bank-panel-heading"><div><span class="build-method-label">SAVED TERMINOLOGY</span><h2>Terminology Banks</h2><p>Reviewed glossary terms can generate matching or multiple-choice practice without re-parsing the PDF.</p></div></div>
+<details class="dashboard-panel pdf-bank-list-panel pdf-bank-collapsible" data-pdf-bank-section>
+<summary class="pdf-bank-section-summary">
+<div class="pdf-bank-section-copy"><span class="build-method-label">SAVED TERMINOLOGY</span><h2>Terminology Banks</h2><p>Reviewed glossary terms can generate matching or multiple-choice practice without re-parsing the PDF.</p></div>
+<div class="pdf-bank-section-meta"><span>{{ term_banks|length }} bank{% if term_banks|length != 1 %}s{% endif %}</span><span class="pdf-bank-chevron">›</span></div>
+</summary>
+<div class="pdf-bank-section-body">
 <div class="pdf-bank-list">
 {% for bank in term_banks %}
-<a class="pdf-bank-row" href="/pdf-import/terms/{{ bank.id }}">
+<div class="pdf-bank-row">
+<a class="pdf-bank-row-main" href="/pdf-import/terms/{{ bank.id }}">
 <div><strong>{{ bank.title }}</strong><small>Terminology bank · {{ bank.source_name }}</small></div>
-<div><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
+<div class="pdf-bank-row-stats"><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
 <span class="pdf-bank-open">Open →</span>
 </a>
+<form class="pdf-bank-manage-action" method="POST" action="/pdf-import/terms/{{ bank.id }}/delete" onsubmit="return confirm('Delete source terminology bank “{{ bank.title|e }}”? Existing quizzes generated from it will remain available.');">
+<button class="pdf-bank-delete-button" type="submit">Delete</button>
+</form>
+</div>
 {% endfor %}
 </div>
-</section>
+</div>
+</details>
 {% endif %}
-</main></div><script>document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));</script><script src="/static/nav-normalize.js"></script></body></html>
+</main></div>
+<script>
+document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
+const pdfBankSections=[...document.querySelectorAll("[data-pdf-bank-section]")];
+document.getElementById("pdfExpandBanks")?.addEventListener("click",()=>pdfBankSections.forEach(section=>section.open=true));
+document.getElementById("pdfCollapseBanks")?.addEventListener("click",()=>pdfBankSections.forEach(section=>section.open=false));
+document.getElementById("pdfManageBanks")?.addEventListener("click",event=>{
+    const enabled=document.body.classList.toggle("pdf-bank-manage-mode");
+    event.currentTarget.setAttribute("aria-pressed",enabled?"true":"false");
+    event.currentTarget.textContent=enabled?"Done Managing":"Manage Banks";
+});
+</script>
+<script src="/static/nav-normalize.js"></script></body></html>
 """
     return render_template_string(template, banks=_list_pdf_question_banks(), term_banks=_list_pdf_terminology_banks())
+
+@app.route("/pdf-import/bank/<bank_id>/delete", methods=["POST"])
+def pdf_question_bank_delete(bank_id):
+    try:
+        title = _delete_pdf_question_bank(bank_id)
+        flash(
+            f"Deleted source question bank '{title}'. Existing generated quizzes were not deleted.",
+            "success",
+        )
+    except FileNotFoundError:
+        flash("PDF question bank was already removed or could not be found.", "error")
+    except Exception as exc:
+        flash(f"Could not delete PDF question bank: {exc}", "error")
+    return redirect("/pdf-import")
+
+
+@app.route("/pdf-import/terms/<bank_id>/delete", methods=["POST"])
+def pdf_terminology_bank_delete(bank_id):
+    try:
+        title = _delete_pdf_terminology_bank(bank_id)
+        flash(
+            f"Deleted source terminology bank '{title}'. Existing generated quizzes were not deleted.",
+            "success",
+        )
+    except FileNotFoundError:
+        flash("PDF terminology bank was already removed or could not be found.", "error")
+    except Exception as exc:
+        flash(f"Could not delete PDF terminology bank: {exc}", "error")
+    return redirect("/pdf-import")
+
 
 @app.route("/pdf-import/analyze", methods=["POST"])
 def pdf_import_analyze():

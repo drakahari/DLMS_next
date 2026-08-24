@@ -8448,7 +8448,34 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .pdf-status { display:inline-flex; padding:4px 8px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.05em; border:1px solid rgba(52,211,153,.34); color:#7ce6bd; background:rgba(6,78,59,.35); }
 .pdf-status.review { border-color:rgba(245,158,11,.44); color:#f4c76f; background:rgba(104,66,5,.34); }
 .pdf-status.incomplete { border-color:rgba(248,113,113,.42); color:#ff9d9d; background:rgba(112,20,30,.34); }
-.pdf-delete-toggle { display:flex; gap:7px; align-items:center; color:#ffaaaa; font-size:12px; }
+.pdf-delete-toggle {
+    display:flex;
+    gap:7px;
+    align-items:center;
+    flex:0 0 auto;
+    min-width:max-content;
+    color:#ffaaaa;
+    font-size:12px;
+    white-space:nowrap;
+}
+
+/* Smart PDF review templates constrain normal form inputs to 100% width.
+   Checkboxes must remain intrinsic-size controls or they consume the header row
+   and force labels such as "Exclude term" into a one-character-wide column. */
+.pdf-import-page .pdf-delete-toggle input[type="checkbox"] {
+    width:16px !important;
+    height:16px;
+    min-width:16px !important;
+    max-width:16px !important;
+    flex:0 0 16px;
+    margin:0;
+}
+
+.pdf-import-page .pdf-delete-toggle > span {
+    white-space:nowrap;
+    overflow-wrap:normal !important;
+    word-break:normal !important;
+}
 .pdf-import-issues { margin:0 0 14px; padding:10px 12px; border-radius:9px; border:1px solid rgba(245,158,11,.34); background:rgba(85,55,6,.25); color:#e8c783; font-size:12px; display:grid; gap:5px; }
 .pdf-import-choice-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:10px 0; }
 .pdf-choice-field span { color:#b7cee6; }
@@ -8483,43 +8510,202 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 
 
 /* =========================================================
-   PDF QUESTION BANKS
+   PDF QUESTION / TERMINOLOGY SOURCE BANKS
    ========================================================= */
-.pdf-bank-list-panel { margin-top: 16px; }
+.pdf-bank-toolbar {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    margin:20px 0 8px;
+    padding:0 2px;
+}
+.pdf-bank-toolbar > div:first-child {
+    display:grid;
+    gap:3px;
+    min-width:0;
+}
+.pdf-bank-toolbar > div:first-child strong {
+    color:#eaf3ff;
+    font-size:15px;
+}
+.pdf-bank-toolbar > div:first-child span {
+    color:#8fa4bc;
+    font-size:12px;
+    line-height:1.4;
+}
+.pdf-bank-toolbar-actions {
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+    gap:8px;
+}
+.pdf-bank-toolbar-actions button {
+    margin:0;
+    padding:8px 11px;
+    font-size:12px;
+}
+.pdf-bank-quiet-button {
+    background:rgba(9,29,52,.88);
+}
+.pdf-bank-manage-button[aria-pressed="true"] {
+    background:linear-gradient(135deg,#0d765f,#159d7e);
+    border-color:rgba(86,225,180,.38);
+}
+
+.pdf-bank-list-panel {
+    margin-top: 16px;
+}
+.pdf-bank-collapsible {
+    padding:0 !important;
+}
+.pdf-bank-collapsible > summary {
+    list-style:none;
+}
+.pdf-bank-collapsible > summary::-webkit-details-marker {
+    display:none;
+}
+.pdf-bank-section-summary {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:18px;
+    padding:18px 20px;
+    cursor:pointer;
+    user-select:none;
+}
+.pdf-bank-section-summary:hover {
+    background:rgba(21,66,113,.12);
+}
+.pdf-bank-section-copy {
+    min-width:0;
+}
+.pdf-bank-section-copy h2 {
+    margin:4px 0 6px;
+}
+.pdf-bank-section-copy p {
+    margin:0;
+    color:#aebed1;
+}
+.pdf-bank-section-meta {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex:0 0 auto;
+    color:#95aac2;
+    font-size:12px;
+}
+.pdf-bank-section-meta > span:first-child {
+    padding:5px 8px;
+    border:1px solid rgba(80,144,215,.25);
+    border-radius:999px;
+    background:rgba(10,40,72,.45);
+}
+.pdf-bank-chevron {
+    width:28px;
+    height:28px;
+    display:grid;
+    place-items:center;
+    flex:0 0 28px;
+    border-radius:50%;
+    border:1px solid rgba(93,159,230,.30);
+    background:rgba(11,35,64,.72);
+    color:#8dccff;
+    font-size:24px;
+    line-height:1;
+    transition:transform .16s ease;
+}
+.pdf-bank-collapsible[open] .pdf-bank-chevron {
+    transform:rotate(90deg);
+}
+.pdf-bank-section-body {
+    padding:0 20px 20px;
+    border-top:1px solid rgba(91,146,215,.16);
+}
 .pdf-bank-panel-heading h2 { margin: 4px 0 6px; }
 .pdf-bank-panel-heading p { margin: 0; color: #aebed1; }
 .pdf-bank-list { display: grid; gap: 8px; margin-top: 14px; }
 .pdf-bank-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 18px;
-    padding: 13px 15px;
-    border: 1px solid rgba(82, 143, 210, .26);
-    border-radius: 11px;
-    background: rgba(5, 20, 42, .56);
-    color: #eaf2ff !important;
-    text-decoration: none !important;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:stretch;
+    gap:8px;
+    border:1px solid rgba(82,143,210,.26);
+    border-radius:11px;
+    background:rgba(5,20,42,.56);
+    overflow:hidden;
 }
-.pdf-bank-row:visited { color: #eaf2ff !important; }
 .pdf-bank-row:hover {
-    border-color: rgba(78, 171, 255, .58);
-    background: rgba(10, 38, 72, .68);
-    color: #fff !important;
-    text-decoration: none !important;
+    border-color:rgba(78,171,255,.58);
+    background:rgba(10,38,72,.68);
 }
-.pdf-bank-row > div:first-child { display: grid; gap: 3px; }
-.pdf-bank-row small { color: #8398b1; }
-.pdf-bank-row > div:nth-child(2) { display: flex; flex-wrap: wrap; gap: 7px; }
-.pdf-bank-row > div:nth-child(2) span {
-    padding: 4px 7px;
-    border-radius: 999px;
-    border: 1px solid rgba(80, 144, 215, .25);
-    background: rgba(10, 40, 72, .45);
-    color: #9fc2e4;
-    font-size: 10px;
+.pdf-bank-row-main {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto auto;
+    align-items:center;
+    gap:18px;
+    min-width:0;
+    padding:13px 15px;
+    color:#eaf2ff !important;
+    text-decoration:none !important;
 }
-.pdf-bank-open { color: #75c9ff; font-weight: 700; white-space: nowrap; }
+.pdf-bank-row-main:link,
+.pdf-bank-row-main:visited,
+.pdf-bank-row-main:hover,
+.pdf-bank-row-main:active {
+    color:#eaf2ff !important;
+    text-decoration:none !important;
+}
+.pdf-bank-row-main > div:first-child {
+    display:grid;
+    gap:3px;
+    min-width:0;
+}
+.pdf-bank-row-main > div:first-child strong,
+.pdf-bank-row-main > div:first-child small {
+    overflow-wrap:anywhere;
+}
+.pdf-bank-row small { color:#8398b1; }
+.pdf-bank-row-stats {
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+    gap:7px;
+}
+.pdf-bank-row-stats span {
+    padding:4px 7px;
+    border-radius:999px;
+    border:1px solid rgba(80,144,215,.25);
+    background:rgba(10,40,72,.45);
+    color:#9fc2e4;
+    font-size:10px;
+}
+.pdf-bank-open {
+    color:#75c9ff !important;
+    font-weight:700;
+    white-space:nowrap;
+}
+.pdf-bank-manage-action {
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:8px 10px 8px 0;
+}
+.pdf-bank-manage-mode .pdf-bank-manage-action {
+    display:flex;
+}
+.pdf-bank-delete-button {
+    margin:0;
+    padding:8px 11px;
+    min-width:72px;
+    background:linear-gradient(135deg,#7f1d1d,#991b1b);
+    border:1px solid rgba(248,113,113,.35);
+    color:#fff;
+    font-size:12px;
+}
+.pdf-bank-delete-button:hover {
+    background:linear-gradient(135deg,#dc2626,#b91c1c);
+}
 .pdf-bank-generator { margin-top: 16px; }
 .pdf-bank-generator-form {
     display: grid;
@@ -8553,7 +8739,28 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 @media (max-width: 900px) {
     .pdf-bank-generator-form { grid-template-columns: 1fr 1fr; }
     .pdf-bank-generator-form .build-submit-row { grid-column: 1 / -1; }
-    .pdf-bank-row { grid-template-columns: 1fr; gap: 8px; }
+    .pdf-bank-toolbar,
+    .pdf-bank-section-summary {
+        align-items:stretch;
+        flex-direction:column;
+    }
+    .pdf-bank-toolbar-actions {
+        justify-content:flex-start;
+    }
+    .pdf-bank-section-meta {
+        justify-content:space-between;
+    }
+    .pdf-bank-row-main {
+        grid-template-columns:minmax(0,1fr);
+        gap:8px;
+    }
+    .pdf-bank-row-stats {
+        justify-content:flex-start;
+    }
+    .pdf-bank-manage-action {
+        padding:0 15px 13px;
+        justify-content:flex-start;
+    }
 }
 @media (max-width: 620px) {
     .pdf-bank-generator-form { grid-template-columns: 1fr; }
