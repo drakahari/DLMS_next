@@ -8289,3 +8289,53 @@ a.medical-ai-secondary-button:hover {
     border-color: rgba(96,165,250,.34);
     background: rgba(20,72,120,.30);
 }
+
+
+/* =========================================================
+   HISTORY ORIGIN BADGES + IT STUDY
+   ========================================================= */
+.history-origin-filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 0 18px 14px;
+}
+.history-origin-filter {
+    margin: 0;
+    padding: 7px 11px;
+    min-height: 0;
+    font-size: 12px;
+    background: rgba(8, 27, 52, .72);
+    border: 1px solid rgba(91, 146, 215, .30);
+    color: #b8c8db;
+}
+.history-origin-filter.active {
+    color: #fff;
+    background: rgba(25, 91, 170, .66);
+    border-color: rgba(93, 177, 255, .66);
+}
+.history-origin-badge {
+    display: inline-flex;
+    align-items: center;
+    width: max-content;
+    padding: 5px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    border: 1px solid rgba(120, 160, 220, .28);
+    background: rgba(15, 43, 77, .62);
+    color: #bfd5ef;
+    white-space: nowrap;
+}
+.history-origin-badge.origin-it { color: #8fd2ff; border-color: rgba(56,189,248,.38); }
+.history-origin-badge.origin-medical { color: #77e6ea; border-color: rgba(45,212,191,.36); }
+.history-origin-badge.origin-study-pack { color: #c7b2ff; border-color: rgba(167,139,250,.38); }
+.history-origin-badge.origin-law { color: #86efac; border-color: rgba(74,222,128,.36); }
+.history-origin-badge.origin-quiz { color: #d1d9e6; border-color: rgba(148,163,184,.30); }
+
+/* IT Study intentionally reuses the proven Medical Study layout system. */
+body.it-study-page .medical-section-launch-icon,
+body.it-study-page .medical-ai-builder-teaser-icon {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

@@ -1328,6 +1328,24 @@ def _medical_content_available(packs=None):
     return any(_is_medical_pack_manifest(pack_id, pack) for pack_id, pack in packs.items())
 
 
+def _normalized_content_domain(value):
+    """Normalize a human-readable content domain into a stable comparison key."""
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def _is_it_pack_manifest(pack_id, pack):
+    """Return True for Study Packs intended for IT / Cybersecurity study."""
+    if not isinstance(pack, dict):
+        return False
+    domain = _normalized_content_domain(pack.get("content_domain") or pack.get("extends"))
+    return domain in {"it", "it_cybersecurity", "cybersecurity", "information_technology"}
+
+
+def _it_content_available(packs=None):
+    packs = packs if isinstance(packs, dict) else discover_content_packs()
+    return any(_is_it_pack_manifest(pack_id, pack) for pack_id, pack in packs.items())
+
+
 def content_pack_summary():
     packs = discover_content_packs()
     summary = []
@@ -1357,6 +1375,8 @@ def inject_content_pack_state():
         # are optional; this legacy template flag now means "show the feature."
         "medical_pack_installed": True,
         "medical_content_available": _medical_content_available(packs),
+        "it_study_available": True,
+        "it_content_available": _it_content_available(packs),
     }
 
 
@@ -2714,6 +2734,17 @@ def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, sourc
 
             kept.append(q)
 
+        source_pack_key = str(source_pack_id or "").strip().lower()
+        source_type = None
+        if source_pack_key:
+            source_pack = get_content_pack(source_pack_key) or {}
+            if _is_medical_pack_manifest(source_pack_key, source_pack):
+                source_type = "medical"
+            elif _is_it_pack_manifest(source_pack_key, source_pack):
+                source_type = "it"
+            else:
+                source_type = "study-pack"
+
         kept.append({
             "id": quiz_id,
             "html": html,
@@ -2721,8 +2752,9 @@ def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, sourc
             "logo": logo,
             "exam_minutes": normalize_exam_minutes(exam_minutes),
             "timestamp": int(time.time()),
-            "source_pack_id": str(source_pack_id or "").strip() or None,
+            "source_pack_id": source_pack_key or None,
             "source_dataset_id": str(source_dataset_id or "").strip() or None,
+            "source_type": source_type,
         })
 
         save_registry(kept)
@@ -4462,6 +4494,210 @@ def medical_generate_quiz():
     )
 
     return redirect(f"/quizzes/{html_name}")
+
+
+
+# =========================
+# IT STUDY - FILTERED STUDY PACK VIEW
+# =========================
+def _it_pack_page_data():
+    """Aggregate validated datasets from installed IT / Cybersecurity Study Packs."""
+    packs = discover_content_packs()
+    it_packs = [
+        (pack_id, candidate)
+        for pack_id, candidate in packs.items()
+        if _is_it_pack_manifest(pack_id, candidate)
+    ]
+    it_packs.sort(key=lambda item: str(item[1].get("name") or item[0]).casefold())
+
+    if not it_packs:
+        return None, [], [], []
+
+    if len(it_packs) == 1:
+        pack = dict(it_packs[0][1])
+    else:
+        pack = {
+            "id": "it_collection",
+            "name": "DLMS IT Study",
+            "version": f"{len(it_packs)} installed packs",
+            "description": "Aggregated IT and cybersecurity study content from installed Study Packs.",
+        }
+
+    datasets, image_datasets, quiz_datasets = [], [], []
+    for pack_id, source_pack in it_packs:
+        for descriptor in source_pack.get("datasets") or []:
+            if not isinstance(descriptor, dict):
+                continue
+            dataset_id = str(descriptor.get("id") or "").strip()
+            try:
+                data = load_content_pack_dataset(pack_id, dataset_id)
+                datasets.append({
+                    "pack_id": pack_id,
+                    "pack_name": source_pack.get("name") or pack_id,
+                    "id": dataset_id,
+                    "title": descriptor.get("title") or data.get("title") or dataset_id,
+                    "description": descriptor.get("description") or data.get("description") or "",
+                    "type": descriptor.get("type") or data.get("type") or "matching",
+                    "term_count": len(data.get("terms") or []),
+                    "category": data.get("category") or "IT / Cybersecurity",
+                })
+            except Exception as exc:
+                print(f"[IT STUDY] Dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
+
+        for descriptor in source_pack.get("image_datasets") or []:
+            if not isinstance(descriptor, dict):
+                continue
+            dataset_id = str(descriptor.get("id") or "").strip()
+            try:
+                data = load_content_pack_image_dataset(pack_id, dataset_id)
+                images = data.get("images") or []
+                image_datasets.append({
+                    "pack_id": pack_id,
+                    "pack_name": source_pack.get("name") or pack_id,
+                    "id": dataset_id,
+                    "title": descriptor.get("title") or data.get("title") or dataset_id,
+                    "description": descriptor.get("description") or data.get("description") or "",
+                    "image_count": len(images),
+                    "hotspot_count": sum(len(im.get("hotspots") or []) for im in images if isinstance(im, dict)),
+                    "category": data.get("category") or "Diagrams & Images",
+                })
+            except Exception as exc:
+                print(f"[IT STUDY] Image dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
+
+        for descriptor in source_pack.get("quiz_datasets") or []:
+            if not isinstance(descriptor, dict):
+                continue
+            dataset_id = str(descriptor.get("id") or "").strip()
+            try:
+                data = load_content_pack_quiz_dataset(pack_id, dataset_id)
+                quiz_datasets.append({
+                    "pack_id": pack_id,
+                    "pack_name": source_pack.get("name") or pack_id,
+                    "id": dataset_id,
+                    "title": descriptor.get("title") or data.get("title") or dataset_id,
+                    "description": descriptor.get("description") or data.get("description") or "",
+                    "question_count": len(data.get("questions") or []),
+                    "image_count": len(data.get("images") or []),
+                    "category": data.get("category") or "Question Set",
+                })
+            except Exception as exc:
+                print(f"[IT STUDY] Question dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
+
+    return pack, datasets, image_datasets, quiz_datasets
+
+
+_IT_SIDEBAR = r"""
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand">
+        <div class="dashboard-brand-mark">⌘</div>
+        <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+    </div>
+    <nav class="dashboard-nav">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+        <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        <a class="dashboard-nav-item active" href="/it" {% if it_section == "home" %}aria-current="page"{% endif %}><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a>
+        <div class="dashboard-nav-subitems medical-nav-subitems">
+            <a class="dashboard-nav-subitem {% if it_section == 'matching' %}active{% endif %}" href="/it/matching" {% if it_section == "matching" %}aria-current="page"{% endif %}><span class="dashboard-nav-subicon">↔</span><span>Concepts &amp; Matching</span></a>
+            <a class="dashboard-nav-subitem {% if it_section == 'images' %}active{% endif %}" href="/it/images" {% if it_section == "images" %}aria-current="page"{% endif %}><span class="dashboard-nav-subicon">◎</span><span>Diagrams &amp; Images</span></a>
+            <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&amp;from=it"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
+        </div>
+        <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        <div class="dashboard-nav-group"><a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a></div>
+    </nav>
+    <div class="dashboard-nav-section-label"><span>System</span></div>
+    <nav class="dashboard-nav dashboard-nav-system">
+        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">{{ pack.name }} · {{ pack.version }}</div>
+</aside>
+"""
+
+
+def _it_empty_page():
+    pack = {"name": "IT Study", "version": "No packs installed"}
+    return render_template_string(r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>IT Study - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home medical-study-page it-study-page"><div class="dashboard-shell">""" + _IT_SIDEBAR + r"""
+<main class="dashboard-main medical-main">
+<header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">IT STUDY</div><h1>DLMS IT Study</h1><p>IT Study is ready. Install or create IT / Cybersecurity Study Packs to populate focused concept and diagram practice.</p></div></header>
+<section class="medical-summary-grid"><article class="dashboard-stat-card"><span>Installed Packs</span><strong>0</strong><small>IT content is optional</small></article><article class="dashboard-stat-card"><span>Study Banks</span><strong>0</strong><small>create or install content</small></article><article class="dashboard-stat-card"><span>Image Sets</span><strong>0</strong><small>no diagrams installed</small></article></section>
+<section class="medical-section-launch-grid">
+<a class="dashboard-panel medical-section-launch-card" href="/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&amp;from=it"><div class="medical-section-launch-icon">AI</div><div class="medical-section-launch-copy"><span class="medical-eyebrow">CREATE</span><h2>Create an IT Study Pack</h2><p>Open the unified AI Study Pack Builder with IT / Cybersecurity preselected.</p><span class="medical-section-launch-action">Open AI Study Pack Builder →</span></div></a>
+<a class="dashboard-panel medical-section-launch-card" href="/content-packs"><div class="medical-section-launch-icon">⬡</div><div class="medical-section-launch-copy"><span class="medical-eyebrow">INSTALL / MANAGE</span><h2>Content Packs</h2><p>Install a validated IT Study Pack ZIP or manage existing packs.</p><span class="medical-section-launch-action">Open Content Packs →</span></div></a>
+</section>
+</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script></body></html>
+""", pack=pack, it_section="home")
+
+
+@app.route("/it")
+def it_study_home():
+    pack, datasets, image_datasets, quiz_datasets = _it_pack_page_data()
+    if not pack:
+        return _it_empty_page()
+    total_terms = sum(d["term_count"] for d in datasets)
+    total_images = sum(d["image_count"] for d in image_datasets)
+    total_hotspots = sum(d["hotspot_count"] for d in image_datasets)
+    total_questions = sum(d["question_count"] for d in quiz_datasets)
+    return render_template_string(r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>IT Study - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home medical-study-page it-study-page"><div class="dashboard-shell">""" + _IT_SIDEBAR + r"""
+<main class="dashboard-main medical-main">
+<header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">IT STUDY</div><h1>DLMS IT Study</h1><p>Focused IT and cybersecurity practice collected automatically from installed IT-domain Study Packs.</p></div></header>
+<section class="medical-summary-grid"><article class="dashboard-stat-card"><span>Installed Packs</span><strong>{{ pack_count }}</strong><small>IT / Cybersecurity packs</small></article><article class="dashboard-stat-card"><span>Study Banks</span><strong>{{ datasets|length }}</strong><small>{{ total_terms }} concepts</small></article><article class="dashboard-stat-card"><span>Visual Sets</span><strong>{{ image_datasets|length }}</strong><small>{{ total_hotspots }} targets across {{ total_images }} images</small></article></section>
+<section class="medical-section-launch-grid">
+<a class="dashboard-panel medical-section-launch-card" href="/it/matching"><div class="medical-section-launch-icon">↔</div><div class="medical-section-launch-copy"><span class="medical-eyebrow">TEXT STUDY</span><h2>Concepts &amp; Matching</h2><p>Practice protocols, models, terminology, commands, security concepts, and other source-documented IT material.</p><div class="medical-dataset-meta"><span>{{ datasets|length }} study banks</span><span>{{ total_terms }} concepts</span></div><span class="medical-section-launch-action">Open Concepts &amp; Matching →</span></div></a>
+<a class="dashboard-panel medical-section-launch-card" href="/it/images"><div class="medical-section-launch-icon">◎</div><div class="medical-section-launch-copy"><span class="medical-eyebrow">VISUAL STUDY</span><h2>Diagrams &amp; Images</h2><p>Practice network diagrams, hardware, interfaces, architecture, and other image-based identification.</p><div class="medical-dataset-meta"><span>{{ image_datasets|length }} image sets</span><span>{{ total_images }} images</span><span>{{ total_hotspots }} targets</span></div><span class="medical-section-launch-action">Open Diagrams &amp; Images →</span></div></a>
+</section>
+{% if quiz_datasets %}<section class="dashboard-panel medical-ai-builder-teaser"><div class="medical-ai-builder-teaser-icon">Q</div><div class="medical-ai-builder-teaser-copy"><span class="medical-eyebrow">MIXED PRACTICE</span><h2>{{ quiz_datasets|length }} Question Set{% if quiz_datasets|length != 1 %}s{% endif %}</h2><p>{{ total_questions }} mixed questions are available through the main Study Packs workspace.</p></div><a class="medical-primary-button medical-ai-builder-open" href="/study-packs">Open Study Packs</a></section>{% endif %}
+<section class="dashboard-panel medical-ai-builder-teaser"><div class="medical-ai-builder-teaser-icon">AI</div><div class="medical-ai-builder-teaser-copy"><span class="medical-eyebrow">CUSTOM CONTENT</span><h2>AI Study Pack Builder</h2><p>Create source-disciplined IT / Cybersecurity Study Packs using the same validated content-pack workflow.</p><div class="medical-ai-builder-points"><span>✓ authoritative sources</span><span>✓ version-aware technical content</span><span>✓ open-license checks</span><span>✓ DLMS-ready schema</span></div></div><a class="medical-primary-button medical-ai-builder-open" href="/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&amp;from=it">Build Custom Content</a></section>
+</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script></body></html>
+""", pack=pack, datasets=datasets, image_datasets=image_datasets, quiz_datasets=quiz_datasets, total_terms=total_terms, total_images=total_images, total_hotspots=total_hotspots, total_questions=total_questions, pack_count=len([1 for pid,p in discover_content_packs().items() if _is_it_pack_manifest(pid,p)]), it_section="home")
+
+
+@app.route("/it/matching")
+def it_matching():
+    pack, datasets, image_datasets, quiz_datasets = _it_pack_page_data()
+    if not pack:
+        return _it_empty_page()
+    total_terms = sum(d["term_count"] for d in datasets)
+    return render_template_string(r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>IT Concepts & Matching - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home medical-study-page it-study-page"><div class="dashboard-shell">""" + _IT_SIDEBAR + r"""
+<main class="dashboard-main medical-main"><header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">IT STUDY · CONCEPTS</div><h1>Concepts &amp; Matching</h1><p>Choose an installed IT study bank, configure the round, and launch focused matching practice.</p></div></header>
+<section class="medical-summary-grid medical-subpage-summary"><article class="dashboard-stat-card"><span>Study Banks</span><strong>{{ datasets|length }}</strong><small>installed IT datasets</small></article><article class="dashboard-stat-card"><span>Total Concepts</span><strong>{{ total_terms }}</strong><small>across available banks</small></article><article class="dashboard-stat-card medical-subpage-back-card"><span>IT Study</span><a href="/it">← Back to IT Study</a><small>choose another study area</small></article></section>
+{% if datasets %}<section class="dashboard-panel medical-compact-dataset-panel"><div class="medical-compact-panel-heading"><div><span class="medical-eyebrow">INSTALLED IT CONTENT</span><h2>Study Banks</h2><p>Expand a row for details or launch a quiz directly.</p></div><div class="medical-compact-panel-actions"><button type="button" class="medical-ai-secondary-button" onclick="document.querySelectorAll('.it-detail-row').forEach(r=>r.hidden=false)">Expand All</button><button type="button" class="medical-ai-secondary-button" onclick="document.querySelectorAll('.it-detail-row').forEach(r=>r.hidden=true)">Collapse All</button></div></div><div class="study-dataset-table-wrap medical-dataset-table-wrap"><table class="study-dataset-table medical-dataset-table"><thead><tr><th>Type</th><th>Study Bank</th><th>Concepts</th><th>Round Options</th><th class="study-dataset-action-col">Action</th></tr></thead><tbody>
+{% for d in datasets %}<tr><td><span class="study-type-badge matching">Matching</span></td><td><button type="button" class="study-dataset-title-button" onclick="const r=document.getElementById('it-match-{{ loop.index }}');r.hidden=!r.hidden">{{ d.title }}</button><small>{{ d.category }}</small></td><td><strong>{{ d.term_count }}</strong><small>items</small></td><td><form id="it-match-form-{{ loop.index }}" method="POST" action="/study-packs/generate"></form><div class="study-table-inline-form"><input form="it-match-form-{{ loop.index }}" type="hidden" name="pack_id" value="{{ d.pack_id }}"><input form="it-match-form-{{ loop.index }}" type="hidden" name="dataset_id" value="{{ d.id }}"><label><span>Pairs</span><input form="it-match-form-{{ loop.index }}" type="number" name="round_size" min="2" max="{{ d.term_count }}" value="{{ 10 if d.term_count >= 10 else d.term_count }}"></label><label><span>Direction</span><select form="it-match-form-{{ loop.index }}" name="direction"><option value="random">Random</option><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option></select></label></div></td><td class="study-dataset-action-col"><button form="it-match-form-{{ loop.index }}" class="medical-primary-button study-table-primary" type="submit">Create Quiz</button></td></tr><tr id="it-match-{{ loop.index }}" class="study-dataset-detail-row it-detail-row" hidden><td colspan="5"><div class="medical-dataset-detail-content"><p>{{ d.description or 'No additional description supplied.' }}</p><div class="medical-dataset-detail-meta"><span><strong>Pack:</strong> {{ d.pack_name }}</span><span><strong>Dataset:</strong> {{ d.id }}</span></div></div></td></tr>{% endfor %}
+</tbody></table></div></section>{% else %}<section class="dashboard-panel pack-empty-card"><h2>No IT matching datasets installed</h2><p>Create or install an IT / Cybersecurity Study Pack to populate this page.</p></section>{% endif %}
+</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script></body></html>
+""", pack=pack, datasets=datasets, total_terms=total_terms, it_section="matching")
+
+
+@app.route("/it/images")
+def it_images():
+    pack, datasets, image_datasets, quiz_datasets = _it_pack_page_data()
+    if not pack:
+        return _it_empty_page()
+    total_images = sum(d["image_count"] for d in image_datasets)
+    total_hotspots = sum(d["hotspot_count"] for d in image_datasets)
+    return render_template_string(r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>IT Diagrams & Images - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home medical-study-page it-study-page"><div class="dashboard-shell">""" + _IT_SIDEBAR + r"""
+<main class="dashboard-main medical-main"><header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">IT STUDY · VISUAL PRACTICE</div><h1>Diagrams &amp; Images</h1><p>Practice visual identification from installed IT diagrams, hardware images, architecture figures, and other source-documented visuals.</p></div></header>
+<section class="medical-summary-grid medical-subpage-summary"><article class="dashboard-stat-card"><span>Image Sets</span><strong>{{ image_datasets|length }}</strong><small>installed visual datasets</small></article><article class="dashboard-stat-card"><span>Targets</span><strong>{{ total_hotspots }}</strong><small>across {{ total_images }} images</small></article><article class="dashboard-stat-card medical-subpage-back-card"><span>IT Study</span><a href="/it">← Back to IT Study</a><small>choose another study area</small></article></section>
+{% if image_datasets %}<section class="dashboard-panel medical-compact-dataset-panel"><div class="medical-compact-panel-heading"><div><span class="medical-eyebrow">INSTALLED VISUAL CONTENT</span><h2>Image Study Sets</h2><p>Launch image practice or expand a row for source-pack details.</p></div></div><div class="study-dataset-table-wrap medical-dataset-table-wrap"><table class="study-dataset-table medical-dataset-table"><thead><tr><th>Type</th><th>Image Study Set</th><th>Images</th><th>Targets</th><th class="study-dataset-action-col">Action</th></tr></thead><tbody>
+{% for d in image_datasets %}<tr><td><span class="study-type-badge image">Image</span></td><td><button type="button" class="study-dataset-title-button" onclick="const r=document.getElementById('it-image-{{ loop.index }}');r.hidden=!r.hidden">{{ d.title }}</button><small>{{ d.category }}</small></td><td><strong>{{ d.image_count }}</strong></td><td><strong>{{ d.hotspot_count }}</strong></td><td class="study-dataset-action-col"><form method="POST" action="/study-packs/image/generate"><input type="hidden" name="pack_id" value="{{ d.pack_id }}"><input type="hidden" name="dataset_id" value="{{ d.id }}"><button class="medical-primary-button study-table-primary" type="submit">Create Quiz</button></form></td></tr><tr id="it-image-{{ loop.index }}" class="study-dataset-detail-row" hidden><td colspan="5"><div class="medical-dataset-detail-content"><p>{{ d.description or 'No additional description supplied.' }}</p><div class="medical-dataset-detail-meta"><span><strong>Pack:</strong> {{ d.pack_name }}</span><span><strong>Dataset:</strong> {{ d.id }}</span></div></div></td></tr>{% endfor %}
+</tbody></table></div></section>{% else %}<section class="dashboard-panel pack-empty-card"><h2>No IT image datasets installed</h2><p>Create or install an IT / Cybersecurity Study Pack with image datasets to populate this page.</p></section>{% endif %}
+</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script></body></html>
+""", pack=pack, image_datasets=image_datasets, total_images=total_images, total_hotspots=total_hotspots, it_section="images")
 
 
 # =========================
@@ -14424,6 +14660,31 @@ def record_attempt():
 
 
 
+def _quiz_history_origin(registry_entry, packs=None):
+    """Return a user-facing origin label for History without changing DB schema."""
+    entry = registry_entry if isinstance(registry_entry, dict) else {}
+    explicit = str(entry.get("source_type") or "").strip().lower()
+    explicit_labels = {
+        "law": {"key": "law", "label": "Law"},
+        "medical": {"key": "medical", "label": "Medical"},
+        "it": {"key": "it", "label": "IT"},
+        "study-pack": {"key": "study-pack", "label": "Study Pack"},
+    }
+    if explicit in explicit_labels:
+        return explicit_labels[explicit]
+
+    source_pack_id = str(entry.get("source_pack_id") or "").strip().lower()
+    if source_pack_id:
+        packs = packs if isinstance(packs, dict) else discover_content_packs()
+        pack = packs.get(source_pack_id) or {}
+        if _is_medical_pack_manifest(source_pack_id, pack):
+            return {"key": "medical", "label": "Medical"}
+        if _is_it_pack_manifest(source_pack_id, pack):
+            return {"key": "it", "label": "IT"}
+        return {"key": "study-pack", "label": "Study Pack"}
+    return {"key": "quiz", "label": "Quiz"}
+
+
 @app.route("/api/attempts")
 def api_attempts():
     conn = get_db()
@@ -14442,6 +14703,7 @@ def api_attempts():
     registry = load_registry()
 
     registry_map = {}
+    installed_packs = discover_content_packs()
     for q in registry:
         rid = q.get("id", q.get("quiz_id", q.get("timestamp")))
         try:
@@ -14524,6 +14786,9 @@ def api_attempts():
         # - else fall back to integer PK
         public_attempt_id = row["attempt_id"] or row["attempt_pk"]
 
+        registry_entry = registry_map.get(quiz_id_norm, {}) if isinstance(quiz_id_norm, int) else {}
+        origin = _quiz_history_origin(registry_entry, installed_packs)
+
         attempt_obj = {
             # UI fields expected by history/dashboard/review:
             "id": public_attempt_id,
@@ -14536,6 +14801,10 @@ def api_attempts():
             "completed_at": row["completed_at"],
             "time_remaining": row["time_remaining"],
             "mode": row["mode"],
+            "origin_key": origin["key"],
+            "origin": origin["label"],
+            "source_pack_id": registry_entry.get("source_pack_id") if isinstance(registry_entry, dict) else None,
+            "source_dataset_id": registry_entry.get("source_dataset_id") if isinstance(registry_entry, dict) else None,
 
             # Extra debug/compat fields:
             "attempt_pk": row["attempt_pk"],

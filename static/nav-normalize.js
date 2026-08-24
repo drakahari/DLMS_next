@@ -5,12 +5,14 @@
   const path = window.location.pathname || '/';
   const params = new URLSearchParams(window.location.search || '');
   const medicalBuilder = path === '/study-packs/ai-builder' && params.get('from') === 'medical';
+  const itBuilder = path === '/study-packs/ai-builder' && params.get('from') === 'it';
 
   const isActive = (key) => {
     if (key === 'dashboard') return path === '/';
     if (key === 'library') return path === '/library' || path.startsWith('/edit_quiz') || path.startsWith('/quiz/');
     if (key === 'build') return path === '/upload';
-    if (key === 'study') return path.startsWith('/study-packs') && !medicalBuilder;
+    if (key === 'study') return path.startsWith('/study-packs') && !medicalBuilder && !itBuilder;
+    if (key === 'it') return path === '/it' || path.startsWith('/it/') || itBuilder;
     if (key === 'law') return path === '/law' || path.startsWith('/law/');
     if (key === 'medical') return path === '/medical' || path.startsWith('/medical/') || medicalBuilder;
     if (key === 'history') return path === '/history' || path.startsWith('/review');
@@ -27,6 +29,7 @@
   const item = (key, href, icon, label) => `<a class="dashboard-nav-item${isActive(key) ? ' active' : ''}" href="${href}"${isActive(key) ? ' aria-current="page"' : ''}><span class="dashboard-nav-icon">${icon}</span><span>${label}</span></a>`;
   const sub = (href, icon, label, active=false) => `<a class="dashboard-nav-subitem${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="dashboard-nav-subicon">${icon}</span><span>${label}</span></a>`;
 
+  const itOpen = isActive('it');
   const medicalOpen = isActive('medical');
   const ankiOpen = isActive('anki');
   const primary = document.createElement('nav');
@@ -37,6 +40,8 @@
     item('library','/library','▤','Quiz Library'),
     item('build','/upload','✎','Build Quiz'),
     item('study','/study-packs','▣','Study Packs'),
+    item('it','/it','⌘','IT Study'),
+    itOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/it/matching','↳','Concepts & Matching', path === '/it/matching')}${sub('/it/images','↳','Diagrams & Images', path === '/it/images')}${sub('/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&from=it','↳','AI Study Pack Builder', itBuilder)}</div>` : '',
     item('law','/law','⚖','Law Study'),
     item('medical','/medical','✚','Medical Study'),
     medicalOpen ? `<div class="dashboard-nav-submenu medical-global-submenu normalized-open">${sub('/medical/matching','↳','Terminology & Matching', path === '/medical/matching')}${sub('/medical/anatomy','↳','Anatomy & Images', path === '/medical/anatomy')}${sub('/study-packs/ai-builder?domain=Medical&from=medical','↳','AI Study Pack Builder', medicalBuilder)}</div>` : '',

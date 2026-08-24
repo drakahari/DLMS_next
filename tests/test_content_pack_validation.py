@@ -9,7 +9,32 @@ _TEMP = tempfile.TemporaryDirectory(prefix="dlms-pack-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 import app as dlms
 
+
+def _bind_dlms_test_paths():
+    """Rebind app module paths so this suite is isolated regardless of import order."""
+    root = Path(_TEMP.name)
+    dlms.APP_DATA_DIR = str(root)
+    dlms.CONTENT_PACK_FOLDER = str(root / "content_packs")
+    dlms.QUIZ_ASSET_FOLDER = str(root / "quiz_assets")
+    dlms.DATA_FOLDER = str(root / "data")
+    dlms.QUIZ_FOLDER = str(root / "quizzes")
+    dlms.CONFIG_FOLDER = str(root / "config")
+    dlms.REGISTRY_FILE = str(root / "config" / "quizzes.json")
+    dlms.CONTENT_PACK_STAGING_FOLDER = str(root / "content_pack_staging")
+    for path in (
+        dlms.CONTENT_PACK_FOLDER,
+        dlms.QUIZ_ASSET_FOLDER,
+        dlms.DATA_FOLDER,
+        dlms.QUIZ_FOLDER,
+        dlms.CONFIG_FOLDER,
+        dlms.CONTENT_PACK_STAGING_FOLDER,
+    ):
+        os.makedirs(path, exist_ok=True)
+
+
 class ContentPackValidationTests(unittest.TestCase):
+    def setUp(self):
+        _bind_dlms_test_paths()
     def make_pack(self, name="DLMS_Study_test"):
         root = Path(_TEMP.name)/name
         (root/"data").mkdir(parents=True, exist_ok=True)

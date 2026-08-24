@@ -93,6 +93,14 @@
                 </div>
                 <span class="history-table-count" id="historyAttemptCount">Loading…</span>
             </div>
+            <div class="history-origin-filters" aria-label="Filter history by origin">
+                <button type="button" class="history-origin-filter active" data-origin-filter="all">All</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="quiz">Quiz</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="it">IT</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="medical">Medical</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="study-pack">Study Pack</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="law">Law</button>
+            </div>
 
             <div id="dbHistoryBox" class="history-table-wrap" aria-live="polite">
                 <div class="history-table-empty"><p>Loading saved history…</p></div>
@@ -105,6 +113,7 @@
 const params = new URLSearchParams(window.location.search);
 const selectedAttemptId = params.get("attempt");
 let dbAttempts = [];
+let historyOriginFilter = "all";
 
 function asNumber(value, fallback = 0) {
     const n = Number(value);
@@ -161,13 +170,23 @@ function renderAttempts() {
         return;
     }
 
-    const sorted = [...dbAttempts].sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0));
+    const visibleAttempts = historyOriginFilter === "all"
+        ? dbAttempts
+        : dbAttempts.filter(a => (a.origin_key || "quiz") === historyOriginFilter);
+
+    if (!visibleAttempts.length) {
+        box.innerHTML = `<div class="history-table-empty"><div class="history-table-empty-icon">↶</div><h2>No attempts in this category</h2><p>Choose another origin filter to view saved attempts.</p></div>`;
+        return;
+    }
+
+    const sorted = [...visibleAttempts].sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0));
 
     box.innerHTML = `
         <table class="history-results-table">
             <thead>
                 <tr>
                     <th scope="col">Quiz</th>
+                    <th scope="col">Origin</th>
                     <th scope="col">Score</th>
                     <th scope="col">Date</th>
                     <th scope="col">Mode</th>
@@ -189,6 +208,7 @@ function renderAttempts() {
                                     <span>Attempt #${attemptId}</span>
                                 </div>
                             </td>
+                            <td><span class="history-origin-badge origin-${a.origin_key || "quiz"}">${a.origin || "Quiz"}</span></td>
                             <td>
                                 <div class="history-score-cell">
                                     <span class="history-score-badge ${scoreClass(percent)}">${percent}%</span>
@@ -252,6 +272,14 @@ document.getElementById("shutdownBtn").addEventListener("click", async () => {
     } catch (err) {
         alert("DLMS may already be shutting down.");
     }
+});
+
+document.querySelectorAll(".history-origin-filter").forEach(button => {
+    button.addEventListener("click", () => {
+        historyOriginFilter = button.dataset.originFilter || "all";
+        document.querySelectorAll(".history-origin-filter").forEach(b => b.classList.toggle("active", b === button));
+        renderAttempts();
+    });
 });
 
 document.addEventListener("DOMContentLoaded", loadDbHistory);
