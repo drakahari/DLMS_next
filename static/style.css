@@ -8339,3 +8339,68 @@ body.it-study-page .medical-section-launch-icon,
 body.it-study-page .medical-ai-builder-teaser-icon {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+
+/* =========================================================
+   SMART PDF IMPORT
+   ========================================================= */
+.pdf-import-main { max-width: 1240px; }
+.pdf-import-intro { display:flex; align-items:center; justify-content:space-between; gap:22px; }
+.pdf-import-intro h2 { margin:5px 0 8px; }
+.pdf-import-intro p { margin:0; color:#aebed1; max-width:760px; }
+.pdf-import-badges { display:flex; flex-wrap:wrap; gap:7px; justify-content:flex-end; }
+.pdf-import-badges span,
+.pdf-import-source-note {
+    display:inline-flex; padding:5px 9px; border:1px solid rgba(87,151,222,.3);
+    border-radius:999px; color:#a9c9e9; background:rgba(12,43,75,.48); font-size:11px;
+}
+.pdf-import-upload-form { display:grid; grid-template-columns:2fr 2fr 1fr; gap:14px; align-items:end; }
+.pdf-import-rights { grid-column:1/-1; display:flex; gap:9px; align-items:flex-start; color:#b9c8da; font-size:13px; }
+.pdf-import-upload-form .build-submit-row { grid-column:1/-1; }
+.pdf-import-note strong { color:#d9ebff; }
+.pdf-import-note p { margin-bottom:0; color:#aebed1; }
+.pdf-import-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:18px 0; }
+.pdf-import-filter-row { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
+.pdf-import-filter-row button { margin:0; padding:8px 12px; background:rgba(9,29,52,.88); }
+.pdf-import-filter-row button.active { background:linear-gradient(135deg,#1565d8,#1c8cf0); }
+.pdf-import-question-list { display:grid; gap:14px; }
+.pdf-import-question-card { margin-top:0; padding:18px; }
+.pdf-import-question-card.status-review { border-color:rgba(245,158,11,.48); }
+.pdf-import-question-card.status-incomplete { border-color:rgba(239,68,68,.5); }
+.pdf-import-question-head { display:flex; justify-content:space-between; gap:18px; align-items:center; margin-bottom:12px; }
+.pdf-import-question-head > div { display:flex; align-items:center; flex-wrap:wrap; gap:9px; }
+.pdf-import-question-head small { color:#8499b1; }
+.pdf-status { display:inline-flex; padding:4px 8px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.05em; border:1px solid rgba(52,211,153,.34); color:#7ce6bd; background:rgba(6,78,59,.35); }
+.pdf-status.review { border-color:rgba(245,158,11,.44); color:#f4c76f; background:rgba(104,66,5,.34); }
+.pdf-status.incomplete { border-color:rgba(248,113,113,.42); color:#ff9d9d; background:rgba(112,20,30,.34); }
+.pdf-delete-toggle { display:flex; gap:7px; align-items:center; color:#ffaaaa; font-size:12px; }
+.pdf-import-issues { margin:0 0 14px; padding:10px 12px; border-radius:9px; border:1px solid rgba(245,158,11,.34); background:rgba(85,55,6,.25); color:#e8c783; font-size:12px; display:grid; gap:5px; }
+.pdf-import-choice-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:10px 0; }
+.pdf-choice-field span { color:#b7cee6; }
+.pdf-feedback-details { margin-top:12px; border:1px solid rgba(78,139,205,.22); border-radius:10px; padding:10px 12px; }
+.pdf-feedback-details summary { cursor:pointer; color:#9fd4ff; font-weight:700; }
+.pdf-feedback-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:10px; }
+.pdf-import-finalize { margin-bottom:14px; }
+.pdf-import-source-note { margin-top:12px; border-radius:8px; }
+.pdf-import-create-bar { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:28px; }
+.pdf-import-create-bar > div:first-child { display:grid; gap:4px; }
+.pdf-import-create-bar span { color:#9eb0c5; font-size:12px; }
+.build-option-card-pdf .build-option-icon { font-size:12px; font-weight:900; letter-spacing:.04em; }
+
+@media (max-width:900px) {
+  .pdf-import-upload-form { grid-template-columns:1fr; }
+  .pdf-import-upload-form .build-submit-row,.pdf-import-rights { grid-column:auto; }
+  .pdf-import-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .pdf-import-intro,.pdf-import-create-bar { align-items:stretch; flex-direction:column; }
+  .pdf-import-badges { justify-content:flex-start; }
+}
+@media (max-width:650px) {
+  .pdf-import-choice-grid,.pdf-feedback-grid { grid-template-columns:1fr; }
+}
+
+
+.pdf-import-flash-stack {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 14px;
+}

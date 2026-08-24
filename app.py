@@ -219,6 +219,7 @@ BACKGROUND_FOLDER = os.path.join(APP_DATA_DIR, "static", "bg")
 CONTENT_PACK_FOLDER = os.path.join(APP_DATA_DIR, "content_packs")
 QUIZ_ASSET_FOLDER = os.path.join(APP_DATA_DIR, "quiz_assets")
 IMAGE_BUILDER_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "image_builder_drafts")
+PDF_IMPORT_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "pdf_import_drafts")
 CONTENT_PACK_STAGING_FOLDER = os.path.join(APP_DATA_DIR, "content_pack_staging")
 
 
@@ -231,6 +232,7 @@ for d in [
     CONTENT_PACK_FOLDER,
     QUIZ_ASSET_FOLDER,
     IMAGE_BUILDER_DRAFT_FOLDER,
+    PDF_IMPORT_DRAFT_FOLDER,
     CONTENT_PACK_STAGING_FOLDER,
     LOGO_FOLDER,
     LAW_FOLDER,
@@ -8591,7 +8593,13 @@ def rebuild_quiz_json_from_db(quiz_id):
 
     questions = cur.execute(
         """
-        SELECT id, question_number, question_text, COALESCE(question_type, 'choice') AS question_type, matching_round_size, COALESCE(matching_direction, 'term_to_definition') AS matching_direction, source_organization, source_dataset, source_version, source_url, source_license
+        SELECT id, question_number, question_text,
+               COALESCE(question_type, 'choice') AS question_type,
+               matching_round_size,
+               COALESCE(matching_direction, 'term_to_definition') AS matching_direction,
+               COALESCE(explanation, '') AS explanation,
+               COALESCE(media_json, '{}') AS media_json,
+               source_organization, source_dataset, source_version, source_url, source_license
         FROM questions
         WHERE quiz_id = ?
         ORDER BY question_number, id
@@ -10553,6 +10561,691 @@ document.getElementById('addQuestionBtn').onclick=addQuestion;document.getElemen
 </body></html>
 """
 
+
+# =========================================================
+# SMART PDF IMPORT — QUESTION BANK MVP
+# Isolated from the existing text/paste/CSV parsers.
+# =========================================================
+PDF_IMPORT_MAX_BYTES = 64 * 1024 * 1024
+
+def _pdf_import_safe_id(value):
+    value = re.sub(r"[^A-Za-z0-9_-]+", "", str(value or ""))
+    return value[:80]
+
+def _pdf_import_draft_path(draft_id):
+    draft_id = _pdf_import_safe_id(draft_id)
+    if not draft_id:
+        raise ValueError("Invalid PDF import draft id")
+    return _safe_pack_child(PDF_IMPORT_DRAFT_FOLDER, f"{draft_id}.json")
+
+def _save_pdf_import_draft(draft):
+    draft_id = _pdf_import_safe_id(draft.get("id"))
+    if not draft_id:
+        raise ValueError("PDF import draft is missing an id")
+    os.makedirs(PDF_IMPORT_DRAFT_FOLDER, exist_ok=True)
+    with open(_pdf_import_draft_path(draft_id), "w", encoding="utf-8") as f:
+        json.dump(draft, f, indent=2, ensure_ascii=False)
+
+def _load_pdf_import_draft(draft_id):
+    path = _pdf_import_draft_path(draft_id)
+    if not os.path.isfile(path):
+        raise FileNotFoundError("PDF import draft not found")
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f) or {}
+
+def _pdf_clean_line(line):
+    line = str(line or "").replace("\u00ad", "").replace("\u200b", "")
+    line = line.replace("\ufeff", "").replace("\u00a0", " ")
+    line = re.sub(r"[ \t]+", " ", line).strip()
+    return line
+
+def _pdf_extract_pages(pdf_path):
+    """Extract selectable PDF text. No OCR is performed in this MVP."""
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        raise RuntimeError(
+            "Smart PDF Import requires the 'pypdf' package. Install project requirements and rebuild the binary."
+        ) from exc
+
+    reader = PdfReader(pdf_path)
+    pages = []
+    for page_number, page in enumerate(reader.pages, 1):
+        text = page.extract_text() or ""
+        lines = [_pdf_clean_line(line) for line in text.splitlines()]
+        pages.append({"page": page_number, "lines": [line for line in lines if line]})
+    return pages
+
+def _pdf_suppress_repeated_margins(pages):
+    """
+    Suppress likely repeated headers/footers/watermarks before semantic parsing.
+
+    We intentionally do not delete arbitrary repeated body text. A line must either:
+    - repeat in page margins on at least half the pages, or
+    - repeat on at least half the pages and look watermark-like (short brand text,
+      not question/choice/answer content).
+    """
+    if len(pages) < 2:
+        return pages, []
+
+    occurrences = {}
+    margin_occurrences = {}
+    locations = {}
+
+    def _is_structural(line):
+        return bool(re.match(
+            r"^(?:question\s*#?\s*\d+|[A-Z]\.\s+|correct\s+answer:|why\s+the\s+other\s+options)",
+            line,
+            re.I,
+        ))
+
+    for page in pages:
+        lines = page["lines"]
+        margin_indexes = set(range(min(3, len(lines))))
+        margin_indexes.update(range(max(0, len(lines) - 3), len(lines)))
+
+        seen_on_page = set()
+        seen_margin_on_page = set()
+        for idx, line in enumerate(lines):
+            if not line or _is_structural(line):
+                continue
+            norm = re.sub(r"\s+", " ", line).strip().casefold()
+            if not norm:
+                continue
+            if norm not in seen_on_page:
+                occurrences[norm] = occurrences.get(norm, 0) + 1
+                locations.setdefault(norm, set()).add(page["page"])
+                seen_on_page.add(norm)
+            if idx in margin_indexes and norm not in seen_margin_on_page:
+                margin_occurrences[norm] = margin_occurrences.get(norm, 0) + 1
+                seen_margin_on_page.add(norm)
+
+    threshold = max(2, (len(pages) + 1) // 2)
+    repeated = set()
+
+    for norm, count in occurrences.items():
+        if count < threshold or len(locations.get(norm, ())) < threshold:
+            continue
+
+        # Strong case: repeated in page margins.
+        if margin_occurrences.get(norm, 0) >= threshold:
+            repeated.add(norm)
+            continue
+
+        # Watermark-like repeated brand text anywhere on the page.
+        # Keep this conservative: short, no sentence punctuation, and not study prose.
+        if (
+            len(norm) <= 48
+            and not re.search(r"[?.!,:;]", norm)
+            and len(norm.split()) <= 5
+            and not re.search(
+                r"\b(?:question|answer|correct|incorrect|tester|application|security|penetration|which|following)\b",
+                norm,
+                re.I,
+            )
+        ):
+            repeated.add(norm)
+
+    removed = sorted({
+        line
+        for page in pages
+        for line in page["lines"]
+        if re.sub(r"\s+", " ", line).strip().casefold() in repeated
+    })
+
+    cleaned = []
+    for page in pages:
+        cleaned.append({
+            "page": page["page"],
+            "lines": [
+                line for line in page["lines"]
+                if re.sub(r"\s+", " ", line).strip().casefold() not in repeated
+            ]
+        })
+    return cleaned, removed
+
+def _pdf_lines_to_stream(pages):
+    records = []
+    for page in pages:
+        for line in page["lines"]:
+            records.append({"page": page["page"], "text": line})
+    return records
+
+def _pdf_join_wrapped(lines):
+    """Join wrapped PDF lines while preserving structural markers."""
+    if not lines:
+        return ""
+    out = ""
+    structural = re.compile(
+        r"^(?:Question\s*#?\s*\d+|[A-Z]\.\s+|Correct Answer:|Why The Other Options Are Incorrect)",
+        re.I,
+    )
+    for raw in lines:
+        line = _pdf_clean_line(raw)
+        if not line:
+            continue
+        if not out:
+            out = line
+            continue
+        if out.endswith("-") and line[:1].islower():
+            out = out[:-1] + line
+        elif structural.match(line):
+            out += "\n" + line
+        else:
+            out += " " + line
+    return out.strip()
+
+def _pdf_parse_question_chunk(number, records):
+    lines = [r["text"] for r in records if r.get("text")]
+    pages = sorted({int(r["page"]) for r in records if r.get("page")})
+    if not lines:
+        return None
+
+    answer_idx = None
+    answer_match = None
+    for i, line in enumerate(lines):
+        m = re.search(r"Correct\s+Answer:\s*([A-Z])(?:\s*[—–-]\s*(.*?))?\s*✅?\s*$", line, re.I)
+        if m:
+            answer_idx = i
+            answer_match = m
+            break
+
+    choice_scan_end = answer_idx if answer_idx is not None else len(lines)
+    choice_starts = []
+    for i in range(choice_scan_end):
+        m = re.match(r"^([A-Z])\.\s+(.+)$", lines[i])
+        if m:
+            choice_starts.append((i, m.group(1).upper(), m.group(2).strip()))
+
+    # Keep a contiguous A/B/C... option run. Explanatory A./B. lines occur after the answer marker.
+    choices = []
+    if choice_starts:
+        run = [choice_starts[0]]
+        for item in choice_starts[1:]:
+            prev_label = run[-1][1]
+            if ord(item[1]) == ord(prev_label) + 1:
+                run.append(item)
+            elif len(run) < 2:
+                run = [item]
+            else:
+                break
+        if len(run) >= 2:
+            for pos, (line_idx, label, first_text) in enumerate(run):
+                end = run[pos + 1][0] if pos + 1 < len(run) else choice_scan_end
+                extra = lines[line_idx + 1:end]
+                text = _pdf_join_wrapped([first_text] + extra)
+                choices.append({"label": label, "text": text})
+
+    first_choice_index = choice_starts[0][0] if choices else choice_scan_end
+    stem_lines = lines[:first_choice_index]
+    question_text = _pdf_join_wrapped(stem_lines)
+
+    correct_label = answer_match.group(1).upper() if answer_match else ""
+    declared_answer_text = (answer_match.group(2) or "").strip(" ✅") if answer_match else ""
+
+    explanation = ""
+    feedback = {}
+    if answer_idx is not None:
+        after = lines[answer_idx + 1:]
+        why_idx = next(
+            (i for i, line in enumerate(after) if re.match(r"^Why The Other Options Are Incorrect", line, re.I)),
+            None,
+        )
+        explanation_lines = after if why_idx is None else after[:why_idx]
+        explanation = _pdf_join_wrapped(explanation_lines)
+        feedback_lines = [] if why_idx is None else after[why_idx + 1:]
+        current = None
+        buffer = []
+        for line in feedback_lines:
+            m = re.match(r"^([A-Z])\.\s+(.+)$", line)
+            if m:
+                if current:
+                    feedback[current] = _pdf_join_wrapped(buffer)
+                current = m.group(1).upper()
+                buffer = [m.group(2)]
+            elif current:
+                buffer.append(line)
+        if current:
+            feedback[current] = _pdf_join_wrapped(buffer)
+
+    issues = []
+    status = "complete"
+    labels = {c["label"] for c in choices}
+    if not question_text:
+        issues.append("Question text was not detected.")
+    if len(choices) < 2:
+        issues.append("Fewer than two answer choices were detected.")
+    if not correct_label:
+        issues.append("A correct-answer marker was not detected.")
+    elif correct_label not in labels:
+        issues.append(f"Correct answer {correct_label} does not match a detected choice.")
+    if declared_answer_text and correct_label in labels:
+        selected = next((c["text"] for c in choices if c["label"] == correct_label), "")
+        a = re.sub(r"\W+", "", selected).casefold()
+        b = re.sub(r"\W+", "", declared_answer_text).casefold()
+        if a and b and a != b:
+            issues.append("Correct-answer text does not exactly match the selected choice; review recommended.")
+
+    embedded_cue = re.search(
+        r"""(?ix)
+        \b(
+            refer\s+to\s+(?:the\s+)?(?:exhibit|image|figure|diagram|screenshot|output)
+          | review\s+(?:the\s+)?(?:exhibit|image|figure|diagram|screenshot|output)
+          | shown\s+below
+          | displayed\s+below
+          | see\s+(?:the\s+)?following\s+(?:code|snippet|payload|output|diagram|image|figure|screenshot)
+          | given\s+(?:the\s+)?following\s+(?:code|snippet|payload|output|diagram|image|figure|screenshot)
+          | following\s+(?:code\s+snippet|code|payload|output|diagram|image|figure|screenshot)
+          | analyze\s+(?:the\s+)?(?:following\s+)?(?:code|payload|output|diagram|image|figure|screenshot)
+        )\b
+        """,
+        question_text,
+    )
+    embedded_material_present = re.search(
+        r"""(?ix)
+        <\?xml
+        | <!DOCTYPE
+        | \bimport\s+\w+
+        | \bSELECT\b.+\bFROM\b
+        | \bcurl\b
+        | \bnmap\b
+        | \bfor\s+\w+\s+in\s+
+        | \bif\s+.+:
+        """,
+        question_text,
+    )
+    if embedded_cue and not embedded_material_present:
+        issues.append("Prompt references embedded/code/visual content that may not be present in extracted text.")
+
+    if issues:
+        status = "review" if question_text and len(choices) >= 2 else "incomplete"
+
+    return {
+        "number": int(number),
+        "question": question_text,
+        "choices": choices,
+        "correct": correct_label,
+        "declared_answer_text": declared_answer_text,
+        "explanation": explanation,
+        "choice_feedback": feedback,
+        "pages": pages,
+        "status": status,
+        "issues": issues,
+        "keep": True,
+    }
+
+def _pdf_parse_question_bank(pages):
+    stream = _pdf_lines_to_stream(pages)
+    starts = []
+    for idx, record in enumerate(stream):
+        m = re.match(r"^Question\s*#?\s*(\d+)\s*$", record["text"], re.I)
+        if m:
+            starts.append((idx, int(m.group(1))))
+
+    questions = []
+    for pos, (start_idx, number) in enumerate(starts):
+        end_idx = starts[pos + 1][0] if pos + 1 < len(starts) else len(stream)
+        q = _pdf_parse_question_chunk(number, stream[start_idx + 1:end_idx])
+        if q:
+            questions.append(q)
+
+    complete = sum(q["status"] == "complete" for q in questions)
+    review = sum(q["status"] == "review" for q in questions)
+    incomplete = sum(q["status"] == "incomplete" for q in questions)
+    return {
+        "type": "multiple_choice_question_bank",
+        "questions": questions,
+        "summary": {
+            "detected": len(questions),
+            "complete": complete,
+            "review": review,
+            "incomplete": incomplete,
+        }
+    }
+
+@app.route("/pdf-import")
+def pdf_import_page():
+    template = r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Smart PDF Import - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+<div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav>
+<div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav>
+<div class="dashboard-sidebar-version">Smart PDF Import</div></aside>
+<main class="dashboard-main pdf-import-main">
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="pdf-import-flash-stack">
+{% for category, message in messages %}
+<div class="flash {{ category }}">{{ message }}</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · PREVIEW</div><h1>Import a Question-Bank PDF</h1><p>DLMS extracts selectable PDF text, detects question boundaries, choices, explicit answer keys, and explanations, then lets you repair anything before creating a quiz.</p></div></header>
+<section class="dashboard-panel pdf-import-intro"><div><span class="build-method-label">SAFE ADDITIVE WORKFLOW</span><h2>Your existing parsers are untouched</h2><p>This is a separate importer. The original text upload, paste parser, CSV matching importer, manual builder, and image builder continue to work exactly as before.</p></div>
+<div class="pdf-import-badges"><span>Question # detection</span><span>A/B/C/D choices</span><span>Correct Answer markers</span><span>Cross-page questions</span><span>Inline repair</span></div></section>
+<section class="dashboard-panel">
+<form action="/pdf-import/analyze" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form">
+<label class="build-field"><span>PDF file</span><input type="file" name="pdf_file" accept=".pdf,application/pdf" required><small>Selectable-text PDFs work best. This preview does not perform OCR.</small></label>
+<label class="build-field"><span>Quiz title</span><input type="text" name="quiz_title" placeholder="Example: PenTest+ PDF Practice"><small>You can change this again on the review screen.</small></label>
+<label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label>
+<label class="pdf-import-rights"><input type="checkbox" name="rights_ok" required><span>I have permission to use this document for my own study. DLMS will treat the imported material as user-provided and not cleared for redistribution.</span></label>
+<div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Quiz</a><button class="build-primary-button" type="submit">Analyze PDF</button></div>
+</form></section>
+<section class="dashboard-panel pdf-import-note"><strong>Current sample scope</strong><p>This first implementation targets structured multiple-choice question banks with explicit question markers and answer keys. It deliberately flags ambiguous or embedded-content questions instead of guessing.</p></section>
+</main></div><script>document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));</script><script src="/static/nav-normalize.js"></script></body></html>
+"""
+    return render_template_string(template)
+
+@app.route("/pdf-import/analyze", methods=["POST"])
+def pdf_import_analyze():
+    upload = request.files.get("pdf_file")
+    if not upload or not upload.filename:
+        flash("Choose a PDF to analyze.", "error")
+        return redirect("/pdf-import")
+    if not str(upload.filename).lower().endswith(".pdf"):
+        flash("Smart PDF Import currently accepts PDF files only.", "error")
+        return redirect("/pdf-import")
+    if not request.form.get("rights_ok"):
+        flash("Confirm that you have permission to use the document for your own study.", "error")
+        return redirect("/pdf-import")
+
+    draft_id = secrets.token_urlsafe(12).replace("-", "").replace("_", "")[:20]
+    source_name = secure_filename(upload.filename) or "study.pdf"
+    temp_pdf = os.path.join(PDF_IMPORT_DRAFT_FOLDER, f"{draft_id}.pdf")
+    os.makedirs(PDF_IMPORT_DRAFT_FOLDER, exist_ok=True)
+    upload.save(temp_pdf)
+    try:
+        if os.path.getsize(temp_pdf) > PDF_IMPORT_MAX_BYTES:
+            raise ValueError("PDF exceeds the 64 MB Smart PDF Import limit.")
+        pages = _pdf_extract_pages(temp_pdf)
+        pages, removed_margins = _pdf_suppress_repeated_margins(pages)
+        result = _pdf_parse_question_bank(pages)
+        if not result["questions"]:
+            raise ValueError(
+                "No structured 'Question #N' question bank was detected. "
+                "This MVP intentionally does not guess at unknown PDF layouts."
+            )
+        draft = {
+            "id": draft_id,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "source_name": source_name,
+            "source_kind": "user-provided-pdf",
+            "redistribution_status": "not-cleared-for-redistribution",
+            "quiz_title": (request.form.get("quiz_title") or "").strip() or os.path.splitext(source_name)[0],
+            "exam_minutes": normalize_exam_minutes(request.form.get("exam_minutes")),
+            "page_count": len(pages),
+            "removed_margin_text": removed_margins,
+            **result,
+        }
+        _save_pdf_import_draft(draft)
+    except Exception as exc:
+        try:
+            os.remove(temp_pdf)
+        except OSError:
+            pass
+        flash(f"PDF analysis failed: {exc}", "error")
+        return redirect("/pdf-import")
+    finally:
+        try:
+            os.remove(temp_pdf)
+        except OSError:
+            pass
+    return redirect(f"/pdf-import/review/{draft_id}")
+
+@app.route("/pdf-import/review/<draft_id>")
+def pdf_import_review(draft_id):
+    try:
+        draft = _load_pdf_import_draft(draft_id)
+    except Exception as exc:
+        flash(str(exc), "error")
+        return redirect("/pdf-import")
+
+    template = r"""
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Review PDF Import - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">PDF Review</div></aside>
+<main class="dashboard-main pdf-import-main">
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="pdf-import-flash-stack">
+{% for category, message in messages %}
+<div class="flash {{ category }}">{{ message }}</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · REVIEW</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. Edit anything DLMS misread, or delete a question before creating the quiz.</p></div></header>
+<section class="pdf-import-summary-grid">
+<article class="dashboard-stat-card"><span>Detected</span><strong>{{ draft.summary.detected }}</strong><small>questions</small></article>
+<article class="dashboard-stat-card"><span>Complete</span><strong>{{ draft.summary.complete }}</strong><small>ready</small></article>
+<article class="dashboard-stat-card"><span>Review</span><strong>{{ draft.summary.review }}</strong><small>needs attention</small></article>
+<article class="dashboard-stat-card"><span>Incomplete</span><strong>{{ draft.summary.incomplete }}</strong><small>repair or remove</small></article>
+</section>
+<div class="pdf-import-filter-row"><button type="button" data-filter="all" class="active">All</button><button type="button" data-filter="complete">Complete</button><button type="button" data-filter="review">Needs Review</button><button type="button" data-filter="incomplete">Incomplete</button></div>
+<form method="POST" action="/pdf-import/save/{{ draft.id }}" id="pdfReviewForm">\n<input type="hidden" name="review_payload" id="pdfReviewPayload" value="">
+<section class="dashboard-panel pdf-import-finalize"><div class="build-two-column-fields"><label class="build-field"><span>Quiz title</span><input name="quiz_title" value="{{ draft.quiz_title }}" required form="pdfReviewForm"></label><label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ draft.exam_minutes }}" form="pdfReviewForm"></label></div><div class="pdf-import-source-note">Source: user-provided PDF · redistribution status: not cleared for redistribution</div></section>
+<div class="pdf-import-question-list">
+{% for q in draft.questions %}
+<article class="dashboard-panel pdf-import-question-card status-{{ q.status }}" data-status="{{ q.status }}" data-question-index="{{ loop.index0 }}" data-question-number="{{ q.number }}">
+<div class="pdf-import-question-head"><div><span class="pdf-status {{ q.status }}">{{ q.status|replace("_"," ")|upper }}</span><strong>Question {{ q.number }}</strong><small>PDF page{% if q.pages|length != 1 %}s{% endif %} {{ q.pages|join(", ") }}</small></div><label class="pdf-delete-toggle"><input type="checkbox" name="delete_{{ loop.index0 }}" value="1" form="pdfReviewForm" data-pdf-role="delete"><span>Delete question</span></label></div>
+{% if q.issues %}<div class="pdf-import-issues">{% for issue in q.issues %}<div>⚠ {{ issue }}</div>{% endfor %}</div>{% endif %}
+<input type="hidden" name="original_number_{{ loop.index0 }}" value="{{ q.number }}" form="pdfReviewForm">
+<label class="build-field"><span>Question text</span><textarea name="question_{{ loop.index0 }}" rows="4" form="pdfReviewForm" data-pdf-role="question">{{ q.question }}</textarea></label>
+<div class="pdf-import-choice-grid">
+{% for choice in q.choices %}
+<label class="build-field pdf-choice-field"><span>{{ choice.label }}{% if choice.label == q.correct %} · detected correct{% endif %}</span><input name="choice_{{ loop.index0 }}_{{ choice.label }}" value="{{ choice.text }}" form="pdfReviewForm" data-pdf-role="choice" data-choice-label="{{ choice.label }}"></label>
+{% endfor %}
+</div>
+<div class="build-two-column-fields">
+<label class="build-field"><span>Correct answer</span><select name="correct_{{ loop.index0 }}" form="pdfReviewForm" data-pdf-role="correct">{% for choice in q.choices %}<option value="{{ choice.label }}" {% if choice.label == q.correct %}selected{% endif %}>{{ choice.label }} — {{ choice.text }}</option>{% endfor %}</select></label>
+<label class="build-field"><span>Detected answer text</span><input value="{{ q.declared_answer_text }}" readonly></label>
+</div>
+<label class="build-field"><span>Study Mode explanation</span><textarea name="explanation_{{ loop.index0 }}" rows="4" form="pdfReviewForm" data-pdf-role="explanation">{{ q.explanation }}</textarea></label>
+{% if q.choice_feedback %}<details class="pdf-feedback-details"><summary>Detected incorrect-choice explanations</summary><div class="pdf-feedback-grid">{% for label, text in q.choice_feedback.items() %}<label class="build-field"><span>{{ label }} feedback</span><textarea name="feedback_{{ loop.index0 }}_{{ label }}" rows="2" form="pdfReviewForm" data-pdf-role="feedback" data-choice-label="{{ label }}">{{ text }}</textarea></label>{% endfor %}</div></details>{% endif %}
+</article>
+{% endfor %}
+</div>
+<section class="dashboard-panel pdf-import-create-bar"><div><strong>Create only what you reviewed.</strong><span>Deleted questions are skipped. DLMS refuses to create any remaining question without choices and a selected correct answer.</span></div><div class="build-submit-row"><a class="build-secondary-link" href="/pdf-import">Start Over</a><button class="build-primary-button" type="submit" form="pdfReviewForm">Create Quiz from Reviewed Questions</button></div></section>
+</form></main></div>
+<script>
+document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
+document.querySelectorAll(".pdf-import-filter-row button").forEach(btn=>btn.addEventListener("click",()=>{
+ document.querySelectorAll(".pdf-import-filter-row button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");
+ const f=btn.dataset.filter;document.querySelectorAll(".pdf-import-question-card").forEach(card=>card.hidden=f!=="all"&&card.dataset.status!==f);
+}));
+const pdfReviewForm=document.getElementById("pdfReviewForm");
+if(pdfReviewForm){
+ pdfReviewForm.addEventListener("submit",()=>{
+  const payload=[];
+  document.querySelectorAll(".pdf-import-question-card").forEach(card=>{
+   const choices=[];
+   card.querySelectorAll('[data-pdf-role="choice"]').forEach(input=>{
+    choices.push({label:input.dataset.choiceLabel||"",text:input.value||""});
+   });
+   const feedback={};
+   card.querySelectorAll('[data-pdf-role="feedback"]').forEach(input=>{
+    feedback[input.dataset.choiceLabel||""]=input.value||"";
+   });
+   payload.push({
+    index:Number(card.dataset.questionIndex||0),
+    number:Number(card.dataset.questionNumber||0),
+    delete:!!card.querySelector('[data-pdf-role="delete"]')?.checked,
+    question:card.querySelector('[data-pdf-role="question"]')?.value||"",
+    choices,
+    correct:card.querySelector('[data-pdf-role="correct"]')?.value||"",
+    explanation:card.querySelector('[data-pdf-role="explanation"]')?.value||"",
+    feedback
+   });
+  });
+  const hidden=document.getElementById("pdfReviewPayload");
+  if(hidden) hidden.value=JSON.stringify(payload);
+ });
+}
+</script><script src="/static/nav-normalize.js"></script></body></html>
+"""
+    return render_template_string(template, draft=draft)
+
+@app.route("/pdf-import/save/<draft_id>", methods=["POST"])
+def pdf_import_save(draft_id):
+    try:
+        draft = _load_pdf_import_draft(draft_id)
+    except Exception as exc:
+        flash(str(exc), "error")
+        return redirect("/pdf-import")
+
+    quiz_title = (request.form.get("quiz_title") or "").strip()
+    exam_minutes = normalize_exam_minutes(request.form.get("exam_minutes"))
+    if not quiz_title:
+        flash("Quiz title is required.", "error")
+        return redirect(f"/pdf-import/review/{draft_id}")
+
+    quiz_data = []
+
+    submitted_items = None
+    raw_payload = (request.form.get("review_payload") or "").strip()
+    if raw_payload:
+        try:
+            parsed_payload = json.loads(raw_payload)
+            if isinstance(parsed_payload, list):
+                submitted_items = parsed_payload
+        except Exception:
+            submitted_items = None
+
+    originals = draft.get("questions") or []
+    for idx, original in enumerate(originals):
+        submitted = None
+        if submitted_items is not None:
+            submitted = next(
+                (item for item in submitted_items
+                 if isinstance(item, dict) and int(item.get("index", -1)) == idx),
+                None,
+            )
+
+        if submitted is not None:
+            if bool(submitted.get("delete")):
+                continue
+            question = str(submitted.get("question") or "").strip()
+            choices = []
+            for raw_choice in submitted.get("choices") or []:
+                if not isinstance(raw_choice, dict):
+                    continue
+                label = str(raw_choice.get("label") or "").strip().upper()
+                text = str(raw_choice.get("text") or "").strip()
+                if label and text:
+                    choices.append({"label": label, "text": text, "is_correct": False})
+            correct = str(submitted.get("correct") or "").strip().upper()
+        else:
+            if request.form.get(f"delete_{idx}"):
+                continue
+            question = (request.form.get(f"question_{idx}") or "").strip()
+            choices = []
+            for choice in original.get("choices") or []:
+                label = str(choice.get("label") or "").strip().upper()
+                text = (request.form.get(f"choice_{idx}_{label}") or "").strip()
+                if label and text:
+                    choices.append({"label": label, "text": text, "is_correct": False})
+            correct = (request.form.get(f"correct_{idx}") or "").strip().upper()
+
+        labels = {c["label"] for c in choices}
+        if not question or len(choices) < 2 or correct not in labels:
+            missing = []
+            if not question:
+                missing.append("question text")
+            if len(choices) < 2:
+                missing.append(f"answer choices ({len(choices)} detected/submitted)")
+            if not correct:
+                missing.append("correct answer")
+            elif correct not in labels:
+                missing.append(f"correct answer {correct} does not match submitted choices")
+            detail = ", ".join(missing) or "required question data"
+            transport = "serialized review payload" if submitted is not None else "form fields"
+            flash(
+                f"Question {original.get('number')} cannot be created: {detail}. "
+                f"Review data received via {transport}. "
+                "Repair it or mark it for deletion.",
+                "error",
+            )
+            return redirect(f"/pdf-import/review/{draft_id}")
+
+        for c in choices:
+            c["is_correct"] = c["label"] == correct
+
+        if submitted is not None:
+            explanation = str(submitted.get("explanation") or "").strip()
+            submitted_feedback = submitted.get("feedback") if isinstance(submitted.get("feedback"), dict) else {}
+        else:
+            explanation = (request.form.get(f"explanation_{idx}") or "").strip()
+            submitted_feedback = {}
+
+        feedback_parts = []
+        for c in choices:
+            if submitted is not None:
+                fb = str(submitted_feedback.get(c["label"]) or "").strip()
+            else:
+                fb = (request.form.get(f"feedback_{idx}_{c['label']}") or "").strip()
+            if fb:
+                feedback_parts.append(f"{c['label']}: {fb}")
+        if feedback_parts:
+            suffix = "Other option notes: " + " | ".join(feedback_parts)
+            explanation = f"{explanation}\n\n{suffix}".strip()
+
+        quiz_data.append({
+            "number": len(quiz_data) + 1,
+            "type": "choice",
+            "question": question,
+            "choices": choices,
+            "correct": [correct],
+            "explanation": explanation,
+            "source": {
+                "organization": "User-provided document",
+                "dataset": draft.get("source_name") or "PDF import",
+                "version": "",
+                "url": "",
+                "license": "User-provided; redistribution not cleared",
+            },
+        })
+
+    if not quiz_data:
+        flash("No questions remain to create.", "error")
+        return redirect(f"/pdf-import/review/{draft_id}")
+
+    ts = int(time.time() * 1000)
+    html_name = f"pdf_import_{ts}.html"
+    json_name = f"pdf_import_{ts}.json"
+    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
+        json.dump(quiz_data, f, indent=4, ensure_ascii=False)
+
+    quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
+    add_quiz_to_registry(
+        quiz_id=quiz_id,
+        html=html_name,
+        title=quiz_title,
+        logo=None,
+        exam_minutes=exam_minutes,
+    )
+    build_quiz_html(
+        html_name,
+        json_name,
+        os.path.join(QUIZ_FOLDER, html_name),
+        get_portal_title(),
+        quiz_title,
+        None,
+        quiz_id,
+        exam_minutes,
+    )
+    try:
+        os.remove(_pdf_import_draft_path(draft_id))
+    except OSError:
+        pass
+    flash(f"Created '{quiz_title}' from {len(quiz_data)} reviewed PDF question(s).", "success")
+    return redirect(f"/edit_quiz/{quiz_id}")
+
+
 @app.route("/upload")
 def upload_page():
     portal_title = get_portal_title()
@@ -10666,6 +11359,15 @@ def upload_page():
                         <span class="build-method-label">PASTE TEXT</span>
                         <h2>Paste questions</h2>
                         <p>Paste a full question set, preview parsing, then create the quiz.</p>
+                    </div>
+                    <span class="build-option-arrow" aria-hidden="true">›</span>
+                </a>
+                <a class="build-option-card build-option-card-pdf" href="/pdf-import">
+                    <div class="build-option-icon" aria-hidden="true">PDF</div>
+                    <div>
+                        <span class="build-method-label">SMART PDF IMPORT · PREVIEW</span>
+                        <h2>Analyze a question-bank PDF</h2>
+                        <p>Detect questions, choices, explicit answer keys, and explanations, then repair or delete anything before creating the quiz.</p>
                     </div>
                     <span class="build-option-arrow" aria-hidden="true">›</span>
                 </a>
