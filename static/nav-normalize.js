@@ -21,7 +21,7 @@
     if (key === 'settings') return path === '/settings';
     if (key === 'content') return path === '/content-packs' || path.startsWith('/content-packs/');
     if (key === 'image') return path === '/admin/image-editor' || path.startsWith('/admin/image-editor/') || path.startsWith('/admin/hotspots');
-    if (key === 'help') return path === '/help' || path.endsWith('help.html');
+    if (key === 'help') return path === '/help' || path.startsWith('/help/') || path.startsWith('/regex-help') || path.endsWith('help.html');
     if (key === 'maintenance') return path === '/admin/maintenance';
     return false;
   };

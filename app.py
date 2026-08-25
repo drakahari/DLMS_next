@@ -1556,6 +1556,28 @@ def help_quiz():
 def help_advanced():
     return send_from_directory("static", "advanced-features.html")
 
+HELP_TOPIC_FILES = {
+    "getting-started": "help-getting-started.html",
+    "quizzes": "help-quizzes.html",
+    "build-quiz": "help-build-quiz.html",
+    "smart-pdf": "help-smart-pdf.html",
+    "study-packs": "help-study-packs.html",
+    "study-modules": "help-study-modules.html",
+    "content-management": "help-content-management.html",
+    "history-analytics": "help-history-analytics.html",
+    "anki": "help-anki.html",
+    "settings": "help-settings.html",
+    "maintenance": "help-maintenance.html",
+    "troubleshooting": "help-troubleshooting.html",
+}
+
+@app.route("/help/<topic>")
+def help_topic(topic):
+    filename = HELP_TOPIC_FILES.get(str(topic or "").strip().lower())
+    if not filename:
+        return "Help topic not found", 404
+    return send_from_directory("static", filename)
+
 @app.route("/regex-help")
 @app.route("/regex-help/")
 def regex_help():
@@ -1591,12 +1613,14 @@ def admin_maintenance():
         <h2>Quiz Maintenance</h2>
 
         <p style="opacity:.8;">
-            Rebuild all existing quiz pages using the current DLMS application template.
-            This is useful after upgrading DLMS so older quizzes receive new interface features.
+            Re-render every registered quiz's generated HTML page using the current DLMS quiz-page template.
+            This is useful after upgrading DLMS so older quiz pages receive current interface/template features.
         </p>
 
-        <p style="opacity:.7; font-size:13px;">
-            Quiz questions, answers, IDs, registry entries, and attempt history are not changed.
+        <p style="opacity:.7; font-size:13px; line-height:1.5;">
+            This rebuilds the HTML wrapper only. It does not recreate quiz JSON, change questions or answers,
+            change quiz IDs/registry entries, or rewrite attempt history. It is a template refresh, not a repair
+            tool for missing or corrupt quiz data.
         </p>
 
         <button id="rebuildAllBtn">
