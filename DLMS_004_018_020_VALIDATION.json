@@ -1,0 +1,41 @@
+{
+  "source": "DLMS_v3_dev24.zip",
+  "app_version": "3.0.1",
+  "roadmap_items": {
+    "DLMS-004": {
+      "status": "implemented_pending_user_validation",
+      "summary": "Adds Other Studies navigation and a filtered Study Packs view for domains outside IT, Law, and Medical."
+    },
+    "DLMS-018": {
+      "status": "implemented_pending_user_validation",
+      "summary": "Adds editable Study Pack AI prompt template and separate Medical safety addendum in Settings > AI Integration, both with restore-to-default controls."
+    },
+    "DLMS-020": {
+      "status": "implemented_pending_user_validation",
+      "summary": "Adds shared spacing tokens and conservative layout/overflow guardrails without blanket-padding all dashboard panels."
+    }
+  },
+  "regression_guards": {
+    "route_count_before": 151,
+    "route_count_after": 151,
+    "routes_removed": 0,
+    "app_version_changed": false,
+    "smart_pdf_extract_unchanged": true,
+    "smart_pdf_question_parser_unchanged": true,
+    "smart_pdf_glossary_parser_unchanged": true,
+    "parse_questions_unchanged": true,
+    "build_quiz_html_unchanged": true,
+    "save_quiz_to_db_unchanged": true,
+    "python_compile": "pass",
+    "nav_javascript_syntax": "pass",
+    "css_braces_balanced": true
+  },
+  "changed_files": [
+    "app.py",
+    "static/style.css",
+    "static/nav-normalize.js",
+    "static/help-settings.html",
+    "static/help-study-packs.html",
+    "static/help-study-modules.html"
+  ]
+}

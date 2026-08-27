@@ -2791,6 +2791,8 @@ def load_portal_config():
         {{questions}}
         """,
         "law_ai_prompt_template": DEFAULT_LAW_AI_PROMPT,
+        "study_pack_ai_prompt_template": DEFAULT_STUDY_CONTENT_PACK_PROMPT,
+        "medical_study_pack_ai_addendum": DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
     }
 
     # Ensure config directory exists
@@ -5303,6 +5305,17 @@ The ZIP must contain exactly one root folder named DLMS_Study_<TOPIC_SLUG>/ with
 """
 
 
+DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM = r"""MEDICAL-SPECIFIC SAFETY AND SOURCE REQUIREMENTS
+- Treat this as educational medical study content only.
+- Prefer authoritative medical/OER/government sources and exact source-verified terminology.
+- Do not invent clinical facts, diagnostic claims, citations, licenses, structures, or image provenance.
+- Do not use synthetic or AI-generated anatomy, histology, pathology, radiology, or microscopy images as authoritative identification material.
+- Use only exact legally redistributable medical images with source/license/creator attribution documented at image level.
+- Keep concise matching definitions separate from richer Study Mode explanations.
+- Mark uncertain image hotspot geometry for DLMS Image Study Editor review rather than pretending it is calibrated."""
+
+
+
 def _study_pack_catalog():
     result = []
     for pack_id, pack in discover_content_packs().items():
@@ -5344,13 +5357,21 @@ def _study_pack_catalog():
 @app.route("/study-packs")
 def study_packs_home():
     packs = _study_pack_catalog()
+    domain_group = str(request.args.get("domain_group") or "").strip().lower()
+    other_mode = domain_group == "other"
+    if other_mode:
+        def _is_other_pack(pack):
+            raw = str(pack.get("domain") or "").strip().lower()
+            normalized = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
+            return normalized not in {"medical", "it", "it_cybersecurity", "cybersecurity", "law", "legal"}
+        packs = [pack for pack in packs if _is_other_pack(pack)]
     return render_template_string(r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Study Packs - DLMS</title>
+<title>{{ "Other Studies" if other_mode else "Study Packs" }} - DLMS</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/favicon.ico">
 </head>
@@ -5380,16 +5401,16 @@ def study_packs_home():
         <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
         <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
     </nav>
-    <div class="dashboard-sidebar-version">Study Packs</div>
+    <div class="dashboard-sidebar-version">{{ "Other Studies" if other_mode else "Study Packs" }}</div>
 </aside>
 
 <main class="dashboard-main study-packs-main">
     <header class="dashboard-header">
         <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
         <div>
-            <div class="medical-eyebrow">CUSTOM STUDY CONTENT</div>
-            <h1>Study Packs</h1>
-            <p>Launch focused practice from installed study content without scrolling through large card grids.</p>
+            <div class="medical-eyebrow">{{ "CROSS-DOMAIN STUDY" if other_mode else "CUSTOM STUDY CONTENT" }}</div>
+            <h1>{{ "Other Studies" if other_mode else "Study Packs" }}</h1>
+            <p>{{ "Study subjects outside the dedicated IT, Law, and Medical workspaces." if other_mode else "Launch focused practice from installed study content without scrolling through large card grids." }}</p>
         </div>
     </header>
 
@@ -5402,9 +5423,9 @@ def study_packs_home():
     {% endwith %}
 
     <section class="study-pack-launch-grid">
-        <a class="dashboard-panel study-pack-launch" href="/study-packs/ai-builder">
+        <a class="dashboard-panel study-pack-launch" href="{{ '/study-packs/ai-builder?domain=Other&from=other' if other_mode else '/study-packs/ai-builder' }}">
             <div class="study-pack-launch-icon">AI</div>
-            <div><span class="medical-eyebrow">CREATE</span><h2>AI Study Pack Builder</h2><p>Create a source-disciplined DLMS pack prompt for any subject.</p></div>
+            <div><span class="medical-eyebrow">CREATE</span><h2>AI Study Pack Builder</h2><p>{{ "Create a source-disciplined prompt for a subject outside IT, Law, or Medical." if other_mode else "Create a source-disciplined DLMS pack prompt for any subject." }}</p></div>
         </a>
         <a class="dashboard-panel study-pack-launch" href="/study-packs/image-builder">
             <div class="study-pack-launch-icon">▧</div>
@@ -5544,9 +5565,9 @@ def study_packs_home():
     </details>
     {% endfor %}
     {% else %}
-    <section class="dashboard-panel">
-        <h2>No usable study packs yet</h2>
-        <p>Create one with the AI Study Pack Builder, Build from Images, or install a compatible Content Pack.</p>
+    <section class="dashboard-panel pack-empty-card">
+        <h2>{{ "No Other Studies packs installed yet" if other_mode else "No usable study packs yet" }}</h2>
+        <p>{{ "Create a pack with the AI Study Pack Builder or install a compatible Content Pack whose domain is outside IT, Law, and Medical." if other_mode else "Create one with the AI Study Pack Builder, Build from Images, or install a compatible Content Pack." }}</p>
     </section>
     {% endif %}
 </main>
@@ -5572,7 +5593,7 @@ function toggleDatasetDetails(id){
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>
-""", packs=packs, medical_pack_installed=True)
+""", packs=packs, medical_pack_installed=True, other_mode=other_mode)
 
 
 
@@ -5720,8 +5741,10 @@ def study_pack_ai_builder():
         domain_slug = re.sub(r"[^a-z0-9]+","_",domain.lower()).strip("_") or "general"
 
         if topic:
+            study_pack_template = str(cfg.get("study_pack_ai_prompt_template") or DEFAULT_STUDY_CONTENT_PACK_PROMPT)
+            medical_addendum = str(cfg.get("medical_study_pack_ai_addendum") or DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM)
             generated_prompt = (
-                DEFAULT_STUDY_CONTENT_PACK_PROMPT
+                study_pack_template
                 .replace("{{domain}}", domain)
                 .replace("{{domain_slug}}", domain_slug)
                 .replace("{{topic}}", topic)
@@ -5731,17 +5754,7 @@ def study_pack_ai_builder():
                 .replace("{{image_guidance}}", image_guidance)
             )
             if domain == "Medical":
-                generated_prompt += r"""
-
-MEDICAL-SPECIFIC SAFETY AND SOURCE REQUIREMENTS
-- Treat this as educational medical study content only.
-- Prefer authoritative medical/OER/government sources and exact source-verified terminology.
-- Do not invent clinical facts, diagnostic claims, citations, licenses, structures, or image provenance.
-- Do not use synthetic or AI-generated anatomy, histology, pathology, radiology, or microscopy images as authoritative identification material.
-- Use only exact legally redistributable medical images with source/license/creator attribution documented at image level.
-- Keep concise matching definitions separate from richer Study Mode explanations.
-- Mark uncertain image hotspot geometry for DLMS Image Study Editor review rather than pretending it is calibrated.
-"""
+                generated_prompt += "\n\n" + medical_addendum.strip()
         else:
             generated_prompt = "Enter a study topic before generating the prompt."
 
@@ -5752,8 +5765,12 @@ MEDICAL-SPECIFIC SAFETY AND SOURCE REQUIREMENTS
         "local":str(cfg.get("ai_custom_url") or "").strip()
     }
     ai_url = providers.get(ai_provider,"")
-    back_url = "/medical" if from_section == "medical" or domain == "Medical" else "/study-packs"
-    back_label = "Medical Study" if back_url == "/medical" else "Study Packs"
+    if from_section == "medical" or domain == "Medical":
+        back_url, back_label = "/medical", "Medical Study"
+    elif from_section == "other":
+        back_url, back_label = "/study-packs?domain_group=other", "Other Studies"
+    else:
+        back_url, back_label = "/study-packs", "Study Packs"
 
     return render_template_string(r"""
 <!DOCTYPE html>
@@ -16233,7 +16250,7 @@ def settings_page():
             <div class="settings-hub-copy">
                 <div class="settings-card-kicker">AVAILABLE</div>
                 <h2>AI Integration</h2>
-                <p>AI helper, provider, custom URL, and explanation prompt template.</p>
+                <p>AI helper, provider, custom URL, and editable prompt templates.</p>
             </div>
             <span class="settings-hub-arrow">›</span>
         </a>
@@ -16423,6 +16440,8 @@ def settings_ai_page():
     cfg.setdefault("ai_custom_url", "")
     cfg.setdefault("ai_auto_copy_prompt", True)
     cfg.setdefault("ai_prompt_template", "")
+    cfg.setdefault("study_pack_ai_prompt_template", DEFAULT_STUDY_CONTENT_PACK_PROMPT)
+    cfg.setdefault("medical_study_pack_ai_addendum", DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM)
     cfg.setdefault("law_ai_prompt_template", DEFAULT_LAW_AI_PROMPT)
 
     return render_template_string(r"""
@@ -16535,6 +16554,59 @@ def settings_ai_page():
             </div>
         </section>
 
+        <section class="settings-form-section settings-study-pack-prompt-section">
+            <div class="settings-section-heading">
+                <div class="settings-section-icon icon-green">▣</div>
+                <div>
+                    <h2>Study Pack Prompt Template</h2>
+                    <p>Customize the source-first template used by the AI Study Pack Builder for non-medical subjects.</p>
+                </div>
+            </div>
+
+            <div class="settings-image-guidance settings-placeholder-guide">
+                Keep the placeholders you want DLMS to populate:
+                <code>{{ '{{domain}}' }}</code>
+                <code>{{ '{{domain_slug}}' }}</code>
+                <code>{{ '{{topic}}' }}</code>
+                <code>{{ '{{content_request}}' }}</code>
+                <code>{{ '{{difficulty}}' }}</code>
+                <code>{{ '{{size_guidance}}' }}</code>
+                <code>{{ '{{image_guidance}}' }}</code>
+            </div>
+
+            <textarea class="settings-textarea settings-study-pack-prompt-textarea"
+                      id="studyPackAIPromptTemplate"
+                      name="study_pack_ai_prompt_template"
+                      rows="28">{{ cfg.study_pack_ai_prompt_template }}</textarea>
+
+            <div class="settings-inline-actions">
+                <button type="button" class="settings-secondary-button" id="resetStudyPackPromptBtn">🔄 Reset to Default Study Pack Prompt</button>
+            </div>
+        </section>
+
+        <section class="settings-form-section settings-study-pack-prompt-section">
+            <div class="settings-section-heading">
+                <div class="settings-section-icon icon-red">✚</div>
+                <div>
+                    <h2>Medical Study Pack Safety Addendum</h2>
+                    <p>Additional guardrails appended automatically when the Study Pack domain is Medical.</p>
+                </div>
+            </div>
+
+            <div class="settings-image-guidance">
+                This text is appended after the main Study Pack template only for Medical requests. Keep source, licensing, provenance, and non-synthetic-image safeguards intact unless you intentionally replace them.
+            </div>
+
+            <textarea class="settings-textarea settings-study-pack-prompt-textarea"
+                      id="medicalStudyPackAddendum"
+                      name="medical_study_pack_ai_addendum"
+                      rows="14">{{ cfg.medical_study_pack_ai_addendum }}</textarea>
+
+            <div class="settings-inline-actions">
+                <button type="button" class="settings-secondary-button" id="resetMedicalStudyPackPromptBtn">🔄 Reset Medical Safety Addendum</button>
+            </div>
+        </section>
+
         <section class="settings-form-section settings-law-prompt-section">
             <div class="settings-section-heading">
                 <div class="settings-section-icon icon-blue">⚖</div>
@@ -16588,17 +16660,37 @@ For each question:
 
 ${AI_QUESTIONS_PLACEHOLDER}`;
 
+const DEFAULT_STUDY_PACK_AI_PROMPT = {{ study_pack_default_prompt|tojson }};
+const DEFAULT_MEDICAL_STUDY_PACK_ADDENDUM = {{ medical_study_pack_default_addendum|tojson }};
 const DEFAULT_LAW_AI_PROMPT = {{ law_default_prompt|tojson }};
 
 const resetAIPromptBtn = document.getElementById("resetAIPromptBtn");
 const aiPromptTemplate = document.getElementById("aiPromptTemplate");
 const resetLawPromptBtn = document.getElementById("resetLawPromptBtn");
 const lawAIPromptTemplate = document.getElementById("lawAIPromptTemplate");
+const resetStudyPackPromptBtn = document.getElementById("resetStudyPackPromptBtn");
+const studyPackAIPromptTemplate = document.getElementById("studyPackAIPromptTemplate");
+const resetMedicalStudyPackPromptBtn = document.getElementById("resetMedicalStudyPackPromptBtn");
+const medicalStudyPackAddendum = document.getElementById("medicalStudyPackAddendum");
 
 if (resetAIPromptBtn && aiPromptTemplate) {
     resetAIPromptBtn.addEventListener("click", () => {
         aiPromptTemplate.value = DEFAULT_AI_PROMPT;
         aiPromptTemplate.focus();
+    });
+}
+
+if (resetStudyPackPromptBtn && studyPackAIPromptTemplate) {
+    resetStudyPackPromptBtn.addEventListener("click", () => {
+        studyPackAIPromptTemplate.value = DEFAULT_STUDY_PACK_AI_PROMPT;
+        studyPackAIPromptTemplate.focus();
+    });
+}
+
+if (resetMedicalStudyPackPromptBtn && medicalStudyPackAddendum) {
+    resetMedicalStudyPackPromptBtn.addEventListener("click", () => {
+        medicalStudyPackAddendum.value = DEFAULT_MEDICAL_STUDY_PACK_ADDENDUM;
+        medicalStudyPackAddendum.focus();
     });
 }
 
@@ -16612,7 +16704,9 @@ if (resetLawPromptBtn && lawAIPromptTemplate) {
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>
-""", cfg=cfg, law_default_prompt=DEFAULT_LAW_AI_PROMPT)
+""", cfg=cfg, law_default_prompt=DEFAULT_LAW_AI_PROMPT,
+       study_pack_default_prompt=DEFAULT_STUDY_CONTENT_PACK_PROMPT,
+       medical_study_pack_default_addendum=DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM)
 
 
 @app.route("/settings/ai/save", methods=["POST"])
@@ -16632,6 +16726,8 @@ def save_ai_settings():
 
     cfg["ai_custom_url"] = request.form.get("ai_custom_url", "").strip()
     cfg["ai_prompt_template"] = request.form.get("ai_prompt_template", "").strip()
+    cfg["study_pack_ai_prompt_template"] = request.form.get("study_pack_ai_prompt_template", "").strip() or DEFAULT_STUDY_CONTENT_PACK_PROMPT
+    cfg["medical_study_pack_ai_addendum"] = request.form.get("medical_study_pack_ai_addendum", "").strip() or DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM
     cfg["law_ai_prompt_template"] = request.form.get("law_ai_prompt_template", "").strip() or DEFAULT_LAW_AI_PROMPT
 
     with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:

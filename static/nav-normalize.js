@@ -6,15 +6,18 @@
   const params = new URLSearchParams(window.location.search || '');
   const medicalBuilder = path === '/study-packs/ai-builder' && params.get('from') === 'medical';
   const itBuilder = path === '/study-packs/ai-builder' && params.get('from') === 'it';
+  const otherBuilder = path === '/study-packs/ai-builder' && params.get('from') === 'other';
+  const otherStudies = path === '/study-packs' && params.get('domain_group') === 'other';
 
   const isActive = (key) => {
     if (key === 'dashboard') return path === '/';
     if (key === 'library') return path === '/library' || path.startsWith('/edit_quiz') || path.startsWith('/quiz/');
     if (key === 'build') return path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import' || path.startsWith('/pdf-import');
-    if (key === 'study') return path.startsWith('/study-packs') && !medicalBuilder && !itBuilder;
+    if (key === 'study') return path.startsWith('/study-packs') && !medicalBuilder && !itBuilder && !otherBuilder && !otherStudies;
     if (key === 'it') return path === '/it' || path.startsWith('/it/') || itBuilder;
     if (key === 'law') return path === '/law' || path.startsWith('/law/');
     if (key === 'medical') return path === '/medical' || path.startsWith('/medical/') || medicalBuilder;
+    if (key === 'other') return otherStudies || otherBuilder;
     if (key === 'history') return path === '/history' || path.startsWith('/review');
     if (key === 'analytics') return path === '/dashboard';
     if (key === 'anki') return path === '/anki' || path.startsWith('/anki/');
@@ -45,6 +48,7 @@
     item('it','/it','⌘','IT Study'),
     item('law','/law','⚖','Law Study'),
     item('medical','/medical','✚','Medical Study'),
+    item('other','/study-packs?domain_group=other','◇','Other Studies'),
     item('history','/history','↶','History'),
     item('analytics','/dashboard','▥','Analytics'),
     `<div class="dashboard-nav-group">${item('anki','/anki','◆','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','↳','Custom Deck', path === '/anki/custom')}${sub('/anki/law','↳','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
