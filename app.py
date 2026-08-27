@@ -1,5 +1,5 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -265,6 +265,8 @@ PDF_IMPORT_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "pdf_import_drafts")
 PDF_QUESTION_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_question_banks")
 PDF_TERMINOLOGY_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_terminology_banks")
 CONTENT_PACK_STAGING_FOLDER = os.path.join(APP_DATA_DIR, "content_pack_staging")
+BACKUP_FOLDER = os.path.join(APP_DATA_DIR, "backups")
+BACKUP_RESTORE_STAGING_FOLDER = os.path.join(BACKUP_FOLDER, "restore_staging")
 
 
 for d in [
@@ -280,6 +282,8 @@ for d in [
     PDF_QUESTION_BANK_FOLDER,
     PDF_TERMINOLOGY_BANK_FOLDER,
     CONTENT_PACK_STAGING_FOLDER,
+    BACKUP_FOLDER,
+    BACKUP_RESTORE_STAGING_FOLDER,
     LOGO_FOLDER,
     LAW_FOLDER,
     LAW_CASES_FOLDER,
@@ -1489,6 +1493,323 @@ def ensure_db_initialized():
 
 # ✅ INITIALIZE DATABASE ONCE, AT IMPORT TIME
 ensure_db_initialized()
+
+# =========================
+# DATA SAFETY / BACKUP & RESTORE
+# =========================
+DLMS_BACKUP_SCHEMA_VERSION = 1
+DLMS_BACKUP_MANIFEST = "DLMS_BACKUP_MANIFEST.json"
+DLMS_BACKUP_DATA_PREFIX = "DLMS_DATA/"
+DLMS_BACKUP_TOKEN_RE = re.compile(r"^[a-f0-9]{32}$")
+DLMS_BACKUP_MAX_FILES = 20000
+DLMS_BACKUP_MAX_UNCOMPRESSED = 2 * 1024 * 1024 * 1024
+DLMS_BACKUP_MAX_SINGLE_FILE = 768 * 1024 * 1024
+DLMS_BACKUP_EXCLUDED_TOP_LEVEL = {"backups", "uploads", "content_pack_staging"}
+
+
+def _ensure_runtime_data_dirs():
+    """Recreate writable runtime directories after a restore or full reset."""
+    for path in [
+        UPLOAD_FOLDER, DATA_FOLDER, QUIZ_FOLDER, CONFIG_FOLDER, BACKGROUND_FOLDER,
+        CONTENT_PACK_FOLDER, QUIZ_ASSET_FOLDER, IMAGE_BUILDER_DRAFT_FOLDER,
+        PDF_IMPORT_DRAFT_FOLDER, PDF_QUESTION_BANK_FOLDER,
+        PDF_TERMINOLOGY_BANK_FOLDER, CONTENT_PACK_STAGING_FOLDER, BACKUP_FOLDER,
+        BACKUP_RESTORE_STAGING_FOLDER, LOGO_FOLDER, LOGO_TEMP_FOLDER, LAW_FOLDER,
+        LAW_CASES_FOLDER, LAW_IMPORTS_FOLDER, LAW_EXPORTS_FOLDER,
+    ]:
+        os.makedirs(path, exist_ok=True)
+
+
+def _backup_rel_is_excluded(rel_path):
+    rel = str(rel_path or "").replace("\\", "/").strip("/")
+    if not rel:
+        return True
+    parts = rel.split("/")
+    if parts[0].casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
+        return True
+    if len(parts) >= 3 and parts[0].casefold() == "static" and parts[1].casefold() == "logos" and parts[2] == "_temp":
+        return True
+    if parts[0].casefold() in {"results.db-wal", "results.db-shm", "results.db-journal"}:
+        return True
+    return False
+
+
+def _backup_file_inventory():
+    """Return stable runtime files to include in a portable DLMS backup."""
+    files = []
+    for root_dir, dirs, names in os.walk(APP_DATA_DIR, followlinks=False):
+        rel_root = os.path.relpath(root_dir, APP_DATA_DIR)
+        if rel_root == ".":
+            rel_root = ""
+
+        # Never descend into excluded or symbolic-link directories.
+        kept_dirs = []
+        for dirname in dirs:
+            full = os.path.join(root_dir, dirname)
+            rel = os.path.join(rel_root, dirname) if rel_root else dirname
+            if os.path.islink(full) or _backup_rel_is_excluded(rel):
+                continue
+            kept_dirs.append(dirname)
+        dirs[:] = kept_dirs
+
+        for name in names:
+            full = os.path.join(root_dir, name)
+            if os.path.islink(full):
+                continue
+            rel = os.path.join(rel_root, name) if rel_root else name
+            rel = rel.replace("\\", "/")
+            if _backup_rel_is_excluded(rel):
+                continue
+            # results.db is added from SQLite's online backup API for consistency.
+            if os.path.normcase(os.path.realpath(full)) == os.path.normcase(os.path.realpath(DB_PATH)):
+                continue
+            if os.path.isfile(full):
+                files.append((full, rel))
+    files.sort(key=lambda item: item[1].casefold())
+    return files
+
+
+def _backup_summary():
+    summary = {
+        "quizzes": 0,
+        "attempts": 0,
+        "content_packs": 0,
+        "pdf_question_banks": 0,
+        "pdf_terminology_banks": 0,
+    }
+    try:
+        summary["quizzes"] = len(load_registry())
+    except Exception:
+        pass
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute("SELECT COUNT(*) FROM attempts").fetchone()
+        summary["attempts"] = int(row[0] or 0) if row else 0
+        conn.close()
+    except Exception:
+        pass
+    try:
+        summary["content_packs"] = sum(1 for name in os.listdir(CONTENT_PACK_FOLDER) if os.path.isdir(os.path.join(CONTENT_PACK_FOLDER, name)))
+    except Exception:
+        pass
+    for key, folder in [
+        ("pdf_question_banks", PDF_QUESTION_BANK_FOLDER),
+        ("pdf_terminology_banks", PDF_TERMINOLOGY_BANK_FOLDER),
+    ]:
+        try:
+            summary[key] = sum(1 for name in os.listdir(folder) if name.lower().endswith(".json"))
+        except Exception:
+            pass
+    return summary
+
+
+def _create_dlms_backup(label="manual"):
+    """Create a portable ZIP snapshot without mutating the live data set."""
+    _ensure_runtime_data_dirs()
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    safe_label = re.sub(r"[^A-Za-z0-9_-]+", "-", str(label or "manual")).strip("-")[:40] or "manual"
+    filename = f"DLMS-backup-{stamp}-{safe_label}.zip"
+    final_path = os.path.join(BACKUP_FOLDER, filename)
+    temp_path = final_path + ".tmp"
+
+    inventory = _backup_file_inventory()
+    total_bytes = sum(os.path.getsize(path) for path, _ in inventory if os.path.isfile(path))
+    included_roots = sorted({rel.split("/", 1)[0] for _, rel in inventory})
+
+    db_temp = None
+    try:
+        if os.path.isfile(DB_PATH):
+            fd, db_temp = tempfile.mkstemp(prefix="dlms-db-snapshot-", suffix=".db")
+            os.close(fd)
+            src_conn = sqlite3.connect(DB_PATH)
+            dst_conn = sqlite3.connect(db_temp)
+            try:
+                src_conn.backup(dst_conn)
+            finally:
+                dst_conn.close()
+                src_conn.close()
+            total_bytes += os.path.getsize(db_temp)
+            if "results.db" not in included_roots:
+                included_roots.append("results.db")
+                included_roots.sort()
+
+        manifest = {
+            "schema_version": DLMS_BACKUP_SCHEMA_VERSION,
+            "kind": "dlms-portable-backup",
+            "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "dlms_version": APP_VERSION,
+            "platform": sys.platform,
+            "data_root_name": os.path.basename(os.path.normpath(APP_DATA_DIR)) or "DLMS",
+            "file_count": len(inventory) + (1 if db_temp else 0),
+            "total_uncompressed_bytes": total_bytes,
+            "included_roots": included_roots,
+            "excluded_runtime_paths": ["backups/", "uploads/", "content_pack_staging/", "static/logos/_temp/", "results.db-wal", "results.db-shm", "results.db-journal"],
+            "summary": _backup_summary(),
+        }
+
+        with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+            archive.writestr(DLMS_BACKUP_MANIFEST, json.dumps(manifest, indent=2, ensure_ascii=False))
+            for full, rel in inventory:
+                archive.write(full, DLMS_BACKUP_DATA_PREFIX + rel)
+            if db_temp:
+                archive.write(db_temp, DLMS_BACKUP_DATA_PREFIX + "results.db")
+
+        os.replace(temp_path, final_path)
+        return final_path, manifest
+    finally:
+        if db_temp and os.path.exists(db_temp):
+            try:
+                os.remove(db_temp)
+            except OSError:
+                pass
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
+def _safe_backup_member_name(name):
+    raw = str(name or "").replace("\\", "/")
+    if not raw or raw.startswith("/") or re.match(r"^[A-Za-z]:/", raw):
+        raise ValueError("Backup contains an absolute or empty path")
+    parts = [p for p in raw.split("/") if p not in {"", "."}]
+    if not parts or any(p == ".." for p in parts):
+        raise ValueError("Backup contains an unsafe relative path")
+    return "/".join(parts)
+
+
+def _validate_dlms_backup(zip_path):
+    """Validate archive structure, CRCs, limits, and the DLMS backup manifest."""
+    if not zipfile.is_zipfile(zip_path):
+        raise ValueError("Selected file is not a valid ZIP archive")
+
+    total_size = 0
+    file_count = 0
+    seen = set()
+    data_members = []
+
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        bad_crc = archive.testzip()
+        if bad_crc:
+            raise ValueError(f"Backup integrity check failed near {bad_crc}")
+
+        names = archive.namelist()
+        if DLMS_BACKUP_MANIFEST not in names:
+            raise ValueError("Backup is missing DLMS_BACKUP_MANIFEST.json")
+
+        try:
+            manifest = json.loads(archive.read(DLMS_BACKUP_MANIFEST).decode("utf-8"))
+        except Exception as exc:
+            raise ValueError(f"Backup manifest is not valid JSON: {exc}") from exc
+
+        if not isinstance(manifest, dict):
+            raise ValueError("Backup manifest must be a JSON object")
+        if manifest.get("kind") != "dlms-portable-backup":
+            raise ValueError("This ZIP is not a DLMS portable backup")
+        if int(manifest.get("schema_version", 0)) != DLMS_BACKUP_SCHEMA_VERSION:
+            raise ValueError(f"Unsupported backup schema_version {manifest.get('schema_version')!r}")
+
+        for info in archive.infolist():
+            normalized = _safe_backup_member_name(info.filename)
+            key = normalized.casefold()
+            if key in seen:
+                raise ValueError(f"Backup contains duplicate path: {normalized}")
+            seen.add(key)
+
+            unix_mode = (info.external_attr >> 16) & 0xFFFF
+            if (unix_mode & 0o170000) == 0o120000:
+                raise ValueError(f"Backup contains a symbolic link: {normalized}")
+            if info.is_dir():
+                continue
+
+            file_count += 1
+            total_size += int(info.file_size or 0)
+            if file_count > DLMS_BACKUP_MAX_FILES:
+                raise ValueError(f"Backup contains more than {DLMS_BACKUP_MAX_FILES} files")
+            if int(info.file_size or 0) > DLMS_BACKUP_MAX_SINGLE_FILE:
+                raise ValueError(f"Backup contains an oversized single file: {normalized}")
+            if total_size > DLMS_BACKUP_MAX_UNCOMPRESSED:
+                raise ValueError("Backup expands beyond the permitted restore safety limit")
+
+            if normalized == DLMS_BACKUP_MANIFEST:
+                continue
+            if not normalized.startswith(DLMS_BACKUP_DATA_PREFIX):
+                raise ValueError(f"Unexpected file outside DLMS_DATA/: {normalized}")
+            rel = normalized[len(DLMS_BACKUP_DATA_PREFIX):]
+            if not rel:
+                continue
+            if _backup_rel_is_excluded(rel):
+                raise ValueError(f"Backup attempts to restore a protected runtime path: {rel}")
+            data_members.append((info, rel))
+
+        declared_count = manifest.get("file_count")
+        if isinstance(declared_count, int) and declared_count != len(data_members):
+            raise ValueError("Backup manifest file count does not match archive contents")
+
+    return {
+        "manifest": manifest,
+        "file_count": len(data_members),
+        "uncompressed_bytes": sum(int(info.file_size or 0) for info, _ in data_members),
+        "members": [(info.filename, rel) for info, rel in data_members],
+    }
+
+
+def _extract_validated_backup(zip_path, target_root, report):
+    os.makedirs(target_root, exist_ok=True)
+    if os.listdir(target_root):
+        raise ValueError("Restore staging directory is not empty")
+    real_root = os.path.realpath(target_root)
+    allowed = {name for name, _ in report.get("members", [])}
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        for info in archive.infolist():
+            if info.filename not in allowed or info.is_dir():
+                continue
+            normalized = _safe_backup_member_name(info.filename)
+            rel = normalized[len(DLMS_BACKUP_DATA_PREFIX):]
+            target = os.path.realpath(os.path.join(target_root, rel))
+            if target != real_root and not target.startswith(real_root + os.sep):
+                raise ValueError("Backup extraction path escapes the restore staging directory")
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with archive.open(info, "r") as src, open(target, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+
+def _restore_staging_dir(token):
+    if not DLMS_BACKUP_TOKEN_RE.fullmatch(str(token or "")):
+        raise ValueError("Invalid restore token")
+    return os.path.join(BACKUP_RESTORE_STAGING_FOLDER, token)
+
+
+def _apply_restored_data(staged_data_root):
+    """Replace only top-level roots present in the validated backup snapshot."""
+    roots = sorted(os.listdir(staged_data_root), key=str.casefold)
+    for root_name in roots:
+        if root_name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
+            raise ValueError(f"Restore contains protected root: {root_name}")
+        src = os.path.join(staged_data_root, root_name)
+        dst = os.path.join(APP_DATA_DIR, root_name)
+        if root_name.casefold() == "results.db":
+            for sidecar in (DB_PATH + "-wal", DB_PATH + "-shm", DB_PATH + "-journal"):
+                if os.path.exists(sidecar):
+                    try:
+                        os.remove(sidecar)
+                    except OSError:
+                        pass
+        if os.path.lexists(dst):
+            if os.path.isdir(dst) and not os.path.islink(dst):
+                shutil.rmtree(dst)
+            else:
+                os.remove(dst)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst)
+        else:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+
+    _ensure_runtime_data_dirs()
+    ensure_db_initialized()
+
 
 # =========================
 # SERVE RUNTIME LOGOS
@@ -9401,19 +9722,23 @@ def delete_quiz(quiz_id):
     return redirect("/library")
 
 # =========================
-# WIPE DATABASE (FULL RESET)
+# RESET / RECOVERY OPERATIONS
 # =========================
-@app.route("/api/wipe_database", methods=["POST"])
-def wipe_database():
-    print("[DB] FULL FACTORY RESET REQUESTED")
+def _clear_directory_contents(path):
+    if not os.path.isdir(path):
+        return
+    for name in os.listdir(path):
+        target = os.path.join(path, name)
+        if os.path.isdir(target) and not os.path.islink(target):
+            shutil.rmtree(target)
+        else:
+            os.remove(target)
 
-    # -----------------------------
-    # 1️⃣ WIPE DATABASE COMPLETELY
-    # -----------------------------
-    conn = get_db()
+
+def _reset_quiz_library_core():
+    conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = OFF")
     cur = conn.cursor()
-
     cur.executescript("""
         DELETE FROM missed_questions;
         DELETE FROM attempt_answers;
@@ -9423,59 +9748,130 @@ def wipe_database():
         DELETE FROM quizzes;
         DELETE FROM sqlite_sequence;
     """)
-
     conn.commit()
     conn.execute("PRAGMA foreign_keys = ON")
     conn.close()
+    save_registry([])
+    for folder in [QUIZ_FOLDER, DATA_FOLDER, QUIZ_ASSET_FOLDER, LOGO_FOLDER]:
+        _clear_directory_contents(folder)
+    _ensure_runtime_data_dirs()
 
-    print("[DB] Database tables cleared and IDs reset")
 
-    # -----------------------------
-    # 2️⃣ CLEAR QUIZ REGISTRY
-    # -----------------------------
+def _reset_source_content_core():
+    # Use the same dependency-preservation path as normal Content Pack deletion
+    # before removing non-protected installed packs. This keeps legacy generated
+    # image quizzes independent of their source pack.
+    for folder_name in list(os.listdir(CONTENT_PACK_FOLDER)) if os.path.isdir(CONTENT_PACK_FOLDER) else []:
+        pack_root = os.path.join(CONTENT_PACK_FOLDER, folder_name)
+        if not os.path.isdir(pack_root):
+            continue
+        manifest = {}
+        try:
+            with open(os.path.join(pack_root, "manifest.json"), "r", encoding="utf-8") as f:
+                manifest = json.load(f) or {}
+        except Exception:
+            manifest = {}
+        if bool(manifest.get("protected")):
+            continue
+        pack_id = str(manifest.get("id") or "").strip().lower()
+        if pack_id and get_content_pack(pack_id):
+            _snapshot_existing_pack_dependencies(pack_id)
+        shutil.rmtree(pack_root)
 
+    for folder in [
+        PDF_QUESTION_BANK_FOLDER, PDF_TERMINOLOGY_BANK_FOLDER, PDF_IMPORT_DRAFT_FOLDER,
+        IMAGE_BUILDER_DRAFT_FOLDER, CONTENT_PACK_STAGING_FOLDER, UPLOAD_FOLDER,
+    ]:
+        _clear_directory_contents(folder)
+    _ensure_runtime_data_dirs()
+
+
+def _reset_app_settings_core():
+    if os.path.isfile(PORTAL_CONFIG):
+        os.remove(PORTAL_CONFIG)
+    _clear_directory_contents(BACKGROUND_FOLDER)
+    load_portal_config()  # recreate current defaults immediately
+
+
+def _full_data_reset_core():
+    # Preserve backup archives by design. Everything else in APP_DATA_DIR is
+    # runtime/user data and is returned to a first-run state.
+    for name in os.listdir(APP_DATA_DIR):
+        if name.casefold() == "backups":
+            continue
+        target = os.path.join(APP_DATA_DIR, name)
+        if os.path.isdir(target) and not os.path.islink(target):
+            shutil.rmtree(target)
+        else:
+            os.remove(target)
+    _ensure_runtime_data_dirs()
+    ensure_db_initialized()
+    save_registry([])
+    load_portal_config()
+
+
+def _run_reset_with_backup(reset_label, reset_callable):
+    safety_path, _ = _create_dlms_backup("pre-reset-" + reset_label)
+    reset_callable()
+    return os.path.basename(safety_path)
+
+
+@app.route("/api/reset_quiz_library", methods=["POST"])
+def reset_quiz_library():
     try:
-        save_registry([])
-        print("[REGISTRY] quizzes.json reset")
-    except Exception as e:
-        print("[REGISTRY ERROR]", e)
-        return jsonify(status="error", error="Failed to reset quiz registry"), 500
-
-    # -----------------------------
-    # 3️⃣ DELETE GENERATED QUIZ FILES
-    # -----------------------------
-    quiz_dirs = [
-        os.path.join(APP_DATA_DIR, "quizzes"),
-        QUIZ_ASSET_FOLDER,
-        os.path.join(APP_DATA_DIR, "static", "logos"),
-        os.path.join(APP_DATA_DIR, "static", "logos", "_temp"),
-    ]
-
-    for d in quiz_dirs:
-        if os.path.exists(d):
-            for name in os.listdir(d):
-                path = os.path.join(d, name)
-                try:
-                    if os.path.isfile(path):
-                        os.remove(path)
-                    elif os.path.isdir(path):
-                        shutil.rmtree(path)
-                except Exception as e:
-                    print(f"[FILE DELETE ERROR] {path}", e)
-                    return jsonify(status="error", error=f"Failed deleting {path}"), 500
-
-    print("[FILES] All quiz files and logos removed")
-
-    print("[FACTORY RESET] COMPLETE")
-
-    return jsonify(status="ok")
+        backup_name = _run_reset_with_backup("quiz-library", _reset_quiz_library_core)
+        return jsonify(status="ok", backup=backup_name)
+    except Exception as exc:
+        print("[RESET QUIZ LIBRARY ERROR]", exc)
+        return jsonify(status="error", error=str(exc)), 500
 
 
+@app.route("/api/reset_source_content", methods=["POST"])
+def reset_source_content():
+    try:
+        backup_name = _run_reset_with_backup("source-content", _reset_source_content_core)
+        return jsonify(status="ok", backup=backup_name)
+    except Exception as exc:
+        print("[RESET SOURCE CONTENT ERROR]", exc)
+        return jsonify(status="error", error=str(exc)), 500
+
+
+@app.route("/api/reset_app_settings", methods=["POST"])
+def reset_app_settings():
+    try:
+        backup_name = _run_reset_with_backup("settings", _reset_app_settings_core)
+        return jsonify(status="ok", backup=backup_name)
+    except Exception as exc:
+        print("[RESET SETTINGS ERROR]", exc)
+        return jsonify(status="error", error=str(exc)), 500
+
+
+@app.route("/api/reset_all_data", methods=["POST"])
+def reset_all_data():
+    try:
+        backup_name = _run_reset_with_backup("full-data", _full_data_reset_core)
+        return jsonify(status="ok", backup=backup_name)
+    except Exception as exc:
+        print("[RESET ALL DATA ERROR]", exc)
+        return jsonify(status="error", error=str(exc)), 500
+
+
+# Backward-compatible endpoint retained for older UI/bookmarks. Its scope remains
+# the legacy quiz-library/database reset rather than the new full-data reset.
+@app.route("/api/wipe_database", methods=["POST"])
+def wipe_database():
+    try:
+        backup_name = _run_reset_with_backup("legacy-wipe", _reset_quiz_library_core)
+        return jsonify(status="ok", backup=backup_name)
+    except Exception as exc:
+        print("[LEGACY WIPE ERROR]", exc)
+        return jsonify(status="error", error=str(exc)), 500
 
 
 # =========================
 # SAVE ORDER (DRAG + DROP)
 # =========================
+
 @app.route("/save_order", methods=["POST"])
 def save_order():
 
@@ -15712,7 +16108,7 @@ def settings_page():
             <div class="settings-hub-copy">
                 <div class="settings-card-kicker">AVAILABLE</div>
                 <h2>Data &amp; History</h2>
-                <p>Manage persistent attempt history and missed-question records.</p>
+                <p>Back up or restore DLMS data and manage persistent attempt history.</p>
             </div>
             <span class="settings-hub-arrow">›</span>
         </a>
@@ -15722,7 +16118,7 @@ def settings_page():
             <div class="settings-hub-copy">
                 <div class="settings-card-kicker">DESTRUCTIVE ACTIONS</div>
                 <h2>Reset &amp; Recovery</h2>
-                <p>Factory reset and destructive recovery operations.</p>
+                <p>Scoped reset and recovery operations with automatic safety backups.</p>
             </div>
             <span class="settings-hub-arrow">›</span>
         </a>
@@ -16255,194 +16651,185 @@ def save_parsing_settings():
     return redirect("/settings/parsing?saved=1")
 
 
+@app.route("/settings/data/backup/create", methods=["POST"])
+def settings_create_backup():
+    try:
+        path, _manifest = _create_dlms_backup("manual")
+        return send_from_directory(BACKUP_FOLDER, os.path.basename(path), as_attachment=True)
+    except Exception as exc:
+        print("[BACKUP ERROR]", exc)
+        return render_template_string(r"""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Backup Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Backup failed</h1><p>DLMS did not modify your existing data.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Unable to create backup</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
+""", error=str(exc)), 500
+
+
+@app.route("/settings/data/restore/stage", methods=["POST"])
+def settings_stage_restore():
+    upload = request.files.get("backup_file")
+    if not upload or not upload.filename:
+        return redirect("/settings/data?restore_error=no-file")
+    if not upload.filename.lower().endswith(".zip"):
+        return redirect("/settings/data?restore_error=not-zip")
+
+    token = secrets.token_hex(16)
+    stage_dir = _restore_staging_dir(token)
+    os.makedirs(stage_dir, exist_ok=False)
+    upload_path = os.path.join(stage_dir, "restore.zip")
+    try:
+        upload.save(upload_path)
+        report = _validate_dlms_backup(upload_path)
+        with open(os.path.join(stage_dir, "report.json"), "w", encoding="utf-8") as f:
+            json.dump({k: v for k, v in report.items() if k != "members"}, f, indent=2)
+    except Exception as exc:
+        shutil.rmtree(stage_dir, ignore_errors=True)
+        return render_template_string(r"""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Validation Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY / RESTORE</span><h1>Backup rejected</h1><p>No DLMS data was changed.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore validation failed</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
+""", error=str(exc)), 400
+
+    manifest = report["manifest"]
+    summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
+    return render_template_string(r"""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm Restore - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell">
+<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / DATA SAFETY / RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive. Nothing has been restored yet.</p></div><button class="settings-back-button" onclick="location.href='/settings/data'">Cancel</button></div>
+<div class="settings-detail-card">
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">✓</div><div><h2>Valid DLMS Backup</h2><p>Review the snapshot metadata before replacing current data.</p></div></div>
+<div class="settings-current-value"><strong>Created:</strong> {{ manifest.created_at or 'Unknown' }}</div>
+<div class="settings-current-value"><strong>DLMS version:</strong> {{ manifest.dlms_version or 'Unknown' }}</div>
+<div class="settings-current-value"><strong>Files:</strong> {{ report.file_count }}</div>
+<div class="settings-current-value"><strong>Uncompressed data:</strong> {{ '%.1f'|format(report.uncompressed_bytes / 1048576) }} MB</div>
+<div class="settings-current-value"><strong>Snapshot summary:</strong> {{ summary.get('quizzes',0) }} quizzes · {{ summary.get('attempts',0) }} attempts · {{ summary.get('content_packs',0) }} Content Packs · {{ summary.get('pdf_question_banks',0) }} question banks · {{ summary.get('pdf_terminology_banks',0) }} terminology banks</div>
+<div class="settings-warning-panel"><strong>Automatic safety backup</strong><span>Before restoring, DLMS will create a new backup of your current data. If the restore operation fails, your pre-restore snapshot remains available in the DLMS backups folder.</span></div>
+</section>
+<form method="POST" action="/settings/data/restore/confirm/{{ token }}"><div class="settings-form-actions"><button class="settings-primary-button" type="submit">Restore This Backup</button><button class="settings-secondary-button" type="button" onclick="location.href='/settings/data'">Cancel</button></div></form>
+</div></div></body></html>
+""", manifest=manifest, report=report, summary=summary, token=token)
+
+
+@app.route("/settings/data/restore/confirm/<token>", methods=["POST"])
+def settings_confirm_restore(token):
+    try:
+        stage_dir = _restore_staging_dir(token)
+        upload_path = os.path.join(stage_dir, "restore.zip")
+        if not os.path.isfile(upload_path):
+            raise FileNotFoundError("Staged restore file was not found or expired")
+        report = _validate_dlms_backup(upload_path)
+
+        safety_path, _ = _create_dlms_backup("pre-restore")
+        temp_extract = tempfile.mkdtemp(prefix="dlms-restore-")
+        try:
+            _extract_validated_backup(upload_path, temp_extract, report)
+            try:
+                _apply_restored_data(temp_extract)
+            except Exception as restore_exc:
+                print("[RESTORE] Apply failed; attempting automatic rollback:", restore_exc)
+                rollback_root = tempfile.mkdtemp(prefix="dlms-rollback-")
+                try:
+                    safety_report = _validate_dlms_backup(safety_path)
+                    _extract_validated_backup(safety_path, rollback_root, safety_report)
+                    _apply_restored_data(rollback_root)
+                except Exception as rollback_exc:
+                    raise RuntimeError(
+                        f"Restore failed ({restore_exc}); automatic rollback also failed ({rollback_exc}). "
+                        f"Safety backup remains at {os.path.basename(safety_path)}."
+                    ) from restore_exc
+                finally:
+                    shutil.rmtree(rollback_root, ignore_errors=True)
+                raise RuntimeError(
+                    f"Restore failed and DLMS rolled back to the pre-restore snapshot. "
+                    f"Safety backup: {os.path.basename(safety_path)}. Error: {restore_exc}"
+                ) from restore_exc
+        finally:
+            shutil.rmtree(temp_extract, ignore_errors=True)
+        shutil.rmtree(stage_dir, ignore_errors=True)
+
+        return render_template_string(r"""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Complete - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div><p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/data'">Data &amp; History</button></div></div></div></body></html>
+""", safety_name=os.path.basename(safety_path))
+    except Exception as exc:
+        print("[RESTORE ERROR]", exc)
+        return render_template_string(r"""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
+""", error=str(exc)), 500
+
+
 @app.route("/settings/data")
 def settings_data_page():
+    recent_backups = []
+    try:
+        for name in sorted(os.listdir(BACKUP_FOLDER), reverse=True):
+            path = os.path.join(BACKUP_FOLDER, name)
+            if name.lower().endswith(".zip") and os.path.isfile(path):
+                recent_backups.append({
+                    "name": name,
+                    "size": _format_bytes(os.path.getsize(path)),
+                    "modified": datetime.fromtimestamp(os.path.getmtime(path)).strftime("%b %d, %Y %I:%M %p"),
+                })
+                if len(recent_backups) >= 5:
+                    break
+    except Exception:
+        recent_backups = []
+
     return render_template_string(r"""
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Data & History Settings - DLMS</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" href="/static/favicon.ico">
-</head>
-<body class="settings-detail-page">
-<div class="settings-page-shell settings-detail-shell">
-    <div class="settings-page-header">
-        <div>
-            <span class="settings-eyebrow">SETTINGS / DATA &amp; HISTORY</span>
-            <h1>💾 Data &amp; History</h1>
-            <p>Manage persistent quiz-attempt and missed-question history without deleting quizzes.</p>
-        </div>
-        <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
-    </div>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Data & History Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell">
+<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / DATA &amp; HISTORY</span><h1>💾 Data Safety &amp; History</h1><p>Back up or restore DLMS data, then manage saved attempt history separately.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 
-    <div class="settings-detail-card">
-        <section class="settings-form-section">
-            <div class="settings-section-heading">
-                <div class="settings-section-icon icon-green">↶</div>
-                <div>
-                    <h2>Persistent Exam Result Storage</h2>
-                    <p>DLMS stores completed attempts and missed-question history in the application database.</p>
-                </div>
-            </div>
+<div class="settings-detail-card">
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">⇩</div><div><h2>Portable Backup</h2><p>Create one ZIP snapshot containing your persistent DLMS data.</p></div></div>
+<div class="settings-image-guidance"><strong>Included:</strong> quizzes and runtime JSON, database/history, settings, Study/Content Packs, quiz assets, Smart PDF source banks, drafts, Law Study content, backgrounds, and persistent logos.<br><strong>Excluded:</strong> temporary uploads, Content Pack staging files, temporary logo previews, and older backup archives.</div>
+<form method="POST" action="/settings/data/backup/create"><div class="settings-form-actions"><button type="submit" class="settings-primary-button">⇩ Create &amp; Download Backup</button></div></form>
+{% if recent_backups %}<div class="settings-current-value"><strong>Recent safety backups kept on this device:</strong><ul>{% for item in recent_backups %}<li>{{ item.name }} — {{ item.size }} — {{ item.modified }}</li>{% endfor %}</ul></div>{% endif %}
+</section>
 
-            <div class="settings-warning-panel">
-                <strong>This action cannot be undone.</strong>
-                <span>Clearing history permanently removes all saved attempts, attempt answers, and missed-question records. Quizzes remain in the Quiz Library.</span>
-            </div>
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-blue">⇧</div><div><h2>Restore from Backup</h2><p>Upload a DLMS portable-backup ZIP. DLMS validates it and shows a confirmation page before changing anything.</p></div></div>
+{% if request.args.get('restore_error') %}<div class="settings-critical-panel"><strong>Restore file not accepted</strong><span>Select a DLMS ZIP backup created by this Data Safety page.</span></div>{% endif %}
+<div class="settings-warning-panel"><strong>Restore is deliberately cautious.</strong><span>The uploaded ZIP is checked for archive integrity, traversal/symlink attacks, schema compatibility, duplicate paths, and expansion limits. DLMS also creates a pre-restore backup of the current data before applying the snapshot.</span></div>
+<form method="POST" action="/settings/data/restore/stage" enctype="multipart/form-data"><label class="settings-field-label" for="backupFile">DLMS backup ZIP</label><input id="backupFile" class="settings-file-input" type="file" name="backup_file" accept=".zip,application/zip" required><div class="settings-form-actions"><button type="submit" class="settings-primary-button">Validate Backup &amp; Continue</button></div></form>
+</section>
 
-            <button id="clearDBBtn" class="settings-danger-button" type="button">
-                🗑 Clear Saved Results from Database and Dashboard
-            </button>
-            <div id="clearDBStatus" class="settings-operation-status" aria-live="polite"></div>
-        </section>
-
-        <div class="settings-form-actions">
-            <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">← Back to Settings</button>
-            <button type="button" class="settings-secondary-button" onclick="location.href='/history'">📜 View History</button>
-        </div>
-    </div>
-
-    <div class="settings-scope-note">
-        <strong>Scope:</strong> this page uses the existing DLMS history-clear API. It does not delete quizzes or change configuration settings.
-    </div>
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">↶</div><div><h2>Persistent Exam Result Storage</h2><p>Clear completed attempts and missed-question history without deleting quizzes.</p></div></div>
+<div class="settings-warning-panel"><strong>This action cannot be undone unless you have a backup.</strong><span>Clearing history permanently removes saved attempts, attempt answers, and missed-question records. Quizzes remain in the Quiz Library.</span></div>
+<button id="clearDBBtn" class="settings-danger-button" type="button">🗑 Clear Saved Results from Database and Dashboard</button><div id="clearDBStatus" class="settings-operation-status" aria-live="polite"></div>
+</section>
+<div class="settings-form-actions"><button type="button" class="settings-secondary-button" onclick="location.href='/settings'">← Back to Settings</button><button type="button" class="settings-secondary-button" onclick="location.href='/history'">📜 View History</button><button type="button" class="settings-secondary-button" onclick="location.href='/settings/reset'">⚠ Reset &amp; Recovery</button></div>
 </div>
-
+<div class="settings-scope-note"><strong>Portable design:</strong> runtime data is stored separately from the executable. A DLMS backup is intended to move that persistent data between compatible DLMS installations and provide a recovery point before destructive maintenance.</div>
+</div>
 <script>
-const clearDBBtn = document.getElementById("clearDBBtn");
-const clearDBStatus = document.getElementById("clearDBStatus");
-
-clearDBBtn.addEventListener("click", async () => {
-    if (!confirm(
-        "Clear all saved quiz attempts and missed-question history?\n\n" +
-        "Your quizzes will remain available.\n\n" +
-        "This cannot be undone."
-    )) return;
-
-    clearDBBtn.disabled = true;
-    clearDBStatus.textContent = "Clearing saved history...";
-
-    try {
-        const res = await fetch("/api/clear_db_history", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok || data.status !== "ok") {
-            throw new Error(data.error || "History clear failed");
-        }
-        clearDBStatus.textContent = "✅ Saved attempt and missed-question history cleared.";
-    } catch (err) {
-        console.error("[SETTINGS] Clear history failed:", err);
-        clearDBStatus.textContent = "❌ History clear failed. Check the server log.";
-    } finally {
-        clearDBBtn.disabled = false;
-    }
-});
-</script>
-<script src="/static/nav-normalize.js"></script>
-</body>
-</html>
-""")
+const clearDBBtn=document.getElementById("clearDBBtn"),clearDBStatus=document.getElementById("clearDBStatus");
+clearDBBtn.addEventListener("click",async()=>{if(!confirm("Clear all saved quiz attempts and missed-question history?\n\nYour quizzes will remain available.\n\nCreate a backup first if you may need this history later."))return;clearDBBtn.disabled=true;clearDBStatus.textContent="Clearing saved history...";try{const res=await fetch("/api/clear_db_history",{method:"POST"});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"History clear failed");clearDBStatus.textContent="✅ Saved attempt and missed-question history cleared."}catch(err){console.error("[SETTINGS] Clear history failed:",err);clearDBStatus.textContent="❌ History clear failed. Check the server log."}finally{clearDBBtn.disabled=false}});
+</script><script src="/static/nav-normalize.js"></script></body></html>
+""", recent_backups=recent_backups)
 
 
 @app.route("/settings/reset")
 def settings_reset_page():
     return render_template_string(r"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset & Recovery Settings - DLMS</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" href="/static/favicon.ico">
-</head>
-<body class="settings-detail-page settings-reset-page">
-<div class="settings-page-shell settings-detail-shell">
-    <div class="settings-page-header">
-        <div>
-            <span class="settings-eyebrow">SETTINGS / RESET &amp; RECOVERY</span>
-            <h1>⚠️ Reset &amp; Recovery</h1>
-            <p>Destructive database reset operations are isolated here to reduce the chance of accidental use.</p>
-        </div>
-        <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
-    </div>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Reset & Recovery Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="settings-detail-page settings-reset-page"><div class="settings-page-shell settings-detail-shell">
+<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / RESET &amp; RECOVERY</span><h1>⚠️ Reset &amp; Recovery</h1><p>Choose the narrowest reset that solves the problem. DLMS creates a safety backup before each destructive reset below.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
+<div class="settings-detail-card settings-reset-card">
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-red">Q</div><div><h2>Reset Quiz Library &amp; Results</h2><p>Remove generated quizzes, quiz database records, attempts/history, quiz assets, and quiz logos while preserving source content and settings.</p></div></div><div class="settings-warning-panel"><strong>Preserved:</strong><span>Study/Content Packs, Smart PDF question/terminology banks, drafts, Law Study content, configuration, and existing backup archives.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_quiz_library" data-label="Quiz Library & Results" type="button">Reset Quiz Library &amp; Results</button></section>
 
-    <div class="settings-detail-card settings-reset-card">
-        <section class="settings-form-section">
-            <div class="settings-section-heading">
-                <div class="settings-section-icon icon-red">!</div>
-                <div>
-                    <h2>Full Factory Reset</h2>
-                    <p>Return the quiz database and quiz registry to a fresh state.</p>
-                </div>
-            </div>
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-orange">S</div><div><h2>Clear Imported / Source Content</h2><p>Remove reusable source material without deleting already generated quizzes.</p></div></div><div class="settings-critical-panel"><strong>This removes:</strong><span>Non-protected installed Content Packs, Smart PDF source banks, PDF/image-builder drafts, and import/staging content. Protected packs are preserved. Existing quiz dependencies are snapshotted before a removable Content Pack is deleted.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_source_content" data-label="Imported / Source Content" type="button">Clear Imported / Source Content</button></section>
 
-            <div class="settings-critical-panel">
-                <strong>Factory Reset permanently deletes:</strong>
-                <ul>
-                    <li>All quizzes</li>
-                    <li>All quiz questions and choices</li>
-                    <li>All attempts and missed-question history</li>
-                    <li>Generated quiz files and quiz records handled by the existing reset operation</li>
-                    <li>Database sequence state, resetting quiz IDs back to 1</li>
-                </ul>
-                <span>This cannot be undone. Use only when you intentionally want to start over.</span>
-            </div>
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-blue">⚙</div><div><h2>Reset Application Settings</h2><p>Return dashboard appearance, parsing options, and AI integration settings to DLMS defaults.</p></div></div><div class="settings-warning-panel"><strong>Preserved:</strong><span>Quizzes, history, Study Packs, PDF banks, Law Study content, and backup archives.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_app_settings" data-label="Application Settings" type="button">Reset Application Settings</button></section>
 
-            <button id="wipeDBBtn" class="settings-critical-button" type="button">
-                🧨 Clear ALL DATABASE AND QUIZ RECORDS (FULL RESET)
-            </button>
-            <div id="wipeDBStatus" class="settings-operation-status" aria-live="polite"></div>
-        </section>
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-red">!</div><div><h2>Full DLMS Data Reset</h2><p>Return the writable DLMS data area to a first-run state.</p></div></div><div class="settings-critical-panel"><strong>Full reset removes essentially all runtime/user data:</strong><ul><li>Quizzes, questions, generated quiz pages and quiz assets</li><li>Attempts, missed-question history, and database records</li><li>Study/Content Packs and Smart PDF source banks</li><li>Law Study runtime content and drafts</li><li>Appearance, parsing, and AI settings</li></ul><span>Existing backup ZIPs are deliberately preserved so you retain a recovery path. The executable/application files are not removed.</span></div><button class="settings-critical-button resetAction" data-endpoint="/api/reset_all_data" data-label="ALL DLMS runtime data" type="button">🧨 Full DLMS Data Reset</button></section>
 
-        <div class="settings-form-actions">
-            <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">← Back to Settings</button>
-        </div>
-    </div>
-
-    <div class="settings-scope-note">
-        <strong>Safety:</strong> this page calls the existing DLMS factory-reset API. The backend reset logic itself has not been rewritten as part of the settings migration.
-    </div>
+<div id="resetStatus" class="settings-operation-status" aria-live="polite"></div><div class="settings-form-actions"><button type="button" class="settings-secondary-button" onclick="location.href='/settings'">← Back to Settings</button><button type="button" class="settings-secondary-button" onclick="location.href='/settings/data'">💾 Backup &amp; Restore</button></div></div>
+<div class="settings-scope-note"><strong>Clean removal:</strong> these controls reset DLMS runtime data only. To remove DLMS completely, shut it down, remove the executable/source installation using your operating system, and delete the DLMS application-data folder only if you also intend to discard preserved backups.</div>
 </div>
-
 <script>
-const wipeDBBtn = document.getElementById("wipeDBBtn");
-const wipeDBStatus = document.getElementById("wipeDBStatus");
-
-wipeDBBtn.addEventListener("click", async () => {
-    if (!confirm(`⚠ FACTORY RESET ⚠
-
-This will permanently delete ALL quizzes, attempts, and history.
-
-Quiz IDs will be reset back to 1.
-
-This cannot be undone.
-
-Continue?`)) return;
-
-    wipeDBBtn.disabled = true;
-    wipeDBStatus.textContent = "Factory reset in progress...";
-
-    try {
-        const res = await fetch("/api/wipe_database", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok || data.status !== "ok") {
-            throw new Error(data.error || "Factory reset returned non-ok status");
-        }
-        wipeDBStatus.textContent = "✅ FULL RESET completed successfully.";
-        alert("Factory reset completed. Application will reload.");
-        location.href = "/";
-    } catch (err) {
-        console.error("[SETTINGS] Factory reset failed:", err);
-        wipeDBStatus.textContent = "❌ FULL RESET failed. Check the server log.";
-        wipeDBBtn.disabled = false;
-    }
-});
-</script>
-<script src="/static/nav-normalize.js"></script>
-</body>
-</html>
+const resetStatus=document.getElementById("resetStatus");
+document.querySelectorAll(".resetAction").forEach(btn=>btn.addEventListener("click",async()=>{const label=btn.dataset.label;if(!confirm(`⚠ ${label} ⚠\n\nDLMS will create a safety backup first, then perform this reset.\n\nContinue?`))return;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=true);resetStatus.textContent=`Creating safety backup and resetting ${label}...`;try{const res=await fetch(btn.dataset.endpoint,{method:"POST"});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"Reset returned non-ok status");resetStatus.textContent=`✅ ${label} reset completed. Safety backup: ${data.backup||"created"}`;alert(`${label} reset completed.\n\nSafety backup: ${data.backup||"created"}`);location.reload()}catch(err){console.error("[RESET]",err);resetStatus.textContent=`❌ Reset failed: ${err.message}`;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=false)}}));
+</script><script src="/static/nav-normalize.js"></script></body></html>
 """)
 
 
