@@ -115,6 +115,12 @@ app = Flask(
     static_folder=STATIC_ROOT,
     static_url_path="/static"
 )
+
+# DLMS performs its own explicit size validation for supported upload workflows.
+# Disable Flask/Werkzeug's default multipart form-memory ceiling so legitimate
+# PDF uploads can reach the application-level validators.
+app.config["MAX_FORM_MEMORY_SIZE"] = None
+
 app.secret_key = "dlms-dev"
 
 
