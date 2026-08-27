@@ -8352,6 +8352,7 @@ def edit_quiz(quiz_id):
             "pairs": pairs,
             "round_size": q["matching_round_size"],
             "direction": q["matching_direction"],
+            "explanation": q["explanation"] or "",
             "source": {
                 "organization": q["source_organization"], "dataset": q["source_dataset"],
                 "version": q["source_version"], "url": q["source_url"], "license": q["source_license"]
@@ -8563,6 +8564,11 @@ def edit_quiz(quiz_id):
                         {% endfor %}
                         </div>
                         <button class="build-add-choice" type="submit" name="action" value="add_match_pair_{{ q.id }}">＋ Add Pair</button>
+                        <label class="build-field edit-quiz-explanation-field">
+                            <span>Study Mode Explanation <em>Optional</em></span>
+                            <textarea name="explanation_{{ q.id }}" rows="4" placeholder="Add or edit the explanation shown in Study Mode.">{{ q.explanation }}</textarea>
+                            <small>Preserves imported Smart PDF explanations and allows you to add or correct the teaching explanation manually.</small>
+                        </label>
                         {% else %}
                         <div class="build-choice-heading">
                             <span>Answer Choices</span>
@@ -8611,6 +8617,11 @@ def edit_quiz(quiz_id):
                                     name="action"
                                     value="add_choices_{{ q.id }}">＋ Add Choices</button>
                         </div>
+                        <label class="build-field edit-quiz-explanation-field">
+                            <span>Study Mode Explanation <em>Optional</em></span>
+                            <textarea name="explanation_{{ q.id }}" rows="4" placeholder="Add or edit the explanation shown in Study Mode.">{{ q.explanation }}</textarea>
+                            <small>Preserves imported Smart PDF explanations and allows you to add or correct the teaching explanation manually.</small>
+                        </label>
                         {% endif %}
                     </article>
                     {% endfor %}
@@ -9246,6 +9257,7 @@ def save_edited_quiz(quiz_id):
         question_id = q[0]
         question_type = q[1]
         new_question_text = request.form.get(f"question_{question_id}", "").strip()
+        new_explanation = request.form.get(f"explanation_{question_id}", "").strip()
         if question_type == "matching":
             raw_round_size = request.form.get(f"matching_round_size_{question_id}", "").strip()
             try:
@@ -9258,13 +9270,13 @@ def save_edited_quiz(quiz_id):
             if direction not in {"term_to_definition", "definition_to_term", "random"}:
                 direction = "term_to_definition"
             cur.execute(
-                "UPDATE questions SET question_text = ?, matching_round_size = ?, matching_direction = ? WHERE id = ?",
-                (new_question_text, round_size, direction, question_id)
+                "UPDATE questions SET question_text = ?, matching_round_size = ?, matching_direction = ?, explanation = ? WHERE id = ?",
+                (new_question_text, round_size, direction, new_explanation, question_id)
             )
         else:
             cur.execute(
-                "UPDATE questions SET question_text = ? WHERE id = ?",
-                (new_question_text, question_id)
+                "UPDATE questions SET question_text = ?, explanation = ? WHERE id = ?",
+                (new_question_text, new_explanation, question_id)
             )
 
     choices = cur.execute(
@@ -12426,6 +12438,49 @@ def pdf_import_page():
     vertical-align: top;
 }
 
+.pdf-review-bulk-bar {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin:12px 0 16px;
+}
+.pdf-review-bulk-bar button {
+    width:auto;
+}
+.pdf-review-bulk-bar .pdf-review-danger-action {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:auto;
+    min-width:0;
+    min-height:36px;
+    padding:8px 13px;
+    border-radius:9px;
+    white-space:nowrap;
+    line-height:1.2;
+    color:#ff9ca5 !important;
+    background:rgba(96,15,28,.26) !important;
+    border:1px solid rgba(255,77,92,.40) !important;
+    box-shadow:none !important;
+}
+.pdf-review-bulk-status {
+    margin-left:auto;
+    color:#9eb3c8;
+    font-size:13px;
+}
+.pdf-review-select-toggle {
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    margin-right:12px;
+    color:#cbd9e7;
+    font-size:13px;
+}
+.pdf-review-select-toggle input {
+    width:auto;
+}
+
 @media (max-width: 1180px) {
     .pdf-import-page .pdf-import-upload-form,
     .pdf-import-page .pdf-bank-generator-form {
@@ -12684,7 +12739,13 @@ def _render_pdf_glossary_review(draft):
 .pdf-term-review-grid { display:grid;grid-template-columns:minmax(180px,.7fr) minmax(0,2fr);gap:12px;align-items:start; }
 .pdf-term-review-grid textarea { min-height:96px; }
 .pdf-term-page { color:#8299b3;font-size:11px; }
-@media(max-width:760px){.pdf-term-review-grid{grid-template-columns:1fr;}}
+.pdf-review-bulk-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 16px;}
+.pdf-review-bulk-bar button{width:auto;}
+.pdf-review-bulk-bar .pdf-review-danger-action{display:inline-flex;align-items:center;justify-content:center;width:auto;min-width:0;min-height:36px;padding:8px 13px;border-radius:9px;white-space:nowrap;line-height:1.2;color:#ff9ca5!important;background:rgba(96,15,28,.26)!important;border:1px solid rgba(255,77,92,.40)!important;box-shadow:none!important;}
+.pdf-review-bulk-status{margin-left:auto;color:#9eb3c8;font-size:13px;}
+.pdf-review-select-toggle{display:inline-flex;align-items:center;gap:7px;margin-right:12px;color:#cbd9e7;font-size:13px;}
+.pdf-review-select-toggle input{width:auto;}
+@media(max-width:760px){.pdf-term-review-grid{grid-template-columns:1fr;}.pdf-review-bulk-status{width:100%;margin-left:0;}}
 </style></head>
 <body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
 <aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Terminology Review</div></aside>
@@ -12693,12 +12754,13 @@ def _render_pdf_glossary_review(draft):
 <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · TERMINOLOGY</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. Review every detected term/definition pair before saving the reusable terminology bank.</p></div></header>
 <section class="pdf-import-summary-grid"><article class="dashboard-stat-card"><span>Detected</span><strong>{{ draft.summary.detected }}</strong><small>terms</small></article><article class="dashboard-stat-card"><span>Complete</span><strong>{{ draft.summary.complete }}</strong><small>ready</small></article><article class="dashboard-stat-card"><span>Review</span><strong>{{ draft.summary.review }}</strong><small>needs attention</small></article><article class="dashboard-stat-card"><span>Incomplete</span><strong>{{ draft.summary.incomplete }}</strong><small>repair or exclude</small></article></section>
 <div class="pdf-import-filter-row"><button type="button" data-filter="all" class="active">All</button><button type="button" data-filter="complete">Complete</button><button type="button" data-filter="review">Needs Review</button><button type="button" data-filter="incomplete">Incomplete</button></div>
+<div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk terminology actions"><button type="button" class="build-secondary-link" id="pdfTermSelectAllVisible">Select All Visible</button><button type="button" class="build-secondary-link" id="pdfTermClearSelection">Clear Selection</button><button type="button" class="build-secondary-link pdf-review-danger-action" id="pdfTermExcludeSelected">Exclude Selected</button><button type="button" class="build-secondary-link" id="pdfTermKeepSelected">Keep Selected</button><span class="pdf-review-bulk-status" id="pdfTermSelectionCount">0 selected</span></div>
 <form method="POST" action="/pdf-import/save/{{ draft.id }}" id="pdfTermReviewForm"><input type="hidden" name="term_review_payload" id="pdfTermReviewPayload">
 <section class="dashboard-panel pdf-import-finalize"><div class="build-two-column-fields"><label class="build-field"><span>Terminology bank title</span><input name="quiz_title" value="{{ draft.quiz_title }}" required></label><label class="build-field"><span>Default exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ draft.exam_minutes }}"></label></div><div class="pdf-import-source-note">Source: user-provided PDF · redistribution status: not cleared for redistribution</div></section>
 <div class="pdf-term-review-list">
 {% for t in draft.terms %}
 <article class="dashboard-panel pdf-term-review-card status-{{ t.status }}" data-status="{{ t.status }}" data-term-index="{{ loop.index0 }}" data-term-number="{{ t.number }}">
-<div class="pdf-import-question-head"><div><span class="pdf-status {{ t.status }}">{{ t.status|upper }}</span><strong>Term {{ t.number }}</strong><small class="pdf-term-page">PDF page{% if t.pages|length != 1 %}s{% endif %} {{ t.pages|join(", ") }}</small></div><label class="pdf-delete-toggle"><input type="checkbox" data-term-role="exclude"><span>Exclude term</span></label></div>
+<div class="pdf-import-question-head"><div><label class="pdf-review-select-toggle"><input type="checkbox" data-term-role="select"><span>Select</span></label><span class="pdf-status {{ t.status }}">{{ t.status|upper }}</span><strong>Term {{ t.number }}</strong><small class="pdf-term-page">PDF page{% if t.pages|length != 1 %}s{% endif %} {{ t.pages|join(", ") }}</small></div><label class="pdf-delete-toggle"><input type="checkbox" data-term-role="exclude"><span>Exclude term</span></label></div>
 {% if t.issues %}<div class="pdf-import-issues">{% for issue in t.issues %}<div>⚠ {{ issue }}</div>{% endfor %}</div>{% endif %}
 <div class="pdf-term-review-grid"><label class="build-field"><span>Term</span><input data-term-role="term" value="{{ t.term }}"></label><label class="build-field"><span>Definition</span><textarea data-term-role="definition" rows="4">{{ t.definition }}</textarea></label></div>
 </article>
@@ -12708,8 +12770,18 @@ def _render_pdf_glossary_review(draft):
 </form></main></div>
 <script>
 document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
-document.querySelectorAll(".pdf-import-filter-row button").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".pdf-import-filter-row button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");const f=btn.dataset.filter;document.querySelectorAll(".pdf-term-review-card").forEach(card=>card.hidden=f!=="all"&&card.dataset.status!==f)}));
-document.getElementById("pdfTermReviewForm")?.addEventListener("submit",()=>{const payload=[];document.querySelectorAll(".pdf-term-review-card").forEach(card=>payload.push({index:Number(card.dataset.termIndex||0),number:Number(card.dataset.termNumber||0),exclude:!!card.querySelector('[data-term-role="exclude"]')?.checked,term:card.querySelector('[data-term-role="term"]')?.value||"",definition:card.querySelector('[data-term-role="definition"]')?.value||""}));document.getElementById("pdfTermReviewPayload").value=JSON.stringify(payload)});
+const pdfTermCards=[...document.querySelectorAll(".pdf-term-review-card")];
+const pdfTermSelectionCount=document.getElementById("pdfTermSelectionCount");
+function pdfTermUpdateSelectionCount(){const selected=pdfTermCards.filter(card=>card.querySelector('[data-term-role="select"]')?.checked).length;if(pdfTermSelectionCount)pdfTermSelectionCount.textContent=`${selected} selected`;}
+function pdfTermSelectedCards(){return pdfTermCards.filter(card=>card.querySelector('[data-term-role="select"]')?.checked);}
+document.querySelectorAll(".pdf-import-filter-row button").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".pdf-import-filter-row button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");const f=btn.dataset.filter;pdfTermCards.forEach(card=>card.hidden=f!=="all"&&card.dataset.status!==f)}));
+pdfTermCards.forEach(card=>card.querySelector('[data-term-role="select"]')?.addEventListener("change",pdfTermUpdateSelectionCount));
+document.getElementById("pdfTermSelectAllVisible")?.addEventListener("click",()=>{pdfTermCards.filter(card=>!card.hidden).forEach(card=>{const box=card.querySelector('[data-term-role="select"]');if(box)box.checked=true;});pdfTermUpdateSelectionCount();});
+document.getElementById("pdfTermClearSelection")?.addEventListener("click",()=>{pdfTermCards.forEach(card=>{const box=card.querySelector('[data-term-role="select"]');if(box)box.checked=false;});pdfTermUpdateSelectionCount();});
+document.getElementById("pdfTermExcludeSelected")?.addEventListener("click",()=>{const cards=pdfTermSelectedCards();if(!cards.length)return;if(!confirm(`Exclude ${cards.length} selected term(s) from generated practice?`))return;cards.forEach(card=>{const box=card.querySelector('[data-term-role="exclude"]');if(box)box.checked=true;});});
+document.getElementById("pdfTermKeepSelected")?.addEventListener("click",()=>{pdfTermSelectedCards().forEach(card=>{const box=card.querySelector('[data-term-role="exclude"]');if(box)box.checked=false;});});
+pdfTermUpdateSelectionCount();
+document.getElementById("pdfTermReviewForm")?.addEventListener("submit",()=>{const payload=[];pdfTermCards.forEach(card=>payload.push({index:Number(card.dataset.termIndex||0),number:Number(card.dataset.termNumber||0),exclude:!!card.querySelector('[data-term-role="exclude"]')?.checked,term:card.querySelector('[data-term-role="term"]')?.value||"",definition:card.querySelector('[data-term-role="definition"]')?.value||""}));document.getElementById("pdfTermReviewPayload").value=JSON.stringify(payload)});
 </script><script src="/static/nav-normalize.js"></script></body></html>
 """
     return render_template_string(template, draft=draft)
@@ -12874,13 +12946,14 @@ def pdf_import_review(draft_id):
 <article class="dashboard-stat-card"><span>Incomplete</span><strong>{{ draft.summary.incomplete }}</strong><small>repair or remove</small></article>
 </section>
 <div class="pdf-import-filter-row"><button type="button" data-filter="all" class="active">All</button><button type="button" data-filter="complete">Complete</button><button type="button" data-filter="review">Needs Review</button><button type="button" data-filter="incomplete">Incomplete</button></div>
+<div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk question actions"><button type="button" class="build-secondary-link" id="pdfSelectAllVisible">Select All Visible</button><button type="button" class="build-secondary-link" id="pdfClearSelection">Clear Selection</button><button type="button" class="build-secondary-link pdf-review-danger-action" id="pdfDeleteSelected">Mark Selected for Deletion</button><button type="button" class="build-secondary-link" id="pdfKeepSelected">Keep Selected</button><span class="pdf-review-bulk-status" id="pdfSelectionCount">0 selected</span></div>
 <form method="POST" action="/pdf-import/save/{{ draft.id }}" id="pdfReviewForm">
 <input type="hidden" name="review_payload" id="pdfReviewPayload" value="">
 <section class="dashboard-panel pdf-import-finalize"><div class="build-two-column-fields"><label class="build-field"><span>Question bank title</span><input name="quiz_title" value="{{ draft.quiz_title }}" required form="pdfReviewForm"></label><label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ draft.exam_minutes }}" form="pdfReviewForm"></label></div><div class="pdf-import-source-note">Source: user-provided PDF · redistribution status: not cleared for redistribution</div></section>
 <div class="pdf-import-question-list">
 {% for q in draft.questions %}
 <article class="dashboard-panel pdf-import-question-card status-{{ q.status }}" data-status="{{ q.status }}" data-question-index="{{ loop.index0 }}" data-question-number="{{ q.number }}">
-<div class="pdf-import-question-head"><div><span class="pdf-status {{ q.status }}">{{ q.status|replace("_"," ")|upper }}</span><strong>Question {{ q.number }}</strong><small>PDF page{% if q.pages|length != 1 %}s{% endif %} {{ q.pages|join(", ") }}</small></div><label class="pdf-delete-toggle"><input type="checkbox" name="delete_{{ loop.index0 }}" value="1" form="pdfReviewForm" data-pdf-role="delete"><span>Delete question</span></label></div>
+<div class="pdf-import-question-head"><div><label class="pdf-review-select-toggle"><input type="checkbox" data-pdf-role="select"><span>Select</span></label><span class="pdf-status {{ q.status }}">{{ q.status|replace("_"," ")|upper }}</span><strong>Question {{ q.number }}</strong><small>PDF page{% if q.pages|length != 1 %}s{% endif %} {{ q.pages|join(", ") }}</small></div><label class="pdf-delete-toggle"><input type="checkbox" name="delete_{{ loop.index0 }}" value="1" form="pdfReviewForm" data-pdf-role="delete"><span>Delete question</span></label></div>
 {% if q.issues %}<div class="pdf-import-issues">{% for issue in q.issues %}<div>⚠ {{ issue }}</div>{% endfor %}</div>{% endif %}
 <input type="hidden" name="original_number_{{ loop.index0 }}" value="{{ q.number }}" form="pdfReviewForm">
 <label class="build-field"><span>Question text</span><textarea name="question_{{ loop.index0 }}" rows="4" form="pdfReviewForm" data-pdf-role="question">{{ q.question }}</textarea></label>
@@ -12902,10 +12975,23 @@ def pdf_import_review(draft_id):
 </form></main></div>
 <script>
 document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
+const pdfQuestionCards=[...document.querySelectorAll(".pdf-import-question-card")];
+const pdfSelectionCount=document.getElementById("pdfSelectionCount");
+function pdfUpdateSelectionCount(){
+ const selected=pdfQuestionCards.filter(card=>card.querySelector('[data-pdf-role="select"]')?.checked).length;
+ if(pdfSelectionCount) pdfSelectionCount.textContent=`${selected} selected`;
+}
+function pdfSelectedCards(){return pdfQuestionCards.filter(card=>card.querySelector('[data-pdf-role="select"]')?.checked);}
 document.querySelectorAll(".pdf-import-filter-row button").forEach(btn=>btn.addEventListener("click",()=>{
  document.querySelectorAll(".pdf-import-filter-row button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");
- const f=btn.dataset.filter;document.querySelectorAll(".pdf-import-question-card").forEach(card=>card.hidden=f!=="all"&&card.dataset.status!==f);
+ const f=btn.dataset.filter;pdfQuestionCards.forEach(card=>card.hidden=f!=="all"&&card.dataset.status!==f);
 }));
+pdfQuestionCards.forEach(card=>card.querySelector('[data-pdf-role="select"]')?.addEventListener("change",pdfUpdateSelectionCount));
+document.getElementById("pdfSelectAllVisible")?.addEventListener("click",()=>{pdfQuestionCards.filter(card=>!card.hidden).forEach(card=>{const box=card.querySelector('[data-pdf-role="select"]');if(box) box.checked=true;});pdfUpdateSelectionCount();});
+document.getElementById("pdfClearSelection")?.addEventListener("click",()=>{pdfQuestionCards.forEach(card=>{const box=card.querySelector('[data-pdf-role="select"]');if(box) box.checked=false;});pdfUpdateSelectionCount();});
+document.getElementById("pdfDeleteSelected")?.addEventListener("click",()=>{const cards=pdfSelectedCards();if(!cards.length)return;if(!confirm(`Mark ${cards.length} selected question(s) for deletion/exclusion?`))return;cards.forEach(card=>{const box=card.querySelector('[data-pdf-role="delete"]');if(box) box.checked=true;});});
+document.getElementById("pdfKeepSelected")?.addEventListener("click",()=>{pdfSelectedCards().forEach(card=>{const box=card.querySelector('[data-pdf-role="delete"]');if(box) box.checked=false;});});
+pdfUpdateSelectionCount();
 const pdfReviewForm=document.getElementById("pdfReviewForm");
 if(pdfReviewForm){
  pdfReviewForm.addEventListener("submit",()=>{

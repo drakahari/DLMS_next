@@ -1,0 +1,38 @@
+{
+  "dlms_version": "3.0.1",
+  "source_baseline": "DLMS_v3_dev23.zip",
+  "roadmap_items": {
+    "DLMS-024": {
+      "title": "Smart PDF Review & Repair bulk selection",
+      "changes": [
+        "Select All Visible respects the active All/Complete/Needs Review/Incomplete filter",
+        "Clear Selection clears record selection without altering record data",
+        "Question-bank review can mark all selected questions for deletion/exclusion or return them to Keep",
+        "Terminology review can exclude all selected terms or return them to Keep",
+        "Bulk actions update the existing per-record delete/exclude controls and therefore use the existing save path"
+      ]
+    },
+    "DLMS-025": {
+      "title": "Editable Study Mode explanations in Edit Quiz",
+      "changes": [
+        "Existing question explanations are loaded into Edit Quiz",
+        "Choice-question explanation field is placed directly below Add Answer Choices",
+        "Matching-question explanation field is placed below Add Pair",
+        "Edited explanations are saved to questions.explanation and included by the existing quiz JSON rebuild"
+      ]
+    }
+  },
+  "safety": {
+    "app_version_preserved": true,
+    "route_count_changed": false,
+    "new_routes_added": 0,
+    "pdf_parser_logic_modified": false,
+    "pdf_bank_save_semantics_modified": false,
+    "database_schema_modified": false,
+    "quiz_runtime_engine_modified": false
+  },
+  "local_validation": {
+    "python_compile": "PASS",
+    "full_unittest_suite": "NOT_RUN_FLASK_NOT_INSTALLED_IN_ARTIFACT_ENVIRONMENT"
+  }
+}
