@@ -116,12 +116,48 @@ app = Flask(
     static_url_path="/static"
 )
 
-# DLMS performs its own explicit size validation for supported upload workflows.
-# Disable Flask/Werkzeug's default multipart form-memory ceiling so legitimate
-# PDF uploads can reach the application-level validators.
+# DLMS performs explicit size validation for individual upload workflows.
+# Disable Flask/Werkzeug's multipart in-memory field ceiling so legitimate
+# uploads reach DLMS' own validators, while retaining an overall request safety
+# ceiling to prevent accidentally unbounded multipart requests.
 app.config["MAX_FORM_MEMORY_SIZE"] = None
+DLMS_MAX_REQUEST_BYTES = 300 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = DLMS_MAX_REQUEST_BYTES
 
 app.secret_key = "dlms-dev"
+
+
+@app.errorhandler(413)
+def dlms_request_too_large(_error):
+    """Return a friendly page when a request exceeds DLMS' global ceiling."""
+    return render_template_string(r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Upload Too Large - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home">
+<div class="dashboard-shell">
+<main class="dashboard-main" style="max-width:900px;margin:0 auto;padding:48px 24px">
+<section class="dashboard-panel" style="padding:28px">
+<div class="build-eyebrow">UPLOAD SAFETY</div>
+<h1 style="margin-top:8px">Upload is too large</h1>
+<p>DLMS rejected this request before processing it because it exceeded the global 300 MB request safety limit.</p>
+<p>Some workflows intentionally use smaller limits. Smart PDF Import accepts PDF files up to 64 MB, and Study Pack ZIP uploads are limited to 256 MB.</p>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px">
+<a class="medical-primary-button" href="javascript:history.back()">Go Back</a>
+<a class="medical-ai-secondary-button" href="/">Dashboard</a>
+</div>
+</section>
+</main>
+</div>
+</body>
+</html>
+"""), 413
 
 
 
@@ -851,6 +887,8 @@ def _format_bytes(value):
 
 
 
+CONTENT_PACK_UPLOAD_MAX_BYTES = 256 * 1024 * 1024
+CONTENT_PACK_MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
 CONTENT_PACK_IMPORT_MAX_FILES = 1000
 CONTENT_PACK_IMPORT_MAX_UNCOMPRESSED = 512 * 1024 * 1024
 CONTENT_PACK_IMPORT_MAX_SINGLE_FILE = 128 * 1024 * 1024
@@ -2835,7 +2873,7 @@ def content_pack_import():
         flash("Content Packs must be uploaded as ZIP files.", "error")
         return redirect("/content-packs")
 
-    if request.content_length and request.content_length > 256 * 1024 * 1024:
+    if request.content_length and request.content_length > CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES:
         flash("Study Pack ZIP is too large. Maximum upload size is 256 MB.", "error")
         return redirect("/content-packs")
 
@@ -2846,6 +2884,10 @@ def content_pack_import():
 
     try:
         upload.save(zip_path)
+        # Content-Length can be absent or unreliable for some clients/proxies,
+        # so verify the saved ZIP itself before opening or extracting it.
+        if os.path.getsize(zip_path) > CONTENT_PACK_UPLOAD_MAX_BYTES:
+            raise ValueError("Study Pack ZIP is too large. Maximum upload size is 256 MB.")
         if not zipfile.is_zipfile(zip_path):
             raise ValueError("uploaded file is not a valid ZIP archive")
         inspection = _inspect_content_pack_zip(zip_path)
@@ -20868,12 +20910,99 @@ def history_db():
 # =========================
 # RUN
 # =========================
+DLMS_SERVER_HOST = "0.0.0.0"
+DLMS_SERVER_PORT = 9001
+
+
+def _dlms_detect_lan_ip():
+    """Best-effort LAN address discovery for the console access summary."""
+    try:
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # UDP connect does not transmit application data; it asks the OS
+            # which local interface it would use for an external destination.
+            sock.connect(("8.8.8.8", 80))
+            candidate = sock.getsockname()[0]
+        finally:
+            sock.close()
+        if candidate and not candidate.startswith("127."):
+            return candidate
+    except Exception:
+        pass
+    try:
+        import socket
+        candidate = socket.gethostbyname(socket.gethostname())
+        if candidate and not candidate.startswith("127."):
+            return candidate
+    except Exception:
+        pass
+    return None
+
+
+def _dlms_desktop_browser_available():
+    """Return True when this looks like an interactive desktop session."""
+    if os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+        return False
+    if sys.platform == "win32" or sys.platform == "darwin":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def _dlms_wait_and_open_browser(port):
+    """Open localhost only after the DLMS server socket is confirmed ready."""
+    import socket
+    import webbrowser
+
+    deadline = time.time() + 12
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", int(port)), timeout=0.4):
+                break
+        except OSError:
+            time.sleep(0.15)
+    else:
+        print("[DLMS] Browser launch skipped: server readiness was not confirmed.")
+        return
+
+    url = f"http://127.0.0.1:{int(port)}"
+    try:
+        opened = webbrowser.open(url, new=2)
+        if not opened:
+            print(f"[DLMS] Browser could not be opened automatically. Use {url}")
+    except Exception as exc:
+        print(f"[DLMS] Browser launch failed ({exc}). Use {url}")
+
+
+def _dlms_print_access_urls(port):
+    local_url = f"http://127.0.0.1:{int(port)}"
+    print(f"[DLMS] Local access:   {local_url}")
+    lan_ip = _dlms_detect_lan_ip()
+    if lan_ip:
+        print(f"[DLMS] Network access: http://{lan_ip}:{int(port)}")
+
+
 if __name__ == "__main__":
     #purge_legacy_quizzes()   # REMOVE after one run
 
+    args = set(sys.argv[1:])
+    force_browser = "--browser" in args
+    disable_browser = "--no-browser" in args or str(os.environ.get("DLMS_NO_BROWSER") or "").strip().lower() in {"1", "true", "yes", "on"}
+    open_browser = force_browser or (not disable_browser and _dlms_desktop_browser_available())
+
+    _dlms_print_access_urls(DLMS_SERVER_PORT)
+    if disable_browser:
+        print("[DLMS] Automatic browser launch disabled (--no-browser / DLMS_NO_BROWSER).")
+    elif open_browser:
+        print("[DLMS] Browser will open after the local server is ready. Use --no-browser to disable this behavior.")
+        threading.Thread(target=_dlms_wait_and_open_browser, args=(DLMS_SERVER_PORT,), daemon=True).start()
+    else:
+        print("[DLMS] Headless/server session detected; browser launch skipped. Use --browser to force it.")
+
+    # Bind behavior intentionally remains independent of browser-launch behavior.
     app.run(
-        host="0.0.0.0",
-        port=9001,
+        host=DLMS_SERVER_HOST,
+        port=DLMS_SERVER_PORT,
         debug=False,
         use_reloader=False
     )

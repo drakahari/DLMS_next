@@ -30,3 +30,17 @@
 .help-version{font-size:11px;color:#738aa5;margin-top:12px}.help-anchor{scroll-margin-top:20px}
 @media(max-width:1100px){.help-layout{grid-template-columns:1fr}.help-toc{position:relative;top:auto;display:flex;flex-wrap:wrap;gap:5px}.help-toc strong{width:100%}.help-toc a{display:inline-block}.help-index-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.help-grid.three{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.help-panel{padding:16px}.help-grid,.help-grid.three,.help-index-grid{grid-template-columns:1fr}.help-shot img{max-height:none}}
+
+
+/* Help screenshot lightbox */
+.help-shot a{cursor:zoom-in}
+.help-lightbox[hidden]{display:none!important}
+.help-lightbox{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:24px}
+.help-lightbox-backdrop{position:absolute;inset:0;background:rgba(0,6,16,.88);backdrop-filter:blur(4px);cursor:zoom-out}
+.help-lightbox-dialog{position:relative;z-index:1;display:grid;grid-template-rows:minmax(0,1fr) auto;max-width:min(96vw,1900px);max-height:94vh;border:1px solid rgba(86,156,230,.48);border-radius:16px;background:#020b18;box-shadow:0 24px 80px rgba(0,0,0,.58);overflow:hidden}
+.help-lightbox-image{display:block;max-width:94vw;max-height:86vh;width:auto;height:auto;object-fit:contain;background:#020916}
+.help-lightbox-caption{padding:10px 48px 11px 14px;border-top:1px solid rgba(80,145,215,.22);color:#a9bfd7;font-size:12px;line-height:1.4}
+.help-lightbox-close{position:absolute;top:10px;right:10px;z-index:2;width:40px;height:40px;border-radius:50%;border:1px solid rgba(126,183,240,.5);background:rgba(3,18,37,.9);color:#f3f8ff;font-size:27px;line-height:1;display:grid;place-items:center;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.help-lightbox-close:hover,.help-lightbox-close:focus-visible{background:#123a63;border-color:#66b9ff;outline:2px solid rgba(71,166,255,.45);outline-offset:2px}
+body.help-lightbox-open{overflow:hidden}
+@media(max-width:700px){.help-lightbox{padding:10px}.help-lightbox-dialog{max-width:98vw;max-height:96vh}.help-lightbox-image{max-width:98vw;max-height:84vh}.help-lightbox-caption{padding-right:44px}}

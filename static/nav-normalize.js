@@ -30,8 +30,6 @@
   const sub = (href, icon, label, active=false) => `<a class="dashboard-nav-subitem${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="dashboard-nav-subicon">${icon}</span><span>${label}</span></a>`;
 
   const buildOpen = isActive('build');
-  const itOpen = isActive('it');
-  const medicalOpen = isActive('medical');
   const ankiOpen = isActive('anki');
   const primary = document.createElement('nav');
   primary.className = 'dashboard-nav dashboard-nav-normalized';
@@ -41,11 +39,12 @@
     item('library','/library','▤','Quiz Library'),
     `<div class="dashboard-nav-group">${item('build','/upload','✎','Build Quiz')}${buildOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/upload','↳','Quiz Builder', path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import')}${sub('/pdf-import','↳','PDF Import & Banks', path.startsWith('/pdf-import'))}</div>` : ''}</div>`,
     item('study','/study-packs','▣','Study Packs'),
+    // IT and Medical landing pages already present their genuinely distinct
+    // matching/image/builder workflows as cards. Keep the global sidebar
+    // concise instead of duplicating those destinations in expandable menus.
     item('it','/it','⌘','IT Study'),
-    itOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/it/matching','↳','Concepts & Matching', path === '/it/matching')}${sub('/it/images','↳','Diagrams & Images', path === '/it/images')}${sub('/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&from=it','↳','AI Study Pack Builder', itBuilder)}</div>` : '',
     item('law','/law','⚖','Law Study'),
     item('medical','/medical','✚','Medical Study'),
-    medicalOpen ? `<div class="dashboard-nav-submenu medical-global-submenu normalized-open">${sub('/medical/matching','↳','Terminology & Matching', path === '/medical/matching')}${sub('/medical/anatomy','↳','Anatomy & Images', path === '/medical/anatomy')}${sub('/study-packs/ai-builder?domain=Medical&from=medical','↳','AI Study Pack Builder', medicalBuilder)}</div>` : '',
     item('history','/history','↶','History'),
     item('analytics','/dashboard','▥','Analytics'),
     `<div class="dashboard-nav-group">${item('anki','/anki','◆','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','↳','Custom Deck', path === '/anki/custom')}${sub('/anki/law','↳','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
@@ -73,4 +72,68 @@
   anchor.before(primary, section, system);
   oldNavs.forEach(el => el.remove());
   oldLabels.forEach(el => el.remove());
+
+  // Help screenshots open inside DLMS instead of forcing a new browser tab.
+  const helpShots = Array.from(document.querySelectorAll('.help-shot img'));
+  if (helpShots.length) {
+    const modal = document.createElement('div');
+    modal.className = 'help-lightbox';
+    modal.hidden = true;
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Help screenshot viewer');
+    modal.innerHTML = `
+      <div class="help-lightbox-backdrop" data-help-lightbox-close></div>
+      <div class="help-lightbox-dialog" role="document">
+        <button class="help-lightbox-close" type="button" aria-label="Close image viewer" data-help-lightbox-close>×</button>
+        <img class="help-lightbox-image" alt="">
+        <div class="help-lightbox-caption"></div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    const modalImage = modal.querySelector('.help-lightbox-image');
+    const modalCaption = modal.querySelector('.help-lightbox-caption');
+    const closeButton = modal.querySelector('.help-lightbox-close');
+    let previousFocus = null;
+
+    const closeLightbox = () => {
+      if (modal.hidden) return;
+      modal.hidden = true;
+      document.body.classList.remove('help-lightbox-open');
+      modalImage.removeAttribute('src');
+      if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+      previousFocus = null;
+    };
+
+    const openLightbox = (img) => {
+      const link = img.closest('a');
+      const src = link?.getAttribute('href') || img.currentSrc || img.src;
+      if (!src) return;
+      previousFocus = document.activeElement;
+      modalImage.src = src;
+      modalImage.alt = img.alt || 'Help screenshot';
+      modalCaption.textContent = img.closest('figure')?.querySelector('figcaption')?.textContent?.replace(/\s*[—-]\s*click the image to open it full size\.?\s*$/i, '') || img.alt || '';
+      modal.hidden = false;
+      document.body.classList.add('help-lightbox-open');
+      closeButton.focus();
+    };
+
+    helpShots.forEach(img => {
+      const link = img.closest('a');
+      if (!link) return;
+      link.removeAttribute('target');
+      link.removeAttribute('rel');
+      link.setAttribute('aria-label', `${img.alt || 'Help screenshot'} — open enlarged view`);
+      link.addEventListener('click', event => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        openLightbox(img);
+      });
+    });
+
+    modal.querySelectorAll('[data-help-lightbox-close]').forEach(el => el.addEventListener('click', closeLightbox));
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !modal.hidden) closeLightbox();
+    });
+  }
 })();

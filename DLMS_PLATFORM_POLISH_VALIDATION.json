@@ -1,0 +1,18 @@
+{
+  "app_version": "3.0.1",
+  "routes_preserved": 141,
+  "python_compile": "PASS",
+  "javascript_syntax": "PASS",
+  "css_braces": "PASS",
+  "parsers_unchanged": "PASS",
+  "core_quiz_functions_unchanged": "PASS",
+  "changes": [
+    "DLMS-005 Help image lightbox/modal",
+    "DLMS-021 IT/Medical sidebar simplification; routes preserved",
+    "DLMS-022 optional browser auto-launch after readiness, --no-browser/--browser",
+    "DLMS-023 global upload ceiling + friendly 413 + robust Content Pack ZIP size validation"
+  ],
+  "route_decorators_preserved": 143,
+  "unique_route_declarations_preserved": 141,
+  "content_pack_multipart_overhead_allowance": "2 MB before exact saved-file validation"
+}
