@@ -9864,6 +9864,57 @@ def reset_all_data():
         return jsonify(status="error", error=str(exc)), 500
 
 
+def _validate_app_data_removal_target():
+    """Refuse obviously unsafe removal targets before deleting APP_DATA_DIR."""
+    target = os.path.realpath(os.path.abspath(APP_DATA_DIR))
+    home = os.path.realpath(os.path.abspath(os.path.expanduser("~")))
+    source_root = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
+    filesystem_root = os.path.realpath(os.path.abspath(os.path.sep))
+    drive_root = os.path.realpath(os.path.abspath(os.path.splitdrive(target)[0] + os.path.sep)) if os.path.splitdrive(target)[0] else filesystem_root
+
+    forbidden = {home, source_root, filesystem_root, drive_root}
+    if target in forbidden:
+        raise RuntimeError("DLMS refused to remove an unsafe application-data path.")
+    if not os.path.isdir(target):
+        return target
+    return target
+
+
+def _remove_all_dlms_runtime_data_core():
+    """Remove the entire DLMS-owned writable data directory, including backups."""
+    target = _validate_app_data_removal_target()
+    if os.path.isdir(target):
+        shutil.rmtree(target)
+    return target
+
+
+@app.route("/api/remove_all_dlms_data", methods=["POST"])
+def remove_all_dlms_data():
+    payload = request.get_json(silent=True) or {}
+    confirmation = str(payload.get("confirmation") or "").strip()
+    if confirmation != "REMOVE DLMS DATA":
+        return jsonify(status="error", error="Type REMOVE DLMS DATA exactly to confirm permanent removal."), 400
+
+    try:
+        removed_path = _remove_all_dlms_runtime_data_core()
+    except Exception as exc:
+        print("[REMOVE ALL DLMS DATA ERROR]", exc)
+        return jsonify(status="error", error=str(exc)), 500
+
+    # The executable/source installation is intentionally left untouched. Shut
+    # DLMS down after returning the response so the just-removed runtime tree is
+    # not recreated by continued use in the same process.
+    pid = os.getpid()
+    def shutdown_after_removal():
+        print(f"[REMOVE ALL DLMS DATA] Removed runtime data: {removed_path}")
+        print("[REMOVE ALL DLMS DATA] Shutting down DLMS; executable/source files were preserved.")
+        os.kill(pid, signal.SIGINT)
+    from threading import Timer
+    Timer(0.75, shutdown_after_removal).start()
+
+    return jsonify(status="ok", removed_path=removed_path, executable_removed=False)
+
+
 # Backward-compatible endpoint retained for older UI/bookmarks. Its scope remains
 # the legacy quiz-library/database reset rather than the new full-data reset.
 @app.route("/api/wipe_database", methods=["POST"])
@@ -16821,7 +16872,7 @@ def settings_reset_page():
     return render_template_string(r"""
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Reset & Recovery Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="settings-detail-page settings-reset-page"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / RESET &amp; RECOVERY</span><h1>⚠️ Reset &amp; Recovery</h1><p>Choose the narrowest reset that solves the problem. DLMS creates a safety backup before each destructive reset below.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
+<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / RESET &amp; RECOVERY</span><h1>⚠️ Reset &amp; Recovery</h1><p>Choose the narrowest reset that solves the problem. DLMS creates a safety backup before each reset; permanent data removal is separately guarded and does not create an in-place backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 <div class="settings-detail-card settings-reset-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-red">Q</div><div><h2>Reset Quiz Library &amp; Results</h2><p>Remove generated quizzes, quiz database records, attempts/history, quiz assets, and quiz logos while preserving source content and settings.</p></div></div><div class="settings-warning-panel"><strong>Preserved:</strong><span>Study/Content Packs, Smart PDF question/terminology banks, drafts, Law Study content, configuration, and existing backup archives.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_quiz_library" data-label="Quiz Library & Results" type="button">Reset Quiz Library &amp; Results</button></section>
 
@@ -16829,16 +16880,21 @@ def settings_reset_page():
 
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-blue">⚙</div><div><h2>Reset Application Settings</h2><p>Return dashboard appearance, parsing options, and AI integration settings to DLMS defaults.</p></div></div><div class="settings-warning-panel"><strong>Preserved:</strong><span>Quizzes, history, Study Packs, PDF banks, Law Study content, and backup archives.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_app_settings" data-label="Application Settings" type="button">Reset Application Settings</button></section>
 
-<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-red">!</div><div><h2>Full DLMS Data Reset</h2><p>Return the writable DLMS data area to a first-run state.</p></div></div><div class="settings-critical-panel"><strong>Full reset removes essentially all runtime/user data:</strong><ul><li>Quizzes, questions, generated quiz pages and quiz assets</li><li>Attempts, missed-question history, and database records</li><li>Study/Content Packs and Smart PDF source banks</li><li>Law Study runtime content and drafts</li><li>Appearance, parsing, and AI settings</li></ul><span>Existing backup ZIPs are deliberately preserved so you retain a recovery path. The executable/application files are not removed.</span></div><button class="settings-critical-button resetAction" data-endpoint="/api/reset_all_data" data-label="ALL DLMS runtime data" type="button">🧨 Full DLMS Data Reset</button></section>
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-red">!</div><div><h2>Reset DLMS to Fresh State</h2><p>Remove active user/runtime data and return DLMS to a first-run state while preserving recovery backups.</p></div></div><div class="settings-critical-panel"><strong>Fresh-state reset removes essentially all active runtime/user data:</strong><ul><li>Quizzes, questions, generated quiz pages and quiz assets</li><li>Attempts, missed-question history, and database records</li><li>Study/Content Packs and Smart PDF source banks</li><li>Law Study runtime content and drafts</li><li>Appearance, parsing, and AI settings</li></ul><span>Existing backup ZIPs are deliberately preserved. DLMS then recreates the empty/default folders and database it requires to keep running. The executable/application files are not removed.</span></div><button class="settings-critical-button resetAction" data-endpoint="/api/reset_all_data" data-label="DLMS to Fresh State" type="button">🧨 Reset DLMS to Fresh State</button></section>
+
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-red">×</div><div><h2>Remove DLMS Data from This Computer</h2><p>Permanently remove the entire DLMS-owned writable data directory, including backups, then shut DLMS down.</p></div></div><div class="settings-critical-panel"><strong>Permanent removal deletes all DLMS runtime data on this computer:</strong><ul><li>Quizzes, history, settings, Study/Content Packs, Smart PDF banks, drafts, assets, and caches</li><li>All safety and manual backup ZIPs stored inside the DLMS data directory</li><li>The DLMS application-data folder itself</li></ul><span><strong>The DLMS executable/source installation is NOT removed.</strong> Nothing outside the configured DLMS application-data directory is intentionally deleted. To use DLMS again, launch the executable/source installation and DLMS will create a new empty data directory.</span></div><div class="settings-warning-panel"><strong>This action has no automatic recovery backup.</strong><span>Any backup created inside the DLMS data directory would be deleted by this operation. Download or copy any backup you want to keep somewhere else before continuing.</span></div><label class="settings-field-label" for="removeDlmsConfirmation">Type <strong>REMOVE DLMS DATA</strong> to enable permanent removal</label><input id="removeDlmsConfirmation" class="settings-text-input" type="text" autocomplete="off" spellcheck="false" placeholder="REMOVE DLMS DATA"><div class="settings-current-value"><strong>Data directory that will be removed:</strong><span>{{ app_data_dir }}</span></div><button id="removeAllDlmsDataBtn" class="settings-critical-button" type="button" disabled>☠ Remove All DLMS Data &amp; Shut Down</button></section>
 
 <div id="resetStatus" class="settings-operation-status" aria-live="polite"></div><div class="settings-form-actions"><button type="button" class="settings-secondary-button" onclick="location.href='/settings'">← Back to Settings</button><button type="button" class="settings-secondary-button" onclick="location.href='/settings/data'">💾 Backup &amp; Restore</button></div></div>
-<div class="settings-scope-note"><strong>Clean removal:</strong> these controls reset DLMS runtime data only. To remove DLMS completely, shut it down, remove the executable/source installation using your operating system, and delete the DLMS application-data folder only if you also intend to discard preserved backups.</div>
+<div class="settings-scope-note"><strong>Reset vs. removal:</strong> “Reset DLMS to Fresh State” preserves backup ZIPs and recreates the runtime structure so DLMS remains immediately usable. “Remove DLMS Data from This Computer” deletes the entire DLMS runtime-data directory, including backups, and shuts the application down. Neither action removes the executable/source installation.</div>
 </div>
 <script>
 const resetStatus=document.getElementById("resetStatus");
 document.querySelectorAll(".resetAction").forEach(btn=>btn.addEventListener("click",async()=>{const label=btn.dataset.label;if(!confirm(`⚠ ${label} ⚠\n\nDLMS will create a safety backup first, then perform this reset.\n\nContinue?`))return;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=true);resetStatus.textContent=`Creating safety backup and resetting ${label}...`;try{const res=await fetch(btn.dataset.endpoint,{method:"POST"});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"Reset returned non-ok status");resetStatus.textContent=`✅ ${label} reset completed. Safety backup: ${data.backup||"created"}`;alert(`${label} reset completed.\n\nSafety backup: ${data.backup||"created"}`);location.reload()}catch(err){console.error("[RESET]",err);resetStatus.textContent=`❌ Reset failed: ${err.message}`;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=false)}}));
+const removeConfirm=document.getElementById("removeDlmsConfirmation"),removeBtn=document.getElementById("removeAllDlmsDataBtn");
+removeConfirm.addEventListener("input",()=>{removeBtn.disabled=removeConfirm.value.trim()!=="REMOVE DLMS DATA"});
+removeBtn.addEventListener("click",async()=>{const phrase=removeConfirm.value.trim();if(phrase!=="REMOVE DLMS DATA")return;if(!confirm("☠ PERMANENT DLMS DATA REMOVAL ☠\n\nThis will delete the entire DLMS application-data directory INCLUDING ALL BACKUPS, then shut DLMS down.\n\nThe executable/source installation will remain.\n\nThis cannot be undone unless you copied a backup somewhere outside DLMS.\n\nContinue?"))return;document.querySelectorAll("button,input").forEach(el=>el.disabled=true);resetStatus.textContent="Permanently removing DLMS runtime data and shutting down...";try{const res=await fetch("/api/remove_all_dlms_data",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmation:phrase})});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"Permanent removal failed");resetStatus.textContent="✅ DLMS runtime data removed. DLMS is shutting down. The executable/source installation was preserved.";alert("DLMS runtime data has been removed, including backups.\n\nDLMS will now shut down.\n\nThe executable/source installation was NOT removed.")}catch(err){console.error("[REMOVE DLMS DATA]",err);resetStatus.textContent=`❌ Permanent removal failed: ${err.message}`;document.querySelectorAll("button,input").forEach(el=>el.disabled=false);removeBtn.disabled=removeConfirm.value.trim()!=="REMOVE DLMS DATA"}});
 </script><script src="/static/nav-normalize.js"></script></body></html>
-""")
+""", app_data_dir=APP_DATA_DIR)
 
 
 @app.route("/settings/legacy")
