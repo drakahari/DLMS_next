@@ -786,7 +786,15 @@ def quiz_asset(asset_bucket, asset_path):
         return "Quiz asset not found", 404
     if os.path.splitext(file_path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
         return "Unsupported quiz asset", 415
-    return send_from_directory(root, os.path.relpath(file_path, root))
+    # Keep the request path in URL/POSIX form. On Windows, os.path.relpath()
+    # returns backslashes (for example ``images\\diagram.png``). Werkzeug's
+    # send_from_directory() treats backslashes as unsafe alternate separators,
+    # which can make otherwise valid quiz-owned Study Pack images return 404.
+    # ``asset_path`` came from Flask's <path:...> converter and has already been
+    # resolved/validated above with _safe_pack_child(), so pass its normalized
+    # URL form directly to send_from_directory().
+    safe_asset_path = str(asset_path or "").replace("\\", "/").lstrip("/")
+    return send_from_directory(root, safe_asset_path, conditional=True)
 
 
 def _snapshot_existing_pack_dependencies(pack_id):

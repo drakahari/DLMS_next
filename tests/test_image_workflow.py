@@ -4,6 +4,7 @@ Run from the project root inside the DLMS venv:
 The suite uses an isolated temporary APP_DATA_DIR and never touches real DLMS data.
 """
 import json, os, shutil, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-image-tests-")
@@ -112,6 +113,17 @@ class ImageWorkflowTests(unittest.TestCase):
         shutil.rmtree(root)
         snap_file = Path(_TEMP.name) / "quiz_assets" / "snapshot_test" / "images" / "diagram.png"
         self.assertTrue(snap_file.is_file())
+
+    def test_quiz_asset_route_uses_url_path_not_os_relpath(self):
+        # Regression for Windows packaged builds: os.path.relpath() produces
+        # backslashes, which send_from_directory() can reject as unsafe.
+        asset = Path(_TEMP.name) / "quiz_assets" / "snapshot_test" / "images" / "diagram.png"
+        asset.parent.mkdir(parents=True, exist_ok=True)
+        asset.write_bytes(b"DLMS-test-image")
+        with mock.patch.object(dlms.os.path, "relpath", side_effect=AssertionError("relpath must not be used by quiz_asset")):
+            response = dlms.app.test_client().get("/quiz-assets/snapshot_test/images/diagram.png")
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(b"DLMS-test-image", response.data)
 
     def test_invalid_hotspot_geometry_is_rejected(self):
         root = self.make_pack()
