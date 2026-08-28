@@ -17991,6 +17991,202 @@ def learning_foundation_summary():
     return jsonify(out)
 
 
+def _learning_intelligence_topics(cur, now=None):
+    """Build explainable concept-level learning metrics for DLMS-008/009/010.
+
+    Study responses are de-duplicated to the latest response for a question in a
+    study session. Exam responses are de-duplicated to one response per
+    question/attempt. This prevents multi-click Study Mode interactions from
+    overpowering completed exam evidence.
+    """
+    from datetime import datetime, timezone
+
+    now = now or datetime.now(timezone.utc)
+    concept_rows = cur.execute("""
+        SELECT c.id, c.name, COUNT(DISTINCT qc.question_id) AS question_count
+        FROM concepts c
+        LEFT JOIN question_concepts qc ON qc.concept_id = c.id
+        GROUP BY c.id, c.name
+        ORDER BY c.name COLLATE NOCASE
+    """).fetchall()
+
+    links = cur.execute("""
+        SELECT qc.concept_id, qc.question_id
+        FROM question_concepts qc
+    """).fetchall()
+    concepts_by_question = {}
+    for row in links:
+        concepts_by_question.setdefault(row["question_id"], []).append(row["concept_id"])
+
+    rows = cur.execute("""
+        SELECT id, event_type, quiz_id, question_id, attempt_id, session_id,
+               mode, was_correct, occurred_at
+        FROM learning_events
+        WHERE event_type IN ('study_answer', 'exam_answer')
+          AND question_id IS NOT NULL
+          AND was_correct IS NOT NULL
+        ORDER BY occurred_at ASC, id ASC
+    """).fetchall()
+
+    # Keep the latest response for each logical opportunity.
+    dedup = {}
+    for row in rows:
+        if row["event_type"] == "exam_answer":
+            scope = row["attempt_id"] or f"exam-event-{row['id']}"
+        else:
+            scope = row["session_id"] or f"study-event-{row['id']}"
+        key = (row["event_type"], scope, row["question_id"])
+        dedup[key] = row
+
+    evidence_by_concept = {}
+    for row in dedup.values():
+        for concept_id in concepts_by_question.get(row["question_id"], []):
+            evidence_by_concept.setdefault(concept_id, []).append(row)
+
+    def parse_dt(value):
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            except ValueError:
+                return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    topics = []
+    for concept in concept_rows:
+        events = evidence_by_concept.get(concept["id"], [])
+        events.sort(key=lambda r: (str(r["occurred_at"] or ""), int(r["id"])))
+        evidence = len(events)
+        correct = sum(1 for r in events if int(r["was_correct"] or 0) == 1)
+        incorrect = evidence - correct
+        accuracy = round((correct / evidence) * 100, 1) if evidence else None
+
+        recent = events[-5:]
+        recent_correct = sum(1 for r in recent if int(r["was_correct"] or 0) == 1)
+        recent_accuracy = round((recent_correct / len(recent)) * 100, 1) if recent else None
+
+        last_dt = parse_dt(events[-1]["occurred_at"]) if events else None
+        days_since = max(0, int((now - last_dt).total_seconds() // 86400)) if last_dt else None
+        if days_since is None:
+            recency_score = 0.0
+        elif days_since <= 7:
+            recency_score = 100.0
+        elif days_since <= 30:
+            recency_score = 90.0
+        elif days_since <= 90:
+            recency_score = 75.0
+        elif days_since <= 180:
+            recency_score = 60.0
+        else:
+            recency_score = 45.0
+
+        evidence_score = min(100.0, evidence * 12.5)  # full evidence credit at 8 responses
+        if evidence:
+            raw_mastery = (
+                (accuracy or 0.0) * 0.55
+                + (recent_accuracy or 0.0) * 0.20
+                + evidence_score * 0.15
+                + recency_score * 0.10
+            )
+            # Minimum-evidence guardrails prevent a tiny sample from being
+            # presented as high mastery.
+            if evidence < 3:
+                mastery = min(raw_mastery, 59.0)
+            elif evidence < 5:
+                mastery = min(raw_mastery, 74.0)
+            else:
+                mastery = raw_mastery
+            mastery = round(max(0.0, min(100.0, mastery)), 1)
+        else:
+            mastery = None
+
+        if evidence < 3:
+            status = "insufficient"
+            status_label = "Not enough data"
+        elif mastery is not None and (mastery < 60 or (accuracy is not None and accuracy < 60)):
+            status = "weak"
+            status_label = "Weak area"
+        elif mastery is not None and mastery < 75:
+            status = "developing"
+            status_label = "Developing"
+        elif mastery is not None and mastery < 90:
+            status = "proficient"
+            status_label = "Proficient"
+        else:
+            status = "strong"
+            status_label = "Strong"
+
+        topics.append({
+            "concept_id": concept["id"],
+            "name": concept["name"],
+            "question_count": concept["question_count"],
+            "evidence": evidence,
+            "correct": correct,
+            "incorrect": incorrect,
+            "accuracy": accuracy,
+            "recent_accuracy": recent_accuracy,
+            "mastery": mastery,
+            "status": status,
+            "status_label": status_label,
+            "is_weak": status == "weak",
+            "last_activity": events[-1]["occurred_at"] if events else None,
+            "days_since_activity": days_since,
+        })
+
+    # Weak first, then developing, then strongest; no-data topics last.
+    rank = {"weak": 0, "developing": 1, "proficient": 2, "strong": 3, "insufficient": 4}
+    topics.sort(key=lambda item: (rank.get(item["status"], 9), item["mastery"] if item["mastery"] is not None else 999, item["name"].casefold()))
+    return topics
+
+
+def _learning_intelligence_payload(cur):
+    topics = _learning_intelligence_topics(cur)
+    evidenced = [t for t in topics if t["evidence"] > 0]
+    measurable = [t for t in topics if t["evidence"] >= 3]
+    weak = [t for t in topics if t["status"] == "weak"]
+    avg_accuracy = round(sum(t["accuracy"] for t in evidenced if t["accuracy"] is not None) / len(evidenced), 1) if evidenced else None
+    avg_mastery = round(sum(t["mastery"] for t in measurable if t["mastery"] is not None) / len(measurable), 1) if measurable else None
+    return {
+        "topics": topics,
+        "summary": {
+            "concepts": len(topics),
+            "concepts_with_evidence": len(evidenced),
+            "measurable_concepts": len(measurable),
+            "weak_areas": len(weak),
+            "average_accuracy": avg_accuracy,
+            "average_mastery": avg_mastery,
+        },
+        "model": {
+            "mastery_formula": "55% overall accuracy + 20% recent accuracy (last 5) + 15% evidence + 10% recency",
+            "evidence_credit": "Full evidence credit at 8 deduplicated responses",
+            "minimum_evidence": "Fewer than 3 responses = Not enough data; 3-4 responses cannot exceed 74 mastery",
+            "weak_area_rule": "At least 3 responses and mastery below 60 or accuracy below 60",
+            "deduplication": "Latest Study response per question/session and one Exam response per question/attempt",
+        },
+    }
+
+
+@app.route("/learning-intelligence")
+def learning_intelligence_page():
+    return send_from_directory(app.static_folder, "learning-intelligence.html")
+
+
+@app.route("/api/learning-intelligence/topics")
+def learning_intelligence_topics_api():
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        return jsonify(_learning_intelligence_payload(cur))
+    finally:
+        conn.close()
+
+
 def _quiz_history_origin(registry_entry, packs=None):
     """Return a user-facing origin label for History without changing DB schema."""
     entry = registry_entry if isinstance(registry_entry, dict) else {}

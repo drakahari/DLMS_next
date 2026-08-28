@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Learning Intelligence — DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home learning-intelligence-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+  <div class="dashboard-brand"><div class="dashboard-brand-mark">◈</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+  <nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a></nav>
+  <div class="dashboard-sidebar-version">Learning Intelligence</div>
+</aside>
+<main class="dashboard-main">
+<header class="dashboard-header learning-intelligence-header">
+  <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+  <div><div class="build-eyebrow">LEARNING INTELLIGENCE</div><h1>Topics, Mastery &amp; Weak Areas</h1><p>Concept-level insight built from tagged questions and recorded learning events.</p></div>
+</header>
+
+<section class="learning-intelligence-summary" aria-label="Learning intelligence summary">
+  <article class="dashboard-stat-card"><span>TOPICS WITH EVIDENCE</span><strong id="liEvidenceTopics">—</strong><small id="liEvidenceNote">of — concepts</small></article>
+  <article class="dashboard-stat-card"><span>AVERAGE ACCURACY</span><strong id="liAverageAccuracy">—</strong><small>across topics with evidence</small></article>
+  <article class="dashboard-stat-card"><span>AVERAGE MASTERY</span><strong id="liAverageMastery">—</strong><small>topics with 3+ responses</small></article>
+  <article class="dashboard-stat-card"><span>WEAK AREAS</span><strong id="liWeakAreas">—</strong><small>enough evidence + low performance</small></article>
+</section>
+
+<section class="dashboard-panel learning-intelligence-panel">
+  <div class="learning-intelligence-panel-head">
+    <div><div class="build-eyebrow">TOPIC ACCURACY</div><h2>Concept performance</h2><p>Study responses are de-duplicated by session/question so repeated clicks do not inflate evidence.</p></div>
+    <button class="build-secondary-link" id="liModelButton" type="button">How mastery works</button>
+  </div>
+  <div class="learning-intelligence-toolbar">
+    <div class="learning-intelligence-filters" role="group" aria-label="Topic filters">
+      <button type="button" class="active" data-li-filter="all">All</button>
+      <button type="button" data-li-filter="weak">Weak Areas</button>
+      <button type="button" data-li-filter="developing">Developing</button>
+      <button type="button" data-li-filter="proficient">Proficient</button>
+      <button type="button" data-li-filter="strong">Strong</button>
+      <button type="button" data-li-filter="insufficient">Not Enough Data</button>
+    </div>
+    <input id="liSearch" class="learning-intelligence-search" type="search" placeholder="Search topics…" aria-label="Search topics">
+  </div>
+  <div id="liLoading" class="learning-intelligence-empty">Loading learning intelligence…</div>
+  <div id="liEmpty" class="learning-intelligence-empty" hidden>No concepts match this view.</div>
+  <div class="learning-intelligence-table-wrap" id="liTableWrap" hidden>
+    <table class="learning-intelligence-table">
+      <thead><tr><th>Topic</th><th>Evidence</th><th>Accuracy</th><th>Mastery</th><th>Status</th><th>Recent</th></tr></thead>
+      <tbody id="liRows"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="dashboard-panel learning-intelligence-weak-panel">
+  <div class="build-eyebrow">DLMS-010 · WEAK-AREA DETECTION</div>
+  <h2>Needs attention</h2>
+  <p>Only topics with at least three deduplicated responses can be classified as weak. Untested or lightly tested topics remain “Not enough data.”</p>
+  <div id="liWeakList" class="learning-intelligence-weak-list"></div>
+</section>
+
+<div class="learning-intelligence-model" id="liModel" hidden role="dialog" aria-modal="true" aria-labelledby="liModelTitle">
+  <div class="learning-intelligence-model-backdrop" data-li-model-close></div>
+  <div class="learning-intelligence-model-dialog">
+    <button type="button" class="help-lightbox-close" data-li-model-close aria-label="Close">×</button>
+    <div class="build-eyebrow">EXPLAINABLE MODEL</div><h2 id="liModelTitle">How DLMS calculates mastery</h2>
+    <div id="liModelContent"></div>
+  </div>
+</div>
+</main>
+</div>
+<script>
+const state={topics:[],filter:'all',model:{}};
+const pct=v=>v==null?'—':`${Math.round(v)}%`;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function render(){
+ const q=document.getElementById('liSearch').value.trim().toLowerCase();
+ const rows=state.topics.filter(t=>(state.filter==='all'||t.status===state.filter)&&(!q||t.name.toLowerCase().includes(q)));
+ document.getElementById('liEmpty').hidden=rows.length!==0;
+ document.getElementById('liTableWrap').hidden=rows.length===0;
+ document.getElementById('liRows').innerHTML=rows.map(t=>`<tr>
+ <td><strong>${esc(t.name)}</strong><small>${t.question_count} tagged question${t.question_count===1?'':'s'}</small></td>
+ <td><strong>${t.evidence}</strong><small>${t.correct} correct · ${t.incorrect} incorrect</small></td>
+ <td><span class="li-score ${t.accuracy!=null&&t.accuracy<60?'low':''}">${pct(t.accuracy)}</span></td>
+ <td><div class="li-mastery"><strong>${pct(t.mastery)}</strong><div><span style="width:${t.mastery||0}%"></span></div></div></td>
+ <td><span class="li-status li-status-${t.status}">${esc(t.status_label)}</span></td>
+ <td>${t.recent_accuracy==null?'—':pct(t.recent_accuracy)}<small>${t.days_since_activity==null?'No activity':t.days_since_activity===0?'Today':`${t.days_since_activity}d ago`}</small></td>
+ </tr>`).join('');
+}
+function renderWeak(){
+ const weak=state.topics.filter(t=>t.is_weak);
+ const el=document.getElementById('liWeakList');
+ if(!weak.length){el.innerHTML='<div class="learning-intelligence-empty">No weak areas currently meet the evidence threshold.</div>';return;}
+ el.innerHTML=weak.map(t=>`<article><div><strong>${esc(t.name)}</strong><span>${t.evidence} responses · ${pct(t.accuracy)} accuracy</span></div><div class="li-weak-score">${pct(t.mastery)} mastery</div></article>`).join('');
+}
+fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
+ state.topics=data.topics||[];state.model=data.model||{};
+ const s=data.summary||{};
+ document.getElementById('liEvidenceTopics').textContent=s.concepts_with_evidence??0;
+ document.getElementById('liEvidenceNote').textContent=`of ${s.concepts??0} concepts`;
+ document.getElementById('liAverageAccuracy').textContent=pct(s.average_accuracy);
+ document.getElementById('liAverageMastery').textContent=pct(s.average_mastery);
+ document.getElementById('liWeakAreas').textContent=s.weak_areas??0;
+ document.getElementById('liLoading').hidden=true;
+ document.getElementById('liModelContent').innerHTML=`<p><strong>Mastery:</strong> ${esc(state.model.mastery_formula||'')}</p><p><strong>Evidence:</strong> ${esc(state.model.evidence_credit||'')}</p><p><strong>Minimum evidence:</strong> ${esc(state.model.minimum_evidence||'')}</p><p><strong>Weak area:</strong> ${esc(state.model.weak_area_rule||'')}</p><p><strong>De-duplication:</strong> ${esc(state.model.deduplication||'')}</p>`;
+ render();renderWeak();
+}).catch(()=>{document.getElementById('liLoading').textContent='Learning intelligence could not be loaded.';});
+document.querySelectorAll('[data-li-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-li-filter]').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.filter=b.dataset.liFilter;render();}));
+document.getElementById('liSearch').addEventListener('input',render);
+const modal=document.getElementById('liModel');
+document.getElementById('liModelButton').addEventListener('click',()=>{modal.hidden=false;});
+document.querySelectorAll('[data-li-model-close]').forEach(x=>x.addEventListener('click',()=>modal.hidden=true));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')modal.hidden=true;});
+document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body></html>

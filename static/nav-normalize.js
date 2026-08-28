@@ -20,6 +20,7 @@
     if (key === 'other') return otherStudies || otherBuilder;
     if (key === 'history') return path === '/history' || path.startsWith('/review');
     if (key === 'analytics') return path === '/dashboard';
+    if (key === 'learning') return path === '/learning-intelligence';
     if (key === 'anki') return path === '/anki' || path.startsWith('/anki/');
     if (key === 'settings') return path === '/settings';
     if (key === 'content') return path === '/content-packs' || path.startsWith('/content-packs/');
@@ -51,6 +52,7 @@
     item('other','/study-packs?domain_group=other','◇','Other Studies'),
     item('history','/history','↶','History'),
     item('analytics','/dashboard','▥','Analytics'),
+    item('learning','/learning-intelligence','◈','Learning Intelligence'),
     `<div class="dashboard-nav-group">${item('anki','/anki','◆','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','↳','Custom Deck', path === '/anki/custom')}${sub('/anki/law','↳','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
   ].join('');
 
