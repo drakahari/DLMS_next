@@ -18003,9 +18003,15 @@ def _learning_intelligence_topics(cur, now=None):
 
     now = now or datetime.now(timezone.utc)
     concept_rows = cur.execute("""
-        SELECT c.id, c.name, COUNT(DISTINCT qc.question_id) AS question_count
+        SELECT c.id, c.name,
+               COUNT(DISTINCT CASE
+                   WHEN z.source_file IS NULL OR LOWER(z.source_file) NOT LIKE 'smart_review_%'
+                   THEN qc.question_id
+               END) AS question_count
         FROM concepts c
         LEFT JOIN question_concepts qc ON qc.concept_id = c.id
+        LEFT JOIN questions q ON q.id = qc.question_id
+        LEFT JOIN quizzes z ON z.id = q.quiz_id
         GROUP BY c.id, c.name
         ORDER BY c.name COLLATE NOCASE
     """).fetchall()
@@ -18171,6 +18177,377 @@ def _learning_intelligence_payload(cur):
         },
     }
 
+
+
+
+def _learning_profile_payload(cur):
+    """Summarize learner-level progress from the explainable topic model."""
+    payload = _learning_intelligence_payload(cur)
+    topics = payload.get("topics") or []
+    evidenced = [t for t in topics if t.get("evidence", 0) > 0]
+    measurable = [t for t in topics if t.get("evidence", 0) >= 3]
+    weak = [t for t in topics if t.get("status") == "weak"]
+    strong = [t for t in topics if t.get("status") == "strong"]
+    proficient = [t for t in topics if t.get("status") == "proficient"]
+    developing = [t for t in topics if t.get("status") == "developing"]
+    insufficient = [t for t in topics if t.get("status") == "insufficient"]
+
+    event_counts = cur.execute("""
+        SELECT event_type, COUNT(*) AS count
+        FROM learning_events
+        GROUP BY event_type
+    """).fetchall()
+    event_counts = {r["event_type"]: r["count"] for r in event_counts}
+
+    activity = cur.execute("""
+        SELECT COUNT(DISTINCT CASE WHEN event_type='attempt_completed' THEN attempt_id END) AS completed_attempts,
+               COUNT(DISTINCT quiz_id) AS quizzes_studied,
+               MAX(occurred_at) AS last_activity
+        FROM learning_events
+    """).fetchone()
+
+    if weak:
+        recommendation = {
+            "kind": "review_weak",
+            "title": "Review weak areas",
+            "detail": f"Start with {weak[0]['name']} and {len(weak)-1} other weak topic{'s' if len(weak)-1 != 1 else ''}." if len(weak) > 1 else f"Start with {weak[0]['name']}.",
+        }
+    elif insufficient:
+        recommendation = {
+            "kind": "build_evidence",
+            "title": "Build more evidence",
+            "detail": f"Practice {insufficient[0]['name']} until DLMS has at least three deduplicated responses.",
+        }
+    elif developing:
+        recommendation = {
+            "kind": "developing",
+            "title": "Strengthen developing topics",
+            "detail": f"Continue practice on {developing[0]['name']} to move toward proficiency.",
+        }
+    elif evidenced:
+        recommendation = {
+            "kind": "maintain",
+            "title": "Maintain your progress",
+            "detail": "No weak areas currently meet the evidence threshold. Continue mixed review to keep skills fresh.",
+        }
+    else:
+        recommendation = {
+            "kind": "start",
+            "title": "Start building your learning profile",
+            "detail": "Tag quiz questions with concepts and answer them in Study or Exam Mode.",
+        }
+
+    strongest = sorted(
+        [t for t in measurable if t.get("mastery") is not None],
+        key=lambda t: (-t["mastery"], -t.get("evidence", 0), t["name"].casefold()),
+    )[:5]
+    weakest = sorted(
+        weak,
+        key=lambda t: (t.get("mastery") if t.get("mastery") is not None else 999, t.get("accuracy") if t.get("accuracy") is not None else 999, t["name"].casefold()),
+    )[:5]
+
+    return {
+        "summary": payload.get("summary") or {},
+        "status_counts": {
+            "weak": len(weak),
+            "developing": len(developing),
+            "proficient": len(proficient),
+            "strong": len(strong),
+            "insufficient": len(insufficient),
+        },
+        "activity": {
+            "study_answers": event_counts.get("study_answer", 0),
+            "exam_answers": event_counts.get("exam_answer", 0),
+            "completed_attempts": (activity["completed_attempts"] if activity else 0) or 0,
+            "quizzes_studied": (activity["quizzes_studied"] if activity else 0) or 0,
+            "last_activity": activity["last_activity"] if activity else None,
+        },
+        "strongest_topics": strongest,
+        "weakest_topics": weakest,
+        "recommendation": recommendation,
+        "model": payload.get("model") or {},
+    }
+
+
+def _question_payload_from_db(cur, question_id):
+    q = cur.execute("""
+        SELECT id, question_number, question_text,
+               COALESCE(question_type, 'choice') AS question_type,
+               matching_round_size,
+               COALESCE(matching_direction, 'term_to_definition') AS matching_direction,
+               COALESCE(explanation, '') AS explanation,
+               COALESCE(media_json, '{}') AS media_json,
+               source_organization, source_dataset, source_version, source_url, source_license
+        FROM questions WHERE id = ?
+    """, (question_id,)).fetchone()
+    if not q:
+        return None
+    item = {
+        "number": q["question_number"],
+        "type": q["question_type"],
+        "question": q["question_text"],
+        "explanation": q["explanation"] or "",
+        "concepts": _question_concepts(cur, q["id"]),
+    }
+    try:
+        media = json.loads(q["media_json"] or "{}")
+    except Exception:
+        media = {}
+    if isinstance(media, dict):
+        item.update(media)
+    source = {
+        "organization": q["source_organization"],
+        "dataset": q["source_dataset"],
+        "version": q["source_version"],
+        "url": q["source_url"],
+        "license": q["source_license"],
+    }
+    if any(source.values()):
+        item["source"] = source
+
+    if q["question_type"] == "matching":
+        pairs = cur.execute("""
+            SELECT left_text, right_text, category, explanation, verification_json
+            FROM matching_pairs WHERE question_id = ? ORDER BY pair_order, id
+        """, (q["id"],)).fetchall()
+        item["pairs"] = [{
+            "left": r["left_text"], "right": r["right_text"],
+            "category": r["category"] or "", "explanation": r["explanation"] or "",
+            "verification": json.loads(r["verification_json"]) if r["verification_json"] else {},
+        } for r in pairs]
+        item["round_size"] = q["matching_round_size"]
+        item["direction"] = q["matching_direction"]
+    else:
+        choices = cur.execute("""
+            SELECT label, text, is_correct FROM choices
+            WHERE question_id = ? ORDER BY label
+        """, (q["id"],)).fetchall()
+        item["choices"] = [{"label": r["label"], "text": r["text"], "is_correct": bool(r["is_correct"])} for r in choices]
+        item["correct"] = [r["label"] for r in choices if r["is_correct"]]
+    return item
+
+
+
+def _snapshot_existing_quiz_asset_refs(value, bucket):
+    """Copy existing quiz-owned asset URLs so Smart Review survives source-quiz deletion."""
+    if isinstance(value, dict):
+        return {k: _snapshot_existing_quiz_asset_refs(v, bucket) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_snapshot_existing_quiz_asset_refs(v, bucket) for v in value]
+    if not isinstance(value, str) or not value.startswith("/quiz-assets/"):
+        return value
+    rel_url = value[len("/quiz-assets/"):].lstrip("/")
+    parts = rel_url.split("/", 1)
+    if len(parts) != 2:
+        return value
+    old_bucket, rel = parts
+    try:
+        src_root = os.path.join(QUIZ_ASSET_FOLDER, old_bucket)
+        src = _safe_pack_child(src_root, rel)
+        if not os.path.isfile(src):
+            return value
+        dest_root = os.path.join(QUIZ_ASSET_FOLDER, bucket)
+        dest = _safe_pack_child(dest_root, rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        if not os.path.isfile(dest):
+            shutil.copy2(src, dest)
+        return _quiz_asset_url(bucket, rel)
+    except Exception:
+        return value
+
+
+def _smart_review_candidates(cur):
+    """Return unique questions ranked by the weak concepts they reinforce."""
+    topics = _learning_intelligence_topics(cur)
+    weak = [t for t in topics if t.get("status") == "weak"]
+    if not weak:
+        return [], weak
+    weak_by_id = {t["concept_id"]: t for t in weak}
+    rows = cur.execute("""
+        SELECT qc.question_id, qc.concept_id, q.quiz_id, q.question_number, q.question_text
+        FROM question_concepts qc
+        JOIN questions q ON q.id = qc.question_id
+        JOIN quizzes z ON z.id = q.quiz_id
+        WHERE qc.concept_id IN (%s)
+          AND LOWER(z.source_file) NOT LIKE 'smart_review_%%'
+          AND LOWER(z.title) NOT LIKE 'smart review —%%'
+    """ % ",".join("?" for _ in weak_by_id), tuple(weak_by_id)).fetchall()
+    grouped = {}
+    for row in rows:
+        g = grouped.setdefault(row["question_id"], {
+            "question_id": row["question_id"], "quiz_id": row["quiz_id"],
+            "question_number": row["question_number"], "question_text": row["question_text"],
+            "topics": [],
+        })
+        topic = weak_by_id.get(row["concept_id"])
+        if topic:
+            g["topics"].append(topic)
+    candidates = list(grouped.values())
+    for c in candidates:
+        c["priority_mastery"] = min((t.get("mastery") if t.get("mastery") is not None else 100) for t in c["topics"])
+        c["topic_names"] = sorted({t["name"] for t in c["topics"]}, key=str.casefold)
+    # De-duplicate identical source questions before review selection. This also
+    # protects older databases that may already contain duplicate imported copies.
+    unique_by_fingerprint = {}
+    for candidate in candidates:
+        fingerprint = " ".join(str(candidate.get("question_text") or "").casefold().split())
+        if not fingerprint:
+            fingerprint = f"question-id:{candidate['question_id']}"
+        existing = unique_by_fingerprint.get(fingerprint)
+        if existing is None:
+            candidate["fingerprint"] = fingerprint
+            unique_by_fingerprint[fingerprint] = candidate
+            continue
+        # Duplicate source copies of the same question should not become repeated
+        # Smart Review items, but do merge their weak-topic associations so a
+        # duplicate copy cannot make a concept disappear from review coverage.
+        topic_by_id = {t.get("concept_id"): t for t in existing.get("topics") or []}
+        for topic in candidate.get("topics") or []:
+            topic_by_id.setdefault(topic.get("concept_id"), topic)
+        existing["topics"] = list(topic_by_id.values())
+        existing["priority_mastery"] = min(
+            (t.get("mastery") if t.get("mastery") is not None else 100)
+            for t in existing["topics"]
+        )
+        existing["topic_names"] = sorted({t["name"] for t in existing["topics"]}, key=str.casefold)
+    candidates = list(unique_by_fingerprint.values())
+    candidates.sort(key=lambda c: (c["priority_mastery"], -len(c["topics"]), c["quiz_id"], c["question_number"]))
+    return candidates, weak
+
+
+def _smart_review_select_candidates(candidates, weak, requested):
+    """Select diverse Smart Review questions across weak concepts.
+
+    Weakest concepts are visited first, then selection rotates across them. A
+    source question can appear only once, even when it is tagged to more than
+    one weak concept. If a concept has fewer unique source questions than the
+    requested size, DLMS returns fewer questions instead of repeating content.
+    """
+    requested = max(1, int(requested or 1))
+    weak_order = sorted(
+        weak,
+        key=lambda t: (
+            t.get("mastery") if t.get("mastery") is not None else 999,
+            t.get("accuracy") if t.get("accuracy") is not None else 999,
+            str(t.get("name") or "").casefold(),
+        ),
+    )
+    by_concept = {t["concept_id"]: [] for t in weak_order}
+    for candidate in candidates:
+        for topic in candidate.get("topics") or []:
+            concept_id = topic.get("concept_id")
+            if concept_id in by_concept:
+                by_concept[concept_id].append(candidate)
+
+    selected = []
+    selected_ids = set()
+    offsets = {concept_id: 0 for concept_id in by_concept}
+    made_progress = True
+    while len(selected) < requested and made_progress:
+        made_progress = False
+        for topic in weak_order:
+            concept_id = topic["concept_id"]
+            pool = by_concept.get(concept_id) or []
+            idx = offsets[concept_id]
+            while idx < len(pool) and pool[idx]["question_id"] in selected_ids:
+                idx += 1
+            offsets[concept_id] = idx + 1
+            if idx >= len(pool):
+                continue
+            candidate = pool[idx]
+            selected.append(candidate)
+            selected_ids.add(candidate["question_id"])
+            made_progress = True
+            if len(selected) >= requested:
+                break
+
+    if len(selected) < requested:
+        for candidate in candidates:
+            if candidate["question_id"] in selected_ids:
+                continue
+            selected.append(candidate)
+            selected_ids.add(candidate["question_id"])
+            if len(selected) >= requested:
+                break
+    return selected
+
+
+@app.route("/api/smart-review/preview")
+def smart_review_preview_api():
+    conn = get_db(); cur = conn.cursor()
+    try:
+        candidates, weak = _smart_review_candidates(cur)
+        return jsonify({
+            "weak_topics": [{"name": t["name"], "mastery": t["mastery"], "accuracy": t["accuracy"], "evidence": t["evidence"]} for t in weak],
+            "candidate_questions": len(candidates),
+            "questions": [{"question_id": c["question_id"], "question": c["question_text"], "topics": c["topic_names"]} for c in candidates[:50]],
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/smart-review/generate", methods=["POST"])
+def smart_review_generate():
+    try:
+        requested = int(request.form.get("question_count", "20"))
+    except (TypeError, ValueError):
+        requested = 20
+    requested = max(3, min(requested, 50))
+
+    conn = get_db(); cur = conn.cursor()
+    try:
+        candidates, weak = _smart_review_candidates(cur)
+        if not weak:
+            flash("No weak areas currently meet the evidence threshold. Keep practicing to build evidence.", "info")
+            return redirect("/learning-intelligence")
+        if not candidates:
+            flash("Weak areas were detected, but no tagged source questions are available for review.", "error")
+            return redirect("/learning-intelligence")
+        selected = _smart_review_select_candidates(candidates, weak, requested)
+        quiz_data = []
+        for number, candidate in enumerate(selected, start=1):
+            item = _question_payload_from_db(cur, candidate["question_id"])
+            if not item:
+                continue
+            item["number"] = number
+            quiz_data.append(item)
+    finally:
+        conn.close()
+
+    if not quiz_data:
+        flash("No usable source questions were available for Smart Review.", "error")
+        return redirect("/learning-intelligence")
+
+    topic_names = [t["name"] for t in weak[:3]]
+    suffix = ", ".join(topic_names)
+    if len(weak) > 3:
+        suffix += f" +{len(weak)-3} more"
+    quiz_title = f"Smart Review — {suffix}"
+    ts = int(time.time() * 1000)
+    html_name = f"smart_review_{ts}.html"
+    json_name = f"smart_review_{ts}.json"
+    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"smart_review_{ts}")[:120]
+    quiz_data = _snapshot_existing_quiz_asset_refs(quiz_data, asset_bucket)
+    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
+        json.dump(quiz_data, f, indent=4, ensure_ascii=False)
+    quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
+    add_quiz_to_registry(quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None, exam_minutes=90)
+    build_quiz_html(html_name, json_name, os.path.join(QUIZ_FOLDER, html_name), get_portal_title(), quiz_title, None, quiz_id, 90)
+    return redirect(f"/quizzes/{html_name}")
+
+
+@app.route("/learning-profile")
+def learning_profile_page():
+    return send_from_directory(app.static_folder, "learning-profile.html")
+
+
+@app.route("/api/learning-profile")
+def learning_profile_api():
+    conn = get_db(); cur = conn.cursor()
+    try:
+        return jsonify(_learning_profile_payload(cur))
+    finally:
+        conn.close()
 
 @app.route("/learning-intelligence")
 def learning_intelligence_page():

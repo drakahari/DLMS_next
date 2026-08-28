@@ -53,6 +53,18 @@
   </div>
 </section>
 
+<section class="dashboard-panel learning-intelligence-actions-panel">
+  <div class="learning-intelligence-panel-head">
+    <div><div class="build-eyebrow">DLMS-011 · SMART REVIEW</div><h2>Turn weak areas into targeted practice</h2><p>DLMS selects existing tagged questions from topics currently classified as weak. No AI-generated questions are required.</p></div>
+    <a class="build-secondary-link" href="/learning-profile">Open Learning Profile</a>
+  </div>
+  <form class="learning-intelligence-review-form" method="post" action="/smart-review/generate">
+    <label><span>Questions</span><select name="question_count"><option value="10">Up to 10</option><option value="20" selected>Up to 20</option><option value="30">Up to 30</option><option value="50">Up to 50</option></select></label>
+    <button class="build-primary-button" id="liSmartReviewButton" type="submit">Generate Smart Review Quiz</button>
+    <span id="liSmartReviewNote">Uses the weakest tagged concepts first.</span>
+  </form>
+</section>
+
 <section class="dashboard-panel learning-intelligence-weak-panel">
   <div class="build-eyebrow">DLMS-010 · WEAK-AREA DETECTION</div>
   <h2>Needs attention</h2>

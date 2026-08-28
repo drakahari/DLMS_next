@@ -1,0 +1,14 @@
+{
+  "change": "Smart Review duplicate-source concept-coverage fix",
+  "root_cause": "Question-text de-duplication could discard a later duplicate row that carried a different weak-concept association. The test fixture intentionally reuses identical question text, exposing that issue.",
+  "fix": [
+    "Keep one physical Smart Review question per normalized question text.",
+    "Merge weak-concept associations from duplicate source copies into the retained candidate.",
+    "Update the unit test to verify concept coverage instead of requiring one specific duplicate database row id."
+  ],
+  "changed_files": [
+    "app.py",
+    "tests/test_learning_actions.py"
+  ],
+  "python_compile": "pass"
+}

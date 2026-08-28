@@ -1,0 +1,27 @@
+{
+  "source": "DLMS_v3_dev26.zip",
+  "app_version": "3.0.1",
+  "roadmap": {
+    "DLMS-008": "completed",
+    "DLMS-009": "completed",
+    "DLMS-010": "completed",
+    "DLMS-011": "implemented_pending_user_validation",
+    "DLMS-012": "implemented_pending_user_validation"
+  },
+  "regression_guards": {
+    "route_count_before": 151,
+    "route_count_after": 155,
+    "existing_routes_removed": 0,
+    "database_schema_changed": false,
+    "smart_pdf_extract_unchanged": true,
+    "smart_pdf_question_parser_unchanged": true,
+    "smart_pdf_glossary_parser_unchanged": true,
+    "parse_questions_unchanged": true,
+    "build_quiz_html_unchanged": true,
+    "save_quiz_to_db_unchanged": true,
+    "python_compile": "pass",
+    "nav_javascript_syntax": "pass",
+    "artifact_environment_unit_tests": "not run: Flask is not installed in the artifact environment"
+  },
+  "expected_test_count_on_dev_server": 35
+}

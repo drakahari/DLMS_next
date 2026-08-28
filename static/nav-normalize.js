@@ -20,7 +20,7 @@
     if (key === 'other') return otherStudies || otherBuilder;
     if (key === 'history') return path === '/history' || path.startsWith('/review');
     if (key === 'analytics') return path === '/dashboard';
-    if (key === 'learning') return path === '/learning-intelligence';
+    if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile';
     if (key === 'anki') return path === '/anki' || path.startsWith('/anki/');
     if (key === 'settings') return path === '/settings';
     if (key === 'content') return path === '/content-packs' || path.startsWith('/content-packs/');
@@ -34,6 +34,7 @@
   const sub = (href, icon, label, active=false) => `<a class="dashboard-nav-subitem${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="dashboard-nav-subicon">${icon}</span><span>${label}</span></a>`;
 
   const buildOpen = isActive('build');
+  const learningOpen = isActive('learning');
   const ankiOpen = isActive('anki');
   const primary = document.createElement('nav');
   primary.className = 'dashboard-nav dashboard-nav-normalized';
@@ -52,7 +53,7 @@
     item('other','/study-packs?domain_group=other','◇','Other Studies'),
     item('history','/history','↶','History'),
     item('analytics','/dashboard','▥','Analytics'),
-    item('learning','/learning-intelligence','◈','Learning Intelligence'),
+    `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','◈','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','↳','Topic Intelligence', path === '/learning-intelligence')}${sub('/learning-profile','↳','Learning Profile', path === '/learning-profile')}</div>` : ''}</div>`,
     `<div class="dashboard-nav-group">${item('anki','/anki','◆','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','↳','Custom Deck', path === '/anki/custom')}${sub('/anki/law','↳','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
   ].join('');
 
