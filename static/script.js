@@ -6,6 +6,8 @@ let index = 0;
 let examMode = false;
 let userAnswers = {};
 let matchingOptionOrders = {};
+let matchingInteractionMode = "drag";
+let matchingPendingRightIndex = null;
 let studyAnkiSelections = new Set();
 let paused = false;
 let examTimer = null;
@@ -417,6 +419,37 @@ function shuffledIndexes(length) {
     return arr;
 }
 
+function matchingFeedbackHtml(q, pair, leftIndex, chosen) {
+    if (examMode || chosen === "") return "";
+    const isCorrect = Number(chosen) === leftIndex;
+    const correctText = escapeHtml(pair.right);
+    const category = pair.category ? `<span class="matching-study-chip">${escapeHtml(pair.category)}</span>` : "";
+    const verification = (pair.verification && typeof pair.verification === "object") ? pair.verification : {};
+    const source = (pair.source && typeof pair.source === "object")
+        ? pair.source
+        : ((q.source && typeof q.source === "object") ? q.source : {});
+    const verificationStatus = String(verification.status || "").toLowerCase();
+    const isSourceChecked = ["source-checked", "source-aligned", "source-basis-verified", "verified"].includes(verificationStatus);
+    const verified = isSourceChecked ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
+    const explanation = pair.explanation ? `<div class="matching-study-explanation">${escapeHtml(pair.explanation)}</div>` : "";
+    const referenceText = verification.reference_basis || source.dataset || source.work || source.organization || "";
+    const sourceUrls = Array.isArray(verification.source_urls) ? verification.source_urls.filter(Boolean) : [];
+    const sourceUrl = sourceUrls[0] || source.url || "";
+    const referenceBasis = referenceText ? `<div class="matching-study-source"><strong>Reference basis:</strong> ${escapeHtml(referenceText)}</div>` : "";
+    const sourceLink = sourceUrl ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a></div>` : "";
+    return `<div class="matching-study-feedback ${isCorrect ? "is-correct" : "is-wrong"}">
+        <div class="matching-study-feedback-title">${isCorrect ? "✓ Correct" : "✕ Not quite"}</div>
+        ${isCorrect ? "" : `<div class="matching-study-correct-answer"><strong>Correct match:</strong> ${correctText}</div>`}
+        <div class="matching-study-meta">${category}${verified}</div>
+        ${explanation}${referenceBasis}${sourceLink}
+    </div>`;
+}
+
+function getMatchingAnswers(key) {
+    const selected = userAnswers[key];
+    return (selected && typeof selected === "object" && !Array.isArray(selected)) ? selected : {};
+}
+
 function renderMatchingQuestion(q, key, selected, choicesEl) {
     const pairs = Array.isArray(q.pairs) ? q.pairs : [];
     if (!matchingOptionOrders[key] || matchingOptionOrders[key].length !== pairs.length) {
@@ -424,83 +457,127 @@ function renderMatchingQuestion(q, key, selected, choicesEl) {
     }
     const answers = (selected && typeof selected === "object" && !Array.isArray(selected)) ? selected : {};
     const order = matchingOptionOrders[key];
-    const options = order.map(idx => `<option value="${idx}">${escapeHtml(pairs[idx].right)}</option>`).join("");
-    choicesEl.innerHTML = renderQuestionMedia(q) + `<div class="matching-question"><div class="matching-instructions">Choose the matching answer for each item.</div>${pairs.map((pair, leftIndex) => {
+    const modeControls = `<div class="matching-mode-controls" role="group" aria-label="Matching interaction">
+        <button type="button" class="matching-mode-button ${matchingInteractionMode === "drag" ? "active" : ""}" onclick="setMatchingInteractionMode('drag')">Drag &amp; Drop</button>
+        <button type="button" class="matching-mode-button ${matchingInteractionMode === "select" ? "active" : ""}" onclick="setMatchingInteractionMode('select')">Dropdowns</button>
+    </div>`;
+
+    if (matchingInteractionMode === "select") {
+        const options = order.map(idx => `<option value="${idx}">${escapeHtml(pairs[idx].right)}</option>`).join("");
+        choicesEl.innerHTML = renderQuestionMedia(q) + `<div class="matching-question">${modeControls}<div class="matching-instructions">Choose the matching answer for each item. You can switch back to Drag &amp; Drop at any time.</div>${pairs.map((pair, leftIndex) => {
+            const chosen = answers[leftIndex] === undefined ? "" : String(answers[leftIndex]);
+            let cls = "matching-row";
+            if (!examMode && chosen !== "") cls += Number(chosen) === leftIndex ? " matching-correct" : " matching-wrong";
+            return `<div class="${cls}"><div class="matching-left"><span class="matching-left-number">${leftIndex + 1}</span>${escapeHtml(pair.left)}</div><select class="matching-select" onchange="selectMatch(${leftIndex}, this.value)"><option value="">Select a match…</option>${options}</select>${matchingFeedbackHtml(q, pair, leftIndex, chosen)}</div>`;
+        }).join("")}</div>`;
+        choicesEl.querySelectorAll(".matching-select").forEach((select, idx) => {
+            if (answers[idx] !== undefined) select.value = String(answers[idx]);
+        });
+        return;
+    }
+
+    const assigned = new Set(Object.values(answers).map(Number).filter(Number.isFinite));
+    const pool = order.filter(idx => !assigned.has(idx));
+    const poolHtml = pool.map(idx => `<button type="button" class="matching-answer-chip${matchingPendingRightIndex === idx ? " selected" : ""}" draggable="true" data-match-answer="${idx}" aria-pressed="${matchingPendingRightIndex === idx ? "true" : "false"}">${escapeHtml(pairs[idx].right)}</button>`).join("");
+    const rowsHtml = pairs.map((pair, leftIndex) => {
         const chosen = answers[leftIndex] === undefined ? "" : String(answers[leftIndex]);
-        let cls = "matching-row";
-        if (!examMode && chosen !== "") cls += Number(chosen) === leftIndex ? " matching-correct" : " matching-wrong";
-        let feedback = "";
-        if (!examMode && chosen !== "") {
-            const isCorrect = Number(chosen) === leftIndex;
-            const correctText = escapeHtml(pair.right);
-            const category = pair.category ? `<span class="matching-study-chip">${escapeHtml(pair.category)}</span>` : "";
-            const verification = (pair.verification && typeof pair.verification === "object")
-                ? pair.verification : {};
-            const source = (pair.source && typeof pair.source === "object")
-                ? pair.source
-                : ((q.source && typeof q.source === "object") ? q.source : {});
-            const verificationStatus = String(verification.status || "").toLowerCase();
-            const isSourceChecked = [
-                "source-checked",
-                "source-aligned",
-                "source-basis-verified",
-                "verified"
-            ].includes(verificationStatus);
-            const verified = isSourceChecked
-                ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
-            const explanation = pair.explanation
-                ? `<div class="matching-study-explanation">${escapeHtml(pair.explanation)}</div>` : "";
+        const chosenIndex = chosen === "" ? null : Number(chosen);
+        let cls = "matching-drag-row";
+        if (!examMode && chosen !== "") cls += chosenIndex === leftIndex ? " matching-correct" : " matching-wrong";
+        const targetText = chosenIndex !== null && pairs[chosenIndex] ? escapeHtml(pairs[chosenIndex].right) : "Drop or tap an answer here";
+        return `<div class="${cls}">
+            <div class="matching-left"><span class="matching-left-number">${leftIndex + 1}</span>${escapeHtml(pair.left)}</div>
+            <button type="button" class="matching-drop-target${chosen !== "" ? " filled" : ""}" data-match-target="${leftIndex}" aria-label="Match for ${escapeHtml(pair.left)}">${targetText}</button>
+            ${chosen !== "" ? `<button type="button" class="matching-clear-match" onclick="clearMatch(${leftIndex})" aria-label="Clear match for ${escapeHtml(pair.left)}">×</button>` : '<span class="matching-clear-spacer"></span>'}
+            ${matchingFeedbackHtml(q, pair, leftIndex, chosen)}
+        </div>`;
+    }).join("");
 
-            const referenceText =
-                verification.reference_basis
-                || source.dataset
-                || source.work
-                || source.organization
-                || "";
-            const sourceUrls = Array.isArray(verification.source_urls)
-                ? verification.source_urls.filter(Boolean)
-                : [];
-            const sourceUrl = sourceUrls[0] || source.url || "";
-
-            const referenceBasis = referenceText
-                ? `<div class="matching-study-source"><strong>Reference basis:</strong> ${escapeHtml(referenceText)}</div>`
-                : "";
-            const sourceLink = sourceUrl
-                ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a></div>`
-                : "";
-
-            feedback = `<div class="matching-study-feedback ${isCorrect ? "is-correct" : "is-wrong"}">
-                <div class="matching-study-feedback-title">${isCorrect ? "✓ Correct" : "✕ Not quite"}</div>
-                ${isCorrect ? "" : `<div class="matching-study-correct-answer"><strong>Correct match:</strong> ${correctText}</div>`}
-                <div class="matching-study-meta">${category}${verified}</div>
-                ${explanation}
-                ${referenceBasis}
-                ${sourceLink}
-            </div>`;
-        }
-        return `<div class="${cls}"><div class="matching-left"><span class="matching-left-number">${leftIndex + 1}</span>${escapeHtml(pair.left)}</div><select class="matching-select" onchange="selectMatch(${leftIndex}, this.value)"><option value="">Select a match…</option>${options}</select>${feedback}</div>`;
-    }).join("")}</div>`;
-    choicesEl.querySelectorAll(".matching-select").forEach((select, idx) => {
-        if (answers[idx] !== undefined) select.value = String(answers[idx]);
-    });
+    choicesEl.innerHTML = renderQuestionMedia(q) + `<div class="matching-question">${modeControls}
+        <div class="matching-instructions"><strong>Drag &amp; Drop:</strong> drag an answer into a target. On touch or keyboard, tap/select an answer first, then tap/select its target.</div>
+        <div class="matching-answer-pool" aria-label="Answer pool"><div class="matching-answer-pool-title">Answer pool</div><div class="matching-answer-pool-items">${poolHtml || '<span class="matching-pool-empty">All answers are placed.</span>'}</div></div>
+        <div class="matching-drag-list">${rowsHtml}</div>
+    </div>`;
+    bindMatchingDragInteractions();
 }
 
-function selectMatch(leftIndex, rightIndexValue) {
+function setMatchingInteractionMode(mode) {
+    matchingInteractionMode = mode === "select" ? "select" : "drag";
+    matchingPendingRightIndex = null;
+    renderQuestion();
+}
+
+function commitMatchingAnswer(leftIndex, rightIndex) {
     if (!quiz.length) return;
     const q = quiz[index];
     const key = `q${index}`;
-    let answers = userAnswers[key];
-    if (!answers || Array.isArray(answers) || typeof answers !== "object") answers = {};
-    if (rightIndexValue === "") delete answers[leftIndex];
-    else answers[leftIndex] = Number(rightIndexValue);
+    let answers = getMatchingAnswers(key);
+    answers = {...answers};
+    Object.keys(answers).forEach(existingLeft => {
+        if (Number(answers[existingLeft]) === Number(rightIndex) && Number(existingLeft) !== Number(leftIndex)) delete answers[existingLeft];
+    });
+    answers[leftIndex] = Number(rightIndex);
     userAnswers[key] = answers;
+    matchingPendingRightIndex = null;
     if (!examMode) {
         const pairs = Array.isArray(q.pairs) ? q.pairs : [];
         const complete = pairs.length >= 2 && pairs.every((_, pairIndex) => answers[pairIndex] !== undefined);
         const correct = complete ? pairs.every((_, pairIndex) => Number(answers[pairIndex]) === pairIndex) : null;
         recordStudyLearningEvent(q, correct, answers);
-        renderQuestion();
     }
+    renderQuestion();
+}
+
+function clearMatch(leftIndex) {
+    const key = `q${index}`;
+    const answers = {...getMatchingAnswers(key)};
+    delete answers[leftIndex];
+    userAnswers[key] = answers;
+    matchingPendingRightIndex = null;
+    renderQuestion();
+}
+
+function bindMatchingDragInteractions() {
+    document.querySelectorAll("[data-match-answer]").forEach(chip => {
+        const rightIndex = Number(chip.dataset.matchAnswer);
+        chip.addEventListener("dragstart", event => {
+            event.dataTransfer.setData("text/plain", String(rightIndex));
+            event.dataTransfer.effectAllowed = "move";
+            chip.classList.add("dragging");
+        });
+        chip.addEventListener("dragend", () => chip.classList.remove("dragging"));
+        chip.addEventListener("click", () => {
+            matchingPendingRightIndex = matchingPendingRightIndex === rightIndex ? null : rightIndex;
+            renderQuestion();
+        });
+    });
+    document.querySelectorAll("[data-match-target]").forEach(target => {
+        const leftIndex = Number(target.dataset.matchTarget);
+        target.addEventListener("dragover", event => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            target.classList.add("drag-over");
+        });
+        target.addEventListener("dragleave", () => target.classList.remove("drag-over"));
+        target.addEventListener("drop", event => {
+            event.preventDefault();
+            target.classList.remove("drag-over");
+            const rightIndex = Number(event.dataTransfer.getData("text/plain"));
+            if (Number.isInteger(rightIndex)) commitMatchingAnswer(leftIndex, rightIndex);
+        });
+        target.addEventListener("click", () => {
+            if (Number.isInteger(matchingPendingRightIndex)) commitMatchingAnswer(leftIndex, matchingPendingRightIndex);
+        });
+    });
+}
+
+function selectMatch(leftIndex, rightIndexValue) {
+    if (!quiz.length) return;
+    if (rightIndexValue === "") {
+        clearMatch(leftIndex);
+        return;
+    }
+    commitMatchingAnswer(leftIndex, Number(rightIndexValue));
 }
 
 function escapeHtml(value) {
@@ -871,6 +948,7 @@ function startQuiz(isExam) {
     index = 0;
     userAnswers = {};
     matchingOptionOrders = {};
+    matchingPendingRightIndex = null;
     studyAnkiSelections.clear();
     learningSessionId = createLearningSessionId();
 

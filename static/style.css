@@ -9259,3 +9259,40 @@ body.help-page .dashboard-main *::after {
     line-height:1.25;
     max-width:100%;
 }
+
+
+/* =====================================================
+   DLMS-019 — DRAG-AND-DROP MATCHING
+===================================================== */
+.matching-mode-controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:2px}
+.matching-mode-button{width:auto;margin:0;padding:8px 12px;border:1px solid rgba(86,151,220,.35);border-radius:9px;background:rgba(8,29,54,.75);color:#c6d6e8;font-weight:700}
+.matching-mode-button.active{background:linear-gradient(135deg,#1688df,#2aaed2);border-color:#43b7ee;color:white}
+.matching-answer-pool{border:1px solid rgba(79,151,220,.28);background:rgba(4,21,42,.52);border-radius:12px;padding:12px}
+.matching-answer-pool-title{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;font-weight:800;color:#79bdf0;margin-bottom:9px}
+.matching-answer-pool-items{display:flex;flex-wrap:wrap;gap:9px;min-height:42px;align-items:center}
+.matching-answer-chip{width:auto;margin:0;padding:9px 12px;border-radius:9px;border:1px solid rgba(106,173,231,.40);background:#102a48;color:#e5eff8;cursor:grab;text-align:left;box-shadow:none}
+.matching-answer-chip:active{cursor:grabbing}
+.matching-answer-chip.dragging{opacity:.55}
+.matching-answer-chip.selected{outline:2px solid #f2c94c;background:#26334c}
+.matching-pool-empty{color:#8fa6bf;font-size:.9rem}
+.matching-drag-list{display:grid;gap:10px}
+.matching-drag-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,1fr) 38px;gap:10px;align-items:center;padding:13px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(4,17,35,.22)}
+.matching-drag-row.matching-correct{outline:2px solid rgba(55,190,110,.7)}
+.matching-drag-row.matching-wrong{outline:2px solid rgba(220,75,75,.75)}
+.matching-drop-target{width:100%;min-height:44px;margin:0;padding:10px 12px;border:1px dashed rgba(95,170,233,.55);border-radius:9px;background:rgba(15,40,68,.65);color:#b9c9da;text-align:left;box-shadow:none}
+.matching-drop-target.filled{border-style:solid;background:#122f51;color:#eef7ff}
+.matching-drop-target.drag-over{border-color:#f2c94c;background:rgba(242,201,76,.12);outline:2px solid rgba(242,201,76,.28)}
+.matching-clear-match{width:34px;height:34px;margin:0;padding:0;border-radius:8px;border:1px solid rgba(230,90,100,.4);background:rgba(105,24,34,.35);color:#ff9ba3;font-size:20px;line-height:1}
+.matching-clear-spacer{width:34px}
+.matching-drag-row .matching-study-feedback{grid-column:1 / -1}
+@media(max-width:700px){.matching-drag-row{grid-template-columns:1fr 38px}.matching-drag-row .matching-left{grid-column:1 / -1}.matching-drop-target{grid-column:1}.matching-clear-match,.matching-clear-spacer{grid-column:2}.matching-drag-row .matching-study-feedback{grid-column:1 / -1}}
+
+
+/* =====================================================
+   DLMS-017 — PRINTABLE FLASHCARDS
+===================================================== */
+.anki-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.anki-action-grid-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.printable-flashcard-button{background:linear-gradient(135deg,#6b46d9,#8e62e8)!important;border-color:#a58aee!important}
+.anki-print-note{margin-top:10px;padding:10px 12px;border:1px solid rgba(242,201,76,.28);border-radius:9px;background:rgba(92,69,10,.18);color:#d8cda8;font-size:.85rem;line-height:1.4}
+@media(max-width:820px){.anki-action-grid-three{grid-template-columns:1fr}.anki-action-grid{grid-template-columns:1fr}}

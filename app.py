@@ -20533,21 +20533,25 @@ def anki_custom_deck():
                 {% endif %}
             </section>
 
-            <section class="dashboard-panel anki-source-card anki-source-card-wide" style="margin-top:18px;">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <button type="submit"
-                            class="anki-preview-button"
-                            formaction="/anki/custom"
-                            formmethod="POST">
-                        Preview Deck
-                    </button>
-                    <button type="submit"
-                            class="anki-export-button"
-                            formaction="/anki/export/custom"
-                            formmethod="POST">
-                        Export .apkg
-                    </button>
+            <section class="dashboard-panel anki-source-card anki-source-card-wide" id="printableCards" style="margin-top:18px;">
+                <div class="anki-source-heading">
+                    <span class="anki-source-icon">▤</span>
+                    <div>
+                        <span class="anki-source-kicker">PRINTABLE FLASHCARDS</span>
+                        <h2>Avery 5388 · 3 × 5 Index Cards</h2>
+                        <p>Use the same selected DLMS cards for Anki or a browser-printable 3-card-per-sheet Avery layout.</p>
+                    </div>
                 </div>
+                <div class="anki-two-field-row" style="margin:12px 0 14px;">
+                    <label><span>Template</span><select disabled><option>Avery 5388 — 3 × 5, 3 per sheet</option></select></label>
+                    <label><span>Duplex flip</span><select name="duplex_flip"><option value="long">Long edge — same card order</option><option value="short">Short edge — reverse back order</option></select></label>
+                </div>
+                <div class="anki-action-grid anki-action-grid-three">
+                    <button type="submit" class="anki-preview-button" formaction="/anki/custom" formmethod="POST">Preview Deck</button>
+                    <button type="submit" class="anki-export-button" formaction="/anki/export/custom" formmethod="POST">Export .apkg</button>
+                    <button type="submit" class="anki-export-button printable-flashcard-button" formaction="/anki/printable" formmethod="POST" formtarget="_blank">Open Avery Print Layout</button>
+                </div>
+                <div class="anki-print-note">Official Avery 5388 stock uses 3 × 5 inch cards, 3 cards per US Letter sheet. Print one duplex test sheet before a large batch.</div>
             </section>
         </form>
 
@@ -20667,6 +20671,88 @@ def anki_export_custom():
         ),
         mimetype="application/octet-stream"
     )
+
+
+
+def _chunk_printable_cards(rows, size=3):
+    rows = list(rows or [])
+    return [rows[i:i + size] for i in range(0, len(rows), size)]
+
+
+def _printable_back_sheet(cards, duplex_flip="long"):
+    cards = list(cards or [])
+    if duplex_flip == "short":
+        return list(reversed(cards))
+    return cards
+
+
+@app.route("/anki/printable", methods=["POST"])
+def anki_printable_flashcards():
+    deck_name = (request.form.get("deck_name") or "DLMS Printable Flashcards").strip()
+    duplex_flip = (request.form.get("duplex_flip") or "long").strip().lower()
+    if duplex_flip not in {"long", "short"}:
+        duplex_flip = "long"
+
+    rows = build_custom_anki_rows(
+        request.form.getlist("quiz_cards"),
+        request.form.getlist("missed_cards"),
+        request.form.getlist("law_cards"),
+    )
+    if not rows:
+        return "Select at least one DLMS item before creating printable flashcards.", 400
+
+    sheets = []
+    for sheet_number, cards in enumerate(_chunk_printable_cards(rows, 3), start=1):
+        sheets.append({
+            "number": sheet_number,
+            "fronts": cards,
+            "backs": _printable_back_sheet(cards, duplex_flip),
+        })
+
+    return render_template_string(r"""
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ deck_name }} — Avery 5388 Print Layout</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#e7ebef;color:#111;font-family:Arial,Helvetica,sans-serif}
+.print-toolbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 18px;background:#0a1b31;color:white;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+.print-toolbar h1{font-size:18px;margin:0}.print-toolbar p{margin:3px 0 0;font-size:12px;color:#c9d5e3}.print-toolbar button{border:0;border-radius:8px;background:#188fe0;color:white;font-weight:800;padding:10px 16px;cursor:pointer}
+.print-note{max-width:8.5in;margin:18px auto;padding:12px 16px;background:#fff7d8;border:1px solid #d4b656;border-radius:8px;font-size:13px;line-height:1.45}
+.avery-sheet{position:relative;width:8.5in;height:11in;margin:18px auto;background:white;padding:1in 1.75in;display:flex;flex-direction:column;box-shadow:0 4px 18px rgba(0,0,0,.18);overflow:hidden}
+.sheet-label{position:absolute;top:.25in;left:.35in;font-size:10px;color:#777}
+.avery-card{width:5in;height:3in;flex:0 0 3in;border:1px dashed #a7a7a7;padding:.20in .24in;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;background:white}
+.avery-card pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:11pt/1.28 Arial,Helvetica,sans-serif}
+.avery-card.compact pre{font-size:9.5pt;line-height:1.2}
+.card-side-label{font-size:8pt;letter-spacing:.08em;font-weight:800;color:#777;margin-bottom:.10in}
+@page{size:Letter portrait;margin:0}
+@media print{
+ body{background:white}.print-toolbar,.print-note,.sheet-label{display:none!important}
+ .avery-sheet{margin:0;box-shadow:none;page-break-after:always;break-after:page}
+ .avery-sheet:last-child{page-break-after:auto;break-after:auto}
+ .avery-card{border-color:transparent}
+}
+</style>
+</head>
+<body>
+<div class="print-toolbar"><div><h1>{{ deck_name }}</h1><p>Avery 5388 · 3 × 5 in · 3 cards per US Letter sheet · {{ rows|length }} cards</p></div><button type="button" onclick="window.print()">Print Cards</button></div>
+<div class="print-note"><strong>Duplex guidance:</strong> This layout alternates each front sheet with its matching back sheet. Your selected setting is <strong>{{ 'long-edge' if duplex_flip == 'long' else 'short-edge' }} flip</strong>. Print one test sheet before a large run and use your printer's cardstock/index-card setting when available.</div>
+{% for sheet in sheets %}
+<section class="avery-sheet front-sheet"><div class="sheet-label">Sheet {{ sheet.number }} fronts</div>
+{% for card in sheet.fronts %}<article class="avery-card {% if card.front|length > 850 %}compact{% endif %}"><div class="card-side-label">FRONT</div><pre>{{ card.front }}</pre></article>{% endfor %}
+{% for _ in range(3 - sheet.fronts|length) %}<article class="avery-card"></article>{% endfor %}
+</section>
+<section class="avery-sheet back-sheet"><div class="sheet-label">Sheet {{ sheet.number }} backs</div>
+{% for card in sheet.backs %}<article class="avery-card {% if card.back|length > 850 %}compact{% endif %}"><div class="card-side-label">BACK</div><pre>{{ card.back }}</pre></article>{% endfor %}
+{% for _ in range(3 - sheet.backs|length) %}<article class="avery-card"></article>{% endfor %}
+</section>
+{% endfor %}
+</body></html>
+""", deck_name=deck_name, rows=rows, sheets=sheets, duplex_flip=duplex_flip)
 
 
 @app.route("/anki/law")
