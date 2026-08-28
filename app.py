@@ -1456,6 +1456,9 @@ REQUIRED_TABLES = {
     "attempts",
     "attempt_answers",
     "missed_questions",
+    "concepts",
+    "question_concepts",
+    "learning_events",
     "schema_meta",
 }
 
@@ -8370,6 +8373,7 @@ def edit_quiz(quiz_id):
             "round_size": q["matching_round_size"],
             "direction": q["matching_direction"],
             "explanation": q["explanation"] or "",
+            "concepts": _question_concepts(cur, q["id"]),
             "source": {
                 "organization": q["source_organization"], "dataset": q["source_dataset"],
                 "version": q["source_version"], "url": q["source_url"], "license": q["source_license"]
@@ -8540,6 +8544,12 @@ def edit_quiz(quiz_id):
                             <span>Question Text</span>
                             <textarea class="question-text"
                                       name="question_{{ q.id }}">{{ q.text }}</textarea>
+                        </label>
+
+                        <label class="build-field edit-quiz-concepts-field">
+                            <span>Concepts / Tags <em>Optional</em></span>
+                            <input type="text" name="concepts_{{ q.id }}" value="{{ q.concepts | join(', ') }}" placeholder="Example: IAM, authentication, least privilege">
+                            <small>Separate concepts with commas. DLMS uses these labels as the foundation for topic-level learning analytics and targeted review.</small>
                         </label>
 
                         {% if q.type == "matching" %}
@@ -9073,6 +9083,7 @@ def rebuild_quiz_json_from_db(quiz_id):
                 "round_size": q["matching_round_size"],
                 "direction": q["matching_direction"],
                 "explanation": q["explanation"] or "",
+                "concepts": _question_concepts(cur, q["id"]),
             }
             try:
                 media = json.loads(q["media_json"] or "{}")
@@ -9109,6 +9120,7 @@ def rebuild_quiz_json_from_db(quiz_id):
             "type": "choice",
             "question": q["question_text"],
             "explanation": q["explanation"] or "",
+            "concepts": _question_concepts(cur, q["id"]),
             "choices": [
                 {
                     "label": c["label"],
@@ -9275,6 +9287,8 @@ def save_edited_quiz(quiz_id):
         question_type = q[1]
         new_question_text = request.form.get(f"question_{question_id}", "").strip()
         new_explanation = request.form.get(f"explanation_{question_id}", "").strip()
+        new_concepts = request.form.get(f"concepts_{question_id}", "")
+        _set_question_concepts(cur, question_id, new_concepts)
         if question_type == "matching":
             raw_round_size = request.form.get(f"matching_round_size_{question_id}", "").strip()
             try:
@@ -9777,6 +9791,9 @@ def _reset_quiz_library_core():
     conn.execute("PRAGMA foreign_keys = OFF")
     cur = conn.cursor()
     cur.executescript("""
+        DELETE FROM learning_events;
+        DELETE FROM question_concepts;
+        DELETE FROM concepts;
         DELETE FROM missed_questions;
         DELETE FROM attempt_answers;
         DELETE FROM attempts;
@@ -10047,6 +10064,8 @@ def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
         )
 
         question_id = cur.lastrowid
+
+        _set_question_concepts(cur, question_id, q.get("concepts") or q.get("tags") or [])
 
         if question_type == "matching":
             for pair_order, pair in enumerate(q.get("pairs", []), start=1):
@@ -17644,6 +17663,7 @@ def record_attempt():
     time_remaining = data.get("timeRemaining")
     mode = data.get("mode") or "Study"
     missed_details = data.get("missedDetails") or []
+    response_details = data.get("responseDetails") or []
 
     # --- Basic validation ---
     if quiz_id is None:
@@ -17702,7 +17722,47 @@ def record_attempt():
             attempt_pk = attempt_id
 
         # ------------------------------------------------------------
-        # 3) Save missed questions (RECONSTRUCT SNAPSHOT)
+        # 3) Record learning events (DLMS-007)
+        # ------------------------------------------------------------
+        _record_learning_event(
+            cur,
+            event_type="attempt_completed",
+            quiz_id=quiz_id,
+            attempt_id=attempt_id,
+            mode=mode,
+            response={"score": score, "total": total, "percent": percent},
+        )
+
+        for detail in response_details:
+            if not isinstance(detail, dict):
+                continue
+            qnum = detail.get("attemptQuestionNumber")
+            try:
+                qnum = int(qnum)
+            except (TypeError, ValueError):
+                continue
+            qrow = cur.execute(
+                "SELECT id FROM questions WHERE quiz_id = ? AND question_number = ?",
+                (quiz_id, qnum),
+            ).fetchone()
+            _record_learning_event(
+                cur,
+                event_type="exam_answer",
+                quiz_id=quiz_id,
+                question_id=(qrow[0] if qrow else None),
+                attempt_id=attempt_id,
+                session_id=data.get("sessionId"),
+                mode=mode,
+                was_correct=detail.get("wasCorrect"),
+                response={
+                    "question_number": qnum,
+                    "question_type": detail.get("questionType") or "choice",
+                    "selected": detail.get("selected"),
+                },
+            )
+
+        # ------------------------------------------------------------
+        # 4) Save missed questions (RECONSTRUCT SNAPSHOT)
         # ------------------------------------------------------------
         missed_attempt_ref = attempt_pk if attempt_pk is not None else attempt_id
 
@@ -17858,7 +17918,77 @@ def record_attempt():
 
 
 
+@app.route("/api/learning-events/study-response", methods=["POST"])
+def record_study_learning_event():
+    data = request.get_json(silent=True) or {}
+    try:
+        quiz_id = int(data.get("quizId"))
+        question_number = int(data.get("questionNumber"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid quizId/questionNumber"}), 400
 
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        row = cur.execute(
+            "SELECT id FROM questions WHERE quiz_id = ? AND question_number = ?",
+            (quiz_id, question_number),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Question not found"}), 404
+        _record_learning_event(
+            cur,
+            event_type="study_answer",
+            quiz_id=quiz_id,
+            question_id=row[0],
+            session_id=data.get("sessionId"),
+            mode="Study",
+            was_correct=data.get("wasCorrect"),
+            response={
+                "question_number": question_number,
+                "question_type": data.get("questionType") or "choice",
+                "selected": data.get("selected"),
+            },
+        )
+        conn.commit()
+        return jsonify({"ok": True}), 200
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/learning-foundation/summary")
+def learning_foundation_summary():
+    """Diagnostics for DLMS-006/007; Phase 2 dashboards build on this data."""
+    conn = get_db()
+    cur = conn.cursor()
+    concepts = cur.execute("""
+        SELECT c.id, c.name, COUNT(DISTINCT qc.question_id) AS question_count
+        FROM concepts c
+        LEFT JOIN question_concepts qc ON qc.concept_id = c.id
+        GROUP BY c.id, c.name
+        ORDER BY c.name COLLATE NOCASE
+    """).fetchall()
+    event_counts = cur.execute("""
+        SELECT event_type, COUNT(*) AS count
+        FROM learning_events
+        GROUP BY event_type
+        ORDER BY event_type
+    """).fetchall()
+    totals = cur.execute("""
+        SELECT COUNT(*) AS events, COUNT(DISTINCT quiz_id) AS quizzes,
+               COUNT(DISTINCT question_id) AS questions
+        FROM learning_events
+    """).fetchone()
+    out = {
+        "concepts": [dict(r) for r in concepts],
+        "event_counts": {r["event_type"]: r["count"] for r in event_counts},
+        "totals": dict(totals) if totals else {"events": 0, "quizzes": 0, "questions": 0},
+    }
+    conn.close()
+    return jsonify(out)
 
 
 def _quiz_history_origin(registry_entry, packs=None):
@@ -21395,10 +21525,109 @@ def ensure_schema(conn):
             cur.execute(f"ALTER TABLE matching_pairs ADD COLUMN {col} {definition}")
 
     cur.execute("CREATE INDEX IF NOT EXISTS idx_matching_pairs_question ON matching_pairs(question_id)")
+
+    # =================================================
+    # LEARNING INTELLIGENCE FOUNDATION (DLMS-006 / 007)
+    # =================================================
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS concepts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS question_concepts (
+            question_id INTEGER NOT NULL,
+            concept_id INTEGER NOT NULL,
+            PRIMARY KEY (question_id, concept_id),
+            FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+            FOREIGN KEY (concept_id) REFERENCES concepts(id) ON DELETE CASCADE
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS learning_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            quiz_id INTEGER,
+            question_id INTEGER,
+            attempt_id TEXT,
+            session_id TEXT,
+            mode TEXT,
+            was_correct INTEGER,
+            response_json TEXT,
+            occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
+            FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_question_concepts_question ON question_concepts(question_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_question_concepts_concept ON question_concepts(concept_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_events_quiz ON learning_events(quiz_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_events_question ON learning_events(question_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_events_attempt ON learning_events(attempt_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_events_session ON learning_events(session_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_events_occurred ON learning_events(occurred_at)")
     conn.commit()
 
 
+def _normalize_concept_names(value):
+    """Return stable, de-duplicated concept names from CSV/list input."""
+    if isinstance(value, str):
+        raw = re.split(r"[,;\n]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        raw = list(value)
+    else:
+        raw = []
+    out = []
+    seen = set()
+    for item in raw:
+        name = re.sub(r"\s+", " ", str(item or "")).strip()[:120]
+        key = name.casefold()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        out.append(name)
+    return out[:24]
 
+
+def _question_concepts(cur, question_id):
+    rows = cur.execute("""
+        SELECT c.name
+        FROM concepts c
+        JOIN question_concepts qc ON qc.concept_id = c.id
+        WHERE qc.question_id = ?
+        ORDER BY c.name COLLATE NOCASE
+    """, (question_id,)).fetchall()
+    return [r[0] for r in rows]
+
+
+def _set_question_concepts(cur, question_id, names):
+    names = _normalize_concept_names(names)
+    cur.execute("DELETE FROM question_concepts WHERE question_id = ?", (question_id,))
+    for name in names:
+        cur.execute("INSERT OR IGNORE INTO concepts(name) VALUES (?)", (name,))
+        row = cur.execute("SELECT id FROM concepts WHERE name = ? COLLATE NOCASE", (name,)).fetchone()
+        if row:
+            cur.execute("INSERT OR IGNORE INTO question_concepts(question_id, concept_id) VALUES (?, ?)", (question_id, row[0]))
+    # Remove orphan concept labels so the catalog stays tied to real content.
+    cur.execute("DELETE FROM concepts WHERE id NOT IN (SELECT DISTINCT concept_id FROM question_concepts)")
+    return names
+
+
+def _record_learning_event(cur, *, event_type, quiz_id=None, question_id=None, attempt_id=None, session_id=None, mode=None, was_correct=None, response=None):
+    cur.execute("""
+        INSERT INTO learning_events (
+            event_type, quiz_id, question_id, attempt_id, session_id, mode, was_correct, response_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        str(event_type or "interaction")[:64], quiz_id, question_id,
+        str(attempt_id) if attempt_id else None,
+        str(session_id)[:128] if session_id else None,
+        str(mode)[:32] if mode else None,
+        None if was_correct is None else (1 if bool(was_correct) else 0),
+        json.dumps(response or {}, ensure_ascii=False),
+    ))
 
 
 def resolve_logo_filename(logo_filename):

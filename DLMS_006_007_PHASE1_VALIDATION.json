@@ -1,0 +1,58 @@
+{
+  "source": "DLMS_v3_dev25.zip",
+  "app_version": "3.0.1",
+  "roadmap": {
+    "DLMS-006": {
+      "feature": "Concept & Tag System",
+      "status": "implemented_pending_validation"
+    },
+    "DLMS-007": {
+      "feature": "Learning Event Tracking",
+      "status": "implemented_pending_validation"
+    }
+  },
+  "data_model": {
+    "new_tables": [
+      "concepts",
+      "question_concepts",
+      "learning_events"
+    ],
+    "new_routes": [
+      "POST /api/learning-events/study-response",
+      "GET /api/learning-foundation/summary"
+    ],
+    "concept_input": "Edit Quiz per-question comma-separated Concepts / Tags",
+    "learning_events": [
+      "study_answer",
+      "exam_answer",
+      "attempt_completed"
+    ]
+  },
+  "regression_guards": {
+    "app_version_unchanged": true,
+    "route_count_before": 151,
+    "route_count_after": 153,
+    "routes_removed": 0,
+    "smart_pdf_parsers_changed": false,
+    "build_quiz_html_changed": false,
+    "database_migration": "additive only",
+    "existing_history_analytics_replaced": false,
+    "backup_restore_coverage": "SQLite DB already included in portable backups"
+  },
+  "tests": {
+    "existing_test_methods": 23,
+    "new_learning_foundation_tests": 4,
+    "expected_total": 27,
+    "python_compile": "pass",
+    "javascript_syntax": "pass",
+    "init_sql_learning_tables": "validated with Python sqlite3"
+  },
+  "changed_files": [
+    "app.py",
+    "init.sql",
+    "static/script.js",
+    "static/help-build-quiz.html",
+    "static/help-history-analytics.html",
+    "tests/test_learning_foundation.py"
+  ]
+}

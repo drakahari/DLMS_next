@@ -18,6 +18,27 @@ const examDurationMinutes =
 let timeRemaining = examDurationMinutes * 60;
 let examStartTime = null;
 let examStartedAt = null;
+let learningSessionId = null;
+
+function createLearningSessionId() {
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `study-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function recordStudyLearningEvent(q, wasCorrect, selected) {
+    if (examMode || !q || !window.QUIZ_ID) return;
+    fetch("/api/learning-events/study-response", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            quizId: window.QUIZ_ID,
+            questionNumber: q.number || (index + 1),
+            questionType: q.type || "choice",
+            sessionId: learningSessionId,
+            wasCorrect: wasCorrect,
+            selected: selected
+        })
+    }).catch(err => console.warn("Learning event save failed (quiz remains usable):", err));
+}
 
 
 
@@ -381,6 +402,9 @@ function selectHotspot(event) {
     const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
 
     userAnswers[`q${index}`] = {x, y};
+    if (!examMode) {
+        recordStudyLearningEvent(q, pointInHotspot(x, y, q.target), {x, y});
+    }
     renderQuestion();
 }
 
@@ -463,13 +487,20 @@ function renderMatchingQuestion(q, key, selected, choicesEl) {
 
 function selectMatch(leftIndex, rightIndexValue) {
     if (!quiz.length) return;
+    const q = quiz[index];
     const key = `q${index}`;
     let answers = userAnswers[key];
     if (!answers || Array.isArray(answers) || typeof answers !== "object") answers = {};
     if (rightIndexValue === "") delete answers[leftIndex];
     else answers[leftIndex] = Number(rightIndexValue);
     userAnswers[key] = answers;
-    if (!examMode) renderQuestion();
+    if (!examMode) {
+        const pairs = Array.isArray(q.pairs) ? q.pairs : [];
+        const complete = pairs.length >= 2 && pairs.every((_, pairIndex) => answers[pairIndex] !== undefined);
+        const correct = complete ? pairs.every((_, pairIndex) => Number(answers[pairIndex]) === pairIndex) : null;
+        recordStudyLearningEvent(q, correct, answers);
+        renderQuestion();
+    }
 }
 
 function escapeHtml(value) {
@@ -505,6 +536,12 @@ function selectChoice(i) {
         }
 
         userAnswers[key] = arr;
+        const correctIndexes = (q.correct || []).map(letter => String(letter).toUpperCase().charCodeAt(0) - 65).sort((a,b) => a-b);
+        const evaluable = !isMulti || arr.length === correctIndexes.length;
+        const isCorrect = evaluable
+            ? arr.length === correctIndexes.length && arr.every((v, idx) => v === correctIndexes[idx])
+            : null;
+        recordStudyLearningEvent(q, isCorrect, arr.map(idx => String.fromCharCode(65 + idx)));
         renderQuestion();
         return;
     }
@@ -835,6 +872,7 @@ function startQuiz(isExam) {
     userAnswers = {};
     matchingOptionOrders = {};
     studyAnkiSelections.clear();
+    learningSessionId = createLearningSessionId();
 
     if (examMode) {
         examStartTime = new Date().toISOString();
@@ -1024,6 +1062,12 @@ function submitQuiz(force = false) {
                     Number.isFinite(Number(point.y)) &&
                     pointInHotspot(Number(point.x), Number(point.y), q.target);
 
+                answerDetails.push({
+                    attemptQuestionNumber: q.number || (i + 1),
+                    questionType: "hotspot",
+                    wasCorrect: !!isCorrect,
+                    selected: point ? {x: Number(point.x), y: Number(point.y)} : null
+                });
                 if (isCorrect) {
                     correct++;
                 } else {
@@ -1058,6 +1102,12 @@ function submitQuiz(force = false) {
                 const pairs = Array.isArray(q.pairs) ? q.pairs : [];
                 const matchAns = (ans && typeof ans === "object" && !Array.isArray(ans)) ? ans : {};
                 const isCorrect = pairs.length >= 2 && pairs.every((pair, pairIndex) => Number(matchAns[pairIndex]) === pairIndex);
+                answerDetails.push({
+                    attemptQuestionNumber: q.number || (i + 1),
+                    questionType: "matching",
+                    wasCorrect: !!isCorrect,
+                    selected: matchAns
+                });
                 if (isCorrect) {
                     correct++;
                 } else {
@@ -1100,6 +1150,13 @@ function submitQuiz(force = false) {
             const isCorrect =
                 ans.length === correctIndexes.length &&
                 ans.every((v, idx) => v === correctIndexes[idx]);
+
+            answerDetails.push({
+                attemptQuestionNumber: q.number || (i + 1),
+                questionType: "choice",
+                wasCorrect: !!isCorrect,
+                selected: ans.map(idx => String.fromCharCode(65 + idx))
+            });
 
             if (isCorrect) {
                 correct++;
@@ -1187,6 +1244,8 @@ function submitQuiz(force = false) {
             timeRemaining: timeRemaining,
 
             mode: "Exam",
+            sessionId: learningSessionId,
+            responseDetails: answerDetails,
 
             missedDetails: missed
         })

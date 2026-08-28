@@ -173,3 +173,46 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 
 INSERT OR IGNORE INTO schema_meta (id, version)
 VALUES (1, 1);
+
+/* =====================================================
+   CONCEPTS / TAGS (DLMS-006)
+===================================================== */
+CREATE TABLE IF NOT EXISTS concepts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS question_concepts (
+    question_id INTEGER NOT NULL,
+    concept_id INTEGER NOT NULL,
+    PRIMARY KEY (question_id, concept_id),
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+    FOREIGN KEY (concept_id) REFERENCES concepts(id) ON DELETE CASCADE
+);
+
+/* =====================================================
+   LEARNING EVENTS (DLMS-007)
+===================================================== */
+CREATE TABLE IF NOT EXISTS learning_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    quiz_id INTEGER,
+    question_id INTEGER,
+    attempt_id TEXT,
+    session_id TEXT,
+    mode TEXT,
+    was_correct INTEGER,
+    response_json TEXT,
+    occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_question_concepts_question ON question_concepts(question_id);
+CREATE INDEX IF NOT EXISTS idx_question_concepts_concept ON question_concepts(concept_id);
+CREATE INDEX IF NOT EXISTS idx_learning_events_quiz ON learning_events(quiz_id);
+CREATE INDEX IF NOT EXISTS idx_learning_events_question ON learning_events(question_id);
+CREATE INDEX IF NOT EXISTS idx_learning_events_attempt ON learning_events(attempt_id);
+CREATE INDEX IF NOT EXISTS idx_learning_events_session ON learning_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_learning_events_occurred ON learning_events(occurred_at);
