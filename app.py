@@ -2406,6 +2406,18 @@ def dynamic_css():
             "border_soft": "rgba(220,183,88,.30)", "nav_text": "#fff8e8", "nav_muted": "#d7cbe6",
             "accent": "#f2c230", "accent2": "#d8a914", "accent3": "#a87c00",
             "link": "#ffd85a", "link_hover": "#fff0a6", "shadow": "rgba(0,0,0,.48)"
+        },
+        "maroon-gold": {
+            "scheme": "dark", "page": "#f5f2ed", "muted": "#bfc2c9", "heading": "#ffffff",
+            "body_base": "#0d0e10", "body_overlay": "rgba(18,8,11,.80)", "body_overlay_2": "rgba(8,9,10,.92)",
+            "shell": "rgba(18,19,22,.94)", "sidebar1": "rgba(91,0,19,.98)", "sidebar2": "rgba(60,0,13,.99)",
+            "main1": "rgba(22,23,26,.94)", "main2": "rgba(11,12,14,.97)",
+            "panel1": "rgba(31,32,36,.95)", "panel2": "rgba(23,24,27,.95)",
+            "surface": "rgba(43,44,49,.90)", "surface2": "rgba(35,36,40,.94)",
+            "input_bg": "rgba(16,17,20,.97)", "input_text": "#f5f2ed", "border": "rgba(255,204,51,.24)",
+            "border_soft": "rgba(190,194,202,.20)", "nav_text": "#fff8f1", "nav_muted": "#dbc8cc",
+            "accent": "#ffcc33", "accent2": "#ffb71e", "accent3": "#c69214",
+            "link": "#ffde7a", "link_hover": "#fff0b8", "shadow": "rgba(0,0,0,.56)"
         }
     }
     p = palettes.get(theme, palettes["dark"])
@@ -2896,7 +2908,7 @@ def load_portal_config():
         bg = cfg.get("background_image")
         cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
 
-        valid_themes = {"dark", "light", "purple-gold"}
+        valid_themes = {"dark", "light", "purple-gold", "maroon-gold"}
         theme = str(cfg.get("theme") or "dark").strip().lower()
         cfg["theme"] = theme if theme in valid_themes else "dark"
 
@@ -16443,6 +16455,10 @@ def settings_appearance_page():
                     <input type="radio" name="theme" value="purple-gold" {% if cfg.theme == 'purple-gold' %}checked{% endif %}>
                     <span class="settings-theme-swatch theme-purple-gold"><b>Purple &amp; Gold</b><small>Deep purple with gold accents</small></span>
                 </label>
+                <label class="settings-theme-choice">
+                    <input type="radio" name="theme" value="maroon-gold" {% if cfg.theme == 'maroon-gold' %}checked{% endif %}>
+                    <span class="settings-theme-swatch theme-maroon-gold"><b>Maroon &amp; Gold</b><small>University of Minnesota-inspired maroon with gold accents</small></span>
+                </label>
             </div>
             <div class="settings-image-guidance"><strong>Readability first:</strong> status colors remain semantically distinct in every theme; the theme changes presentation, not grading or learning data.</div>
         </section>
@@ -16522,7 +16538,7 @@ def save_appearance_settings():
     cfg = load_portal_config()
 
     requested_theme = str(request.form.get("theme") or cfg.get("theme") or "dark").strip().lower()
-    cfg["theme"] = requested_theme if requested_theme in {"dark", "light", "purple-gold"} else "dark"
+    cfg["theme"] = requested_theme if requested_theme in {"dark", "light", "purple-gold", "maroon-gold"} else "dark"
 
     title = request.form.get("portal_title", "").strip()
     if title:
@@ -16551,7 +16567,7 @@ def api_set_theme():
     cfg = load_portal_config()
     payload = request.get_json(silent=True) or request.form
     requested = str(payload.get("theme") or "").strip().lower()
-    if requested not in {"dark", "light", "purple-gold"}:
+    if requested not in {"dark", "light", "purple-gold", "maroon-gold"}:
         return jsonify({"ok": False, "error": "Unsupported theme"}), 400
     cfg["theme"] = requested
     with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
