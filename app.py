@@ -18802,6 +18802,165 @@ def spaced_review_generate():
     return redirect(f"/quizzes/{html_name}")
 
 
+
+
+def _response_selected_labels(value):
+    """Normalize recorded choice selections into stable A-Z labels."""
+    if isinstance(value, str):
+        raw = re.split(r"[,;\s]+", value.strip())
+    elif isinstance(value, (list, tuple, set)):
+        raw = list(value)
+    else:
+        return []
+    out=[]; seen=set()
+    for item in raw:
+        label=str(item or "").strip().upper()
+        if re.fullmatch(r"[A-Z]", label) and label not in seen:
+            seen.add(label); out.append(label)
+    return out
+
+
+def _question_diagnostics_payload(cur):
+    """DLMS-015/016: explainable confusion and question-quality signals.
+
+    Question copies created by Smart/Spaced Review are grouped with their source
+    item by normalized question text and type so review practice contributes
+    evidence without recursively appearing as separate quality rows.
+    """
+    qrows = cur.execute("""
+        SELECT q.id, q.quiz_id, q.question_number, q.question_text,
+               COALESCE(q.question_type,'choice') AS question_type,
+               z.title AS quiz_title, COALESCE(z.source_file,'') AS source_file
+        FROM questions q JOIN quizzes z ON z.id=q.quiz_id
+        ORDER BY q.id
+    """).fetchall()
+
+    groups={}
+    question_to_key={}
+    for q in qrows:
+        qtype=(q['question_type'] or 'choice').lower()
+        norm=re.sub(r"\s+"," ",str(q['question_text'] or '').strip()).casefold()
+        key=(qtype,norm)
+        question_to_key[q['id']]=key
+        g=groups.setdefault(key,{
+            'question_type':qtype,'question_text':q['question_text'] or '',
+            'question_ids':[],'source_question_ids':[],'quiz_titles':set(),
+            'concepts':set(),'choice_map':{},'correct_labels':set(),
+        })
+        g['question_ids'].append(q['id']); g['quiz_titles'].add(q['quiz_title'] or '')
+        sf=(q['source_file'] or '').lower()
+        if not (sf.startswith('smart_review_') or sf.startswith('spaced_review_')):
+            g['source_question_ids'].append(q['id'])
+        for c in _question_concepts(cur,q['id']): g['concepts'].add(c)
+        if qtype=='choice':
+            for c in cur.execute("SELECT label,text,is_correct FROM choices WHERE question_id=? ORDER BY label",(q['id'],)).fetchall():
+                label=str(c['label'] or '').upper()
+                if label and label not in g['choice_map']: g['choice_map'][label]=c['text'] or ''
+                if c['is_correct']: g['correct_labels'].add(label)
+
+    erows=cur.execute("""
+        SELECT id,event_type,question_id,attempt_id,session_id,was_correct,response_json,occurred_at
+        FROM learning_events
+        WHERE event_type IN ('study_answer','exam_answer') AND question_id IS NOT NULL AND was_correct IS NOT NULL
+        ORDER BY occurred_at,id
+    """).fetchall()
+    dedup={}
+    for e in erows:
+        scope=(e['attempt_id'] or f"exam-{e['id']}") if e['event_type']=='exam_answer' else (e['session_id'] or f"study-{e['id']}")
+        dedup[(e['event_type'],scope,e['question_id'])]=e
+
+    evidence_by_group={}
+    for e in dedup.values():
+        key=question_to_key.get(e['question_id'])
+        if key in groups: evidence_by_group.setdefault(key,[]).append(e)
+
+    question_rows=[]; confusion={}
+    for key,g in groups.items():
+        events=evidence_by_group.get(key,[])
+        evidence=len(events); correct=sum(1 for e in events if int(e['was_correct'] or 0)==1)
+        incorrect=evidence-correct; accuracy=round(correct/evidence*100,1) if evidence else None
+        option_counts={label:0 for label in g['choice_map']}
+        incorrect_option_counts={label:0 for label in g['choice_map']}
+        for e in events:
+            try: payload=json.loads(e['response_json'] or '{}')
+            except Exception: payload={}
+            selected=_response_selected_labels(payload.get('selected'))
+            for label in selected:
+                if label in option_counts: option_counts[label]+=1
+            if not int(e['was_correct'] or 0) and g['question_type']=='choice':
+                wrong=[x for x in selected if x not in g['correct_labels']]
+                missing=[x for x in g['correct_labels'] if x not in selected]
+                for w in wrong:
+                    incorrect_option_counts[w]=incorrect_option_counts.get(w,0)+1
+                    targets=missing or sorted(g['correct_labels'])
+                    for c in targets:
+                        ck=(g['choice_map'].get(w,w),g['choice_map'].get(c,c))
+                        row=confusion.setdefault(ck,{'selected_text':ck[0],'correct_text':ck[1],'count':0,'question_keys':set(),'concepts':set()})
+                        row['count']+=1; row['question_keys'].add(key); row['concepts'].update(g['concepts'])
+
+        signals=[]
+        if evidence < 5:
+            status='insufficient'; status_label='Not enough data'
+        else:
+            if accuracy is not None and accuracy < 40: signals.append('Very difficult / review wording or coverage')
+            elif accuracy is not None and accuracy < 60: signals.append('High miss rate')
+            if evidence >= 10 and accuracy is not None and accuracy >= 95: signals.append('Very easy')
+            if g['question_type']=='choice' and evidence >= 8:
+                for label,count in incorrect_option_counts.items():
+                    if count >= 3 and (count/evidence)>=0.30:
+                        signals.append(f"Strong distractor: {label}")
+                for label,count in option_counts.items():
+                    if label not in g['correct_labels'] and count==0:
+                        signals.append(f"Unused distractor: {label}")
+            status='review' if signals else 'healthy'; status_label='Review suggested' if signals else 'Healthy'
+        question_rows.append({
+            'question_text':g['question_text'],'question_type':g['question_type'],
+            'source_question_count':len(g['source_question_ids']),'evidence':evidence,
+            'correct':correct,'incorrect':incorrect,'accuracy':accuracy,
+            'status':status,'status_label':status_label,'signals':signals,
+            'concepts':sorted(g['concepts'],key=str.casefold),
+            'quiz_titles':sorted(x for x in g['quiz_titles'] if x),
+            'option_selection_counts':option_counts,
+        })
+
+    question_rows.sort(key=lambda r: ({'review':0,'healthy':1,'insufficient':2}.get(r['status'],9), r['accuracy'] if r['accuracy'] is not None else 999, r['question_text'].casefold()))
+    confusions=[]
+    for row in confusion.values():
+        if row['count'] < 2: continue
+        confusions.append({'selected_text':row['selected_text'],'correct_text':row['correct_text'],'count':row['count'],'question_count':len(row['question_keys']),'concepts':sorted(row['concepts'],key=str.casefold)})
+    confusions.sort(key=lambda r:(-r['count'],-r['question_count'],r['selected_text'].casefold(),r['correct_text'].casefold()))
+
+    measurable=[q for q in question_rows if q['evidence']>=5]
+    return {
+        'summary':{
+            'questions_with_evidence':sum(1 for q in question_rows if q['evidence']>0),
+            'questions_measurable':len(measurable),
+            'review_suggested':sum(1 for q in question_rows if q['status']=='review'),
+            'confusion_pairs':len(confusions),
+        },
+        'confusions':confusions[:50], 'questions':question_rows,
+        'model':{
+            'confusion_rule':'Repeated incorrect selected-answer → correct-answer pair, minimum 2 occurrences.',
+            'quality_rule':'Signals are review prompts, not proof a question is bad. Minimum 5 responses for general quality classification; distractor signals require at least 8.',
+            'clone_handling':'Smart/Spaced Review copies are grouped with identical source question text so practice contributes evidence without creating duplicate rows.'
+        }
+    }
+
+
+@app.route('/learning-diagnostics')
+def learning_diagnostics_page():
+    return send_from_directory(STATIC_ROOT, 'learning-diagnostics.html')
+
+
+@app.route('/api/learning-diagnostics')
+def learning_diagnostics_api():
+    conn=get_db(); cur=conn.cursor()
+    try:
+        return jsonify(_question_diagnostics_payload(cur))
+    finally:
+        conn.close()
+
+
 @app.route("/learning-profile")
 def learning_profile_page():
     return send_from_directory(app.static_folder, "learning-profile.html")

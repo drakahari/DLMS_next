@@ -1,0 +1,56 @@
+{
+  "source": "DLMS_v3_dev28.zip",
+  "app_version": "3.0.1",
+  "roadmap": {
+    "DLMS-013": "completed",
+    "DLMS-014": "completed",
+    "DLMS-015": "implemented_pending_user_validation",
+    "DLMS-016": "implemented_pending_user_validation"
+  },
+  "DLMS-015": {
+    "name": "Confusion-Pair Detection",
+    "behavior": [
+      "Detects repeated incorrect answer-choice selections that occur in place of a correct choice.",
+      "Requires at least 2 occurrences before a confusion pair is surfaced.",
+      "Aggregates across Study and Exam learning events using the existing deduplication semantics.",
+      "Does not force matching or hotspot responses into a choice-based confusion model.",
+      "Groups Smart Review and Spaced Review copies with identical source-question text."
+    ]
+  },
+  "DLMS-016": {
+    "name": "Question Quality Analytics",
+    "behavior": [
+      "Shows evidence count, accuracy, concepts, and review signals per logical question.",
+      "Requires 5 deduplicated responses for general quality classification.",
+      "Flags high miss rate / very difficult patterns without declaring the question invalid.",
+      "Flags very easy questions with enough evidence.",
+      "Flags strong distractors and unused distractors after at least 8 responses.",
+      "Treats all signals as author review prompts rather than automatic judgments."
+    ]
+  },
+  "new_routes": [
+    "/learning-diagnostics",
+    "/api/learning-diagnostics"
+  ],
+  "regression_guards": {
+    "route_count_before": 163,
+    "route_count_after": 165,
+    "existing_routes_removed": 0,
+    "database_schema_changed": false,
+    "app_version_changed": false,
+    "python_compile": "pass",
+    "nav_javascript_syntax": "pass",
+    "css_braces_balanced": true,
+    "artifact_environment_unit_tests": "not run because Flask is not installed in the artifact environment"
+  },
+  "expected_test_count_on_dev_server": 46,
+  "changed_files": [
+    "app.py",
+    "static/nav-normalize.js",
+    "static/style.css",
+    "static/learning-diagnostics.html",
+    "static/help-history-analytics.html",
+    "tests/test_learning_diagnostics.py",
+    "DLMS_015_016_PHASE5_VALIDATION.json"
+  ]
+}

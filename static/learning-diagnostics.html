@@ -1,0 +1,100 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Learning Diagnostics — DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home learning-diagnostics-page"><div class="dashboard-shell"><aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">◇</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a></nav><div class="dashboard-sidebar-version">Learning Diagnostics</div></aside><main class="dashboard-main">
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">DLMS-015/016 · LEARNING DIAGNOSTICS</div><h1>Confusions & Question Quality</h1><p>Use repeated response patterns to spot likely answer confusions and questions worth reviewing.</p></div></header>
+<section class="learning-diagnostics-summary"><article class="dashboard-stat-card"><span>QUESTIONS WITH EVIDENCE</span><strong id="dqEvidence">—</strong><small>recorded response history</small></article><article class="dashboard-stat-card"><span>MEASURABLE QUESTIONS</span><strong id="dqMeasurable">—</strong><small>5+ deduplicated responses</small></article><article class="dashboard-stat-card"><span>REVIEW SUGGESTED</span><strong id="dqReview">—</strong><small>quality signals detected</small></article><article class="dashboard-stat-card"><span>CONFUSION PAIRS</span><strong id="dqConfusions">—</strong><small>repeated wrong → correct patterns</small></article></section>
+<section class="dashboard-panel learning-diagnostics-panel">
+<div class="learning-diagnostics-section-head"><div><div class="build-eyebrow">DLMS-015 · CONFUSION-PAIR DETECTION</div><h2>Repeated answer confusions</h2><p>DLMS looks for incorrect answer choices repeatedly selected in place of a correct choice. Matching and hotspot questions are not forced into this model.</p></div><button class="learning-diagnostics-collapse" type="button" data-collapse-target="confusionSection" aria-expanded="true">Collapse</button></div>
+<div id="confusionSection" class="learning-diagnostics-section-body">
+<div class="learning-diagnostics-toolbar"><div class="learning-diagnostics-toolbar-group"><label>Sort<select id="confusionSort"><option value="frequency">Most frequent</option><option value="alpha">A–Z</option></select></label><label>Concept / text<input id="confusionSearch" type="search" placeholder="Filter confusions..."></label></div><button id="confusionShowAll" class="learning-diagnostics-secondary" type="button">Show all</button></div>
+<div id="confusionList" class="learning-diagnostics-list"></div>
+<div id="confusionCount" class="learning-diagnostics-count"></div>
+</div></section>
+<section class="dashboard-panel learning-diagnostics-panel">
+<div class="learning-diagnostics-section-head"><div><div class="build-eyrow build-eyebrow">DLMS-016 · QUESTION QUALITY ANALYTICS</div><h2>Question review signals</h2><p>These are review prompts, not automatic judgments. A difficult question can be excellent; DLMS simply surfaces patterns worth inspecting.</p></div><button class="learning-diagnostics-collapse" type="button" data-collapse-target="qualitySection" aria-expanded="true">Collapse</button></div>
+<div id="qualitySection" class="learning-diagnostics-section-body">
+<div class="learning-diagnostics-head"><div class="learning-diagnostics-filters"><button type="button" data-filter="review" class="active">Review suggested</button><button type="button" data-filter="healthy">Healthy</button><button type="button" data-filter="insufficient">Not enough data</button><button type="button" data-filter="all">All</button></div><input id="dqSearch" type="search" placeholder="Search questions or concepts..."></div>
+<div id="questionDiagnostics" class="learning-diagnostics-list"></div>
+<div id="questionCount" class="learning-diagnostics-count"></div>
+</div></section>
+</main></div>
+<script>
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let DATA={questions:[],confusions:[]},FILTER='review',CONFUSION_SHOW_ALL=false;
+
+function renderConfusions(){
+    const q=document.getElementById('confusionSearch').value.trim().toLowerCase();
+    const sort=document.getElementById('confusionSort').value;
+    let rows=(DATA.confusions||[]).filter(c=>!q||`${c.selected_text} ${c.correct_text} ${(c.concepts||[]).join(' ')}`.toLowerCase().includes(q));
+    rows=[...rows].sort((a,b)=>sort==='alpha'
+        ? String(a.selected_text||'').localeCompare(String(b.selected_text||''))
+        : (Number(b.count||0)-Number(a.count||0)) || String(a.selected_text||'').localeCompare(String(b.selected_text||'')));
+    const total=rows.length;
+    const visible=CONFUSION_SHOW_ALL?rows:rows.slice(0,10);
+    confusionList.innerHTML=visible.length?visible.map(c=>`<article class="learning-diagnostic-card confusion"><div><strong>${esc(c.selected_text)} <span>→</span> ${esc(c.correct_text)}</strong><small>${c.count} repeated confusion${c.count===1?'':'s'} across ${c.question_count} question${c.question_count===1?'':'s'}${(c.concepts||[]).length?' · '+c.concepts.map(esc).join(', '):''}</small></div></article>`).join(''):'<div class="learning-intelligence-empty">No repeated answer-choice confusions match this view.</div>';
+    confusionCount.textContent=total?`Showing ${visible.length} of ${total} confusion pair${total===1?'':'s'}.`:'';
+    confusionShowAll.hidden=total<=10;
+    confusionShowAll.textContent=CONFUSION_SHOW_ALL?'Show top 10':'Show all';
+}
+
+function renderQuestions(){
+    const q=document.getElementById('dqSearch').value.trim().toLowerCase();
+    const rows=(DATA.questions||[]).filter(x=>(FILTER==='all'||x.status===FILTER)&&(!q||`${x.question_text} ${(x.concepts||[]).join(' ')}`.toLowerCase().includes(q)));
+    questionDiagnostics.innerHTML=rows.length?rows.map((x,i)=>{
+        const hasDetails=(x.signals||[]).length>0;
+        return `<article class="learning-diagnostic-card question-card">
+            <button class="learning-diagnostic-question-toggle" type="button" aria-expanded="false" data-question-toggle="${i}">
+                <span class="learning-diagnostic-main"><strong>${esc(x.question_text)}</strong><span>${x.evidence} responses · ${x.accuracy==null?'—':Math.round(x.accuracy)+'%'} accuracy · ${(x.concepts||[]).map(esc).join(', ')||'No concepts'}</span></span>
+                <span class="learning-diagnostic-status ${esc(x.status)}">${esc(x.status_label)}</span>
+                <span class="learning-diagnostic-chevron" aria-hidden="true">${hasDetails?'⌄':''}</span>
+            </button>
+            ${hasDetails?`<div class="learning-diagnostic-details" hidden><ul>${x.signals.map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`:''}
+        </article>`;
+    }).join(''):'<div class="learning-intelligence-empty">No questions match this view.</div>';
+    questionCount.textContent=`${rows.length} question${rows.length===1?'':'s'} in this view.`;
+    document.querySelectorAll('[data-question-toggle]').forEach(btn=>btn.addEventListener('click',()=>{
+        const details=btn.parentElement.querySelector('.learning-diagnostic-details');
+        if(!details)return;
+        const expanded=btn.getAttribute('aria-expanded')==='true';
+        btn.setAttribute('aria-expanded',String(!expanded));
+        details.hidden=expanded;
+        const chevron=btn.querySelector('.learning-diagnostic-chevron');
+        if(chevron)chevron.textContent=expanded?'⌄':'⌃';
+    }));
+}
+
+fetch('/api/learning-diagnostics').then(r=>r.json()).then(d=>{
+    DATA=d;
+    const s=d.summary||{};
+    dqEvidence.textContent=s.questions_with_evidence??0;
+    dqMeasurable.textContent=s.questions_measurable??0;
+    dqReview.textContent=s.review_suggested??0;
+    dqConfusions.textContent=s.confusion_pairs??0;
+    renderConfusions();
+    renderQuestions();
+}).catch(()=>{
+    confusionList.innerHTML='<div class="learning-intelligence-empty">Learning diagnostics could not be loaded.</div>';
+    questionDiagnostics.innerHTML='<div class="learning-intelligence-empty">Learning diagnostics could not be loaded.</div>';
+});
+
+document.querySelectorAll('.learning-diagnostics-filters button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('.learning-diagnostics-filters button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    FILTER=b.dataset.filter;
+    renderQuestions();
+});
+dqSearch.addEventListener('input',renderQuestions);
+confusionSearch.addEventListener('input',renderConfusions);
+confusionSort.addEventListener('change',renderConfusions);
+confusionShowAll.addEventListener('click',()=>{CONFUSION_SHOW_ALL=!CONFUSION_SHOW_ALL;renderConfusions();});
+
+document.querySelectorAll('[data-collapse-target]').forEach(btn=>btn.addEventListener('click',()=>{
+    const target=document.getElementById(btn.dataset.collapseTarget);
+    const expanded=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!expanded));
+    target.hidden=expanded;
+    btn.textContent=expanded?'Expand':'Collapse';
+}));
+
+menuButton?.addEventListener('click',()=>dashboardSidebar?.classList.toggle('open'));
+window.scrollTo({top:0,left:0,behavior:'instant'});
+</script><script src="/static/nav-normalize.js"></script></body></html>
