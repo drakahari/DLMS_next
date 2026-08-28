@@ -1,0 +1,20 @@
+{
+  "change": "DLMS-001 Theme Coverage Pass 3",
+  "scope": [
+    "Build Quiz landing page",
+    "Manual Quiz Builder",
+    "Matching Bank Import",
+    "Build from Images",
+    "Smart PDF Import"
+  ],
+  "changed_files": [
+    "static/style.css"
+  ],
+  "application_logic_changed": false,
+  "notes": [
+    "Replaced remaining dark-only builder surfaces with semantic theme variables.",
+    "Replaced hard-coded dark input colors with theme input variables.",
+    "Improved Light-mode label, helper-text, placeholder, and card contrast.",
+    "Dark and Purple & Gold remain on the same semantic component definitions."
+  ]
+}

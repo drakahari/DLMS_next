@@ -2356,17 +2356,12 @@ def serve_portal_config():
 def dynamic_css():
     cfg = load_portal_config()
 
-    # DEBUG - retained for troubleshooting configured background images
-# print("[DYNAMIC.CSS] background_image =", cfg.get("background_image"))
-
     bg = (cfg.get("background_image") or "").strip()
-
     if not bg:
         css_bg = "none"
     else:
         user_bg = os.path.join(APP_DATA_DIR, "static", "bg", bg)
         static_bg = os.path.join(app.static_folder, "bg", bg)
-
         if os.path.exists(user_bg):
             css_bg = f"url('/user-bg/{bg}')"
         elif os.path.exists(static_bg):
@@ -2374,10 +2369,78 @@ def dynamic_css():
         else:
             css_bg = "none"
 
-    return f""":root {{
-  --portal-bg: {css_bg};
-}}
-""", 200, {"Content-Type": "text/css"}
+    theme = str(cfg.get("theme") or "dark").strip().lower()
+    palettes = {
+        "dark": {
+            "scheme": "dark", "page": "#eaf2ff", "muted": "#b8c2cc", "heading": "#ffffff",
+            "body_base": "#020814", "body_overlay": "rgba(2,8,20,.72)", "body_overlay_2": "rgba(2,8,20,.84)",
+            "shell": "rgba(3,12,28,.66)", "sidebar1": "rgba(5,18,40,.96)", "sidebar2": "rgba(3,13,30,.94)",
+            "main1": "rgba(3,12,28,.60)", "main2": "rgba(2,10,23,.78)",
+            "panel1": "rgba(6,20,45,.82)", "panel2": "rgba(5,17,38,.74)",
+            "surface": "rgba(5,18,39,.58)", "surface2": "rgba(17,31,56,.78)",
+            "input_bg": "rgba(3,13,30,.78)", "input_text": "#eaf3ff", "border": "rgba(86,158,255,.35)",
+            "border_soft": "rgba(98,155,255,.24)", "nav_text": "#e8f2ff", "nav_muted": "#b9c8dc",
+            "accent": "#1b9ff2", "accent2": "#138ad6", "accent3": "#0f6fb3",
+            "link": "#62b5ff", "link_hover": "#9bd2ff", "shadow": "rgba(0,0,0,.42)"
+        },
+        "light": {
+            "scheme": "light", "page": "#17253a", "muted": "#53657d", "heading": "#0b1b33",
+            "body_base": "#eaf0f7", "body_overlay": "rgba(239,244,250,.84)", "body_overlay_2": "rgba(229,237,246,.90)",
+            "shell": "rgba(248,251,255,.92)", "sidebar1": "rgba(247,250,254,.98)", "sidebar2": "rgba(237,244,251,.98)",
+            "main1": "rgba(250,252,255,.94)", "main2": "rgba(239,245,251,.96)",
+            "panel1": "rgba(255,255,255,.97)", "panel2": "rgba(244,248,252,.97)",
+            "surface": "rgba(237,244,251,.96)", "surface2": "rgba(230,238,248,.96)",
+            "input_bg": "#ffffff", "input_text": "#10213a", "border": "rgba(55,103,153,.34)",
+            "border_soft": "rgba(71,111,151,.24)", "nav_text": "#26384f", "nav_muted": "#61738a",
+            "accent": "#076fb5", "accent2": "#08659e", "accent3": "#084f7c",
+            "link": "#075f9f", "link_hover": "#043f6c", "shadow": "rgba(29,52,76,.16)"
+        },
+        "purple-gold": {
+            "scheme": "dark", "page": "#fff8e8", "muted": "#d7cbe6", "heading": "#ffffff",
+            "body_base": "#160b2b", "body_overlay": "rgba(24,10,47,.74)", "body_overlay_2": "rgba(13,7,29,.86)",
+            "shell": "rgba(28,11,53,.82)", "sidebar1": "rgba(38,13,69,.97)", "sidebar2": "rgba(22,8,43,.97)",
+            "main1": "rgba(28,12,51,.78)", "main2": "rgba(15,8,31,.90)",
+            "panel1": "rgba(43,20,75,.88)", "panel2": "rgba(27,13,50,.86)",
+            "surface": "rgba(56,27,92,.66)", "surface2": "rgba(65,31,103,.72)",
+            "input_bg": "rgba(29,14,52,.92)", "input_text": "#fff8e8", "border": "rgba(255,198,47,.48)",
+            "border_soft": "rgba(220,183,88,.30)", "nav_text": "#fff8e8", "nav_muted": "#d7cbe6",
+            "accent": "#f2c230", "accent2": "#d8a914", "accent3": "#a87c00",
+            "link": "#ffd85a", "link_hover": "#fff0a6", "shadow": "rgba(0,0,0,.48)"
+        }
+    }
+    p = palettes.get(theme, palettes["dark"])
+    vars_css = "\n".join([
+        f"  --portal-bg: {css_bg};",
+        f"  --theme-color-scheme: {p['scheme']};",
+        f"  --theme-page-text: {p['page']};",
+        f"  --theme-muted-text: {p['muted']};",
+        f"  --theme-heading: {p['heading']};",
+        f"  --theme-body-base: {p['body_base']};",
+        f"  --theme-body-overlay: {p['body_overlay']};",
+        f"  --theme-body-overlay-2: {p['body_overlay_2']};",
+        f"  --theme-shell-bg: {p['shell']};",
+        f"  --theme-sidebar-1: {p['sidebar1']};",
+        f"  --theme-sidebar-2: {p['sidebar2']};",
+        f"  --theme-main-1: {p['main1']};",
+        f"  --theme-main-2: {p['main2']};",
+        f"  --theme-panel-1: {p['panel1']};",
+        f"  --theme-panel-2: {p['panel2']};",
+        f"  --theme-surface: {p['surface']};",
+        f"  --theme-surface-2: {p['surface2']};",
+        f"  --theme-input-bg: {p['input_bg']};",
+        f"  --theme-input-text: {p['input_text']};",
+        f"  --theme-border: {p['border']};",
+        f"  --theme-border-soft: {p['border_soft']};",
+        f"  --theme-nav-text: {p['nav_text']};",
+        f"  --theme-nav-muted: {p['nav_muted']};",
+        f"  --theme-accent: {p['accent']};",
+        f"  --theme-accent-2: {p['accent2']};",
+        f"  --theme-accent-3: {p['accent3']};",
+        f"  --theme-link: {p['link']};",
+        f"  --theme-link-hover: {p['link_hover']};",
+        f"  --theme-shadow: {p['shadow']};"
+    ])
+    return f":root {{\n{vars_css}\n}}\n", 200, {"Content-Type": "text/css", "Cache-Control": "no-store"}
 
 
 
@@ -2773,6 +2836,7 @@ def load_portal_config():
         "show_confidence": False,
         "enable_regex_replace": False,
         "background_image": None,
+        "theme": "dark",
         "quiz_folders": ["Uncategorized", "A+", "Network+", "Security+", "Data+", "Cloud+", "Linux+"],
 
         # AI Explanation Helper
@@ -2831,6 +2895,10 @@ def load_portal_config():
         # Normalize background
         bg = cfg.get("background_image")
         cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
+
+        valid_themes = {"dark", "light", "purple-gold"}
+        theme = str(cfg.get("theme") or "dark").strip().lower()
+        cfg["theme"] = theme if theme in valid_themes else "dark"
 
         cfg["ai_helper_enabled"] = bool(cfg.get("ai_helper_enabled", False))
         cfg["ai_auto_copy_prompt"] = bool(cfg.get("ai_auto_copy_prompt", True))
@@ -16344,7 +16412,7 @@ def settings_appearance_page():
         <div>
             <span class="settings-eyebrow">SETTINGS / APPEARANCE</span>
             <h1>🎨 Appearance</h1>
-            <p>Customize the DLMS dashboard identity without changing quiz, AI, parsing, or history settings.</p>
+            <p>Customize the global DLMS theme, dashboard title, and background without changing quiz, AI, parsing, or history settings.</p>
         </div>
         <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
     </div>
@@ -16354,6 +16422,31 @@ def settings_appearance_page():
     {% endif %}
 
     <form class="settings-detail-card" action="/settings/appearance/save" method="POST" enctype="multipart/form-data">
+        <section class="settings-form-section">
+            <div class="settings-section-heading">
+                <div class="settings-section-icon icon-purple">◐</div>
+                <div>
+                    <h2>DLMS Theme</h2>
+                    <p>Choose the global color system used throughout DLMS. Dark remains the default.</p>
+                </div>
+            </div>
+            <div class="settings-theme-grid">
+                <label class="settings-theme-choice">
+                    <input type="radio" name="theme" value="dark" {% if cfg.theme == 'dark' %}checked{% endif %}>
+                    <span class="settings-theme-swatch theme-dark"><b>Dark</b><small>Current DLMS look</small></span>
+                </label>
+                <label class="settings-theme-choice">
+                    <input type="radio" name="theme" value="light" {% if cfg.theme == 'light' %}checked{% endif %}>
+                    <span class="settings-theme-swatch theme-light"><b>Light</b><small>High-contrast light surfaces</small></span>
+                </label>
+                <label class="settings-theme-choice">
+                    <input type="radio" name="theme" value="purple-gold" {% if cfg.theme == 'purple-gold' %}checked{% endif %}>
+                    <span class="settings-theme-swatch theme-purple-gold"><b>Purple &amp; Gold</b><small>Deep purple with gold accents</small></span>
+                </label>
+            </div>
+            <div class="settings-image-guidance"><strong>Readability first:</strong> status colors remain semantically distinct in every theme; the theme changes presentation, not grading or learning data.</div>
+        </section>
+
         <section class="settings-form-section">
             <div class="settings-section-heading">
                 <div class="settings-section-icon icon-blue">Aa</div>
@@ -16410,7 +16503,7 @@ def settings_appearance_page():
     </form>
 
     <div class="settings-scope-note">
-        <strong>Safe migration behavior:</strong> saving this page changes only the dashboard title and background image. It does not touch parsing or AI settings.
+        <strong>Safe migration behavior:</strong> saving this page changes only the theme, dashboard title, and background image. It does not touch parsing or AI settings.
     </div>
 </div>
 <script src="/static/nav-normalize.js"></script>
@@ -16427,6 +16520,9 @@ def save_appearance_settings():
     partial settings form cannot accidentally disable unrelated features.
     """
     cfg = load_portal_config()
+
+    requested_theme = str(request.form.get("theme") or cfg.get("theme") or "dark").strip().lower()
+    cfg["theme"] = requested_theme if requested_theme in {"dark", "light", "purple-gold"} else "dark"
 
     title = request.form.get("portal_title", "").strip()
     if title:
@@ -16448,6 +16544,19 @@ def save_appearance_settings():
         json.dump(cfg, f, indent=4)
 
     return redirect("/settings/appearance?saved=1")
+
+
+@app.route("/api/theme", methods=["POST"])
+def api_set_theme():
+    cfg = load_portal_config()
+    payload = request.get_json(silent=True) or request.form
+    requested = str(payload.get("theme") or "").strip().lower()
+    if requested not in {"dark", "light", "purple-gold"}:
+        return jsonify({"ok": False, "error": "Unsupported theme"}), 400
+    cfg["theme"] = requested
+    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=4)
+    return jsonify({"ok": True, "theme": requested})
 
 
 @app.route("/settings/ai")

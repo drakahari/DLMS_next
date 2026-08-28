@@ -22,7 +22,7 @@
     if (key === 'analytics') return path === '/dashboard';
     if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile' || path === '/review-schedule' || path === '/learning-diagnostics';
     if (key === 'anki') return path === '/anki' || path.startsWith('/anki/');
-    if (key === 'settings') return path === '/settings';
+    if (key === 'settings') return path === '/settings' || path.startsWith('/settings/');
     if (key === 'content') return path === '/content-packs' || path.startsWith('/content-packs/');
     if (key === 'image') return path === '/admin/image-editor' || path.startsWith('/admin/image-editor/') || path.startsWith('/admin/hotspots');
     if (key === 'help') return path === '/help' || path.startsWith('/help/') || path.startsWith('/regex-help') || path.endsWith('help.html');
@@ -79,6 +79,30 @@
   anchor.before(primary, section, system);
   oldNavs.forEach(el => el.remove());
   oldLabels.forEach(el => el.remove());
+
+  // Quick theme chooser. Settings > Appearance remains the authoritative
+  // place to manage appearance; this compact control is only a convenience.
+  const themeQuick = document.createElement('div');
+  themeQuick.className = 'dashboard-theme-quick';
+  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme"><option value="dark">Dark</option><option value="light">Light</option><option value="purple-gold">Purple & Gold</option></select>`;
+  const themeAnchor = sidebar.querySelector('.dashboard-sidebar-version');
+  if (themeAnchor) themeAnchor.before(themeQuick); else sidebar.appendChild(themeQuick);
+  const themeSelect = themeQuick.querySelector('select');
+  fetch('/config/portal.json', {cache:'no-store'}).then(r => r.ok ? r.json() : null).then(cfg => { if (cfg?.theme) themeSelect.value = cfg.theme; }).catch(()=>{});
+  themeSelect.addEventListener('change', async () => {
+    const previous = themeSelect.dataset.previous || '';
+    themeSelect.disabled = true;
+    try {
+      const response = await fetch('/api/theme', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:themeSelect.value})});
+      if (!response.ok) throw new Error('Theme update failed');
+      window.location.reload();
+    } catch (error) {
+      if (previous) themeSelect.value = previous;
+      themeSelect.disabled = false;
+      alert('DLMS could not change the theme.');
+    }
+  });
+  themeSelect.addEventListener('focus', () => { themeSelect.dataset.previous = themeSelect.value; });
 
   // Help screenshots open inside DLMS instead of forcing a new browser tab.
   const helpShots = Array.from(document.querySelectorAll('.help-shot img'));

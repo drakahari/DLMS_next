@@ -1,0 +1,18 @@
+{
+  "change": "DLMS-001 Theme Coverage Pass 6",
+  "source": "dev30 + theme coverage V5",
+  "changed_files": [
+    "static/style.css"
+  ],
+  "logic_changed": false,
+  "targets": [
+    "Study Packs hyperlink/table contrast",
+    "AI Study Pack Builder labels and option cards",
+    "Image Study Editor labels",
+    "IT/Medical study table links and row text",
+    "Law Study main hub complete card redesign for theme compatibility",
+    "Law Create/Case Reviews/Import/Saved Imports readability",
+    "View Law Import success message and parser/metric cards"
+  ],
+  "css_braces_balanced": true
+}

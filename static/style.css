@@ -13,16 +13,16 @@
    THEME TOKENS
 ======================= */
 :root {
-    --page-text: #eaf2ff;
-    --muted-text: #b8c2cc;
-    --panel-bg: linear-gradient(180deg, rgba(6,18,40,0.82), rgba(8,18,34,0.72));
-    --panel-bg-strong: linear-gradient(180deg, rgba(5,16,36,0.86), rgba(5,16,36,0.72));
-    --panel-border: rgba(98, 155, 255, 0.24);
+    --page-text: var(--theme-page-text, #eaf2ff);
+    --muted-text: var(--theme-muted-text, #b8c2cc);
+    --panel-bg: linear-gradient(180deg, var(--theme-panel-1, rgba(6,18,40,.82)), var(--theme-panel-2, rgba(8,18,34,.72)));
+    --panel-bg-strong: linear-gradient(180deg, var(--theme-panel-1, rgba(5,16,36,.86)), var(--theme-panel-2, rgba(5,16,36,.72)));
+    --panel-border: var(--theme-border-soft, rgba(98,155,255,.24));
     --panel-shadow: 0 10px 30px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04);
-    --blue-1: #1b9ff2;
-    --blue-2: #138ad6;
-    --blue-3: #0f6fb3;
-    --choice-bg: rgba(17, 31, 56, 0.78);
+    --blue-1: var(--theme-accent, #1b9ff2);
+    --blue-2: var(--theme-accent-2, #138ad6);
+    --blue-3: var(--theme-accent-3, #0f6fb3);
+    --choice-bg: var(--theme-surface-2, rgba(17,31,56,.78));
     --choice-bg-hover: rgba(22, 40, 72, 0.92);
     --danger-1: #7f1d1d;
     --danger-2: #991b1b;
@@ -188,7 +188,7 @@ input[type="number"] {
     border-radius: 8px;
     font: inherit;
     caret-color: #ffffff;
-    color-scheme: dark;
+    color-scheme: var(--theme-color-scheme, dark);
 }
 
 input[type="number"]:focus {
@@ -5041,7 +5041,7 @@ a.settings-hub-card:hover {
 }
 
 .law-field select {
-    color-scheme: dark;
+    color-scheme: var(--theme-color-scheme, dark);
 }
 
 .law-field input:focus,
@@ -5972,7 +5972,7 @@ a.settings-hub-card:hover {
     border: 1px solid rgba(91, 146, 215, 0.42);
     border-radius: 9px;
     font: inherit;
-    color-scheme: dark;
+    color-scheme: var(--theme-color-scheme, dark);
 }
 
 .anki-source-form select:focus,
@@ -6343,7 +6343,7 @@ a.settings-hub-card:hover {
     border-radius: 8px;
     font: inherit;
     caret-color: #ffffff;
-    color-scheme: dark;
+    color-scheme: var(--theme-color-scheme, dark);
 }
 
 .build-modern-page input[type="text"],
@@ -6408,7 +6408,7 @@ a.settings-hub-card:hover {
     border-radius: 8px;
     font: inherit;
     caret-color: #ffffff;
-    color-scheme: dark;
+    color-scheme: var(--theme-color-scheme, dark);
 }
 
 .build-modern-page input:not([type])::placeholder {
@@ -6556,7 +6556,7 @@ a.settings-hub-card:hover {
     border: 1px solid rgba(91, 146, 215, .42);
     border-radius: 8px;
     font: inherit;
-    color-scheme: dark;
+    color-scheme: var(--theme-color-scheme, dark);
 }
 
 .medical-primary-button {
@@ -7148,7 +7148,7 @@ a.settings-hub-card:hover {
 .medical-ai-topic-field input,.medical-ai-controls-grid select {
     box-sizing: border-box; width: 100%; min-height: 46px; padding: 10px 12px;
     border-radius: 10px; border: 1px solid rgba(91,146,215,.42);
-    background: rgba(3,13,30,.78); color: #eaf3ff; font: inherit; color-scheme: dark;
+    background: rgba(3,13,30,.78); color: #eaf3ff; font: inherit; color-scheme: var(--theme-color-scheme, dark);
 }
 .medical-ai-topic-field input:focus,.medical-ai-controls-grid select:focus {
     outline: none; border-color: rgba(75,164,255,.82);
@@ -7176,7 +7176,7 @@ a.settings-hub-card:hover {
     padding: 16px; border-radius: 12px; border: 1px solid rgba(91,146,215,.38);
     background: rgba(1,8,19,.88); color: #e5edf8;
     font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-    font-size: 13px; line-height: 1.5; white-space: pre; overflow: auto; color-scheme: dark;
+    font-size: 13px; line-height: 1.5; white-space: pre; overflow: auto; color-scheme: var(--theme-color-scheme, dark);
 }
 .medical-ai-prompt-box:focus {
     outline: none; border-color: rgba(75,164,255,.82);
@@ -9296,3 +9296,1232 @@ body.help-page .dashboard-main *::after {
 .printable-flashcard-button{background:linear-gradient(135deg,#6b46d9,#8e62e8)!important;border-color:#a58aee!important}
 .anki-print-note{margin-top:10px;padding:10px 12px;border:1px solid rgba(242,201,76,.28);border-radius:9px;background:rgba(92,69,10,.18);color:#d8cda8;font-size:.85rem;line-height:1.4}
 @media(max-width:820px){.anki-action-grid-three{grid-template-columns:1fr}.anki-action-grid{grid-template-columns:1fr}}
+
+
+/* =========================================================
+   DLMS-001 — GLOBAL THEME SYSTEM
+   Semantic overrides are intentionally centralized here so the existing dark
+   theme remains the baseline while Light and Purple & Gold use the same UI.
+   ========================================================= */
+html { color-scheme: var(--theme-color-scheme, dark); }
+body {
+    color: var(--theme-page-text, #eaf2ff);
+    background-color: var(--theme-body-base, #020814);
+}
+body:not(.dashboard-home) {
+    background:
+        linear-gradient(var(--theme-body-overlay, rgba(2,8,20,.68)), var(--theme-body-overlay-2, rgba(2,8,20,.78))),
+        var(--portal-bg);
+    background-position:center;background-size:cover;background-repeat:no-repeat;background-attachment:fixed;
+}
+body.dashboard-home {
+    background:
+        linear-gradient(var(--theme-body-overlay, rgba(2,8,20,.72)), var(--theme-body-overlay-2, rgba(2,8,20,.84))),
+        radial-gradient(circle at 62% 8%, color-mix(in srgb, var(--theme-accent, #1b9ff2) 14%, transparent), transparent 36%),
+        var(--portal-bg);
+    background-position:center;background-size:cover;background-repeat:no-repeat;background-attachment:fixed;
+}
+h1,h2,h3,.hero-title,.dashboard-header h1,.dashboard-brand-title,
+.dashboard-panel-heading h2,.dashboard-welcome-copy h2,.dashboard-action-copy h2,
+.settings-page-header h1,.settings-hub-copy h2,.settings-section-heading h2 {
+    color: var(--theme-heading, #fff);
+}
+small,.dashboard-header p,.dashboard-brand-subtitle,.dashboard-action-copy p,
+.dashboard-welcome-copy p,.settings-hub-copy p,.settings-section-heading p,
+.settings-page-header p { color: var(--theme-muted-text, #b8c2cc); }
+a { color: var(--theme-link, #62b5ff); }
+a:hover,a:active { color: var(--theme-link-hover, #9bd2ff); }
+.dashboard-shell { background:var(--theme-shell-bg, rgba(3,12,28,.66)); border-color:var(--theme-border, rgba(110,166,255,.35)); box-shadow:0 24px 80px var(--theme-shadow, rgba(0,0,0,.55)); }
+.dashboard-sidebar { background:linear-gradient(180deg,var(--theme-sidebar-1,rgba(5,18,40,.96)),var(--theme-sidebar-2,rgba(3,13,30,.94))); border-right-color:var(--theme-border-soft,rgba(95,155,255,.22)); }
+.dashboard-main { background:linear-gradient(180deg,var(--theme-main-1,rgba(3,12,28,.60)),var(--theme-main-2,rgba(2,10,23,.78))); }
+.dashboard-panel,.settings-detail-card,.settings-page-header,.settings-hub-card,.card {
+    background:linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74)));
+    border-color:var(--theme-border,rgba(86,158,255,.35));
+    color:var(--theme-page-text,#eaf2ff);
+}
+.dashboard-stat-card,.dashboard-activity-list,.learning-profile-topic-list>article,
+.learning-profile-activity>div,.learning-diagnostic-card,.review-schedule-table,
+.settings-current-value,.settings-migration-note,.settings-scope-note {
+    background:var(--theme-surface,rgba(5,18,39,.58));
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24));
+    color:var(--theme-page-text,#eaf2ff);
+}
+.dashboard-nav-item { color:var(--theme-nav-text,#e8f2ff); }
+.dashboard-nav-icon,.dashboard-action-arrow { color:var(--theme-nav-muted,#cde6ff); }
+.dashboard-nav-item:hover { background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 18%,var(--theme-surface,transparent)); border-color:var(--theme-border-soft); color:var(--theme-heading,#fff); }
+.dashboard-nav-item.active { background:linear-gradient(90deg,color-mix(in srgb,var(--theme-accent,#1b9ff2) 32%,transparent),color-mix(in srgb,var(--theme-accent-3,#0f6fb3) 26%,transparent)); border-color:var(--theme-accent,#1b9ff2); }
+.dashboard-nav-section-label,.settings-eyebrow,.build-eyebrow,.medical-eyebrow,.learning-diagnostics-page .build-eyebrow { color:var(--theme-accent,#1b9ff2); }
+.dashboard-nav-section-label::after { background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 32%,transparent); }
+.dashboard-panel-heading a,.dashboard-header p span { color:var(--theme-link,#62b5ff); }
+input:not([type="checkbox"]):not([type="radio"]),select,textarea,
+.settings-text-input,.settings-file-input {
+    color:var(--theme-input-text,#eaf3ff);
+    background:var(--theme-input-bg,rgba(3,13,30,.78));
+    border-color:var(--theme-border-soft,rgba(91,146,215,.42));
+    caret-color:var(--theme-input-text,#eaf3ff);
+    color-scheme:var(--theme-color-scheme,dark);
+}
+input::placeholder,textarea::placeholder { color:color-mix(in srgb,var(--theme-muted-text,#b8c2cc) 78%,transparent); opacity:1; }
+.settings-field-label,.settings-current-value strong { color:var(--theme-page-text,#eaf2ff); }
+.settings-current-value,.settings-image-guidance { color:var(--theme-muted-text,#b8c2cc); }
+button:not(.settings-danger-button):not(.dashboard-shutdown):not(.build-icon-danger) {
+    border-color:color-mix(in srgb,var(--theme-accent,#1b9ff2) 35%,transparent);
+}
+
+/* Light-theme coverage for legacy dark-only text/surface declarations. */
+:root[style*="--theme-color-scheme: light"] { }
+@supports (color: color-mix(in srgb, white, black)) {
+  body { --theme-soft-text: color-mix(in srgb,var(--theme-page-text) 72%,var(--theme-muted-text)); }
+}
+
+/* Theme selector cards */
+.settings-theme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:4px 0 14px}
+.settings-theme-choice{display:block;cursor:pointer}
+.settings-theme-choice>input{position:absolute;opacity:0;pointer-events:none}
+.settings-theme-swatch{min-height:92px;display:flex;flex-direction:column;justify-content:flex-end;gap:4px;padding:14px;border:2px solid transparent;border-radius:13px;box-shadow:inset 0 0 0 1px rgba(120,150,190,.25)}
+.settings-theme-swatch b{font-size:16px}.settings-theme-swatch small{font-size:11px;color:inherit;opacity:.78}
+.theme-dark{background:linear-gradient(145deg,#07162d,#0a2647);color:#eef6ff}
+.theme-light{background:linear-gradient(145deg,#ffffff,#e6eef7);color:#17253a}
+.theme-purple-gold{background:linear-gradient(145deg,#2b124f,#160b2b);color:#ffd85a;border-color:rgba(242,194,48,.38)}
+.settings-theme-choice>input:checked+.settings-theme-swatch{border-color:var(--theme-accent,#1b9ff2);box-shadow:0 0 0 3px color-mix(in srgb,var(--theme-accent,#1b9ff2) 20%,transparent)}
+
+/* Compact quick theme chooser inserted into normalized sidebars. */
+.dashboard-theme-quick{margin:6px 0 14px;padding:10px 12px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.20));border-radius:11px;background:var(--theme-surface,rgba(5,18,39,.42));display:grid;gap:6px}
+.dashboard-theme-quick label{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;font-weight:800;color:var(--theme-muted-text,#9fb0c5)}
+.dashboard-theme-quick select{width:100%;min-height:34px;margin:0;padding:5px 8px;font-size:12px}
+
+/* Light theme needs dark typography in several historically hard-coded areas.
+   The dynamic variable value lets these selectors stay theme-agnostic. */
+.dashboard-activity-copy strong,.dashboard-empty-state strong,.dashboard-stat-card strong,
+.learning-profile-topic-list strong,.learning-diagnostic-card strong,.settings-hub-card,
+.content-pack-card,.library-quiz-card,.pdf-import-page .dashboard-panel,
+.medical-study-page .dashboard-panel,.law-subpage .dashboard-panel,
+.study-packs-page .dashboard-panel,.anki-tools-page .dashboard-panel {
+    color:var(--theme-page-text,#eaf2ff);
+}
+@media(max-width:760px){.settings-theme-grid{grid-template-columns:1fr}}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 2
+   Target legacy dark-only surfaces that were visible in the Light-theme
+   audit. All rules still resolve through semantic theme variables so Dark
+   remains the baseline and Purple & Gold inherits the same component model.
+   ========================================================= */
+
+/* Global typography: old pages used hard-coded white text + heavy dark shadow. */
+h1,h2,h3,
+.dashboard-header h1,
+.dashboard-welcome-copy h2,
+.dashboard-action-copy h2,
+.dashboard-panel-heading h2,
+.library-page .library-hero h2,
+.library-page .library-folder-title-group h2,
+.library-page .library-quiz-title-row h3,
+#qHeader,#qText,.active-quiz-title,.quiz-title {
+    color:var(--theme-heading,#fff)!important;
+    text-shadow:0 2px 8px color-mix(in srgb,var(--theme-shadow,rgba(0,0,0,.42)) 42%,transparent)!important;
+}
+.container p,
+.dashboard-action-copy p,
+.dashboard-activity-copy span,
+.library-page .library-hero p,
+.library-page .library-footer-actions p,
+.library-page .library-empty p,
+.library-page .library-tip,
+.library-page .library-folder-subtitle,
+.library-page .library-quiz-meta,
+.quiz-progress-meta {
+    color:var(--theme-muted-text,#b8c2cc)!important;
+}
+
+/* Dashboard landing-page feature cards and activity surfaces. */
+.dashboard-welcome,
+.dashboard-action-card,
+.dashboard-activity-list,
+.dashboard-overview-panel,
+.dashboard-activity-panel {
+    background:linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74)))!important;
+    border-color:var(--theme-border,rgba(86,158,255,.35))!important;
+}
+.dashboard-action-card {
+    color:var(--theme-page-text,#eaf2ff)!important;
+    box-shadow:0 10px 25px var(--theme-shadow,rgba(0,0,0,.27)),inset 0 1px 0 rgba(255,255,255,.08)!important;
+}
+.dashboard-action-card:hover {
+    color:var(--theme-heading,#fff)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-panel-1,rgba(6,20,45,.82)))!important;
+}
+.dashboard-action-icon,
+.dashboard-stat-icon,
+.dashboard-welcome-icon {
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-surface,rgba(5,18,39,.58)))!important;
+    box-shadow:inset 0 0 18px rgba(255,255,255,.08),0 8px 20px var(--theme-shadow,rgba(0,0,0,.23))!important;
+}
+.dashboard-action-copy p,
+.dashboard-action-arrow,
+.dashboard-activity-row,
+.dashboard-stat-card span,
+.dashboard-stat-card small {
+    color:var(--theme-muted-text,#b8c2cc)!important;
+}
+.dashboard-activity-row {
+    border-bottom-color:var(--theme-border-soft,rgba(102,145,200,.18))!important;
+}
+.dashboard-activity-row:hover {
+    color:var(--theme-heading,#fff)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-surface,transparent))!important;
+}
+
+/* Quiz Library: convert the large remaining dark-only blocks to theme surfaces. */
+.library-page .library-hero,
+.library-page .library-toolbar,
+.library-page .library-folder,
+.library-page .library-footer-actions,
+.library-page .library-empty {
+    background:linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74)))!important;
+    border-color:var(--theme-border,rgba(86,158,255,.35))!important;
+}
+.library-page .library-stat-card,
+.library-page .library-folder-header,
+.library-page .library-quiz-card,
+.library-page .library-search-wrap {
+    background:var(--theme-surface,rgba(5,18,39,.58))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+}
+.library-page .library-quiz-card:hover {
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-surface,rgba(5,18,39,.58)))!important;
+}
+.library-page .library-eyebrow,
+.library-page .folder-toggle-icon,
+.library-page .library-search-wrap span {
+    color:var(--theme-accent,#1b9ff2)!important;
+}
+.library-page .library-stat-card span,
+.library-page .library-view-switcher>span,
+.library-page .library-view-option,
+.library-page .library-folder-subtitle,
+.library-page .library-quiz-meta {
+    color:var(--theme-muted-text,#b8c2cc)!important;
+}
+.library-page .library-stat-card strong,
+.library-page .library-folder-title-group h2,
+.library-page .library-quiz-title-row h3 {
+    color:var(--theme-heading,#fff)!important;
+}
+.library-page .library-view-option {
+    background:var(--theme-surface-2,rgba(17,31,56,.78))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+}
+.library-page .library-view-option.selected {
+    color:var(--theme-heading,#fff)!important;
+    border-color:var(--theme-accent,#1b9ff2)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 15%,var(--theme-surface,transparent))!important;
+}
+.library-page .library-secondary-action,
+.library-page .library-icon-button,
+.library-page .library-inline-form button {
+    color:var(--theme-page-text,#eaf2ff)!important;
+    background:var(--theme-surface-2,rgba(17,31,56,.78))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+}
+.library-page .library-primary-action {
+    color:#fff!important;
+}
+
+/* Generated quiz runtime: all ordinary quiz chrome now uses semantic surfaces. */
+.mode-banner,
+.active-quiz-logo-banner,
+.top-bar,.quiz-toolbar,
+.quiz-progress-card,
+.quiz-question-card,
+.quiz-nav-buttons,
+.quiz-footer-actions {
+    background:linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74)))!important;
+    border-color:var(--theme-border,rgba(86,158,255,.35))!important;
+    color:var(--theme-page-text,#eaf2ff)!important;
+}
+#qHeader,#qText {
+    background:var(--theme-surface,rgba(5,18,39,.58))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+    color:var(--theme-heading,#fff)!important;
+}
+.choice {
+    background:var(--theme-surface-2,rgba(17,31,56,.78))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+    color:var(--theme-page-text,#eaf2ff)!important;
+}
+.choice:hover {
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;
+}
+.choice.selected {
+    color:var(--theme-heading,#fff)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 18%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;
+    border-color:var(--theme-accent,#1b9ff2)!important;
+}
+.correct-choice {
+    color:#082414!important;
+    background:#bcefcf!important;
+    border-color:#1c9c53!important;
+}
+.wrong-choice {
+    color:#351015!important;
+    background:#f7c5cb!important;
+    border-color:#cf3c4b!important;
+}
+.mode-center h2,.mode-center h3,
+.active-quiz-title,.quiz-progress-meta,#qHeader,#qText {
+    color:var(--theme-heading,#fff)!important;
+}
+
+/* Quiz navigation controls need explicit contrast in Light mode. */
+.quiz-nav-buttons button,
+.top-bar button,.quiz-toolbar button {
+    color:var(--theme-page-text,#eaf2ff);
+    background:var(--theme-surface-2,rgba(17,31,56,.78));
+    border-color:var(--theme-border,rgba(86,158,255,.35));
+}
+.quiz-nav-buttons button:hover,
+.top-bar button:hover,.quiz-toolbar button:hover {
+    color:var(--theme-heading,#fff);
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 12%,var(--theme-surface-2,rgba(17,31,56,.78)));
+}
+
+/* Forms and common modern page elements that still carried dark-only literals. */
+.build-question-card,
+.review-question-card,
+.pdf-import-question-card,
+.learning-profile-recommendation,
+.learning-profile-grid>.dashboard-panel,
+.learning-intelligence-actions-panel,
+.learning-diagnostics-panel,
+.review-schedule-card,
+.content-pack-card {
+    color:var(--theme-page-text,#eaf2ff);
+}
+.build-question-card,
+.review-question-card,
+.pdf-import-question-card {
+    background:var(--theme-surface,rgba(5,18,39,.58))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+}
+
+/* Purple & Gold and Light should not inherit dark-only choice hover. */
+:root {
+    --choice-bg-hover:color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-surface-2,rgba(17,31,56,.78)));
+}
+
+/* Preserve semantic button text on saturated primary/accent actions. */
+.dashboard-primary-button,
+.library-page .library-primary-action,
+.mode-btn,.mode-center button,#studyModeBtn,#examModeBtn,
+.ai-review-button,.printable-flashcard-button {
+    color:#fff!important;
+}
+
+/* Keep print output independent of app theme. */
+@media print {
+    body { color:#111!important;background:#fff!important; }
+}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 3
+   Build Quiz / Smart PDF / Manual / Matching / Image Builder
+   Converts remaining dark-only builder surfaces to semantic theme colors.
+   ========================================================= */
+
+/* Shared builder surfaces */
+.build-modern-page .build-method-card,
+.build-modern-page .build-option-card,
+.build-modern-page .build-tip-card,
+.build-modern-page .build-section,
+.build-modern-page .build-question-card,
+.build-modern-page .build-finalize-bar,
+.image-builder-main .dashboard-panel,
+.pdf-import-page .dashboard-panel {
+    background:linear-gradient(180deg,
+        var(--theme-panel-1,rgba(6,20,45,.82)),
+        var(--theme-panel-2,rgba(5,17,38,.74)))!important;
+    border-color:var(--theme-border,rgba(86,158,255,.35))!important;
+    color:var(--theme-page-text,#eaf2ff)!important;
+    box-shadow:0 12px 28px var(--theme-shadow,rgba(0,0,0,.25))!important;
+}
+
+/* Builder headings / body copy */
+.build-modern-page .build-method-copy h2,
+.build-modern-page .build-option-card h2,
+.build-modern-page .build-section-heading h2,
+.build-modern-page .build-advanced-heading h3,
+.build-modern-page .build-question-heading-row h3,
+.build-modern-page .build-tip-card strong,
+.build-modern-page .build-finalize-bar strong,
+.image-builder-main h2,
+.image-builder-main h3,
+.image-builder-main strong,
+.pdf-import-page h2,
+.pdf-import-page h3,
+.pdf-import-page strong {
+    color:var(--theme-heading,#fff)!important;
+    text-shadow:none!important;
+}
+.build-modern-page .build-method-copy p,
+.build-modern-page .build-option-card p,
+.build-modern-page .build-section-heading p,
+.build-modern-page .build-tip-card,
+.build-modern-page .build-field small,
+.build-modern-page .build-choice-heading small,
+.build-modern-page .build-preset-list small,
+.build-modern-page .build-finalize-bar span,
+.image-builder-main p,
+.image-builder-main .image-builder-section-heading p,
+.pdf-import-page p,
+.pdf-import-page small,
+.pdf-import-page .pdf-bank-toolbar>div:first-child span,
+.pdf-import-page .pdf-bank-section-copy p {
+    color:var(--theme-muted-text,#b8c2cc)!important;
+}
+
+/* Labels and optional markers */
+.build-modern-page .build-field,
+.build-modern-page .build-field>span,
+.image-builder-main label,
+.pdf-import-page .build-field,
+.pdf-import-page .build-field>span,
+.pdf-import-page .pdf-import-rights {
+    color:var(--theme-page-text,#eaf2ff)!important;
+}
+.build-modern-page .build-field em,
+.build-modern-page .build-method-label,
+.build-modern-page .build-eyebrow,
+.image-builder-main .build-eyebrow,
+.pdf-import-page .build-eyebrow {
+    color:var(--theme-accent,#1b9ff2)!important;
+}
+.build-modern-page .build-field em {
+    opacity:.78;
+}
+
+/* Build page icons */
+.build-modern-page .build-method-icon,
+.build-modern-page .build-option-icon,
+.image-builder-main .image-builder-step-badge {
+    color:var(--theme-accent,#1b9ff2)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-surface,transparent))!important;
+    border-color:color-mix(in srgb,var(--theme-accent,#1b9ff2) 42%,transparent)!important;
+}
+.build-modern-page .build-option-arrow {
+    color:var(--theme-nav-muted,#b9c8dc)!important;
+}
+
+/* Form controls: override older hard-coded dark-only visibility rules */
+.build-modern-page input[type="text"],
+.build-modern-page input[type="url"],
+.build-modern-page input[type="number"],
+.build-modern-page input[type="file"],
+.build-modern-page input:not([type]),
+.build-modern-page textarea,
+.build-modern-page select,
+.pdf-import-page input,
+.pdf-import-page select,
+.pdf-import-page textarea,
+.image-builder-main input,
+.image-builder-main select,
+.image-builder-main textarea {
+    color:var(--theme-input-text,#eaf3ff)!important;
+    background:var(--theme-input-bg,rgba(3,13,30,.78))!important;
+    border-color:var(--theme-border-soft,rgba(91,146,215,.42))!important;
+    caret-color:var(--theme-input-text,#eaf3ff)!important;
+    color-scheme:var(--theme-color-scheme,dark)!important;
+}
+.build-modern-page select option,
+.pdf-import-page select option,
+.image-builder-main select option {
+    color:var(--theme-input-text,#eaf3ff)!important;
+    background:var(--theme-input-bg,#071426)!important;
+}
+.build-modern-page input::placeholder,
+.build-modern-page textarea::placeholder,
+.pdf-import-page input::placeholder,
+.pdf-import-page textarea::placeholder,
+.image-builder-main input::placeholder,
+.image-builder-main textarea::placeholder {
+    color:color-mix(in srgb,var(--theme-muted-text,#b8c2cc) 78%,transparent)!important;
+    opacity:1!important;
+}
+.build-modern-page input:focus,
+.build-modern-page textarea:focus,
+.build-modern-page select:focus,
+.pdf-import-page input:focus,
+.pdf-import-page textarea:focus,
+.pdf-import-page select:focus,
+.image-builder-main input:focus,
+.image-builder-main textarea:focus,
+.image-builder-main select:focus {
+    color:var(--theme-input-text,#eaf3ff)!important;
+    background:var(--theme-input-bg,rgba(3,13,30,.78))!important;
+    border-color:var(--theme-accent,#1b9ff2)!important;
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--theme-accent,#1b9ff2) 14%,transparent)!important;
+}
+
+/* Firefox / WebKit autofill should follow the active theme */
+.build-modern-page input:-webkit-autofill,
+.build-modern-page input:-webkit-autofill:hover,
+.build-modern-page input:-webkit-autofill:focus,
+.build-modern-page textarea:-webkit-autofill,
+.build-modern-page select:-webkit-autofill {
+    -webkit-text-fill-color:var(--theme-input-text,#eaf3ff)!important;
+    caret-color:var(--theme-input-text,#eaf3ff)!important;
+    box-shadow:0 0 0 1000px var(--theme-input-bg,#071426) inset!important;
+}
+
+/* Builder option-card hover */
+.build-modern-page .build-option-card:hover {
+    color:var(--theme-heading,#fff)!important;
+    background:color-mix(in srgb,
+        var(--theme-accent,#1b9ff2) 8%,
+        var(--theme-panel-1,rgba(6,20,45,.82)))!important;
+    border-color:var(--theme-accent,#1b9ff2)!important;
+}
+
+/* Secondary/optional source panels */
+.build-modern-page .build-optional-source>summary,
+.build-modern-page .build-optional-source-title {
+    color:var(--theme-heading,#fff)!important;
+}
+.build-modern-page .build-optional-source-hint,
+.build-modern-page .build-optional-source-copy {
+    color:var(--theme-muted-text,#b8c2cc)!important;
+}
+
+/* Image Builder feature cards */
+.image-builder-feature-grid .dashboard-panel {
+    background:var(--theme-surface,rgba(5,18,39,.58))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+}
+.image-builder-feature-grid strong {
+    color:var(--theme-heading,#fff)!important;
+}
+.image-builder-feature-grid p {
+    color:var(--theme-muted-text,#b8c2cc)!important;
+}
+.image-builder-thumb,
+.image-builder-question-card {
+    background:var(--theme-surface,rgba(5,18,39,.58))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+}
+.image-builder-question-head strong,
+.image-builder-rights {
+    color:var(--theme-page-text,#eaf2ff)!important;
+}
+
+/* Smart PDF: badges, source notes, and status-neutral copy */
+.pdf-import-badges span,
+.pdf-import-source-note {
+    color:var(--theme-link,#62b5ff)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-surface,transparent))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+}
+.pdf-import-page .pdf-import-intro p,
+.pdf-import-page .pdf-import-note p,
+.pdf-import-page .pdf-import-rights,
+.pdf-import-page .pdf-bank-section-copy p {
+    color:var(--theme-muted-text,#b8c2cc)!important;
+}
+.pdf-import-page .pdf-bank-quiet-button,
+.pdf-import-page .pdf-bank-manage-button {
+    color:var(--theme-page-text,#eaf2ff)!important;
+    background:var(--theme-surface-2,rgba(17,31,56,.78))!important;
+    border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
+}
+
+/* Preserve saturated primary-button readability in every theme */
+.build-primary-button,
+.pdf-import-page .build-primary-button,
+.image-builder-main .build-primary-button {
+    color:#fff!important;
+}
+
+/* Light theme should feel genuinely light, rather than white shell + dark islands.
+   Use semantic variables so Purple & Gold and Dark stay unchanged. */
+@media (prefers-color-scheme: light) {
+    /* no direct OS override; app theme remains authoritative */
+}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 4
+   Sidebar child-navigation readability in Light / Purple & Gold.
+   ========================================================= */
+.dashboard-nav-submenu {
+    border-left-color: color-mix(in srgb, var(--theme-accent,#1b9ff2) 34%, transparent) !important;
+}
+
+.dashboard-nav-subitem {
+    color: var(--theme-nav-muted, var(--theme-muted-text,#9fb5ce)) !important;
+}
+
+.dashboard-nav-subitem .dashboard-nav-subicon,
+.dashboard-nav-subitem .nav-sub-icon,
+.dashboard-nav-subicon {
+    color: var(--theme-accent,#1b9ff2) !important;
+}
+
+.dashboard-nav-subitem:hover {
+    color: var(--theme-heading,#fff) !important;
+    background: color-mix(in srgb, var(--theme-accent,#1b9ff2) 10%, var(--theme-surface,transparent)) !important;
+    border-color: color-mix(in srgb, var(--theme-accent,#1b9ff2) 24%, transparent) !important;
+}
+
+.dashboard-nav-subitem.active {
+    color: var(--theme-heading,#fff) !important;
+    background: color-mix(in srgb, var(--theme-accent,#1b9ff2) 18%, var(--theme-surface,transparent)) !important;
+    border-color: color-mix(in srgb, var(--theme-accent,#1b9ff2) 42%, transparent) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent,#1b9ff2) 8%, transparent);
+}
+
+/* Light theme needs stronger child-nav contrast than the generic muted text. */
+html[data-theme="light"] .dashboard-nav-subitem,
+body[data-theme="light"] .dashboard-nav-subitem,
+.theme-light .dashboard-nav-subitem {
+    color: #47627f !important;
+}
+
+html[data-theme="light"] .dashboard-nav-subitem:hover,
+body[data-theme="light"] .dashboard-nav-subitem:hover,
+.theme-light .dashboard-nav-subitem:hover {
+    color: #10243d !important;
+    background: rgba(45, 138, 224, .10) !important;
+}
+
+html[data-theme="light"] .dashboard-nav-subitem.active,
+body[data-theme="light"] .dashboard-nav-subitem.active,
+.theme-light .dashboard-nav-subitem.active {
+    color: #0b3156 !important;
+    background: rgba(45, 138, 224, .17) !important;
+    border-color: rgba(45, 138, 224, .42) !important;
+}
+
+html[data-theme="light"] .dashboard-nav-submenu,
+body[data-theme="light"] .dashboard-nav-submenu,
+.theme-light .dashboard-nav-submenu {
+    border-left-color: rgba(45, 138, 224, .35) !important;
+}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 5
+   Study Packs + IT/Medical + Law + AI Builder + study tables.
+   ========================================================= */
+
+/* ---- Study Packs / installed content ---- */
+.study-packs-page .dashboard-panel,
+.study-packs-page .study-pack-card,
+.study-packs-page .study-pack-hero-card,
+.study-packs-page .study-pack-action-card,
+.study-packs-page .study-pack-dataset-card,
+.study-packs-page .study-pack-toolbar {
+    background: linear-gradient(
+        180deg,
+        var(--theme-panel-1,rgba(6,20,45,.82)),
+        var(--theme-panel-2,rgba(5,17,38,.74))
+    ) !important;
+    border-color: var(--theme-border,rgba(86,158,255,.35)) !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+}
+.study-packs-page .study-pack-action-card h2,
+.study-packs-page .study-pack-action-card h3,
+.study-packs-page .study-pack-card h2,
+.study-packs-page .study-pack-card h3,
+.study-packs-page .study-pack-dataset-title,
+.study-packs-page .study-pack-name {
+    color: var(--theme-heading,#fff) !important;
+    text-shadow: none !important;
+}
+.study-packs-page .study-pack-action-card p,
+.study-packs-page .study-pack-card p,
+.study-packs-page .study-pack-meta,
+.study-packs-page .study-pack-dataset-subtitle,
+.study-packs-page .study-pack-dataset-copy {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.study-packs-page table,
+.study-packs-page thead,
+.study-packs-page tbody,
+.study-packs-page tr,
+.study-packs-page td,
+.study-packs-page th {
+    color: var(--theme-page-text,#eaf2ff) !important;
+    border-color: var(--theme-border-soft,rgba(98,155,255,.24)) !important;
+}
+.study-packs-page thead th {
+    background: var(--theme-surface-2,rgba(17,31,56,.78)) !important;
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.study-packs-page tbody tr {
+    background: var(--theme-surface,rgba(5,18,39,.58)) !important;
+}
+.study-packs-page tbody tr:nth-child(even) {
+    background: color-mix(in srgb,var(--theme-surface,rgba(5,18,39,.58)) 92%,var(--theme-accent,#1b9ff2) 8%) !important;
+}
+.study-packs-page tbody tr:hover {
+    background: color-mix(in srgb,var(--theme-surface,rgba(5,18,39,.58)) 88%,var(--theme-accent,#1b9ff2) 12%) !important;
+}
+
+/* ---- IT / Medical landing pages ---- */
+.it-study-page .dashboard-panel,
+.medical-study-page .dashboard-panel,
+.it-study-page .study-area-card,
+.medical-study-page .study-area-card,
+.it-study-page .study-custom-card,
+.medical-study-page .study-custom-card {
+    background: linear-gradient(
+        180deg,
+        var(--theme-panel-1,rgba(6,20,45,.82)),
+        var(--theme-panel-2,rgba(5,17,38,.74))
+    ) !important;
+    border-color: var(--theme-border,rgba(86,158,255,.35)) !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+}
+.it-study-page h2,.it-study-page h3,
+.medical-study-page h2,.medical-study-page h3 {
+    color: var(--theme-heading,#fff) !important;
+    text-shadow: none !important;
+}
+.it-study-page p,.it-study-page small,
+.medical-study-page p,.medical-study-page small {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.it-study-page .medical-stat-card,
+.medical-study-page .medical-stat-card,
+.it-study-page .study-stat-card,
+.medical-study-page .study-stat-card {
+    background: var(--theme-surface,rgba(5,18,39,.58)) !important;
+    border-color: var(--theme-border-soft,rgba(98,155,255,.24)) !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+}
+.it-study-page .medical-stat-card strong,
+.medical-study-page .medical-stat-card strong,
+.it-study-page .study-stat-card strong,
+.medical-study-page .study-stat-card strong {
+    color: var(--theme-heading,#fff) !important;
+}
+.it-study-page .medical-stat-card span,
+.medical-study-page .medical-stat-card span,
+.it-study-page .study-stat-card span,
+.medical-study-page .study-stat-card span,
+.it-study-page .medical-stat-card small,
+.medical-study-page .medical-stat-card small,
+.it-study-page .study-stat-card small,
+.medical-study-page .study-stat-card small {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+
+/* ---- Study Pack AI Builder ---- */
+.medical-ai-builder-page .medical-ai-builder-panel,
+.medical-ai-builder-page .medical-ai-check-card,
+.medical-ai-builder-page .medical-ai-safeguard {
+    background: var(--theme-surface,rgba(5,18,39,.58)) !important;
+    border-color: var(--theme-border-soft,rgba(98,155,255,.24)) !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+}
+.medical-ai-builder-page label,
+.medical-ai-builder-page .medical-ai-check-card strong,
+.medical-ai-builder-page .medical-ai-safeguard strong {
+    color: var(--theme-heading,#fff) !important;
+}
+.medical-ai-builder-page .medical-ai-check-card span,
+.medical-ai-builder-page .medical-ai-check-card small,
+.medical-ai-builder-page .medical-ai-safeguard,
+.medical-ai-builder-page .medical-ai-safeguard span,
+.medical-ai-builder-page .medical-ai-safeguard p {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.medical-ai-builder-page input,
+.medical-ai-builder-page select,
+.medical-ai-builder-page textarea {
+    color: var(--theme-input-text,#eaf3ff) !important;
+    background: var(--theme-input-bg,rgba(3,13,30,.78)) !important;
+    border-color: var(--theme-border-soft,rgba(91,146,215,.42)) !important;
+}
+.medical-ai-builder-page input::placeholder,
+.medical-ai-builder-page textarea::placeholder {
+    color: color-mix(in srgb,var(--theme-muted-text,#b8c2cc) 78%,transparent) !important;
+    opacity: 1 !important;
+}
+.medical-ai-builder-page .medical-ai-safeguard {
+    background: color-mix(in srgb,#35c98a 11%,var(--theme-surface,rgba(5,18,39,.58))) !important;
+}
+.medical-ai-builder-page .medical-ai-safeguard strong {
+    color: #15935f !important;
+}
+html[data-theme="light"] .medical-ai-builder-page .medical-ai-safeguard strong,
+body[data-theme="light"] .medical-ai-builder-page .medical-ai-safeguard strong,
+.theme-light .medical-ai-builder-page .medical-ai-safeguard strong {
+    color: #0f6e49 !important;
+}
+html[data-theme="light"] .medical-ai-builder-page .medical-ai-safeguard,
+body[data-theme="light"] .medical-ai-builder-page .medical-ai-safeguard,
+.theme-light .medical-ai-builder-page .medical-ai-safeguard {
+    color: #315d4c !important;
+}
+
+/* ---- Law landing / create / libraries / import ---- */
+.law-page .dashboard-panel,
+.law-page .law-action-card,
+.law-page .law-stat-card,
+.law-page .law-case-card,
+.law-page .law-import-card,
+.law-page .law-form-card,
+.law-page .law-study-option {
+    background: linear-gradient(
+        180deg,
+        var(--theme-panel-1,rgba(6,20,45,.82)),
+        var(--theme-panel-2,rgba(5,17,38,.74))
+    ) !important;
+    border-color: var(--theme-border,rgba(86,158,255,.35)) !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+}
+.law-page h2,.law-page h3,
+.law-page .law-action-card strong,
+.law-page .law-case-card strong,
+.law-page .law-import-card strong,
+.law-page .law-study-option strong {
+    color: var(--theme-heading,#fff) !important;
+    text-shadow: none !important;
+}
+.law-page p,.law-page small,
+.law-page .law-action-card span,
+.law-page .law-case-meta,
+.law-page .law-import-meta,
+.law-page .law-form-help,
+.law-page .law-study-option span {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.law-page .law-action-card:hover,
+.law-page .law-case-card:hover,
+.law-page .law-import-card:hover {
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-panel-1,rgba(6,20,45,.82))) !important;
+    border-color: var(--theme-accent,#1b9ff2) !important;
+}
+.law-page .law-study-option {
+    background: var(--theme-surface,rgba(5,18,39,.58)) !important;
+}
+.law-page input,
+.law-page select,
+.law-page textarea {
+    color: var(--theme-input-text,#eaf3ff) !important;
+    background: var(--theme-input-bg,rgba(3,13,30,.78)) !important;
+    border-color: var(--theme-border-soft,rgba(91,146,215,.42)) !important;
+}
+.law-page input::placeholder,
+.law-page textarea::placeholder {
+    color: color-mix(in srgb,var(--theme-muted-text,#b8c2cc) 78%,transparent) !important;
+    opacity: 1 !important;
+}
+.law-page .law-warning,
+.law-page .law-notice,
+.law-page .law-empty-state {
+    color: var(--theme-page-text,#eaf2ff) !important;
+    border-color: var(--theme-border-soft,rgba(98,155,255,.24)) !important;
+}
+.law-page .law-warning {
+    background: color-mix(in srgb,#d9a41c 10%,var(--theme-surface,rgba(5,18,39,.58))) !important;
+}
+.law-page .law-warning strong {
+    color: #9a6500 !important;
+}
+
+/* ---- Medical terminology / anatomy tables ---- */
+.medical-table-page .dashboard-panel,
+.medical-table-page .medical-bank-panel,
+.medical-table-page .medical-image-panel {
+    background: linear-gradient(
+        180deg,
+        var(--theme-panel-1,rgba(6,20,45,.82)),
+        var(--theme-panel-2,rgba(5,17,38,.74))
+    ) !important;
+    border-color: var(--theme-border,rgba(86,158,255,.35)) !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+}
+.medical-table-page table,
+.medical-table-page th,
+.medical-table-page td {
+    color: var(--theme-page-text,#eaf2ff) !important;
+    border-color: var(--theme-border-soft,rgba(98,155,255,.24)) !important;
+}
+.medical-table-page thead th {
+    background: var(--theme-surface-2,rgba(17,31,56,.78)) !important;
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.medical-table-page tbody tr {
+    background: var(--theme-surface,rgba(5,18,39,.58)) !important;
+}
+.medical-table-page tbody tr:nth-child(even) {
+    background: color-mix(in srgb,var(--theme-surface,rgba(5,18,39,.58)) 92%,var(--theme-accent,#1b9ff2) 8%) !important;
+}
+.medical-table-page .medical-row-title,
+.medical-table-page tbody td strong {
+    color: var(--theme-heading,#fff) !important;
+}
+.medical-table-page .medical-row-subtitle,
+.medical-table-page tbody td small,
+.medical-table-page .medical-table-copy {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.medical-table-page select,
+.medical-table-page input {
+    color: var(--theme-input-text,#eaf3ff) !important;
+    background: var(--theme-input-bg,rgba(3,13,30,.78)) !important;
+    border-color: var(--theme-border-soft,rgba(91,146,215,.42)) !important;
+}
+
+/* ---- Generic light-theme readable surfaces for these sections ---- */
+html[data-theme="light"] .study-packs-page .dashboard-panel,
+html[data-theme="light"] .it-study-page .dashboard-panel,
+html[data-theme="light"] .medical-study-page .dashboard-panel,
+html[data-theme="light"] .law-page .dashboard-panel,
+html[data-theme="light"] .medical-table-page .dashboard-panel,
+body[data-theme="light"] .study-packs-page .dashboard-panel,
+body[data-theme="light"] .it-study-page .dashboard-panel,
+body[data-theme="light"] .medical-study-page .dashboard-panel,
+body[data-theme="light"] .law-page .dashboard-panel,
+body[data-theme="light"] .medical-table-page .dashboard-panel,
+.theme-light .study-packs-page .dashboard-panel,
+.theme-light .it-study-page .dashboard-panel,
+.theme-light .medical-study-page .dashboard-panel,
+.theme-light .law-page .dashboard-panel,
+.theme-light .medical-table-page .dashboard-panel {
+    box-shadow: 0 12px 28px rgba(28,50,78,.14) !important;
+}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 6
+   Exact selectors from Light-theme audit:
+   Study Packs links/tables, AI Builder labels, Image Editor labels,
+   IT/Medical study tables, Law Hub/Subpages/Detail success states.
+   ========================================================= */
+
+/* ---------- Study Packs: titles, links, descriptions, table rows ---------- */
+.study-pack-toolbar > div:first-child strong,
+.study-pack-summary-main h2,
+.study-pack-body > h3 {
+    color: var(--theme-heading,#fff) !important;
+}
+.study-pack-summary-main p,
+.study-pack-body p,
+.study-options-muted,
+.study-dataset-table td > small {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.study-pack-summary-meta > span:not(.pack-count-pill) {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.study-dataset-table-wrap {
+    background: var(--theme-surface,rgba(3,14,30,.34)) !important;
+    border-color: var(--theme-border-soft,rgba(77,139,205,.22)) !important;
+}
+.study-dataset-table th {
+    color: var(--theme-muted-text,#9fb3cc) !important;
+    background: var(--theme-surface-2,rgba(13,40,70,.58)) !important;
+    border-bottom-color: var(--theme-border-soft,rgba(77,139,205,.24)) !important;
+}
+.study-dataset-table td {
+    color: var(--theme-page-text,#dce7f5) !important;
+    border-bottom-color: var(--theme-border-soft,rgba(77,139,205,.14)) !important;
+}
+.study-dataset-table tbody tr:not(.study-dataset-detail-row) {
+    background: var(--theme-panel-1,rgba(5,18,39,.58)) !important;
+}
+.study-dataset-table tbody tr:not(.study-dataset-detail-row):nth-child(even) {
+    background: color-mix(in srgb,var(--theme-panel-1,rgba(5,18,39,.58)) 94%,var(--theme-accent,#1b9ff2) 6%) !important;
+}
+.study-dataset-table tbody tr:not(.study-dataset-detail-row):hover {
+    background: color-mix(in srgb,var(--theme-panel-1,rgba(5,18,39,.58)) 86%,var(--theme-accent,#1b9ff2) 14%) !important;
+}
+.study-dataset-title-button {
+    color: var(--theme-link,#62b5ff) !important;
+}
+.study-dataset-title-button:hover {
+    color: var(--theme-link-hover,#9bd2ff) !important;
+}
+.study-table-inline-form label {
+    color: var(--theme-muted-text,#90a5bd) !important;
+}
+.study-table-inline-form input,
+.study-table-inline-form select {
+    color: var(--theme-input-text,#eaf3ff) !important;
+    background: var(--theme-input-bg,rgba(3,13,30,.85)) !important;
+    border-color: var(--theme-border-soft,rgba(91,146,215,.38)) !important;
+}
+.study-dataset-detail-row td {
+    background: var(--theme-surface,rgba(7,27,52,.66)) !important;
+}
+.study-dataset-detail-row p {
+    color: var(--theme-muted-text,#aebed1) !important;
+}
+
+/* ---------- AI Study Pack Builder: field labels + option cards ---------- */
+.medical-ai-topic-field > span,
+.medical-ai-controls-grid label > span,
+.study-ai-grid label > span {
+    color: var(--theme-page-text,#dce9f9) !important;
+    font-weight: 800 !important;
+}
+.medical-ai-topic-field input,
+.medical-ai-controls-grid select,
+.study-ai-grid select {
+    color: var(--theme-input-text,#eaf3ff) !important;
+    background: var(--theme-input-bg,rgba(3,13,30,.78)) !important;
+    border-color: var(--theme-border-soft,rgba(91,146,215,.42)) !important;
+    color-scheme: var(--theme-color-scheme,dark) !important;
+}
+.medical-ai-option-card {
+    background: var(--theme-surface,rgba(6,24,49,.54)) !important;
+    border-color: var(--theme-border-soft,rgba(83,143,216,.25)) !important;
+}
+.medical-ai-option-card strong {
+    color: var(--theme-heading,#eef6ff) !important;
+}
+.medical-ai-option-card span {
+    color: var(--theme-muted-text,#aebcd0) !important;
+}
+.medical-ai-quiet-link {
+    color: var(--theme-link,#95b8da) !important;
+}
+.medical-ai-quiet-link:hover {
+    color: var(--theme-link-hover,#d8ebff) !important;
+}
+
+/* ---------- Image Study Editor: control labels ---------- */
+.hotspot-editor-picker label,
+.hotspot-editor-toolbar label,
+.hotspot-editor-picker label > span,
+.hotspot-editor-toolbar label > span {
+    color: var(--theme-page-text,#c9d9ea) !important;
+    font-weight: 800 !important;
+}
+.hotspot-editor-picker select,
+.hotspot-editor-toolbar select {
+    color: var(--theme-input-text,#eaf3ff) !important;
+    background: var(--theme-input-bg,rgba(3,13,30,.86)) !important;
+    border-color: var(--theme-border-soft,rgba(91,146,215,.42)) !important;
+    color-scheme: var(--theme-color-scheme,dark) !important;
+}
+.hotspot-editor-help {
+    color: var(--theme-muted-text,#aebfd2) !important;
+}
+
+/* ---------- IT/Medical compact tables: links and row copy ---------- */
+.medical-compact-panel-heading p {
+    color: var(--theme-muted-text,#aebdd1) !important;
+}
+.medical-dataset-table th {
+    color: var(--theme-muted-text,#9fb3cc) !important;
+    background: var(--theme-surface-2,rgba(13,40,70,.58)) !important;
+}
+.medical-dataset-table td {
+    color: var(--theme-page-text,#dce7f5) !important;
+}
+.medical-dataset-table tbody tr {
+    background: var(--theme-panel-1,rgba(5,18,39,.58)) !important;
+}
+.medical-dataset-table tbody tr:nth-child(even) {
+    background: color-mix(in srgb,var(--theme-panel-1,rgba(5,18,39,.58)) 94%,var(--theme-accent,#1b9ff2) 6%) !important;
+}
+.medical-dataset-table .study-dataset-title-button,
+.medical-dataset-toggle .study-dataset-title-button,
+.medical-dataset-toggle {
+    color: var(--theme-link,#62b5ff) !important;
+}
+.medical-dataset-table .study-dataset-title-button:hover,
+.medical-dataset-toggle:hover {
+    color: var(--theme-link-hover,#9bd2ff) !important;
+}
+.medical-dataset-table td > small,
+.medical-dataset-detail-content p,
+.medical-dataset-detail-meta {
+    color: var(--theme-muted-text,#aebed1) !important;
+}
+.medical-dataset-detail-meta strong {
+    color: var(--theme-page-text,#a9bdd5) !important;
+}
+.medical-table-generator-form label {
+    color: var(--theme-muted-text,#90a5bd) !important;
+}
+
+/* ---------- Law Hub: fully theme-aware cards and planned blocks ---------- */
+.law-hub-stat,
+.law-hub-card,
+.law-hub-coming,
+.law-hub-coming-item {
+    border-color: var(--theme-border,rgba(86,158,255,.35)) !important;
+}
+.law-hub-stat {
+    background: linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74))) !important;
+}
+.law-hub-stat span,
+.law-hub-stat small {
+    color: var(--theme-muted-text,#aebdd1) !important;
+}
+.law-hub-stat strong {
+    color: var(--theme-heading,#fff) !important;
+}
+.law-hub-card {
+    background: linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74))) !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+}
+.law-hub-card.primary {
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-panel-1,rgba(6,20,45,.82))) !important;
+}
+.law-hub-card:hover {
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 13%,var(--theme-panel-1,rgba(6,20,45,.82))) !important;
+    border-color: var(--theme-accent,#1b9ff2) !important;
+}
+.law-hub-card h2,
+.law-hub-coming-heading h2,
+.law-hub-coming-item strong {
+    color: var(--theme-heading,#fff) !important;
+    text-shadow: none !important;
+}
+.law-hub-card p,
+.law-hub-coming-item span {
+    color: var(--theme-muted-text,#b8c2cc) !important;
+}
+.law-hub-card-kicker,
+.law-hub-eyebrow,
+.law-hub-card-arrow {
+    color: var(--theme-accent,#62b5ff) !important;
+}
+.law-hub-card-icon {
+    color: var(--theme-accent,#83c5ff) !important;
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-surface,transparent)) !important;
+    border-color: color-mix(in srgb,var(--theme-accent,#1b9ff2) 35%,transparent) !important;
+}
+.law-hub-coming {
+    background: linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74))) !important;
+}
+.law-hub-coming-item {
+    background: var(--theme-surface,rgba(5,18,39,.58)) !important;
+}
+
+/* ---------- Law subpages: forms, option cards, record lists ---------- */
+.law-subpage .law-workspace-panel,
+.law-subpage .law-record-row,
+.law-subpage .law-option-card,
+.law-subpage .law-metric-card,
+.law-subpage .law-empty-state {
+    background: var(--theme-panel-1,rgba(5,18,39,.58)) !important;
+    border-color: var(--theme-border-soft,rgba(91,146,215,.28)) !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+}
+.law-subpage .law-panel-heading h2,
+.law-subpage .law-options-heading h3,
+.law-subpage .law-option-card strong,
+.law-subpage .law-record-copy h3,
+.law-subpage .law-metric-card strong {
+    color: var(--theme-heading,#fff) !important;
+    text-shadow: none !important;
+}
+.law-subpage .law-panel-heading p,
+.law-subpage .law-option-card span,
+.law-subpage .law-record-meta,
+.law-subpage .law-record-source,
+.law-subpage .law-helper-text,
+.law-subpage .law-workflow-banner small,
+.law-subpage .law-metric-card span {
+    color: var(--theme-muted-text,#9fb0c5) !important;
+}
+.law-subpage .law-field > span {
+    color: var(--theme-page-text,#eaf2ff) !important;
+    font-weight: 800 !important;
+}
+.law-subpage .law-field input,
+.law-subpage .law-field select,
+.law-subpage .law-field textarea,
+.law-subpage .law-prompt-box,
+.law-subpage .law-import-textarea {
+    color: var(--theme-input-text,#eaf3ff) !important;
+    background: var(--theme-input-bg,rgba(3,13,30,.78)) !important;
+    border-color: var(--theme-border-soft,rgba(91,146,215,.42)) !important;
+    color-scheme: var(--theme-color-scheme,dark) !important;
+}
+.law-subpage .law-field input::placeholder,
+.law-subpage .law-field textarea::placeholder,
+.law-subpage .law-import-textarea::placeholder {
+    color: color-mix(in srgb,var(--theme-muted-text,#9fb0c5) 80%,transparent) !important;
+    opacity: 1 !important;
+}
+.law-subpage .law-option-card:hover,
+.law-subpage .law-record-row:hover {
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 9%,var(--theme-panel-1,rgba(5,18,39,.58))) !important;
+    border-color: var(--theme-accent,#1b9ff2) !important;
+}
+.law-subpage .law-workflow-banner {
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 9%,var(--theme-surface,rgba(5,18,39,.58))) !important;
+    border-color: color-mix(in srgb,var(--theme-accent,#1b9ff2) 35%,transparent) !important;
+}
+.law-subpage .law-workflow-banner strong {
+    color: var(--theme-heading,#fff) !important;
+}
+.law-subpage .law-notice span {
+    color: var(--theme-muted-text,#c3cfdd) !important;
+}
+
+/* ---------- Law detail: metric/parser cards and success/warning copy ---------- */
+.law-import-detail-page .law-detail-stat,
+.law-import-detail-page .law-parse-card,
+.law-case-detail-page .law-detail-stat,
+.law-case-detail-page .law-parse-card {
+    background: var(--theme-surface,rgba(3,14,31,.48)) !important;
+    border-color: var(--theme-border-soft,rgba(90,152,228,.24)) !important;
+}
+.law-import-detail-page .law-detail-stat span,
+.law-case-detail-page .law-detail-stat span,
+.law-import-detail-page .law-parse-card p,
+.law-case-detail-page .law-parse-card p,
+.law-import-detail-page .law-detail-heading p,
+.law-case-detail-page .law-detail-heading p {
+    color: var(--theme-muted-text,#91a7c0) !important;
+}
+.law-import-detail-page .law-detail-stat strong,
+.law-case-detail-page .law-detail-stat strong,
+.law-import-detail-page .law-parse-card h3,
+.law-case-detail-page .law-parse-card h3 {
+    color: var(--theme-heading,#f3f7ff) !important;
+}
+.law-import-detail-page .law-message.success,
+.law-case-detail-page .law-message.success {
+    color: #14633d !important;
+    background: rgba(41,173,102,.12) !important;
+    border-color: rgba(31,148,84,.35) !important;
+}
+.law-import-detail-page .law-message.warning,
+.law-case-detail-page .law-message.warning {
+    color: #745000 !important;
+    background: rgba(223,171,42,.14) !important;
+    border-color: rgba(190,134,12,.36) !important;
+}
+.law-import-detail-page .law-raw-packet,
+.law-case-detail-page .law-raw-packet {
+    color: var(--theme-input-text,#e4edf8) !important;
+    background: var(--theme-input-bg,rgba(1,8,18,.86)) !important;
+    border-color: var(--theme-border-soft,rgba(104,157,224,.34)) !important;
+}
+
+/* ---------- Semantic links everywhere in audited study areas ---------- */
+.study-packs-page a:not(.dashboard-nav-item):not(.study-pack-launch):not(.study-pack-manage-link):not(.medical-primary-button),
+.medical-study-page a:not(.dashboard-nav-item):not(.medical-primary-button),
+.it-study-page a:not(.dashboard-nav-item):not(.medical-primary-button),
+.law-subpage a:not(.dashboard-nav-item),
+.law-hub-page a:not(.dashboard-nav-item):not(.law-hub-card) {
+    color: var(--theme-link,#62b5ff) !important;
+}
+.study-packs-page a:not(.dashboard-nav-item):hover,
+.medical-study-page a:not(.dashboard-nav-item):hover,
+.it-study-page a:not(.dashboard-nav-item):hover,
+.law-subpage a:not(.dashboard-nav-item):hover,
+.law-hub-page a:not(.dashboard-nav-item):hover {
+    color: var(--theme-link-hover,#9bd2ff) !important;
+}
