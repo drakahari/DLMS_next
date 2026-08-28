@@ -11120,3 +11120,442 @@ body[data-theme="light"] .pdf-import-page .pdf-bank-open,
 .anki-tools-page .anki-tools-eyebrow {
     color: var(--theme-accent,#1684cf) !important;
 }
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 11
+   Medical AI Study Pack Builder safeguard banner only.
+
+   The app's theme is driven by semantic custom properties and
+   color-scheme rather than a guaranteed data-theme/class hook.
+   light-dark() therefore follows the active color-scheme directly
+   and prevents light-mode text from inheriting pale green values.
+   ========================================================= */
+
+/* ---------- Medical AI safeguard banner: light/dark-safe contrast ---------- */
+.medical-ai-builder-page .medical-ai-safeguard {
+    background: light-dark(#e2f1ea, #123528) !important;
+    border: 1px solid light-dark(#78aa91, #39785b) !important;
+    color: light-dark(#263a32, #d2e8dc) !important;
+}
+
+.medical-ai-builder-page .medical-ai-safeguard strong {
+    color: light-dark(#075c3b, #83e6b2) !important;
+    font-weight: 800 !important;
+}
+
+.medical-ai-builder-page .medical-ai-safeguard span,
+.medical-ai-builder-page .medical-ai-safeguard p {
+    color: light-dark(#344b41, #c4ddcf) !important;
+    opacity: 1 !important;
+}
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 12
+   Medical AI Study Pack Builder safeguard readability.
+
+   Root cause correction:
+   The live builder safeguard uses .medical-ai-safety-pill.
+   Earlier passes targeted .medical-ai-safeguard instead.
+   ========================================================= */
+
+/* Base/dark appearance for the actual live safeguard element. */
+.medical-ai-builder-page .medical-ai-safety-pill {
+    background: rgba(0, 126, 82, 0.22) !important;
+    border: 1px solid rgba(64, 213, 157, 0.34) !important;
+    color: #a9e8ca !important;
+    opacity: 1 !important;
+}
+
+/* Ensure child elements cannot reintroduce pale inherited text. */
+.medical-ai-builder-page .medical-ai-safety-pill,
+.medical-ai-builder-page .medical-ai-safety-pill * {
+    opacity: 1 !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+/* DLMS applies the selected theme through inline semantic variables on :root.
+   Detect the light color-scheme directly from that root style. */
+:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill {
+    background: #dcece5 !important;
+    border-color: #79a991 !important;
+    color: #29483a !important;
+    -webkit-text-fill-color: #29483a !important;
+}
+
+/* The first emphasized safeguard phrase should be distinctly readable. */
+:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill strong,
+:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill b {
+    color: #075c3b !important;
+    -webkit-text-fill-color: #075c3b !important;
+    font-weight: 800 !important;
+}
+
+/* Cover common wrapper elements used by the explanatory text. */
+:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill span,
+:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill p,
+:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill small {
+    color: #365548 !important;
+    -webkit-text-fill-color: #365548 !important;
+    opacity: 1 !important;
+}
+
+/* Compatibility fallbacks in case a future theme implementation uses attributes/classes. */
+html[data-theme="light"] .medical-ai-builder-page .medical-ai-safety-pill,
+body[data-theme="light"] .medical-ai-builder-page .medical-ai-safety-pill,
+.theme-light .medical-ai-builder-page .medical-ai-safety-pill {
+    background: #dcece5 !important;
+    border-color: #79a991 !important;
+    color: #29483a !important;
+    -webkit-text-fill-color: #29483a !important;
+}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 13
+   AI Study Pack Builder — actual Medical guardrail notice.
+
+   The rendered banner in app.py uses .study-ai-domain-notice.
+   Keep this fix semantic-theme based so it follows Dark, Light,
+   and Purple & Gold without changing templates or application logic.
+   ========================================================= */
+.study-ai-domain-notice {
+    background: color-mix(in srgb, #2f9b6d 10%, var(--theme-surface, rgba(5,18,39,.58))) !important;
+    border-color: color-mix(in srgb, #2f9b6d 38%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
+    color: var(--theme-page-text, #eaf2ff) !important;
+}
+.study-ai-domain-notice strong {
+    color: color-mix(in srgb, var(--theme-page-text, #eaf2ff) 72%, #087047) !important;
+    font-weight: 800 !important;
+    opacity: 1 !important;
+}
+.study-ai-domain-notice span {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 14
+   Attempt Review + Learning Diagnostics review-status contrast.
+
+   Narrow CSS-only RC correction using the live selectors from:
+   - static/review.html
+   - static/learning-diagnostics.html
+   No templates, routes, JavaScript, or application logic changed.
+   ========================================================= */
+
+/* ---------- Attempt Review: semantic light/dark readability ---------- */
+.review-attempt-card,
+.review-question-card {
+    color: var(--theme-page-text, #eaf2ff) !important;
+}
+
+.review-attempt-label,
+.review-question-kicker {
+    color: var(--theme-accent-3, #0f6fb3) !important;
+    opacity: 1 !important;
+}
+
+.review-attempt-primary strong,
+.review-question-head h2,
+.review-question-text {
+    color: var(--theme-heading, #ffffff) !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+}
+
+.review-attempt-meta,
+.review-attempt-meta span {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+.review-score-pill {
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 12%, var(--theme-surface-2, rgba(17,31,56,.78))) !important;
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 38%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
+}
+
+.review-score-pill strong {
+    color: color-mix(in srgb, var(--theme-heading, #ffffff) 58%, var(--theme-accent, #1b9ff2)) !important;
+    opacity: 1 !important;
+}
+
+.review-score-pill span {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+.review-question-selectors label,
+.review-bulk-selectors label {
+    color: var(--theme-page-text, #eaf2ff) !important;
+    background: var(--theme-surface-2, rgba(17,31,56,.78)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+}
+
+.review-question-selectors label span,
+.review-bulk-selectors label span {
+    color: inherit !important;
+    opacity: 1 !important;
+}
+
+/* Correct/incorrect panels retain their meaning while adapting to the active theme. */
+.review-answer-panel.correct {
+    color: color-mix(in srgb, var(--theme-page-text, #eaf2ff) 78%, #087047) !important;
+    background: color-mix(in srgb, #2b9b65 13%, var(--theme-surface, rgba(5,18,39,.58))) !important;
+    border-color: color-mix(in srgb, #24945c 42%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
+}
+
+.review-answer-panel.incorrect {
+    color: color-mix(in srgb, var(--theme-page-text, #eaf2ff) 78%, #b3263e) !important;
+    background: color-mix(in srgb, #c63f52 12%, var(--theme-surface, rgba(5,18,39,.58))) !important;
+    border-color: color-mix(in srgb, #c63f52 40%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
+}
+
+.review-answer-panel.correct *,
+.review-answer-panel.incorrect * {
+    color: inherit !important;
+    opacity: 1 !important;
+}
+
+.review-answer-label {
+    color: inherit !important;
+    opacity: .92 !important;
+}
+
+/* ---------- Learning Diagnostics: Review suggested pill ---------- */
+.learning-diagnostic-status.review {
+    color: color-mix(in srgb, var(--theme-page-text, #eaf2ff) 62%, #a51f3b) !important;
+    background: color-mix(in srgb, #cf4055 13%, var(--theme-surface, rgba(5,18,39,.58))) !important;
+    border-color: color-mix(in srgb, #c5364d 48%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
+    opacity: 1 !important;
+    font-weight: 750 !important;
+}
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 16
+   Corrected theme-aware readability pass.
+
+   Root cause:
+   /dynamic.css defines --theme-color-scheme and the semantic theme
+   variables in a normal :root CSS rule. It does NOT place them in an
+   inline style attribute, so :root[style*=...] selectors never matched.
+
+   This pass targets the live components directly and uses DLMS's
+   semantic variables / color-scheme instead.
+   CSS only: no routes, templates, JS, or application logic changed.
+   ========================================================= */
+
+/* ---------- Content Packs ---------- */
+.content-packs-page .content-pack-upload-copy p,
+.content-packs-page .pack-install-panel p,
+.content-packs-page .content-pack-name span,
+.content-packs-page .content-pack-name small,
+.content-packs-page .content-pack-table td > small,
+.content-packs-page .content-pack-description {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+.content-packs-page .content-pack-upload-form {
+    background: var(--theme-surface, rgba(5,18,39,.58)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+    color: var(--theme-page-text, #eaf2ff) !important;
+}
+
+.content-packs-page .content-pack-upload-form .build-field,
+.content-packs-page .content-pack-upload-form .build-field > span {
+    color: var(--theme-page-text, #eaf2ff) !important;
+}
+
+.content-packs-page .content-pack-upload-form small {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+.content-packs-page .content-pack-upload-guardrails span {
+    background: var(--theme-surface-2, rgba(17,31,56,.78)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+    color: var(--theme-muted-text, #b8c2cc) !important;
+}
+
+.content-packs-page .content-pack-table-wrap {
+    background: var(--theme-panel-1, rgba(6,20,45,.82)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+}
+
+.content-packs-page .content-pack-table th {
+    background: var(--theme-surface-2, rgba(17,31,56,.78)) !important;
+    border-bottom-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+    color: var(--theme-muted-text, #b8c2cc) !important;
+}
+
+.content-packs-page .content-pack-table tbody tr:not(.content-pack-detail-row) {
+    background: var(--theme-panel-1, rgba(6,20,45,.82)) !important;
+}
+
+.content-packs-page .content-pack-table tbody tr:not(.content-pack-detail-row):nth-child(even) {
+    background: var(--theme-panel-2, rgba(5,17,38,.74)) !important;
+}
+
+.content-packs-page .content-pack-table tbody tr:not(.content-pack-detail-row):hover {
+    background: color-mix(in srgb, var(--theme-accent,#1b9ff2) 8%, var(--theme-surface,#eef5fb)) !important;
+}
+
+.content-packs-page .content-pack-table td {
+    color: var(--theme-page-text, #eaf2ff) !important;
+    border-bottom-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+}
+
+.content-packs-page .content-pack-name strong,
+.content-packs-page .content-pack-storage {
+    color: var(--theme-heading, #ffffff) !important;
+}
+
+.content-packs-page .content-pack-counts span {
+    background: var(--theme-surface-2, rgba(17,31,56,.78)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+    color: var(--theme-page-text, #eaf2ff) !important;
+}
+
+.content-packs-page .content-pack-detail-row td {
+    background: var(--theme-surface, rgba(5,18,39,.58)) !important;
+}
+
+.content-packs-page .content-pack-details strong {
+    color: var(--theme-link, #62b5ff) !important;
+}
+
+.content-packs-page .content-pack-details span {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+}
+
+/* Status pills: light-dark follows html { color-scheme: var(--theme-color-scheme) }. */
+.content-packs-page .content-pack-status.is-valid {
+    background: light-dark(#d8eee4, rgba(5,83,61,.30)) !important;
+    border-color: light-dark(#81b99d, rgba(52,211,153,.35)) !important;
+    color: light-dark(#176343, #79e3b8) !important;
+}
+
+.content-packs-page .content-pack-status.is-invalid {
+    background: light-dark(#f5dddd, rgba(105,24,35,.35)) !important;
+    border-color: light-dark(#d6959e, rgba(248,113,113,.35)) !important;
+    color: light-dark(#8f2435, #ff9eaa) !important;
+}
+
+.content-packs-page .content-pack-status.is-warning {
+    background: light-dark(#f6ead0, rgba(95,69,12,.32)) !important;
+    border-color: light-dark(#d8b66d, rgba(238,183,63,.36)) !important;
+    color: light-dark(#765511, #f4cf72) !important;
+}
+
+/* ---------- Admin Maintenance legacy hero ---------- */
+body:not([class]) > .container > .hero-title {
+    color: var(--theme-heading, #ffffff) !important;
+    background: linear-gradient(
+        180deg,
+        var(--theme-panel-1, rgba(5,15,35,.88)),
+        var(--theme-panel-2, rgba(5,15,35,.78))
+    ) !important;
+    border-color: var(--theme-border, rgba(86,160,255,.35)) !important;
+    text-shadow: none !important;
+    box-shadow: 0 10px 28px var(--theme-shadow, rgba(0,0,0,.35)) !important;
+}
+
+/* ---------- Settings detail pages ---------- */
+.settings-detail-page .settings-detail-card {
+    color: var(--theme-page-text, #eaf2ff) !important;
+}
+
+.settings-detail-page .settings-section-heading h2 {
+    color: var(--theme-heading, #ffffff) !important;
+    text-shadow: none !important;
+}
+
+.settings-detail-page .settings-section-heading p,
+.settings-detail-page .settings-image-guidance,
+.settings-detail-page .settings-field-help {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+/* Parsing + AI Integration toggle rows */
+.settings-detail-page .settings-toggle-row {
+    background: var(--theme-surface-2, rgba(17,31,56,.78)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+    color: var(--theme-page-text, #eaf2ff) !important;
+}
+
+.settings-detail-page .settings-toggle-row strong {
+    color: var(--theme-heading, #ffffff) !important;
+}
+
+.settings-detail-page .settings-toggle-row small {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+/* AI provider select + prompt textarea */
+.settings-detail-page .settings-select-input,
+.settings-detail-page .settings-textarea {
+    background: var(--theme-input-bg, rgba(3,13,30,.78)) !important;
+    border-color: var(--theme-border-soft, rgba(91,146,215,.42)) !important;
+    color: var(--theme-input-text, #eaf3ff) !important;
+    caret-color: var(--theme-input-text, #eaf3ff) !important;
+    color-scheme: var(--theme-color-scheme, dark) !important;
+}
+
+.settings-detail-page .settings-textarea::placeholder {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: .85 !important;
+}
+
+/* Data/History + Reset/Recovery warning panels */
+.settings-detail-page .settings-warning-panel {
+    background: light-dark(#f5ead3, rgba(125,76,0,.20)) !important;
+    border-color: light-dark(#d7b66c, rgba(255,190,70,.30)) !important;
+    color: light-dark(#594415, #f6dfb4) !important;
+}
+
+.settings-detail-page .settings-warning-panel strong {
+    color: light-dark(#694c09, #ffe29b) !important;
+}
+
+.settings-detail-page .settings-warning-panel span,
+.settings-detail-page .settings-warning-panel p,
+.settings-detail-page .settings-warning-panel li {
+    color: light-dark(#5d4a20, #f6dfb4) !important;
+    opacity: 1 !important;
+}
+
+/* Destructive/reset explanatory panels */
+.settings-detail-page .settings-critical-panel {
+    background: light-dark(#f3dfe1, rgba(110,12,22,.28)) !important;
+    border-color: light-dark(#d6929a, rgba(255,90,105,.34)) !important;
+    color: light-dark(#642a33, #ffd4d8) !important;
+}
+
+.settings-detail-page .settings-critical-panel strong {
+    color: light-dark(#7a2030, #ffb7bf) !important;
+}
+
+.settings-detail-page .settings-critical-panel span,
+.settings-detail-page .settings-critical-panel p,
+.settings-detail-page .settings-critical-panel li {
+    color: light-dark(#6d3540, #ffd4d8) !important;
+    opacity: 1 !important;
+}
+
+/* Safety / current-value strips */
+.settings-detail-page .settings-current-value,
+.settings-detail-page .settings-migration-note,
+.settings-detail-page .settings-scope-note {
+    background: var(--theme-surface, rgba(5,18,39,.58)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+    color: var(--theme-muted-text, #b8c2cc) !important;
+}
+
+.settings-detail-page .settings-current-value strong,
+.settings-detail-page .settings-migration-note strong,
+.settings-detail-page .settings-scope-note strong {
+    color: var(--theme-page-text, #eaf2ff) !important;
+}
+
