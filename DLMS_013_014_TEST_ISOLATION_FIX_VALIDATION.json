@@ -1,0 +1,10 @@
+{
+  "change": "Adaptive review test isolation fix",
+  "root_cause": "The adaptive-review test module shares one temporary database across all test methods. Earlier tests can leave weak-topic learning events behind, so the due-review recommendation test correctly sees weak areas and returns review_weak.",
+  "application_logic_changed": false,
+  "expected_behavior": "Weak-area recommendations remain higher priority than due-review recommendations. Each test now starts with an empty learning/test quiz state.",
+  "changed_files": [
+    "tests/test_adaptive_review.py"
+  ],
+  "expected_test_count": 42
+}

@@ -1,0 +1,61 @@
+{
+  "source": "DLMS_v3_dev27.zip",
+  "app_version": "3.0.1",
+  "roadmap": {
+    "DLMS-011": "completed",
+    "DLMS-012": "completed",
+    "DLMS-013": "implemented_pending_user_validation",
+    "DLMS-014": "implemented_pending_user_validation"
+  },
+  "phase4": {
+    "DLMS-013": [
+      "Adds Learning Intelligence > Review Schedule.",
+      "Schedules concepts only after at least 3 deduplicated responses.",
+      "Uses transparent intervals based on mastery: <60=1d, 60-74=3d, 75-89=7d, 90+=14d.",
+      "Supports Due/Overdue, Due + next two days, or All Scheduled review generation.",
+      "Reuses existing tagged questions and preserves media through quiz-owned snapshots.",
+      "Excludes Smart Review and Spaced Review clones from future source pools."
+    ],
+    "DLMS-014": [
+      "Adds retained mastery alongside the existing mastery score.",
+      "Retained mastery begins explicit decay only after the scheduled review date is missed.",
+      "Lower-mastery topics decay faster; decay penalty is capped at 35 points.",
+      "Stored answers and accuracy are never rewritten by decay.",
+      "Learning Profile now summarizes due, overdue, due-soon, and average retained mastery."
+    ]
+  },
+  "regression_guards": {
+    "route_count_before": 155,
+    "route_count_after": 159,
+    "existing_routes_removed": 0,
+    "database_schema_changed": false,
+    "app_version_changed": false,
+    "existing_mastery_formula_changed": false,
+    "weak_area_rule_changed": false,
+    "learning_event_recording_changed": false,
+    "smart_pdf_parsers_changed": false,
+    "quiz_runtime_grading_changed": false,
+    "python_compile": "pass",
+    "nav_javascript_syntax": "pass",
+    "css_braces_balanced": true,
+    "artifact_environment_unit_tests": "not run because Flask is not installed in the artifact environment"
+  },
+  "new_routes": [
+    "/review-schedule",
+    "/api/review-schedule",
+    "/api/spaced-review/preview",
+    "/spaced-review/generate"
+  ],
+  "new_test_file": "tests/test_adaptive_review.py",
+  "expected_test_count_on_dev_server": 42,
+  "changed_files": [
+    "app.py",
+    "static/nav-normalize.js",
+    "static/style.css",
+    "static/learning-profile.html",
+    "static/review-schedule.html",
+    "static/help-history-analytics.html",
+    "tests/test_adaptive_review.py",
+    "DLMS_013_014_PHASE4_VALIDATION.json"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "change": "Adaptive review test isolation fix v2",
+  "root_cause": [
+    "The first isolation patch referenced a non-existent 'answers' table; DLMS uses 'choices' and 'attempt_answers'.",
+    "That SQLite exception occurred before the connection was closed, which caused the subsequent 'database is locked' errors."
+  ],
+  "application_logic_changed": false,
+  "fix": [
+    "Discover current SQLite tables before cleanup.",
+    "Delete only real DLMS tables in dependency-safe order.",
+    "Rollback on cleanup errors.",
+    "Always close the SQLite connection in a finally block."
+  ],
+  "changed_files": [
+    "tests/test_adaptive_review.py"
+  ],
+  "expected_test_count": 42
+}

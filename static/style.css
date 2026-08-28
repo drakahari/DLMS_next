@@ -9020,3 +9020,42 @@ body.help-page .dashboard-main *::after {
 /* DLMS-012 — Learning Profile activity panel spacing */
 .learning-profile-page .learning-profile-activity-panel{padding:22px;}
 @media(max-width:560px){.learning-profile-page .learning-profile-activity-panel{padding:18px;}}
+
+/* =========================================================
+   DLMS-013/014 — Spaced Review & Retention
+   ========================================================= */
+.review-schedule-page .dashboard-main{min-width:0;}
+.review-schedule-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px;}
+.review-schedule-actions,.review-schedule-model,.review-schedule-list-panel{padding:22px;margin-bottom:18px;}
+.review-schedule-actions{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;}
+.review-schedule-actions>div{min-width:0;max-width:650px;}
+.review-schedule-actions h2,.review-schedule-model h2,.review-schedule-list-panel h2{margin:3px 0 6px;}
+.review-schedule-actions p,.review-schedule-model p,.review-schedule-list-panel p{margin:0;opacity:.78;line-height:1.5;}
+.review-schedule-actions form{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:0;}
+.review-schedule-actions label{display:grid;gap:6px;font-size:12px;font-weight:700;color:#b8c7da;}
+.review-schedule-actions select{min-width:155px;margin:0;}
+.review-schedule-actions button{width:auto;margin:0;white-space:nowrap;}
+.review-schedule-model-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.review-schedule-model-grid>div{padding:14px;border:1px solid rgba(98,159,220,.22);border-radius:10px;background:rgba(6,24,48,.55);display:grid;gap:6px;}
+.review-schedule-model-grid strong{color:#dce9f8;}
+.review-schedule-model-grid span{font-size:13px;line-height:1.45;color:#a9bbd1;}
+.review-schedule-table-wrap{overflow-x:auto;border:1px solid #203b5c;border-radius:12px;}
+.review-schedule-table{width:100%;border-collapse:collapse;min-width:820px;}
+.review-schedule-table th{padding:11px 12px;text-align:left;font-size:12px;letter-spacing:.06em;color:#9db3cf;background:#0c2037;border-bottom:1px solid #294663;}
+.review-schedule-table td{padding:13px 12px;border-bottom:1px solid #17314f;vertical-align:middle;}
+.review-schedule-table tbody tr:last-child td{border-bottom:0;}
+.review-schedule-table td small{display:block;margin-top:4px;color:#8298b4;font-size:12px;}
+.review-state{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;border:1px solid #36506d;font-size:12px;font-weight:800;white-space:nowrap;}
+.review-state-overdue,.review-state-due{color:#ff9ca7;border-color:#70404b;background:#321820;}
+.review-state-due_soon{color:#ffd381;border-color:#66512b;background:#2a2315;}
+.review-state-fresh{color:#86d8c1;border-color:#285c54;background:#102b29;}
+.learning-profile-retention-panel{padding:22px;margin-bottom:18px;}
+.learning-profile-retention-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:14px;}
+.learning-profile-retention-head h2{margin:3px 0 5px;}
+.learning-profile-retention-head p{margin:0;opacity:.78;line-height:1.5;max-width:720px;}
+.learning-profile-retention-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
+.learning-profile-retention-grid>div{padding:14px;border:1px solid rgba(98,159,220,.22);border-radius:10px;display:grid;gap:4px;background:rgba(6,24,48,.55);}
+.learning-profile-retention-grid strong{font-size:23px;}
+.learning-profile-retention-grid span{font-size:12px;opacity:.72;}
+@media(max-width:900px){.review-schedule-summary,.learning-profile-retention-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.review-schedule-actions{align-items:stretch;flex-direction:column;}.review-schedule-model-grid{grid-template-columns:1fr;}.learning-profile-retention-head{flex-direction:column;}}
+@media(max-width:560px){.review-schedule-summary,.learning-profile-retention-grid{grid-template-columns:1fr;}.review-schedule-actions,.review-schedule-model,.review-schedule-list-panel,.learning-profile-retention-panel{padding:18px;}}

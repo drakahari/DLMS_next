@@ -18005,7 +18005,7 @@ def _learning_intelligence_topics(cur, now=None):
     concept_rows = cur.execute("""
         SELECT c.id, c.name,
                COUNT(DISTINCT CASE
-                   WHEN z.source_file IS NULL OR LOWER(z.source_file) NOT LIKE 'smart_review_%'
+                   WHEN z.source_file IS NULL OR (LOWER(z.source_file) NOT LIKE 'smart_review_%' AND LOWER(z.source_file) NOT LIKE 'spaced_review_%')
                    THEN qc.question_id
                END) AS question_count
         FROM concepts c
@@ -18151,8 +18151,160 @@ def _learning_intelligence_topics(cur, now=None):
     return topics
 
 
-def _learning_intelligence_payload(cur):
-    topics = _learning_intelligence_topics(cur)
+
+def _retention_schedule_for_topic(topic, now=None):
+    """Return a transparent review schedule and retention-adjusted mastery.
+
+    DLMS-013/014 add an explicit retention estimate alongside the existing
+    mastery model. Weak-area status still depends on demonstrated performance;
+    retained mastery adds post-due decay so stale material can be scheduled for
+    reinforcement without changing stored answers or accuracy.
+    """
+    from datetime import datetime, timezone, timedelta
+    import math
+
+    now = now or datetime.now(timezone.utc)
+    evidence = int(topic.get("evidence") or 0)
+    mastery = topic.get("mastery")
+    last_raw = topic.get("last_activity")
+
+    def parse_dt(value):
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            except ValueError:
+                return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    last_dt = parse_dt(last_raw)
+    if evidence <= 0 or mastery is None or last_dt is None:
+        return {
+            "review_state": "unscheduled",
+            "review_state_label": "Not scheduled",
+            "review_interval_days": None,
+            "next_review": None,
+            "days_until_review": None,
+            "days_overdue": 0,
+            "is_due": False,
+            "is_due_soon": False,
+            "retained_mastery": mastery,
+            "decay_points": 0.0,
+            "decay_rate_per_day": 0.0,
+        }
+
+    # The interval expands automatically as demonstrated mastery rises. Topics
+    # with fewer than three responses still belong in normal practice rather
+    # than the spaced-repetition queue.
+    if evidence < 3:
+        interval_days = 1
+        review_state = "build_evidence"
+        review_label = "Build evidence"
+        next_review_dt = last_dt
+        days_until = 0
+        days_overdue = 0
+        is_due = False
+        is_due_soon = False
+        decay_days = 0.0
+    else:
+        if mastery < 60:
+            interval_days = 1
+        elif mastery < 75:
+            interval_days = 3
+        elif mastery < 90:
+            interval_days = 7
+        else:
+            interval_days = 14
+        next_review_dt = last_dt + timedelta(days=interval_days)
+        delta_seconds = (next_review_dt - now).total_seconds()
+        if delta_seconds <= 0:
+            overdue_seconds = -delta_seconds
+            days_overdue = int(math.ceil(overdue_seconds / 86400.0)) if overdue_seconds > 0 else 0
+            review_state = "overdue" if days_overdue > 0 else "due"
+            review_label = "Overdue" if days_overdue > 0 else "Due now"
+            days_until = 0
+            is_due = True
+            is_due_soon = False
+            decay_days = overdue_seconds / 86400.0
+        else:
+            days_until = int(math.ceil(delta_seconds / 86400.0))
+            days_overdue = 0
+            is_due = False
+            is_due_soon = days_until <= 2
+            review_state = "due_soon" if is_due_soon else "fresh"
+            review_label = "Due soon" if is_due_soon else "Fresh"
+            decay_days = 0.0
+
+    # Decay starts only after the scheduled review date. Lower-mastery topics
+    # lose retention faster, while strong topics decay slowly. The penalty is
+    # capped so the estimate remains readable and does not erase performance.
+    decay_rate = round(min(2.0, max(0.5, 0.5 + max(0.0, 80.0 - float(mastery)) * 0.03)), 2)
+    decay_points = round(min(35.0, decay_days * decay_rate), 1)
+    retained = round(max(0.0, float(mastery) - decay_points), 1)
+
+    return {
+        "review_state": review_state,
+        "review_state_label": review_label,
+        "review_interval_days": interval_days,
+        "next_review": next_review_dt.isoformat() if next_review_dt else None,
+        "days_until_review": days_until,
+        "days_overdue": days_overdue,
+        "is_due": is_due,
+        "is_due_soon": is_due_soon,
+        "retained_mastery": retained,
+        "decay_points": decay_points,
+        "decay_rate_per_day": decay_rate,
+    }
+
+
+def _learning_topics_with_retention(cur, now=None):
+    topics = _learning_intelligence_topics(cur, now=now)
+    for topic in topics:
+        topic.update(_retention_schedule_for_topic(topic, now=now))
+    return topics
+
+
+def _review_schedule_payload(cur, now=None):
+    topics = _learning_topics_with_retention(cur, now=now)
+    scheduled = [t for t in topics if t.get("evidence", 0) >= 3 and t.get("review_state") != "unscheduled"]
+    due = [t for t in scheduled if t.get("review_state") in ("due", "overdue")]
+    overdue = [t for t in scheduled if t.get("review_state") == "overdue"]
+    due_soon = [t for t in scheduled if t.get("review_state") == "due_soon"]
+    fresh = [t for t in scheduled if t.get("review_state") == "fresh"]
+    retained = [t.get("retained_mastery") for t in scheduled if t.get("retained_mastery") is not None]
+    avg_retained = round(sum(retained) / len(retained), 1) if retained else None
+    order = {"overdue": 0, "due": 1, "due_soon": 2, "fresh": 3}
+    scheduled.sort(key=lambda t: (
+        order.get(t.get("review_state"), 9),
+        t.get("next_review") or "9999",
+        t.get("retained_mastery") if t.get("retained_mastery") is not None else 999,
+        str(t.get("name") or "").casefold(),
+    ))
+    return {
+        "topics": scheduled,
+        "summary": {
+            "scheduled_topics": len(scheduled),
+            "due_now": len(due),
+            "overdue": len(overdue),
+            "due_soon": len(due_soon),
+            "fresh": len(fresh),
+            "average_retained_mastery": avg_retained,
+        },
+        "model": {
+            "intervals": "Mastery below 60 = 1 day; 60-74 = 3 days; 75-89 = 7 days; 90+ = 14 days",
+            "decay": "Retention decay starts only after the scheduled review date. Lower-mastery topics decay faster; the displayed penalty is capped at 35 points.",
+            "separation": "Base mastery already includes the existing 10% recency component. Retained mastery adds a separate post-due decay estimate for review timing without changing stored answers or accuracy.",
+        },
+    }
+
+def _learning_intelligence_payload(cur, now=None):
+    topics = _learning_topics_with_retention(cur, now=now)
     evidenced = [t for t in topics if t["evidence"] > 0]
     measurable = [t for t in topics if t["evidence"] >= 3]
     weak = [t for t in topics if t["status"] == "weak"]
@@ -18174,6 +18326,7 @@ def _learning_intelligence_payload(cur):
             "minimum_evidence": "Fewer than 3 responses = Not enough data; 3-4 responses cannot exceed 74 mastery",
             "weak_area_rule": "At least 3 responses and mastery below 60 or accuracy below 60",
             "deduplication": "Latest Study response per question/session and one Exam response per question/attempt",
+            "retention_separation": "Base mastery includes the existing recency component; retained mastery adds explicit post-due decay for review timing.",
         },
     }
 
@@ -18184,6 +18337,7 @@ def _learning_profile_payload(cur):
     """Summarize learner-level progress from the explainable topic model."""
     payload = _learning_intelligence_payload(cur)
     topics = payload.get("topics") or []
+    review_schedule = _review_schedule_payload(cur)
     evidenced = [t for t in topics if t.get("evidence", 0) > 0]
     measurable = [t for t in topics if t.get("evidence", 0) >= 3]
     weak = [t for t in topics if t.get("status") == "weak"]
@@ -18206,11 +18360,19 @@ def _learning_profile_payload(cur):
         FROM learning_events
     """).fetchone()
 
+    due_topics = [t for t in review_schedule.get("topics", []) if t.get("review_state") in ("due", "overdue")]
+
     if weak:
         recommendation = {
             "kind": "review_weak",
             "title": "Review weak areas",
             "detail": f"Start with {weak[0]['name']} and {len(weak)-1} other weak topic{'s' if len(weak)-1 != 1 else ''}." if len(weak) > 1 else f"Start with {weak[0]['name']}.",
+        }
+    elif due_topics:
+        recommendation = {
+            "kind": "review_due",
+            "title": "Review topics due for reinforcement",
+            "detail": f"{due_topics[0]['name']} is due now" + (f" along with {len(due_topics)-1} other topic{'s' if len(due_topics)-1 != 1 else ''}." if len(due_topics) > 1 else "."),
         }
     elif insufficient:
         recommendation = {
@@ -18265,6 +18427,9 @@ def _learning_profile_payload(cur):
         "strongest_topics": strongest,
         "weakest_topics": weakest,
         "recommendation": recommendation,
+        "retention": review_schedule.get("summary") or {},
+        "due_topics": due_topics[:5],
+        "review_model": review_schedule.get("model") or {},
         "model": payload.get("model") or {},
     }
 
@@ -18356,13 +18521,12 @@ def _snapshot_existing_quiz_asset_refs(value, bucket):
         return value
 
 
-def _smart_review_candidates(cur):
-    """Return unique questions ranked by the weak concepts they reinforce."""
-    topics = _learning_intelligence_topics(cur)
-    weak = [t for t in topics if t.get("status") == "weak"]
-    if not weak:
-        return [], weak
-    weak_by_id = {t["concept_id"]: t for t in weak}
+
+def _review_candidates_for_topics(cur, topics):
+    """Return unique source questions associated with the supplied concepts."""
+    if not topics:
+        return []
+    topic_by_id = {t["concept_id"]: t for t in topics}
     rows = cur.execute("""
         SELECT qc.question_id, qc.concept_id, q.quiz_id, q.question_number, q.question_text
         FROM question_concepts qc
@@ -18370,8 +18534,10 @@ def _smart_review_candidates(cur):
         JOIN quizzes z ON z.id = q.quiz_id
         WHERE qc.concept_id IN (%s)
           AND LOWER(z.source_file) NOT LIKE 'smart_review_%%'
+          AND LOWER(z.source_file) NOT LIKE 'spaced_review_%%'
           AND LOWER(z.title) NOT LIKE 'smart review —%%'
-    """ % ",".join("?" for _ in weak_by_id), tuple(weak_by_id)).fetchall()
+          AND LOWER(z.title) NOT LIKE 'spaced review —%%'
+    """ % ",".join("?" for _ in topic_by_id), tuple(topic_by_id)).fetchall()
     grouped = {}
     for row in rows:
         g = grouped.setdefault(row["question_id"], {
@@ -18379,15 +18545,14 @@ def _smart_review_candidates(cur):
             "question_number": row["question_number"], "question_text": row["question_text"],
             "topics": [],
         })
-        topic = weak_by_id.get(row["concept_id"])
+        topic = topic_by_id.get(row["concept_id"])
         if topic:
             g["topics"].append(topic)
     candidates = list(grouped.values())
     for c in candidates:
-        c["priority_mastery"] = min((t.get("mastery") if t.get("mastery") is not None else 100) for t in c["topics"])
+        c["priority_mastery"] = min((t.get("retained_mastery") if t.get("retained_mastery") is not None else t.get("mastery") if t.get("mastery") is not None else 100) for t in c["topics"])
         c["topic_names"] = sorted({t["name"] for t in c["topics"]}, key=str.casefold)
-    # De-duplicate identical source questions before review selection. This also
-    # protects older databases that may already contain duplicate imported copies.
+
     unique_by_fingerprint = {}
     for candidate in candidates:
         fingerprint = " ".join(str(candidate.get("question_text") or "").casefold().split())
@@ -18398,21 +18563,21 @@ def _smart_review_candidates(cur):
             candidate["fingerprint"] = fingerprint
             unique_by_fingerprint[fingerprint] = candidate
             continue
-        # Duplicate source copies of the same question should not become repeated
-        # Smart Review items, but do merge their weak-topic associations so a
-        # duplicate copy cannot make a concept disappear from review coverage.
-        topic_by_id = {t.get("concept_id"): t for t in existing.get("topics") or []}
+        topic_map = {t.get("concept_id"): t for t in existing.get("topics") or []}
         for topic in candidate.get("topics") or []:
-            topic_by_id.setdefault(topic.get("concept_id"), topic)
-        existing["topics"] = list(topic_by_id.values())
-        existing["priority_mastery"] = min(
-            (t.get("mastery") if t.get("mastery") is not None else 100)
-            for t in existing["topics"]
-        )
+            topic_map.setdefault(topic.get("concept_id"), topic)
+        existing["topics"] = list(topic_map.values())
+        existing["priority_mastery"] = min((t.get("retained_mastery") if t.get("retained_mastery") is not None else t.get("mastery") if t.get("mastery") is not None else 100) for t in existing["topics"])
         existing["topic_names"] = sorted({t["name"] for t in existing["topics"]}, key=str.casefold)
     candidates = list(unique_by_fingerprint.values())
     candidates.sort(key=lambda c: (c["priority_mastery"], -len(c["topics"]), c["quiz_id"], c["question_number"]))
-    return candidates, weak
+    return candidates
+
+def _smart_review_candidates(cur):
+    """Return unique questions ranked by the weak concepts they reinforce."""
+    topics = _learning_intelligence_topics(cur)
+    weak = [t for t in topics if t.get("status") == "weak"]
+    return _review_candidates_for_topics(cur, weak), weak
 
 
 def _smart_review_select_candidates(candidates, weak, requested):
@@ -18472,6 +18637,10 @@ def _smart_review_select_candidates(candidates, weak, requested):
     return selected
 
 
+def _review_select_candidates(candidates, topics, requested):
+    return _smart_review_select_candidates(candidates, topics, requested)
+
+
 @app.route("/api/smart-review/preview")
 def smart_review_preview_api():
     conn = get_db(); cur = conn.cursor()
@@ -18527,6 +18696,103 @@ def smart_review_generate():
     html_name = f"smart_review_{ts}.html"
     json_name = f"smart_review_{ts}.json"
     asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"smart_review_{ts}")[:120]
+    quiz_data = _snapshot_existing_quiz_asset_refs(quiz_data, asset_bucket)
+    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
+        json.dump(quiz_data, f, indent=4, ensure_ascii=False)
+    quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
+    add_quiz_to_registry(quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None, exam_minutes=90)
+    build_quiz_html(html_name, json_name, os.path.join(QUIZ_FOLDER, html_name), get_portal_title(), quiz_title, None, quiz_id, 90)
+    return redirect(f"/quizzes/{html_name}")
+
+
+@app.route("/review-schedule")
+def review_schedule_page():
+    return send_from_directory(app.static_folder, "review-schedule.html")
+
+
+@app.route("/api/review-schedule")
+def review_schedule_api():
+    conn = get_db(); cur = conn.cursor()
+    try:
+        return jsonify(_review_schedule_payload(cur))
+    finally:
+        conn.close()
+
+
+@app.route("/api/spaced-review/preview")
+def spaced_review_preview_api():
+    scope = str(request.args.get("scope") or "due").strip().lower()
+    conn = get_db(); cur = conn.cursor()
+    try:
+        schedule = _review_schedule_payload(cur)
+        topics = schedule.get("topics") or []
+        if scope == "upcoming":
+            chosen = [t for t in topics if t.get("review_state") in ("overdue", "due", "due_soon")]
+        elif scope == "all":
+            chosen = topics
+        else:
+            chosen = [t for t in topics if t.get("review_state") in ("overdue", "due")]
+        candidates = _review_candidates_for_topics(cur, chosen)
+        return jsonify({
+            "scope": scope,
+            "topics": [{"name": t["name"], "review_state": t["review_state"], "next_review": t["next_review"], "retained_mastery": t["retained_mastery"]} for t in chosen],
+            "candidate_questions": len(candidates),
+            "questions": [{"question_id": c["question_id"], "question": c["question_text"], "topics": c["topic_names"]} for c in candidates[:50]],
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/spaced-review/generate", methods=["POST"])
+def spaced_review_generate():
+    try:
+        requested = int(request.form.get("question_count", "20"))
+    except (TypeError, ValueError):
+        requested = 20
+    requested = max(1, min(requested, 50))
+    scope = str(request.form.get("scope") or "due").strip().lower()
+
+    conn = get_db(); cur = conn.cursor()
+    try:
+        schedule = _review_schedule_payload(cur)
+        topics = schedule.get("topics") or []
+        if scope == "upcoming":
+            chosen = [t for t in topics if t.get("review_state") in ("overdue", "due", "due_soon")]
+        elif scope == "all":
+            chosen = topics
+        else:
+            chosen = [t for t in topics if t.get("review_state") in ("overdue", "due")]
+        if not chosen:
+            flash("No topics match the selected spaced-review window yet.", "info")
+            return redirect("/review-schedule")
+        candidates = _review_candidates_for_topics(cur, chosen)
+        if not candidates:
+            flash("Review topics are scheduled, but no tagged source questions are available.", "error")
+            return redirect("/review-schedule")
+        selected = _review_select_candidates(candidates, chosen, requested)
+        quiz_data = []
+        for number, candidate in enumerate(selected, start=1):
+            item = _question_payload_from_db(cur, candidate["question_id"])
+            if not item:
+                continue
+            item["number"] = number
+            quiz_data.append(item)
+    finally:
+        conn.close()
+
+    if not quiz_data:
+        flash("No usable source questions were available for Spaced Review.", "error")
+        return redirect("/review-schedule")
+
+    topic_names = [t["name"] for t in chosen[:3]]
+    suffix = ", ".join(topic_names)
+    if len(chosen) > 3:
+        suffix += f" +{len(chosen)-3} more"
+    quiz_title = f"Spaced Review — {suffix}"
+    ts = int(time.time() * 1000)
+    html_name = f"spaced_review_{ts}.html"
+    json_name = f"spaced_review_{ts}.json"
+    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"spaced_review_{ts}")[:120]
     quiz_data = _snapshot_existing_quiz_asset_refs(quiz_data, asset_bucket)
     with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
         json.dump(quiz_data, f, indent=4, ensure_ascii=False)
