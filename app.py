@@ -20731,7 +20731,7 @@ body{margin:0;background:#e7ebef;color:#111;font-family:Arial,Helvetica,sans-ser
 .card-side-label{font-size:8pt;letter-spacing:.08em;font-weight:800;color:#777;margin-bottom:.10in}
 @page{size:Letter portrait;margin:0}
 @media print{
- body{background:white}.print-toolbar,.print-note,.sheet-label{display:none!important}
+ body{background:white}.print-toolbar,.print-note,.sheet-label,.card-side-label{display:none!important}
  .avery-sheet{margin:0;box-shadow:none;page-break-after:always;break-after:page}
  .avery-sheet:last-child{page-break-after:auto;break-after:auto}
  .avery-card{border-color:transparent}
