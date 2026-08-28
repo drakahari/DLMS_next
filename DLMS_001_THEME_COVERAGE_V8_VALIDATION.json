@@ -1,0 +1,14 @@
+{
+  "change": "DLMS-001 Theme Coverage Pass 8",
+  "source": "dev30 theme coverage V7",
+  "changed_files": [
+    "static/style.css"
+  ],
+  "logic_changed": false,
+  "targets": [
+    "Study Packs summary/count pill contrast in light theme",
+    "Quiz Library top stat-card text readability",
+    "Smart PDF saved source-bank and terminology-bank card readability in light theme"
+  ],
+  "css_braces_balanced": true
+}

@@ -1,0 +1,20 @@
+{
+  "change": "DLMS-001 Theme Coverage Pass 10",
+  "source": "dev30 theme coverage V9",
+  "changed_files": [
+    "static/style.css"
+  ],
+  "logic_changed": false,
+  "targets": [
+    "Medical AI safeguard banner readability",
+    "History table, filters, summary cards, review buttons and missed-question review cards",
+    "Analytics summary/table/trend/readability",
+    "Learning Intelligence weak-area cards",
+    "Review Schedule timing model cards",
+    "Diagnostics confusion subtext",
+    "Anki landing summary/form clarity",
+    "Custom Anki deck question accordion readability",
+    "Law Study Anki form/label readability"
+  ],
+  "css_braces_balanced": true
+}

@@ -10525,3 +10525,598 @@ body[data-theme="light"] .medical-table-page .dashboard-panel,
 .law-hub-page a:not(.dashboard-nav-item):hover {
     color: var(--theme-link-hover,#9bd2ff) !important;
 }
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 7
+   Final light-theme contrast refinements from screenshot review:
+   study-pack count pills, law status/count pills, law hub card parity,
+   and medical safeguard banner readability.
+   ========================================================= */
+
+/* ---------- Study Pack summary count pills ---------- */
+.study-packs-page .pack-count-pill,
+.study-pack-summary-meta .pack-count-pill,
+.content-pack-counts .pack-count-pill {
+    color: #35597f !important;
+    background: rgba(48, 103, 170, 0.18) !important;
+    border: 1px solid rgba(69, 124, 191, 0.42) !important;
+    font-weight: 800 !important;
+}
+html[data-theme="dark"] .study-packs-page .pack-count-pill,
+body[data-theme="dark"] .study-packs-page .pack-count-pill,
+.theme-dark .study-packs-page .pack-count-pill {
+    color: #d6ebff !important;
+    background: rgba(18, 60, 108, 0.74) !important;
+    border-color: rgba(101, 172, 245, 0.36) !important;
+}
+
+/* ---------- Law badges / pills ---------- */
+.law-hub-page .law-count-pill,
+.law-subpage .law-count-pill,
+.law-subpage .law-status-pill.info,
+.law-subpage .law-status-pill.success,
+.law-import-detail-page .law-status-pill,
+.law-case-detail-page .law-status-pill {
+    font-weight: 800 !important;
+}
+.law-hub-page .law-count-pill,
+.law-subpage .law-count-pill,
+.law-subpage .law-status-pill.info {
+    color: #35597f !important;
+    background: rgba(48, 103, 170, 0.18) !important;
+    border: 1px solid rgba(69, 124, 191, 0.42) !important;
+}
+.law-subpage .law-status-pill.success,
+.law-hub-page .law-status-pill.success,
+.law-import-detail-page .law-status-pill.success,
+.law-case-detail-page .law-status-pill.success {
+    color: #0f6a49 !important;
+    background: rgba(38, 160, 98, 0.14) !important;
+    border: 1px solid rgba(35, 141, 87, 0.34) !important;
+}
+html[data-theme="dark"] .law-hub-page .law-count-pill,
+html[data-theme="dark"] .law-subpage .law-count-pill,
+html[data-theme="dark"] .law-subpage .law-status-pill.info,
+body[data-theme="dark"] .law-hub-page .law-count-pill,
+body[data-theme="dark"] .law-subpage .law-count-pill,
+body[data-theme="dark"] .law-subpage .law-status-pill.info,
+.theme-dark .law-hub-page .law-count-pill,
+.theme-dark .law-subpage .law-count-pill,
+.theme-dark .law-subpage .law-status-pill.info {
+    color: #d6ebff !important;
+    background: rgba(18, 60, 108, 0.74) !important;
+    border-color: rgba(101, 172, 245, 0.36) !important;
+}
+html[data-theme="dark"] .law-subpage .law-status-pill.success,
+body[data-theme="dark"] .law-subpage .law-status-pill.success,
+.theme-dark .law-subpage .law-status-pill.success,
+html[data-theme="dark"] .law-hub-page .law-status-pill.success,
+body[data-theme="dark"] .law-hub-page .law-status-pill.success,
+.theme-dark .law-hub-page .law-status-pill.success {
+    color: #9cf2c8 !important;
+    background: rgba(15, 112, 70, 0.24) !important;
+    border-color: rgba(64, 210, 139, 0.35) !important;
+}
+
+/* ---------- Law hub: make primary card match the others ---------- */
+.law-hub-page .law-hub-card.primary {
+    background: linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74))) !important;
+}
+.law-hub-page .law-hub-card.primary:hover {
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 13%,var(--theme-panel-1,rgba(6,20,45,.82))) !important;
+}
+
+/* ---------- Medical AI safeguards banner ---------- */
+.medical-ai-builder-page .medical-ai-safeguard {
+    background: rgba(55, 180, 116, 0.14) !important;
+    border: 1px solid rgba(44, 155, 99, 0.34) !important;
+    color: #2f5e4a !important;
+}
+.medical-ai-builder-page .medical-ai-safeguard strong {
+    color: #0f6a49 !important;
+}
+.medical-ai-builder-page .medical-ai-safeguard span,
+.medical-ai-builder-page .medical-ai-safeguard p {
+    color: #4c6e60 !important;
+}
+html[data-theme="dark"] .medical-ai-builder-page .medical-ai-safeguard,
+body[data-theme="dark"] .medical-ai-builder-page .medical-ai-safeguard,
+.theme-dark .medical-ai-builder-page .medical-ai-safeguard {
+    background: color-mix(in srgb,#35c98a 11%,var(--theme-surface,rgba(5,18,39,.58))) !important;
+    border-color: rgba(58, 180, 118, 0.28) !important;
+    color: #a9dac1 !important;
+}
+html[data-theme="dark"] .medical-ai-builder-page .medical-ai-safeguard strong,
+body[data-theme="dark"] .medical-ai-builder-page .medical-ai-safeguard strong,
+.theme-dark .medical-ai-builder-page .medical-ai-safeguard strong {
+    color: #92f0be !important;
+}
+html[data-theme="dark"] .medical-ai-builder-page .medical-ai-safeguard span,
+html[data-theme="dark"] .medical-ai-builder-page .medical-ai-safeguard p,
+body[data-theme="dark"] .medical-ai-builder-page .medical-ai-safeguard span,
+body[data-theme="dark"] .medical-ai-builder-page .medical-ai-safeguard p,
+.theme-dark .medical-ai-builder-page .medical-ai-safeguard span,
+.theme-dark .medical-ai-builder-page .medical-ai-safeguard p {
+    color: #b9d7ca !important;
+}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 8
+   Final light-theme cleanup for remaining screenshot findings:
+   - Study Packs count pills still dark on summary rows
+   - Quiz Library stat-card text contrast
+   - Smart PDF saved source/terminology bank card readability
+   ========================================================= */
+
+/* ---------- Study Packs: ALL count pills/summary chips in light theme ---------- */
+html[data-theme="light"] .study-packs-page .pack-count-pill,
+html[data-theme="light"] .study-packs-page .study-pack-summary-meta > span,
+html[data-theme="light"] .study-packs-page .content-pack-counts span,
+body[data-theme="light"] .study-packs-page .pack-count-pill,
+body[data-theme="light"] .study-packs-page .study-pack-summary-meta > span,
+body[data-theme="light"] .study-packs-page .content-pack-counts span,
+.theme-light .study-packs-page .pack-count-pill,
+.theme-light .study-packs-page .study-pack-summary-meta > span,
+.theme-light .study-packs-page .content-pack-counts span {
+    color: #35597f !important;
+    background: rgba(48, 103, 170, 0.14) !important;
+    border: 1px solid rgba(69, 124, 191, 0.34) !important;
+    font-weight: 800 !important;
+}
+html[data-theme="light"] .study-packs-page .content-pack-counts span,
+body[data-theme="light"] .study-packs-page .content-pack-counts span,
+.theme-light .study-packs-page .content-pack-counts span {
+    padding: 4px 8px !important;
+}
+
+/* ---------- Quiz Library stat summaries ---------- */
+html[data-theme="light"] .library-page .library-stat-card,
+body[data-theme="light"] .library-page .library-stat-card,
+.theme-light .library-page .library-stat-card {
+    background: linear-gradient(180deg, rgba(244, 248, 253, 0.96), rgba(232, 239, 247, 0.92)) !important;
+    border-color: rgba(130, 165, 208, 0.38) !important;
+    box-shadow: 0 10px 24px rgba(28, 50, 78, 0.12) !important;
+}
+html[data-theme="light"] .library-page .library-stat-card span,
+body[data-theme="light"] .library-page .library-stat-card span,
+.theme-light .library-page .library-stat-card span {
+    color: #556a84 !important;
+}
+html[data-theme="light"] .library-page .library-stat-card strong,
+body[data-theme="light"] .library-page .library-stat-card strong,
+.theme-light .library-page .library-stat-card strong {
+    color: #172b44 !important;
+}
+html[data-theme="light"] .library-page .library-stat-card small,
+body[data-theme="light"] .library-page .library-stat-card small,
+.theme-light .library-page .library-stat-card small {
+    color: #74879f !important;
+}
+
+/* ---------- Smart PDF: saved bank rows and pills in light theme ---------- */
+html[data-theme="light"] .pdf-import-page .pdf-bank-row,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row,
+.theme-light .pdf-import-page .pdf-bank-row {
+    background: linear-gradient(180deg, rgba(232, 239, 247, 0.95), rgba(221, 231, 242, 0.93)) !important;
+    border-color: rgba(123, 160, 206, 0.38) !important;
+}
+html[data-theme="light"] .pdf-import-page .pdf-bank-row:hover,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row:hover,
+.theme-light .pdf-import-page .pdf-bank-row:hover {
+    background: linear-gradient(180deg, rgba(225, 235, 246, 0.98), rgba(213, 226, 240, 0.96)) !important;
+    border-color: rgba(76, 137, 205, 0.52) !important;
+}
+html[data-theme="light"] .pdf-import-page .pdf-bank-row-main,
+html[data-theme="light"] .pdf-import-page .pdf-bank-row-main:link,
+html[data-theme="light"] .pdf-import-page .pdf-bank-row-main:visited,
+html[data-theme="light"] .pdf-import-page .pdf-bank-row-main:hover,
+html[data-theme="light"] .pdf-import-page .pdf-bank-row-main:active,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row-main,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row-main:link,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row-main:visited,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row-main:hover,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row-main:active,
+.theme-light .pdf-import-page .pdf-bank-row-main,
+.theme-light .pdf-import-page .pdf-bank-row-main:link,
+.theme-light .pdf-import-page .pdf-bank-row-main:visited,
+.theme-light .pdf-import-page .pdf-bank-row-main:hover,
+.theme-light .pdf-import-page .pdf-bank-row-main:active {
+    color: #1a2f49 !important;
+}
+html[data-theme="light"] .pdf-import-page .pdf-bank-row small,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row small,
+.theme-light .pdf-import-page .pdf-bank-row small {
+    color: #667d97 !important;
+}
+html[data-theme="light"] .pdf-import-page .pdf-bank-row-stats span,
+html[data-theme="light"] .pdf-import-page .pdf-bank-section-meta > span:first-child,
+body[data-theme="light"] .pdf-import-page .pdf-bank-row-stats span,
+body[data-theme="light"] .pdf-import-page .pdf-bank-section-meta > span:first-child,
+.theme-light .pdf-import-page .pdf-bank-row-stats span,
+.theme-light .pdf-import-page .pdf-bank-section-meta > span:first-child {
+    color: #35597f !important;
+    background: rgba(48, 103, 170, 0.14) !important;
+    border-color: rgba(69, 124, 191, 0.34) !important;
+    font-weight: 700 !important;
+}
+html[data-theme="light"] .pdf-import-page .pdf-bank-open,
+body[data-theme="light"] .pdf-import-page .pdf-bank-open,
+.theme-light .pdf-import-page .pdf-bank-open {
+    color: #1f7bd3 !important;
+}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 9
+   IMPORTANT: these fixes intentionally do NOT depend on a
+   data-theme attribute. DLMS currently applies the active theme
+   through semantic CSS variables, so these selectors also use
+   those variables directly.
+   ========================================================= */
+
+/* ---------- Study Packs: make matching/image/mixed chips match datasets ---------- */
+.study-packs-page .study-pack-summary-meta > span {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 28px !important;
+    padding: 4px 9px !important;
+    border-radius: 999px !important;
+    color: var(--theme-page-text,#eaf2ff) !important;
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-surface-2,rgba(17,31,56,.78))) !important;
+    border: 1px solid color-mix(in srgb,var(--theme-accent,#1b9ff2) 32%,var(--theme-border-soft,rgba(98,155,255,.24))) !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+.study-packs-page .study-pack-summary-meta > span.pack-count-pill {
+    color: var(--theme-page-text,#eaf2ff) !important;
+    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 14%,var(--theme-surface-2,rgba(17,31,56,.78))) !important;
+    border-color: color-mix(in srgb,var(--theme-accent,#1b9ff2) 42%,var(--theme-border-soft,rgba(98,155,255,.24))) !important;
+}
+
+/* ---------- Quiz Library: top summary cards ---------- */
+.library-page .library-stat-card {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb,var(--theme-surface,#edf4fb) 96%,white 4%),
+        var(--theme-surface-2,#e6eef8)
+    ) !important;
+    border-color: var(--theme-border-soft,rgba(71,111,151,.24)) !important;
+}
+.library-page .library-stat-card span {
+    color: var(--theme-muted-text,#53657d) !important;
+    opacity: 1 !important;
+}
+.library-page .library-stat-card strong {
+    color: var(--theme-heading,#0b1b33) !important;
+    opacity: 1 !important;
+}
+.library-page .library-stat-card small {
+    color: color-mix(in srgb,var(--theme-page-text,#17253a) 62%,var(--theme-muted-text,#53657d)) !important;
+    opacity: 1 !important;
+}
+
+/* ---------- Smart PDF: saved Question/Terminology bank rows ---------- */
+.pdf-import-page .pdf-bank-row {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb,var(--theme-surface,#edf4fb) 94%,white 6%),
+        var(--theme-surface-2,#e6eef8)
+    ) !important;
+    border-color: var(--theme-border-soft,rgba(71,111,151,.24)) !important;
+}
+.pdf-import-page .pdf-bank-row:hover {
+    background: color-mix(in srgb,var(--theme-accent,#076fb5) 7%,var(--theme-surface,#edf4fb)) !important;
+    border-color: color-mix(in srgb,var(--theme-accent,#076fb5) 45%,var(--theme-border-soft,rgba(71,111,151,.24))) !important;
+}
+.pdf-import-page .pdf-bank-row-main,
+.pdf-import-page .pdf-bank-row-main:link,
+.pdf-import-page .pdf-bank-row-main:visited,
+.pdf-import-page .pdf-bank-row-main:hover,
+.pdf-import-page .pdf-bank-row-main:active,
+.pdf-import-page .pdf-bank-row-main strong {
+    color: var(--theme-page-text,#17253a) !important;
+    text-decoration: none !important;
+    opacity: 1 !important;
+}
+.pdf-import-page .pdf-bank-row small {
+    color: var(--theme-muted-text,#53657d) !important;
+    opacity: 1 !important;
+}
+.pdf-import-page .pdf-bank-row-stats span,
+.pdf-import-page .pdf-bank-section-meta > span:first-child {
+    color: var(--theme-page-text,#17253a) !important;
+    background: color-mix(in srgb,var(--theme-accent,#076fb5) 11%,var(--theme-surface-2,#e6eef8)) !important;
+    border: 1px solid color-mix(in srgb,var(--theme-accent,#076fb5) 30%,var(--theme-border-soft,rgba(71,111,151,.24))) !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+.pdf-import-page .pdf-bank-open {
+    color: var(--theme-link,#075f9f) !important;
+    opacity: 1 !important;
+}
+
+
+/* =========================================================
+   DLMS-001 — THEME COVERAGE PASS 10
+   Light-theme readability audit: Medical AI, History/Review,
+   Analytics, Learning Intelligence, Review Schedule,
+   Diagnostics, Anki Tools/Custom Deck/Law Anki.
+   Uses semantic theme variables; no data-theme dependency.
+   ========================================================= */
+
+/* ---------- Medical AI safeguard banner ---------- */
+.medical-ai-builder-page .medical-ai-safeguard {
+    background: color-mix(in srgb,#2f9b6d 9%,var(--theme-surface,#eef5fb)) !important;
+    border-color: color-mix(in srgb,#2f9b6d 32%,var(--theme-border-soft,#b9cce2)) !important;
+    color: var(--theme-page-text,#17253a) !important;
+}
+.medical-ai-builder-page .medical-ai-safeguard strong {
+    color: #126344 !important;
+}
+.medical-ai-builder-page .medical-ai-safeguard span,
+.medical-ai-builder-page .medical-ai-safeguard p {
+    color: color-mix(in srgb,var(--theme-page-text,#17253a) 78%,#246849) !important;
+    opacity: 1 !important;
+}
+
+/* ---------- History page + review controls ---------- */
+.history-table-stat,
+.analytics-summary-card {
+    background: linear-gradient(180deg,var(--theme-surface,#eef5fb),var(--theme-surface-2,#e5eef7)) !important;
+    border-color: var(--theme-border-soft,#bdd0e5) !important;
+}
+.history-table-stat span,
+.analytics-summary-card span {
+    color: var(--theme-muted-text,#53657d) !important;
+}
+.history-table-stat strong,
+.analytics-summary-card strong {
+    color: var(--theme-heading,#10213a) !important;
+}
+.history-table-stat small,
+.analytics-summary-card small {
+    color: color-mix(in srgb,var(--theme-page-text,#17253a) 58%,var(--theme-muted-text,#53657d)) !important;
+}
+.history-table-panel,
+.analytics-table-panel {
+    background: var(--theme-panel-1,#f8fbff) !important;
+    border-color: var(--theme-border-soft,#bdd0e5) !important;
+}
+.history-table-heading h2,
+.analytics-section-heading h2 {
+    color: var(--theme-heading,#10213a) !important;
+}
+.history-table-count,
+.history-origin-filter,
+.history-origin-badge,
+.history-mode-badge {
+    color: var(--theme-page-text,#17253a) !important;
+    background: color-mix(in srgb,var(--theme-accent,#1684cf) 8%,var(--theme-surface,#eef5fb)) !important;
+    border-color: color-mix(in srgb,var(--theme-accent,#1684cf) 28%,var(--theme-border-soft,#bdd0e5)) !important;
+}
+.history-results-table,
+.history-results-table td,
+.analytics-table td {
+    color: var(--theme-page-text,#17253a) !important;
+}
+.history-results-table thead,
+.analytics-table th {
+    background: color-mix(in srgb,var(--theme-accent,#1684cf) 12%,var(--theme-surface-2,#e5eef7)) !important;
+}
+.history-results-table th,
+.analytics-table th {
+    color: color-mix(in srgb,var(--theme-page-text,#17253a) 72%,var(--theme-muted-text,#53657d)) !important;
+}
+.history-quiz-cell strong,
+.analytics-quiz-cell strong,
+.analytics-latest-cell strong {
+    color: var(--theme-heading,#10213a) !important;
+}
+.history-quiz-cell span,
+.history-score-cell small,
+.history-date-cell,
+.analytics-latest-cell span,
+.analytics-trend.neutral {
+    color: var(--theme-muted-text,#667b95) !important;
+}
+.history-result-row:hover,
+.analytics-table tbody tr:hover td {
+    background: color-mix(in srgb,var(--theme-accent,#1684cf) 6%,var(--theme-surface,#eef5fb)) !important;
+}
+.history-table-review,
+.analytics-review-button,
+.analytics-history-link {
+    color: #285d8f !important;
+    background: color-mix(in srgb,var(--theme-accent,#1684cf) 9%,var(--theme-surface,#eef5fb)) !important;
+    border-color: color-mix(in srgb,var(--theme-accent,#1684cf) 35%,var(--theme-border-soft,#bdd0e5)) !important;
+}
+.history-table-review:hover,
+.analytics-review-button:hover,
+.analytics-history-link:hover {
+    color: #0c4f86 !important;
+    background: color-mix(in srgb,var(--theme-accent,#1684cf) 15%,var(--theme-surface,#eef5fb)) !important;
+}
+
+/* Generic missed-question/review cards */
+.review-card,
+.history-card,
+.missed-question-card,
+.missed-question-review-card {
+    background: var(--theme-surface,#eef5fb) !important;
+    border-color: var(--theme-border-soft,#bdd0e5) !important;
+    color: var(--theme-page-text,#17253a) !important;
+}
+.review-card strong,
+.history-card strong,
+.missed-question-card strong,
+.missed-question-review-card strong {
+    color: var(--theme-heading,#10213a) !important;
+}
+.review-card p,.review-card span,.review-card small,
+.history-card p,.history-card span,.history-card small,
+.missed-question-card p,.missed-question-card span,.missed-question-card small,
+.missed-question-review-card p,.missed-question-review-card span,.missed-question-review-card small {
+    color: var(--theme-muted-text,#667b95) !important;
+}
+
+/* ---------- Analytics score/trend contrast ---------- */
+.analytics-score-pill.bad,.history-score-badge.bad {
+    color: #b93d52 !important;
+    background: rgba(198,63,82,.10) !important;
+    border-color: rgba(198,63,82,.28) !important;
+}
+.analytics-score-pill.good,.history-score-badge.good {
+    color: #16784f !important;
+    background: rgba(34,155,98,.10) !important;
+    border-color: rgba(34,155,98,.27) !important;
+}
+.analytics-score-pill.warn,.history-score-badge.warn {
+    color: #8a6300 !important;
+    background: rgba(204,155,33,.12) !important;
+    border-color: rgba(204,155,33,.28) !important;
+}
+.analytics-trend.good { color:#19764e !important; }
+.analytics-trend.bad { color:#c43d52 !important; }
+
+/* ---------- Learning Intelligence weak-area cards ---------- */
+.learning-intelligence-weak-list article {
+    background: color-mix(in srgb,#b93d52 7%,var(--theme-surface,#eef5fb)) !important;
+    border-color: color-mix(in srgb,#b93d52 30%,var(--theme-border-soft,#bdd0e5)) !important;
+}
+.learning-intelligence-weak-list article strong {
+    color: var(--theme-heading,#10213a) !important;
+}
+.learning-intelligence-weak-list article span {
+    color: var(--theme-muted-text,#667b95) !important;
+}
+.li-weak-score {
+    color: #b5374d !important;
+}
+
+/* ---------- Spaced Review / How timing works ---------- */
+.review-schedule-model-grid > div,
+.learning-profile-retention-grid > div {
+    background: var(--theme-surface,#eef5fb) !important;
+    border-color: var(--theme-border-soft,#bdd0e5) !important;
+}
+.review-schedule-model-grid strong,
+.learning-profile-retention-grid strong {
+    color: var(--theme-heading,#10213a) !important;
+}
+.review-schedule-model-grid span,
+.learning-profile-retention-grid span,
+.review-schedule-actions label {
+    color: var(--theme-muted-text,#667b95) !important;
+    opacity: 1 !important;
+}
+.review-schedule-table td,
+.review-schedule-table td small {
+    color: var(--theme-page-text,#17253a) !important;
+}
+.review-schedule-table td small { color:var(--theme-muted-text,#667b95) !important; }
+
+/* ---------- Diagnostics confusion subtext ---------- */
+.learning-diagnostic-card {
+    background: var(--theme-surface,#eef5fb) !important;
+    border-color: var(--theme-border-soft,#bdd0e5) !important;
+    color: var(--theme-page-text,#17253a) !important;
+}
+.learning-diagnostic-main strong,
+.learning-diagnostic-card.confusion strong {
+    color: var(--theme-heading,#10213a) !important;
+}
+.learning-diagnostic-main span,
+.learning-diagnostic-card small,
+.learning-diagnostics-section-head p,
+.learning-diagnostics-panel > p,
+.learning-diagnostics-head p {
+    color: var(--theme-muted-text,#667b95) !important;
+    opacity: 1 !important;
+}
+.learning-diagnostic-card.confusion strong span {
+    color: var(--theme-link,#1678bd) !important;
+}
+.learning-diagnostic-card ul {
+    color: var(--theme-page-text,#17253a) !important;
+}
+
+/* ---------- Anki landing / forms ---------- */
+.anki-tools-summary .dashboard-stat-card {
+    background: linear-gradient(180deg,var(--theme-surface,#eef5fb),var(--theme-surface-2,#e5eef7)) !important;
+}
+.anki-tools-summary .dashboard-stat-card strong {
+    color: var(--theme-heading,#10213a) !important;
+}
+.anki-tools-summary .dashboard-stat-card span,
+.anki-tools-summary .dashboard-stat-card small {
+    color: var(--theme-muted-text,#667b95) !important;
+    opacity: 1 !important;
+}
+.anki-source-card {
+    background: var(--theme-panel-1,#f8fbff) !important;
+}
+.anki-source-heading h2,
+.anki-preview-heading h2 {
+    color: var(--theme-heading,#10213a) !important;
+}
+.anki-source-heading p,
+.anki-empty-message {
+    color: var(--theme-muted-text,#667b95) !important;
+}
+.anki-source-form label > span,
+.anki-export-form label > span {
+    color: var(--theme-page-text,#17253a) !important;
+}
+.anki-source-form select,
+.anki-export-form select,
+.anki-source-form input[type="number"],
+.anki-export-form input[type="number"],
+.anki-source-form input[type="text"] {
+    color: var(--theme-input-text,#17253a) !important;
+    background: var(--theme-input-bg,#fff) !important;
+    border-color: var(--theme-border-soft,#bdd0e5) !important;
+}
+.anki-empty-message {
+    background: var(--theme-surface,#eef5fb) !important;
+    border-color: var(--theme-border-soft,#bdd0e5) !important;
+}
+
+/* Custom Anki deck uses inline dark styles: override structurally. */
+#customAnkiForm details {
+    background: var(--theme-surface,#eef5fb) !important;
+    border-color: var(--theme-border-soft,#bdd0e5) !important;
+    color: var(--theme-page-text,#17253a) !important;
+}
+#customAnkiForm details summary {
+    color: var(--theme-heading,#10213a) !important;
+}
+#customAnkiForm details label {
+    color: var(--theme-page-text,#17253a) !important;
+    border-top-color: var(--theme-border-soft,#d4e0ec) !important;
+}
+#customAnkiForm details label span,
+#customAnkiForm details label strong {
+    color: var(--theme-page-text,#17253a) !important;
+}
+#customAnkiForm details label small {
+    color: var(--theme-muted-text,#667b95) !important;
+}
+
+/* Law Study Anki: text around controls/cards */
+.anki-law-layout,
+.anki-law-layout label,
+.anki-law-layout .anki-source-heading,
+.anki-tools-page .anki-export-form {
+    color: var(--theme-page-text,#17253a) !important;
+}
+.anki-law-layout label > span,
+.anki-tools-page .anki-export-form label > span {
+    color: var(--theme-page-text,#17253a) !important;
+}
+.anki-tools-page .anki-source-kicker,
+.anki-tools-page .anki-tools-eyebrow {
+    color: var(--theme-accent,#1684cf) !important;
+}
