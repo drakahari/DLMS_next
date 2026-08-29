@@ -4,6 +4,7 @@ The suite uses an isolated temporary APP_DATA_DIR and never touches real DLMS da
 """
 import json, os, tempfile, unittest, zipfile
 from pathlib import Path
+from unittest import mock
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-pack-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
@@ -49,6 +50,52 @@ class ContentPackValidationTests(unittest.TestCase):
         root = self.make_pack()
         report = dlms._validate_staged_content_pack(str(root))
         self.assertTrue(report["valid"], report["errors"])
+
+    def test_validation_review_renders_separate_confirmation_and_action_rows(self):
+        metadata = {
+            "uploaded_name": "DLMS_Study_linux_permissions.zip",
+            "file_count": 11,
+            "uncompressed_bytes": 209715,
+        }
+        base_report = {
+            "valid": True,
+            "pack_name": "DLMS Study — Linux Permissions",
+            "dataset_count": 1,
+            "checks": [{"status": "PASS", "name": "Manifest", "detail": "Valid"}],
+            "errors": [],
+            "warnings": [],
+        }
+        client = dlms.app.test_client()
+        with mock.patch.object(dlms, "_load_staged_content_pack", return_value=("stage", "pack", metadata)):
+            for warnings in ([], ["Optional source note is absent."]):
+                with self.subTest(warnings=bool(warnings)):
+                    report = dict(base_report, warnings=warnings)
+                    with mock.patch.object(dlms, "_validate_staged_content_pack", return_value=report):
+                        html = client.get("/content-packs/import/review-token").get_data(as_text=True)
+                    self.assertIn('class="dashboard-panel pack-review-summary"', html)
+                    self.assertIn('id="packReviewInstallForm"', html)
+                    self.assertIn('form="packReviewInstallForm">Install Study Pack', html)
+                    self.assertIn('class="pack-review-button-row"', html)
+                    self.assertIn('class="pack-review-cancel-form"', html)
+                    self.assertIn('class="medical-ai-quiet-link pack-review-back-link"', html)
+
+    def test_invalid_validation_review_keeps_cancel_action_without_install(self):
+        metadata = {"uploaded_name": "blocked.zip", "file_count": 2, "uncompressed_bytes": 1024}
+        report = {
+            "valid": False, "pack_name": "Blocked Pack", "dataset_count": 0,
+            "checks": [{"status": "FAIL", "name": "Manifest", "detail": "Invalid"}],
+            "errors": ["Blocking problem"], "warnings": [],
+        }
+        client = dlms.app.test_client()
+        with mock.patch.object(dlms, "_load_staged_content_pack", return_value=("stage", "pack", metadata)), \
+             mock.patch.object(dlms, "_validate_staged_content_pack", return_value=report):
+            html = client.get("/content-packs/import/review-token").get_data(as_text=True)
+        self.assertIn('class="dashboard-panel pack-review-summary"', html)
+        self.assertIn('class="pack-review-blocked-copy"', html)
+        self.assertIn('class="pack-review-button-row"', html)
+        self.assertIn('class="pack-review-cancel-form"', html)
+        self.assertNotIn('id="packReviewInstallForm"', html)
+        self.assertNotIn("Install Study Pack</button>", html)
 
     def test_duplicate_dataset_id_is_blocked(self):
         root = self.make_pack("DLMS_Study_dup")

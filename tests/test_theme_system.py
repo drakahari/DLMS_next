@@ -397,6 +397,31 @@ class ThemeSystemTests(unittest.TestCase):
                         ratio, 4.5, f"{theme} {role} is only {ratio:.2f}:1",
                     )
 
+    def test_pack_validation_review_uses_spaced_semantic_action_layout(self):
+        css = self._style_css()
+        summary = re.search(r"\.pack-review-summary\s*\{([^}]*)\}", css)
+        actions = re.search(r"\.pack-review-actions\s*\{([^}]*)\}", css)
+        confirmation = re.search(
+            r"\.pack-review-actions \.content-pack-confirm-check\s*\{([^}]*)\}", css,
+        )
+        action_row = re.search(r"\.pack-review-button-row\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(summary)
+        self.assertIn("padding: var(--dlms-space-xl)", summary.group(1))
+        self.assertIsNotNone(actions)
+        self.assertIn("display: grid", actions.group(1))
+        self.assertIsNotNone(confirmation)
+        self.assertIn("color: var(--theme-page-text)", confirmation.group(1))
+        self.assertIsNotNone(action_row)
+        self.assertIn("align-items: center", action_row.group(1))
+        self.assertIn(
+            ".pack-review-actions .content-pack-confirm-check input:disabled + span { color: var(--theme-muted-text); }",
+            css,
+        )
+        self.assertNotIn(
+            'html[data-theme="light"] .pack-review-actions .content-pack-confirm-check',
+            css,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

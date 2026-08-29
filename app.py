@@ -4360,15 +4360,17 @@ def content_pack_import_review(token):
 
 <section class="dashboard-panel pack-review-actions">
 {% if report.valid %}
-<form method="POST" action="/content-packs/import/{{ token }}/install">
+<form class="pack-review-install-form" id="packReviewInstallForm" method="POST" action="/content-packs/import/{{ token }}/install">
 <label class="content-pack-confirm-check"><input type="checkbox" name="confirm_install" value="yes" required><span>Install this validated Study Pack into DLMS.</span></label>
-<button class="medical-primary-button" type="submit">Install Study Pack</button>
 </form>
 {% else %}
-<p>Installation is disabled until the blocking validation problems are corrected.</p>
+<p class="pack-review-blocked-copy">Installation is disabled until the blocking validation problems are corrected.</p>
 {% endif %}
-<form method="POST" action="/content-packs/import/{{ token }}/cancel"><button class="medical-ai-secondary-button" type="submit">Cancel &amp; Remove Staging Files</button></form>
-<a class="medical-ai-quiet-link" href="/content-packs">← Back to Content Packs</a>
+<div class="pack-review-button-row">
+{% if report.valid %}<button class="medical-primary-button" type="submit" form="packReviewInstallForm">Install Study Pack</button>{% endif %}
+<form class="pack-review-cancel-form" method="POST" action="/content-packs/import/{{ token }}/cancel"><button class="medical-ai-secondary-button" type="submit">Cancel &amp; Remove Staging Files</button></form>
+</div>
+<a class="medical-ai-quiet-link pack-review-back-link" href="/content-packs">← Back to Content Packs</a>
 </section>
 </main></div>
 <script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script>
