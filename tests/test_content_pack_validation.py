@@ -269,6 +269,61 @@ class ContentPackValidationTests(unittest.TestCase):
         loaded = dlms.load_content_pack_dataset("study_runtime_valid", "terms")
         self.assertEqual(["layer-id", "frame-id"], [item["id"] for item in loaded["terms"]])
 
+    def test_concepts_are_normalized_and_tags_remain_a_compatibility_alias(self):
+        root = self.make_pack("DLMS_Study_concepts")
+        manifest_path = root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["id"] = "study_concepts"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        data_path = root / "data/terms.json"
+        data = json.loads(data_path.read_text(encoding="utf-8"))
+        data["concepts"] = [" chmod ", "CHMOD", "octal-permissions"]
+        data["terms"][0]["tags"] = "symbolic-permissions, chmod"
+        data_path.write_text(json.dumps(data), encoding="utf-8")
+        report = dlms._validate_staged_content_pack(str(root))
+        self.assertTrue(report["valid"], report["errors"])
+        installed = Path(dlms.CONTENT_PACK_FOLDER) / root.name
+        root.rename(installed)
+        loaded = dlms.load_content_pack_dataset("study_concepts", "terms")
+        self.assertEqual(["chmod", "octal-permissions"], loaded["concepts"])
+        self.assertEqual(["symbolic-permissions", "chmod"], loaded["terms"][0]["concepts"])
+        self.assertNotIn("tags", loaded["terms"][0])
+
+    def test_malformed_empty_and_over_limit_concepts_are_rejected(self):
+        for name, concepts, expected in (
+            ("DLMS_Study_bad_concept_shape", {"bad": "shape"}, "must be a string or list of strings"),
+            ("DLMS_Study_empty_concept", ["chmod", "  "], "must not be empty"),
+            ("DLMS_Study_long_concept", ["x" * 121], "120 characters or fewer"),
+            ("DLMS_Study_many_concepts", [f"concept-{i}" for i in range(25)], "at most 24 concepts"),
+        ):
+            with self.subTest(name=name):
+                root = self.make_pack(name)
+                path = root / "data/terms.json"
+                data = json.loads(path.read_text(encoding="utf-8"))
+                data["concepts"] = concepts
+                path.write_text(json.dumps(data), encoding="utf-8")
+                report = dlms._validate_staged_content_pack(str(root))
+                self.assertFalse(report["valid"])
+                self.assertIn(expected, "\n".join(report["errors"]))
+
+    def test_standalone_matching_uses_explicit_concepts_not_category(self):
+        root = self.make_pack("DLMS_Study_matching_concepts")
+        manifest_path = root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["id"] = "study_matching_concepts"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        data_path = root / "data/terms.json"
+        data = json.loads(data_path.read_text(encoding="utf-8"))
+        data["category"] = "IT"
+        data["terms"][0]["concepts"] = ["chmod"]
+        data["terms"][1]["concepts"] = ["octal-permissions", "chmod"]
+        data_path.write_text(json.dumps(data), encoding="utf-8")
+        installed = Path(dlms.CONTENT_PACK_FOLDER) / root.name
+        root.rename(installed)
+        loaded = dlms.load_content_pack_dataset("study_matching_concepts", "terms")
+        self.assertEqual(["chmod", "octal-permissions"], dlms._standalone_matching_concepts(loaded, context="test"))
+        self.assertNotIn("IT", dlms._standalone_matching_concepts(loaded, context="test"))
+
     def test_case_insensitive_descriptor_id_collision_is_blocked(self):
         root = self.make_pack("DLMS_Study_case_id")
         manifest_path = root / "manifest.json"

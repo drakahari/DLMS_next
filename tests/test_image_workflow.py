@@ -4,6 +4,7 @@ Run from the project root inside the DLMS venv:
 The suite uses an isolated temporary APP_DATA_DIR and never touches real DLMS data.
 """
 import json, os, shutil, tempfile, unittest
+from datetime import datetime, timezone
 from unittest import mock
 from pathlib import Path
 from PIL import Image
@@ -72,7 +73,7 @@ class ImageWorkflowTests(unittest.TestCase):
         }
         source = {"organization":"DLMS Test","url":"https://example.invalid/source","license":"CC0","attribution":"Test asset"}
         images = [
-            {"id":"png","file":"images/diagram.png","license":"CC0","source":source,"hotspots":[{"id":"circle","label":"Circle Target","shape":{"type":"circle","x":0.4,"y":0.4,"radius":0.08}}]},
+            {"id":"png","file":"images/diagram.png","license":"CC0","source":source,"concepts":["diagram-navigation"],"hotspots":[{"id":"circle","label":"Circle Target","concepts":["circle-target"],"shape":{"type":"circle","x":0.4,"y":0.4,"radius":0.08}}]},
             {"id":"jpg","file":"images/photo.jpg","license":"CC0","source":source,"hotspots":[{"id":"poly","label":"Polygon Target","shape":{"type":"polygon","points":[[0.1,0.1],[0.4,0.1],[0.25,0.4]]}}]},
             {"id":"webp","file":"images/interface.webp","license":"CC0","source":source,"hotspots":[{"id":"edge","label":"Edge Target","shape":{"type":"circle","x":0.95,"y":0.5,"radius":0.04}}]},
         ]
@@ -81,8 +82,8 @@ class ImageWorkflowTests(unittest.TestCase):
             "schema_version":1,"id":"mixed","title":"Mixed","source":source,
             "images":[images[0]],
             "questions":[
-                {"type":"choice","question":"Choose the documented option.","image_id":"png","choices":[{"text":"One","is_correct":True},{"text":"Two","is_correct":False}]},
-                {"type":"matching","question":"Match these items.","pairs":[{"left":"A","right":"1"},{"left":"B","right":"2"}]},
+                {"type":"choice","question":"Choose the documented option.","image_id":"png","concepts":["choice-skill"],"choices":[{"text":"One","is_correct":True},{"text":"Two","is_correct":False}]},
+                {"type":"matching","question":"Match these items.","concepts":["matching-skill"],"pairs":[{"left":"A","right":"1"},{"left":"B","right":"2"}]},
                 {"type":"hotspot","question":"Find the target.","image_id":"png","hotspot_id":"circle"},
             ],
         }
@@ -109,6 +110,67 @@ class ImageWorkflowTests(unittest.TestCase):
         self.assertEqual(["choice", "matching", "hotspot"], [q["type"] for q in runtime])
         self.assertEqual(3, len(db_questions))
         self.assertTrue(runtime[0]["image_url"].endswith("/images/diagram.png"))
+        self.assertEqual(["choice-skill"], runtime[0]["concepts"])
+        self.assertEqual(["matching-skill"], runtime[1]["concepts"])
+        self.assertEqual(["circle-target"], runtime[2]["concepts"])
+        self.assertEqual(["circle-target"], db_questions[2]["concepts"])
+
+    def test_generated_mixed_questions_persist_concepts_through_database_rebuild(self):
+        self.make_pack()
+        data = dlms.load_content_pack_quiz_dataset("study_images", "mixed")
+        with dlms.app.test_request_context():
+            runtime, db_questions = dlms._quiz_dataset_runtime("study_images", data)
+        quiz_id = dlms.save_quiz_to_db("Tagged mixed pack", "tagged-mixed.html", db_questions)
+        conn = dlms.get_db()
+        rows = conn.execute("SELECT id, question_number FROM questions WHERE quiz_id=? ORDER BY question_number", (quiz_id,)).fetchall()
+        concepts = [dlms._question_concepts(conn.cursor(), row[0]) for row in rows]
+        cur = conn.cursor()
+        dlms._record_learning_event(
+            cur, event_type="exam_answer", quiz_id=quiz_id, question_id=rows[1][0],
+            attempt_id="mixed-matching", mode="Exam", was_correct=False,
+        )
+        dlms._record_learning_event(
+            cur, event_type="study_answer", quiz_id=quiz_id, question_id=rows[2][0],
+            session_id="mixed-hotspot", mode="Study", was_correct=True,
+        )
+        for index, was_correct in enumerate((False, False, True, False, False)):
+            dlms._record_learning_event(
+                cur, event_type="exam_answer", quiz_id=quiz_id, question_id=rows[0][0],
+                attempt_id=f"mixed-choice-{index}", mode="Exam", was_correct=was_correct,
+            )
+        conn.commit()
+        topic_names = {
+            topic["name"] for topic in dlms._learning_intelligence_topics(
+                cur, now=datetime.now(timezone.utc)
+            )
+        }
+        self.assertEqual([["choice-skill"], ["matching-skill"], ["circle-target"]], concepts)
+        self.assertEqual(["choice-skill"], runtime[0]["concepts"])
+        self.assertTrue({"matching-skill", "circle-target"}.issubset(topic_names))
+        candidates, _ = dlms._smart_review_candidates(cur)
+        self.assertTrue(any(candidate["question_id"] == rows[0][0] for candidate in candidates))
+        conn.close()
+
+    def test_image_hotspot_surrogate_uses_explicit_hotspot_concepts(self):
+        self.make_pack()
+        client = dlms.app.test_client()
+        response = client.post("/study-packs/image/generate", data={
+            "csrf_token": csrf_token(client, "/study-packs"),
+            "pack_id": "study_images",
+            "dataset_id": "visuals",
+        })
+        self.assertEqual(302, response.status_code)
+        conn = dlms.get_db()
+        row = conn.execute("""
+            SELECT questions.id
+            FROM questions JOIN quizzes ON quizzes.id = questions.quiz_id
+            WHERE quizzes.title = 'Visuals — Image Practice'
+              AND questions.question_text LIKE 'Identify Circle Target%'
+            ORDER BY questions.id DESC LIMIT 1
+        """).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(["circle-target"], dlms._question_concepts(conn.cursor(), row[0]))
+        conn.close()
 
     def test_mixed_matching_ambiguity_is_rejected_by_staged_and_runtime_validation(self):
         root = self.make_pack()

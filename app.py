@@ -921,8 +921,10 @@ def load_content_pack_dataset(pack_id, dataset_id):
     if matching_errors:
         raise ValueError("; ".join(matching_errors))
 
+    _set_content_pack_concepts(data, context=f"matching dataset {dataset_id!r}")
+
     cleaned = []
-    for item in terms:
+    for index, item in enumerate(terms, 1):
         term = str(item.get("term") or "").strip()
         definition = str(item.get("definition") or "").strip()
         cleaned_item = {
@@ -934,9 +936,15 @@ def load_content_pack_dataset(pack_id, dataset_id):
         }
         if str(item.get("id") or "").strip():
             cleaned_item["id"] = str(item.get("id")).strip()
+        concepts = _set_content_pack_concepts(
+            item, context=f"matching dataset {dataset_id!r}, term {index}"
+        )
+        if "concepts" in item:
+            cleaned_item["concepts"] = concepts
         cleaned.append(cleaned_item)
 
     data["terms"] = cleaned
+    _standalone_matching_concepts(data, context=f"matching dataset {dataset_id!r}")
     data["_descriptor"] = descriptor
     data["_pack"] = pack
     return data
@@ -989,7 +997,16 @@ def load_content_pack_image_dataset(pack_id, dataset_id):
         hotspots = image.get("hotspots") or []
         if not isinstance(hotspots, list) or not hotspots:
             raise ValueError(f"Image {rel_file!r} has no hotspots")
+        _set_content_pack_concepts(image, context=f"image dataset {dataset_id!r}, image {rel_file!r}")
+        for hotspot_number, hotspot in enumerate(hotspots, 1):
+            if not isinstance(hotspot, dict):
+                raise ValueError(f"Image {rel_file!r} hotspot {hotspot_number} must be an object")
+            _set_content_pack_concepts(
+                hotspot,
+                context=f"image dataset {dataset_id!r}, image {rel_file!r}, hotspot {hotspot_number}",
+            )
 
+    _set_content_pack_concepts(data, context=f"image dataset {dataset_id!r}")
     data["_descriptor"] = descriptor
     data["_pack"] = pack
     return data
@@ -1045,6 +1062,14 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
         _decode_raster_image(image_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
         if not isinstance(image.get("hotspots") or [], list):
             raise ValueError("Image hotspots must be a list")
+        _set_content_pack_concepts(image, context=f"quiz dataset {dataset_id!r}, image {image_id!r}")
+        for hotspot_number, hotspot in enumerate(image.get("hotspots") or [], 1):
+            if not isinstance(hotspot, dict):
+                raise ValueError(f"Quiz dataset image {image_id!r} hotspot {hotspot_number} must be an object")
+            _set_content_pack_concepts(
+                hotspot,
+                context=f"quiz dataset {dataset_id!r}, image {image_id!r}, hotspot {hotspot_number}",
+            )
 
     questions = data.get("questions") or []
     if not isinstance(questions, list) or not questions:
@@ -1074,10 +1099,14 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
         item = dict(raw)
         item["type"] = qtype
         item["question"] = question
+        _set_content_pack_concepts(
+            item, context=f"quiz dataset {dataset_id!r}, question {question_number} {question!r}"
+        )
         cleaned.append(item)
     if not cleaned:
         raise ValueError("Quiz dataset has no usable questions")
     data["questions"] = cleaned
+    _set_content_pack_concepts(data, context=f"quiz dataset {dataset_id!r}")
     data["_descriptor"] = descriptor
     data["_pack"] = pack
     data["_dataset_path"] = dataset_path
@@ -1110,7 +1139,11 @@ def _quiz_dataset_runtime(pack_id, data):
             }
         common = {
             "type": qtype, "question": raw.get("question") or "",
-            "explanation": raw.get("explanation") or "", **media
+            "explanation": raw.get("explanation") or "",
+            "concepts": _content_pack_concepts(
+                raw, context=f"quiz dataset question {raw.get('question')!r}"
+            ),
+            **media
         }
         db_source = {
             "organization": source.get("organization") or "",
@@ -1137,11 +1170,16 @@ def _quiz_dataset_runtime(pack_id, data):
             if not hotspot: continue
             label = str(hotspot.get("label") or raw.get("target_label") or "").strip()
             if not label: continue
-            runtime = {**common, "type": "hotspot", "target": hotspot.get("shape") or {}, "target_label": label, "verification": hotspot.get("verification") or {}}
+            concepts = _hotspot_concepts(
+                raw, image, hotspot, data,
+                context=f"quiz dataset hotspot question {raw.get('question')!r}",
+            )
+            runtime = {**common, "type": "hotspot", "concepts": concepts, "target": hotspot.get("shape") or {}, "target_label": label, "verification": hotspot.get("verification") or {}}
             db = {
                 "type": "choice", "question": (raw.get("question") or "") + " [Image hotspot]",
                 "choices": [{"label": "A", "text": label, "is_correct": True}],
-                "explanation": raw.get("explanation") or "", "source": db_source, "media": media,
+                "explanation": raw.get("explanation") or "", "concepts": concepts,
+                "source": db_source, "media": media,
             }
         else:
             choices, correct = [], []
@@ -1783,6 +1821,11 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
         if not isinstance(data.get("source"), dict) or not data.get("source"):
             dataset_source_missing += 1
 
+        try:
+            _content_pack_concepts(data, context=f"{rel_path} (dataset {did!r})")
+        except ValueError as exc:
+            errors.append(str(exc))
+
         if group == "datasets":
             terms = data.get("terms") or []
             if not isinstance(terms, list) or not terms:
@@ -1798,6 +1841,19 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
             if matching_errors:
                 duplicates_ok = False
                 errors.extend(matching_errors)
+            for item_number, term in enumerate(terms, 1):
+                try:
+                    _content_pack_concepts(
+                        term, context=f"{rel_path} (dataset {did!r}), term {item_number}"
+                    )
+                except ValueError as exc:
+                    errors.append(str(exc))
+            try:
+                _standalone_matching_concepts(
+                    data, context=f"{rel_path} (dataset {did!r})"
+                )
+            except ValueError as exc:
+                errors.append(str(exc))
             warnings.extend(_matching_case_only_term_warnings(
                 terms,
                 context=f"{rel_path} (dataset {did!r})",
@@ -1819,6 +1875,12 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                 if not isinstance(image, dict):
                     errors.append(f"{rel_path}: image {n} must be an object")
                     continue
+                try:
+                    _content_pack_concepts(
+                        image, context=f"{rel_path} (dataset {did!r}), image {n}"
+                    )
+                except ValueError as exc:
+                    errors.append(str(exc))
                 image_id = str(image.get("id") or f"image_{n}").strip()
                 normalized_image_id = _matching_comparison_key(image_id)
                 if normalized_image_id in image_ids:
@@ -1867,6 +1929,13 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                     if not isinstance(hotspot, dict):
                         errors.append(f"{rel_path}: hotspot {h} for {rel_image} must be an object")
                         continue
+                    try:
+                        _content_pack_concepts(
+                            hotspot,
+                            context=f"{rel_path} (dataset {did!r}), image {n}, hotspot {h}",
+                        )
+                    except ValueError as exc:
+                        errors.append(str(exc))
                     shape = hotspot.get("shape")
                     try:
                         _validate_hotspot_shape(shape)
@@ -1881,6 +1950,13 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                     for question_number, question in enumerate(questions, 1):
                         if not isinstance(question, dict):
                             continue
+                        try:
+                            _content_pack_concepts(
+                                question,
+                                context=f"{rel_path} (dataset {did!r}), question {question_number}",
+                            )
+                        except ValueError as exc:
+                            errors.append(str(exc))
                         if str(question.get("type") or "choice").strip().lower() != "matching":
                             continue
                         question_text = str(question.get("question") or "").strip()
@@ -6210,6 +6286,9 @@ SOURCE AND ACCURACY RULES
 10. The pack is study material, not professional, clinical, legal, financial, or operational decision support.
 
 STUDY QUALITY RULES
+- Add a question-level "concepts" field to every generated quiz question, matching dataset, and hotspot (or its image when shared by all of that image's hotspots). Use a small set of specific, reusable concepts per question, normally 1–3.
+- Reuse identical spelling when questions assess the same skill. Prefer precise concepts such as "chmod", "octal-permissions", "symbolic-permissions", "special-permission-bits", "file-ownership", and "umask"; do not use broad metadata-only values such as "IT", "study", "question", "general", or "miscellaneous".
+- "concepts" is the exact field name. Do not use "tags" in newly generated packs; DLMS accepts it only as a backwards-compatible alias.
 - Matching terms must be unique within each dataset. Where matching records use IDs, every ID must also be unique within that dataset.
 - Matching must use a one-to-one mapping: one term has exactly one answer, and one answer belongs to exactly one term.
 - Definitions/answers must be concise, meaningfully distinct, and unambiguous when shuffled together in a matching round.
@@ -6715,7 +6794,7 @@ def study_pack_generate_matching():
     round_size=max(2,min(round_size,min(100,len(terms))))
     title=str(data.get("title") or data["_descriptor"].get("title") or "Study Practice").strip(); source=data.get("source") or {}
     pairs=[{"left":i["term"],"right":i["definition"],"category":i.get("category","") ,"explanation":i.get("explanation") or i.get("study_explanation") or "","verification":i.get("verification") or data.get("verification") or {},"source":i.get("source") or source or {}} for i in terms]
-    quiz_data=[{"number":1,"type":"matching","question":str(data.get("question_text") or "Match each item with its best answer.").strip(),"pairs":pairs,"round_size":round_size,"direction":direction,"source":{"organization":source.get("organization") or pack.get("publisher") or "","dataset":source.get("dataset") or title,"version":source.get("version") or pack.get("version") or "","url":source.get("url") or "","license":source.get("license") or ""}}]
+    quiz_data=[{"number":1,"type":"matching","question":str(data.get("question_text") or "Match each item with its best answer.").strip(),"pairs":pairs,"round_size":round_size,"direction":direction,"concepts":_standalone_matching_concepts(data, context=f"matching dataset {dataset_id!r}"),"source":{"organization":source.get("organization") or pack.get("publisher") or "","dataset":source.get("dataset") or title,"version":source.get("version") or pack.get("version") or "","url":source.get("url") or "","license":source.get("license") or ""}}]
     safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "dataset"; quiz_title=f"{title} — {round_size}-Pair Practice"; html_name,json_name=_generated_quiz_artifact_names(f"study_{safe_pack}_{safe_id}"); json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
     with open(json_path,"w",encoding="utf-8") as f: json.dump(quiz_data,f,indent=4,ensure_ascii=False)
     quiz_id=save_quiz_to_db(quiz_title,html_name,quiz_data); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
@@ -6739,7 +6818,9 @@ def study_pack_generate_image():
             if not label: continue
             prompt=str(hotspot.get("prompt") or f"Identify {label}.").strip()
             runtime_questions.append({"number":qnum,"type":"hotspot","question":prompt,"image_url":image_url,"image_alt":image.get("alt_text") or data.get("title") or "Study image","image_edits":image.get("edits") or [],"target":hotspot.get("shape") or {},"target_label":label,"explanation":hotspot.get("explanation") or "","verification":hotspot.get("verification") or {},"image_source":{"organization":source.get("organization") or "","work":source.get("work") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or "","attribution":source.get("attribution") or image.get("attribution") or ""}})
-            db_questions.append({"number":qnum,"type":"choice","question":prompt+" [Image hotspot]","choices":[{"label":"A","text":label,"is_correct":True}],"source":{"organization":source.get("organization") or "","dataset":data.get("title") or dataset_id,"version":pack.get("version") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or ""}}); qnum+=1
+            concepts=_hotspot_concepts(hotspot, image, hotspot, data, context=f"image dataset hotspot {hotspot.get('id') or label!r}")
+            runtime_questions[-1]["concepts"]=concepts
+            db_questions.append({"number":qnum,"type":"choice","question":prompt+" [Image hotspot]","choices":[{"label":"A","text":label,"is_correct":True}],"concepts":concepts,"source":{"organization":source.get("organization") or "","dataset":data.get("title") or dataset_id,"version":pack.get("version") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or ""}}); qnum+=1
     if not runtime_questions: flash("This image dataset contains no usable targets.","error"); return redirect("/study-packs")
     title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"; html_name,json_name=_generated_quiz_artifact_names(f"study_image_{safe_pack}_{safe_id}"); json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
     bucket=re.sub(r"[^A-Za-z0-9_.-]+","_",os.path.splitext(html_name)[0])[:120]
@@ -6809,6 +6890,10 @@ def study_pack_ai_builder():
             requested.append("Create image/diagram hotspot datasets when they genuinely improve learning, following the image count and style request below.")
         if not requested:
             requested.append("Choose the most appropriate DLMS study content types for this topic.")
+        requested.append(
+            "For every generated question, include the exact question-level field \"concepts\" with 1–3 "
+            "specific reusable concepts. Reuse spelling for the same skill; avoid broad metadata labels."
+        )
 
         size_map = {
             "Compact": "Keep the pack focused: about 20–40 high-value matching items per dataset.",
@@ -24253,6 +24338,71 @@ def _normalize_concept_names(value):
         seen.add(key)
         out.append(name)
     return out[:24]
+
+
+def _content_pack_concepts(record, *, context):
+    """Return validated canonical concepts from a Study Pack record.
+
+    ``concepts`` is the canonical schema field.  ``tags`` remains a legacy
+    alias for packs created before question-level concepts were introduced.
+    A present canonical field deliberately takes precedence over its alias.
+    """
+    if not isinstance(record, dict):
+        raise ValueError(f"{context}: record must be an object")
+    field = "concepts" if "concepts" in record else "tags" if "tags" in record else None
+    if field is None:
+        return []
+    value = record.get(field)
+    if not isinstance(value, (str, list)):
+        raise ValueError(f"{context}: {field} must be a string or list of strings")
+    values = re.split(r"[,;\n]+", value) if isinstance(value, str) else value
+    if len(values) > 24:
+        raise ValueError(f"{context}: {field} may contain at most 24 concepts")
+    for index, item in enumerate(values, 1):
+        if not isinstance(item, str):
+            raise ValueError(f"{context}: {field}[{index}] must be a string")
+        name = re.sub(r"\s+", " ", item).strip()
+        if not name:
+            raise ValueError(f"{context}: {field}[{index}] must not be empty")
+        if len(name) > 120:
+            raise ValueError(f"{context}: {field}[{index}] must be 120 characters or fewer")
+    # Keep persistence, validation, and Edit Quiz normalization exactly aligned.
+    return _normalize_concept_names(value)
+
+
+def _set_content_pack_concepts(record, *, context):
+    """Validate a record and write its canonical normalized concepts in place."""
+    concepts = _content_pack_concepts(record, context=context)
+    if "concepts" in record or "tags" in record:
+        record["concepts"] = concepts
+        record.pop("tags", None)
+    return concepts
+
+
+def _standalone_matching_concepts(data, *, context):
+    """Choose concepts for a generated standalone matching question.
+
+    Dataset-level concepts are the explicit question-level metadata.  When
+    absent, term-level concepts are combined, normalized, and capped using the
+    same persistence limits.  Categories are intentionally never concepts.
+    """
+    if "concepts" in data or "tags" in data:
+        return _content_pack_concepts(data, context=context)
+    combined = []
+    for index, term in enumerate(data.get("terms") or [], 1):
+        if "concepts" in term or "tags" in term:
+            combined.extend(_content_pack_concepts(term, context=f"{context}, term {index}"))
+    if len(_normalize_concept_names(combined)) > 24:
+        raise ValueError(f"{context}: combined term concepts may contain at most 24 concepts")
+    return _normalize_concept_names(combined)
+
+
+def _hotspot_concepts(question, image, hotspot, dataset, *, context):
+    """Use the nearest explicit concept metadata for a hotspot question."""
+    for record, label in ((question, "question"), (hotspot, "hotspot"), (image, "image"), (dataset, "dataset")):
+        if isinstance(record, dict) and ("concepts" in record or "tags" in record):
+            return _content_pack_concepts(record, context=f"{context}, {label}")
+    return []
 
 
 def _question_concepts(cur, question_id):

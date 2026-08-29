@@ -72,6 +72,19 @@ class StudyPackAIBuilderTests(unittest.TestCase):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, prompt)
 
+    def test_default_prompt_requires_small_reusable_question_level_concepts(self):
+        prompt = self._prompt_from_response(self._post_builder()).casefold()
+        for requirement in (
+            'question-level "concepts" field',
+            "normally 1–3",
+            "reuse identical spelling",
+            "chmod",
+            "octal-permissions",
+            'do not use broad metadata-only values',
+        ):
+            with self.subTest(requirement=requirement):
+                self.assertIn(requirement, prompt)
+
     def test_customized_prompt_template_is_used_without_being_overwritten(self):
         custom = "CUSTOM HEADER\n{{content_request}}\nCUSTOM FOOTER"
         prompt = self._prompt_from_response(self._post_builder({
