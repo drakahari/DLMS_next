@@ -1203,27 +1203,198 @@ def _quiz_dataset_runtime(pack_id, data):
     return runtime_questions, db_questions
 
 
-def _create_quiz_from_runtime(quiz_title, runtime_questions, db_questions, filename_prefix="study_image", exam_minutes=90, source_pack_id=None, source_dataset_id=None):
+def _quiz_publication_staging_root():
+    return os.path.join(APP_DATA_DIR, ".quiz_publications")
+
+
+def _write_staged_quiz_json(path, payload):
+    """Write and parse-validate one staged quiz JSON artifact."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=4, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    with open(path, "r", encoding="utf-8") as f:
+        validated = json.load(f)
+    if not isinstance(validated, list):
+        raise ValueError("Generated quiz JSON must contain a question list")
+
+
+def _commit_quiz_publication(conn):
+    """Commit boundary kept separate for deterministic fault-injection tests."""
+    conn.commit()
+
+
+def _promote_quiz_artifact(staged_path, final_path):
+    """Atomically promote a helper-owned staged file or directory."""
+    os.makedirs(os.path.dirname(final_path), exist_ok=True)
+    if os.path.lexists(final_path):
+        raise FileExistsError(f"Quiz publication target already exists: {final_path}")
+    os.replace(staged_path, final_path)
+
+
+def _remove_quiz_publication_path(path):
+    """Best-effort removal limited to one explicitly owned publication path."""
+    try:
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        elif os.path.lexists(path):
+            os.remove(path)
+    except Exception as exc:
+        print(f"[QUIZ PUBLICATION CLEANUP ERROR] {path}: {exc}")
+
+
+def _delete_published_quiz_rows(quiz_id):
+    """Compensate for a committed publication without touching files or logos."""
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM quizzes WHERE id = ?", (quiz_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _publish_quiz(
+    quiz_title,
+    runtime_questions,
+    db_questions=None,
+    *,
+    filename_prefix="quiz",
+    exam_minutes=90,
+    logo_filename=None,
+    source_file=None,
+    source_pack_id=None,
+    source_dataset_id=None,
+    snapshot_existing_assets=False,
+    rollback_logo_filename=None,
+):
+    """Stage and publish one quiz, compensating every handled failure.
+
+    The registry is intentionally the final publication boundary. Persistent
+    crash journals and startup reconciliation belong to DLMS-043B.
+    """
     if not runtime_questions:
         raise ValueError("No usable questions were produced")
-    html_name, json_name = _generated_quiz_artifact_names(filename_prefix)
+    db_questions = runtime_questions if db_questions is None else db_questions
+    if not db_questions:
+        raise ValueError("No database questions were produced")
 
-    if source_pack_id:
-        bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
-        runtime_questions, db_questions, _ = _snapshot_runtime_questions(
-            str(source_pack_id).strip().lower(), runtime_questions, db_questions, bucket
+    html_name, json_name = _generated_quiz_artifact_names(filename_prefix)
+    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
+    staging_root = _quiz_publication_staging_root()
+    os.makedirs(staging_root, exist_ok=True)
+    stage_dir = tempfile.mkdtemp(prefix="publish_", dir=staging_root)
+    staged_json = os.path.join(stage_dir, json_name)
+    staged_html = os.path.join(stage_dir, html_name)
+    staged_assets = os.path.join(stage_dir, "assets")
+    final_json = os.path.join(DATA_FOLDER, json_name)
+    final_html = os.path.join(QUIZ_FOLDER, html_name)
+    final_assets = os.path.join(QUIZ_ASSET_FOLDER, asset_bucket)
+    promoted = []
+    conn = None
+    quiz_id = None
+    db_committed = False
+
+    try:
+        runtime_payload, db_payload = runtime_questions, db_questions
+        if source_pack_id:
+            runtime_payload, db_payload, _ = _snapshot_runtime_questions(
+                str(source_pack_id).strip().lower(),
+                runtime_payload,
+                db_payload,
+                asset_bucket,
+                destination_root=staged_assets,
+            )
+        if snapshot_existing_assets:
+            runtime_payload = _snapshot_existing_quiz_asset_refs(
+                runtime_payload, asset_bucket, destination_root=staged_assets, strict=True
+            )
+            db_payload = runtime_payload if db_questions is runtime_questions else \
+                _snapshot_existing_quiz_asset_refs(
+                    db_payload, asset_bucket, destination_root=staged_assets, strict=True
+                )
+
+        _write_staged_quiz_json(staged_json, runtime_payload)
+
+        conn = get_db()
+        conn.execute("BEGIN")
+        quiz_id = _insert_quiz_rows(
+            conn,
+            quiz_title,
+            source_file or html_name,
+            db_payload,
+            logo_filename,
         )
 
-    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
-        json.dump(runtime_questions, f, indent=4, ensure_ascii=False)
-    quiz_id = save_quiz_to_db(quiz_title, html_name, db_questions)
-    add_quiz_to_registry(
-        quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None,
-        exam_minutes=normalize_exam_minutes(exam_minutes),
-        source_pack_id=source_pack_id, source_dataset_id=source_dataset_id
+        build_quiz_html(
+            html_name,
+            json_name,
+            staged_html,
+            get_portal_title(),
+            quiz_title,
+            logo_filename,
+            quiz_id,
+            normalize_exam_minutes(exam_minutes),
+        )
+        if not os.path.isfile(staged_html) or os.path.getsize(staged_html) == 0:
+            raise ValueError("Generated quiz HTML is empty")
+
+        _commit_quiz_publication(conn)
+        db_committed = True
+        conn.close()
+        conn = None
+
+        _promote_quiz_artifact(staged_json, final_json)
+        promoted.append(final_json)
+        _promote_quiz_artifact(staged_html, final_html)
+        promoted.append(final_html)
+        if os.path.isdir(staged_assets):
+            _promote_quiz_artifact(staged_assets, final_assets)
+            promoted.append(final_assets)
+
+        add_quiz_to_registry(
+            quiz_id=quiz_id,
+            html=html_name,
+            title=quiz_title,
+            logo=logo_filename,
+            exam_minutes=normalize_exam_minutes(exam_minutes),
+            source_pack_id=source_pack_id,
+            source_dataset_id=source_dataset_id,
+        )
+        return quiz_id, html_name
+    except Exception:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            conn.close()
+        for path in reversed(promoted):
+            _remove_quiz_publication_path(path)
+        if db_committed and quiz_id is not None:
+            try:
+                _delete_published_quiz_rows(quiz_id)
+            except Exception as exc:
+                print(f"[QUIZ PUBLICATION DB CLEANUP ERROR] quiz_id={quiz_id}: {exc}")
+        if rollback_logo_filename:
+            safe_logo = os.path.basename(str(rollback_logo_filename))
+            if safe_logo == rollback_logo_filename and safe_logo == logo_filename:
+                _remove_quiz_publication_path(os.path.join(LOGO_FOLDER, safe_logo))
+        raise
+    finally:
+        _remove_quiz_publication_path(stage_dir)
+
+
+def _create_quiz_from_runtime(quiz_title, runtime_questions, db_questions, filename_prefix="study_image", exam_minutes=90, source_pack_id=None, source_dataset_id=None):
+    """Compatibility wrapper for existing runtime/database payload callers."""
+    return _publish_quiz(
+        quiz_title,
+        runtime_questions,
+        db_questions,
+        filename_prefix=filename_prefix,
+        exam_minutes=exam_minutes,
+        source_pack_id=source_pack_id,
+        source_dataset_id=source_dataset_id,
     )
-    build_quiz_html(html_name, json_name, os.path.join(QUIZ_FOLDER, html_name), get_portal_title(), quiz_title, None, quiz_id, normalize_exam_minutes(exam_minutes))
-    return quiz_id, html_name
 
 
 def _generated_quiz_artifact_identity():
@@ -1275,7 +1446,7 @@ def _quiz_asset_url(bucket, relative_path):
     return f"/quiz-assets/{bucket}/{rel}"
 
 
-def _snapshot_one_pack_asset(pack_id, asset_url, bucket):
+def _snapshot_one_pack_asset(pack_id, asset_url, bucket, *, destination_root=None):
     """Copy one content-pack asset into quiz-owned storage and return its stable runtime URL."""
     asset_url = str(asset_url or "")
     prefix = f"/content-packs/{pack_id}/assets/"
@@ -1296,7 +1467,7 @@ def _snapshot_one_pack_asset(pack_id, asset_url, bucket):
         raise ValueError(f"Unsupported quiz asset type: {ext}")
     _decode_raster_image(src, PASSIVE_PACK_IMAGE_EXTENSIONS)
 
-    dest_root = os.path.join(QUIZ_ASSET_FOLDER, bucket)
+    dest_root = destination_root or os.path.join(QUIZ_ASSET_FOLDER, bucket)
     dest = _safe_pack_child(dest_root, rel)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     if not os.path.isfile(dest):
@@ -1304,33 +1475,43 @@ def _snapshot_one_pack_asset(pack_id, asset_url, bucket):
     return _quiz_asset_url(bucket, rel), True
 
 
-def _snapshot_pack_refs_recursive(pack_id, value, bucket):
+def _snapshot_pack_refs_recursive(pack_id, value, bucket, *, destination_root=None):
     """Recursively rewrite any runtime content-pack asset URLs to quiz-owned copies."""
     changed = 0
     if isinstance(value, dict):
         out = {}
         for key, item in value.items():
-            new_item, n = _snapshot_pack_refs_recursive(pack_id, item, bucket)
+            new_item, n = _snapshot_pack_refs_recursive(
+                pack_id, item, bucket, destination_root=destination_root
+            )
             out[key] = new_item
             changed += n
         return out, changed
     if isinstance(value, list):
         out = []
         for item in value:
-            new_item, n = _snapshot_pack_refs_recursive(pack_id, item, bucket)
+            new_item, n = _snapshot_pack_refs_recursive(
+                pack_id, item, bucket, destination_root=destination_root
+            )
             out.append(new_item)
             changed += n
         return out, changed
     if isinstance(value, str):
-        new_value, did_change = _snapshot_one_pack_asset(pack_id, value, bucket)
+        new_value, did_change = _snapshot_one_pack_asset(
+            pack_id, value, bucket, destination_root=destination_root
+        )
         return new_value, int(did_change)
     return value, 0
 
 
-def _snapshot_runtime_questions(pack_id, runtime_questions, db_questions, bucket):
+def _snapshot_runtime_questions(pack_id, runtime_questions, db_questions, bucket, *, destination_root=None):
     """Make generated image quizzes independent of the source content pack."""
-    runtime_copy, runtime_count = _snapshot_pack_refs_recursive(pack_id, runtime_questions, bucket)
-    db_copy, db_count = _snapshot_pack_refs_recursive(pack_id, db_questions, bucket)
+    runtime_copy, runtime_count = _snapshot_pack_refs_recursive(
+        pack_id, runtime_questions, bucket, destination_root=destination_root
+    )
+    db_copy, db_count = _snapshot_pack_refs_recursive(
+        pack_id, db_questions, bucket, destination_root=destination_root
+    )
     return runtime_copy, db_copy, runtime_count + db_count
 
 
@@ -2886,7 +3067,7 @@ def finalize_logo_from_request(app, ts, *, logo_file=None, temp_logo_name=None):
         ext = os.path.splitext(temp_logo_name)[1].lower()
         if ext not in RASTER_IMAGE_FORMATS:
             return None
-        logo_filename = f"logo_{ts}{ext}"
+        logo_filename = f"logo_{ts}_{secrets.token_hex(4)}{ext}"
         dst = os.path.join(LOGO_FOLDER, logo_filename)
         try:
             _reencode_raster_file(src, dst, RASTER_IMAGE_FORMATS)
@@ -2904,7 +3085,7 @@ def finalize_logo_from_request(app, ts, *, logo_file=None, temp_logo_name=None):
     if logo_file and logo_file.filename:
         ext = os.path.splitext(logo_file.filename)[1].lower()
         if ext in RASTER_IMAGE_FORMATS:
-            logo_filename = f"logo_{ts}{ext}"
+            logo_filename = f"logo_{ts}_{secrets.token_hex(4)}{ext}"
             try:
                 _store_raster_upload(logo_file, LOGO_FOLDER, logo_filename, RASTER_IMAGE_FORMATS, LOGO_UPLOAD_MAX_BYTES)
             except ValueError:
@@ -5921,33 +6102,14 @@ def medical_generate_anatomy_quiz():
 
     safe_pack = re.sub(r"[^a-z0-9]+", "_", pack_id.lower()).strip("_") or "medical"
     safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "anatomy"
-    html_name, json_name = _generated_quiz_artifact_names(
-        f"medical_anatomy_{safe_pack}_{safe_id}"
-    )
-    json_path = os.path.join(DATA_FOLDER, json_name)
-    html_path = os.path.join(QUIZ_FOLDER, html_name)
-
-    bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
-    runtime_questions, db_questions, _ = _snapshot_runtime_questions(
-        pack_id, runtime_questions, db_questions, bucket
-    )
-
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(runtime_questions, f, indent=4, ensure_ascii=False)
-
-    quiz_id = save_quiz_to_db(quiz_title, html_name, db_questions)
-    add_quiz_to_registry(
-        quiz_id=quiz_id,
-        html=html_name,
-        title=quiz_title,
-        logo=None,
+    quiz_id, html_name = _publish_quiz(
+        quiz_title,
+        runtime_questions,
+        db_questions,
+        filename_prefix=f"medical_anatomy_{safe_pack}_{safe_id}",
         exam_minutes=90,
         source_pack_id=pack_id,
-        source_dataset_id=dataset_id
-    )
-    build_quiz_html(
-        html_name, json_name, html_path, get_portal_title(),
-        quiz_title, None, quiz_id, 90
+        source_dataset_id=dataset_id,
     )
 
     return redirect(f"/quizzes/{html_name}")
@@ -6021,26 +6183,13 @@ def medical_generate_quiz():
 
     safe_pack = re.sub(r"[^a-z0-9]+", "_", pack_id.lower()).strip("_") or "medical"
     safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "medical"
-    html_name, json_name = _generated_quiz_artifact_names(f"medical_{safe_pack}_{safe_id}")
-    json_path = os.path.join(DATA_FOLDER, json_name)
-    html_path = os.path.join(QUIZ_FOLDER, html_name)
-
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(quiz_data, f, indent=4, ensure_ascii=False)
-
-    quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
-    add_quiz_to_registry(
-        quiz_id=quiz_id,
-        html=html_name,
-        title=quiz_title,
-        logo=None,
+    quiz_id, html_name = _publish_quiz(
+        quiz_title,
+        quiz_data,
+        filename_prefix=f"medical_{safe_pack}_{safe_id}",
         exam_minutes=90,
         source_pack_id=pack_id,
-        source_dataset_id=dataset_id
-    )
-    build_quiz_html(
-        html_name, json_name, html_path, get_portal_title(),
-        quiz_title, None, quiz_id, 90
+        source_dataset_id=dataset_id,
     )
 
     return redirect(f"/quizzes/{html_name}")
@@ -6795,9 +6944,8 @@ def study_pack_generate_matching():
     title=str(data.get("title") or data["_descriptor"].get("title") or "Study Practice").strip(); source=data.get("source") or {}
     pairs=[{"left":i["term"],"right":i["definition"],"category":i.get("category","") ,"explanation":i.get("explanation") or i.get("study_explanation") or "","verification":i.get("verification") or data.get("verification") or {},"source":i.get("source") or source or {}} for i in terms]
     quiz_data=[{"number":1,"type":"matching","question":str(data.get("question_text") or "Match each item with its best answer.").strip(),"pairs":pairs,"round_size":round_size,"direction":direction,"concepts":_standalone_matching_concepts(data, context=f"matching dataset {dataset_id!r}"),"source":{"organization":source.get("organization") or pack.get("publisher") or "","dataset":source.get("dataset") or title,"version":source.get("version") or pack.get("version") or "","url":source.get("url") or "","license":source.get("license") or ""}}]
-    safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "dataset"; quiz_title=f"{title} — {round_size}-Pair Practice"; html_name,json_name=_generated_quiz_artifact_names(f"study_{safe_pack}_{safe_id}"); json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
-    with open(json_path,"w",encoding="utf-8") as f: json.dump(quiz_data,f,indent=4,ensure_ascii=False)
-    quiz_id=save_quiz_to_db(quiz_title,html_name,quiz_data); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
+    safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "dataset"; quiz_title=f"{title} — {round_size}-Pair Practice"
+    quiz_id,html_name=_publish_quiz(quiz_title,quiz_data,filename_prefix=f"study_{safe_pack}_{safe_id}",exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id)
     return redirect(f"/quizzes/{html_name}")
 
 
@@ -6822,11 +6970,8 @@ def study_pack_generate_image():
             runtime_questions[-1]["concepts"]=concepts
             db_questions.append({"number":qnum,"type":"choice","question":prompt+" [Image hotspot]","choices":[{"label":"A","text":label,"is_correct":True}],"concepts":concepts,"source":{"organization":source.get("organization") or "","dataset":data.get("title") or dataset_id,"version":pack.get("version") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or ""}}); qnum+=1
     if not runtime_questions: flash("This image dataset contains no usable targets.","error"); return redirect("/study-packs")
-    title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"; html_name,json_name=_generated_quiz_artifact_names(f"study_image_{safe_pack}_{safe_id}"); json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
-    bucket=re.sub(r"[^A-Za-z0-9_.-]+","_",os.path.splitext(html_name)[0])[:120]
-    runtime_questions,db_questions,_=_snapshot_runtime_questions(pack_id,runtime_questions,db_questions,bucket)
-    with open(json_path,"w",encoding="utf-8") as f: json.dump(runtime_questions,f,indent=4,ensure_ascii=False)
-    quiz_id=save_quiz_to_db(quiz_title,html_name,db_questions); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
+    title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"
+    quiz_id,html_name=_publish_quiz(quiz_title,runtime_questions,db_questions,filename_prefix=f"study_image_{safe_pack}_{safe_id}",exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id)
     return redirect(f"/quizzes/{html_name}")
 
 
@@ -11263,11 +11408,9 @@ def save_order():
 # =========================
 # QUIZ DB SAVE HELPER (UPLOAD + PASTE)
 # =========================
-def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
-    conn = get_db()
+def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=None):
+    """Insert a complete quiz on the caller's current transaction."""
     cur = conn.cursor()
-
-    
 
     # Insert quiz (now stores registry_id too)
     cur.execute(
@@ -11363,10 +11506,24 @@ def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
                     ),
                 )
 
-    conn.commit()
-    conn.close()
-
     return quiz_id  # ✅ REQUIRED FOR REGISTRY + DELETE
+
+
+def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
+    """Compatibility wrapper that owns and commits one quiz transaction."""
+    conn = get_db()
+    try:
+        conn.execute("BEGIN")
+        quiz_id = _insert_quiz_rows(
+            conn, quiz_title, source_file, quiz_data, logo_filename
+        )
+        conn.commit()
+        return quiz_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 
@@ -15049,40 +15206,33 @@ def pdf_question_bank_generate(bank_id):
             _pdf_bank_question_to_quiz(q, i, bank)
             for i, q in enumerate(selected, 1)
         ]
-        html_name, json_name = _generated_quiz_artifact_names("pdf_bank")
-
-        with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
-            json.dump(quiz_data, f, indent=4, ensure_ascii=False)
-
-        quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
-        add_quiz_to_registry(
-            quiz_id=quiz_id,
-            html=html_name,
-            title=quiz_title,
-            logo=None,
+        quiz_id, _ = _publish_quiz(
+            quiz_title,
+            quiz_data,
+            filename_prefix="pdf_bank",
             exam_minutes=exam_minutes,
         )
-        build_quiz_html(
-            html_name, json_name, os.path.join(QUIZ_FOLDER, html_name),
-            get_portal_title(), quiz_title, None, quiz_id, exam_minutes
-        )
 
-        selected_numbers = [
-            int(q.get("original_number") or q.get("number") or 0)
-            for q in selected
-        ]
-        used = {int(n) for n in (bank.get("used_question_numbers") or []) if str(n).isdigit()}
-        used.update(n for n in selected_numbers if n)
-        bank["used_question_numbers"] = sorted(used)
-        bank.setdefault("generated_quizzes", []).append({
-            "quiz_id": quiz_id,
-            "title": quiz_title,
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-            "selection_mode": mode,
-            "question_count": len(selected),
-            "question_numbers": selected_numbers,
-        })
-        _save_pdf_question_bank(bank)
+        try:
+            selected_numbers = [
+                int(q.get("original_number") or q.get("number") or 0)
+                for q in selected
+            ]
+            used = {int(n) for n in (bank.get("used_question_numbers") or []) if str(n).isdigit()}
+            used.update(n for n in selected_numbers if n)
+            bank["used_question_numbers"] = sorted(used)
+            bank.setdefault("generated_quizzes", []).append({
+                "quiz_id": quiz_id,
+                "title": quiz_title,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+                "selection_mode": mode,
+                "question_count": len(selected),
+                "question_numbers": selected_numbers,
+            })
+            _save_pdf_question_bank(bank)
+        except Exception as exc:
+            print(f"[PDF QUIZ ACCOUNTING ERROR] Published quiz {quiz_id}: {type(exc).__name__}: {exc}")
+            flash("Quiz created, but source-bank usage tracking could not be updated.", "warning")
 
         flash(
             f"Created '{quiz_title}' with {len(selected)} question(s) from '{bank.get('title')}'. "
@@ -15194,21 +15344,25 @@ def pdf_terminology_bank_generate(bank_id):
             exam_minutes=exam_minutes,
         )
 
-        selected_numbers = [int(t.get("number") or 0) for t in selected]
-        used = {int(n) for n in (bank.get("used_term_numbers") or []) if str(n).isdigit()}
-        used.update(n for n in selected_numbers if n)
-        bank["used_term_numbers"] = sorted(used)
-        bank.setdefault("generated_quizzes", []).append({
-            "quiz_id": quiz_id,
-            "title": quiz_title,
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-            "practice_type": practice_type,
-            "selection_mode": mode,
-            "direction": direction,
-            "term_count": len(selected),
-            "term_numbers": selected_numbers,
-        })
-        _save_pdf_terminology_bank(bank)
+        try:
+            selected_numbers = [int(t.get("number") or 0) for t in selected]
+            used = {int(n) for n in (bank.get("used_term_numbers") or []) if str(n).isdigit()}
+            used.update(n for n in selected_numbers if n)
+            bank["used_term_numbers"] = sorted(used)
+            bank.setdefault("generated_quizzes", []).append({
+                "quiz_id": quiz_id,
+                "title": quiz_title,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+                "practice_type": practice_type,
+                "selection_mode": mode,
+                "direction": direction,
+                "term_count": len(selected),
+                "term_numbers": selected_numbers,
+            })
+            _save_pdf_terminology_bank(bank)
+        except Exception as exc:
+            print(f"[PDF TERMINOLOGY ACCOUNTING ERROR] Published quiz {quiz_id}: {type(exc).__name__}: {exc}")
+            flash("Practice quiz created, but source-bank usage tracking could not be updated.", "warning")
 
         flash(
             f"Created '{quiz_title}' from {len(selected)} terminology item(s). The source bank remains intact.",
@@ -15680,14 +15834,12 @@ def matching_bank_import():
             "direction": direction,
             "source": source,
         }]
-        html_name, json_name = _generated_quiz_artifact_names("matching_bank")
-        json_path = os.path.join(DATA_FOLDER, json_name)
-        html_path = os.path.join(QUIZ_FOLDER, html_name)
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(quiz_data, f, indent=4, ensure_ascii=False)
-        quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
-        add_quiz_to_registry(quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None, exam_minutes=90)
-        build_quiz_html(html_name, json_name, html_path, get_portal_title(), quiz_title, None, quiz_id, 90)
+        quiz_id, _ = _publish_quiz(
+            quiz_title,
+            quiz_data,
+            filename_prefix="matching_bank",
+            exam_minutes=90,
+        )
         flash(f"Matching bank imported: {len(pairs)} pairs; {round_size} shown per attempt.", "success")
         return redirect(f"/edit_quiz/{quiz_id}")
 
@@ -16432,42 +16584,13 @@ def save_short_quiz():
         logo_file=quiz_logo
     )
 
-    html_name, json_name = _generated_quiz_artifact_names("short_quiz")
-
-    json_path = os.path.join(DATA_FOLDER, json_name)
-    html_path = os.path.join(QUIZ_FOLDER, html_name)
-
-    # Save JSON file
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(quiz_data, f, indent=4)
-
-    # Save quiz into DB using existing helper
-    quiz_id = save_quiz_to_db(
-        quiz_title=quiz_title,
-        source_file=html_name,
-        quiz_data=quiz_data,
-        logo_filename=logo_filename
-    )
-
-    # Add to library registry
-    add_quiz_to_registry(
-        quiz_id=quiz_id,
-        html=html_name,
-        title=quiz_title,
-        logo=logo_filename,
-        exam_minutes=exam_minutes
-    )
-
-    # Build playable quiz HTML
-    build_quiz_html(
-        html_name,
-        json_name,
-        html_path,
-        get_portal_title(),
+    quiz_id, _ = _publish_quiz(
         quiz_title,
-        logo_filename,
-        quiz_id,
-        exam_minutes
+        quiz_data,
+        filename_prefix="short_quiz",
+        exam_minutes=exam_minutes,
+        logo_filename=logo_filename,
+        rollback_logo_filename=logo_filename,
     )
 
     flash("Short quiz created successfully.", "success")
@@ -17534,54 +17657,14 @@ def process_paste():
     # =========================
     source_file = f"quiz_upload_{ts}_{int(time.time() * 1000)}"
 
-    db_quiz_id = save_quiz_to_db(
+    db_quiz_id, html_name = _publish_quiz(
         quiz_title,
-        source_file,
         quiz_data,
-        logo_filename
-    )
-
-
-
-
-
-
-   # =========================
-    # SAVE JSON + HTML quiz (kept for UI compatibility)
-    # =========================
-    html_name, json_name = _generated_quiz_artifact_names("quiz")
-
-    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
-        json.dump(quiz_data, f, indent=4)
-
-    # =========================
-    # REGISTER QUIZ (AFTER html_name EXISTS)
-    # =========================
-    dprint("[DEBUG] Registering quiz:",
-        html_name,
-        quiz_title,
-        logo_filename)
-
-    add_quiz_to_registry(
-        db_quiz_id,
-        html_name,
-        quiz_title,
-        logo_filename,
-        exam_minutes
-    )
-
-
-
-
-    build_quiz_html(
-        html_name,
-        json_name,
-        os.path.join(QUIZ_FOLDER, html_name),
-        get_portal_title(),
-        quiz_title,
-        logo_filename,
-        db_quiz_id,
-        exam_minutes
+        filename_prefix="quiz",
+        exam_minutes=exam_minutes,
+        logo_filename=logo_filename,
+        source_file=source_file,
+        rollback_logo_filename=logo_filename,
     )
 
 
@@ -17734,45 +17817,15 @@ def process_file():
     # =========================
     
 
-    quiz_id = save_quiz_to_db(
+    quiz_id, html_name = _publish_quiz(
         quiz_title,
-        source_file,
         quiz_data,
-        logo_filename
+        filename_prefix="quiz",
+        exam_minutes=exam_minutes,
+        logo_filename=logo_filename,
+        source_file=source_file,
+        rollback_logo_filename=logo_filename,
     )
-
-
-
-
-
-
-    # =========================
-    # SAVE JSON + HTML quiz (UI compatibility)
-    # =========================
-    html_name, json_name = _generated_quiz_artifact_names("quiz")
-
-    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
-        json.dump(quiz_data, f, indent=4)
-
-    build_quiz_html(
-        html_name,
-        json_name,
-        os.path.join(QUIZ_FOLDER, html_name),
-        get_portal_title(),
-        quiz_title,
-        logo_filename,
-        quiz_id,
-        exam_minutes
-    )
-
-
-    add_quiz_to_registry(
-    quiz_id,
-    html_name,
-    quiz_title,
-    logo_filename,
-    exam_minutes
-)
 
 
     return redirect("/library")
@@ -20105,12 +20158,22 @@ def _question_payload_from_db(cur, question_id):
 
 
 
-def _snapshot_existing_quiz_asset_refs(value, bucket):
+def _snapshot_existing_quiz_asset_refs(value, bucket, *, destination_root=None, strict=False):
     """Copy existing quiz-owned asset URLs so Smart Review survives source-quiz deletion."""
     if isinstance(value, dict):
-        return {k: _snapshot_existing_quiz_asset_refs(v, bucket) for k, v in value.items()}
+        return {
+            k: _snapshot_existing_quiz_asset_refs(
+                v, bucket, destination_root=destination_root, strict=strict
+            )
+            for k, v in value.items()
+        }
     if isinstance(value, list):
-        return [_snapshot_existing_quiz_asset_refs(v, bucket) for v in value]
+        return [
+            _snapshot_existing_quiz_asset_refs(
+                v, bucket, destination_root=destination_root, strict=strict
+            )
+            for v in value
+        ]
     if not isinstance(value, str) or not value.startswith("/quiz-assets/"):
         return value
     rel_url = value[len("/quiz-assets/"):].lstrip("/")
@@ -20123,13 +20186,15 @@ def _snapshot_existing_quiz_asset_refs(value, bucket):
         src = _safe_pack_child(src_root, rel)
         if not os.path.isfile(src):
             return value
-        dest_root = os.path.join(QUIZ_ASSET_FOLDER, bucket)
+        dest_root = destination_root or os.path.join(QUIZ_ASSET_FOLDER, bucket)
         dest = _safe_pack_child(dest_root, rel)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         if not os.path.isfile(dest):
             shutil.copy2(src, dest)
         return _quiz_asset_url(bucket, rel)
     except Exception:
+        if strict:
+            raise
         return value
 
 
@@ -20304,14 +20369,13 @@ def smart_review_generate():
     if len(weak) > 3:
         suffix += f" +{len(weak)-3} more"
     quiz_title = f"Smart Review — {suffix}"
-    html_name, json_name = _generated_quiz_artifact_names("smart_review")
-    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
-    quiz_data = _snapshot_existing_quiz_asset_refs(quiz_data, asset_bucket)
-    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
-        json.dump(quiz_data, f, indent=4, ensure_ascii=False)
-    quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
-    add_quiz_to_registry(quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None, exam_minutes=90)
-    build_quiz_html(html_name, json_name, os.path.join(QUIZ_FOLDER, html_name), get_portal_title(), quiz_title, None, quiz_id, 90)
+    quiz_id, html_name = _publish_quiz(
+        quiz_title,
+        quiz_data,
+        filename_prefix="smart_review",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
     return redirect(f"/quizzes/{html_name}")
 
 
@@ -20399,14 +20463,13 @@ def spaced_review_generate():
     if len(chosen) > 3:
         suffix += f" +{len(chosen)-3} more"
     quiz_title = f"Spaced Review — {suffix}"
-    html_name, json_name = _generated_quiz_artifact_names("spaced_review")
-    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
-    quiz_data = _snapshot_existing_quiz_asset_refs(quiz_data, asset_bucket)
-    with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
-        json.dump(quiz_data, f, indent=4, ensure_ascii=False)
-    quiz_id = save_quiz_to_db(quiz_title, html_name, quiz_data)
-    add_quiz_to_registry(quiz_id=quiz_id, html=html_name, title=quiz_title, logo=None, exam_minutes=90)
-    build_quiz_html(html_name, json_name, os.path.join(QUIZ_FOLDER, html_name), get_portal_title(), quiz_title, None, quiz_id, 90)
+    quiz_id, html_name = _publish_quiz(
+        quiz_title,
+        quiz_data,
+        filename_prefix="spaced_review",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
     return redirect(f"/quizzes/{html_name}")
 
 
