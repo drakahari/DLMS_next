@@ -316,13 +316,49 @@ def _csrf_failure(message, status=400):
     ), status
 
 
-def _request_source_matches(source):
+def _canonical_request_origin(value, *, allow_path=False):
+    """Return a normalized (scheme, host, port) tuple for an HTTP origin."""
     try:
-        candidate = urlsplit(source)
-        current = urlsplit(request.host_url)
-    except ValueError:
-        return False
-    return candidate.scheme.lower() == current.scheme.lower() and candidate.netloc.lower() == current.netloc.lower()
+        parsed = urlsplit(str(value or ""))
+        scheme = parsed.scheme.lower()
+        hostname = parsed.hostname.casefold() if parsed.hostname else ""
+        if scheme not in {"http", "https"} or not hostname:
+            return None
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        if not allow_path and (parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
+            return None
+        port = parsed.port
+    except (TypeError, ValueError):
+        return None
+    if port is None:
+        port = 443 if scheme == "https" else 80
+    return scheme, hostname, port
+
+
+def _request_facing_origin():
+    """Return the browser-facing origin from this request, never the bind host."""
+    # HTTP_HOST is the authority the client used for this request. A wildcard
+    # socket bind such as 0.0.0.0 is not a browser-facing authority and must not
+    # participate in same-origin decisions.
+    request_host = request.environ.get("HTTP_HOST") or request.host
+    return _canonical_request_origin(f"{request.scheme}://{request_host}")
+
+
+def _request_source_matches(source, *, allow_path=False):
+    candidate = _canonical_request_origin(source, allow_path=allow_path)
+    current = _request_facing_origin()
+    return candidate is not None and current is not None and candidate == current
+
+
+def _format_origin_for_log(origin):
+    if not origin:
+        return "invalid"
+    scheme, hostname, port = origin
+    display_host = f"[{hostname}]" if ":" in hostname else hostname
+    default_port = 443 if scheme == "https" else 80
+    suffix = "" if port == default_port else f":{port}"
+    return f"{scheme}://{display_host}{suffix}"
 
 
 @app.before_request
@@ -333,9 +369,21 @@ def validate_unsafe_request_origin():
         return _csrf_failure("Cross-site requests are not allowed.", 403)
     origin = request.headers.get("Origin")
     if origin and not _request_source_matches(origin):
+        print(
+            "[SAME-ORIGIN] Rejected Origin "
+            f"{_format_origin_for_log(_canonical_request_origin(origin))}; "
+            "request-facing origin is "
+            f"{_format_origin_for_log(_request_facing_origin())}"
+        )
         return _csrf_failure("The request origin does not match DLMS.", 403)
     referer = request.headers.get("Referer")
-    if not origin and referer and not _request_source_matches(referer):
+    if not origin and referer and not _request_source_matches(referer, allow_path=True):
+        print(
+            "[SAME-ORIGIN] Rejected Referer "
+            f"{_format_origin_for_log(_canonical_request_origin(referer, allow_path=True))}; "
+            "request-facing origin is "
+            f"{_format_origin_for_log(_request_facing_origin())}"
+        )
         return _csrf_failure("The request referrer does not match DLMS.", 403)
     return None
 

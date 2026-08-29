@@ -85,6 +85,91 @@ class CsrfProtectionTests(unittest.TestCase):
             )
             self.assertEqual(blocked.status_code, 403)
 
+    def test_wildcard_bind_uses_browser_facing_lan_origin_for_ai_builder_post(self):
+        startup = dlms._dlms_parse_startup_options(
+            ["--host", "0.0.0.0", "--no-browser"],
+            environ={},
+            desktop_available=False,
+        )
+        self.assertEqual("0.0.0.0", startup["host"])
+
+        client = dlms.app.test_client()
+        base_url = "http://192.168.1.245:9001"
+        client.get("/study-packs/ai-builder", base_url=base_url)
+        token = client.get_cookie("dlms_csrf_token", domain="192.168.1.245").value
+        with dlms.app.test_request_context(
+            "/study-packs/ai-builder",
+            method="POST",
+            base_url=base_url,
+            headers={"Origin": base_url},
+        ):
+            self.assertEqual("192.168.1.245:9001", dlms.request.host)
+            self.assertEqual("http://192.168.1.245:9001/", dlms.request.host_url)
+            self.assertEqual(("http", "192.168.1.245", 9001), dlms._request_facing_origin())
+            self.assertTrue(dlms._request_source_matches(base_url))
+
+        config = {
+            "ai_provider": "chatgpt",
+            "study_pack_ai_prompt_template": dlms.DEFAULT_STUDY_CONTENT_PACK_PROMPT,
+            "medical_study_pack_ai_addendum": dlms.DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
+        }
+        with mock.patch.object(dlms, "load_portal_config", return_value=config):
+            response = client.post(
+                "/study-packs/ai-builder",
+                base_url=base_url,
+                headers={"Origin": base_url, "Sec-Fetch-Site": "same-origin"},
+                data={
+                    "csrf_token": token,
+                    "topic": "Network layers",
+                    "domain": "IT / Cybersecurity",
+                    "difficulty": "Intermediate",
+                    "size": "Standard",
+                    "image_count": "None",
+                    "image_style": "Mixed",
+                    "ai_provider": "chatgpt",
+                    "include_matching": "on",
+                },
+            )
+        self.assertEqual(200, response.status_code)
+        self.assertIn("GENERATED PROMPT", response.get_data(as_text=True))
+
+    def test_loopback_and_localhost_same_origin_ports_are_supported(self):
+        for hostname in ("127.0.0.1", "localhost"):
+            with self.subTest(hostname=hostname), tempfile.TemporaryDirectory() as directory, \
+                 mock.patch.object(dlms, "PORTAL_CONFIG", os.path.join(directory, "portal.json")), \
+                 mock.patch.object(dlms, "load_portal_config", return_value={"title":"DLMS","theme":"dark"}):
+                client = dlms.app.test_client()
+                base_url = f"http://{hostname}:9001"
+                client.get("/", base_url=base_url)
+                token = client.get_cookie("dlms_csrf_token", domain=hostname).value
+                response = client.post(
+                    "/api/theme",
+                    base_url=base_url,
+                    json={"theme":"light"},
+                    headers={"X-CSRFToken":token, "Origin":base_url},
+                )
+                self.assertEqual(200, response.status_code)
+
+    def test_same_host_wrong_port_and_different_host_are_rejected(self):
+        client = dlms.app.test_client()
+        base_url = "http://192.168.1.245:9001"
+        client.get("/", base_url=base_url)
+        token = client.get_cookie("dlms_csrf_token", domain="192.168.1.245").value
+        for origin in (
+            "http://192.168.1.245:9002",
+            "http://192.168.1.246:9001",
+            "https://192.168.1.245:9001",
+        ):
+            with self.subTest(origin=origin):
+                response = client.post(
+                    "/api/theme",
+                    base_url=base_url,
+                    json={"theme":"dark"},
+                    headers={"X-CSRFToken":token, "Origin":origin},
+                )
+                self.assertEqual(403, response.status_code)
+                self.assertIn("origin", response.get_json()["error"].lower())
+
     def test_sec_fetch_cross_site_and_cross_origin_referer_are_rejected(self):
         token = csrf_token(self.client)
         cross_site = self.client.post(
