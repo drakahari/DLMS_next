@@ -1514,7 +1514,10 @@ DLMS_BACKUP_DATA_PREFIX = "DLMS_DATA/"
 DLMS_BACKUP_TOKEN_RE = re.compile(r"^[a-f0-9]{32}$")
 DLMS_BACKUP_MAX_FILES = 20000
 DLMS_BACKUP_MAX_UNCOMPRESSED = 2 * 1024 * 1024 * 1024
+DLMS_BACKUP_MAX_COMPRESSED = DLMS_BACKUP_MAX_UNCOMPRESSED
 DLMS_BACKUP_MAX_SINGLE_FILE = 768 * 1024 * 1024
+DLMS_BACKUP_MAX_COMPRESSION_RATIO = 1000
+DLMS_BACKUP_RATIO_MIN_UNCOMPRESSED = 16 * 1024 * 1024
 DLMS_BACKUP_EXCLUDED_TOP_LEVEL = {"backups", "uploads", "content_pack_staging"}
 
 
@@ -1696,32 +1699,18 @@ def _validate_dlms_backup(zip_path):
         raise ValueError("Selected file is not a valid ZIP archive")
 
     total_size = 0
+    total_compressed = 0
     file_count = 0
     seen = set()
     data_members = []
 
     with zipfile.ZipFile(zip_path, "r") as archive:
-        bad_crc = archive.testzip()
-        if bad_crc:
-            raise ValueError(f"Backup integrity check failed near {bad_crc}")
+        manifest_member = None
+        infos = archive.infolist()
+        if len(infos) > DLMS_BACKUP_MAX_FILES:
+            raise ValueError(f"Backup contains more than {DLMS_BACKUP_MAX_FILES} members")
 
-        names = archive.namelist()
-        if DLMS_BACKUP_MANIFEST not in names:
-            raise ValueError("Backup is missing DLMS_BACKUP_MANIFEST.json")
-
-        try:
-            manifest = json.loads(archive.read(DLMS_BACKUP_MANIFEST).decode("utf-8"))
-        except Exception as exc:
-            raise ValueError(f"Backup manifest is not valid JSON: {exc}") from exc
-
-        if not isinstance(manifest, dict):
-            raise ValueError("Backup manifest must be a JSON object")
-        if manifest.get("kind") != "dlms-portable-backup":
-            raise ValueError("This ZIP is not a DLMS portable backup")
-        if int(manifest.get("schema_version", 0)) != DLMS_BACKUP_SCHEMA_VERSION:
-            raise ValueError(f"Unsupported backup schema_version {manifest.get('schema_version')!r}")
-
-        for info in archive.infolist():
+        for info in infos:
             normalized = _safe_backup_member_name(info.filename)
             key = normalized.casefold()
             if key in seen:
@@ -1729,21 +1718,35 @@ def _validate_dlms_backup(zip_path):
             seen.add(key)
 
             unix_mode = (info.external_attr >> 16) & 0xFFFF
-            if (unix_mode & 0o170000) == 0o120000:
+            unix_type = unix_mode & 0o170000
+            if unix_type == 0o120000:
                 raise ValueError(f"Backup contains a symbolic link: {normalized}")
+            if unix_type not in {0, 0o040000, 0o100000}:
+                raise ValueError(f"Backup contains an unsupported special file: {normalized}")
             if info.is_dir():
                 continue
 
             file_count += 1
-            total_size += int(info.file_size or 0)
+            uncompressed_size = int(info.file_size or 0)
+            compressed_size = int(info.compress_size or 0)
+            if uncompressed_size < 0 or compressed_size < 0:
+                raise ValueError(f"Backup contains invalid member sizes: {normalized}")
+            total_size += uncompressed_size
+            total_compressed += compressed_size
             if file_count > DLMS_BACKUP_MAX_FILES:
                 raise ValueError(f"Backup contains more than {DLMS_BACKUP_MAX_FILES} files")
-            if int(info.file_size or 0) > DLMS_BACKUP_MAX_SINGLE_FILE:
+            if compressed_size > DLMS_BACKUP_MAX_COMPRESSED or total_compressed > DLMS_BACKUP_MAX_COMPRESSED:
+                raise ValueError("Backup compressed data exceeds the permitted restore safety limit")
+            if uncompressed_size > DLMS_BACKUP_MAX_SINGLE_FILE:
                 raise ValueError(f"Backup contains an oversized single file: {normalized}")
             if total_size > DLMS_BACKUP_MAX_UNCOMPRESSED:
                 raise ValueError("Backup expands beyond the permitted restore safety limit")
+            if uncompressed_size >= DLMS_BACKUP_RATIO_MIN_UNCOMPRESSED:
+                if compressed_size == 0 or uncompressed_size / compressed_size > DLMS_BACKUP_MAX_COMPRESSION_RATIO:
+                    raise ValueError(f"Backup member has a suspicious compression ratio: {normalized}")
 
             if normalized == DLMS_BACKUP_MANIFEST:
+                manifest_member = info
                 continue
             if not normalized.startswith(DLMS_BACKUP_DATA_PREFIX):
                 raise ValueError(f"Unexpected file outside DLMS_DATA/: {normalized}")
@@ -1753,6 +1756,34 @@ def _validate_dlms_backup(zip_path):
             if _backup_rel_is_excluded(rel):
                 raise ValueError(f"Backup attempts to restore a protected runtime path: {rel}")
             data_members.append((info, rel))
+
+        if total_size >= DLMS_BACKUP_RATIO_MIN_UNCOMPRESSED:
+            if total_compressed == 0 or total_size / total_compressed > DLMS_BACKUP_MAX_COMPRESSION_RATIO:
+                raise ValueError("Backup has a suspicious overall compression ratio")
+
+        if manifest_member is None:
+            raise ValueError("Backup is missing DLMS_BACKUP_MANIFEST.json")
+
+        # CRC validation decompresses archive members. It must remain after all
+        # central-directory path, type, count, size, and expansion checks.
+        try:
+            bad_crc = archive.testzip()
+        except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            raise ValueError(f"Backup integrity check failed: {exc}") from exc
+        if bad_crc:
+            raise ValueError(f"Backup integrity check failed near {bad_crc}")
+
+        try:
+            manifest = json.loads(archive.read(manifest_member).decode("utf-8"))
+        except Exception as exc:
+            raise ValueError(f"Backup manifest is not valid JSON: {exc}") from exc
+
+        if not isinstance(manifest, dict):
+            raise ValueError("Backup manifest must be a JSON object")
+        if manifest.get("kind") != "dlms-portable-backup":
+            raise ValueError("This ZIP is not a DLMS portable backup")
+        if int(manifest.get("schema_version", 0)) != DLMS_BACKUP_SCHEMA_VERSION:
+            raise ValueError(f"Unsupported backup schema_version {manifest.get('schema_version')!r}")
 
         declared_count = manifest.get("file_count")
         if isinstance(declared_count, int) and declared_count != len(data_members):
