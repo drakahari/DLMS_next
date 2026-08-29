@@ -37,7 +37,7 @@ class ThemeSystemTests(unittest.TestCase):
     @classmethod
     def _composite(cls, foreground, background):
         fg = cls._rgba(foreground)
-        bg = cls._rgba(background)
+        bg = cls._rgba(background)[:3] if isinstance(background, str) else background
         return tuple(fg[i] * fg[3] + bg[i] * (1 - fg[3]) for i in range(3))
 
     @staticmethod
@@ -194,6 +194,81 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertIn("color: var(--theme-accent-text, #78bfff) !important", rule)
         self.assertNotIn("var(--theme-accent-3", rule)
         self.assertNotIn("var(--theme-accent,", rule)
+
+    def test_anki_preview_uses_semantic_theme_colors(self):
+        css = self._style_css()
+        expected = {
+            ".anki-count-pill": (
+                "var(--theme-accent-text", "var(--theme-surface-2", "var(--theme-border-soft",
+            ),
+            ".anki-preview-card": (
+                "var(--theme-page-text", "var(--theme-surface", "var(--theme-border-soft",
+            ),
+            ".anki-preview-number": (
+                "var(--theme-accent-text", "var(--theme-surface-2", "var(--theme-border-soft",
+            ),
+            ".anki-card-side": ("var(--theme-page-text",),
+            ".anki-card-side + .anki-card-side": ("var(--theme-border-soft",),
+            ".anki-card-side > span": ("var(--theme-accent-text",),
+            ".anki-card-side pre": ("var(--theme-page-text",),
+            ".anki-card-back": ("var(--theme-surface-2",),
+            ".anki-preview-more": ("var(--theme-muted-text", "var(--theme-surface"),
+        }
+        forbidden = {
+            "#9bd4ff", "#7fbef4", "#6ebdff", "#e8f1fc", "#9fb2c8",
+            "rgba(25, 99, 177, 0.14)", "rgba(3, 13, 29, 0.58)",
+            "rgba(17, 54, 96, 0.22)", "rgba(13, 49, 82, 0.16)",
+            "rgba(2, 11, 25, 0.46)",
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = [
+                    body for prelude, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
+                    if selector in {item.strip() for item in prelude.split(",")}
+                ]
+                self.assertTrue(blocks, f"Missing shared preview selector {selector}")
+                semantic_block = next((body for body in blocks if all(x in body for x in tokens)), None)
+                self.assertIsNotNone(semantic_block, f"{selector} must use {tokens}")
+                self.assertFalse(any(color in semantic_block for color in forbidden))
+
+    def test_anki_preview_text_contrast_across_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                card = self._composite(variables["theme-surface"], panel)
+                card_secondary = self._composite(variables["theme-surface-2"], card)
+                panel_secondary = self._composite(variables["theme-surface-2"], panel)
+                more = self._composite(variables["theme-surface"], panel)
+                combinations = {
+                    "card text": (variables["theme-page-text"], card),
+                    "back text": (variables["theme-page-text"], card_secondary),
+                    "card labels": (variables["theme-accent-text"], card),
+                    "secondary labels": (variables["theme-accent-text"], card_secondary),
+                    "count pill": (variables["theme-accent-text"], panel_secondary),
+                    "preview note": (variables["theme-muted-text"], more),
+                }
+                for role, (foreground, background) in combinations.items():
+                    ratio = self._contrast(foreground, background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5, f"{theme} {role} is only {ratio:.2f}:1",
+                    )
+
+    def test_shared_anki_preview_classes_are_used_by_all_three_workflows(self):
+        with open(dlms.__file__, "r", encoding="utf-8") as f:
+            source = f.read()
+        self.assertGreaterEqual(source.count('class="anki-preview-card"'), 3)
+        self.assertGreaterEqual(source.count('class="anki-preview-number"'), 3)
+        self.assertGreaterEqual(source.count('class="anki-card-side"'), 3)
+        self.assertIn('@app.route("/anki")', source)
+        self.assertIn('@app.route("/anki/custom"', source)
+        self.assertIn('@app.route("/anki/law")', source)
 
 
 if __name__ == "__main__":

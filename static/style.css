@@ -6052,9 +6052,9 @@ a.settings-hub-card:hover {
     justify-content: center;
     min-height: 30px;
     padding: 4px 10px;
-    color: #9bd4ff;
-    background: rgba(25, 99, 177, 0.14);
-    border: 1px solid rgba(85, 159, 235, 0.28);
+    color: var(--theme-accent-text, #78bfff);
+    background: var(--theme-surface-2, rgba(17, 31, 56, 0.78));
+    border: 1px solid var(--theme-border-soft, rgba(98, 155, 255, 0.24));
     border-radius: 999px;
     font-size: 12px;
     font-weight: 800;
@@ -6068,16 +6068,17 @@ a.settings-hub-card:hover {
 
 .anki-preview-card {
     overflow: hidden;
-    background: rgba(3, 13, 29, 0.58);
-    border: 1px solid rgba(90, 147, 215, 0.20);
+    color: var(--theme-page-text, #eaf2ff);
+    background: var(--theme-surface, rgba(5, 18, 39, 0.58));
+    border: 1px solid var(--theme-border-soft, rgba(98, 155, 255, 0.24));
     border-radius: 13px;
 }
 
 .anki-preview-number {
     padding: 8px 12px;
-    color: #7fbef4;
-    background: rgba(17, 54, 96, 0.22);
-    border-bottom: 1px solid rgba(90, 147, 215, 0.14);
+    color: var(--theme-accent-text, #78bfff);
+    background: var(--theme-surface-2, rgba(17, 31, 56, 0.78));
+    border-bottom: 1px solid var(--theme-border-soft, rgba(98, 155, 255, 0.24));
     font-size: 11px;
     font-weight: 800;
     letter-spacing: .7px;
@@ -6086,16 +6087,17 @@ a.settings-hub-card:hover {
 
 .anki-card-side {
     padding: 13px 15px;
+    color: var(--theme-page-text, #eaf2ff);
 }
 
 .anki-card-side + .anki-card-side {
-    border-top: 1px solid rgba(90, 147, 215, 0.14);
+    border-top: 1px solid var(--theme-border-soft, rgba(98, 155, 255, 0.24));
 }
 
 .anki-card-side > span {
     display: block;
     margin-bottom: 6px;
-    color: #6ebdff;
+    color: var(--theme-accent-text, #78bfff);
     font-size: 10px;
     font-weight: 900;
     letter-spacing: 1px;
@@ -6104,7 +6106,7 @@ a.settings-hub-card:hover {
 .anki-card-side pre {
     margin: 0;
     padding: 0;
-    color: #e8f1fc;
+    color: var(--theme-page-text, #eaf2ff);
     background: transparent;
     border: 0;
     font-family: Arial, Helvetica, sans-serif;
@@ -6115,14 +6117,14 @@ a.settings-hub-card:hover {
 }
 
 .anki-card-back {
-    background: rgba(13, 49, 82, 0.16);
+    background: var(--theme-surface-2, rgba(17, 31, 56, 0.78));
 }
 
 .anki-preview-more {
     margin-top: 14px;
     padding: 10px 12px;
-    color: #9fb2c8;
-    background: rgba(2, 11, 25, 0.46);
+    color: var(--theme-muted-text, #b8c2cc);
+    background: var(--theme-surface, rgba(5, 18, 39, 0.58));
     border-radius: 9px;
     font-size: 12px;
     text-align: center;
