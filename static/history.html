@@ -76,7 +76,7 @@
             <article class="history-table-stat">
                 <span>Average</span>
                 <strong id="historyAverageScore">—</strong>
-                <small>across all attempts</small>
+                <small id="historySummaryScope">across all attempts</small>
             </article>
             <article class="history-table-stat">
                 <span>Best Score</span>
@@ -105,6 +105,11 @@
             <div id="dbHistoryBox" class="history-table-wrap" aria-live="polite">
                 <div class="history-table-empty"><p>Loading saved history…</p></div>
             </div>
+            <div class="history-pagination" id="historyPagination" hidden>
+                <button type="button" class="history-pagination-button" id="historyPrevious">Previous</button>
+                <span class="history-pagination-status" id="historyPaginationStatus"></span>
+                <button type="button" class="history-pagination-button" id="historyNext">Next</button>
+            </div>
         </section>
     </main>
 </div>
@@ -114,6 +119,8 @@ const params = new URLSearchParams(window.location.search);
 const selectedAttemptId = params.get("attempt");
 let dbAttempts = [];
 let historyOriginFilter = "all";
+let historyPage = 1;
+let historyPageMeta = null;
 
 function asNumber(value, fallback = 0) {
     const n = Number(value);
@@ -140,20 +147,21 @@ function scoreClass(percent) {
     return "bad";
 }
 
-function updateSummary(attempts) {
-    document.getElementById("historyTotalAttempts").textContent = attempts.length;
-    document.getElementById("historyAttemptCount").textContent = `${attempts.length} ${attempts.length === 1 ? "attempt" : "attempts"}`;
+function updateSummary(summary, total) {
+    document.getElementById("historyTotalAttempts").textContent = total;
+    document.getElementById("historyAttemptCount").textContent = `${total} ${total === 1 ? "attempt" : "attempts"}`;
+    document.getElementById("historySummaryScope").textContent = historyOriginFilter === "all"
+        ? "across all attempts"
+        : "within selected origin";
 
-    if (!attempts.length) {
+    if (!total) {
         document.getElementById("historyAverageScore").textContent = "—";
         document.getElementById("historyBestScore").textContent = "—";
         return;
     }
 
-    const percents = attempts.map(a => asNumber(a.percent));
-    const average = percents.reduce((sum, p) => sum + p, 0) / percents.length;
-    document.getElementById("historyAverageScore").textContent = `${Math.round(average)}%`;
-    document.getElementById("historyBestScore").textContent = `${Math.round(Math.max(...percents))}%`;
+    document.getElementById("historyAverageScore").textContent = `${Math.round(asNumber(summary.average_percent))}%`;
+    document.getElementById("historyBestScore").textContent = `${Math.round(asNumber(summary.best_percent))}%`;
 }
 
 function renderAttempts() {
@@ -170,16 +178,10 @@ function renderAttempts() {
         return;
     }
 
-    const visibleAttempts = historyOriginFilter === "all"
-        ? dbAttempts
-        : dbAttempts.filter(a => (a.origin_key || "quiz") === historyOriginFilter);
-
-    if (!visibleAttempts.length) {
+    if (!dbAttempts.length) {
         box.innerHTML = `<div class="history-table-empty"><div class="history-table-empty-icon">↶</div><h2>No attempts in this category</h2><p>Choose another origin filter to view saved attempts.</p></div>`;
         return;
     }
-
-    const sorted = [...visibleAttempts].sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0));
 
     box.innerHTML = `
         <table class="history-results-table">
@@ -194,7 +196,7 @@ function renderAttempts() {
                 </tr>
             </thead>
             <tbody>
-                ${sorted.map(a => {
+                ${dbAttempts.map(a => {
                     const attemptId = a.id;
                     const percent = Math.round(asNumber(a.percent));
                     const score = asNumber(a.score);
@@ -236,12 +238,15 @@ function renderAttempts() {
 async function loadDbHistory() {
     const box = document.getElementById("dbHistoryBox");
     try {
-        const res = await fetch("/api/attempts");
+        const query = new URLSearchParams({ page: String(historyPage), origin: historyOriginFilter });
+        const res = await fetch(`/api/attempts?${query}`);
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
         dbAttempts = Array.isArray(data) ? data : (data.attempts || []);
-        updateSummary(dbAttempts);
+        historyPageMeta = data;
+        updateSummary(data.summary || {}, Number(data.total || 0));
         renderAttempts();
+        updatePagination(data);
     } catch (err) {
         console.error("DB history failed:", err);
         document.getElementById("historyAttemptCount").textContent = "Unavailable";
@@ -252,6 +257,18 @@ async function loadDbHistory() {
                 <p>The saved-attempt API did not respond successfully.</p>
             </div>`;
     }
+}
+
+function updatePagination(data) {
+    const pagination = document.getElementById("historyPagination");
+    const previous = document.getElementById("historyPrevious");
+    const next = document.getElementById("historyNext");
+    const status = document.getElementById("historyPaginationStatus");
+    const totalPages = Number(data.total_pages || 0);
+    pagination.hidden = totalPages <= 1;
+    previous.disabled = !data.has_previous;
+    next.disabled = !data.has_next;
+    status.textContent = totalPages ? `Page ${data.page} of ${totalPages}` : "";
 }
 
 document.getElementById("menuButton").addEventListener("click", () => {
@@ -277,9 +294,24 @@ document.getElementById("shutdownBtn").addEventListener("click", async () => {
 document.querySelectorAll(".history-origin-filter").forEach(button => {
     button.addEventListener("click", () => {
         historyOriginFilter = button.dataset.originFilter || "all";
+        historyPage = 1;
         document.querySelectorAll(".history-origin-filter").forEach(b => b.classList.toggle("active", b === button));
-        renderAttempts();
+        loadDbHistory();
     });
+});
+
+document.getElementById("historyPrevious").addEventListener("click", () => {
+    if (historyPageMeta && historyPageMeta.has_previous) {
+        historyPage -= 1;
+        loadDbHistory();
+    }
+});
+
+document.getElementById("historyNext").addEventListener("click", () => {
+    if (historyPageMeta && historyPageMeta.has_next) {
+        historyPage += 1;
+        loadDbHistory();
+    }
 });
 
 document.addEventListener("DOMContentLoaded", loadDbHistory);

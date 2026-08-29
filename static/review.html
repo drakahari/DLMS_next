@@ -349,16 +349,13 @@ async function loadReview() {
     }
 
     try {
-        const res = await fetch("/api/attempts", { cache: "no-store" });
-        const data = await res.json();
-        const attempt = (data.attempts || []).find(
-            a => String(a.id) === String(attemptId)
-        );
-
-        if (!attempt) {
+        const res = await fetch(`/api/attempts/${encodeURIComponent(attemptId)}`, { cache: "no-store" });
+        if (res.status === 404) {
             info.innerHTML = "❌ Attempt not found.";
             return;
         }
+        if (!res.ok) throw new Error("Unable to load attempt");
+        const attempt = await res.json();
 
         info.innerHTML = `
             <div class="review-attempt-primary">

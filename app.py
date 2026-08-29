@@ -21235,186 +21235,352 @@ def _quiz_history_origin(registry_entry, packs=None):
     return {"key": "quiz", "label": "Quiz"}
 
 
-@app.route("/api/attempts")
-def api_attempts():
-    conn = get_db()
-    cur = conn.cursor()
+_ATTEMPT_HISTORY_ORIGINS = {"all", "quiz", "it", "medical", "study-pack", "law"}
+_ATTEMPT_HISTORY_DEFAULT_PAGE_SIZE = 50
+_ATTEMPT_HISTORY_MAX_PAGE_SIZE = 100
 
-    # -------------------------
-    # Detect schema variants
-    # -------------------------
-    cur.execute("PRAGMA table_info(attempts)")
-    attempt_cols = {r[1] for r in cur.fetchall()}
-    has_attempt_id_col = "attempt_id" in attempt_cols  # UI timestamp string storage
 
-    # -------------------------
-    # Load registry map (id -> entry)
-    # -------------------------
-    registry = load_registry()
-
+def _attempt_history_context():
+    """Return registry-derived title and origin data without changing attempt storage."""
     registry_map = {}
+    origin_by_quiz_id = {}
     installed_packs = discover_content_packs()
-    for q in registry:
-        rid = q.get("id", q.get("quiz_id", q.get("timestamp")))
+    for entry in load_registry():
+        if not isinstance(entry, dict):
+            continue
+        raw_quiz_id = entry.get("id", entry.get("quiz_id", entry.get("timestamp")))
         try:
-            rid = int(rid)
+            quiz_id = int(raw_quiz_id)
         except (TypeError, ValueError):
             continue
-        registry_map[rid] = q
+        registry_map[quiz_id] = entry
+        origin_by_quiz_id[quiz_id] = _quiz_history_origin(entry, installed_packs)["key"]
+    return registry_map, installed_packs, origin_by_quiz_id
 
-    # DEBUG - retained for troubleshooting attempt-to-quiz registry matching
-# print(f"[DEBUG] Registry map keys: {sorted(registry_map.keys())}")
 
-    # -------------------------
-    # Query attempts
-    # Return IDs that the UI actually uses (attempt_id string if available)
-    # -------------------------
-    if has_attempt_id_col:
-        cur.execute("""
-            SELECT
-                a.id AS attempt_pk,
-                a.attempt_id AS attempt_id,
-                a.quiz_id,
-                q.title AS db_quiz_title,
-                a.score,
-                a.total,
-                a.percent,
-                a.started_at,
-                a.completed_at,
-                a.time_remaining,
-                a.mode
-            FROM attempts a
-            LEFT JOIN quizzes q ON q.id = a.quiz_id
-            ORDER BY a.completed_at DESC
-        """)
-    else:
-        cur.execute("""
-            SELECT
-                a.id AS attempt_pk,
-                NULL AS attempt_id,
-                a.quiz_id,
-                q.title AS db_quiz_title,
-                a.score,
-                a.total,
-                a.percent,
-                a.started_at,
-                a.completed_at,
-                a.time_remaining,
-                a.mode
-            FROM attempts a
-            LEFT JOIN quizzes q ON q.id = a.quiz_id
-            ORDER BY a.completed_at DESC
-        """)
+def _attempt_columns(cur):
+    cur.execute("PRAGMA table_info(attempts)")
+    return {row[1] for row in cur.fetchall()}
 
-    out = []
 
-    rows = cur.fetchall()
-    for row in rows:
-        # Normalize quiz_id to int for registry lookup
-        qid_raw = row["quiz_id"]
+def _parse_attempt_pagination():
+    def parse_positive(name, default, maximum=None):
+        raw = request.args.get(name)
+        if raw is None or raw == "":
+            return default
         try:
-            quiz_id_norm = int(qid_raw)
+            value = int(raw)
         except (TypeError, ValueError):
-            quiz_id_norm = qid_raw
+            raise ValueError(f"{name} must be a positive integer")
+        if value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+        if maximum is not None and value > maximum:
+            return maximum
+        return value
 
-        # Title resolution:
-        # 1) Registry title (best for file-based quizzes)
-        # 2) DB title
-        # 3) Fallback
-        quiz_title = None
-        if isinstance(quiz_id_norm, int) and quiz_id_norm in registry_map:
-            quiz_title = registry_map[quiz_id_norm].get("title")
+    page = parse_positive("page", 1)
+    page_size = parse_positive(
+        "page_size", _ATTEMPT_HISTORY_DEFAULT_PAGE_SIZE, _ATTEMPT_HISTORY_MAX_PAGE_SIZE
+    )
+    origin = str(request.args.get("origin", "all") or "all").strip().lower()
+    if origin not in _ATTEMPT_HISTORY_ORIGINS:
+        raise ValueError("origin must be one of: " + ", ".join(sorted(_ATTEMPT_HISTORY_ORIGINS)))
+    return page, page_size, origin
 
-        if not quiz_title:
-            quiz_title = row["db_quiz_title"]
 
-        if not quiz_title:
-            quiz_title = "Unknown Quiz"
+def _attempt_origin_where(origin, origin_by_quiz_id):
+    """Build a parameterized SQL filter matching the legacy registry-origin rules."""
+    if origin == "all":
+        return "", []
 
-        # Choose the ID the UI should use in URLs:
-        # - prefer attempts.attempt_id (timestamp string) when available
-        # - else fall back to integer PK
-        public_attempt_id = row["attempt_id"] or row["attempt_pk"]
+    matching_ids = sorted(
+        quiz_id for quiz_id, origin_key in origin_by_quiz_id.items() if origin_key == origin
+    )
+    if origin == "quiz":
+        non_quiz_ids = sorted(
+            quiz_id for quiz_id, origin_key in origin_by_quiz_id.items() if origin_key != "quiz"
+        )
+        if not non_quiz_ids:
+            return "", []
+        placeholders = ", ".join("?" for _ in non_quiz_ids)
+        return f" WHERE (a.quiz_id IS NULL OR a.quiz_id NOT IN ({placeholders}))", non_quiz_ids
 
-        registry_entry = registry_map.get(quiz_id_norm, {}) if isinstance(quiz_id_norm, int) else {}
-        origin = _quiz_history_origin(registry_entry, installed_packs)
+    if not matching_ids:
+        return " WHERE 1 = 0", []
+    placeholders = ", ".join("?" for _ in matching_ids)
+    return f" WHERE a.quiz_id IN ({placeholders})", matching_ids
 
-        attempt_obj = {
-            # UI fields expected by history/dashboard/review:
-            "id": public_attempt_id,
-            "quiz_id": quiz_id_norm,
-            "quiz_title": quiz_title,
-            "score": row["score"],
-            "total": row["total"],
-            "percent": row["percent"],
-            "started_at": row["started_at"],
-            "completed_at": row["completed_at"],
-            "time_remaining": row["time_remaining"],
-            "mode": row["mode"],
-            "origin_key": origin["key"],
-            "origin": origin["label"],
-            "source_pack_id": registry_entry.get("source_pack_id") if isinstance(registry_entry, dict) else None,
-            "source_dataset_id": registry_entry.get("source_dataset_id") if isinstance(registry_entry, dict) else None,
 
-            # Extra debug/compat fields:
-            "attempt_pk": row["attempt_pk"],
-            "attempt_id": row["attempt_id"],
+def _attempt_select_sql(has_attempt_id_col):
+    attempt_id_select = "a.attempt_id AS attempt_id" if has_attempt_id_col else "NULL AS attempt_id"
+    return f"""
+        SELECT
+            a.id AS attempt_pk,
+            {attempt_id_select},
+            a.quiz_id,
+            q.title AS db_quiz_title,
+            a.score,
+            a.total,
+            a.percent,
+            a.started_at,
+            a.completed_at,
+            a.time_remaining,
+            a.mode
+        FROM attempts a
+        LEFT JOIN quizzes q ON q.id = a.quiz_id
+    """
 
-            # Some pages check this:
-            "missedQuestions": []
-        }
 
-        # Attach missed questions (best-effort across schema variants)
-        # Try by PK first, then by attempt_id string if needed.
-        missed_rows = []
-        try:
-            cur.execute("""
-                SELECT
-                    attempt_question_number,
-                    question_text,
-                    correct_letters,
-                    correct_text,
-                    selected_letters,
-                    selected_text
-                FROM missed_questions
-                WHERE attempt_id = ?
-                ORDER BY attempt_question_number
-            """, (row["attempt_pk"],))
-            missed_rows = cur.fetchall()
-        except Exception:
-            missed_rows = []
+def _attempt_summary_from_row(row, registry_map, installed_packs):
+    try:
+        quiz_id = int(row["quiz_id"])
+    except (TypeError, ValueError):
+        quiz_id = row["quiz_id"]
+    registry_entry = registry_map.get(quiz_id, {}) if isinstance(quiz_id, int) else {}
+    origin = _quiz_history_origin(registry_entry, installed_packs)
+    quiz_title = registry_entry.get("title") or row["db_quiz_title"] or "Unknown Quiz"
+    return {
+        "id": row["attempt_id"] or row["attempt_pk"],
+        "attempt_pk": row["attempt_pk"],
+        "attempt_id": row["attempt_id"],
+        "quiz_id": quiz_id,
+        "quiz_title": quiz_title,
+        "score": row["score"],
+        "total": row["total"],
+        "percent": row["percent"],
+        "started_at": row["started_at"],
+        "completed_at": row["completed_at"],
+        "time_remaining": row["time_remaining"],
+        "mode": row["mode"],
+        "origin_key": origin["key"],
+        "origin": origin["label"],
+        "source_pack_id": registry_entry.get("source_pack_id") if registry_entry else None,
+        "source_dataset_id": registry_entry.get("source_dataset_id") if registry_entry else None,
+    }
 
-        if not missed_rows and row["attempt_id"]:
-            cur.execute("""
-                SELECT
-                    attempt_question_number,
-                    question_text,
-                    correct_letters,
-                    correct_text,
-                    selected_letters,
-                    selected_text
-                FROM missed_questions
-                WHERE attempt_id = ?
-                ORDER BY attempt_question_number
-            """, (row["attempt_id"],))
-            missed_rows = cur.fetchall()
 
-        for m in missed_rows:
-            attempt_obj["missedQuestions"].append({
-                "attempt_question_number": m["attempt_question_number"],
-                "question_text": m["question_text"],
-                "correct_letters": m["correct_letters"],
-                "correct_text": m["correct_text"],
-                "selected_letters": m["selected_letters"],
-                "selected_text": m["selected_text"],
+def _resolve_attempt_row(cur, attempt_reference, has_attempt_id_col=None):
+    """Resolve a public attempt_id first, then the legacy/internal primary key."""
+    reference = str(attempt_reference or "").strip()
+    if not reference:
+        return None
+    if has_attempt_id_col is None:
+        has_attempt_id_col = "attempt_id" in _attempt_columns(cur)
+    select_sql = _attempt_select_sql(has_attempt_id_col)
+    if has_attempt_id_col:
+        return cur.execute(
+            select_sql + """
+                WHERE CAST(a.attempt_id AS TEXT) = ? OR CAST(a.id AS TEXT) = ?
+                ORDER BY CASE WHEN CAST(a.attempt_id AS TEXT) = ? THEN 0 ELSE 1 END
+                LIMIT 1
+            """,
+            (reference, reference, reference),
+        ).fetchone()
+    return cur.execute(
+        select_sql + " WHERE CAST(a.id AS TEXT) = ? LIMIT 1", (reference,)
+    ).fetchone()
+
+
+def _missed_rows_for_attempt(cur, attempt_row):
+    """Read one attempt's snapshots with the same PK/public-ID fallback everywhere."""
+    sql = """
+        SELECT
+            attempt_question_number,
+            question_text,
+            correct_text,
+            correct_letters,
+            selected_text,
+            selected_letters,
+            COALESCE(question_type, 'choice') AS question_type,
+            response_json
+        FROM missed_questions
+        WHERE attempt_id = ?
+        ORDER BY attempt_question_number, id
+    """
+    rows = cur.execute(sql, (attempt_row["attempt_pk"],)).fetchall()
+    if not rows and attempt_row["attempt_id"]:
+        rows = cur.execute(sql, (attempt_row["attempt_id"],)).fetchall()
+    return rows
+
+
+@app.route("/api/attempts")
+def api_attempts():
+    try:
+        page, page_size, origin = _parse_attempt_pagination()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        has_attempt_id_col = "attempt_id" in _attempt_columns(cur)
+        registry_map, installed_packs, origin_by_quiz_id = _attempt_history_context()
+        where_sql, where_params = _attempt_origin_where(origin, origin_by_quiz_id)
+        total = cur.execute(
+            "SELECT COUNT(*) FROM attempts a" + where_sql, where_params
+        ).fetchone()[0]
+        aggregate = cur.execute(
+            "SELECT AVG(a.percent) AS average_percent, MAX(a.percent) AS best_percent FROM attempts a"
+            + where_sql,
+            where_params,
+        ).fetchone()
+        offset = (page - 1) * page_size
+        rows = cur.execute(
+            _attempt_select_sql(has_attempt_id_col)
+            + where_sql
+            + " ORDER BY a.completed_at DESC, a.id DESC LIMIT ? OFFSET ?",
+            [*where_params, page_size, offset],
+        ).fetchall()
+        total_pages = (total + page_size - 1) // page_size if total else 0
+        return jsonify({
+            "attempts": [_attempt_summary_from_row(row, registry_map, installed_packs) for row in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_previous": page > 1 and total_pages > 0,
+            "summary": {
+                "total_attempts": total,
+                "average_percent": aggregate["average_percent"],
+                "best_percent": aggregate["best_percent"],
+            },
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/attempts/overview")
+def api_attempts_overview():
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        has_attempt_id_col = "attempt_id" in _attempt_columns(cur)
+        registry_map, installed_packs, _ = _attempt_history_context()
+        aggregate = cur.execute("""
+            SELECT COUNT(*) AS total_attempts, AVG(percent) AS average_percent,
+                   MAX(percent) AS best_percent
+            FROM attempts
+        """).fetchone()
+        rows = cur.execute(
+            _attempt_select_sql(has_attempt_id_col)
+            + " ORDER BY a.completed_at DESC, a.id DESC LIMIT 5"
+        ).fetchall()
+        recent_attempts = [_attempt_summary_from_row(row, registry_map, installed_packs) for row in rows]
+        return jsonify({
+            "total_attempts": aggregate["total_attempts"],
+            "average_percent": aggregate["average_percent"],
+            "best_percent": aggregate["best_percent"],
+            "latest_attempt": recent_attempts[0] if recent_attempts else None,
+            "recent_attempts": recent_attempts,
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/attempts/analytics")
+def api_attempts_analytics():
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        has_attempt_id_col = "attempt_id" in _attempt_columns(cur)
+        registry_map, installed_packs, _ = _attempt_history_context()
+        aggregate = cur.execute("""
+            SELECT COUNT(*) AS total_attempts, AVG(percent) AS average_percent,
+                   MAX(percent) AS best_percent,
+                   COALESCE(SUM(CASE WHEN percent >= 75 THEN 1 ELSE 0 END), 0) AS pass_count
+            FROM attempts
+        """).fetchone()
+        attempt_id_select = "a.attempt_id AS attempt_id" if has_attempt_id_col else "NULL AS attempt_id"
+        rows = cur.execute(f"""
+            WITH ranked AS (
+                SELECT a.id AS attempt_pk, {attempt_id_select}, a.quiz_id,
+                       a.score, a.total, a.percent, a.started_at, a.completed_at,
+                       a.time_remaining, a.mode,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY a.quiz_id
+                           ORDER BY a.completed_at DESC, a.id DESC
+                       ) AS position
+                FROM attempts a
+            )
+            SELECT r.quiz_id, q.title AS db_quiz_title,
+                   COUNT(*) AS attempt_count, AVG(r.percent) AS average_percent,
+                   MAX(r.percent) AS best_percent,
+                   SUM(CASE WHEN r.percent >= 75 THEN 1 ELSE 0 END) AS pass_count,
+                   MAX(CASE WHEN r.position = 1 THEN r.attempt_pk END) AS latest_attempt_pk,
+                   MAX(CASE WHEN r.position = 1 THEN r.attempt_id END) AS latest_attempt_id,
+                   MAX(CASE WHEN r.position = 1 THEN r.score END) AS latest_score,
+                   MAX(CASE WHEN r.position = 1 THEN r.total END) AS latest_total,
+                   MAX(CASE WHEN r.position = 1 THEN r.percent END) AS latest_percent,
+                   MAX(CASE WHEN r.position = 1 THEN r.started_at END) AS latest_started_at,
+                   MAX(CASE WHEN r.position = 1 THEN r.completed_at END) AS latest_completed_at,
+                   MAX(CASE WHEN r.position = 1 THEN r.time_remaining END) AS latest_time_remaining,
+                   MAX(CASE WHEN r.position = 1 THEN r.mode END) AS latest_mode,
+                   MAX(CASE WHEN r.position = 2 THEN r.attempt_pk END) AS previous_attempt_pk,
+                   MAX(CASE WHEN r.position = 2 THEN r.attempt_id END) AS previous_attempt_id,
+                   MAX(CASE WHEN r.position = 2 THEN r.percent END) AS previous_percent,
+                   MAX(CASE WHEN r.position = 2 THEN r.completed_at END) AS previous_completed_at
+            FROM ranked r
+            LEFT JOIN quizzes q ON q.id = r.quiz_id
+            GROUP BY r.quiz_id, q.title
+            ORDER BY attempt_count DESC, db_quiz_title COLLATE NOCASE, r.quiz_id
+        """).fetchall()
+        quizzes = []
+        for row in rows:
+            latest_row = {
+                "attempt_pk": row["latest_attempt_pk"], "attempt_id": row["latest_attempt_id"],
+                "quiz_id": row["quiz_id"], "db_quiz_title": row["db_quiz_title"],
+                "score": row["latest_score"], "total": row["latest_total"],
+                "percent": row["latest_percent"], "started_at": row["latest_started_at"],
+                "completed_at": row["latest_completed_at"], "time_remaining": row["latest_time_remaining"],
+                "mode": row["latest_mode"],
+            }
+            latest = _attempt_summary_from_row(latest_row, registry_map, installed_packs)
+            previous = None
+            if row["previous_attempt_pk"] is not None:
+                previous = {
+                    "id": row["previous_attempt_id"] or row["previous_attempt_pk"],
+                    "attempt_pk": row["previous_attempt_pk"],
+                    "attempt_id": row["previous_attempt_id"],
+                    "percent": row["previous_percent"],
+                    "completed_at": row["previous_completed_at"],
+                }
+            quizzes.append({
+                "quiz_id": row["quiz_id"], "quiz_title": latest["quiz_title"],
+                "attempts": row["attempt_count"], "average_percent": row["average_percent"],
+                "best_percent": row["best_percent"], "pass_count": row["pass_count"],
+                "pass_rate": (row["pass_count"] * 100.0 / row["attempt_count"]) if row["attempt_count"] else 0,
+                "latest_attempt": latest, "previous_attempt": previous,
             })
+        total_attempts = aggregate["total_attempts"]
+        return jsonify({
+            "summary": {
+                "total_attempts": total_attempts,
+                "average_percent": aggregate["average_percent"],
+                "best_percent": aggregate["best_percent"],
+                "pass_count": aggregate["pass_count"],
+                "pass_rate": (aggregate["pass_count"] * 100.0 / total_attempts) if total_attempts else 0,
+                "quiz_count": len(quizzes),
+            },
+            "quizzes": quizzes,
+        })
+    finally:
+        conn.close()
 
-        out.append(attempt_obj)
 
-    conn.close()
-
-    # IMPORTANT: return object with "attempts" to satisfy dashboard/review.html
-    return jsonify({"attempts": out})
+@app.route("/api/attempts/<attempt_reference>")
+def api_attempt_summary(attempt_reference):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        has_attempt_id_col = "attempt_id" in _attempt_columns(cur)
+        row = _resolve_attempt_row(cur, attempt_reference, has_attempt_id_col)
+        if row is None:
+            return jsonify({"error": "Attempt not found"}), 404
+        registry_map, installed_packs, _ = _attempt_history_context()
+        return jsonify(_attempt_summary_from_row(row, registry_map, installed_packs))
+    finally:
+        conn.close()
 
 
 
@@ -23888,9 +24054,8 @@ def export_anki_missed_tsv():
 
 
 
-# Legacy endpoint intentionally disabled.
-# Review data is now served exclusively via /api/attempts.
-# Kept as a placeholder to prevent accidental reintroduction.
+# Review loads a selected summary from /api/attempts/<attempt-id> and then
+# retrieves only that attempt's missed-question snapshot below.
 
 # @app.route("/api/missed_questions")
 # def api_missed_questions():
@@ -23905,43 +24070,30 @@ def api_missed_questions():
         return {"error": "Missing attempt id"}, 400
 
     conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT
-            attempt_question_number,
-            question_text,
-            correct_text,
-            correct_letters,
-            selected_text,
-            selected_letters,
-            COALESCE(question_type, 'choice') AS question_type,
-            response_json
-        FROM missed_questions
-        WHERE attempt_id = ?
-        ORDER BY attempt_question_number
-    """, (attempt_id,))
-
-
-    rows = cur.fetchall()
-    conn.close()
-
-    return jsonify([
-        {
-            "attempt_question_number": r["attempt_question_number"],
-            "question_text": r["question_text"],
-            "correct_text": r["correct_text"],
-            "correct_letters": r["correct_letters"],
-            "selected_text": r["selected_text"],
-            "selected_letters": r["selected_letters"],
-            "question_type": r["question_type"],
-            "response_data": (
-                json.loads(r["response_json"])
-                if r["response_json"] else None
-            ),
-        }
-        for r in rows
-    ])
+    try:
+        cur = conn.cursor()
+        row = _resolve_attempt_row(cur, attempt_id)
+        if row is None:
+            return jsonify({"error": "Attempt not found"}), 404
+        rows = _missed_rows_for_attempt(cur, row)
+        return jsonify([
+            {
+                "attempt_question_number": r["attempt_question_number"],
+                "question_text": r["question_text"],
+                "correct_text": r["correct_text"],
+                "correct_letters": r["correct_letters"],
+                "selected_text": r["selected_text"],
+                "selected_letters": r["selected_letters"],
+                "question_type": r["question_type"],
+                "response_data": (
+                    json.loads(r["response_json"])
+                    if r["response_json"] else None
+                ),
+            }
+            for r in rows
+        ])
+    finally:
+        conn.close()
 
 
 
@@ -24925,6 +25077,10 @@ def ensure_schema(conn):
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_question_concepts_question ON question_concepts(question_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_question_concepts_concept ON question_concepts(concept_id)")
+    # DLMS-044: supports stable, bounded history/recent-attempt reads and
+    # selected-attempt missed-question snapshots without per-row scans.
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_attempts_completed_id ON attempts(completed_at DESC, id DESC)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_missed_questions_attempt_number ON missed_questions(attempt_id, attempt_question_number)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_events_quiz ON learning_events(quiz_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_events_question ON learning_events(question_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_events_attempt ON learning_events(attempt_id)")
@@ -25075,62 +25231,12 @@ def resolve_logo_filename(logo_filename):
 
 @app.route("/history_db")
 def history_db():
-    conn = get_db()
-    cur = conn.cursor()
-
-    # 1️⃣ Pull all attempts with quiz name
-    cur.execute("""
-        SELECT 
-            a.id,
-            q.title AS quiz_title,
-            a.score,
-            a.total,
-            a.percent,
-            a.mode,
-            a.started_at,
-            a.completed_at,
-            a.time_remaining
-        FROM attempts a
-        LEFT JOIN quizzes q ON a.quiz_id = q.id
-        ORDER BY a.completed_at DESC
-    """)
-    attempts = cur.fetchall()
-
-    results = []
-
-    for row in attempts:
-        attempt_id = row["id"]
-
-        # 2️⃣ Pull missed questions for this attempt
-        cur.execute("""
-            SELECT
-                question_number,
-                question_text,
-                correct_letters,
-                correct_text,
-                selected_letters,
-                selected_text
-            FROM missed_questions
-            WHERE attempt_id = ?
-        """, (attempt_id,))
-
-        missed = [dict(m) for m in cur.fetchall()]
-
-        results.append({
-            "id": row["id"],
-            "quiz_title": row["quiz_title"] or "Unknown Quiz",
-            "score": row["score"],
-            "total": row["total"],
-            "percent": row["percent"],
-            "mode": row["mode"],
-            "started_at": row["started_at"],
-            "completed_at": row["completed_at"],
-            "time_remaining": row["time_remaining"],
-            "missed": missed
-        })
-
-    conn.close()
-    return jsonify(results)
+    # No shipped page calls this legacy endpoint.  Retire the unbounded N+1
+    # response rather than leaving a second production scalability trap.
+    return jsonify({
+        "error": "Deprecated endpoint. Use /api/attempts for paged summaries and "
+                 "/api/missed_questions for selected-attempt detail."
+    }), 410
 
 
 # @app.route("/export/anki", methods=["POST"])

@@ -3415,6 +3415,36 @@ a.settings-hub-card:hover {
     color: #ff9da3;
 }
 
+.history-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 16px;
+}
+
+.history-pagination-button {
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1px solid rgba(88, 159, 246, 0.4);
+    border-radius: 9px;
+    background: rgba(22, 65, 116, 0.42);
+    color: #dcecff;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.history-pagination-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.history-pagination-status {
+    color: #b4c4d6;
+    font-size: 12px;
+}
+
 @media (max-width: 900px) {
     .history-table-stats {
         grid-template-columns: 1fr;

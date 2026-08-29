@@ -150,15 +150,15 @@ function scoreTone(percent) {
     return "bad";
 }
 
-function trendFor(list) {
-    if (list.length < 2) {
+function trendFor(latest, previous) {
+    if (!previous) {
         return { label: "Not enough data", className: "neutral", symbol: "—" };
     }
 
-    const newest = asNumber(list[0].percent);
-    const previous = asNumber(list[1].percent);
-    if (newest > previous) return { label: "Improving", className: "good", symbol: "↑" };
-    if (newest < previous) return { label: "Down", className: "bad", symbol: "↓" };
+    const newest = asNumber(latest.percent);
+    const prior = asNumber(previous.percent);
+    if (newest > prior) return { label: "Improving", className: "good", symbol: "↑" };
+    if (newest < prior) return { label: "Down", className: "bad", symbol: "↓" };
     return { label: "Steady", className: "neutral", symbol: "→" };
 }
 
@@ -173,37 +173,32 @@ function formatDate(value) {
     });
 }
 
-async function fetchAttempts() {
-    const res = await fetch("/api/attempts", { cache: "no-store" });
+async function fetchAnalytics() {
+    const res = await fetch("/api/attempts/analytics", { cache: "no-store" });
     if (!res.ok) throw new Error("DB API failed");
-    const data = await res.json();
-    return Array.isArray(data) ? data : (data.attempts || []);
+    return res.json();
 }
 
-function updateSummary(attempts, grouped) {
-    document.getElementById("analyticsTotalAttempts").textContent = attempts.length;
-    document.getElementById("analyticsQuizCount").textContent = Object.keys(grouped).length;
+function updateSummary(summary) {
+    document.getElementById("analyticsTotalAttempts").textContent = summary.total_attempts;
+    document.getElementById("analyticsQuizCount").textContent = summary.quiz_count;
 
-    if (!attempts.length) {
+    if (!summary.total_attempts) {
         document.getElementById("analyticsAverage").textContent = "—";
         document.getElementById("analyticsBest").textContent = "—";
         return;
     }
 
-    const scores = attempts.map(a => asNumber(a.percent));
-    const average = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
-    const best = Math.max(...scores);
-
-    document.getElementById("analyticsAverage").textContent = `${average}%`;
-    document.getElementById("analyticsBest").textContent = `${Math.round(best)}%`;
+    document.getElementById("analyticsAverage").textContent = `${Math.round(asNumber(summary.average_percent))}%`;
+    document.getElementById("analyticsBest").textContent = `${Math.round(asNumber(summary.best_percent))}%`;
 }
 
 async function buildAnalytics() {
     const content = document.getElementById("analyticsContent");
 
-    let attempts = [];
+    let analytics;
     try {
-        attempts = await fetchAttempts();
+        analytics = await fetchAnalytics();
     } catch (err) {
         console.error("Analytics load failed:", err);
         content.innerHTML = `
@@ -214,16 +209,11 @@ async function buildAnalytics() {
         return;
     }
 
-    const grouped = {};
-    attempts.forEach(attempt => {
-        const key = attempt.quiz_title || "Unknown Quiz";
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(attempt);
-    });
+    const summary = analytics.summary || {};
+    const quizzes = analytics.quizzes || [];
+    updateSummary(summary);
 
-    updateSummary(attempts, grouped);
-
-    if (!attempts.length) {
+    if (!summary.total_attempts) {
         content.innerHTML = `
             <div class="analytics-empty-state">
                 <strong>No analytics yet.</strong>
@@ -233,32 +223,24 @@ async function buildAnalytics() {
         return;
     }
 
-    const rows = Object.entries(grouped).map(([quizTitle, list]) => {
-        list.sort((a, b) => String(b.completed_at || "").localeCompare(String(a.completed_at || "")));
-
-        const scores = list.map(a => asNumber(a.percent));
-        const average = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
-        const best = Math.max(...scores);
-        const passes = list.filter(a => asNumber(a.percent) >= 75).length;
-        const passRate = Math.round((passes / list.length) * 100);
-        const latest = list[0];
-        const latestPercent = Math.round(asNumber(latest.percent));
-        const trend = trendFor(list);
+    const rows = quizzes.map(quiz => {
+        const latest = quiz.latest_attempt || {};
+        const trend = trendFor(latest, quiz.previous_attempt);
         const attemptId = latest.id || latest.attemptId || "";
         const reviewHref = attemptId ? `/review?attempt=${encodeURIComponent(attemptId)}` : "/history";
 
         return {
-            quizTitle,
-            attempts: list.length,
-            average,
-            best: Math.round(best),
-            passRate,
-            latestPercent,
+            quizTitle: quiz.quiz_title || "Unknown Quiz",
+            attempts: quiz.attempts,
+            average: Math.round(asNumber(quiz.average_percent)),
+            best: Math.round(asNumber(quiz.best_percent)),
+            passRate: Math.round(asNumber(quiz.pass_rate)),
+            latestPercent: Math.round(asNumber(latest.percent)),
             latestDate: latest.completed_at || "",
             trend,
             reviewHref
         };
-    }).sort((a, b) => b.attempts - a.attempts || a.quizTitle.localeCompare(b.quizTitle));
+    });
 
     content.innerHTML = `
         <div class="analytics-table-wrap">

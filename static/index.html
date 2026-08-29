@@ -312,13 +312,13 @@ async function loadDashboardData() {
     const activity = document.getElementById("recentActivity");
 
     try {
-        const res = await fetch("/api/attempts", { cache: "no-store" });
+        const res = await fetch("/api/attempts/overview", { cache: "no-store" });
         if (!res.ok) throw new Error("Unable to load attempts");
 
         const data = await res.json();
-        const attempts = Array.isArray(data) ? data : (data.attempts || []);
+        const attempts = data.recent_attempts || [];
 
-        if (!attempts.length) {
+        if (!data.total_attempts) {
             activity.innerHTML = `
                 <div class="dashboard-empty-state">
                     <strong>No quiz attempts yet.</strong>
@@ -331,21 +331,16 @@ async function loadDashboardData() {
             return;
         }
 
-        const sorted = [...attempts].sort((a, b) =>
-            String(b.completed_at || "").localeCompare(String(a.completed_at || ""))
-        );
+        const average = Math.round(Number(data.average_percent || 0));
+        const best = Math.round(Number(data.best_percent || 0));
+        const latest = Number((data.latest_attempt || {}).percent || 0);
 
-        const scores = attempts.map(a => Number(a.percent || 0));
-        const average = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
-        const best = Math.max(...scores);
-        const latest = Number(sorted[0].percent || 0);
-
-        document.getElementById("statAttempts").textContent = attempts.length;
+        document.getElementById("statAttempts").textContent = data.total_attempts;
         document.getElementById("statAverage").textContent = `${average}%`;
         document.getElementById("statBest").textContent = `${best}%`;
         document.getElementById("statLatest").textContent = `${latest}%`;
 
-        activity.innerHTML = sorted.slice(0, 5).map(a => {
+        activity.innerHTML = attempts.map(a => {
             const id = a.id || a.attemptId || "";
             const href = id ? `/review?attempt=${encodeURIComponent(id)}` : "/history";
             const title = escapeHtml(a.quiz_title || "Unknown Quiz");

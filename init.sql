@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS missed_questions (
     attempt_id TEXT NOT NULL,
     question_id INTEGER NOT NULL,
     correct_letters TEXT NOT NULL,
+    attempt_question_number INTEGER,
 
     FOREIGN KEY (attempt_id)
         REFERENCES attempts(id)
@@ -155,6 +156,12 @@ CREATE INDEX IF NOT EXISTS idx_matching_pairs_question
 
 CREATE INDEX IF NOT EXISTS idx_attempts_quiz
     ON attempts (quiz_id);
+
+CREATE INDEX IF NOT EXISTS idx_attempts_completed_id
+    ON attempts (completed_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_missed_questions_attempt_number
+    ON missed_questions (attempt_id, attempt_question_number);
 
 CREATE INDEX IF NOT EXISTS idx_answers_attempt
     ON attempt_answers (attempt_id);
