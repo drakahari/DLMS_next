@@ -1,6 +1,6 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings
 from datetime import datetime
 from urllib.parse import urlsplit
 from PIL import Image, ImageSequence, UnidentifiedImageError
@@ -153,11 +153,13 @@ app = Flask(
     static_url_path="/static"
 )
 
-# DLMS performs explicit size validation for individual upload workflows.
-# Disable Flask/Werkzeug's multipart in-memory field ceiling so legitimate
-# uploads reach DLMS' own validators, while retaining an overall request safety
-# ceiling to prevent accidentally unbounded multipart requests.
-app.config["MAX_FORM_MEMORY_SIZE"] = None
+# File parts spool independently; this bounds aggregate in-memory non-file form
+# data while leaving ample room for PDF Review & Repair JSON payloads.
+app.config["MAX_FORM_MEMORY_SIZE"] = 32 * 1024 * 1024
+# Dynamic quiz editors can legitimately submit hundreds of controls. Five
+# thousand parts preserves those forms while rejecting pathological multipart
+# bodies before route code runs.
+app.config["MAX_FORM_PARTS"] = 5000
 DLMS_MAX_REQUEST_BYTES = 300 * 1024 * 1024
 app.config["MAX_CONTENT_LENGTH"] = DLMS_MAX_REQUEST_BYTES
 
@@ -204,6 +206,31 @@ def validate_unsafe_request_origin():
     return None
 
 
+@app.before_request
+def reject_declared_oversized_workflow_upload():
+    """Reject honest oversized multipart requests before CSRF/form parsing."""
+    if request.method != "POST" or not request.content_length:
+        return None
+    route_limits = {
+        "/pdf-import/analyze": PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/content-packs/import": CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES,
+        "/settings/data/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/study-packs/image-builder": IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/matching_bank_import": MATCHING_CSV_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/process": QUIZ_TEXT_UPLOAD_MAX_BYTES + LOGO_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/preview_paste": app.config["MAX_FORM_MEMORY_SIZE"] + LOGO_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/create_short_quiz": app.config["MAX_FORM_MEMORY_SIZE"] + LOGO_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/settings/appearance/save": RASTER_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/save_settings": app.config["MAX_FORM_MEMORY_SIZE"] + RASTER_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+    }
+    limit = route_limits.get(request.path)
+    if limit is None and request.path.startswith("/edit_quiz/"):
+        limit = app.config["MAX_FORM_MEMORY_SIZE"] + LOGO_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES
+    if limit is not None and request.content_length > limit:
+        return _csrf_failure("This upload exceeds the safety limit for this workflow.", 413)
+    return None
+
+
 csrf.init_app(app)
 
 
@@ -225,7 +252,7 @@ def deliver_csrf_token(response):
 
 @app.errorhandler(413)
 def dlms_request_too_large(_error):
-    """Return a friendly page when a request exceeds DLMS' global ceiling."""
+    """Return a friendly page when a request or multipart parser limit is exceeded."""
     return render_template_string(r"""
 <!DOCTYPE html>
 <html lang="en">
@@ -242,7 +269,7 @@ def dlms_request_too_large(_error):
 <section class="dashboard-panel" style="padding:28px">
 <div class="build-eyebrow">UPLOAD SAFETY</div>
 <h1 style="margin-top:8px">Upload is too large</h1>
-<p>DLMS rejected this request before processing it because it exceeded the global 300 MB request safety limit.</p>
+<p>DLMS rejected this request before processing because it exceeded a request-size, form-memory, or multipart-part safety limit.</p>
 <p>Some workflows intentionally use smaller limits. Smart PDF Import accepts PDF files up to 64 MB, and Study Pack ZIP uploads are limited to 256 MB.</p>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px">
 <a class="medical-primary-button" href="javascript:history.back()">Go Back</a>
@@ -395,6 +422,69 @@ RASTER_IMAGE_FORMATS = {
     ".gif": "GIF", ".webp": "WEBP",
 }
 PASSIVE_PACK_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
+QUIZ_TEXT_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
+MATCHING_CSV_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
+RASTER_UPLOAD_MAX_BYTES = 32 * 1024 * 1024
+LOGO_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
+IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES = 192 * 1024 * 1024
+# Reserve 2 MB beneath the existing 300 MB request ceiling for multipart
+# framing while preserving nearly all of the prior effective restore capacity.
+BACKUP_UPLOAD_MAX_BYTES = 298 * 1024 * 1024
+UPLOAD_MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
+
+# 8K study images are about 33 MP. These limits allow substantially larger
+# diagrams/photos while bounding decode memory and animated-image work.
+IMAGE_MAX_PIXELS = 80_000_000
+IMAGE_MAX_WIDTH = 16_000
+IMAGE_MAX_HEIGHT = 16_000
+IMAGE_MAX_FRAMES = 100
+
+
+class UploadTooLargeError(ValueError):
+    pass
+
+
+def _bounded_save_upload(upload, destination_path, max_bytes, label="Uploaded file"):
+    """Stream an upload to disk with a hard byte ceiling and failure cleanup."""
+    declared = int(getattr(upload, "content_length", 0) or 0)
+    if declared > max_bytes:
+        raise UploadTooLargeError(f"{label} exceeds the {_format_bytes(max_bytes)} limit.")
+    total = 0
+    try:
+        with open(destination_path, "wb") as destination:
+            while True:
+                chunk = upload.stream.read(UPLOAD_STREAM_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise UploadTooLargeError(f"{label} exceeds the {_format_bytes(max_bytes)} limit.")
+                destination.write(chunk)
+        return total
+    except Exception:
+        try:
+            os.remove(destination_path)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _read_bounded_upload(upload, max_bytes, label="Uploaded file"):
+    """Read a small upload into memory without allowing a lying length header."""
+    output = io.BytesIO()
+    total = 0
+    declared = int(getattr(upload, "content_length", 0) or 0)
+    if declared > max_bytes:
+        raise UploadTooLargeError(f"{label} exceeds the {_format_bytes(max_bytes)} limit.")
+    while True:
+        chunk = upload.stream.read(min(UPLOAD_STREAM_CHUNK_BYTES, max_bytes + 1 - total))
+        if not chunk:
+            return output.getvalue()
+        total += len(chunk)
+        if total > max_bytes:
+            raise UploadTooLargeError(f"{label} exceeds the {_format_bytes(max_bytes)} limit.")
+        output.write(chunk)
 
 
 def _decode_raster_image(path, allowed_extensions=None):
@@ -404,21 +494,31 @@ def _decode_raster_image(path, allowed_extensions=None):
     if extension not in allowed or extension not in RASTER_IMAGE_FORMATS:
         raise ValueError("unsupported image type; SVG and other active formats are not accepted")
     try:
-        with Image.open(path) as image:
-            actual_format = str(image.format or "").upper()
-            if actual_format != RASTER_IMAGE_FORMATS[extension]:
-                raise ValueError("image bytes do not match the filename extension")
-            frames = [frame.copy() for frame in ImageSequence.Iterator(image)]
-            if not frames:
-                raise ValueError("image contains no decodable frames")
-            metadata = {
-                "format": actual_format,
-                "size": image.size,
-                "duration": image.info.get("duration"),
-                "loop": image.info.get("loop", 0),
-            }
-            return frames, metadata
-    except (UnidentifiedImageError, OSError, SyntaxError) as exc:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(path) as image:
+                actual_format = str(image.format or "").upper()
+                if actual_format != RASTER_IMAGE_FORMATS[extension]:
+                    raise ValueError("image bytes do not match the filename extension")
+                width, height = image.size
+                if width > IMAGE_MAX_WIDTH or height > IMAGE_MAX_HEIGHT or width * height > IMAGE_MAX_PIXELS:
+                    raise ValueError(
+                        f"image dimensions exceed {IMAGE_MAX_WIDTH}×{IMAGE_MAX_HEIGHT} or {IMAGE_MAX_PIXELS:,} pixels"
+                    )
+                frame_count = int(getattr(image, "n_frames", 1) or 1)
+                if frame_count > IMAGE_MAX_FRAMES:
+                    raise ValueError(f"animated image exceeds the {IMAGE_MAX_FRAMES}-frame limit")
+                frames = [frame.copy() for frame in ImageSequence.Iterator(image)]
+                if not frames:
+                    raise ValueError("image contains no decodable frames")
+                metadata = {
+                    "format": actual_format,
+                    "size": image.size,
+                    "duration": image.info.get("duration"),
+                    "loop": image.info.get("loop", 0),
+                }
+                return frames, metadata
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
         raise ValueError("file is not a valid supported raster image") from exc
 
 
@@ -452,7 +552,7 @@ def _reencode_raster_file(source_path, destination_path, allowed_extensions=None
             pass
 
 
-def _store_raster_upload(upload, destination_dir, filename, allowed_extensions=None):
+def _store_raster_upload(upload, destination_dir, filename, allowed_extensions=None, max_bytes=RASTER_UPLOAD_MAX_BYTES):
     """Store an uploaded image only after full decode and safe raster re-encoding."""
     filename = secure_filename(filename or "")
     extension = os.path.splitext(filename)[1].lower()
@@ -464,7 +564,8 @@ def _store_raster_upload(upload, destination_dir, filename, allowed_extensions=N
     os.close(raw_descriptor)
     destination_path = os.path.join(destination_dir, filename)
     try:
-        upload.save(raw_path)
+        consumed_bytes = _bounded_save_upload(upload, raw_path, max_bytes, "Image upload")
+        upload._dlms_consumed_bytes = consumed_bytes
         _reencode_raster_file(raw_path, destination_path, allowed)
     finally:
         try:
@@ -2113,7 +2214,7 @@ def finalize_logo_from_request(app, ts, *, logo_file=None, temp_logo_name=None):
         if ext in RASTER_IMAGE_FORMATS:
             logo_filename = f"logo_{ts}{ext}"
             try:
-                _store_raster_upload(logo_file, LOGO_FOLDER, logo_filename, RASTER_IMAGE_FORMATS)
+                _store_raster_upload(logo_file, LOGO_FOLDER, logo_filename, RASTER_IMAGE_FORMATS, LOGO_UPLOAD_MAX_BYTES)
             except ValueError:
                 return None
 
@@ -2145,7 +2246,7 @@ def save_preview_logo(app, logo_file):
 
     name = f"temp_{int(time.time())}{ext}"
     try:
-        _store_raster_upload(logo_file, LOGO_TEMP_FOLDER, name, RASTER_IMAGE_FORMATS)
+        _store_raster_upload(logo_file, LOGO_TEMP_FOLDER, name, RASTER_IMAGE_FORMATS, LOGO_UPLOAD_MAX_BYTES)
     except ValueError:
         return None
 
@@ -3555,11 +3656,7 @@ def content_pack_import():
     zip_path = os.path.join(stage_dir, "upload.zip")
 
     try:
-        upload.save(zip_path)
-        # Content-Length can be absent or unreliable for some clients/proxies,
-        # so verify the saved ZIP itself before opening or extracting it.
-        if os.path.getsize(zip_path) > CONTENT_PACK_UPLOAD_MAX_BYTES:
-            raise ValueError("Study Pack ZIP is too large. Maximum upload size is 256 MB.")
+        _bounded_save_upload(upload, zip_path, CONTENT_PACK_UPLOAD_MAX_BYTES, "Study Pack ZIP")
         if not zipfile.is_zipfile(zip_path):
             raise ValueError("uploaded file is not a valid ZIP archive")
         inspection = _inspect_content_pack_zip(zip_path)
@@ -11278,6 +11375,7 @@ def image_quiz_builder():
         draft_root = os.path.join(IMAGE_BUILDER_DRAFT_FOLDER, draft_id)
         os.makedirs(draft_root, exist_ok=False)
         images, used = [], set()
+        remaining_upload_bytes = IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES
         for n, uploaded in enumerate(files, 1):
             original = secure_filename(uploaded.filename or "")
             ext = os.path.splitext(original)[1].lower()
@@ -11293,7 +11391,11 @@ def image_quiz_builder():
                 counter += 1
             used.add(filename.casefold())
             try:
-                _store_raster_upload(uploaded, draft_root, filename, PASSIVE_PACK_IMAGE_EXTENSIONS)
+                _store_raster_upload(
+                    uploaded, draft_root, filename, PASSIVE_PACK_IMAGE_EXTENSIONS,
+                    min(RASTER_UPLOAD_MAX_BYTES, remaining_upload_bytes),
+                )
+                remaining_upload_bytes -= int(getattr(uploaded, "_dlms_consumed_bytes", 0))
             except ValueError as exc:
                 shutil.rmtree(draft_root, ignore_errors=True)
                 flash(f"Image {uploaded.filename!r} was rejected: {exc}", "error")
@@ -11864,6 +11966,15 @@ def _pdf_terms_mc_questions(bank, selected, direction="definition_to_term"):
 # Isolated from the existing text/paste/CSV parsers.
 # =========================================================
 PDF_IMPORT_MAX_BYTES = 64 * 1024 * 1024
+# Two thousand pages covers unusually large study manuals/question banks while
+# placing a deterministic bound on per-request PDF work.
+PDF_IMPORT_MAX_PAGES = 2000
+PDF_IMPORT_MAX_EXTRACTED_TEXT_BYTES = 16 * 1024 * 1024
+PDF_IMPORT_MAX_PAGE_TEXT_BYTES = 2 * 1024 * 1024
+
+
+class PDFResourceLimitError(ValueError):
+    pass
 
 def _pdf_import_safe_id(value):
     value = re.sub(r"[^A-Za-z0-9_-]+", "", str(value or ""))
@@ -11897,14 +12008,7 @@ def _pdf_clean_line(line):
     return line
 
 def _pdf_extract_pages(pdf_path):
-    """
-    Extract selectable PDF text. No OCR is performed in this MVP.
-
-    The legacy plain-text ``lines`` representation is preserved exactly for the
-    existing question-bank parser. We also collect optional font/style metadata
-    for glossary PDFs. If style extraction is unavailable for a particular PDF,
-    Smart PDF Import simply falls back to the existing heuristic glossary parser.
-    """
+    """Extract selectable PDF text within explicit page and text work limits."""
     try:
         from pypdf import PdfReader
     except Exception as exc:
@@ -11912,50 +12016,97 @@ def _pdf_extract_pages(pdf_path):
             "Smart PDF Import requires the 'pypdf' package. Install project requirements and rebuild the binary."
         ) from exc
 
-    reader = PdfReader(pdf_path)
+    try:
+        reader = PdfReader(pdf_path)
+    except Exception as exc:
+        raise ValueError("PDF is malformed or cannot be read.") from exc
+    if reader.is_encrypted:
+        raise ValueError("Encrypted PDFs are not supported. Remove encryption and try again.")
+    try:
+        page_count = len(reader.pages)
+    except Exception as exc:
+        raise ValueError("PDF page structure is malformed or cannot be read.") from exc
+    if page_count > PDF_IMPORT_MAX_PAGES:
+        raise PDFResourceLimitError(f"PDF exceeds the {PDF_IMPORT_MAX_PAGES:,}-page limit.")
+
     pages = []
+    total_text_bytes = 0
+    total_styled_text_bytes = 0
     for page_number, page in enumerate(reader.pages, 1):
-        text = page.extract_text() or ""
+        fragments = []
+        page_styled_text_bytes = 0
+
+        def _visitor_text(fragment_text, cm, tm, font_dict, font_size):
+            nonlocal page_styled_text_bytes, total_styled_text_bytes
+            cleaned = _pdf_clean_line(str(fragment_text or "").replace("\\n", " "))
+            if not cleaned:
+                return
+            fragment_bytes = len(cleaned.encode("utf-8"))
+            page_styled_text_bytes += fragment_bytes
+            total_styled_text_bytes += fragment_bytes
+            if page_styled_text_bytes > PDF_IMPORT_MAX_PAGE_TEXT_BYTES:
+                raise PDFResourceLimitError(
+                    f"PDF page {page_number} exceeds the {_format_bytes(PDF_IMPORT_MAX_PAGE_TEXT_BYTES)} extracted-text limit."
+                )
+            if total_styled_text_bytes > PDF_IMPORT_MAX_EXTRACTED_TEXT_BYTES:
+                raise PDFResourceLimitError(
+                    f"PDF exceeds the {_format_bytes(PDF_IMPORT_MAX_EXTRACTED_TEXT_BYTES)} extracted-text limit."
+                )
+            font_name = str((font_dict or {}).get("/BaseFont") or "")
+            fragments.append({
+                "text": cleaned,
+                "x": float(tm[4]) if tm and len(tm) > 4 else 0.0,
+                "y": float(tm[5]) if tm and len(tm) > 5 else 0.0,
+                "font": font_name,
+                "bold": bool(re.search(r"(?:bold|black|heavy|demi|semibold)", font_name, re.I)),
+            })
+
+        try:
+            text = page.extract_text(visitor_text=_visitor_text) or ""
+        except PDFResourceLimitError:
+            raise
+        except Exception:
+            # Style metadata is optional. Retry plain extraction only when the
+            # visitor interface itself is incompatible with an otherwise valid PDF.
+            fragments = []
+            total_styled_text_bytes -= page_styled_text_bytes
+            page_styled_text_bytes = 0
+            try:
+                text = page.extract_text() or ""
+            except Exception as exc:
+                raise ValueError(f"PDF page {page_number} could not be parsed.") from exc
+
+        page_text_bytes = len(text.encode("utf-8"))
+        if page_text_bytes > PDF_IMPORT_MAX_PAGE_TEXT_BYTES:
+            raise PDFResourceLimitError(
+                f"PDF page {page_number} exceeds the {_format_bytes(PDF_IMPORT_MAX_PAGE_TEXT_BYTES)} extracted-text limit."
+            )
+        total_text_bytes += page_text_bytes
+        if total_text_bytes > PDF_IMPORT_MAX_EXTRACTED_TEXT_BYTES:
+            raise PDFResourceLimitError(
+                f"PDF exceeds the {_format_bytes(PDF_IMPORT_MAX_EXTRACTED_TEXT_BYTES)} extracted-text limit."
+            )
+
         lines = [_pdf_clean_line(line) for line in text.splitlines()]
         page_record = {"page": page_number, "lines": [line for line in lines if line]}
-
-        # Style metadata is additive only. The question-bank parser never reads it.
-        fragments = []
         try:
-            def _visitor_text(fragment_text, cm, tm, font_dict, font_size):
-                cleaned = _pdf_clean_line(str(fragment_text or "").replace("\\n", " "))
-                if not cleaned:
-                    return
-                font_name = str((font_dict or {}).get("/BaseFont") or "")
-                fragments.append({
-                    "text": cleaned,
-                    "x": float(tm[4]) if tm and len(tm) > 4 else 0.0,
-                    "y": float(tm[5]) if tm and len(tm) > 5 else 0.0,
-                    "font": font_name,
-                    "bold": bool(re.search(r"(?:bold|black|heavy|demi|semibold)", font_name, re.I)),
-                })
-
-            page.extract_text(visitor_text=_visitor_text)
             styled_lines = []
-            for frag in fragments:
-                if styled_lines and abs(float(styled_lines[-1]["y"]) - float(frag["y"])) <= 1.25:
-                    styled_lines[-1]["fragments"].append(frag)
+            for fragment in fragments:
+                if styled_lines and abs(float(styled_lines[-1]["y"]) - float(fragment["y"])) <= 1.25:
+                    styled_lines[-1]["fragments"].append(fragment)
                 else:
-                    styled_lines.append({"y": frag["y"], "fragments": [frag]})
-
+                    styled_lines.append({"y": fragment["y"], "fragments": [fragment]})
             normalized_styled = []
             for styled in styled_lines:
                 parts = sorted(styled["fragments"], key=lambda item: float(item.get("x") or 0.0))
                 text_parts = [str(item.get("text") or "").strip() for item in parts if str(item.get("text") or "").strip()]
                 line_text = _pdf_clean_line(" ".join(text_parts))
-                if not line_text:
-                    continue
-                normalized_styled.append({"text": line_text, "y": styled["y"], "fragments": parts})
+                if line_text:
+                    normalized_styled.append({"text": line_text, "y": styled["y"], "fragments": parts})
             if normalized_styled:
                 page_record["styled_lines"] = normalized_styled
         except Exception:
-            pass
-
+            page_record.pop("styled_lines", None)
         pages.append(page_record)
     return pages
 
@@ -13221,15 +13372,16 @@ def pdf_import_analyze():
     if not request.form.get("rights_ok"):
         flash("Confirm that you have permission to use the document for your own study.", "error")
         return redirect("/pdf-import")
+    if request.content_length and request.content_length > PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES:
+        flash("PDF exceeds the 64 MB Smart PDF Import limit.", "error")
+        return redirect("/pdf-import")
 
     draft_id = secrets.token_urlsafe(12).replace("-", "").replace("_", "")[:20]
     source_name = secure_filename(upload.filename) or "study.pdf"
     temp_pdf = os.path.join(PDF_IMPORT_DRAFT_FOLDER, f"{draft_id}.pdf")
-    os.makedirs(PDF_IMPORT_DRAFT_FOLDER, exist_ok=True)
-    upload.save(temp_pdf)
     try:
-        if os.path.getsize(temp_pdf) > PDF_IMPORT_MAX_BYTES:
-            raise ValueError("PDF exceeds the 64 MB Smart PDF Import limit.")
+        os.makedirs(PDF_IMPORT_DRAFT_FOLDER, exist_ok=True)
+        _bounded_save_upload(upload, temp_pdf, PDF_IMPORT_MAX_BYTES, "PDF")
         pages = _pdf_extract_pages(temp_pdf)
         pages, removed_margins = _pdf_suppress_repeated_margins(pages)
 
@@ -13298,10 +13450,6 @@ def pdf_import_analyze():
         }
         _save_pdf_import_draft(draft)
     except Exception as exc:
-        try:
-            os.remove(temp_pdf)
-        except OSError:
-            pass
         flash(f"PDF analysis failed: {exc}", "error")
         return redirect("/pdf-import")
     finally:
@@ -14646,7 +14794,10 @@ def matching_bank_import():
             flash("Quiz title and CSV file are required.", "error")
             return redirect("/matching_bank_import")
         try:
-            text = upload.stream.read().decode("utf-8-sig")
+            text = _read_bounded_upload(upload, MATCHING_CSV_UPLOAD_MAX_BYTES, "Matching CSV").decode("utf-8-sig")
+        except UploadTooLargeError as exc:
+            flash(str(exc), "error")
+            return redirect("/matching_bank_import")
         except UnicodeDecodeError:
             flash("CSV must be UTF-8 encoded.", "error")
             return redirect("/matching_bank_import")
@@ -16613,17 +16764,14 @@ def process_file():
     else:
         source_file = f"manual_paste_{int(time.time())}"
 
-    # ---- save uploaded text file ----
-    path = os.path.join(UPLOAD_FOLDER, source_file)
-    file.save(path)
-
-
-
-    # =========================
-    # READ FILE CONTENT (CRITICAL FIX)
-    # =========================
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        raw_text = f.read().strip()
+    # The uploaded source is needed only for this parse. Read it through the
+    # workflow ceiling instead of persisting an unbounded temporary file.
+    try:
+        raw_text = _read_bounded_upload(file, QUIZ_TEXT_UPLOAD_MAX_BYTES, "Quiz text file").decode(
+            "utf-8", errors="ignore"
+        ).strip()
+    except UploadTooLargeError as exc:
+        return str(exc), 413
 
     if not raw_text:
         return "Uploaded file is empty.", 400
@@ -17522,13 +17670,15 @@ def settings_stage_restore():
         return redirect("/settings/data?restore_error=no-file")
     if not upload.filename.lower().endswith(".zip"):
         return redirect("/settings/data?restore_error=not-zip")
+    if request.content_length and request.content_length > BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES:
+        return "Backup exceeds the 298 MB restore upload limit.", 413
 
     token = secrets.token_hex(16)
     stage_dir = _restore_staging_dir(token)
     os.makedirs(stage_dir, exist_ok=False)
     upload_path = os.path.join(stage_dir, "restore.zip")
     try:
-        upload.save(upload_path)
+        _bounded_save_upload(upload, upload_path, BACKUP_UPLOAD_MAX_BYTES, "Backup ZIP")
         report = _validate_dlms_backup(upload_path)
         with open(os.path.join(stage_dir, "report.json"), "w", encoding="utf-8") as f:
             json.dump({k: v for k, v in report.items() if k != "members"}, f, indent=2)

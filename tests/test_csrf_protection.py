@@ -1,5 +1,6 @@
 import io
 import os
+import re
 import stat
 import tempfile
 import threading
@@ -222,9 +223,10 @@ class CsrfFrontendStaticTests(unittest.TestCase):
             "/pdf-import/analyze", "/settings/data/restore/stage", "/content-packs/import",
             "/api/clear_db_history", "/admin/rebuild_all_quiz_html",
         ):
-            position = self.app_source.find(marker)
-            self.assertNotEqual(position, -1, marker)
-            self.assertIn("/static/nav-normalize.js", self.app_source[position:position + 18000], marker)
+            # A route can also appear in preflight tables and handlers. Find an
+            # actual page/caller occurrence followed by the shared bootstrap.
+            pattern = re.escape(marker) + r"[\s\S]{0,18000}?/static/nav-normalize\.js"
+            self.assertRegex(self.app_source, pattern, marker)
 
 
 if __name__ == "__main__":
