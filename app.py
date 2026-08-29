@@ -376,6 +376,14 @@ def handle_csrf_error(_error):
 @app.after_request
 def deliver_csrf_token(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+    )
+    if request.path.startswith("/api/") or request.path.startswith("/settings/data") or request.path.startswith("/settings/reset"):
+        response.headers.setdefault("Cache-Control", "no-store")
     if request.method == "GET" and response.status_code < 400 and response.mimetype == "text/html":
         response.set_cookie(
             "dlms_csrf_token", generate_csrf(), secure=request.is_secure,
@@ -1410,7 +1418,8 @@ def _read_json_file(path, label, errors):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as exc:
-        errors.append(f"{label} is not valid JSON: {exc}")
+        print(f"[CONTENT PACK JSON ERROR] {label}: {type(exc).__name__}: {exc}")
+        errors.append(f"{label} is not valid JSON")
         return None
 
 
@@ -1984,7 +1993,7 @@ def _backup_rel_is_excluded(rel_path):
     if not rel:
         return True
     parts = rel.split("/")
-    if len(parts) == 1 and parts[0] == DLMS_DATA_ROOT_MARKER:
+    if len(parts) == 1 and parts[0] in {DLMS_DATA_ROOT_MARKER, ".secret_key"}:
         return True
     if parts[0].casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
         return True
@@ -2822,7 +2831,8 @@ def admin_hotspot_editor():
                 "images": images,
             }
         except Exception as exc:
-            load_error = str(exc)
+            print(f"[IMAGE EDITOR LOAD ERROR] {type(exc).__name__}: {exc}")
+            load_error = "The selected image dataset could not be loaded. Check the local DLMS log for details."
     return render_template_string(
         HOTSPOT_EDITOR_TEMPLATE,
         catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset,
@@ -2864,7 +2874,8 @@ def admin_hotspot_save():
         os.replace(tmp_path,dataset_path)
         return jsonify({"ok":True,"shape":shape,"backup_created":backup_created})
     except Exception as exc:
-        return jsonify({"error":str(exc)}),400
+        print(f"[IMAGE EDITOR HOTSPOT SAVE ERROR] {type(exc).__name__}: {exc}")
+        return jsonify({"error": "The hotspot could not be saved. Verify the selected dataset and geometry."}), 400
 
 
 @app.route("/admin/image-editor/edits/save", methods=["POST"])
@@ -2924,7 +2935,8 @@ def admin_image_edits_save():
         os.replace(tmp_path,dataset_path)
         return jsonify({"ok":True,"edits":cleaned,"backup_created":backup_created})
     except Exception as exc:
-        return jsonify({"error":str(exc)}),400
+        print(f"[IMAGE EDITOR PREP SAVE ERROR] {type(exc).__name__}: {exc}")
+        return jsonify({"error": "The image preparation changes could not be saved. Verify the submitted edits."}), 400
 
 
 HOTSPOT_EDITOR_TEMPLATE = r"""
@@ -3997,7 +4009,8 @@ def content_pack_import():
         return redirect(url_for("content_pack_import_review", token=token))
     except Exception as exc:
         shutil.rmtree(stage_dir, ignore_errors=True)
-        flash(f"Study Pack ZIP could not be validated: {exc}", "error")
+        print(f"[CONTENT PACK IMPORT ERROR] {type(exc).__name__}: {exc}")
+        flash("Study Pack ZIP could not be validated. Check the local DLMS log for details.", "error")
         return redirect("/content-packs")
 
 
@@ -4009,7 +4022,8 @@ def content_pack_import_review(token):
         report = _validate_staged_content_pack(pack_root)
         metadata["report"] = report
     except Exception as exc:
-        flash(f"Study Pack validation session is unavailable: {exc}", "error")
+        print(f"[CONTENT PACK REVIEW ERROR] {type(exc).__name__}: {exc}")
+        flash("The Study Pack validation session is unavailable or expired.", "error")
         return redirect("/content-packs")
 
     return render_template_string(r"""
@@ -4128,7 +4142,8 @@ def content_pack_import_install(token):
                     shutil.move(destination, pack_root)
         except Exception as rollback_exc:
             print(f"[CONTENT PACKS] Import rollback failed: {rollback_exc}")
-        flash(f"Study Pack was not installed: {exc}", "error")
+        print(f"[CONTENT PACK INSTALL ERROR] {type(exc).__name__}: {exc}")
+        flash("The Study Pack was not installed. Existing installed content was left unchanged.", "error")
         try:
             _load_staged_content_pack(token)
             return redirect(url_for("content_pack_import_review", token=token))
@@ -4148,7 +4163,8 @@ def content_pack_details(folder):
     try:
         report = _content_pack_folder_report(folder)
     except Exception as exc:
-        flash(f"Content Pack details are unavailable: {exc}", "error")
+        print(f"[CONTENT PACK DETAILS ERROR] {type(exc).__name__}: {exc}")
+        flash("Content Pack details are unavailable. Check the local DLMS log for details.", "error")
         return redirect("/content-packs")
     manifest = report.get("manifest") or {}
     matching = len(manifest.get("datasets") or []) if isinstance(manifest.get("datasets") or [], list) else 0
@@ -4214,7 +4230,8 @@ def export_content_pack(folder):
             headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'}
         )
     except Exception as exc:
-        flash(f"Study Pack export failed: {exc}", "error")
+        print(f"[CONTENT PACK EXPORT ERROR] {type(exc).__name__}: {exc}")
+        flash("Study Pack export failed. Check the local DLMS log for details.", "error")
         return redirect("/content-packs")
 
 
@@ -4483,7 +4500,8 @@ def delete_content_pack():
             message += f" Preserved {migration['references']} legacy image reference(s) in quiz-owned storage."
         flash(message, "success")
     except Exception as exc:
-        flash(f"Study Pack was not deleted: {exc}", "error")
+        print(f"[CONTENT PACK DELETE ERROR] {type(exc).__name__}: {exc}")
+        flash("The Study Pack could not be deleted. No other content was intentionally changed.", "error")
 
     return redirect("/content-packs")
 
@@ -5460,7 +5478,8 @@ def medical_generate_anatomy_quiz():
     try:
         data = load_content_pack_image_dataset(pack_id, dataset_id)
     except Exception as exc:
-        flash(f"Unable to load anatomy dataset: {exc}", "error")
+        print(f"[MEDICAL ANATOMY LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("Unable to load the selected anatomy dataset.", "error")
         return redirect("/medical/anatomy")
 
     runtime_questions = []
@@ -5579,7 +5598,8 @@ def medical_generate_quiz():
     try:
         data = load_content_pack_dataset(pack_id, dataset_id)
     except Exception as exc:
-        flash(f"Unable to load medical dataset: {exc}", "error")
+        print(f"[MEDICAL DATASET LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("Unable to load the selected medical dataset.", "error")
         return redirect("/medical/matching")
 
     terms = data.get("terms") or []
@@ -6369,7 +6389,8 @@ def study_pack_generate_quiz_dataset():
         )
         return redirect(f"/quizzes/{html_name}")
     except Exception as exc:
-        flash(f"Unable to build question-set quiz: {exc}", "error")
+        print(f"[STUDY PACK QUIZ BUILD ERROR] {type(exc).__name__}: {exc}")
+        flash("Unable to build the selected Study Pack quiz.", "error")
         return redirect("/study-packs")
 
 
@@ -6380,7 +6401,10 @@ def study_pack_generate_matching():
     pack=get_content_pack(pack_id)
     if not pack: flash("Study pack is not installed.","error"); return redirect("/study-packs")
     try: data=load_content_pack_dataset(pack_id,dataset_id)
-    except Exception as exc: flash(f"Unable to load study dataset: {exc}","error"); return redirect("/study-packs")
+    except Exception as exc:
+        print(f"[STUDY PACK DATASET LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("Unable to load the selected study dataset.", "error")
+        return redirect("/study-packs")
     terms=data.get("terms") or []
     if len(terms)<2: flash("This dataset does not contain enough items.","error"); return redirect("/study-packs")
     try: round_size=int(request.form.get("round_size","10"))
@@ -6400,7 +6424,10 @@ def study_pack_generate_image():
     pack_id=str(request.form.get("pack_id") or "").strip().lower(); dataset_id=str(request.form.get("dataset_id") or "").strip(); pack=get_content_pack(pack_id)
     if not pack: flash("Study pack is not installed.","error"); return redirect("/study-packs")
     try: data=load_content_pack_image_dataset(pack_id,dataset_id)
-    except Exception as exc: flash(f"Unable to load image dataset: {exc}","error"); return redirect("/study-packs")
+    except Exception as exc:
+        print(f"[STUDY PACK IMAGE LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("Unable to load the selected image dataset.", "error")
+        return redirect("/study-packs")
     runtime_questions=[]; db_questions=[]; qnum=1
     for image in data.get("images") or []:
         image_url=url_for("content_pack_asset",pack_id=pack_id,asset_path=image.get("file")); source=image.get("source") or data.get("source") or {}; hotspots=list(image.get("hotspots") or []); random.shuffle(hotspots)
@@ -10627,7 +10654,8 @@ def reset_quiz_library():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[RESET QUIZ LIBRARY ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
+        message, status = _destructive_operation_error(exc, "Quiz-library reset")
+        return jsonify(status="error", error=message), status
 
 
 @app.route("/api/reset_source_content", methods=["POST"])
@@ -10637,7 +10665,8 @@ def reset_source_content():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[RESET SOURCE CONTENT ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
+        message, status = _destructive_operation_error(exc, "Source-content reset")
+        return jsonify(status="error", error=message), status
 
 
 @app.route("/api/reset_app_settings", methods=["POST"])
@@ -10647,7 +10676,8 @@ def reset_app_settings():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[RESET SETTINGS ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
+        message, status = _destructive_operation_error(exc, "Settings reset")
+        return jsonify(status="error", error=message), status
 
 
 @app.route("/api/reset_all_data", methods=["POST"])
@@ -10657,11 +10687,18 @@ def reset_all_data():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[RESET ALL DATA ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
+        message, status = _destructive_operation_error(exc, "Full-data reset")
+        return jsonify(status="error", error=message), status
 
 
 class DataRootOwnershipError(RuntimeError):
     pass
+
+
+def _destructive_operation_error(exc, operation):
+    if isinstance(exc, DataRootOwnershipError):
+        return str(exc), 409
+    return f"{operation} failed. Check the local DLMS log for details.", 500
 
 
 def _validate_destructive_data_root_path(root=None):
@@ -10709,7 +10746,8 @@ def remove_all_dlms_data():
         removed_path = _remove_all_dlms_runtime_data_core()
     except Exception as exc:
         print("[REMOVE ALL DLMS DATA ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
+        message, status = _destructive_operation_error(exc, "Permanent DLMS data removal")
+        return jsonify(status="error", error=message), status
 
     # The executable/source installation is intentionally left untouched. Shut
     # DLMS down after returning the response so the just-removed runtime tree is
@@ -10734,7 +10772,8 @@ def wipe_database():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[LEGACY WIPE ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
+        message, status = _destructive_operation_error(exc, "Database wipe")
+        return jsonify(status="error", error=message), status
 
 
 # =========================
@@ -11759,7 +11798,8 @@ def image_quiz_builder_save():
         draft_root = _safe_image_builder_draft(draft_id)
         payload = json.loads(str(request.form.get("builder_payload") or ""))
     except Exception as exc:
-        return f"Invalid image-builder data: {exc}", 400
+        print(f"[IMAGE BUILDER INPUT ERROR] {type(exc).__name__}: {exc}")
+        return "Invalid image-builder data. Restart the image workflow and try again.", 400
 
     images_payload = payload.get("images") or []
     questions_payload = payload.get("questions") or []
@@ -11878,7 +11918,8 @@ def image_quiz_builder_save():
         return redirect(f"/quizzes/{html_name}")
     except Exception as exc:
         shutil.rmtree(pack_root, ignore_errors=True)
-        return f"Unable to create image study pack: {exc}", 400
+        print(f"[IMAGE BUILDER CREATE ERROR] {type(exc).__name__}: {exc}")
+        return "Unable to create the image Study Pack. Check the local DLMS log for details.", 400
 
 
 IMAGE_QUIZ_BUILDER_TEMPLATE = r"""
@@ -13670,7 +13711,8 @@ def pdf_question_bank_delete(bank_id):
     except FileNotFoundError:
         flash("PDF question bank was already removed or could not be found.", "error")
     except Exception as exc:
-        flash(f"Could not delete PDF question bank: {exc}", "error")
+        print(f"[PDF QUESTION BANK DELETE ERROR] {type(exc).__name__}: {exc}")
+        flash("Could not delete the PDF question bank.", "error")
     return redirect("/pdf-import")
 
 
@@ -13685,7 +13727,8 @@ def pdf_terminology_bank_delete(bank_id):
     except FileNotFoundError:
         flash("PDF terminology bank was already removed or could not be found.", "error")
     except Exception as exc:
-        flash(f"Could not delete PDF terminology bank: {exc}", "error")
+        print(f"[PDF TERMINOLOGY BANK DELETE ERROR] {type(exc).__name__}: {exc}")
+        flash("Could not delete the PDF terminology bank.", "error")
     return redirect("/pdf-import")
 
 
@@ -13779,7 +13822,8 @@ def pdf_import_analyze():
         }
         _save_pdf_import_draft(draft)
     except Exception as exc:
-        flash(f"PDF analysis failed: {exc}", "error")
+        print(f"[PDF ANALYSIS ERROR] {type(exc).__name__}: {exc}")
+        flash("PDF analysis failed. The document may be malformed, encrypted, or outside the supported limits.", "error")
         return redirect("/pdf-import")
     finally:
         try:
@@ -13853,7 +13897,8 @@ def pdf_import_review(draft_id):
     try:
         draft = _load_pdf_import_draft(draft_id)
     except Exception as exc:
-        flash(str(exc), "error")
+        print(f"[PDF REVIEW LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("The PDF review session is unavailable or expired.", "error")
         return redirect("/pdf-import")
 
     if draft.get("document_type") == "glossary":
@@ -14091,7 +14136,8 @@ def pdf_import_save(draft_id):
     try:
         draft = _load_pdf_import_draft(draft_id)
     except Exception as exc:
-        flash(str(exc), "error")
+        print(f"[PDF REVIEW SAVE ERROR] {type(exc).__name__}: {exc}")
+        flash("The PDF review session is unavailable or expired.", "error")
         return redirect("/pdf-import")
 
     if draft.get("document_type") == "glossary":
@@ -14319,7 +14365,8 @@ def pdf_question_bank_page(bank_id):
     try:
         bank = _load_pdf_question_bank(bank_id)
     except Exception as exc:
-        flash(str(exc), "error")
+        print(f"[PDF QUESTION BANK LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("The selected PDF question bank could not be loaded.", "error")
         return redirect("/pdf-import")
 
     questions = bank.get("questions") or []
@@ -14588,7 +14635,8 @@ def pdf_question_bank_generate(bank_id):
         )
         return redirect(f"/edit_quiz/{quiz_id}")
     except Exception as exc:
-        flash(f"Could not generate quiz: {exc}", "error")
+        print(f"[PDF QUIZ GENERATION ERROR] {type(exc).__name__}: {exc}")
+        flash("Could not generate a quiz from the selected PDF question bank.", "error")
         return redirect(f"/pdf-import/bank/{bank_id}")
 
 
@@ -14602,7 +14650,8 @@ def pdf_terminology_bank_page(bank_id):
     try:
         bank = _load_pdf_terminology_bank(bank_id)
     except Exception as exc:
-        flash(str(exc), "error")
+        print(f"[PDF TERMINOLOGY BANK LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("The selected PDF terminology bank could not be loaded.", "error")
         return redirect("/pdf-import")
 
     terms = bank.get("terms") or []
@@ -14711,7 +14760,8 @@ def pdf_terminology_bank_generate(bank_id):
         )
         return redirect(f"/edit_quiz/{quiz_id}")
     except Exception as exc:
-        flash(f"Could not generate terminology practice: {exc}", "error")
+        print(f"[PDF TERMINOLOGY GENERATION ERROR] {type(exc).__name__}: {exc}")
+        flash("Could not generate practice from the selected terminology bank.", "error")
         return redirect(f"/pdf-import/terms/{bank_id}")
 
 
@@ -17989,7 +18039,7 @@ def settings_create_backup():
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Backup Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
 <body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Backup failed</h1><p>DLMS did not modify your existing data.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Unable to create backup</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
-""", error=str(exc)), 500
+""", error="DLMS could not create the backup. Check the local application log for details."), 500
 
 
 @app.route("/settings/data/restore/stage", methods=["POST"])
@@ -18021,10 +18071,11 @@ def settings_stage_restore():
             json.dump(saved_report, f, indent=2)
     except Exception as exc:
         shutil.rmtree(stage_dir, ignore_errors=True)
+        print(f"[RESTORE VALIDATION ERROR] {type(exc).__name__}: {exc}")
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Validation Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
 <body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY / RESTORE</span><h1>Backup rejected</h1><p>No DLMS data was changed.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore validation failed</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
-""", error=str(exc)), 400
+""", error="The backup failed validation and was not accepted. Check the local DLMS log for details."), 400
 
     manifest = report["manifest"]
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
@@ -18095,10 +18146,14 @@ def settings_confirm_restore(token):
 """, safety_name=os.path.basename(safety_path))
     except Exception as exc:
         print("[RESTORE ERROR]", exc)
+        public_error = (
+            str(exc) if isinstance(exc, DataRootOwnershipError)
+            else "DLMS could not complete the restore. Existing data was preserved or rolled back. Check the local application log for details."
+        )
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
 <body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
-""", error=str(exc)), (
+""", error=public_error), (
             400 if isinstance(exc, ValueError)
             else 409 if isinstance(exc, DataRootOwnershipError)
             else 500
@@ -18980,7 +19035,7 @@ def record_attempt():
     except Exception as e:
         conn.rollback()
         print(f"DB ERROR in /record_attempt: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "The quiz attempt could not be recorded."}), 500
 
     finally:
         conn.close()
@@ -19032,7 +19087,8 @@ def record_study_learning_event():
         return jsonify({"ok": True}), 200
     except Exception as exc:
         conn.rollback()
-        return jsonify({"error": str(exc)}), 500
+        print(f"[LEARNING EVENT ERROR] {type(exc).__name__}: {exc}")
+        return jsonify({"error": "The learning event could not be recorded."}), 500
     finally:
         conn.close()
 
@@ -22839,7 +22895,7 @@ def clear_db_history():
         print("DB CLEAR ERROR:", e)
         return {
             "status": "error",
-            "error": str(e)
+            "error": "Saved history could not be cleared. Check the local DLMS log for details."
         }, 500
 
 

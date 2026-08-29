@@ -178,7 +178,8 @@ class BackupSemanticValidationTests(unittest.TestCase):
                 headers=csrf_headers(client),
             )
         self.assertEqual(response.status_code, 400)
-        self.assertIn(b"bad semantics", response.data)
+        self.assertNotIn(b"bad semantics", response.data)
+        self.assertIn(b"could not complete the restore", response.data)
         self.assertEqual(events, [])
 
     def test_valid_restore_orders_semantics_before_backup_and_apply(self):
@@ -234,7 +235,8 @@ class BackupSemanticValidationTests(unittest.TestCase):
                 headers=csrf_headers(client),
             )
         self.assertEqual(response.status_code, 500)
-        self.assertIn(b"rolled back", response.data)
+        self.assertNotIn(b"simulated apply failure", response.data)
+        self.assertIn(b"preserved or rolled back", response.data)
         self.assertEqual(len(apply_calls), 2)
 
 
