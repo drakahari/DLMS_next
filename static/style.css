@@ -11121,25 +11121,26 @@ body[data-theme="light"] .pdf-import-page .pdf-bank-open,
     border-color: var(--theme-border-soft,#bdd0e5) !important;
 }
 
-/* Custom Anki deck uses inline dark styles: override structurally. */
-#customAnkiForm details {
-    background: var(--theme-surface,#eef5fb) !important;
-    border-color: var(--theme-border-soft,#bdd0e5) !important;
-    color: var(--theme-page-text,#17253a) !important;
+/* Custom Deck theme roles; layout remains local to the template for now. */
+.anki-custom-deck-name {
+    color: var(--theme-input-text,#17253a);
+    background: var(--theme-input-bg,#fff);
+    border: 1px solid var(--theme-border-soft,#bdd0e5);
 }
-#customAnkiForm details summary {
-    color: var(--theme-heading,#10213a) !important;
+.anki-custom-selection-group {
+    color: var(--theme-page-text,#17253a);
+    background: var(--theme-surface,#eef5fb);
+    border: 1px solid var(--theme-border-soft,#bdd0e5);
 }
-#customAnkiForm details label {
-    color: var(--theme-page-text,#17253a) !important;
-    border-top-color: var(--theme-border-soft,#d4e0ec) !important;
+.anki-custom-selection-summary {
+    color: var(--theme-heading,#10213a);
 }
-#customAnkiForm details label span,
-#customAnkiForm details label strong {
-    color: var(--theme-page-text,#17253a) !important;
+.anki-custom-selection-row {
+    color: var(--theme-page-text,#17253a);
+    border-top: 1px solid var(--theme-border-soft,#d4e0ec);
 }
-#customAnkiForm details label small {
-    color: var(--theme-muted-text,#667b95) !important;
+.anki-custom-selection-meta {
+    color: var(--theme-muted-text,#667b95);
 }
 
 /* Law Study Anki: text around controls/cards */

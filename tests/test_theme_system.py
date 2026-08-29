@@ -270,6 +270,69 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertIn('@app.route("/anki/custom"', source)
         self.assertIn('@app.route("/anki/law")', source)
 
+    def test_custom_anki_theme_colors_are_class_based_not_inline(self):
+        with open(dlms.__file__, "r", encoding="utf-8") as f:
+            source = f.read()
+        custom = source[source.index('@app.route("/anki/custom"'):source.index('@app.route("/anki/export/custom"')]
+        for old_color in (
+            "color:#eaf3ff", "background:rgba(3,13,30,.78)",
+            "border:1px solid rgba(91,146,215,.42)",
+            "border:1px solid rgba(90,147,215,.20)",
+            "background:rgba(3,13,29,.42)",
+            "border-top:1px solid rgba(90,147,215,.10)", "color:#8fa7c1",
+        ):
+            self.assertNotIn(old_color, custom)
+        self.assertIn('class="anki-custom-deck-name"', custom)
+        self.assertGreaterEqual(custom.count('class="anki-custom-selection-group"'), 3)
+        self.assertGreaterEqual(custom.count('class="anki-custom-selection-summary"'), 3)
+        self.assertGreaterEqual(custom.count('class="anki-custom-selection-row"'), 3)
+        self.assertIn('class="anki-custom-selection-meta"', custom)
+
+    def test_custom_anki_theme_classes_use_tokens_without_important(self):
+        css = self._style_css()
+        expected = {
+            ".anki-custom-deck-name": ("--theme-input-text", "--theme-input-bg", "--theme-border-soft"),
+            ".anki-custom-selection-group": ("--theme-page-text", "--theme-surface", "--theme-border-soft"),
+            ".anki-custom-selection-summary": ("--theme-heading",),
+            ".anki-custom-selection-row": ("--theme-page-text", "--theme-border-soft"),
+            ".anki-custom-selection-meta": ("--theme-muted-text",),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+                self.assertIsNotNone(match)
+                rule = match.group(1)
+                self.assertTrue(all(token in rule for token in tokens))
+                self.assertNotIn("!important", rule)
+        self.assertNotIn("#customAnkiForm details", css)
+
+    def test_custom_anki_semantic_text_contrast_across_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                surface = self._composite(variables["theme-surface"], panel)
+                combinations = {
+                    "selection text": (variables["theme-page-text"], surface),
+                    "selection heading": (variables["theme-heading"], surface),
+                    "selection helper": (variables["theme-muted-text"], surface),
+                    "input text": (
+                        variables["theme-input-text"],
+                        self._composite(variables["theme-input-bg"], panel),
+                    ),
+                }
+                for role, (foreground, background) in combinations.items():
+                    ratio = self._contrast(foreground, background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5, f"{theme} {role} is only {ratio:.2f}:1",
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

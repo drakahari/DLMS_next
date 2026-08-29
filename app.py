@@ -20751,11 +20751,12 @@ def anki_custom_deck():
                 <label>
                     <span>Deck Name</span>
                     <input type="text"
+                           class="anki-custom-deck-name"
                            name="deck_name"
                            value="{{ deck_name }}"
                            maxlength="120"
                            required
-                           style="width:100%;min-height:42px;box-sizing:border-box;padding:9px 11px;color:#eaf3ff;background:rgba(3,13,30,.78);border:1px solid rgba(91,146,215,.42);border-radius:9px;font:inherit;">
+                           style="width:100%;min-height:42px;box-sizing:border-box;padding:9px 11px;border-radius:9px;font:inherit;">
                 </label>
             </section>
 
@@ -20771,14 +20772,14 @@ def anki_custom_deck():
 
                 {% if quiz_groups %}
                     {% for quiz in quiz_groups %}
-                    <details style="margin:10px 0;border:1px solid rgba(90,147,215,.20);border-radius:11px;background:rgba(3,13,29,.42);">
-                        <summary style="cursor:pointer;padding:12px 14px;font-weight:700;">
+                    <details class="anki-custom-selection-group" style="margin:10px 0;border-radius:11px;">
+                        <summary class="anki-custom-selection-summary" style="cursor:pointer;padding:12px 14px;font-weight:700;">
                             {{ quiz.title }} · {{ quiz.cards|length }} questions
                         </summary>
                         <div style="padding:0 14px 12px;">
                             {% for card in quiz.cards %}
                             {% set token = "quiz:" ~ quiz.id ~ ":" ~ card.question_id %}
-                            <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(90,147,215,.10);">
+                            <label class="anki-custom-selection-row" style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;">
                                 <input type="checkbox" name="quiz_cards" value="{{ token }}" {% if token in selected_quiz %}checked{% endif %}>
                                 <span><strong>Q{{ card.question_number }}</strong> · {{ card.front.split("\n")[0] }}</span>
                             </label>
@@ -20802,20 +20803,20 @@ def anki_custom_deck():
                 </div>
 
                 {% if missed_cards %}
-                <details open style="margin:10px 0;border:1px solid rgba(90,147,215,.20);border-radius:11px;background:rgba(3,13,29,.42);">
-                    <summary style="cursor:pointer;padding:12px 14px;font-weight:700;">
+                <details open class="anki-custom-selection-group" style="margin:10px 0;border-radius:11px;">
+                    <summary class="anki-custom-selection-summary" style="cursor:pointer;padding:12px 14px;font-weight:700;">
                         Performance History · {{ missed_cards|length }} unique missed questions
                     </summary>
                     <div style="padding:0 14px 12px;max-height:420px;overflow:auto;">
                         {% for card in missed_cards %}
                         {% set stable_id = card.question_id if card.question_id is not none else card.question_number %}
                         {% set token = "missed:" ~ card.quiz_id ~ ":" ~ stable_id %}
-                        <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(90,147,215,.10);">
+                        <label class="anki-custom-selection-row" style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;">
                             <input type="checkbox" name="missed_cards" value="{{ token }}" {% if token in selected_missed %}checked{% endif %}>
                             <span>
                                 <strong>{{ card.quiz_title }} · Q{{ card.question_number }}</strong><br>
                                 {{ card.front.split("\n")[0] }}
-                                <small style="display:block;margin-top:3px;color:#8fa7c1;">
+                                <small class="anki-custom-selection-meta" style="display:block;margin-top:3px;">
                                     {{ card.miss_count }} miss{% if card.miss_count != 1 %}es{% endif %} ·
                                     {% if card.recovery_status == "currently_weak" %}Currently Weak{% else %}Recovered Later{% endif %}
                                 </small>
@@ -20841,14 +20842,14 @@ def anki_custom_deck():
 
                 {% if law_groups %}
                     {% for case in law_groups %}
-                    <details style="margin:10px 0;border:1px solid rgba(90,147,215,.20);border-radius:11px;background:rgba(3,13,29,.42);">
-                        <summary style="cursor:pointer;padding:12px 14px;font-weight:700;">
+                    <details class="anki-custom-selection-group" style="margin:10px 0;border-radius:11px;">
+                        <summary class="anki-custom-selection-summary" style="cursor:pointer;padding:12px 14px;font-weight:700;">
                             {{ case.course }} · {{ case.title }} · {{ case.cards|length }} cards
                         </summary>
                         <div style="padding:0 14px 12px;">
                             {% for card in case.cards %}
                             {% set token = "law:" ~ case.id ~ ":" ~ loop.index %}
-                            <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(90,147,215,.10);">
+                            <label class="anki-custom-selection-row" style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;">
                                 <input type="checkbox" name="law_cards" value="{{ token }}" {% if token in selected_law %}checked{% endif %}>
                                 <span><strong>Card {{ loop.index }}</strong> · {{ card.front.split("\n")[0] }}</span>
                             </label>
