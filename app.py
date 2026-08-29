@@ -12549,7 +12549,14 @@ def _pdf_detect_document_type(pages, question_result=None, glossary_result=None)
     # Parsed question records are stronger evidence than glossary-like prose. This
     # prevents numbered MCQ banks from being misclassified as glossaries merely
     # because their question-start format differs from "Question N".
-    if q_detected >= 2 and answer_markers >= 1:
+    structured_single = (
+        q_detected == 1
+        and question_markers >= 1
+        and answer_markers >= 1
+        and len(question_result.get("questions") or []) == 1
+        and (question_result.get("questions") or [{}])[0].get("status") == "complete"
+    )
+    if (q_detected >= 2 and answer_markers >= 1) or structured_single:
         return "question_bank", {
             "question_markers": question_markers,
             "answer_markers": answer_markers,
@@ -12587,6 +12594,16 @@ def _pdf_parse_question_bank(pages):
     for pos, (start_idx, match) in enumerate(raw_starts):
         end_idx = raw_starts[pos + 1][0] if pos + 1 < len(raw_starts) else len(stream)
         if match.get("kind") == "numbered":
+            # A numbered line inside a conventional question is supporting stem
+            # material, not a new boundary. The conventional record remains open
+            # until its Correct Answer marker, so do not let later choices make
+            # the embedded numbered line look like a standalone question.
+            if starts and starts[-1][1].get("kind") == "heading":
+                prior_structure = _pdf_question_chunk_structure(
+                    stream[starts[-1][0] + 1:start_idx]
+                )
+                if not prior_structure["answer_marker"]:
+                    continue
             evidence = _pdf_question_chunk_structure(stream[start_idx + 1:end_idx])
             if evidence["choice_run"] < 2 or not evidence["answer_marker"]:
                 continue
@@ -13264,7 +13281,7 @@ def pdf_import_review(draft_id):
 {% endfor %}
 </div>
 <div class="build-two-column-fields">
-<label class="build-field"><span>Correct answer</span><select name="correct_{{ loop.index0 }}" form="pdfReviewForm" data-pdf-role="correct">{% for choice in q.choices %}<option value="{{ choice.label }}" {% if choice.label == q.correct %}selected{% endif %}>{{ choice.label }} — {{ choice.text }}</option>{% endfor %}</select></label>
+<label class="build-field"><span>Correct answer</span><select name="correct_{{ loop.index0 }}" form="pdfReviewForm" data-pdf-role="correct"><option value="" {% if not q.correct %}selected{% endif %}>Choose a correct answer</option>{% for choice in q.choices %}<option value="{{ choice.label }}" {% if choice.label == q.correct %}selected{% endif %}>{{ choice.label }} — {{ choice.text }}</option>{% endfor %}</select></label>
 <label class="build-field"><span>Detected answer text</span><input value="{{ q.declared_answer_text }}" readonly></label>
 </div>
 <label class="build-field"><span>Study Mode explanation</span><textarea name="explanation_{{ loop.index0 }}" rows="4" form="pdfReviewForm" data-pdf-role="explanation">{{ q.explanation }}</textarea></label>
@@ -23262,5 +23279,4 @@ if __name__ == "__main__":
         debug=False,
         use_reloader=False
     )
-
 

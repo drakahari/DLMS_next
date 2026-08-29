@@ -1,4 +1,4 @@
-import os, tempfile, unittest
+import json, os, tempfile, unittest
 from pathlib import Path
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-pdf-tests-")
@@ -156,6 +156,23 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertEqual(result["summary"]["detected"], 2)
         self.assertEqual(result["questions"][1]["question"], "Which value is three?")
 
+    def test_numbered_supporting_prose_stays_inside_conventional_question(self):
+        pages = [{"page": 1, "lines": [
+            "Question #7",
+            "Review these implementation details before choosing the best control:",
+            "1. The service is reachable from the public network.",
+            "2. Administrative access is still required.",
+            "Which control best reduces exposure?",
+            "A. Disable logging", "B. Restrict administrative access",
+            "Correct Answer: B — Restrict administrative access",
+        ]}]
+        result = dlms._pdf_parse_question_bank(pages)
+        self.assertEqual(result["summary"]["detected"], 1)
+        self.assertEqual(result["questions"][0]["number"], 7)
+        self.assertIn("1. The service is reachable", result["questions"][0]["question"])
+        self.assertIn("2. Administrative access", result["questions"][0]["question"])
+        self.assertEqual(result["questions"][0]["correct"], "B")
+
     def test_arbitrary_numbered_prose_is_not_promoted_without_mcq_structure(self):
         pages = [{"page": 1, "lines": [
             "1. Introduction to access control",
@@ -177,7 +194,55 @@ class PDFImportParserTests(unittest.TestCase):
         q = result["questions"][0]
         self.assertEqual(q["status"], "incomplete")
         self.assertEqual([c["label"] for c in q["choices"]], ["A", "B", "C", "D"])
+        self.assertEqual(q["correct"], "")
         self.assertTrue(any("recovery" in issue.lower() for issue in q["issues"]))
+
+    def test_recovery_review_correct_answer_starts_blank(self):
+        draft = {
+            "id": "blank_correct_review", "source_name": "recovery.pdf", "page_count": 1,
+            "document_type": "question_bank", "detection": {"recovery_mode": True},
+            "recovery_mode": True, "quiz_title": "Recovery", "exam_minutes": 30,
+            "summary": {"detected": 1, "complete": 0, "review": 0, "incomplete": 1},
+            "questions": [{
+                "number": 1, "question": "Recovered question?", "correct": "",
+                "declared_answer_text": "", "explanation": "", "choice_feedback": {},
+                "choices": [{"label": "A", "text": "One"}, {"label": "B", "text": "Two"}],
+                "pages": [1], "status": "incomplete", "issues": [],
+            }],
+        }
+        dlms._save_pdf_import_draft(draft)
+        response = dlms.app.test_client().get("/pdf-import/review/blank_correct_review")
+        html = response.get_data(as_text=True)
+        self.assertIn('<option value="" selected>Choose a correct answer</option>', html)
+        self.assertNotIn('<option value="A" selected>', html)
+
+    def test_save_rejects_recovery_question_without_deliberate_correct_answer(self):
+        draft = {
+            "id": "blank_correct_save", "source_name": "recovery.pdf", "page_count": 1,
+            "document_type": "question_bank", "detection": {"recovery_mode": True},
+            "recovery_mode": True, "quiz_title": "Recovery", "exam_minutes": 30,
+            "questions": [{
+                "number": 1, "question": "Recovered question?", "correct": "",
+                "choices": [{"label": "A", "text": "One"}, {"label": "B", "text": "Two"}],
+                "pages": [1], "status": "incomplete", "issues": [],
+            }],
+        }
+        dlms._save_pdf_import_draft(draft)
+        payload = [{
+            "index": 0, "delete": False, "question": "Recovered question?",
+            "choices": [{"label": "A", "text": "One"}, {"label": "B", "text": "Two"}],
+            "correct": "", "explanation": "", "feedback": {},
+        }]
+        client = dlms.app.test_client()
+        response = client.post("/pdf-import/save/blank_correct_save", data={
+            "quiz_title": "Recovery", "exam_minutes": "30",
+            "review_payload": json.dumps(payload),
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/pdf-import/review/blank_correct_save"))
+        with client.session_transaction() as session:
+            messages = [message for _category, message in session.get("_flashes", [])]
+        self.assertTrue(any("correct answer" in message for message in messages))
 
     def test_glossary_recovery_preserves_page_text_for_manual_repair(self):
         pages = [{"page": 1, "lines": ["Odd layout", "Definition material that could not be split automatically."]}]
@@ -209,6 +274,17 @@ class PDFImportParserTests(unittest.TestCase):
         g_result = dlms._pdf_parse_glossary(g_pages)
         kind, _ = dlms._pdf_detect_document_type(g_pages, q_result, g_result)
         self.assertEqual(kind, "glossary")
+
+    def test_pdf_auto_detects_structured_single_question_bank(self):
+        pages = [{"page": 1, "lines": [
+            "Question #1", "Which value is two?", "A. One", "B. Two",
+            "Correct Answer: B — Two",
+        ]}]
+        q_result = dlms._pdf_parse_question_bank(pages)
+        g_result = dlms._pdf_parse_glossary(pages)
+        kind, detection = dlms._pdf_detect_document_type(pages, q_result, g_result)
+        self.assertEqual(kind, "question_bank")
+        self.assertEqual(detection["question_records"], 1)
 
     def test_glossary_parser_handles_inline_and_standalone_terms(self):
         pages = [{"page": 1, "lines": [
