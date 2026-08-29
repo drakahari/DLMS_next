@@ -131,6 +131,62 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertEqual([q["original_number"] for q in selected], [1, 3])
 
 
+    def test_numbered_dot_question_stems_are_parsed_and_auto_detected(self):
+        pages = [{"page": 1, "lines": [
+            "1. Which protocol provides secure remote administration?",
+            "A. Telnet", "B. SSH", "C. FTP", "D. TFTP",
+            "Correct Answer: B — SSH",
+            "2. Which protocol resolves host names to IP addresses?",
+            "A. DNS", "B. SMTP", "C. NTP", "D. SNMP",
+            "Correct Answer: A — DNS",
+        ]}]
+        q_result = dlms._pdf_parse_question_bank(pages)
+        self.assertEqual(q_result["summary"]["detected"], 2)
+        self.assertEqual(q_result["questions"][0]["question"], "Which protocol provides secure remote administration?")
+        self.assertEqual(q_result["questions"][1]["correct"], "A")
+        kind, _ = dlms._pdf_detect_document_type(pages, q_result, dlms._pdf_parse_glossary(pages))
+        self.assertEqual(kind, "question_bank")
+
+    def test_numbered_paren_question_stems_are_parsed(self):
+        pages = [{"page": 1, "lines": [
+            "1) Which value is two?", "A. one", "B. two", "Correct Answer: B — two",
+            "2) Which value is three?", "A. two", "B. three", "Correct Answer: B — three",
+        ]}]
+        result = dlms._pdf_parse_question_bank(pages)
+        self.assertEqual(result["summary"]["detected"], 2)
+        self.assertEqual(result["questions"][1]["question"], "Which value is three?")
+
+    def test_arbitrary_numbered_prose_is_not_promoted_without_mcq_structure(self):
+        pages = [{"page": 1, "lines": [
+            "1. Introduction to access control",
+            "This section explains authorization concepts.",
+            "2. Authentication overview",
+            "This section explains identity verification.",
+        ]}]
+        result = dlms._pdf_parse_question_bank(pages)
+        self.assertEqual(result["summary"]["detected"], 0)
+
+    def test_question_recovery_preserves_text_and_adds_editable_choice_slots(self):
+        pages = [{"page": 1, "lines": [
+            "1. Which control should be selected?",
+            "The source uses an unusual answer layout that DLMS cannot structure automatically.",
+        ]}]
+        result = dlms._pdf_question_recovery_result(pages)
+        self.assertTrue(result["recovery_mode"])
+        self.assertGreaterEqual(result["summary"]["detected"], 1)
+        q = result["questions"][0]
+        self.assertEqual(q["status"], "incomplete")
+        self.assertEqual([c["label"] for c in q["choices"]], ["A", "B", "C", "D"])
+        self.assertTrue(any("recovery" in issue.lower() for issue in q["issues"]))
+
+    def test_glossary_recovery_preserves_page_text_for_manual_repair(self):
+        pages = [{"page": 1, "lines": ["Odd layout", "Definition material that could not be split automatically."]}]
+        result = dlms._pdf_glossary_recovery_result(pages)
+        self.assertTrue(result["recovery_mode"])
+        self.assertEqual(result["summary"]["detected"], 1)
+        self.assertEqual(result["terms"][0]["term"], "")
+        self.assertIn("Definition material", result["terms"][0]["definition"])
+
     def test_pdf_auto_detects_question_bank_and_glossary(self):
         q_pages = [{"page": 1, "lines": [
             "Question #1", "Which one?", "A. One", "B. Two",

@@ -12388,18 +12388,168 @@ def _pdf_parse_glossary(pages):
     }
     return {"terms": cleaned, "summary": summary}
 
+def _pdf_question_start_match(text):
+    """Recognize conservative question-start formats used by common PDF banks."""
+    text = _pdf_clean_line(text)
+    m = re.match(r"^Question\s*#?\s*(\d{1,6})\s*$", text, re.I)
+    if m:
+        return {"number": int(m.group(1)), "inline_stem": "", "kind": "heading"}
+
+    # Numbered stems are accepted only after structural validation in
+    # _pdf_parse_question_bank(). Keeping this matcher narrow avoids treating
+    # arbitrary numbered prose or glossary lists as question starts.
+    m = re.match(r"^(\d{1,6})\s*[.)]\s+(.+)$", text)
+    if m:
+        stem = _pdf_clean_line(m.group(2))
+        if stem:
+            return {"number": int(m.group(1)), "inline_stem": stem, "kind": "numbered"}
+    return None
+
+
+def _pdf_question_chunk_structure(records):
+    """Return evidence that a candidate chunk really looks like MCQ content."""
+    lines = [_pdf_clean_line(r.get("text")) for r in records if _pdf_clean_line(r.get("text"))]
+    labels = []
+    for line in lines:
+        m = re.match(r"^([A-Z])\.\s+.+$", line)
+        if m:
+            labels.append(m.group(1).upper())
+    contiguous = 0
+    if labels:
+        run = 1
+        contiguous = 1
+        for prev, current in zip(labels, labels[1:]):
+            if ord(current) == ord(prev) + 1:
+                run += 1
+                contiguous = max(contiguous, run)
+            else:
+                run = 1
+    answer_marker = any(re.search(r"Correct\s+Answer:\s*[A-Z]", line, re.I) for line in lines)
+    return {"choice_run": contiguous, "answer_marker": answer_marker}
+
+
+def _pdf_add_question_review_slots(question, minimum_labels=("A", "B", "C", "D")):
+    """Ensure Review & Repair always has editable choice slots for reconstruction."""
+    question = dict(question or {})
+    choices = [dict(c) for c in (question.get("choices") or []) if isinstance(c, dict)]
+    existing = {str(c.get("label") or "").upper() for c in choices}
+    for label in minimum_labels:
+        if label not in existing:
+            choices.append({"label": label, "text": ""})
+    choices.sort(key=lambda c: str(c.get("label") or ""))
+    question["choices"] = choices
+    return question
+
+
+def _pdf_question_recovery_result(pages):
+    """Build low-confidence, reviewable question records instead of hard-failing."""
+    stream = _pdf_lines_to_stream(pages)
+    candidates = []
+    for idx, record in enumerate(stream):
+        match = _pdf_question_start_match(record.get("text"))
+        if match:
+            candidates.append((idx, match))
+
+    questions = []
+    if candidates:
+        for pos, (start_idx, match) in enumerate(candidates):
+            end_idx = candidates[pos + 1][0] if pos + 1 < len(candidates) else len(stream)
+            records = list(stream[start_idx + 1:end_idx])
+            if match.get("inline_stem"):
+                records.insert(0, {"page": stream[start_idx]["page"], "text": match["inline_stem"]})
+            q = _pdf_parse_question_chunk(match["number"], records)
+            if q:
+                q = _pdf_add_question_review_slots(q)
+                q["status"] = "incomplete"
+                issues = list(q.get("issues") or [])
+                recovery_issue = "Low-confidence recovery record. Verify/reconstruct the question, choices, correct answer, and explanation before keeping it."
+                if recovery_issue not in issues:
+                    issues.insert(0, recovery_issue)
+                q["issues"] = issues
+                questions.append(q)
+
+    # If there are no usable question boundaries at all, preserve extracted text
+    # page-by-page so the user still reaches Review & Repair and can reconstruct it.
+    if not questions:
+        for page in pages:
+            text = _pdf_join_wrapped(page.get("lines") or [])
+            if not text:
+                continue
+            questions.append({
+                "number": len(questions) + 1,
+                "question": text,
+                "choices": [{"label": x, "text": ""} for x in ("A", "B", "C", "D")],
+                "correct": "",
+                "declared_answer_text": "",
+                "explanation": "",
+                "choice_feedback": {},
+                "pages": [page.get("page")],
+                "status": "incomplete",
+                "issues": [
+                    "Unstructured recovery record. DLMS preserved this page's extracted text for manual reconstruction.",
+                    "Enter at least two answer choices and select a correct answer, or exclude this record.",
+                ],
+                "keep": True,
+            })
+
+    return {
+        "type": "multiple_choice_question_bank",
+        "questions": questions,
+        "summary": {
+            "detected": len(questions),
+            "complete": 0,
+            "review": 0,
+            "incomplete": len(questions),
+        },
+        "recovery_mode": True,
+    }
+
+
+def _pdf_glossary_recovery_result(pages):
+    """Preserve selectable text as editable terminology recovery records."""
+    terms = []
+    for page in pages:
+        text = _pdf_join_wrapped(page.get("lines") or [])
+        if not text:
+            continue
+        terms.append({
+            "number": len(terms) + 1,
+            "term": "",
+            "definition": text,
+            "pages": [page.get("page")],
+            "status": "incomplete",
+            "issues": [
+                "Unstructured recovery record. Enter the term and repair the definition, or exclude this record."
+            ],
+            "keep": True,
+        })
+    return {
+        "type": "glossary",
+        "terms": terms,
+        "summary": {
+            "detected": len(terms),
+            "complete": 0,
+            "review": 0,
+            "incomplete": len(terms),
+        },
+        "recovery_mode": True,
+    }
+
+
 def _pdf_detect_document_type(pages, question_result=None, glossary_result=None):
     question_result = question_result if isinstance(question_result, dict) else _pdf_parse_question_bank(pages)
     glossary_result = glossary_result if isinstance(glossary_result, dict) else _pdf_parse_glossary(pages)
 
     stream = _pdf_lines_to_stream(pages)
-    question_markers = sum(1 for r in stream if re.match(r"^Question\s*#?\s*\d+", r["text"], re.I))
+    question_markers = sum(1 for r in stream if _pdf_question_start_match(r["text"]))
     answer_markers = sum(1 for r in stream if re.search(r"Correct\s+Answer:", r["text"], re.I))
     q_detected = int((question_result.get("summary") or {}).get("detected") or 0)
     g_detected = int((glossary_result.get("summary") or {}).get("detected") or 0)
 
-    # Strong structural question-bank evidence always wins.
-    if question_markers >= 2 and answer_markers >= 1 and q_detected >= 2:
+    # Parsed question records are stronger evidence than glossary-like prose. This
+    # prevents numbered MCQ banks from being misclassified as glossaries merely
+    # because their question-start format differs from "Question N".
+    if q_detected >= 2 and answer_markers >= 1:
         return "question_bank", {
             "question_markers": question_markers,
             "answer_markers": answer_markers,
@@ -12424,16 +12574,31 @@ def _pdf_detect_document_type(pages, question_result=None, glossary_result=None)
 
 def _pdf_parse_question_bank(pages):
     stream = _pdf_lines_to_stream(pages)
-    starts = []
+    raw_starts = []
     for idx, record in enumerate(stream):
-        m = re.match(r"^Question\s*#?\s*(\d+)\s*$", record["text"], re.I)
-        if m:
-            starts.append((idx, int(m.group(1))))
+        match = _pdf_question_start_match(record.get("text"))
+        if match:
+            raw_starts.append((idx, match))
+
+    # Standalone "Question N" headings remain trusted boundaries. Numbered stems
+    # such as "1. ..." or "1) ..." must have nearby A/B/... choices plus a
+    # Correct Answer marker before being promoted to structured questions.
+    starts = []
+    for pos, (start_idx, match) in enumerate(raw_starts):
+        end_idx = raw_starts[pos + 1][0] if pos + 1 < len(raw_starts) else len(stream)
+        if match.get("kind") == "numbered":
+            evidence = _pdf_question_chunk_structure(stream[start_idx + 1:end_idx])
+            if evidence["choice_run"] < 2 or not evidence["answer_marker"]:
+                continue
+        starts.append((start_idx, match))
 
     questions = []
-    for pos, (start_idx, number) in enumerate(starts):
+    for pos, (start_idx, match) in enumerate(starts):
         end_idx = starts[pos + 1][0] if pos + 1 < len(starts) else len(stream)
-        q = _pdf_parse_question_chunk(number, stream[start_idx + 1:end_idx])
+        records = list(stream[start_idx + 1:end_idx])
+        if match.get("inline_stem"):
+            records.insert(0, {"page": stream[start_idx]["page"], "text": match["inline_stem"]})
+        q = _pdf_parse_question_chunk(match["number"], records)
         if q:
             questions.append(q)
 
@@ -12802,16 +12967,36 @@ def pdf_import_analyze():
         if document_type == "question_bank":
             result = question_result
             if not result.get("questions"):
-                raise ValueError("No structured question-bank records were detected.")
+                result = _pdf_question_recovery_result(pages)
+                detection = {**(detection or {}), "recovery_mode": True, "reason": "no_structured_question_records"}
         elif document_type == "glossary":
             result = glossary_result
             if not result.get("terms"):
-                raise ValueError("No glossary/terminology records were detected.")
+                result = _pdf_glossary_recovery_result(pages)
+                detection = {**(detection or {}), "recovery_mode": True, "reason": "no_structured_glossary_records"}
         else:
-            raise ValueError(
-                "DLMS could not confidently classify this PDF as a question bank or glossary. "
-                "Try again and choose the Content type manually."
-            )
+            # Auto-detect may still be inconclusive for an unusual layout. Preserve
+            # the extracted text in Review & Repair rather than throwing it away.
+            answer_markers = sum(1 for p in pages for line in p.get("lines", []) if re.search(r"Correct\s+Answer:", line, re.I))
+            choice_lines = sum(1 for p in pages for line in p.get("lines", []) if re.match(r"^[A-Z]\.\s+", line))
+            if answer_markers or choice_lines >= 2:
+                document_type = "question_bank"
+                result = _pdf_question_recovery_result(pages)
+                detection = {**(detection or {}), "recovery_mode": True, "reason": "auto_low_confidence_question_like"}
+            elif glossary_result.get("terms"):
+                document_type = "glossary"
+                result = glossary_result
+            else:
+                document_type = "question_bank"
+                result = _pdf_question_recovery_result(pages)
+                detection = {**(detection or {}), "recovery_mode": True, "reason": "auto_unstructured_recovery"}
+
+        if document_type == "question_bank":
+            result["questions"] = [_pdf_add_question_review_slots(q) for q in (result.get("questions") or [])]
+            if not result.get("questions"):
+                raise ValueError("No selectable text could be recovered from this PDF. OCR is not enabled.")
+        elif document_type == "glossary" and not result.get("terms"):
+            raise ValueError("No selectable text could be recovered from this PDF. OCR is not enabled.")
 
         draft = {
             "id": draft_id,
@@ -12867,7 +13052,7 @@ def _render_pdf_glossary_review(draft):
 <aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Terminology Review</div></aside>
 <main class="dashboard-main pdf-import-main">
 {% with messages=get_flashed_messages(with_categories=true) %}{% if messages %}<div class="pdf-import-flash-stack">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · TERMINOLOGY</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. Review every detected term/definition pair before saving the reusable terminology bank.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · TERMINOLOGY</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. {% if draft.recovery_mode or draft.detection.recovery_mode %}Automatic parsing confidence was low, so DLMS preserved recoverable text for manual term/definition reconstruction.{% else %}Review every detected term/definition pair before saving the reusable terminology bank.{% endif %}</p></div></header>
 <section class="pdf-import-summary-grid"><article class="dashboard-stat-card"><span>Detected</span><strong>{{ draft.summary.detected }}</strong><small>terms</small></article><article class="dashboard-stat-card"><span>Complete</span><strong>{{ draft.summary.complete }}</strong><small>ready</small></article><article class="dashboard-stat-card"><span>Review</span><strong>{{ draft.summary.review }}</strong><small>needs attention</small></article><article class="dashboard-stat-card"><span>Incomplete</span><strong>{{ draft.summary.incomplete }}</strong><small>repair or exclude</small></article></section>
 <div class="pdf-import-filter-row"><button type="button" data-filter="all" class="active">All</button><button type="button" data-filter="complete">Complete</button><button type="button" data-filter="review">Needs Review</button><button type="button" data-filter="incomplete">Incomplete</button></div>
 <div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk terminology actions"><button type="button" class="build-secondary-link" id="pdfTermSelectAllVisible">Select All Visible</button><button type="button" class="build-secondary-link" id="pdfTermClearSelection">Clear Selection</button><button type="button" class="build-secondary-link pdf-review-danger-action" id="pdfTermExcludeSelected">Exclude Selected</button><button type="button" class="build-secondary-link" id="pdfTermKeepSelected">Keep Selected</button><span class="pdf-review-bulk-status" id="pdfTermSelectionCount">0 selected</span></div>
@@ -13054,7 +13239,7 @@ def pdf_import_review(draft_id):
 </div>
 {% endif %}
 {% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · REVIEW</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. DLMS parsed the full source. Repair anything misread or exclude unusable questions, then save the reusable question bank.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · REVIEW</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. {% if draft.recovery_mode or draft.detection.recovery_mode %}Automatic parsing confidence was low, so DLMS preserved recoverable text and editable fields for manual reconstruction. Verify each kept record carefully.{% else %}DLMS parsed the full source. Repair anything misread or exclude unusable questions, then save the reusable question bank.{% endif %}</p></div></header>
 <section class="pdf-import-summary-grid">
 <article class="dashboard-stat-card"><span>Detected</span><strong>{{ draft.summary.detected }}</strong><small>questions</small></article>
 <article class="dashboard-stat-card"><span>Complete</span><strong>{{ draft.summary.complete }}</strong><small>ready</small></article>
