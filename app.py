@@ -23185,8 +23185,75 @@ def history_db():
 # =========================
 # RUN
 # =========================
-DLMS_SERVER_HOST = "0.0.0.0"
+DLMS_SERVER_HOST = "127.0.0.1"
 DLMS_SERVER_PORT = 9001
+
+
+def _dlms_validate_server_host(value):
+    """Validate an explicit Flask bind host without resolving it over DNS."""
+    host = str(value or "").strip()
+    if (
+        not host
+        or len(host) > 255
+        or host.startswith("-")
+        or re.search(r"\s", host)
+        or not re.fullmatch(r"[A-Za-z0-9_.:-]+", host)
+    ):
+        raise ValueError(
+            "Invalid --host value. Use an IP address or hostname, such as "
+            "127.0.0.1 or 0.0.0.0."
+        )
+    return host
+
+
+def _dlms_is_loopback_host(host):
+    """Return True only for host values that unambiguously bind to loopback."""
+    host = str(host or "").strip().lower()
+    if host == "localhost":
+        return True
+    try:
+        import ipaddress
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _dlms_parse_startup_options(argv=None, environ=None, desktop_available=None):
+    """Resolve bind and browser options while keeping those choices independent."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    env = os.environ if environ is None else environ
+    host = DLMS_SERVER_HOST
+    force_browser = False
+    disable_browser = False
+
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--browser":
+            force_browser = True
+        elif arg == "--no-browser":
+            disable_browser = True
+        elif arg == "--host":
+            index += 1
+            if index >= len(args):
+                raise ValueError("--host requires an IP address or hostname.")
+            host = _dlms_validate_server_host(args[index])
+        elif arg.startswith("--host="):
+            host = _dlms_validate_server_host(arg.split("=", 1)[1])
+        index += 1
+
+    env_no_browser = str(env.get("DLMS_NO_BROWSER") or "").strip().lower()
+    disable_browser = disable_browser or env_no_browser in {"1", "true", "yes", "on"}
+    if desktop_available is None:
+        desktop_available = _dlms_desktop_browser_available()
+    open_browser = not disable_browser and (force_browser or bool(desktop_available))
+
+    return {
+        "host": host,
+        "force_browser": force_browser,
+        "disable_browser": disable_browser,
+        "open_browser": open_browser,
+    }
 
 
 def _dlms_detect_lan_ip():
@@ -23224,15 +23291,15 @@ def _dlms_desktop_browser_available():
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
-def _dlms_wait_and_open_browser(port):
-    """Open localhost only after the DLMS server socket is confirmed ready."""
+def _dlms_wait_and_open_browser(port, host="127.0.0.1"):
+    """Open the selected local endpoint after its server socket is ready."""
     import socket
     import webbrowser
 
     deadline = time.time() + 12
     while time.time() < deadline:
         try:
-            with socket.create_connection(("127.0.0.1", int(port)), timeout=0.4):
+            with socket.create_connection((host, int(port)), timeout=0.4):
                 break
         except OSError:
             time.sleep(0.15)
@@ -23240,7 +23307,7 @@ def _dlms_wait_and_open_browser(port):
         print("[DLMS] Browser launch skipped: server readiness was not confirmed.")
         return
 
-    url = f"http://127.0.0.1:{int(port)}"
+    url = f"http://{_dlms_url_host(host)}:{int(port)}"
     try:
         opened = webbrowser.open(url, new=2)
         if not opened:
@@ -23249,34 +23316,64 @@ def _dlms_wait_and_open_browser(port):
         print(f"[DLMS] Browser launch failed ({exc}). Use {url}")
 
 
-def _dlms_print_access_urls(port):
+def _dlms_url_host(host):
+    """Format an IPv6 bind address for use in a displayed HTTP URL."""
+    host = str(host or "")
+    return f"[{host}]" if ":" in host and not host.startswith("[") else host
+
+
+def _dlms_browser_host(bind_host):
+    """Choose an address the local browser can use for the selected bind."""
+    if bind_host in {"0.0.0.0", "::"}:
+        return "127.0.0.1"
+    return bind_host
+
+
+def _dlms_print_access_urls(host, port):
+    host = str(host or DLMS_SERVER_HOST)
     local_url = f"http://127.0.0.1:{int(port)}"
-    print(f"[DLMS] Local access:   {local_url}")
-    lan_ip = _dlms_detect_lan_ip()
-    if lan_ip:
-        print(f"[DLMS] Network access: http://{lan_ip}:{int(port)}")
+    if _dlms_is_loopback_host(host):
+        display_host = "127.0.0.1" if host == "localhost" else host
+        print(f"[DLMS] Local access:   http://{_dlms_url_host(display_host)}:{int(port)}")
+        return
+
+    if host in {"0.0.0.0", "::"}:
+        print(f"[DLMS] Local access:   {local_url}")
+        lan_ip = _dlms_detect_lan_ip()
+        if lan_ip:
+            print(f"[DLMS] Network access: http://{lan_ip}:{int(port)}")
+        else:
+            print(f"[DLMS] Network bind:   {host}:{int(port)} (all interfaces)")
+    else:
+        print(f"[DLMS] Network access: http://{_dlms_url_host(host)}:{int(port)}")
+
+    print("[DLMS] WARNING: DLMS is bound to a non-loopback interface.")
+    print("[DLMS] WARNING: Authentication is not yet provided; expose DLMS only on a trusted network.")
 
 
 if __name__ == "__main__":
     #purge_legacy_quizzes()   # REMOVE after one run
 
-    args = set(sys.argv[1:])
-    force_browser = "--browser" in args
-    disable_browser = "--no-browser" in args or str(os.environ.get("DLMS_NO_BROWSER") or "").strip().lower() in {"1", "true", "yes", "on"}
-    open_browser = force_browser or (not disable_browser and _dlms_desktop_browser_available())
+    try:
+        startup = _dlms_parse_startup_options()
+    except ValueError as exc:
+        print(f"[DLMS] Startup error: {exc}", file=sys.stderr)
+        raise SystemExit(2)
 
-    _dlms_print_access_urls(DLMS_SERVER_PORT)
-    if disable_browser:
+    server_host = startup["host"]
+    _dlms_print_access_urls(server_host, DLMS_SERVER_PORT)
+    if startup["disable_browser"]:
         print("[DLMS] Automatic browser launch disabled (--no-browser / DLMS_NO_BROWSER).")
-    elif open_browser:
+    elif startup["open_browser"]:
         print("[DLMS] Browser will open after the local server is ready. Use --no-browser to disable this behavior.")
-        threading.Thread(target=_dlms_wait_and_open_browser, args=(DLMS_SERVER_PORT,), daemon=True).start()
+        browser_host = _dlms_browser_host(server_host)
+        threading.Thread(target=_dlms_wait_and_open_browser, args=(DLMS_SERVER_PORT, browser_host), daemon=True).start()
     else:
         print("[DLMS] Headless/server session detected; browser launch skipped. Use --browser to force it.")
 
     # Bind behavior intentionally remains independent of browser-launch behavior.
     app.run(
-        host=DLMS_SERVER_HOST,
+        host=server_host,
         port=DLMS_SERVER_PORT,
         debug=False,
         use_reloader=False
