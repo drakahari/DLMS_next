@@ -1430,10 +1430,38 @@ def _content_pack_validation_record(name, status, detail):
     return {"name": str(name), "status": str(status), "detail": str(detail)}
 
 
-def _matching_comparison_key(value):
+def _matching_comparison_key(value, *, fold_case=True):
     """Normalize matching values for deterministic ambiguity checks only."""
     normalized = unicodedata.normalize("NFKC", str(value or ""))
-    return " ".join(normalized.strip().split()).casefold()
+    normalized = " ".join(normalized.strip().split())
+    return normalized.casefold() if fold_case else normalized
+
+
+def _matching_case_only_term_warnings(records, *, context, left_key="term", record_name="item"):
+    """Return non-blocking diagnostics for case-only term variants."""
+    if not isinstance(records, list):
+        return []
+    warnings_found = []
+    seen = {}
+    for number, record in enumerate(records, 1):
+        if not isinstance(record, dict):
+            continue
+        original = str(record.get(left_key) or "").strip()
+        case_sensitive_key = _matching_comparison_key(original, fold_case=False)
+        if not case_sensitive_key:
+            continue
+        folded_key = case_sensitive_key.casefold()
+        earlier = seen.get(folded_key)
+        if earlier and earlier[1] != case_sensitive_key:
+            earlier_number, _, earlier_original = earlier
+            warnings_found.append(
+                f"{context}: case-only {left_key} variants at {record_name} "
+                f"{earlier_number} {earlier_original!r} and {record_name} "
+                f"{number} {original!r}; verify that case is intentionally significant"
+            )
+        elif not earlier:
+            seen[folded_key] = (number, case_sensitive_key, original)
+    return warnings_found
 
 
 def _matching_record_validation_errors(
@@ -1460,7 +1488,7 @@ def _matching_record_validation_errors(
         original_left = str(record.get(left_key) or "").strip()
         original_right = str(record.get(right_key) or "").strip()
         normalized_id = _matching_comparison_key(original_id)
-        normalized_left = _matching_comparison_key(original_left)
+        normalized_left = _matching_comparison_key(original_left, fold_case=False)
         normalized_right = _matching_comparison_key(original_right)
 
         if not normalized_left:
@@ -1761,6 +1789,12 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
             if matching_errors:
                 duplicates_ok = False
                 errors.extend(matching_errors)
+            warnings.extend(_matching_case_only_term_warnings(
+                terms,
+                context=f"{rel_path} (dataset {did!r})",
+                left_key="term",
+                record_name="item",
+            ))
 
         elif group in {"image_datasets", "quiz_datasets"}:
             images = data.get("images") or []
@@ -1854,6 +1888,15 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                         if matching_errors:
                             duplicates_ok = False
                             errors.extend(matching_errors)
+                        warnings.extend(_matching_case_only_term_warnings(
+                            question.get("pairs") or [],
+                            context=(
+                                f"{rel_path} (dataset {did!r}), matching question "
+                                f"{question_number} {question_text!r}"
+                            ),
+                            left_key="left",
+                            record_name="pair",
+                        ))
 
     checks.append(_content_pack_validation_record(
         "Referenced files", "PASS" if referenced_files_ok else "FAIL",
@@ -6262,7 +6305,8 @@ You MUST validate the finished pack after all files are created. Do not merely s
 - every descriptor has id, title, type, path, and the declared file exists
 - every dataset file id matches its manifest descriptor id
 - there are no duplicate normalized dataset IDs, image IDs, or matching record IDs where IDs are used
-- matching terms and definitions/answers are unique after case, Unicode, and whitespace normalization
+- matching terms are unique after Unicode and whitespace normalization; case-only term variants are reviewed intentionally because technical syntax may be case-sensitive
+- matching definitions/answers are unique after case, Unicode, and whitespace normalization
 - matching pairs form one-to-one mappings with no duplicate or near-duplicate pairs and remain semantically distinct and unambiguous when shuffled
 - every matching collision discovered during review is repaired before delivery
 - every term and definition is non-empty

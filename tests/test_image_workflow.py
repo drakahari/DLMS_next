@@ -115,7 +115,7 @@ class ImageWorkflowTests(unittest.TestCase):
         mixed = json.loads(mixed_path.read_text(encoding="utf-8"))
         mixed["questions"][1]["pairs"] = [
             {"id":"pair-1","left":" Alpha ","right":"First"},
-            {"id":"PAIR-1","left":"alpha","right":"Second"},
+            {"id":"PAIR-1","left":"Alpha","right":"Second"},
         ]
         mixed_path.write_text(json.dumps(mixed), encoding="utf-8")
 

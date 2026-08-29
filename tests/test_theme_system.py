@@ -202,6 +202,16 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertIn("white-space: pre-wrap", prompt)
         self.assertIn("overflow-wrap: anywhere", prompt)
 
+        panel = re.search(
+            r"\.medical-ai-builder-page \.medical-ai-prompt-panel\s*\{([^}]*)\}", css
+        ).group(1)
+        self.assertIn("padding: var(--dlms-space-xl)", panel)
+        pill_spacing = re.search(
+            r"\.medical-ai-prompt-panel \.medical-ai-safety-pill\s*\{([^}]*)\}", css
+        ).group(1)
+        self.assertIn("margin-top: var(--dlms-space-xs)", pill_spacing)
+        self.assertIn("margin-right: var(--dlms-space-xs)", pill_spacing)
+
     def test_ai_builder_status_pill_contrast_across_palettes(self):
         client = dlms.app.test_client()
         for theme in ("dark", "light", "purple-gold", "maroon-gold"):

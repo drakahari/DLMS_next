@@ -71,7 +71,7 @@ class ContentPackValidationTests(unittest.TestCase):
     def test_normalized_term_and_definition_collisions_are_blocked_precisely(self):
         report = self._report_with_terms("DLMS_Study_normalized", [
             {"term":"  LAYER   TWO ","definition":"Network level"},
-            {"term":"layer two","definition":"Different answer"},
+            {"term":"LAYER TWO","definition":"Different answer"},
             {"term":"Frame","definition":"  NETWORK   LEVEL  "},
         ])
         self.assertFalse(report["valid"])
@@ -81,6 +81,58 @@ class ContentPackValidationTests(unittest.TestCase):
         self.assertIn("item 2", joined)
         self.assertIn("earlier item 1", joined)
         self.assertIn("'LAYER   TWO'", joined)
+
+    def test_case_sensitive_stat_directives_are_distinct_and_non_blocking(self):
+        report = self._report_with_terms("DLMS_Study_stat_directives", [
+            {
+                "term":"stat %a",
+                "definition":"A stat format directive that prints permission bits in octal.",
+            },
+            {
+                "term":"stat %A",
+                "definition":"A stat format directive that prints permission bits in symbolic form.",
+            },
+        ])
+        self.assertTrue(report["valid"], report["errors"])
+        self.assertFalse(any("one term maps to multiple answers" in e for e in report["errors"]))
+        self.assertTrue(any(
+            "case-only term variants" in warning
+            and "'stat %a'" in warning
+            and "'stat %A'" in warning
+            for warning in report["warnings"]
+        ))
+
+    def test_case_sensitive_programming_identifiers_can_coexist(self):
+        report = self._report_with_terms("DLMS_Study_identifiers", [
+            {"term":"Path","definition":"A programming type representing a filesystem path."},
+            {"term":"PATH","definition":"The environment variable used to locate commands."},
+            {"term":"path","definition":"A local variable holding a route string."},
+        ])
+        self.assertTrue(report["valid"], report["errors"])
+        self.assertGreaterEqual(
+            sum("case-only term variants" in warning for warning in report["warnings"]),
+            2,
+        )
+
+    def test_exact_and_whitespace_only_term_duplicates_remain_blocking(self):
+        exact = self._report_with_terms("DLMS_Study_exact_term", [
+            {"term":"chmod","definition":"Changes file modes."},
+            {"term":"chmod","definition":"Modifies permissions."},
+        ])
+        whitespace = self._report_with_terms("DLMS_Study_whitespace_term", [
+            {"term":"stat   %a","definition":"Prints octal permissions."},
+            {"term":"  stat %a  ","definition":"Prints an octal file mode."},
+        ])
+        self.assertTrue(any("one term maps to multiple answers" in e for e in exact["errors"]))
+        self.assertTrue(any("one term maps to multiple answers" in e for e in whitespace["errors"]))
+
+    def test_case_only_natural_language_terms_receive_non_blocking_warning(self):
+        report = self._report_with_terms("DLMS_Study_natural_case", [
+            {"term":"Polish","definition":"Relating to Poland."},
+            {"term":"polish","definition":"To make a surface smooth or shiny."},
+        ])
+        self.assertTrue(report["valid"], report["errors"])
+        self.assertTrue(any("case-only term variants" in warning for warning in report["warnings"]))
 
     def test_unicode_normalized_collision_and_exact_pair_are_identified(self):
         report = self._report_with_terms("DLMS_Study_unicode", [
@@ -144,7 +196,7 @@ class ContentPackValidationTests(unittest.TestCase):
         data = json.loads(data_path.read_text(encoding="utf-8"))
         data["terms"] = [
             {"term":"Alpha","definition":"First"},
-            {"term":" alpha ","definition":"Second"},
+            {"term":" Alpha ","definition":"Second"},
         ]
         data_path.write_text(json.dumps(data), encoding="utf-8")
         installed_root = Path(dlms.CONTENT_PACK_FOLDER) / root.name
