@@ -122,8 +122,11 @@ class ImageWorkflowTests(unittest.TestCase):
         asset.write_bytes(b"DLMS-test-image")
         with mock.patch.object(dlms.os.path, "relpath", side_effect=AssertionError("relpath must not be used by quiz_asset")):
             response = dlms.app.test_client().get("/quiz-assets/snapshot_test/images/diagram.png")
-        self.assertEqual(200, response.status_code)
-        self.assertEqual(b"DLMS-test-image", response.data)
+        try:
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(b"DLMS-test-image", response.data)
+        finally:
+            response.close()
 
     def test_invalid_hotspot_geometry_is_rejected(self):
         root = self.make_pack()
