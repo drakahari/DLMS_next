@@ -151,12 +151,23 @@ class CsrfProtectionTests(unittest.TestCase):
             save_draft.assert_called_once()
 
         report = {
-            "manifest": {"created_at": "2026-08-29", "dlms_version": "3.0.1", "summary": {}},
+            "manifest": {
+                "schema_version": dlms.DLMS_BACKUP_SCHEMA_VERSION,
+                "kind": "dlms-portable-backup",
+                "file_count": 1,
+                "created_at": "2026-08-29",
+                "dlms_version": "3.0.1",
+                "summary": {},
+            },
             "file_count": 1, "uncompressed_bytes": 100, "members": [],
         }
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
             dlms, "BACKUP_RESTORE_STAGING_FOLDER", directory
-        ), mock.patch.object(dlms, "_validate_dlms_backup", return_value=report):
+        ), mock.patch.object(dlms, "_validate_dlms_backup", return_value=report), mock.patch.object(
+            dlms, "_extract_validated_backup"
+        ), mock.patch.object(
+            dlms, "_validate_staged_backup_semantics", return_value={"status": "valid"}
+        ):
             backup_response = self.client.post(
                 "/settings/data/restore/stage",
                 data={"csrf_token": token, "backup_file": (io.BytesIO(b"PK-test"), "backup.zip")},

@@ -2,6 +2,7 @@ from flask import Flask, send_from_directory, request, redirect, render_template
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlsplit
 from PIL import Image, ImageSequence, UnidentifiedImageError
 from werkzeug.utils import secure_filename
@@ -1823,6 +1824,19 @@ DLMS_BACKUP_MAX_SINGLE_FILE = 768 * 1024 * 1024
 DLMS_BACKUP_MAX_COMPRESSION_RATIO = 1000
 DLMS_BACKUP_RATIO_MIN_UNCOMPRESSED = 16 * 1024 * 1024
 DLMS_BACKUP_EXCLUDED_TOP_LEVEL = {"backups", "uploads", "content_pack_staging"}
+DLMS_BACKUP_CORE_DB_SCHEMA = {
+    "quizzes": {"id", "title", "source_file"},
+    "questions": {"id", "quiz_id", "question_number", "question_text"},
+    "choices": {"id", "question_id", "label", "text", "is_correct"},
+    "attempts": {"id", "quiz_id", "score", "total", "percent", "mode"},
+    "attempt_answers": {"id", "attempt_id", "question_id", "was_correct"},
+    "missed_questions": {"id", "attempt_id"},
+}
+DLMS_BACKUP_CRITICAL_JSON_TYPES = {
+    "config/portal.json": dict,
+    "config/quizzes.json": list,
+    "config/law.json": dict,
+}
 
 
 def _ensure_runtime_data_dirs():
@@ -2119,6 +2133,176 @@ def _extract_validated_backup(zip_path, target_root, report):
             os.makedirs(os.path.dirname(target), exist_ok=True)
             with archive.open(info, "r") as src, open(target, "wb") as dst:
                 shutil.copyfileobj(src, dst)
+
+
+def _validate_restored_sqlite(path, relative_path="results.db"):
+    """Validate a restored DLMS database without running writable migrations."""
+    try:
+        uri = Path(os.path.abspath(path)).as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+    except sqlite3.Error as exc:
+        raise ValueError(f"{relative_path} is not a readable SQLite database") from exc
+    try:
+        integrity_rows = conn.execute("PRAGMA integrity_check").fetchall()
+        if integrity_rows != [("ok",)]:
+            detail = str(integrity_rows[0][0]) if integrity_rows else "no result"
+            raise ValueError(f"{relative_path} failed SQLite integrity_check: {detail[:160]}")
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()}
+        for table, required_columns in DLMS_BACKUP_CORE_DB_SCHEMA.items():
+            if table not in tables:
+                raise ValueError(f"{relative_path} is missing required table {table}")
+            columns = {row[1] for row in conn.execute(
+                f'PRAGMA table_info("{table}")'
+            ).fetchall()}
+            missing = sorted(required_columns - columns)
+            if missing:
+                raise ValueError(
+                    f"{relative_path} table {table} is missing required column(s): {', '.join(missing)}"
+                )
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"{relative_path} is corrupt or not a DLMS SQLite database") from exc
+    finally:
+        conn.close()
+    return {"path": relative_path, "integrity": "ok", "schema": "compatible"}
+
+
+def _validate_restored_json(path, relative_path):
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{relative_path} is not valid JSON") from exc
+
+    normalized = relative_path.replace("\\", "/")
+    expected_type = DLMS_BACKUP_CRITICAL_JSON_TYPES.get(normalized)
+    if expected_type is not None and not isinstance(value, expected_type):
+        kind = "object" if expected_type is dict else "list"
+        raise ValueError(f"{relative_path} must contain a JSON {kind}")
+    if normalized == "config/portal.json" and isinstance(value, dict):
+        for key in ("title", "theme", "background_image"):
+            if key in value and value[key] is not None and not isinstance(value[key], str):
+                raise ValueError(f"config/portal.json field {key} has an incompatible value")
+        background = value.get("background_image")
+        if background and (
+            os.path.basename(background) != background
+            or os.path.splitext(background)[1].lower() not in RASTER_IMAGE_FORMATS
+        ):
+            raise ValueError("config/portal.json background_image is not a safe raster filename")
+    elif normalized == "config/quizzes.json" and isinstance(value, list):
+        if any(not isinstance(item, dict) for item in value):
+            raise ValueError("config/quizzes.json entries must be objects")
+        for item in value:
+            for key in ("title", "html", "logo", "folder"):
+                if key in item and item[key] is not None and not isinstance(item[key], str):
+                    raise ValueError(f"config/quizzes.json field {key} has an incompatible value")
+            quiz_html = item.get("html")
+            if quiz_html and (os.path.basename(quiz_html) != quiz_html or not quiz_html.lower().endswith(".html")):
+                raise ValueError("config/quizzes.json contains an unsafe quiz HTML filename")
+            logo = item.get("logo")
+            if logo and (
+                os.path.basename(logo) != logo
+                or os.path.splitext(logo)[1].lower() not in RASTER_IMAGE_FORMATS
+            ):
+                raise ValueError("config/quizzes.json contains an unsafe logo filename")
+    elif normalized == "config/law.json" and isinstance(value, dict):
+        for key in ("cases", "folders"):
+            if key in value and not isinstance(value[key], list):
+                raise ValueError(f"config/law.json field {key} must be a list")
+    return value
+
+
+def _validate_restored_assets(staged_data_root):
+    validated = []
+    for relative_root, extensions in [
+        ("static/bg", RASTER_IMAGE_FORMATS),
+        ("static/logos", RASTER_IMAGE_FORMATS),
+        ("quiz_assets", PASSIVE_PACK_IMAGE_EXTENSIONS),
+    ]:
+        root = os.path.join(staged_data_root, *relative_root.split("/"))
+        if not os.path.isdir(root):
+            continue
+        for current_root, dirs, filenames in os.walk(root, followlinks=False):
+            dirs[:] = [name for name in dirs if name != "_temp"]
+            for filename in filenames:
+                path = os.path.join(current_root, filename)
+                relative_path = os.path.relpath(path, staged_data_root).replace("\\", "/")
+                try:
+                    _decode_raster_image(path, extensions)
+                except ValueError as exc:
+                    raise ValueError(f"Unsafe restored image asset {relative_path}: {exc}") from exc
+                validated.append(relative_path)
+
+    packs_root = os.path.join(staged_data_root, "content_packs")
+    if os.path.isdir(packs_root):
+        for name in sorted(os.listdir(packs_root), key=str.casefold):
+            pack_root = os.path.join(packs_root, name)
+            if not os.path.isdir(pack_root):
+                raise ValueError(f"Content Pack entry {name} is not a directory")
+            result = _validate_staged_content_pack(pack_root)
+            if not result.get("valid"):
+                details = "; ".join(result.get("errors") or ["invalid Content Pack"])
+                raise ValueError(f"Restored Content Pack {name} is invalid: {details}")
+    return validated
+
+
+def _validate_backup_manifest_semantics(manifest, staged_data_root):
+    if not isinstance(manifest, dict):
+        raise ValueError("Backup manifest must be a JSON object")
+    if manifest.get("kind") != "dlms-portable-backup":
+        raise ValueError("Backup manifest kind is incompatible with DLMS")
+    if manifest.get("schema_version") != DLMS_BACKUP_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported backup schema_version {manifest.get('schema_version')!r}")
+    for field, expected in (("created_at", str), ("dlms_version", str), ("included_roots", list), ("summary", dict)):
+        if field in manifest and not isinstance(manifest[field], expected):
+            raise ValueError(f"Backup manifest field {field} has an incompatible value")
+    if "file_count" not in manifest or not isinstance(manifest["file_count"], int) or manifest["file_count"] < 0:
+        raise ValueError("Backup manifest file_count is missing or invalid")
+    if isinstance(manifest.get("included_roots"), list):
+        declared = manifest["included_roots"]
+        if any(not isinstance(item, str) or not item or "/" in item or "\\" in item for item in declared):
+            raise ValueError("Backup manifest included_roots contains an invalid root")
+        actual = sorted(os.listdir(staged_data_root), key=str.casefold)
+        if {item.casefold() for item in declared} != {item.casefold() for item in actual}:
+            raise ValueError("Backup manifest included_roots does not match restored data")
+
+
+def _validate_staged_backup_semantics(staged_data_root, manifest):
+    """Validate extracted backup data completely before any live-data mutation."""
+    if not os.path.isdir(staged_data_root):
+        raise ValueError("Backup staging data is missing")
+    _validate_backup_manifest_semantics(manifest, staged_data_root)
+
+    json_files = []
+    sqlite_files = []
+    for current_root, dirs, filenames in os.walk(staged_data_root, followlinks=False):
+        for dirname in dirs:
+            if os.path.islink(os.path.join(current_root, dirname)):
+                raise ValueError("Backup staging contains an unexpected symbolic link")
+        for filename in filenames:
+            path = os.path.join(current_root, filename)
+            relative_path = os.path.relpath(path, staged_data_root).replace("\\", "/")
+            if os.path.islink(path):
+                raise ValueError(f"Backup staging contains an unexpected symbolic link: {relative_path}")
+            extension = os.path.splitext(filename)[1].lower()
+            if extension in {".db", ".sqlite", ".sqlite3"}:
+                sqlite_files.append(_validate_restored_sqlite(path, relative_path))
+            elif extension == ".json":
+                _validate_restored_json(path, relative_path)
+                json_files.append(relative_path)
+
+    if not any(item["path"] == "results.db" for item in sqlite_files):
+        raise ValueError("Backup is missing required DLMS database results.db")
+
+    assets = _validate_restored_assets(staged_data_root)
+    return {
+        "status": "valid",
+        "sqlite": sqlite_files,
+        "json_files": json_files,
+        "assets": assets,
+        "compatibility": "schema-version-1; optional descriptive manifest fields may be absent",
+    }
 
 
 def _restore_staging_dir(token):
@@ -17680,8 +17864,16 @@ def settings_stage_restore():
     try:
         _bounded_save_upload(upload, upload_path, BACKUP_UPLOAD_MAX_BYTES, "Backup ZIP")
         report = _validate_dlms_backup(upload_path)
+        semantic_root = os.path.join(stage_dir, "semantic_check")
+        _extract_validated_backup(upload_path, semantic_root, report)
+        try:
+            semantic_result = _validate_staged_backup_semantics(semantic_root, report["manifest"])
+        finally:
+            shutil.rmtree(semantic_root, ignore_errors=True)
         with open(os.path.join(stage_dir, "report.json"), "w", encoding="utf-8") as f:
-            json.dump({k: v for k, v in report.items() if k != "members"}, f, indent=2)
+            saved_report = {k: v for k, v in report.items() if k != "members"}
+            saved_report["semantic_validation"] = semantic_result
+            json.dump(saved_report, f, indent=2)
     except Exception as exc:
         shutil.rmtree(stage_dir, ignore_errors=True)
         return render_template_string(r"""
@@ -17694,7 +17886,7 @@ def settings_stage_restore():
     return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm Restore - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / DATA SAFETY / RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive. Nothing has been restored yet.</p></div><button class="settings-back-button" onclick="location.href='/settings/data'">Cancel</button></div>
+<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / DATA SAFETY / RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><button class="settings-back-button" onclick="location.href='/settings/data'">Cancel</button></div>
 <div class="settings-detail-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">✓</div><div><h2>Valid DLMS Backup</h2><p>Review the snapshot metadata before replacing current data.</p></div></div>
 <div class="settings-current-value"><strong>Created:</strong> {{ manifest.created_at or 'Unknown' }}</div>
@@ -17718,10 +17910,15 @@ def settings_confirm_restore(token):
             raise FileNotFoundError("Staged restore file was not found or expired")
         report = _validate_dlms_backup(upload_path)
 
-        safety_path, _ = _create_dlms_backup("pre-restore")
         temp_extract = tempfile.mkdtemp(prefix="dlms-restore-")
         try:
             _extract_validated_backup(upload_path, temp_extract, report)
+            try:
+                _validate_staged_backup_semantics(temp_extract, report["manifest"])
+            except ValueError:
+                shutil.rmtree(stage_dir, ignore_errors=True)
+                raise
+            safety_path, _ = _create_dlms_backup("pre-restore")
             try:
                 _apply_restored_data(temp_extract)
             except Exception as restore_exc:
@@ -17755,7 +17952,7 @@ def settings_confirm_restore(token):
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
 <body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
-""", error=str(exc)), 500
+""", error=str(exc)), (400 if isinstance(exc, ValueError) else 500)
 
 
 @app.route("/settings/data")
