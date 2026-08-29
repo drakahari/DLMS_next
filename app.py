@@ -3048,6 +3048,10 @@ DLMS_LEGACY_CORE_TABLES = {
 }
 
 
+class UnsupportedDatabaseSchemaVersionError(RuntimeError):
+    """Raised when a database belongs to a newer DLMS schema generation."""
+
+
 def _database_table_names(conn):
     return {
         row[0]
@@ -3301,7 +3305,7 @@ def bootstrap_database(db_path=None, *, require_owned_root=True):
 
         version = _read_database_schema_version(conn, tables)
         if version is not None and version > DLMS_SCHEMA_VERSION:
-            raise RuntimeError(
+            raise UnsupportedDatabaseSchemaVersionError(
                 f"Database schema version {version} is newer than this DLMS build "
                 f"(supports {DLMS_SCHEMA_VERSION})"
             )
@@ -3381,6 +3385,13 @@ DLMS_BACKUP_CRITICAL_JSON_TYPES = {
     "config/quizzes.json": list,
     "config/law.json": dict,
 }
+RESTORE_FUTURE_SCHEMA_PUBLIC_ERROR = (
+    "This backup uses a newer DLMS database schema and cannot be restored by this version."
+)
+
+
+class RestoreFutureSchemaError(ValueError):
+    """Stable restore-facing error for a backup created by newer DLMS code."""
 
 
 def _ensure_runtime_data_dirs():
@@ -3848,6 +3859,64 @@ def _validate_staged_backup_semantics(staged_data_root, manifest):
         "json_files": json_files,
         "assets": assets,
         "compatibility": "schema-version-1; optional descriptive manifest fields may be absent",
+    }
+
+
+def _staged_restore_database_path(staged_data_root):
+    """Return the exact staged results.db after enforcing restore-root containment."""
+    root = os.path.abspath(staged_data_root)
+    real_root = os.path.realpath(root)
+    if os.path.islink(root) or not os.path.isdir(real_root):
+        raise ValueError("Backup staging data is missing or unsafe")
+    database = os.path.join(root, "results.db")
+    if os.path.islink(database) or not os.path.isfile(database):
+        raise ValueError("Backup is missing a safe staged DLMS database results.db")
+    real_database = os.path.realpath(database)
+    if not _is_same_path_or_ancestor(real_root, real_database):
+        raise ValueError("Staged results.db escapes the validated restore root")
+    return real_database
+
+
+def _validate_current_restored_database(database_path):
+    """Read-only post-migration integrity, version, shape, and index validation."""
+    sqlite_report = _validate_restored_sqlite(database_path)
+    try:
+        uri = Path(os.path.abspath(database_path)).as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        conn.row_factory = sqlite3.Row
+    except sqlite3.Error as exc:
+        raise ValueError("Migrated results.db is not readable") from exc
+    try:
+        tables = _database_table_names(conn)
+        version = _read_database_schema_version(conn, tables)
+        if version != DLMS_SCHEMA_VERSION:
+            raise ValueError(
+                f"Migrated results.db schema version {version!r} is not {DLMS_SCHEMA_VERSION}"
+            )
+        _validate_current_database_schema(conn)
+    except (RuntimeError, sqlite3.DatabaseError) as exc:
+        raise ValueError("Migrated results.db failed current-schema validation") from exc
+    finally:
+        conn.close()
+    return {"version": DLMS_SCHEMA_VERSION, "sqlite": sqlite_report}
+
+
+def _prepare_staged_restore_database(staged_data_root):
+    """Migrate and fully validate staged results.db before any live-data mutation."""
+    database_path = _staged_restore_database_path(staged_data_root)
+    try:
+        bootstrap_result = bootstrap_database(database_path)
+        validation = _validate_current_restored_database(database_path)
+    except UnsupportedDatabaseSchemaVersionError as exc:
+        print(f"[RESTORE DATABASE VERSION ERROR] {exc}")
+        raise RestoreFutureSchemaError(RESTORE_FUTURE_SCHEMA_PUBLIC_ERROR) from exc
+    except Exception as exc:
+        print(f"[RESTORE DATABASE MIGRATION ERROR] {type(exc).__name__}: {exc}")
+        raise ValueError("The staged backup database could not be migrated and validated safely") from exc
+    return {
+        "path": database_path,
+        "bootstrap": bootstrap_result,
+        "validation": validation,
     }
 
 
@@ -19494,26 +19563,31 @@ def settings_confirm_restore(token):
         if not os.path.isfile(upload_path):
             raise FileNotFoundError("Staged restore file was not found or expired")
         report = _validate_dlms_backup(upload_path)
+        _require_owned_app_data_root("restore DLMS backup data")
 
-        temp_extract = tempfile.mkdtemp(prefix="dlms-restore-")
+        temp_extract = tempfile.mkdtemp(prefix="apply-", dir=stage_dir)
         try:
             _extract_validated_backup(upload_path, temp_extract, report)
             try:
                 _validate_staged_backup_semantics(temp_extract, report["manifest"])
+                _prepare_staged_restore_database(temp_extract)
             except ValueError:
                 shutil.rmtree(stage_dir, ignore_errors=True)
                 raise
-            _require_owned_app_data_root("restore DLMS backup data")
             safety_path, _ = _create_dlms_backup("pre-restore")
             try:
                 _apply_restored_data(temp_extract)
+                reconcile_quiz_publications()
             except Exception as restore_exc:
-                print("[RESTORE] Apply failed; attempting automatic rollback:", restore_exc)
-                rollback_root = tempfile.mkdtemp(prefix="dlms-rollback-")
+                print("[RESTORE] Apply/finalization failed; attempting automatic rollback:", restore_exc)
+                rollback_root = tempfile.mkdtemp(prefix="rollback-", dir=stage_dir)
                 try:
                     safety_report = _validate_dlms_backup(safety_path)
                     _extract_validated_backup(safety_path, rollback_root, safety_report)
+                    _validate_staged_backup_semantics(rollback_root, safety_report["manifest"])
+                    _prepare_staged_restore_database(rollback_root)
                     _apply_restored_data(rollback_root)
+                    reconcile_quiz_publications()
                 except Exception as rollback_exc:
                     raise RuntimeError(
                         f"Restore failed ({restore_exc}); automatic rollback also failed ({rollback_exc}). "
@@ -19536,7 +19610,7 @@ def settings_confirm_restore(token):
     except Exception as exc:
         print("[RESTORE ERROR]", exc)
         public_error = (
-            str(exc) if isinstance(exc, DataRootOwnershipError)
+            str(exc) if isinstance(exc, (DataRootOwnershipError, RestoreFutureSchemaError))
             else "DLMS could not complete the restore. Existing data was preserved or rolled back. Check the local application log for details."
         )
         return render_template_string(r"""

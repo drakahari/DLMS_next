@@ -201,14 +201,16 @@ class BackupSemanticValidationTests(unittest.TestCase):
 
         with mock.patch.object(dlms, "_restore_staging_dir", return_value=str(stage_dir)), \
              mock.patch.object(dlms, "_validate_staged_backup_semantics", side_effect=semantic), \
+             mock.patch.object(dlms, "_prepare_staged_restore_database", side_effect=lambda *_: events.append("migrate")), \
              mock.patch.object(dlms, "_create_dlms_backup", side_effect=lambda *_: (events.append("backup") or (str(safety), {}))), \
-             mock.patch.object(dlms, "_apply_restored_data", side_effect=lambda *_: events.append("apply")):
+             mock.patch.object(dlms, "_apply_restored_data", side_effect=lambda *_: events.append("apply")), \
+             mock.patch.object(dlms, "reconcile_quiz_publications", side_effect=lambda: events.append("reconcile")):
             response = client.post(
                 "/settings/data/restore/confirm/" + "b" * 32,
                 headers=csrf_headers(client),
             )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(events, ["semantic", "backup", "apply"])
+        self.assertEqual(events, ["semantic", "migrate", "backup", "apply", "reconcile"])
 
     def test_apply_failure_still_uses_existing_rollback_path(self):
         client = dlms.app.test_client()
@@ -228,8 +230,10 @@ class BackupSemanticValidationTests(unittest.TestCase):
 
         with mock.patch.object(dlms, "_restore_staging_dir", return_value=str(stage_dir)), \
              mock.patch.object(dlms, "_validate_staged_backup_semantics", return_value={"status": "valid"}), \
+             mock.patch.object(dlms, "_prepare_staged_restore_database", return_value={"status": "current"}), \
              mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(archive_path), {})), \
-             mock.patch.object(dlms, "_apply_restored_data", side_effect=apply_then_rollback):
+             mock.patch.object(dlms, "_apply_restored_data", side_effect=apply_then_rollback), \
+             mock.patch.object(dlms, "reconcile_quiz_publications"):
             response = client.post(
                 "/settings/data/restore/confirm/" + "c" * 32,
                 headers=csrf_headers(client),
