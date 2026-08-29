@@ -74,21 +74,154 @@ def purge_legacy_quizzes():
 # =========================
 # APP DATA DIRECTORY
 # =========================
-def get_app_data_dir(app_name: str = "DLMS") -> str:
-    override = os.getenv("QUIZAPP_DATA_DIR")
-    if override:
-        os.makedirs(override, exist_ok=True)
-        return override
+DLMS_DATA_ROOT_MARKER = ".dlms-data-root"
+DLMS_DATA_ROOT_MARKER_ID = "dlms-application-data-root"
+DLMS_DATA_ROOT_MARKER_VERSION = 1
+DLMS_LEGACY_DATA_ROOT_ENTRIES = {
+    ".secret_key", "backups", "config", "content_pack_staging", "content_packs",
+    "data", "image_builder_drafts", "law", "pdf_import_drafts",
+    "pdf_question_banks", "pdf_terminology_banks", "quiz_assets", "quizzes",
+    "results.db", "results.db-journal", "results.db-shm", "results.db-wal",
+    "static", "uploads",
+}
+DLMS_LEGACY_DATA_ROOT_INDICATORS = {
+    "config", "content_packs", "data", "law", "pdf_question_banks",
+    "quiz_assets", "quizzes", "results.db", "static",
+}
 
+
+def _is_same_path_or_ancestor(candidate, path):
+    try:
+        return os.path.commonpath([candidate, path]) == candidate
+    except ValueError:
+        return False
+
+
+def _canonical_data_root(root):
+    return os.path.realpath(os.path.abspath(os.path.expanduser(root)))
+
+
+def _data_root_path_is_dangerous(root):
+    target = _canonical_data_root(root)
+    home = _canonical_data_root(os.path.expanduser("~"))
+    source_root = _canonical_data_root(os.path.dirname(__file__))
+    filesystem_root = _canonical_data_root(os.path.sep)
+    drive = os.path.splitdrive(target)[0]
+    drive_root = _canonical_data_root(drive + os.path.sep) if drive else filesystem_root
+    forbidden = {home, source_root, filesystem_root, drive_root}
+    for path in ["/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/media", "/mnt", "/opt", "/proc", "/run", "/sbin", "/srv", "/sys", "/tmp", "/usr", "/var"]:
+        if os.path.exists(path):
+            forbidden.add(_canonical_data_root(path))
+    return target in forbidden or _is_same_path_or_ancestor(target, source_root)
+
+
+def _default_app_data_path(app_name="DLMS"):
     if sys.platform == "win32":
         base = os.getenv("APPDATA") or os.path.expanduser("~")
     elif sys.platform == "darwin":
         base = os.path.expanduser("~/Library/Application Support")
     else:
         base = os.getenv("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return os.path.abspath(os.path.expanduser(os.path.join(base, app_name)))
 
-    path = os.path.join(base, app_name)
-    os.makedirs(path, exist_ok=True)
+
+def _data_root_marker_path(root):
+    return os.path.join(root, DLMS_DATA_ROOT_MARKER)
+
+
+def _read_data_root_marker(root):
+    marker_path = _data_root_marker_path(root)
+    if os.path.islink(marker_path) or not os.path.isfile(marker_path):
+        return None
+    try:
+        with open(marker_path, "r", encoding="utf-8") as marker_file:
+            marker = json.load(marker_file)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(marker, dict):
+        return None
+    if marker.get("marker") != DLMS_DATA_ROOT_MARKER_ID:
+        return None
+    if marker.get("version") != DLMS_DATA_ROOT_MARKER_VERSION:
+        return None
+    if marker.get("application") != "DLMS":
+        return None
+    return marker
+
+
+def _write_data_root_marker(root):
+    """Claim a verified data root without replacing any existing marker file."""
+    marker_path = _data_root_marker_path(root)
+    marker = {
+        "marker": DLMS_DATA_ROOT_MARKER_ID,
+        "version": DLMS_DATA_ROOT_MARKER_VERSION,
+        "application": "DLMS",
+        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    descriptor = os.open(marker_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as marker_file:
+            descriptor = None
+            json.dump(marker, marker_file, indent=2)
+            marker_file.write("\n")
+            marker_file.flush()
+            os.fsync(marker_file.fileno())
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    return marker
+
+
+def _looks_like_legacy_dlms_data_root(root):
+    try:
+        entries = set(os.listdir(root))
+    except OSError:
+        return False
+    if not entries or any(name not in DLMS_LEGACY_DATA_ROOT_ENTRIES for name in entries):
+        return False
+    indicators = entries & DLMS_LEGACY_DATA_ROOT_INDICATORS
+    has_database_and_structure = "results.db" in entries and bool(indicators - {"results.db"})
+    has_multiple_dlms_roots = len(indicators) >= 3
+    return has_database_and_structure or has_multiple_dlms_roots
+
+
+def _initialize_data_root_ownership(root, *, is_default=False):
+    """Mark only new, empty, default, or reliably recognizable DLMS roots."""
+    if _data_root_path_is_dangerous(root):
+        print(f"[DATA ROOT] Unsafe configured directory; destructive operations disabled: {root}")
+        return False
+    os.makedirs(root, exist_ok=True)
+    marker_path = _data_root_marker_path(root)
+    if os.path.lexists(marker_path):
+        if _read_data_root_marker(root) is None:
+            print(f"[DATA ROOT] Invalid ownership marker; destructive operations disabled: {root}")
+            return False
+        return True
+
+    try:
+        with os.scandir(root) as entries:
+            is_empty = next(entries, None) is None
+    except OSError:
+        return False
+    if not (is_default or is_empty or _looks_like_legacy_dlms_data_root(root)):
+        print(f"[DATA ROOT] Unverified non-empty directory; destructive operations disabled: {root}")
+        return False
+    try:
+        _write_data_root_marker(root)
+        return True
+    except FileExistsError:
+        return _read_data_root_marker(root) is not None
+
+
+def get_app_data_dir(app_name: str = "DLMS") -> str:
+    override = os.getenv("QUIZAPP_DATA_DIR")
+    if override:
+        path = os.path.abspath(os.path.expanduser(override))
+        _initialize_data_root_ownership(path, is_default=False)
+        return path
+
+    path = _default_app_data_path(app_name)
+    _initialize_data_root_ownership(path, is_default=True)
     return path
 
 APP_NAME = "DLMS"
@@ -329,18 +462,12 @@ def get_app_data_dir(app_name: str = "DLMS") -> str:
     """
     override = os.getenv("QUIZAPP_DATA_DIR")
     if override:
-        os.makedirs(override, exist_ok=True)
-        return override
+        path = os.path.abspath(os.path.expanduser(override))
+        _initialize_data_root_ownership(path, is_default=False)
+        return path
 
-    if sys.platform == "win32":
-        base = os.getenv("APPDATA") or os.path.expanduser("~")
-    elif sys.platform == "darwin":
-        base = os.path.expanduser("~/Library/Application Support")
-    else:
-        base = os.getenv("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-
-    path = os.path.join(base, app_name)
-    os.makedirs(path, exist_ok=True)
+    path = _default_app_data_path(app_name)
+    _initialize_data_root_ownership(path, is_default=True)
     return path
 
 
@@ -1857,6 +1984,8 @@ def _backup_rel_is_excluded(rel_path):
     if not rel:
         return True
     parts = rel.split("/")
+    if len(parts) == 1 and parts[0] == DLMS_DATA_ROOT_MARKER:
+        return True
     if parts[0].casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
         return True
     if len(parts) >= 3 and parts[0].casefold() == "static" and parts[1].casefold() == "logos" and parts[2] == "_temp":
@@ -2313,6 +2442,7 @@ def _restore_staging_dir(token):
 
 def _apply_restored_data(staged_data_root):
     """Replace only top-level roots present in the validated backup snapshot."""
+    _require_owned_app_data_root("restore DLMS backup data")
     roots = sorted(os.listdir(staged_data_root), key=str.casefold)
     for root_name in roots:
         if root_name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
@@ -10470,7 +10600,7 @@ def _full_data_reset_core():
     # Preserve backup archives by design. Everything else in APP_DATA_DIR is
     # runtime/user data and is returned to a first-run state.
     for name in os.listdir(APP_DATA_DIR):
-        if name.casefold() == "backups":
+        if name.casefold() == "backups" or name == DLMS_DATA_ROOT_MARKER:
             continue
         target = os.path.join(APP_DATA_DIR, name)
         if os.path.isdir(target) and not os.path.islink(target):
@@ -10484,6 +10614,7 @@ def _full_data_reset_core():
 
 
 def _run_reset_with_backup(reset_label, reset_callable):
+    _require_owned_app_data_root(f"run the {reset_label} reset")
     safety_path, _ = _create_dlms_backup("pre-reset-" + reset_label)
     reset_callable()
     return os.path.basename(safety_path)
@@ -10496,7 +10627,7 @@ def reset_quiz_library():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[RESET QUIZ LIBRARY ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), 500
+        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
 
 
 @app.route("/api/reset_source_content", methods=["POST"])
@@ -10506,7 +10637,7 @@ def reset_source_content():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[RESET SOURCE CONTENT ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), 500
+        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
 
 
 @app.route("/api/reset_app_settings", methods=["POST"])
@@ -10516,7 +10647,7 @@ def reset_app_settings():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[RESET SETTINGS ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), 500
+        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
 
 
 @app.route("/api/reset_all_data", methods=["POST"])
@@ -10526,23 +10657,37 @@ def reset_all_data():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[RESET ALL DATA ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), 500
+        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
+
+
+class DataRootOwnershipError(RuntimeError):
+    pass
+
+
+def _validate_destructive_data_root_path(root=None):
+    """Canonicalize a destructive target and reject independently unsafe roots."""
+    target = _canonical_data_root(root or APP_DATA_DIR)
+    if _data_root_path_is_dangerous(target):
+        raise DataRootOwnershipError("DLMS refused an unsafe application-data path.")
+    return target
+
+
+def _require_owned_app_data_root(operation="perform this destructive operation"):
+    target = _validate_destructive_data_root_path(APP_DATA_DIR)
+    if not os.path.isdir(target):
+        raise DataRootOwnershipError(
+            f"DLMS cannot {operation}: the configured application-data directory does not exist."
+        )
+    if _read_data_root_marker(target) is None:
+        raise DataRootOwnershipError(
+            f"DLMS cannot {operation}: the configured application-data directory is not verified as a dedicated DLMS data root."
+        )
+    return target
 
 
 def _validate_app_data_removal_target():
-    """Refuse obviously unsafe removal targets before deleting APP_DATA_DIR."""
-    target = os.path.realpath(os.path.abspath(APP_DATA_DIR))
-    home = os.path.realpath(os.path.abspath(os.path.expanduser("~")))
-    source_root = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
-    filesystem_root = os.path.realpath(os.path.abspath(os.path.sep))
-    drive_root = os.path.realpath(os.path.abspath(os.path.splitdrive(target)[0] + os.path.sep)) if os.path.splitdrive(target)[0] else filesystem_root
-
-    forbidden = {home, source_root, filesystem_root, drive_root}
-    if target in forbidden:
-        raise RuntimeError("DLMS refused to remove an unsafe application-data path.")
-    if not os.path.isdir(target):
-        return target
-    return target
+    """Retained entry point for permanent removal with positive ownership."""
+    return _require_owned_app_data_root("remove all DLMS data")
 
 
 def _remove_all_dlms_runtime_data_core():
@@ -10564,7 +10709,7 @@ def remove_all_dlms_data():
         removed_path = _remove_all_dlms_runtime_data_core()
     except Exception as exc:
         print("[REMOVE ALL DLMS DATA ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), 500
+        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
 
     # The executable/source installation is intentionally left untouched. Shut
     # DLMS down after returning the response so the just-removed runtime tree is
@@ -10589,7 +10734,7 @@ def wipe_database():
         return jsonify(status="ok", backup=backup_name)
     except Exception as exc:
         print("[LEGACY WIPE ERROR]", exc)
-        return jsonify(status="error", error=str(exc)), 500
+        return jsonify(status="error", error=str(exc)), (409 if isinstance(exc, DataRootOwnershipError) else 500)
 
 
 # =========================
@@ -17918,6 +18063,7 @@ def settings_confirm_restore(token):
             except ValueError:
                 shutil.rmtree(stage_dir, ignore_errors=True)
                 raise
+            _require_owned_app_data_root("restore DLMS backup data")
             safety_path, _ = _create_dlms_backup("pre-restore")
             try:
                 _apply_restored_data(temp_extract)
@@ -17952,7 +18098,11 @@ def settings_confirm_restore(token):
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
 <body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
-""", error=str(exc)), (400 if isinstance(exc, ValueError) else 500)
+""", error=str(exc)), (
+            400 if isinstance(exc, ValueError)
+            else 409 if isinstance(exc, DataRootOwnershipError)
+            else 500
+        )
 
 
 @app.route("/settings/data")
