@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS quizzes (
 
     -- Canonical identity (filename or source identifier)
     source_file TEXT NOT NULL UNIQUE,
+    registry_id INTEGER,
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -73,6 +74,9 @@ CREATE TABLE IF NOT EXISTS matching_pairs (
     pair_order INTEGER NOT NULL,
     left_text TEXT NOT NULL,
     right_text TEXT NOT NULL,
+    category TEXT,
+    explanation TEXT,
+    verification_json TEXT,
 
     FOREIGN KEY (question_id)
         REFERENCES questions(id)
@@ -129,9 +133,16 @@ CREATE TABLE IF NOT EXISTS missed_questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
     attempt_id TEXT NOT NULL,
-    question_id INTEGER NOT NULL,
-    correct_letters TEXT NOT NULL,
+    question_id INTEGER,
+    correct_letters TEXT,
+    question_text TEXT,
+    choices_text TEXT,
+    selected_letters TEXT,
+    selected_text TEXT,
+    correct_text TEXT,
     attempt_question_number INTEGER,
+    question_type TEXT DEFAULT 'choice',
+    response_json TEXT,
 
     FOREIGN KEY (attempt_id)
         REFERENCES attempts(id)
@@ -179,7 +190,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 1);
+VALUES (1, 2);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)

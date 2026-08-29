@@ -16,6 +16,7 @@ from tests.csrf_test_utils import csrf_token
 
 def _bind_paths():
     root = Path(_TEMP.name)
+    dlms._initialize_data_root_ownership(str(root))
     dlms.APP_DATA_DIR = str(root)
     dlms.DATA_FOLDER = str(root / "data")
     dlms.QUIZ_FOLDER = str(root / "quizzes")
