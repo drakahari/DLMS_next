@@ -361,6 +361,15 @@ def _format_origin_for_log(origin):
     return f"{scheme}://{display_host}{suffix}"
 
 
+def _sanitize_header_value_for_log(value, limit=160):
+    """Return a bounded repr that cannot inject control characters into logs."""
+    raw = str(value or "")
+    clipped = raw[:limit]
+    if len(raw) > limit:
+        clipped += "…"
+    return repr(clipped)
+
+
 @app.before_request
 def validate_unsafe_request_origin():
     if request.method not in app.config["WTF_CSRF_METHODS"]:
@@ -368,16 +377,23 @@ def validate_unsafe_request_origin():
     if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
         return _csrf_failure("Cross-site requests are not allowed.", 403)
     origin = request.headers.get("Origin")
-    if origin and not _request_source_matches(origin):
+    null_origin = origin == "null"
+    if origin and not null_origin and not _request_source_matches(origin):
+        parsed_origin = _canonical_request_origin(origin)
+        received = (
+            _format_origin_for_log(parsed_origin)
+            if parsed_origin
+            else _sanitize_header_value_for_log(origin)
+        )
         print(
             "[SAME-ORIGIN] Rejected Origin "
-            f"{_format_origin_for_log(_canonical_request_origin(origin))}; "
+            f"{received}; "
             "request-facing origin is "
             f"{_format_origin_for_log(_request_facing_origin())}"
         )
         return _csrf_failure("The request origin does not match DLMS.", 403)
     referer = request.headers.get("Referer")
-    if not origin and referer and not _request_source_matches(referer, allow_path=True):
+    if (not origin or null_origin) and referer and not _request_source_matches(referer, allow_path=True):
         print(
             "[SAME-ORIGIN] Rejected Referer "
             f"{_format_origin_for_log(_canonical_request_origin(referer, allow_path=True))}; "
@@ -385,6 +401,12 @@ def validate_unsafe_request_origin():
             f"{_format_origin_for_log(_request_facing_origin())}"
         )
         return _csrf_failure("The request referrer does not match DLMS.", 403)
+    if null_origin:
+        print(
+            "[SAME-ORIGIN] Indeterminate Origin "
+            f"{_sanitize_header_value_for_log(origin)}; "
+            "deferring to same-origin Referer when present and mandatory CSRF validation"
+        )
     return None
 
 

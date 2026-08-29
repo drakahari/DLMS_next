@@ -5,6 +5,7 @@ import stat
 import tempfile
 import threading
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -169,6 +170,98 @@ class CsrfProtectionTests(unittest.TestCase):
                 )
                 self.assertEqual(403, response.status_code)
                 self.assertIn("origin", response.get_json()["error"].lower())
+
+    def test_null_origin_with_valid_session_token_uses_csrf_fallback(self):
+        client = dlms.app.test_client()
+        base_url = "http://192.168.1.245:9001"
+        client.get("/", base_url=base_url)
+        token = client.get_cookie("dlms_csrf_token", domain="192.168.1.245").value
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            dlms, "PORTAL_CONFIG", os.path.join(directory, "portal.json")
+        ), mock.patch.object(
+            dlms, "load_portal_config", return_value={"title":"DLMS", "theme":"dark"}
+        ), redirect_stdout(output):
+            response = client.post(
+                "/api/theme",
+                base_url=base_url,
+                json={"theme":"light"},
+                headers={
+                    "X-CSRFToken":token,
+                    "Origin":"null",
+                    "Sec-Fetch-Site":"same-origin",
+                },
+            )
+        self.assertEqual(200, response.status_code)
+        self.assertIn("Indeterminate Origin 'null'", output.getvalue())
+
+    def test_null_origin_still_requires_valid_session_csrf_token(self):
+        client = dlms.app.test_client()
+        base_url = "http://192.168.1.245:9001"
+        client.get("/", base_url=base_url)
+        missing = client.post(
+            "/api/theme",
+            base_url=base_url,
+            json={"theme":"dark"},
+            headers={"Origin":"null", "Sec-Fetch-Site":"same-origin"},
+        )
+        invalid = client.post(
+            "/api/theme",
+            base_url=base_url,
+            json={"theme":"dark"},
+            headers={
+                "X-CSRFToken":"invalid",
+                "Origin":"null",
+                "Sec-Fetch-Site":"same-origin",
+            },
+        )
+        self.assertEqual(400, missing.status_code)
+        self.assertEqual(400, invalid.status_code)
+
+    def test_null_origin_cross_site_or_mismatched_referer_is_rejected(self):
+        client = dlms.app.test_client()
+        base_url = "http://192.168.1.245:9001"
+        client.get("/", base_url=base_url)
+        token = client.get_cookie("dlms_csrf_token", domain="192.168.1.245").value
+        cross_site = client.post(
+            "/api/theme",
+            base_url=base_url,
+            json={"theme":"dark"},
+            headers={
+                "X-CSRFToken":token,
+                "Origin":"null",
+                "Sec-Fetch-Site":"cross-site",
+            },
+        )
+        bad_referer = client.post(
+            "/api/theme",
+            base_url=base_url,
+            json={"theme":"dark"},
+            headers={
+                "X-CSRFToken":token,
+                "Origin":"null",
+                "Referer":"https://attacker.example/private?secret=not-logged",
+            },
+        )
+        self.assertEqual(403, cross_site.status_code)
+        self.assertEqual(403, bad_referer.status_code)
+
+    def test_invalid_origin_logging_is_sanitized_and_bounded(self):
+        client = dlms.app.test_client()
+        token = csrf_token(client)
+        output = io.StringIO()
+        invalid_origin = "not-an-origin-" + ("x" * 300)
+        with redirect_stdout(output):
+            response = client.post(
+                "/api/theme",
+                json={"theme":"dark"},
+                headers={"X-CSRFToken":token, "Origin":invalid_origin},
+            )
+        logged = output.getvalue()
+        self.assertEqual(403, response.status_code)
+        self.assertIn("'not-an-origin-", logged)
+        self.assertIn("…'", logged)
+        self.assertNotIn("x" * 200, logged)
 
     def test_sec_fetch_cross_site_and_cross_origin_referer_are_rejected(self):
         token = csrf_token(self.client)
