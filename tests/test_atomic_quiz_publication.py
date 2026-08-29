@@ -116,6 +116,13 @@ class AtomicQuizPublicationTests(unittest.TestCase):
     def test_db_commit_failure_rolls_back_and_cleans_staging(self):
         self._publish_with_failure("_commit_quiz_publication", RuntimeError("commit failure"))
 
+    def test_db_commit_that_persists_then_raises_is_compensated(self):
+        def commit_then_raise(connection):
+            connection.commit()
+            raise RuntimeError("post-commit failure")
+
+        self._publish_with_failure("_commit_quiz_publication", commit_then_raise)
+
     def test_promotion_failure_removes_prior_promotions_and_committed_db(self):
         original = dlms._promote_quiz_artifact
         calls = 0

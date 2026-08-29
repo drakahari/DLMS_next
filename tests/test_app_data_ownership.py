@@ -49,7 +49,7 @@ class AppDataOwnershipTests(unittest.TestCase):
 
     def test_recognizable_legacy_root_is_migrated(self):
         root = self.root / "legacy"
-        for name in ("config", "quizzes", "data"):
+        for name in ("config", "quizzes", "data", ".quiz_publications"):
             (root / name).mkdir(parents=True, exist_ok=True)
         self.assertTrue(dlms._initialize_data_root_ownership(str(root)))
         self.assertIsNotNone(dlms._read_data_root_marker(str(root)))

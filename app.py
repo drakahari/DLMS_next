@@ -78,7 +78,7 @@ DLMS_DATA_ROOT_MARKER = ".dlms-data-root"
 DLMS_DATA_ROOT_MARKER_ID = "dlms-application-data-root"
 DLMS_DATA_ROOT_MARKER_VERSION = 1
 DLMS_LEGACY_DATA_ROOT_ENTRIES = {
-    ".secret_key", "backups", "config", "content_pack_staging", "content_packs",
+    ".quiz_publications", ".secret_key", "backups", "config", "content_pack_staging", "content_packs",
     "data", "image_builder_drafts", "law", "pdf_import_drafts",
     "pdf_question_banks", "pdf_terminology_banks", "quiz_assets", "quizzes",
     "results.db", "results.db-journal", "results.db-shm", "results.db-wal",
@@ -1207,6 +1207,87 @@ def _quiz_publication_staging_root():
     return os.path.join(APP_DATA_DIR, ".quiz_publications")
 
 
+QUIZ_PUBLICATION_JOURNAL_MARKER = "dlms-quiz-publication"
+QUIZ_PUBLICATION_JOURNAL_VERSION = 1
+QUIZ_PUBLICATION_STATES = {
+    "staging",
+    "db_commit_pending",
+    "db_committed",
+    "artifacts_promoted",
+    "registry_published",
+    "complete",
+    "rollback_pending",
+}
+QUIZ_PUBLICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+QUIZ_PUBLICATION_ARTIFACT_RE = re.compile(
+    r"^[a-z0-9_]+_[0-9]{10,}_[0-9a-f]{8}\.(?:json|html)$"
+)
+QUIZ_PUBLICATION_LOGO_RE = re.compile(
+    r"^logo_[0-9]+_[0-9a-f]{8}\.(?:png|jpe?g|webp)$"
+)
+
+
+def _fsync_quiz_publication_directory(path):
+    """Best-effort directory durability for journal create/replace/remove."""
+    descriptor = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+        os.fsync(descriptor)
+    except OSError:
+        # Some supported platforms do not allow opening/fsyncing directories.
+        pass
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _write_quiz_publication_journal(path, journal):
+    """Atomically and durably replace one helper-owned publication journal."""
+    temp_path = path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(journal, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    with open(temp_path, "r", encoding="utf-8") as handle:
+        validated = json.load(handle)
+    if not isinstance(validated, dict):
+        raise ValueError("Quiz publication journal must contain an object")
+    os.replace(temp_path, path)
+    _fsync_quiz_publication_directory(os.path.dirname(path))
+
+
+def _update_quiz_publication_journal(path, journal, *, state=None):
+    if state is not None:
+        if state not in QUIZ_PUBLICATION_STATES:
+            raise ValueError(f"Unsupported quiz publication state: {state}")
+        journal["state"] = state
+    journal["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+    _write_quiz_publication_journal(path, journal)
+
+
+def _remove_quiz_publication_journal(path):
+    try:
+        if os.path.lexists(path):
+            if os.path.islink(path):
+                return False
+            os.remove(path)
+            _fsync_quiz_publication_directory(os.path.dirname(path))
+        temp_path = path + ".tmp"
+        if os.path.lexists(temp_path) and not os.path.islink(temp_path):
+            os.remove(temp_path)
+            _fsync_quiz_publication_directory(os.path.dirname(path))
+        return True
+    except Exception as exc:
+        print(f"[QUIZ PUBLICATION JOURNAL CLEANUP ERROR] {path}: {exc}")
+        return False
+
+
+def _quiz_publication_checkpoint(_stage, _journal):
+    """No-op durable-boundary hook used by crash-simulation tests."""
+    return None
+
+
 def _write_staged_quiz_json(path, payload):
     """Write and parse-validate one staged quiz JSON artifact."""
     with open(path, "w", encoding="utf-8") as f:
@@ -1238,9 +1319,13 @@ def _remove_quiz_publication_path(path):
         if os.path.isdir(path) and not os.path.islink(path):
             shutil.rmtree(path)
         elif os.path.lexists(path):
+            if os.path.islink(path):
+                return False
             os.remove(path)
+        return True
     except Exception as exc:
         print(f"[QUIZ PUBLICATION CLEANUP ERROR] {path}: {exc}")
+        return False
 
 
 def _delete_published_quiz_rows(quiz_id):
@@ -1251,6 +1336,355 @@ def _delete_published_quiz_rows(quiz_id):
         conn.commit()
     finally:
         conn.close()
+
+
+def _remove_exact_quiz_registry_entry(quiz_id, html_name):
+    """Remove only registry rows matching both recorded publication keys."""
+    with registry_lock:
+        registry = load_registry()
+        kept = []
+        removed = False
+        for entry in registry:
+            same_id = str(entry.get("id")) == str(quiz_id)
+            same_html = entry.get("html") == html_name
+            if same_id and same_html:
+                removed = True
+                continue
+            kept.append(entry)
+        if removed:
+            save_registry(kept)
+    return True
+
+
+def _safe_quiz_publication_name(value, *, label, pattern=None):
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} must be a non-empty string")
+    if os.path.isabs(value) or value != os.path.basename(value):
+        raise ValueError(f"{label} must be one safe filename")
+    if "/" in value or "\\" in value or value in {".", ".."}:
+        raise ValueError(f"{label} contains an unsafe path")
+    if pattern is not None and not pattern.fullmatch(value):
+        raise ValueError(f"{label} does not match a DLMS publication name")
+    return value
+
+
+def _safe_quiz_publication_target(root, name, *, label):
+    app_root = _canonical_data_root(APP_DATA_DIR)
+    root_path = os.path.abspath(root)
+    root_real = os.path.realpath(root_path)
+    if not _is_same_path_or_ancestor(app_root, root_real):
+        raise ValueError(f"{label} root escapes the DLMS application-data directory")
+    if os.path.lexists(root_path) and os.path.islink(root_path):
+        raise ValueError(f"{label} root must not be a symlink")
+    target = os.path.join(root_path, name)
+    if os.path.lexists(target) and os.path.islink(target):
+        raise ValueError(f"{label} must not be a symlink")
+    parent_real = os.path.realpath(os.path.dirname(target))
+    if parent_real != root_real:
+        raise ValueError(f"{label} parent escapes its expected directory")
+    return target
+
+
+def _validate_quiz_publication_journal(journal, journal_path):
+    """Validate an untrusted local journal before deriving destructive paths."""
+    if not isinstance(journal, dict):
+        raise ValueError("journal must contain an object")
+    if journal.get("marker") != QUIZ_PUBLICATION_JOURNAL_MARKER:
+        raise ValueError("unsupported publication journal marker")
+    if journal.get("schema_version") != QUIZ_PUBLICATION_JOURNAL_VERSION:
+        raise ValueError("unsupported publication journal version")
+    publication_id = journal.get("publication_id")
+    if not isinstance(publication_id, str) or not QUIZ_PUBLICATION_ID_RE.fullmatch(publication_id):
+        raise ValueError("invalid publication ID")
+    expected_names = {
+        f"publication_{publication_id}.json",
+        f"publication_{publication_id}.json.tmp",
+    }
+    if os.path.basename(journal_path) not in expected_names:
+        raise ValueError("journal filename does not match its publication ID")
+    if journal.get("state") not in QUIZ_PUBLICATION_STATES:
+        raise ValueError("unsupported publication state")
+
+    stage_name = _safe_quiz_publication_name(
+        journal.get("stage_dir"), label="staging directory"
+    )
+    if stage_name != f"publish_{publication_id}":
+        raise ValueError("staging directory does not match its publication ID")
+
+    artifacts = journal.get("artifacts")
+    if not isinstance(artifacts, dict):
+        raise ValueError("journal artifacts must contain an object")
+    json_record = artifacts.get("json")
+    html_record = artifacts.get("html")
+    asset_record = artifacts.get("assets")
+    if not all(isinstance(item, dict) for item in (json_record, html_record, asset_record)):
+        raise ValueError("journal artifact records are malformed")
+    json_name = _safe_quiz_publication_name(
+        json_record.get("name"), label="JSON artifact", pattern=QUIZ_PUBLICATION_ARTIFACT_RE
+    )
+    html_name = _safe_quiz_publication_name(
+        html_record.get("name"), label="HTML artifact", pattern=QUIZ_PUBLICATION_ARTIFACT_RE
+    )
+    if not json_name.endswith(".json") or not html_name.endswith(".html"):
+        raise ValueError("journal artifact extensions are invalid")
+    if os.path.splitext(json_name)[0] != os.path.splitext(html_name)[0]:
+        raise ValueError("journal JSON and HTML names do not share one publication identity")
+    asset_name = _safe_quiz_publication_name(
+        asset_record.get("name"), label="asset bucket"
+    )
+    if asset_name != os.path.splitext(html_name)[0]:
+        raise ValueError("journal asset bucket does not match its publication identity")
+    for label, record in (
+        ("JSON artifact", json_record),
+        ("HTML artifact", html_record),
+        ("asset bucket", asset_record),
+    ):
+        if not isinstance(record.get("attempted"), bool) or not isinstance(record.get("promoted"), bool):
+            raise ValueError(f"{label} promotion flags must be boolean")
+        if record["promoted"] and not record["attempted"]:
+            raise ValueError(f"{label} cannot be promoted without an attempt")
+    if not isinstance(asset_record.get("required"), bool):
+        raise ValueError("asset bucket required flag must be boolean")
+
+    quiz = journal.get("quiz")
+    if not isinstance(quiz, dict):
+        raise ValueError("journal quiz record is malformed")
+    quiz_id = quiz.get("id")
+    if quiz_id is not None and (isinstance(quiz_id, bool) or not isinstance(quiz_id, int) or quiz_id < 1):
+        raise ValueError("journal quiz ID must be a positive integer")
+    source_file = quiz.get("source_file")
+    if not isinstance(source_file, str) or not source_file or len(source_file) > 512:
+        raise ValueError("journal quiz source file is invalid")
+
+    registry = journal.get("registry")
+    if not isinstance(registry, dict) or registry.get("html") != html_name:
+        raise ValueError("journal registry key is invalid")
+    if not isinstance(registry.get("attempted"), bool) or not isinstance(registry.get("published"), bool):
+        raise ValueError("journal registry flags must be boolean")
+    if registry["published"] and not registry["attempted"]:
+        raise ValueError("registry cannot be published without an attempt")
+
+    state = journal["state"]
+    db_states = {
+        "db_commit_pending", "db_committed", "artifacts_promoted",
+        "registry_published", "complete",
+    }
+    if state in db_states and quiz_id is None:
+        raise ValueError(f"publication state {state} requires a quiz ID")
+    if state in {"staging", "db_commit_pending"}:
+        if any(record["attempted"] for record in (json_record, html_record, asset_record)):
+            raise ValueError(f"publication state {state} cannot contain artifact promotion attempts")
+        if registry["attempted"]:
+            raise ValueError(f"publication state {state} cannot contain a registry attempt")
+    if state in {"artifacts_promoted", "registry_published", "complete"}:
+        if not json_record["promoted"] or not html_record["promoted"]:
+            raise ValueError(f"publication state {state} requires promoted JSON and HTML")
+        if asset_record["required"] and not asset_record["promoted"]:
+            raise ValueError(f"publication state {state} requires its promoted asset bucket")
+    if state in {"registry_published", "complete"} and not registry["published"]:
+        raise ValueError(f"publication state {state} requires a published registry entry")
+
+    owned_logo = journal.get("owned_logo")
+    if owned_logo is not None:
+        _safe_quiz_publication_name(
+            owned_logo, label="publication-owned logo", pattern=QUIZ_PUBLICATION_LOGO_RE
+        )
+
+    paths = {
+        "stage": _safe_quiz_publication_target(
+            _quiz_publication_staging_root(), stage_name, label="staging directory"
+        ),
+        "json": _safe_quiz_publication_target(DATA_FOLDER, json_name, label="JSON artifact"),
+        "html": _safe_quiz_publication_target(QUIZ_FOLDER, html_name, label="HTML artifact"),
+        "assets": _safe_quiz_publication_target(
+            QUIZ_ASSET_FOLDER, asset_name, label="asset bucket"
+        ),
+    }
+    if owned_logo:
+        paths["logo"] = _safe_quiz_publication_target(
+            LOGO_FOLDER, owned_logo, label="publication-owned logo"
+        )
+    return paths
+
+
+def _quiz_publication_db_status(journal):
+    quiz_id = journal["quiz"]["id"]
+    if quiz_id is None:
+        return "missing"
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT source_file FROM quizzes WHERE id = ?", (quiz_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return "missing"
+    return "match" if row["source_file"] == journal["quiz"]["source_file"] else "conflict"
+
+
+def _quiz_publication_registry_status(journal):
+    quiz_id = journal["quiz"]["id"]
+    html_name = journal["registry"]["html"]
+    exact = False
+    conflict = False
+    for entry in load_registry():
+        same_id = quiz_id is not None and str(entry.get("id")) == str(quiz_id)
+        same_html = entry.get("html") == html_name
+        if same_id and same_html:
+            exact = True
+        elif same_id or same_html:
+            conflict = True
+    if conflict:
+        return "conflict"
+    return "exact" if exact else "missing"
+
+
+def _quiz_publication_artifacts_valid(journal, paths):
+    try:
+        with open(paths["json"], "r", encoding="utf-8") as handle:
+            if not isinstance(json.load(handle), list):
+                return False
+        if not os.path.isfile(paths["html"]) or os.path.getsize(paths["html"]) == 0:
+            return False
+        if journal["artifacts"]["assets"]["required"]:
+            if not os.path.isdir(paths["assets"]) or os.path.islink(paths["assets"]):
+                return False
+        return True
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+
+
+def _delete_recorded_quiz_rows(journal):
+    quiz_id = journal["quiz"]["id"]
+    if quiz_id is None:
+        return True
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT source_file FROM quizzes WHERE id = ?", (quiz_id,)
+        ).fetchone()
+        if row is None:
+            return True
+        if row["source_file"] != journal["quiz"]["source_file"]:
+            return False
+        conn.execute("DELETE FROM quizzes WHERE id = ?", (quiz_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def _rollback_recorded_quiz_publication(journal, paths):
+    """Idempotently remove only state explicitly owned by one valid journal."""
+    db_status = _quiz_publication_db_status(journal)
+    registry_status = _quiz_publication_registry_status(journal)
+    if db_status == "conflict" or registry_status == "conflict":
+        return False
+    if registry_status == "exact":
+        _remove_exact_quiz_registry_entry(
+            journal["quiz"]["id"], journal["registry"]["html"]
+        )
+
+    success = True
+    for key in ("assets", "html", "json"):
+        record = journal["artifacts"][key]
+        if record["attempted"] or record["promoted"]:
+            success = _remove_quiz_publication_path(paths[key]) and success
+    success = _delete_recorded_quiz_rows(journal) and success
+    if "logo" in paths:
+        success = _remove_quiz_publication_path(paths["logo"]) and success
+    success = _remove_quiz_publication_path(paths["stage"]) and success
+    return success
+
+
+def _reconcile_quiz_publication_journal(journal_path):
+    if os.path.islink(journal_path):
+        raise ValueError("publication journal must not be a symlink")
+    with open(journal_path, "r", encoding="utf-8") as handle:
+        journal = json.load(handle)
+    paths = _validate_quiz_publication_journal(journal, journal_path)
+    db_status = _quiz_publication_db_status(journal)
+    registry_status = _quiz_publication_registry_status(journal)
+
+    if registry_status == "conflict" or db_status == "conflict":
+        raise ValueError("publication journal conflicts with existing DB or registry state")
+
+    if (
+        registry_status == "exact"
+        and db_status == "match"
+        and _quiz_publication_artifacts_valid(journal, paths)
+    ):
+        if not _remove_quiz_publication_path(paths["stage"]):
+            return "failed"
+        if not _remove_quiz_publication_journal(journal_path.removesuffix(".tmp")):
+            return "failed"
+        return "preserved"
+
+    try:
+        _update_quiz_publication_journal(journal_path.removesuffix(".tmp"), journal, state="rollback_pending")
+        journal_path = journal_path.removesuffix(".tmp")
+    except Exception as exc:
+        print(f"[QUIZ PUBLICATION RECOVERY ERROR] could not mark rollback pending: {exc}")
+        return "failed"
+    if not _rollback_recorded_quiz_publication(journal, paths):
+        return "failed"
+    if not _remove_quiz_publication_journal(journal_path):
+        return "failed"
+    return "rolled_back"
+
+
+def reconcile_quiz_publications():
+    """Reconcile only validated helper-owned journals beneath the owned data root."""
+    report = {"processed": 0, "preserved": 0, "rolled_back": 0, "unsafe": 0, "failed": 0}
+    if _read_data_root_marker(APP_DATA_DIR) is None:
+        print("[QUIZ PUBLICATION RECOVERY] skipped: application-data ownership is not verified")
+        return report
+    root = _quiz_publication_staging_root()
+    if not os.path.exists(root):
+        return report
+    try:
+        root_real = os.path.realpath(root)
+        if os.path.islink(root) or not _is_same_path_or_ancestor(_canonical_data_root(APP_DATA_DIR), root_real):
+            raise ValueError("publication journal root is unsafe")
+        names = sorted(os.listdir(root))
+    except Exception as exc:
+        print(f"[QUIZ PUBLICATION RECOVERY] unsafe journal root: {exc}")
+        report["unsafe"] += 1
+        return report
+
+    grouped = {}
+    journal_name_re = re.compile(r"^publication_([0-9a-f]{32})\.json(?:\.tmp)?$")
+    for name in names:
+        match = journal_name_re.fullmatch(name)
+        if match:
+            grouped.setdefault(match.group(1), []).append(name)
+    for publication_id, candidates in grouped.items():
+        canonical = f"publication_{publication_id}.json"
+        selected = canonical if canonical in candidates else f"{canonical}.tmp"
+        journal_path = os.path.join(root, selected)
+        report["processed"] += 1
+        try:
+            outcome = _reconcile_quiz_publication_journal(journal_path)
+            if outcome in report:
+                report[outcome] += 1
+            else:
+                report["failed"] += 1
+            if outcome in {"preserved", "rolled_back"}:
+                _remove_quiz_publication_journal(os.path.join(root, canonical))
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            report["unsafe"] += 1
+            print(f"[QUIZ PUBLICATION RECOVERY] left {selected} for inspection: {exc}")
+        except Exception as exc:
+            report["failed"] += 1
+            print(f"[QUIZ PUBLICATION RECOVERY] retry required for {selected}: {type(exc).__name__}: {exc}")
+    if report["processed"] or report["unsafe"] or report["failed"]:
+        print(
+            "[QUIZ PUBLICATION RECOVERY] "
+            f"processed={report['processed']} preserved={report['preserved']} "
+            f"rolled_back={report['rolled_back']} unsafe={report['unsafe']} failed={report['failed']}"
+        )
+    return report
 
 
 def _publish_quiz(
@@ -1267,11 +1701,7 @@ def _publish_quiz(
     snapshot_existing_assets=False,
     rollback_logo_filename=None,
 ):
-    """Stage and publish one quiz, compensating every handled failure.
-
-    The registry is intentionally the final publication boundary. Persistent
-    crash journals and startup reconciliation belong to DLMS-043B.
-    """
+    """Stage and publish one quiz with handled rollback and crash recovery."""
     if not runtime_questions:
         raise ValueError("No usable questions were produced")
     db_questions = runtime_questions if db_questions is None else db_questions
@@ -1282,19 +1712,61 @@ def _publish_quiz(
     asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
     staging_root = _quiz_publication_staging_root()
     os.makedirs(staging_root, exist_ok=True)
-    stage_dir = tempfile.mkdtemp(prefix="publish_", dir=staging_root)
+    publication_id = secrets.token_hex(16)
+    stage_name = f"publish_{publication_id}"
+    stage_dir = os.path.join(staging_root, stage_name)
+    journal_path = os.path.join(staging_root, f"publication_{publication_id}.json")
     staged_json = os.path.join(stage_dir, json_name)
     staged_html = os.path.join(stage_dir, html_name)
     staged_assets = os.path.join(stage_dir, "assets")
     final_json = os.path.join(DATA_FOLDER, json_name)
     final_html = os.path.join(QUIZ_FOLDER, html_name)
     final_assets = os.path.join(QUIZ_ASSET_FOLDER, asset_bucket)
-    promoted = []
     conn = None
     quiz_id = None
-    db_committed = False
+    effective_source_file = source_file or html_name
+    owned_logo = None
+    if (
+        rollback_logo_filename
+        and rollback_logo_filename == logo_filename
+        and isinstance(rollback_logo_filename, str)
+        and QUIZ_PUBLICATION_LOGO_RE.fullmatch(rollback_logo_filename)
+    ):
+        owned_logo = rollback_logo_filename
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    journal = {
+        "marker": QUIZ_PUBLICATION_JOURNAL_MARKER,
+        "schema_version": QUIZ_PUBLICATION_JOURNAL_VERSION,
+        "publication_id": publication_id,
+        "created_at": now,
+        "updated_at": now,
+        "state": "staging",
+        "stage_dir": stage_name,
+        "quiz": {"id": None, "source_file": effective_source_file},
+        "artifacts": {
+            "json": {"name": json_name, "attempted": False, "promoted": False},
+            "html": {"name": html_name, "attempted": False, "promoted": False},
+            "assets": {
+                "name": asset_bucket,
+                "required": False,
+                "attempted": False,
+                "promoted": False,
+            },
+        },
+        "registry": {"html": html_name, "attempted": False, "published": False},
+        "owned_logo": owned_logo,
+    }
+    try:
+        _write_quiz_publication_journal(journal_path, journal)
+    except Exception:
+        _remove_quiz_publication_journal(journal_path)
+        raise
 
     try:
+        os.mkdir(stage_dir)
+        _fsync_quiz_publication_directory(staging_root)
+        _quiz_publication_checkpoint("journal_created", journal)
+
         runtime_payload, db_payload = runtime_questions, db_questions
         if source_pack_id:
             runtime_payload, db_payload, _ = _snapshot_runtime_questions(
@@ -1313,6 +1785,9 @@ def _publish_quiz(
                     db_payload, asset_bucket, destination_root=staged_assets, strict=True
                 )
 
+        journal["artifacts"]["assets"]["required"] = os.path.isdir(staged_assets)
+        _update_quiz_publication_journal(journal_path, journal)
+
         _write_staged_quiz_json(staged_json, runtime_payload)
 
         conn = get_db()
@@ -1320,9 +1795,13 @@ def _publish_quiz(
         quiz_id = _insert_quiz_rows(
             conn,
             quiz_title,
-            source_file or html_name,
+            effective_source_file,
             db_payload,
             logo_filename,
+        )
+        journal["quiz"]["id"] = quiz_id
+        _update_quiz_publication_journal(
+            journal_path, journal, state="db_commit_pending"
         )
 
         build_quiz_html(
@@ -1339,18 +1818,40 @@ def _publish_quiz(
             raise ValueError("Generated quiz HTML is empty")
 
         _commit_quiz_publication(conn)
-        db_committed = True
         conn.close()
         conn = None
+        _update_quiz_publication_journal(journal_path, journal, state="db_committed")
+        _quiz_publication_checkpoint("db_committed", journal)
 
+        journal["artifacts"]["json"]["attempted"] = True
+        _update_quiz_publication_journal(journal_path, journal)
         _promote_quiz_artifact(staged_json, final_json)
-        promoted.append(final_json)
-        _promote_quiz_artifact(staged_html, final_html)
-        promoted.append(final_html)
-        if os.path.isdir(staged_assets):
-            _promote_quiz_artifact(staged_assets, final_assets)
-            promoted.append(final_assets)
+        journal["artifacts"]["json"]["promoted"] = True
+        _update_quiz_publication_journal(journal_path, journal)
+        _quiz_publication_checkpoint("json_promoted", journal)
 
+        journal["artifacts"]["html"]["attempted"] = True
+        _update_quiz_publication_journal(journal_path, journal)
+        _promote_quiz_artifact(staged_html, final_html)
+        journal["artifacts"]["html"]["promoted"] = True
+        _update_quiz_publication_journal(journal_path, journal)
+        _quiz_publication_checkpoint("html_promoted", journal)
+
+        if os.path.isdir(staged_assets):
+            journal["artifacts"]["assets"]["attempted"] = True
+            _update_quiz_publication_journal(journal_path, journal)
+            _promote_quiz_artifact(staged_assets, final_assets)
+            journal["artifacts"]["assets"]["promoted"] = True
+            _update_quiz_publication_journal(journal_path, journal)
+            _quiz_publication_checkpoint("assets_promoted", journal)
+
+        _update_quiz_publication_journal(
+            journal_path, journal, state="artifacts_promoted"
+        )
+        _quiz_publication_checkpoint("artifacts_promoted", journal)
+
+        journal["registry"]["attempted"] = True
+        _update_quiz_publication_journal(journal_path, journal)
         add_quiz_to_registry(
             quiz_id=quiz_id,
             html=html_name,
@@ -1360,28 +1861,77 @@ def _publish_quiz(
             source_pack_id=source_pack_id,
             source_dataset_id=source_dataset_id,
         )
+        # Once registry publication returns successfully, the quiz is live.
+        # Journal-finalization failures are left for idempotent reconciliation
+        # and must never trigger compensation of a coherent published quiz.
+        try:
+            journal["registry"]["published"] = True
+            _update_quiz_publication_journal(
+                journal_path, journal, state="registry_published"
+            )
+            _quiz_publication_checkpoint("registry_published", journal)
+            if not _remove_quiz_publication_path(stage_dir):
+                raise OSError("could not remove publication staging directory")
+            _update_quiz_publication_journal(journal_path, journal, state="complete")
+            _quiz_publication_checkpoint("complete", journal)
+            if not _remove_quiz_publication_journal(journal_path):
+                raise OSError("could not remove completed publication journal")
+        except Exception as exc:
+            print(
+                f"[QUIZ PUBLICATION FINALIZATION ERROR] quiz_id={quiz_id}: "
+                f"{type(exc).__name__}: {exc}; startup reconciliation will retry"
+            )
         return quiz_id, html_name
     except Exception:
+        cleanup_ok = True
+        try:
+            _update_quiz_publication_journal(
+                journal_path, journal, state="rollback_pending"
+            )
+        except Exception as exc:
+            cleanup_ok = False
+            print(f"[QUIZ PUBLICATION JOURNAL ERROR] could not record rollback: {exc}")
         if conn is not None:
             try:
                 conn.rollback()
-            except Exception:
-                pass
-            conn.close()
-        for path in reversed(promoted):
-            _remove_quiz_publication_path(path)
-        if db_committed and quiz_id is not None:
-            try:
-                _delete_published_quiz_rows(quiz_id)
             except Exception as exc:
+                cleanup_ok = False
+                print(f"[QUIZ PUBLICATION DB ROLLBACK ERROR] {exc}")
+            try:
+                conn.close()
+            except Exception as exc:
+                cleanup_ok = False
+                print(f"[QUIZ PUBLICATION DB CLOSE ERROR] {exc}")
+
+        if journal["registry"]["attempted"] and quiz_id is not None:
+            try:
+                _remove_exact_quiz_registry_entry(quiz_id, html_name)
+            except Exception as exc:
+                cleanup_ok = False
+                print(f"[QUIZ PUBLICATION REGISTRY CLEANUP ERROR] quiz_id={quiz_id}: {exc}")
+
+        for key, path in (
+            ("assets", final_assets), ("html", final_html), ("json", final_json)
+        ):
+            record = journal["artifacts"][key]
+            if record["attempted"] or record["promoted"]:
+                cleanup_ok = _remove_quiz_publication_path(path) and cleanup_ok
+        if quiz_id is not None:
+            try:
+                cleanup_ok = _delete_recorded_quiz_rows(journal) and cleanup_ok
+            except Exception as exc:
+                cleanup_ok = False
                 print(f"[QUIZ PUBLICATION DB CLEANUP ERROR] quiz_id={quiz_id}: {exc}")
         if rollback_logo_filename:
             safe_logo = os.path.basename(str(rollback_logo_filename))
             if safe_logo == rollback_logo_filename and safe_logo == logo_filename:
-                _remove_quiz_publication_path(os.path.join(LOGO_FOLDER, safe_logo))
+                cleanup_ok = _remove_quiz_publication_path(
+                    os.path.join(LOGO_FOLDER, safe_logo)
+                ) and cleanup_ok
+        cleanup_ok = _remove_quiz_publication_path(stage_dir) and cleanup_ok
+        if cleanup_ok:
+            _remove_quiz_publication_journal(journal_path)
         raise
-    finally:
-        _remove_quiz_publication_path(stage_dir)
 
 
 def _create_quiz_from_runtime(quiz_title, runtime_questions, db_questions, filename_prefix="study_image", exam_minutes=90, source_pack_id=None, source_dataset_id=None):
@@ -24813,6 +25363,21 @@ def _dlms_print_access_urls(host, port):
 
     print("[DLMS] WARNING: DLMS is bound to a non-loopback interface.")
     print("[DLMS] WARNING: Authentication is not yet provided; expose DLMS only on a trusted network.")
+
+
+def _run_quiz_publication_startup_reconciliation():
+    """Run journal recovery after ownership setup, DB initialization, and helpers."""
+    try:
+        return reconcile_quiz_publications()
+    except Exception as exc:
+        print(
+            "[QUIZ PUBLICATION RECOVERY] startup recovery could not complete; "
+            f"it will retry next launch ({type(exc).__name__}: {exc})"
+        )
+        return {"processed": 0, "preserved": 0, "rolled_back": 0, "unsafe": 0, "failed": 1}
+
+
+_run_quiz_publication_startup_reconciliation()
 
 
 if __name__ == "__main__":
