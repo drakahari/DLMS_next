@@ -19621,9 +19621,47 @@ def export_quiz_to_apkg(deck_name, deck_rows):
     fd, path = tempfile.mkstemp(suffix=".apkg")
     os.close(fd)
 
-    genanki.Package(deck).write_to_file(path)
+    try:
+        genanki.Package(deck).write_to_file(path)
+    except Exception:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        raise
 
     return path
+
+
+def _remove_temp_anki_package(path):
+    """Best-effort cleanup for a generated temporary Anki package."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        print(f"[ANKI] Unable to remove temporary export {path}: {exc}")
+
+
+def _send_temp_anki_package(apkg_path, download_name):
+    """Stream a temporary package and remove it when the response closes."""
+    try:
+        response = send_file(
+            apkg_path,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype="application/octet-stream"
+        )
+    except Exception:
+        _remove_temp_anki_package(apkg_path)
+        raise
+
+    response.call_on_close(lambda: _remove_temp_anki_package(apkg_path))
+    # send_file enables direct_passthrough, which bypasses Response.close and
+    # therefore its call_on_close callbacks. Keep the response streamed while
+    # ensuring the WSGI closing iterator closes the file before cleanup runs.
+    response.direct_passthrough = False
+    return response
 
 
 
@@ -21022,14 +21060,12 @@ def anki_export_custom():
 
     apkg_path = export_quiz_to_apkg(deck_name, deck_rows)
 
-    return send_file(
+    return _send_temp_anki_package(
         apkg_path,
-        as_attachment=True,
-        download_name=make_safe_anki_download_name(
+        make_safe_anki_download_name(
             deck_name,
             "DLMS_Custom_Deck"
-        ),
-        mimetype="application/octet-stream"
+        )
     )
 
 
@@ -21460,14 +21496,12 @@ def anki_export_quiz():
     deck_name = f"{quiz_title} - DLMS"
     apkg_path = export_quiz_to_apkg(deck_name, deck_rows)
 
-    return send_file(
+    return _send_temp_anki_package(
         apkg_path,
-        as_attachment=True,
-        download_name=make_safe_anki_download_name(
+        make_safe_anki_download_name(
             f"{quiz_title}_DLMS",
             "dlms_quiz"
-        ),
-        mimetype="application/octet-stream"
+        )
     )
 
 
@@ -21516,14 +21550,12 @@ def anki_export_missed():
 
     apkg_path = export_quiz_to_apkg(deck_name, deck_rows)
 
-    return send_file(
+    return _send_temp_anki_package(
         apkg_path,
-        as_attachment=True,
-        download_name=make_safe_anki_download_name(
+        make_safe_anki_download_name(
             file_base,
             "dlms_missed_questions"
-        ),
-        mimetype="application/octet-stream"
+        )
     )
 
 
@@ -21576,14 +21608,12 @@ def anki_export_law():
 
     apkg_path = export_quiz_to_apkg(deck_name, deck_rows)
 
-    return send_file(
+    return _send_temp_anki_package(
         apkg_path,
-        as_attachment=True,
-        download_name=make_safe_anki_download_name(
+        make_safe_anki_download_name(
             file_base,
             "dlms_law_flashcards"
-        ),
-        mimetype="application/octet-stream"
+        )
     )
 
 def export_anki_tsv_for_quiz(quiz_id: int) -> str:
@@ -21777,11 +21807,9 @@ def export_anki_study():
         deck_rows
     )
 
-    return send_file(
+    return _send_temp_anki_package(
         apkg_path,
-        as_attachment=True,
-        download_name="dlms_study_selected.apkg",
-        mimetype="application/octet-stream"
+        "dlms_study_selected.apkg"
     )
 
 
@@ -21858,11 +21886,9 @@ def export_anki_genanki():
 
     apkg_path = export_quiz_to_apkg(deck_name, deck_rows)
 
-    return send_file(
+    return _send_temp_anki_package(
         apkg_path,
-        as_attachment=True,
-        download_name="dlms_missed_questions.apkg",
-        mimetype="application/octet-stream"
+        "dlms_missed_questions.apkg"
     )
 
 
