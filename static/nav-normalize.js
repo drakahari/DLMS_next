@@ -1,4 +1,42 @@
 (() => {
+  const readCookie = (name) => {
+    const prefix = `${name}=`;
+    const match = document.cookie.split(';').map(value => value.trim()).find(value => value.startsWith(prefix));
+    return match ? decodeURIComponent(match.slice(prefix.length)) : '';
+  };
+  const csrfToken = readCookie('dlms_csrf_token');
+  const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+  const isSameOrigin = (value) => {
+    try { return new URL(value || window.location.href, window.location.href).origin === window.location.origin; }
+    catch (_error) { return false; }
+  };
+  const protectForm = (form) => {
+    const method = (form.getAttribute('method') || 'GET').toUpperCase();
+    if (!csrfToken || !unsafeMethods.has(method) || !isSameOrigin(form.getAttribute('action'))) return form;
+    let field = form.querySelector('input[name="csrf_token"]');
+    if (!field) {
+      field = document.createElement('input');
+      field.type = 'hidden';
+      field.name = 'csrf_token';
+      form.appendChild(field);
+    }
+    field.value = csrfToken;
+    return form;
+  };
+  window.dlmsCsrfToken = csrfToken;
+  window.dlmsProtectForm = protectForm;
+  document.querySelectorAll('form').forEach(protectForm);
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    const requestUrl = typeof input === 'string' || input instanceof URL ? input : input.url;
+    const method = String(init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (!csrfToken || !unsafeMethods.has(method) || !isSameOrigin(requestUrl)) return originalFetch(input, init);
+    const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+    if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken);
+    return originalFetch(input, {...init, headers});
+  };
+
   const sidebar = document.querySelector('.dashboard-sidebar');
   if (!sidebar) return;
 

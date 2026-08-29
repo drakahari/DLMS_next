@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 import app as dlms
+from tests.csrf_test_utils import csrf_headers
 
 
 class ThemeSystemTests(unittest.TestCase):
@@ -70,7 +71,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_theme_api_rejects_unknown_theme(self):
         client = dlms.app.test_client()
-        response = client.post("/api/theme", json={"theme": "neon-rainbow"})
+        response = client.post("/api/theme", json={"theme": "neon-rainbow"}, headers=csrf_headers(client))
         self.assertEqual(response.status_code, 400)
 
     def test_theme_api_accepts_supported_theme(self):
@@ -79,7 +80,7 @@ class ThemeSystemTests(unittest.TestCase):
             portal = os.path.join(td, "portal.json")
             with mock.patch.object(dlms, "PORTAL_CONFIG", portal):
                 with mock.patch.object(dlms, "load_portal_config", return_value={"title": "DLMS", "theme": "dark"}):
-                    response = client.post("/api/theme", json={"theme": "purple-gold"})
+                    response = client.post("/api/theme", json={"theme": "purple-gold"}, headers=csrf_headers(client))
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.get_json()["theme"], "purple-gold")
                 with open(portal, "r", encoding="utf-8") as f:
@@ -92,7 +93,7 @@ class ThemeSystemTests(unittest.TestCase):
             portal = os.path.join(td, "portal.json")
             with mock.patch.object(dlms, "PORTAL_CONFIG", portal):
                 with mock.patch.object(dlms, "load_portal_config", return_value={"title": "DLMS", "theme": "dark"}):
-                    response = client.post("/api/theme", json={"theme": "maroon-gold"})
+                    response = client.post("/api/theme", json={"theme": "maroon-gold"}, headers=csrf_headers(client))
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.get_json()["theme"], "maroon-gold")
                 with open(portal, "r", encoding="utf-8") as f:

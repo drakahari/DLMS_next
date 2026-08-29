@@ -1,6 +1,8 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
+from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html
 from datetime import datetime
+from urllib.parse import urlsplit
 from werkzeug.utils import secure_filename
 
 # =========================
@@ -91,6 +93,40 @@ APP_NAME = "DLMS"
 APP_VERSION = "3.0.1"
 APP_DATA_DIR = get_app_data_dir(APP_NAME)
 
+
+def load_secret_key():
+    """Load the managed secret or persist a stable per-installation secret."""
+    configured = os.getenv("DLMS_SECRET_KEY")
+    if configured:
+        return configured
+
+    secret_path = os.path.join(APP_DATA_DIR, ".secret_key")
+    try:
+        with open(secret_path, "r", encoding="utf-8") as secret_file:
+            persisted = secret_file.read().strip()
+        if persisted:
+            try:
+                os.chmod(secret_path, 0o600)
+            except OSError:
+                pass
+            return persisted
+    except FileNotFoundError:
+        pass
+
+    generated = secrets.token_hex(32)
+    try:
+        descriptor = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as secret_file:
+            secret_file.write(generated)
+        return generated
+    except FileExistsError:
+        # Another process may have initialized the same application-data path.
+        with open(secret_path, "r", encoding="utf-8") as secret_file:
+            persisted = secret_file.read().strip()
+        if not persisted:
+            raise RuntimeError("DLMS secret-key file is empty")
+        return persisted
+
 # =========================
 # STATIC ROOT SELECTION
 # =========================
@@ -124,7 +160,65 @@ app.config["MAX_FORM_MEMORY_SIZE"] = None
 DLMS_MAX_REQUEST_BYTES = 300 * 1024 * 1024
 app.config["MAX_CONTENT_LENGTH"] = DLMS_MAX_REQUEST_BYTES
 
-app.secret_key = "dlms-dev"
+app.secret_key = load_secret_key()
+app.config["WTF_CSRF_METHODS"] = {"POST", "PUT", "PATCH", "DELETE"}
+csrf = CSRFProtect()
+
+
+def _is_json_request():
+    return request.is_json or request.path.startswith("/api/") or request.accept_mimetypes.best == "application/json"
+
+
+def _csrf_failure(message, status=400):
+    if _is_json_request():
+        return jsonify({"error": message}), status
+    return render_template_string(
+        "<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Request rejected - DLMS</title></head>"
+        "<body><main><h1>Request rejected</h1><p>{{ message }}</p><p><a href='javascript:history.back()'>Go back</a></p></main></body></html>",
+        message=message,
+    ), status
+
+
+def _request_source_matches(source):
+    try:
+        candidate = urlsplit(source)
+        current = urlsplit(request.host_url)
+    except ValueError:
+        return False
+    return candidate.scheme.lower() == current.scheme.lower() and candidate.netloc.lower() == current.netloc.lower()
+
+
+@app.before_request
+def validate_unsafe_request_origin():
+    if request.method not in app.config["WTF_CSRF_METHODS"]:
+        return None
+    if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+        return _csrf_failure("Cross-site requests are not allowed.", 403)
+    origin = request.headers.get("Origin")
+    if origin and not _request_source_matches(origin):
+        return _csrf_failure("The request origin does not match DLMS.", 403)
+    referer = request.headers.get("Referer")
+    if not origin and referer and not _request_source_matches(referer):
+        return _csrf_failure("The request referrer does not match DLMS.", 403)
+    return None
+
+
+csrf.init_app(app)
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(_error):
+    return _csrf_failure("The security token is missing or invalid. Refresh the page and try again.", 400)
+
+
+@app.after_request
+def deliver_csrf_token(response):
+    if request.method == "GET" and response.status_code < 400 and response.mimetype == "text/html":
+        response.set_cookie(
+            "dlms_csrf_token", generate_csrf(), secure=request.is_secure,
+            httponly=False, samesite="Strict", path="/",
+        )
+    return response
 
 
 @app.errorhandler(413)
@@ -2066,7 +2160,7 @@ rebuildBtn.addEventListener("click", async () => {
     rebuildStatus.textContent = "Rebuilding quiz pages...";
 
     try {
-        const response = await fetch("/admin/rebuild_all_quiz_html");
+        const response = await fetch("/admin/rebuild_all_quiz_html", {method: "POST"});
 
         if (!response.ok) {
             throw new Error("Rebuild request failed");
@@ -9297,7 +9391,7 @@ def rebuild_quiz_html_from_registry(quiz_id):
     return True
 
 
-@app.route("/admin/rebuild_all_quiz_html")
+@app.route("/admin/rebuild_all_quiz_html", methods=["POST"])
 def rebuild_all_quiz_html():
     registry = load_registry()
 
@@ -17323,7 +17417,7 @@ def settings_stage_restore():
 <div class="settings-warning-panel"><strong>Automatic safety backup</strong><span>Before restoring, DLMS will create a new backup of your current data. If the restore operation fails, your pre-restore snapshot remains available in the DLMS backups folder.</span></div>
 </section>
 <form method="POST" action="/settings/data/restore/confirm/{{ token }}"><div class="settings-form-actions"><button class="settings-primary-button" type="submit">Restore This Backup</button><button class="settings-secondary-button" type="button" onclick="location.href='/settings/data'">Cancel</button></div></form>
-</div></div></body></html>
+</div></div><script src="/static/nav-normalize.js"></script></body></html>
 """, manifest=manifest, report=report, summary=summary, token=token)
 
 
@@ -20663,6 +20757,7 @@ if (exportMissedAnki) {
             exportForm.appendChild(input);
         });
 
+        window.dlmsProtectForm(exportForm);
         document.body.appendChild(exportForm);
         exportForm.submit();
     });
@@ -21441,6 +21536,7 @@ if (exportLawAnki) {
             });
         }
 
+        window.dlmsProtectForm(exportForm);
         document.body.appendChild(exportForm);
         exportForm.submit();
     });

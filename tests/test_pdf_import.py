@@ -4,6 +4,7 @@ from pathlib import Path
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-pdf-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 import app as dlms
+from tests.csrf_test_utils import csrf_token
 
 class PDFImportParserTests(unittest.TestCase):
     def test_question_answer_explanation_and_cross_page_feedback(self):
@@ -237,6 +238,7 @@ class PDFImportParserTests(unittest.TestCase):
         response = client.post("/pdf-import/save/blank_correct_save", data={
             "quiz_title": "Recovery", "exam_minutes": "30",
             "review_payload": json.dumps(payload),
+            "csrf_token": csrf_token(client),
         })
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.headers["Location"].endswith("/pdf-import/review/blank_correct_save"))

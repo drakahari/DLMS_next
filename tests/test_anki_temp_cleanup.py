@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 import app as dlms
+from tests.csrf_test_utils import csrf_token
 
 
 class AnkiTemporaryCleanupTests(unittest.TestCase):
@@ -64,7 +65,9 @@ class AnkiTemporaryCleanupTests(unittest.TestCase):
             with self.subTest(route=route):
                 path = self._temporary_apkg()
                 with row_patch, mock.patch.object(dlms, "export_quiz_to_apkg", return_value=path):
-                    response = dlms.app.test_client().post(route, data=form_data, buffered=False)
+                    client = dlms.app.test_client()
+                    form_data["csrf_token"] = csrf_token(client)
+                    response = client.post(route, data=form_data, buffered=False)
                     self.assertEqual(response.status_code, 200)
                     self.assertTrue(os.path.exists(path))
                     response.close()

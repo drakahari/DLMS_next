@@ -1,0 +1,231 @@
+import io
+import os
+import stat
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+from unittest import mock
+
+import app as dlms
+from tests.csrf_test_utils import csrf_headers, csrf_token
+
+
+class CsrfProtectionTests(unittest.TestCase):
+    def setUp(self):
+        self.client = dlms.app.test_client()
+
+    def test_html_get_delivers_strict_session_token_and_read_only_get_works(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        cookie = response.headers.get("Set-Cookie", "")
+        self.assertIn("dlms_csrf_token=", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+
+    def test_tokenless_and_invalid_posts_are_rejected(self):
+        self.assertEqual(self.client.post("/api/theme", json={"theme": "dark"}).status_code, 400)
+        self.assertEqual(
+            self.client.post("/api/theme", json={"theme": "dark"}, headers={"X-CSRFToken": "invalid"}).status_code,
+            400,
+        )
+
+    def test_valid_form_and_json_header_tokens_succeed(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            dlms, "PORTAL_CONFIG", os.path.join(directory, "portal.json")
+        ), mock.patch.object(dlms, "load_portal_config", return_value={"title": "DLMS", "theme": "dark"}):
+            form_token = csrf_token(self.client)
+            form_response = self.client.post("/api/theme", data={"theme": "light", "csrf_token": form_token})
+            self.assertEqual(form_response.status_code, 200)
+            json_response = self.client.post(
+                "/api/theme", json={"theme": "dark"}, headers=csrf_headers(self.client)
+            )
+            self.assertEqual(json_response.status_code, 200)
+
+    def test_token_from_another_session_is_rejected(self):
+        other_client = dlms.app.test_client()
+        other_token = csrf_token(other_client)
+        response = self.client.post("/api/theme", json={"theme": "dark"}, headers={"X-CSRFToken": other_token})
+        self.assertEqual(response.status_code, 400)
+
+    def test_cross_origin_is_rejected_even_with_valid_token(self):
+        headers = csrf_headers(self.client)
+        headers["Origin"] = "https://attacker.example"
+        response = self.client.post("/api/theme", json={"theme": "dark"}, headers=headers)
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("origin", response.get_json()["error"].lower())
+
+    def test_same_origin_and_missing_source_headers_accept_valid_token(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            dlms, "PORTAL_CONFIG", os.path.join(directory, "portal.json")
+        ), mock.patch.object(dlms, "load_portal_config", return_value={"title": "DLMS", "theme": "dark"}):
+            headers = csrf_headers(self.client)
+            headers["Origin"] = "http://localhost"
+            self.assertEqual(self.client.post("/api/theme", json={"theme": "light"}, headers=headers).status_code, 200)
+            self.assertEqual(
+                self.client.post("/api/theme", json={"theme": "dark"}, headers=csrf_headers(self.client)).status_code,
+                200,
+            )
+
+    def test_lan_host_same_origin_is_supported_without_weakening_checks(self):
+        client = dlms.app.test_client()
+        client.get("/", base_url="http://192.168.1.25:9001")
+        token = client.get_cookie("dlms_csrf_token", domain="192.168.1.25").value
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            dlms, "PORTAL_CONFIG", os.path.join(directory, "portal.json")
+        ), mock.patch.object(dlms, "load_portal_config", return_value={"title": "DLMS", "theme": "dark"}):
+            response = client.post(
+                "/api/theme", base_url="http://192.168.1.25:9001", json={"theme": "light"},
+                headers={"X-CSRFToken": token, "Origin": "http://192.168.1.25:9001"},
+            )
+            self.assertEqual(response.status_code, 200)
+            blocked = client.post(
+                "/api/theme", base_url="http://192.168.1.25:9001", json={"theme": "dark"},
+                headers={"X-CSRFToken": token, "Origin": "http://192.168.1.26:9001"},
+            )
+            self.assertEqual(blocked.status_code, 403)
+
+    def test_sec_fetch_cross_site_and_cross_origin_referer_are_rejected(self):
+        token = csrf_token(self.client)
+        cross_site = self.client.post(
+            "/api/theme", json={"theme": "dark"},
+            headers={"X-CSRFToken": token, "Sec-Fetch-Site": "cross-site"},
+        )
+        self.assertEqual(cross_site.status_code, 403)
+        bad_referer = self.client.post(
+            "/api/theme", json={"theme": "dark"},
+            headers={"X-CSRFToken": token, "Referer": "https://attacker.example/page"},
+        )
+        self.assertEqual(bad_referer.status_code, 403)
+
+    def test_empty_body_fetch_with_header_token_reaches_handler(self):
+        with mock.patch.object(dlms, "load_registry", return_value=[]):
+            response = self.client.post("/admin/rebuild_all_quiz_html", headers=csrf_headers(self.client))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["rebuilt"], 0)
+
+    def test_cross_origin_destructive_requests_never_reach_handlers(self):
+        token = csrf_token(self.client)
+        headers = {"X-CSRFToken": token, "Origin": "https://attacker.example"}
+        with mock.patch.object(threading, "Timer") as timer:
+            self.assertEqual(self.client.post("/api/shutdown", headers=headers).status_code, 403)
+            timer.assert_not_called()
+        with mock.patch.object(dlms, "_run_reset_with_backup") as reset:
+            for route in ("/api/reset_quiz_library", "/api/reset_source_content", "/api/reset_app_settings", "/api/reset_all_data"):
+                self.assertEqual(self.client.post(route, headers=headers).status_code, 403)
+            reset.assert_not_called()
+        with mock.patch.object(dlms, "get_db") as get_db:
+            self.assertEqual(self.client.post("/api/clear_db_history", headers=headers).status_code, 403)
+            get_db.assert_not_called()
+
+    def test_rebuild_is_post_only_and_valid_post_rebuilds(self):
+        with mock.patch.object(dlms, "load_registry") as registry:
+            self.assertEqual(self.client.get("/admin/rebuild_all_quiz_html").status_code, 405)
+            registry.assert_not_called()
+        with mock.patch.object(dlms, "load_registry", return_value=[{"id": 7}]), mock.patch.object(
+            dlms, "rebuild_quiz_html_from_registry", return_value=True
+        ) as rebuild:
+            response = self.client.post("/admin/rebuild_all_quiz_html", headers=csrf_headers(self.client))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["rebuilt"], 1)
+        rebuild.assert_called_once_with(7)
+
+    def test_multipart_pdf_backup_and_content_pack_requests_pass_csrf_layer(self):
+        token = csrf_token(self.client)
+        pages = [{"page": 1, "lines": ["1. Which?", "A. One", "B. Two", "Correct Answer: A"]}]
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            dlms, "PDF_IMPORT_DRAFT_FOLDER", directory
+        ), mock.patch.object(dlms, "_pdf_extract_pages", return_value=pages), mock.patch.object(
+            dlms, "_save_pdf_import_draft"
+        ) as save_draft:
+            pdf_response = self.client.post(
+                "/pdf-import/analyze",
+                data={
+                    "csrf_token": token, "rights_ok": "1", "pdf_content_type": "question_bank",
+                    "pdf_file": (io.BytesIO(b"%PDF-test"), "notes.pdf"),
+                },
+                content_type="multipart/form-data",
+            )
+            self.assertEqual(pdf_response.status_code, 302)
+            self.assertIn("/pdf-import/review/", pdf_response.headers["Location"])
+            save_draft.assert_called_once()
+
+        report = {
+            "manifest": {"created_at": "2026-08-29", "dlms_version": "3.0.1", "summary": {}},
+            "file_count": 1, "uncompressed_bytes": 100, "members": [],
+        }
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            dlms, "BACKUP_RESTORE_STAGING_FOLDER", directory
+        ), mock.patch.object(dlms, "_validate_dlms_backup", return_value=report):
+            backup_response = self.client.post(
+                "/settings/data/restore/stage",
+                data={"csrf_token": token, "backup_file": (io.BytesIO(b"PK-test"), "backup.zip")},
+                content_type="multipart/form-data",
+            )
+            self.assertEqual(backup_response.status_code, 200)
+            self.assertIn("Valid DLMS Backup", backup_response.get_data(as_text=True))
+
+        inspection = {"root_name": "sample-pack", "file_count": 2, "uncompressed_bytes": 100}
+        report = {"valid": True, "errors": [], "warnings": [], "checks": [], "pack_id": "sample", "pack_name": "Sample", "dataset_count": 1}
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            dlms, "CONTENT_PACK_STAGING_FOLDER", directory
+        ), mock.patch.object(dlms.zipfile, "is_zipfile", return_value=True), mock.patch.object(
+            dlms, "_inspect_content_pack_zip", return_value=inspection
+        ), mock.patch.object(dlms, "_extract_content_pack_zip"), mock.patch.object(
+            dlms, "_safe_pack_child", return_value=os.path.join(directory, "sample-pack")
+        ), mock.patch.object(dlms, "_validate_staged_content_pack", return_value=report):
+            pack_response = self.client.post(
+                "/content-packs/import",
+                data={"csrf_token": token, "pack_zip": (io.BytesIO(b"PK-test"), "pack.zip")},
+                content_type="multipart/form-data",
+            )
+            self.assertEqual(pack_response.status_code, 302)
+            self.assertIn("/content-packs/import/", pack_response.headers["Location"])
+
+    def test_secret_key_is_persisted_reused_and_private(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(dlms, "APP_DATA_DIR", directory), mock.patch.dict(
+            os.environ, {}, clear=False
+        ):
+            os.environ.pop("DLMS_SECRET_KEY", None)
+            first = dlms.load_secret_key()
+            second = dlms.load_secret_key()
+            self.assertEqual(first, second)
+            mode = stat.S_IMODE(os.stat(os.path.join(directory, ".secret_key")).st_mode)
+            self.assertEqual(mode, 0o600)
+        with mock.patch.dict(os.environ, {"DLMS_SECRET_KEY": "managed-secret"}):
+            self.assertEqual(dlms.load_secret_key(), "managed-secret")
+
+
+class CsrfFrontendStaticTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = Path(dlms.STATIC_ROOT, "nav-normalize.js").read_text(encoding="utf-8")
+        cls.app_source = Path(dlms.__file__).read_text(encoding="utf-8")
+
+    def test_bootstrap_injects_only_same_origin_unsafe_forms(self):
+        self.assertIn("document.querySelectorAll('form').forEach(protectForm)", self.source)
+        self.assertIn("unsafeMethods.has(method)", self.source)
+        self.assertIn("isSameOrigin(form.getAttribute('action'))", self.source)
+        self.assertIn("field.name = 'csrf_token'", self.source)
+
+    def test_fetch_wrapper_protects_unsafe_same_origin_requests_only(self):
+        self.assertIn("window.fetch = (input, init = {})", self.source)
+        self.assertIn("headers.set('X-CSRFToken', csrfToken)", self.source)
+        self.assertIn("!unsafeMethods.has(method) || !isSameOrigin(requestUrl)", self.source)
+        self.assertIn("init.headers", self.source)
+
+    def test_direct_submit_anki_forms_are_explicitly_protected(self):
+        self.assertEqual(self.app_source.count("window.dlmsProtectForm(exportForm);"), 2)
+        self.assertEqual(self.app_source.count("exportForm.submit();"), 2)
+
+    def test_mutation_pages_use_shared_bootstrap(self):
+        for marker in (
+            "/pdf-import/analyze", "/settings/data/restore/stage", "/content-packs/import",
+            "/api/clear_db_history", "/admin/rebuild_all_quiz_html",
+        ):
+            position = self.app_source.find(marker)
+            self.assertNotEqual(position, -1, marker)
+            self.assertIn("/static/nav-normalize.js", self.app_source[position:position + 18000], marker)
+
+
+if __name__ == "__main__":
+    unittest.main()
