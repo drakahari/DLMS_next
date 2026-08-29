@@ -6,10 +6,16 @@ The suite uses an isolated temporary APP_DATA_DIR and never touches real DLMS da
 import json, os, shutil, tempfile, unittest
 from unittest import mock
 from pathlib import Path
+from PIL import Image
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-image-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 import app as dlms
+
+
+def _write_test_image(path):
+    formats = {".png": "PNG", ".jpg": "JPEG", ".webp": "WEBP"}
+    Image.new("RGB", (8, 6), (40, 120, 200)).save(path, format=formats[Path(path).suffix.lower()])
 
 
 def _bind_dlms_test_paths():
@@ -51,7 +57,7 @@ class ImageWorkflowTests(unittest.TestCase):
         (root / "data").mkdir(parents=True, exist_ok=True)
         (root / "images").mkdir(parents=True, exist_ok=True)
         for name in ("diagram.png", "photo.jpg", "interface.webp"):
-            (root / "images" / name).write_bytes(b"DLMS-test-image")
+            _write_test_image(root / "images" / name)
 
         manifest = {
             "schema_version": 1,
@@ -119,12 +125,12 @@ class ImageWorkflowTests(unittest.TestCase):
         # backslashes, which send_from_directory() can reject as unsafe.
         asset = Path(_TEMP.name) / "quiz_assets" / "snapshot_test" / "images" / "diagram.png"
         asset.parent.mkdir(parents=True, exist_ok=True)
-        asset.write_bytes(b"DLMS-test-image")
+        _write_test_image(asset)
         with mock.patch.object(dlms.os.path, "relpath", side_effect=AssertionError("relpath must not be used by quiz_asset")):
             response = dlms.app.test_client().get("/quiz-assets/snapshot_test/images/diagram.png")
         try:
             self.assertEqual(200, response.status_code)
-            self.assertEqual(b"DLMS-test-image", response.data)
+            self.assertTrue(response.data.startswith(b"\x89PNG\r\n\x1a\n"))
         finally:
             response.close()
 

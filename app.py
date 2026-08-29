@@ -3,6 +3,7 @@ from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html
 from datetime import datetime
 from urllib.parse import urlsplit
+from PIL import Image, ImageSequence, UnidentifiedImageError
 from werkzeug.utils import secure_filename
 
 # =========================
@@ -213,6 +214,7 @@ def handle_csrf_error(_error):
 
 @app.after_request
 def deliver_csrf_token(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
     if request.method == "GET" and response.status_code < 400 and response.mimetype == "text/html":
         response.set_cookie(
             "dlms_csrf_token", generate_csrf(), secure=request.is_secure,
@@ -386,6 +388,90 @@ for d in [
     #STATIC_LOGO_FOLDER,
 ]:
     os.makedirs(d, exist_ok=True)
+
+
+RASTER_IMAGE_FORMATS = {
+    ".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG",
+    ".gif": "GIF", ".webp": "WEBP",
+}
+PASSIVE_PACK_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def _decode_raster_image(path, allowed_extensions=None):
+    """Fully decode a raster and ensure its bytes match its declared extension."""
+    extension = os.path.splitext(path)[1].lower()
+    allowed = set(allowed_extensions or RASTER_IMAGE_FORMATS)
+    if extension not in allowed or extension not in RASTER_IMAGE_FORMATS:
+        raise ValueError("unsupported image type; SVG and other active formats are not accepted")
+    try:
+        with Image.open(path) as image:
+            actual_format = str(image.format or "").upper()
+            if actual_format != RASTER_IMAGE_FORMATS[extension]:
+                raise ValueError("image bytes do not match the filename extension")
+            frames = [frame.copy() for frame in ImageSequence.Iterator(image)]
+            if not frames:
+                raise ValueError("image contains no decodable frames")
+            metadata = {
+                "format": actual_format,
+                "size": image.size,
+                "duration": image.info.get("duration"),
+                "loop": image.info.get("loop", 0),
+            }
+            return frames, metadata
+    except (UnidentifiedImageError, OSError, SyntaxError) as exc:
+        raise ValueError("file is not a valid supported raster image") from exc
+
+
+def _reencode_raster_file(source_path, destination_path, allowed_extensions=None):
+    """Decode and atomically re-encode a raster, stripping non-image trailing data."""
+    frames, metadata = _decode_raster_image(source_path, allowed_extensions)
+    extension = os.path.splitext(destination_path)[1].lower()
+    output_format = RASTER_IMAGE_FORMATS[extension]
+    descriptor, temporary_path = tempfile.mkstemp(prefix=".dlms-image-", suffix=extension, dir=os.path.dirname(destination_path))
+    os.close(descriptor)
+    try:
+        first = frames[0]
+        options = {}
+        if output_format == "JPEG":
+            if first.mode not in {"RGB", "L"}:
+                first = first.convert("RGB")
+            options.update(quality=95, subsampling=0)
+        elif output_format == "WEBP":
+            options["lossless"] = True
+        elif output_format == "GIF" and len(frames) > 1:
+            options.update(save_all=True, append_images=frames[1:], loop=metadata["loop"])
+            if metadata["duration"] is not None:
+                options["duration"] = metadata["duration"]
+        first.save(temporary_path, format=output_format, **options)
+        _decode_raster_image(temporary_path, allowed_extensions)
+        os.replace(temporary_path, destination_path)
+    finally:
+        try:
+            os.remove(temporary_path)
+        except FileNotFoundError:
+            pass
+
+
+def _store_raster_upload(upload, destination_dir, filename, allowed_extensions=None):
+    """Store an uploaded image only after full decode and safe raster re-encoding."""
+    filename = secure_filename(filename or "")
+    extension = os.path.splitext(filename)[1].lower()
+    allowed = set(allowed_extensions or RASTER_IMAGE_FORMATS)
+    if not filename or extension not in allowed:
+        raise ValueError("unsupported image type; use PNG, JPEG, GIF, or WebP as allowed by this workflow")
+    os.makedirs(destination_dir, exist_ok=True)
+    raw_descriptor, raw_path = tempfile.mkstemp(prefix=".dlms-upload-", suffix=extension, dir=destination_dir)
+    os.close(raw_descriptor)
+    destination_path = os.path.join(destination_dir, filename)
+    try:
+        upload.save(raw_path)
+        _reencode_raster_file(raw_path, destination_path, allowed)
+    finally:
+        try:
+            os.remove(raw_path)
+        except FileNotFoundError:
+            pass
+    return filename
 
 
 
@@ -588,6 +674,7 @@ def load_content_pack_image_dataset(pack_id, dataset_id):
         image_path = _safe_pack_child(pack["_root"], rel_file)
         if not os.path.isfile(image_path):
             raise FileNotFoundError(f"Pack image not found: {rel_file}")
+        _decode_raster_image(image_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
         hotspots = image.get("hotspots") or []
         if not isinstance(hotspots, list) or not hotspots:
             raise ValueError(f"Image {rel_file!r} has no hotspots")
@@ -635,8 +722,10 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
         if image_id in image_ids:
             raise ValueError(f"Duplicate image id: {image_id}")
         image_ids.add(image_id)
-        if not os.path.isfile(_safe_pack_child(pack["_root"], rel_file)):
+        image_path = _safe_pack_child(pack["_root"], rel_file)
+        if not os.path.isfile(image_path):
             raise FileNotFoundError(f"Pack image not found: {rel_file}")
+        _decode_raster_image(image_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
         if not isinstance(image.get("hotspots") or [], list):
             raise ValueError("Image hotspots must be a list")
 
@@ -790,10 +879,14 @@ def content_pack_asset(pack_id, asset_path):
     if not os.path.isfile(file_path):
         return "Content-pack asset not found", 404
 
-    allowed = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+    allowed = PASSIVE_PACK_IMAGE_EXTENSIONS
     ext = os.path.splitext(file_path)[1].lower()
     if ext not in allowed:
         return "Unsupported content-pack asset type", 415
+    try:
+        _decode_raster_image(file_path, allowed)
+    except ValueError:
+        return "Invalid content-pack image", 415
 
     return send_from_directory(
         os.path.dirname(file_path),
@@ -825,8 +918,9 @@ def _snapshot_one_pack_asset(pack_id, asset_url, bucket):
         raise FileNotFoundError(f"Content-pack asset not found: {rel}")
 
     ext = os.path.splitext(src)[1].lower()
-    if ext not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+    if ext not in PASSIVE_PACK_IMAGE_EXTENSIONS:
         raise ValueError(f"Unsupported quiz asset type: {ext}")
+    _decode_raster_image(src, PASSIVE_PACK_IMAGE_EXTENSIONS)
 
     dest_root = os.path.join(QUIZ_ASSET_FOLDER, bucket)
     dest = _safe_pack_child(dest_root, rel)
@@ -878,8 +972,12 @@ def quiz_asset(asset_bucket, asset_path):
         return "Invalid quiz asset path", 400
     if not os.path.isfile(file_path):
         return "Quiz asset not found", 404
-    if os.path.splitext(file_path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+    if os.path.splitext(file_path)[1].lower() not in PASSIVE_PACK_IMAGE_EXTENSIONS:
         return "Unsupported quiz asset", 415
+    try:
+        _decode_raster_image(file_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
+    except ValueError:
+        return "Invalid quiz asset", 415
     # Keep the request path in URL/POSIX form. On Windows, os.path.relpath()
     # returns backslashes (for example ``images\\diagram.png``). Werkzeug's
     # send_from_directory() treats backslashes as unsafe alternate separators,
@@ -1087,7 +1185,7 @@ def _read_json_file(path, label, errors):
         return None
 
 
-def _validate_staged_content_pack(pack_root):
+def _validate_staged_content_pack(pack_root, *, normalize_images=False):
     """Independently validate a staged pack before installation."""
     errors, warnings, checks = [], [], []
     pack_root = os.path.realpath(pack_root)
@@ -1176,6 +1274,7 @@ def _validate_staged_content_pack(pack_root):
     duplicates_ok = True
     image_license_missing = 0
     dataset_source_missing = 0
+    normalized_image_paths = set()
 
     for group, did, rel_path, data in parsed_dataset_files:
         if data.get("schema_version") != CONTENT_PACK_SCHEMA_VERSION:
@@ -1242,6 +1341,16 @@ def _validate_staged_content_pack(pack_root):
                 if not os.path.isfile(image_path):
                     errors.append(f"{rel_path}: referenced image is missing: {rel_image}")
                     referenced_files_ok = False
+                else:
+                    try:
+                        if normalize_images and image_path not in normalized_image_paths:
+                            _reencode_raster_file(image_path, image_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
+                            normalized_image_paths.add(image_path)
+                        else:
+                            _decode_raster_image(image_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
+                    except ValueError as exc:
+                        errors.append(f"{rel_path}: unsafe or invalid image {rel_image}: {exc}")
+                        referenced_files_ok = False
 
                 source = image.get("source") if isinstance(image.get("source"), dict) else {}
                 license_text = str(image.get("license") or source.get("license") or "").strip()
@@ -1982,10 +2091,15 @@ def finalize_logo_from_request(app, ts, *, logo_file=None, temp_logo_name=None):
             return None
 
         ext = os.path.splitext(temp_logo_name)[1].lower()
+        if ext not in RASTER_IMAGE_FORMATS:
+            return None
         logo_filename = f"logo_{ts}{ext}"
         dst = os.path.join(LOGO_FOLDER, logo_filename)
-
-        os.rename(src, dst)
+        try:
+            _reencode_raster_file(src, dst, RASTER_IMAGE_FORMATS)
+        except ValueError:
+            return None
+        os.remove(src)
         assert os.path.exists(dst), f"Logo finalize invariant violated: {dst}"
 
         print(f"[LOGO] Finalized logo → {dst}")
@@ -1996,14 +2110,14 @@ def finalize_logo_from_request(app, ts, *, logo_file=None, temp_logo_name=None):
     # =========================
     if logo_file and logo_file.filename:
         ext = os.path.splitext(logo_file.filename)[1].lower()
-        if ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]:
+        if ext in RASTER_IMAGE_FORMATS:
             logo_filename = f"logo_{ts}{ext}"
-            dst = os.path.join(LOGO_FOLDER, logo_filename)
+            try:
+                _store_raster_upload(logo_file, LOGO_FOLDER, logo_filename, RASTER_IMAGE_FORMATS)
+            except ValueError:
+                return None
 
-            logo_file.save(dst)
-            assert os.path.exists(dst), f"Logo upload invariant violated: {dst}"
-
-            print(f"[LOGO] Uploaded logo → {dst}")
+            print(f"[LOGO] Uploaded logo → {os.path.join(LOGO_FOLDER, logo_filename)}")
             return logo_filename
 
     # =========================
@@ -2024,18 +2138,18 @@ def save_preview_logo(app, logo_file):
         return None
 
     ext = os.path.splitext(logo_file.filename)[1].lower()
-    if ext not in [".png", ".jpg", ".jpeg", ".gif", ".webp"]:
+    if ext not in RASTER_IMAGE_FORMATS:
         return None
 
     os.makedirs(LOGO_TEMP_FOLDER, exist_ok=True)
 
     name = f"temp_{int(time.time())}{ext}"
-    dst = os.path.join(LOGO_TEMP_FOLDER, name)
+    try:
+        _store_raster_upload(logo_file, LOGO_TEMP_FOLDER, name, RASTER_IMAGE_FORMATS)
+    except ValueError:
+        return None
 
-    logo_file.save(dst)
-    assert os.path.exists(dst), f"Preview logo invariant violated: {dst}"
-
-    print(f"[LOGO PREVIEW] Saved temp logo → {dst}")
+    print(f"[LOGO PREVIEW] Saved temp logo → {os.path.join(LOGO_TEMP_FOLDER, name)}")
     return name
 
 
@@ -2087,9 +2201,20 @@ def regex_help():
 
 @app.route("/user-static/<path:filename>")
 def user_static(filename):
+    normalized = str(filename or "").replace("\\", "/").lstrip("/")
+    if not normalized.startswith("logos/"):
+        return "Unsupported user asset", 415
+    root = os.path.join(APP_DATA_DIR, "static")
+    try:
+        file_path = _safe_pack_child(root, normalized)
+        if not os.path.isfile(file_path):
+            return "User image not found", 404
+        _decode_raster_image(file_path, RASTER_IMAGE_FORMATS)
+    except ValueError:
+        return "Invalid user image", 415
     return send_from_directory(
-        os.path.join(APP_DATA_DIR, "static"),
-        filename
+        root,
+        normalized
     )
 
 @app.route("/admin/maintenance")
@@ -2590,6 +2715,13 @@ def dynamic_css():
 @app.route("/user-bg/<path:filename>")
 def serve_user_background(filename):
     bg_dir = os.path.join(APP_DATA_DIR, "static", "bg")
+    try:
+        file_path = _safe_pack_child(bg_dir, filename)
+        if not os.path.isfile(file_path):
+            return "Background image not found", 404
+        _decode_raster_image(file_path, RASTER_IMAGE_FORMATS)
+    except ValueError:
+        return "Invalid background image", 415
     return send_from_directory(bg_dir, filename)
 
 
@@ -3434,7 +3566,7 @@ def content_pack_import():
         extract_root = os.path.join(stage_dir, "extracted")
         _extract_content_pack_zip(zip_path, extract_root)
         pack_root = _safe_pack_child(extract_root, inspection["root_name"])
-        report = _validate_staged_content_pack(pack_root)
+        report = _validate_staged_content_pack(pack_root, normalize_images=True)
 
         metadata = {
             "token": token,
@@ -11121,8 +11253,12 @@ def image_builder_draft_asset(draft_id, filename):
         return "Draft image not found", 404
     if not os.path.isfile(file_path):
         return "Draft image not found", 404
-    if os.path.splitext(file_path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+    if os.path.splitext(file_path)[1].lower() not in PASSIVE_PACK_IMAGE_EXTENSIONS:
         return "Unsupported image", 415
+    try:
+        _decode_raster_image(file_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
+    except ValueError:
+        return "Invalid draft image", 415
     return send_from_directory(draft_root, os.path.relpath(file_path, draft_root))
 
 
@@ -11156,7 +11292,12 @@ def image_quiz_builder():
                 filename = f"{base}_{counter}{ext}"
                 counter += 1
             used.add(filename.casefold())
-            uploaded.save(os.path.join(draft_root, filename))
+            try:
+                _store_raster_upload(uploaded, draft_root, filename, PASSIVE_PACK_IMAGE_EXTENSIONS)
+            except ValueError as exc:
+                shutil.rmtree(draft_root, ignore_errors=True)
+                flash(f"Image {uploaded.filename!r} was rejected: {exc}", "error")
+                return redirect("/study-packs/image-builder")
             images.append({
                 "id": f"image_{n}", "filename": filename,
                 "original_name": uploaded.filename,
@@ -16875,13 +17016,10 @@ def save_appearance_settings():
     file = request.files.get("background_image")
     if file and file.filename and file.filename.strip():
         filename = secure_filename(file.filename)
-        os.makedirs(BACKGROUND_FOLDER, exist_ok=True)
-        save_path = os.path.join(BACKGROUND_FOLDER, filename)
-        file.save(save_path)
-
-        if not os.path.exists(save_path):
-            raise RuntimeError(f"Background image failed to save: {save_path}")
-
+        try:
+            _store_raster_upload(file, BACKGROUND_FOLDER, filename, RASTER_IMAGE_FORMATS)
+        except ValueError as exc:
+            return f"Invalid background image: {html.escape(str(exc))}", 400
         cfg["background_image"] = filename
 
     with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
@@ -18053,20 +18191,10 @@ def save_settings():
 
     if file and file.filename.strip():
         filename = secure_filename(file.filename)
-
-        # Ensure folder exists
-        os.makedirs(BACKGROUND_FOLDER, exist_ok=True)
-        dprint("[SETTINGS] BACKGROUND_FOLDER:", BACKGROUND_FOLDER)
-
-        save_path = os.path.join(BACKGROUND_FOLDER, filename)
-        file.save(save_path)
-
-        # 🔒 HARD ASSERT: ensure the file actually exists
-        if not os.path.exists(save_path):
-            raise RuntimeError(
-                f"Background image failed to save: {save_path}"
-            )
-
+        try:
+            _store_raster_upload(file, BACKGROUND_FOLDER, filename, RASTER_IMAGE_FORMATS)
+        except ValueError as exc:
+            return f"Invalid background image: {html.escape(str(exc))}", 400
         cfg["background_image"] = filename
 
 

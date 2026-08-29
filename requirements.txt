@@ -3,3 +3,4 @@ Flask-WTF
 genanki
 werkzeug
 pypdf
+Pillow
