@@ -1,5 +1,5 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -22429,11 +22429,39 @@ def analyze_confidence(clean_text):
 # QUIZ HTML BUILDER
 # =========================
 
+def _html_text(value):
+    """Encode plain text for insertion into generated HTML text content."""
+    return html.escape(str(value or ""), quote=False)
+
+
+def _html_attribute(value):
+    """Encode a value for a quoted generated-HTML attribute."""
+    return html.escape(str(value or ""), quote=True)
+
+
+def _json_for_inline_script(value):
+    """Serialize data without allowing it to terminate an inline script element."""
+    serialized = json.dumps(value, ensure_ascii=False)
+    return (
+        serialized
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
 def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_filename, quiz_id, exam_minutes=90):
     exam_minutes = normalize_exam_minutes(exam_minutes)
+    portal_title_html = _html_text(portal_title)
+    quiz_title_html = _html_text(quiz_title)
+    quiz_title_json = _json_for_inline_script(str(quiz_title or ""))
+    quiz_file_json = _json_for_inline_script(f"/data/{jsonfile}")
+    quiz_id_json = _json_for_inline_script(quiz_id)
     # Optional logo for mode banner (left/right)
     if logo_filename:
-        mode_logo = f'<img src="/user-static/logos/{logo_filename}" class="mode-badge">'
+        logo_url = _html_attribute(f"/user-static/logos/{logo_filename}")
+        mode_logo = f'<img src="{logo_url}" class="mode-badge">'
     else:
         mode_logo = ""
 
@@ -22443,13 +22471,13 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{quiz_title}</title>
+<title>{quiz_title_html}</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/favicon.ico">
 
 <!-- 🔑 Canonical quiz identity for script.js + DB -->
 <script>
-  window.quiz_title = "{quiz_title}";
+  window.quiz_title = {quiz_title_json};
   window.examDurationMinutes = {exam_minutes};
 </script>
 
@@ -22474,8 +22502,8 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
 
         <!-- Readable Centered Banner -->
         <h1 class="hero-title">
-            {portal_title}<br>
-            <span style="font-size:20px;opacity:.85">{quiz_title}</span>
+            {portal_title_html}<br>
+            <span style="font-size:20px;opacity:.85">{quiz_title_html}</span>
         </h1>
 
                 <!-- Mode Select -->
@@ -22514,7 +22542,7 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
                 </div>
 
                 <div class="active-quiz-title">
-                    {quiz_title}
+                    {quiz_title_html}
                 </div>
 
                 <div class="active-logo-slot">
@@ -22607,8 +22635,8 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
 
 <!-- 🔹 Tell script.js which quiz + JSON file to load -->
 <script>
-  const QUIZ_FILE = "/data/{jsonfile}";
-  window.QUIZ_ID = {quiz_id};
+  const QUIZ_FILE = {quiz_file_json};
+  window.QUIZ_ID = {quiz_id_json};
 </script>
 
 <script src="/static/script.js"></script>

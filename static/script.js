@@ -239,10 +239,8 @@ function renderQuestion() {
         return;
     }
 
-    let html = "";
+    choicesEl.innerHTML = renderQuestionMedia(q);
     (q.choices || []).forEach((choice, i) => {
-        const label = choice.label;
-        const choiceText = choice.text;
         let cls = "choice";
 
 
@@ -252,17 +250,17 @@ if (examMode && selected.includes(i)) {
 }
 
 
-        html += `
-            <div 
-                class="${cls}"
-                data-index="${i}"
-                onclick="selectChoice(${i})">
-                <b>${label}.</b> ${choiceText}
-            </div>
-        `;
-    });
+        const choiceElement = document.createElement("div");
+        choiceElement.className = cls;
+        choiceElement.dataset.index = String(i);
+        choiceElement.addEventListener("click", () => selectChoice(i));
 
-    choicesEl.innerHTML = renderQuestionMedia(q) + html;
+        const labelElement = document.createElement("b");
+        labelElement.textContent = `${String(choice.label ?? "")}.`;
+        choiceElement.appendChild(labelElement);
+        choiceElement.appendChild(document.createTextNode(` ${String(choice.text ?? "")}`));
+        choicesEl.appendChild(choiceElement);
+    });
 
     // Study mode: immediately show correct/incorrect colors
    if (!examMode && selected.length > 0) {
@@ -434,7 +432,7 @@ function matchingFeedbackHtml(q, pair, leftIndex, chosen) {
     const explanation = pair.explanation ? `<div class="matching-study-explanation">${escapeHtml(pair.explanation)}</div>` : "";
     const referenceText = verification.reference_basis || source.dataset || source.work || source.organization || "";
     const sourceUrls = Array.isArray(verification.source_urls) ? verification.source_urls.filter(Boolean) : [];
-    const sourceUrl = sourceUrls[0] || source.url || "";
+    const sourceUrl = safeExternalUrl(sourceUrls[0] || source.url || "");
     const referenceBasis = referenceText ? `<div class="matching-study-source"><strong>Reference basis:</strong> ${escapeHtml(referenceText)}</div>` : "";
     const sourceLink = sourceUrl ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a></div>` : "";
     return `<div class="matching-study-feedback ${isCorrect ? "is-correct" : "is-wrong"}">
@@ -582,6 +580,15 @@ function selectMatch(leftIndex, rightIndexValue) {
 
 function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));
+}
+
+function safeExternalUrl(value) {
+    try {
+        const url = new URL(String(value ?? ""), window.location.href);
+        return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+    } catch (_error) {
+        return "";
+    }
 }
 
 /* =====================================================
@@ -823,8 +830,9 @@ function applyStudyFeedback() {
             const source = (q.source && typeof q.source === "object") ? q.source : {};
             const explanation = q.explanation
                 ? `<div class="matching-study-explanation">${escapeHtml(q.explanation)}</div>` : "";
-            const sourceLine = source.url
-                ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.dataset || source.url)}</a></div>` : "";
+            const sourceUrl = safeExternalUrl(source.url);
+            const sourceLine = sourceUrl
+                ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.dataset || source.url)}</a></div>` : "";
             choicesEl.insertAdjacentHTML("beforeend", `<div class="matching-study-feedback choice-study-explanation">${explanation}${sourceLine}</div>`);
         }
     }
