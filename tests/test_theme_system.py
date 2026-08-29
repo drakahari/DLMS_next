@@ -15,6 +15,42 @@ class ThemeSystemTests(unittest.TestCase):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
+    @staticmethod
+    def _css_variables(css):
+        return dict(re.findall(r"--([\w-]+):\s*([^;]+);", css))
+
+    @staticmethod
+    def _rgba(value):
+        value = value.strip()
+        if value.startswith("#"):
+            raw = value[1:]
+            if len(raw) == 3:
+                raw = "".join(x * 2 for x in raw)
+            return tuple(int(raw[i:i + 2], 16) / 255 for i in (0, 2, 4)) + (1.0,)
+        match = re.fullmatch(r"rgba?\(([^)]+)\)", value)
+        if not match:
+            raise AssertionError(f"Unsupported test color: {value}")
+        parts = [float(x.strip()) for x in match.group(1).split(",")]
+        alpha = parts[3] if len(parts) == 4 else 1.0
+        return tuple(x / 255 for x in parts[:3]) + (alpha,)
+
+    @classmethod
+    def _composite(cls, foreground, background):
+        fg = cls._rgba(foreground)
+        bg = cls._rgba(background)
+        return tuple(fg[i] * fg[3] + bg[i] * (1 - fg[3]) for i in range(3))
+
+    @staticmethod
+    def _luminance(rgb):
+        linear = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in rgb]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    @classmethod
+    def _contrast(cls, foreground, background_rgb):
+        fg_rgb = cls._rgba(foreground)[:3]
+        first, second = cls._luminance(fg_rgb), cls._luminance(background_rgb)
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+
     def test_portal_config_default_theme_is_dark(self):
         with tempfile.TemporaryDirectory() as td:
             portal = os.path.join(td, "config", "portal.json")
@@ -29,6 +65,7 @@ class ThemeSystemTests(unittest.TestCase):
         css = response.get_data(as_text=True)
         self.assertIn("--theme-page-text", css)
         self.assertIn("--theme-accent", css)
+        self.assertIn("--theme-accent-text", css)
         self.assertIn("--theme-color-scheme", css)
 
     def test_theme_api_rejects_unknown_theme(self):
@@ -119,6 +156,44 @@ class ThemeSystemTests(unittest.TestCase):
                     any(declaration in block for block in blocks),
                     f"{selector} must select its accessible dark color through light-dark()",
                 )
+
+    def test_every_palette_accent_text_meets_normal_text_contrast(self):
+        client = dlms.app.test_client()
+        expected = {
+            "dark": "#78bfff",
+            "light": "#075f9f",
+            "purple-gold": "#ffd85a",
+            "maroon-gold": "#ffde7a",
+        }
+        for theme, expected_color in expected.items():
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                self.assertEqual(variables.get("theme-accent-text"), expected_color)
+                for surface_name in ("theme-panel-1", "theme-surface"):
+                    surface = self._composite(
+                        variables[surface_name], variables["theme-body-base"]
+                    )
+                    ratio = self._contrast(expected_color, surface)
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"{theme} accent text is only {ratio:.2f}:1 on {surface_name}",
+                    )
+
+    def test_review_small_text_uses_accessible_accent_foreground_token(self):
+        css = self._style_css()
+        match = re.search(
+            r"\.review-attempt-label,\s*\.review-question-kicker\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(match)
+        rule = match.group(1)
+        self.assertIn("color: var(--theme-accent-text, #78bfff) !important", rule)
+        self.assertNotIn("var(--theme-accent-3", rule)
+        self.assertNotIn("var(--theme-accent,", rule)
 
 
 if __name__ == "__main__":

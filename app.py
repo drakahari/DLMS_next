@@ -2380,7 +2380,7 @@ def dynamic_css():
             "surface": "rgba(5,18,39,.58)", "surface2": "rgba(17,31,56,.78)",
             "input_bg": "rgba(3,13,30,.78)", "input_text": "#eaf3ff", "border": "rgba(86,158,255,.35)",
             "border_soft": "rgba(98,155,255,.24)", "nav_text": "#e8f2ff", "nav_muted": "#b9c8dc",
-            "accent": "#1b9ff2", "accent2": "#138ad6", "accent3": "#0f6fb3",
+            "accent": "#1b9ff2", "accent2": "#138ad6", "accent3": "#0f6fb3", "accent_text": "#78bfff",
             "link": "#62b5ff", "link_hover": "#9bd2ff", "shadow": "rgba(0,0,0,.42)"
         },
         "light": {
@@ -2392,7 +2392,7 @@ def dynamic_css():
             "surface": "rgba(237,244,251,.96)", "surface2": "rgba(230,238,248,.96)",
             "input_bg": "#ffffff", "input_text": "#10213a", "border": "rgba(55,103,153,.34)",
             "border_soft": "rgba(71,111,151,.24)", "nav_text": "#26384f", "nav_muted": "#61738a",
-            "accent": "#076fb5", "accent2": "#08659e", "accent3": "#084f7c",
+            "accent": "#076fb5", "accent2": "#08659e", "accent3": "#084f7c", "accent_text": "#075f9f",
             "link": "#075f9f", "link_hover": "#043f6c", "shadow": "rgba(29,52,76,.16)"
         },
         "purple-gold": {
@@ -2404,7 +2404,7 @@ def dynamic_css():
             "surface": "rgba(56,27,92,.66)", "surface2": "rgba(65,31,103,.72)",
             "input_bg": "rgba(29,14,52,.92)", "input_text": "#fff8e8", "border": "rgba(255,198,47,.48)",
             "border_soft": "rgba(220,183,88,.30)", "nav_text": "#fff8e8", "nav_muted": "#d7cbe6",
-            "accent": "#f2c230", "accent2": "#d8a914", "accent3": "#a87c00",
+            "accent": "#f2c230", "accent2": "#d8a914", "accent3": "#a87c00", "accent_text": "#ffd85a",
             "link": "#ffd85a", "link_hover": "#fff0a6", "shadow": "rgba(0,0,0,.48)"
         },
         "maroon-gold": {
@@ -2416,7 +2416,7 @@ def dynamic_css():
             "surface": "rgba(43,44,49,.90)", "surface2": "rgba(35,36,40,.94)",
             "input_bg": "rgba(16,17,20,.97)", "input_text": "#f5f2ed", "border": "rgba(255,204,51,.24)",
             "border_soft": "rgba(190,194,202,.20)", "nav_text": "#fff8f1", "nav_muted": "#dbc8cc",
-            "accent": "#ffcc33", "accent2": "#ffb71e", "accent3": "#c69214",
+            "accent": "#ffcc33", "accent2": "#ffb71e", "accent3": "#c69214", "accent_text": "#ffde7a",
             "link": "#ffde7a", "link_hover": "#fff0b8", "shadow": "rgba(0,0,0,.56)"
         }
     }
@@ -2448,6 +2448,7 @@ def dynamic_css():
         f"  --theme-accent: {p['accent']};",
         f"  --theme-accent-2: {p['accent2']};",
         f"  --theme-accent-3: {p['accent3']};",
+        f"  --theme-accent-text: {p['accent_text']};",
         f"  --theme-link: {p['link']};",
         f"  --theme-link-hover: {p['link_hover']};",
         f"  --theme-shadow: {p['shadow']};"
@@ -23279,4 +23280,3 @@ if __name__ == "__main__":
         debug=False,
         use_reloader=False
     )
-

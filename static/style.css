@@ -11286,7 +11286,7 @@ body[data-theme="light"] .medical-ai-builder-page .medical-ai-safety-pill,
 
 .review-attempt-label,
 .review-question-kicker {
-    color: var(--theme-accent-3, #0f6fb3) !important;
+    color: var(--theme-accent-text, #78bfff) !important;
     opacity: 1 !important;
 }
 
