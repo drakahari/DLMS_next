@@ -1168,10 +1168,7 @@ def _quiz_dataset_runtime(pack_id, data):
 def _create_quiz_from_runtime(quiz_title, runtime_questions, db_questions, filename_prefix="study_image", exam_minutes=90, source_pack_id=None, source_dataset_id=None):
     if not runtime_questions:
         raise ValueError("No usable questions were produced")
-    ts = int(time.time() * 1000)
-    safe_prefix = re.sub(r"[^a-z0-9_]+", "_", str(filename_prefix).lower()).strip("_") or "study"
-    html_name = f"{safe_prefix}_{ts}.html"
-    json_name = f"{safe_prefix}_{ts}.json"
+    html_name, json_name = _generated_quiz_artifact_names(filename_prefix)
 
     if source_pack_id:
         bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
@@ -1189,6 +1186,18 @@ def _create_quiz_from_runtime(quiz_title, runtime_questions, db_questions, filen
     )
     build_quiz_html(html_name, json_name, os.path.join(QUIZ_FOLDER, html_name), get_portal_title(), quiz_title, None, quiz_id, normalize_exam_minutes(exam_minutes))
     return quiz_id, html_name
+
+
+def _generated_quiz_artifact_identity():
+    """Return a collision-resistant identity shared by generated quiz artifacts."""
+    return f"{time.time_ns() // 1_000_000}_{secrets.token_hex(4)}"
+
+
+def _generated_quiz_artifact_names(prefix):
+    """Return unique HTML/JSON artifact names for one generated quiz."""
+    safe_prefix = re.sub(r"[^a-z0-9_]+", "_", str(prefix or "study").lower()).strip("_") or "study"
+    stem = f"{safe_prefix}_{_generated_quiz_artifact_identity()}"
+    return f"{stem}.html", f"{stem}.json"
 
 
 @app.route("/content-packs/<pack_id>/assets/<path:asset_path>")
@@ -3215,7 +3224,7 @@ def admin_image_edits_save():
         target_image["edit_metadata"] = {"tool":"DLMS Image Study Editor","updated_at":datetime.now().isoformat(timespec="seconds"),"non_destructive":True}
         tmp_path=dataset_path+".tmp"
         with open(tmp_path,"w",encoding="utf-8") as f:
-            json.dump(data,f,indent=2,ensure_ascii=False); f.write("\\n")
+            json.dump(data,f,indent=2,ensure_ascii=False); f.write("\n")
         os.replace(tmp_path,dataset_path)
         return jsonify({"ok":True,"edits":cleaned,"backup_created":backup_created})
     except Exception as exc:
@@ -5834,11 +5843,11 @@ def medical_generate_anatomy_quiz():
     title = str(data.get("title") or data["_descriptor"].get("title") or "Medical Anatomy").strip()
     quiz_title = f"{title} — Hotspot Practice"
 
-    ts = int(time.time())
     safe_pack = re.sub(r"[^a-z0-9]+", "_", pack_id.lower()).strip("_") or "medical"
     safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "anatomy"
-    html_name = f"medical_anatomy_{safe_pack}_{safe_id}_{ts}.html"
-    json_name = f"medical_anatomy_{safe_pack}_{safe_id}_{ts}.json"
+    html_name, json_name = _generated_quiz_artifact_names(
+        f"medical_anatomy_{safe_pack}_{safe_id}"
+    )
     json_path = os.path.join(DATA_FOLDER, json_name)
     html_path = os.path.join(QUIZ_FOLDER, html_name)
 
@@ -5934,11 +5943,9 @@ def medical_generate_quiz():
         },
     }]
 
-    ts = int(time.time())
     safe_pack = re.sub(r"[^a-z0-9]+", "_", pack_id.lower()).strip("_") or "medical"
     safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "medical"
-    html_name = f"medical_{safe_pack}_{safe_id}_{ts}.html"
-    json_name = f"medical_{safe_pack}_{safe_id}_{ts}.json"
+    html_name, json_name = _generated_quiz_artifact_names(f"medical_{safe_pack}_{safe_id}")
     json_path = os.path.join(DATA_FOLDER, json_name)
     html_path = os.path.join(QUIZ_FOLDER, html_name)
 
@@ -6709,7 +6716,7 @@ def study_pack_generate_matching():
     title=str(data.get("title") or data["_descriptor"].get("title") or "Study Practice").strip(); source=data.get("source") or {}
     pairs=[{"left":i["term"],"right":i["definition"],"category":i.get("category","") ,"explanation":i.get("explanation") or i.get("study_explanation") or "","verification":i.get("verification") or data.get("verification") or {},"source":i.get("source") or source or {}} for i in terms]
     quiz_data=[{"number":1,"type":"matching","question":str(data.get("question_text") or "Match each item with its best answer.").strip(),"pairs":pairs,"round_size":round_size,"direction":direction,"source":{"organization":source.get("organization") or pack.get("publisher") or "","dataset":source.get("dataset") or title,"version":source.get("version") or pack.get("version") or "","url":source.get("url") or "","license":source.get("license") or ""}}]
-    ts=int(time.time()); safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "dataset"; quiz_title=f"{title} — {round_size}-Pair Practice"; html_name=f"study_{safe_pack}_{safe_id}_{ts}.html"; json_name=f"study_{safe_pack}_{safe_id}_{ts}.json"; json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
+    safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "dataset"; quiz_title=f"{title} — {round_size}-Pair Practice"; html_name,json_name=_generated_quiz_artifact_names(f"study_{safe_pack}_{safe_id}"); json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
     with open(json_path,"w",encoding="utf-8") as f: json.dump(quiz_data,f,indent=4,ensure_ascii=False)
     quiz_id=save_quiz_to_db(quiz_title,html_name,quiz_data); add_quiz_to_registry(quiz_id=quiz_id,html=html_name,title=quiz_title,logo=None,exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id); build_quiz_html(html_name,json_name,html_path,get_portal_title(),quiz_title,None,quiz_id,90)
     return redirect(f"/quizzes/{html_name}")
@@ -6734,7 +6741,7 @@ def study_pack_generate_image():
             runtime_questions.append({"number":qnum,"type":"hotspot","question":prompt,"image_url":image_url,"image_alt":image.get("alt_text") or data.get("title") or "Study image","image_edits":image.get("edits") or [],"target":hotspot.get("shape") or {},"target_label":label,"explanation":hotspot.get("explanation") or "","verification":hotspot.get("verification") or {},"image_source":{"organization":source.get("organization") or "","work":source.get("work") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or "","attribution":source.get("attribution") or image.get("attribution") or ""}})
             db_questions.append({"number":qnum,"type":"choice","question":prompt+" [Image hotspot]","choices":[{"label":"A","text":label,"is_correct":True}],"source":{"organization":source.get("organization") or "","dataset":data.get("title") or dataset_id,"version":pack.get("version") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or ""}}); qnum+=1
     if not runtime_questions: flash("This image dataset contains no usable targets.","error"); return redirect("/study-packs")
-    title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; ts=int(time.time()); safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"; html_name=f"study_image_{safe_pack}_{safe_id}_{ts}.html"; json_name=f"study_image_{safe_pack}_{safe_id}_{ts}.json"; json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
+    title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"; html_name,json_name=_generated_quiz_artifact_names(f"study_image_{safe_pack}_{safe_id}"); json_path=os.path.join(DATA_FOLDER,json_name); html_path=os.path.join(QUIZ_FOLDER,html_name)
     bucket=re.sub(r"[^A-Za-z0-9_.-]+","_",os.path.splitext(html_name)[0])[:120]
     runtime_questions,db_questions,_=_snapshot_runtime_questions(pack_id,runtime_questions,db_questions,bucket)
     with open(json_path,"w",encoding="utf-8") as f: json.dump(runtime_questions,f,indent=4,ensure_ascii=False)
@@ -10302,12 +10309,54 @@ def rebuild_all_quiz_html():
 # =========================
 # EDIT QUIZ - SAVE CHANGES
 # =========================
+def _quiz_owns_question(cur, quiz_id, question_id):
+    return cur.execute(
+        "SELECT 1 FROM questions WHERE id = ? AND quiz_id = ?",
+        (question_id, quiz_id),
+    ).fetchone() is not None
+
+
+def _quiz_owns_choice(cur, quiz_id, choice_id):
+    return cur.execute(
+        """
+        SELECT 1 FROM choices c
+        JOIN questions q ON q.id = c.question_id
+        WHERE c.id = ? AND q.quiz_id = ?
+        """,
+        (choice_id, quiz_id),
+    ).fetchone() is not None
+
+
+def _quiz_owns_matching_pair(cur, quiz_id, pair_id):
+    return cur.execute(
+        """
+        SELECT 1 FROM matching_pairs mp
+        JOIN questions q ON q.id = mp.question_id
+        WHERE mp.id = ? AND q.quiz_id = ?
+        """,
+        (pair_id, quiz_id),
+    ).fetchone() is not None
+
+
 @app.route("/edit_quiz/<int:quiz_id>", methods=["POST"])
 def save_edited_quiz(quiz_id):
     conn = get_db()
     cur = conn.cursor()
 
     action = request.form.get("action", "")
+
+    action_question_id = None
+    if action.startswith("add_match_pair_") or action.startswith("add_choices_"):
+        try:
+            action_question_id = int(action.rsplit("_", 1)[1])
+        except ValueError:
+            conn.close()
+            flash("Invalid question selected for editing.", "error")
+            return redirect(f"/edit_quiz/{quiz_id}")
+        if not _quiz_owns_question(cur, quiz_id, action_question_id):
+            conn.close()
+            flash("The selected question does not belong to this quiz.", "error")
+            return redirect(f"/edit_quiz/{quiz_id}")
 
     ts = int(time.time())
 
@@ -10472,12 +10521,7 @@ def save_edited_quiz(quiz_id):
     # ADD PAIR TO MATCHING QUESTION
     # =========================
     if action.startswith("add_match_pair_"):
-        try:
-            question_id = int(action.replace("add_match_pair_", "", 1))
-        except ValueError:
-            conn.rollback(); conn.close()
-            flash("Invalid matching question.", "error")
-            return redirect(f"/edit_quiz/{quiz_id}")
+        question_id = action_question_id
 
         row = cur.execute("SELECT MAX(pair_order) FROM matching_pairs WHERE question_id = ?", (question_id,)).fetchone()
         next_order = (row[0] or 0) + 1
@@ -10494,13 +10538,7 @@ def save_edited_quiz(quiz_id):
     # ADD CHOICES TO EXISTING QUESTION
     # =========================
     if action.startswith("add_choices_"):
-        try:
-            question_id = int(action.replace("add_choices_", "", 1))
-        except ValueError:
-            conn.rollback()
-            conn.close()
-            flash("Invalid question selected for adding choices.", "error")
-            return redirect(f"/edit_quiz/{quiz_id}")
+        question_id = action_question_id
 
         try:
             count = int(request.form.get(f"choice_count_{question_id}", 1))
@@ -10568,13 +10606,33 @@ def save_edited_quiz(quiz_id):
     for q in questions:
         if q["question_type"] == "matching":
             pair_rows = cur.execute(
-                "SELECT left_text, right_text FROM matching_pairs WHERE question_id = ?",
+                "SELECT id, left_text, right_text FROM matching_pairs WHERE question_id = ?",
                 (q["id"],)
             ).fetchall()
-            if len(pair_rows) < 2 or any(not (r[0] or "").strip() or not (r[1] or "").strip() for r in pair_rows):
+            matching_errors = _matching_record_validation_errors(
+                [
+                    {"id": row["id"], "left": row["left_text"], "right": row["right_text"]}
+                    for row in pair_rows
+                ],
+                context=f"quiz {quiz_id}, matching question {q['question_number']}",
+                left_key="left",
+                right_key="right",
+                record_name="pair",
+            )
+            if matching_errors:
                 conn.rollback(); conn.close()
-                flash(f"Question {q['question_number']} must have at least two complete matching pairs.", "error")
+                flash("; ".join(matching_errors), "error")
                 return redirect(url_for("edit_quiz", quiz_id=quiz_id))
+            for warning in _matching_case_only_term_warnings(
+                [
+                    {"left": row["left_text"], "right": row["right_text"]}
+                    for row in pair_rows
+                ],
+                context=f"quiz {quiz_id}, matching question {q['question_number']}",
+                left_key="left",
+                record_name="pair",
+            ):
+                flash(warning, "warning")
             continue
 
         correct_count = cur.execute(
@@ -10641,6 +10699,11 @@ def add_choices_to_question(quiz_id, question_id):
     conn = get_db()
     cur = conn.cursor()
 
+    if not _quiz_owns_question(cur, quiz_id, question_id):
+        conn.close()
+        flash("The selected question does not belong to this quiz.", "error")
+        return redirect(f"/edit_quiz/{quiz_id}")
+
     try:
         count = int(request.form.get("choice_count", 1))
     except ValueError:
@@ -10702,6 +10765,11 @@ def delete_choice_from_question(quiz_id, choice_id):
     conn = get_db()
     cur = conn.cursor()
 
+    if not _quiz_owns_choice(cur, quiz_id, choice_id):
+        conn.close()
+        flash("The selected answer choice does not belong to this quiz.", "error")
+        return redirect(f"/edit_quiz/{quiz_id}")
+
     # Find the question this choice belongs to
     row = cur.execute(
         """
@@ -10758,6 +10826,10 @@ def delete_choice_from_question(quiz_id, choice_id):
 def delete_match_pair_from_question(quiz_id, pair_id):
     conn = get_db()
     cur = conn.cursor()
+    if not _quiz_owns_matching_pair(cur, quiz_id, pair_id):
+        conn.close()
+        flash("The selected matching pair does not belong to this quiz.", "error")
+        return redirect(f"/edit_quiz/{quiz_id}")
     row = cur.execute("SELECT question_id FROM matching_pairs WHERE id = ?", (pair_id,)).fetchone()
     if not row:
         conn.close()
@@ -12107,10 +12179,10 @@ def image_quiz_builder_save():
     if not images_payload or not questions_payload:
         return "At least one image and one question are required.", 400
 
-    ts = int(time.time())
+    artifact_identity = _generated_quiz_artifact_identity()
     title_slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_")[:60] or "Image_Study"
-    pack_id = f"user_{title_slug.lower()}_{ts}"
-    pack_root = os.path.join(CONTENT_PACK_FOLDER, f"DLMS_Study_{title_slug}_{ts}")
+    pack_id = f"user_{title_slug.lower()}_{artifact_identity}"
+    pack_root = os.path.join(CONTENT_PACK_FOLDER, f"DLMS_Study_{title_slug}_{artifact_identity}")
     images_root = os.path.join(pack_root, "images")
     data_root = os.path.join(pack_root, "data")
     os.makedirs(images_root, exist_ok=False)
@@ -14892,9 +14964,7 @@ def pdf_question_bank_generate(bank_id):
             _pdf_bank_question_to_quiz(q, i, bank)
             for i, q in enumerate(selected, 1)
         ]
-        ts = int(time.time() * 1000)
-        html_name = f"pdf_bank_{ts}.html"
-        json_name = f"pdf_bank_{ts}.json"
+        html_name, json_name = _generated_quiz_artifact_names("pdf_bank")
 
         with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
             json.dump(quiz_data, f, indent=4, ensure_ascii=False)
@@ -15492,20 +15562,29 @@ def matching_bank_import():
             flash("CSV must contain term + definition columns (left + right are also accepted).", "error")
             return redirect("/matching_bank_import")
         pairs = []
-        seen = set()
         for row in reader:
             left = (row.get(term_col) or "").strip()
             right = (row.get(def_col) or "").strip()
             if not left or not right:
                 continue
-            key = (left.casefold(), right.casefold())
-            if key in seen:
-                continue
-            seen.add(key)
             pairs.append({"left": left, "right": right})
-        if len(pairs) < 2:
-            flash("The CSV needs at least two complete unique pairs.", "error")
+        matching_errors = _matching_record_validation_errors(
+            pairs,
+            context="matching CSV import",
+            left_key="left",
+            right_key="right",
+            record_name="row",
+        )
+        if matching_errors:
+            flash("; ".join(matching_errors), "error")
             return redirect("/matching_bank_import")
+        for warning in _matching_case_only_term_warnings(
+            pairs,
+            context="matching CSV import",
+            left_key="left",
+            record_name="row",
+        ):
+            flash(warning, "warning")
         round_size = min(round_size, len(pairs))
         quiz_data = [{
             "number": 1,
@@ -15516,9 +15595,7 @@ def matching_bank_import():
             "direction": direction,
             "source": source,
         }]
-        ts = int(time.time())
-        html_name = f"matching_bank_{ts}.html"
-        json_name = f"matching_bank_{ts}.json"
+        html_name, json_name = _generated_quiz_artifact_names("matching_bank")
         json_path = os.path.join(DATA_FOLDER, json_name)
         html_path = os.path.join(QUIZ_FOLDER, html_name)
         with open(json_path, "w", encoding="utf-8") as f:
@@ -16186,6 +16263,24 @@ def save_short_quiz():
                 flash(f"Question {qnum} needs at least two matching pairs.", "error")
                 return redirect("/create_short_quiz")
 
+            matching_errors = _matching_record_validation_errors(
+                pairs,
+                context=f"manual matching question {qnum}",
+                left_key="left",
+                right_key="right",
+                record_name="pair",
+            )
+            if matching_errors:
+                flash("; ".join(matching_errors), "error")
+                return redirect("/create_short_quiz")
+            for warning in _matching_case_only_term_warnings(
+                pairs,
+                context=f"manual matching question {qnum}",
+                left_key="left",
+                record_name="pair",
+            ):
+                flash(warning, "warning")
+
             raw_round_size = request.form.get(f"matching_round_size_{qnum}", "").strip()
             try:
                 round_size = int(raw_round_size) if raw_round_size else None
@@ -16252,8 +16347,7 @@ def save_short_quiz():
         logo_file=quiz_logo
     )
 
-    html_name = f"short_quiz_{ts}.html"
-    json_name = f"short_quiz_{ts}.json"
+    html_name, json_name = _generated_quiz_artifact_names("short_quiz")
 
     json_path = os.path.join(DATA_FOLDER, json_name)
     html_path = os.path.join(QUIZ_FOLDER, html_name)
@@ -17370,8 +17464,7 @@ def process_paste():
    # =========================
     # SAVE JSON + HTML quiz (kept for UI compatibility)
     # =========================
-    json_name = f"quiz_{ts}.json"
-    html_name = f"quiz_{ts}.html"
+    html_name, json_name = _generated_quiz_artifact_names("quiz")
 
     with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
         json.dump(quiz_data, f, indent=4)
@@ -17571,8 +17664,7 @@ def process_file():
     # =========================
     # SAVE JSON + HTML quiz (UI compatibility)
     # =========================
-    json_name = f"quiz_{ts}.json"
-    html_name = f"quiz_{ts}.html"
+    html_name, json_name = _generated_quiz_artifact_names("quiz")
 
     with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
         json.dump(quiz_data, f, indent=4)
@@ -20127,10 +20219,8 @@ def smart_review_generate():
     if len(weak) > 3:
         suffix += f" +{len(weak)-3} more"
     quiz_title = f"Smart Review — {suffix}"
-    ts = int(time.time() * 1000)
-    html_name = f"smart_review_{ts}.html"
-    json_name = f"smart_review_{ts}.json"
-    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"smart_review_{ts}")[:120]
+    html_name, json_name = _generated_quiz_artifact_names("smart_review")
+    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
     quiz_data = _snapshot_existing_quiz_asset_refs(quiz_data, asset_bucket)
     with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
         json.dump(quiz_data, f, indent=4, ensure_ascii=False)
@@ -20224,10 +20314,8 @@ def spaced_review_generate():
     if len(chosen) > 3:
         suffix += f" +{len(chosen)-3} more"
     quiz_title = f"Spaced Review — {suffix}"
-    ts = int(time.time() * 1000)
-    html_name = f"spaced_review_{ts}.html"
-    json_name = f"spaced_review_{ts}.json"
-    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"spaced_review_{ts}")[:120]
+    html_name, json_name = _generated_quiz_artifact_names("spaced_review")
+    asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
     quiz_data = _snapshot_existing_quiz_asset_refs(quiz_data, asset_bucket)
     with open(os.path.join(DATA_FOLDER, json_name), "w", encoding="utf-8") as f:
         json.dump(quiz_data, f, indent=4, ensure_ascii=False)

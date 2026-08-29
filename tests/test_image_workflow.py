@@ -11,6 +11,7 @@ from PIL import Image
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-image-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 import app as dlms
+from tests.csrf_test_utils import csrf_token
 
 
 def _write_test_image(path):
@@ -170,6 +171,28 @@ class ImageWorkflowTests(unittest.TestCase):
         report = dlms._validate_staged_content_pack(str(root))
         self.assertFalse(report["valid"])
         self.assertTrue(any("invalid hotspot geometry" in e for e in report["errors"]))
+
+    def test_image_editor_edits_save_valid_json_with_persisted_edits(self):
+        root = self.make_pack()
+        client = dlms.app.test_client()
+        response = client.post(
+            "/admin/image-editor/edits/save",
+            json={
+                "pack_id": "study_images",
+                "dataset_id": "visuals",
+                "dataset_kind": "hotspot",
+                "image_id": "png",
+                "edits": [{"type": "mask", "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.2, "style": "blur"}],
+            },
+            headers={"X-CSRFToken": csrf_token(client)},
+        )
+        self.assertEqual(200, response.status_code, response.get_data(as_text=True))
+        with open(root / "data" / "visuals.json", encoding="utf-8") as handle:
+            saved = json.load(handle)
+        self.assertEqual(
+            [{"type": "mask", "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.2, "style": "blur"}],
+            saved["images"][0]["edits"],
+        )
 
 
 if __name__ == "__main__":
