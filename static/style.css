@@ -9459,8 +9459,7 @@ button:not(.settings-danger-button):not(.dashboard-shutdown):not(.build-icon-dan
     border-color:color-mix(in srgb,var(--theme-accent,#1b9ff2) 35%,transparent);
 }
 
-/* Light-theme coverage for legacy dark-only text/surface declarations. */
-:root[style*="--theme-color-scheme: light"] { }
+/* Shared soft-text mix for legacy dark-only text/surface declarations. */
 @supports (color: color-mix(in srgb, white, black)) {
   body { --theme-soft-text: color-mix(in srgb,var(--theme-page-text) 72%,var(--theme-muted-text)); }
 }
@@ -11633,4 +11632,190 @@ body:not([class]) > .container > .hero-title {
 .settings-detail-page .settings-migration-note strong,
 .settings-detail-page .settings-scope-note strong {
     color: var(--theme-page-text, #eaf2ff) !important;
+}
+
+/* =========================================================
+   DLMS-026 — FINAL ANKI + KEYBOARD READABILITY PASS
+   ========================================================= */
+
+/* Anki source icons and action controls used fixed blue/purple palette
+   values after the shared card preview was made theme-aware. Keep their
+   role visible through the accent treatment, but make text readable in
+   every supported palette. */
+.anki-source-icon {
+    color: var(--theme-accent-text, #78bfff);
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 12%, var(--theme-surface, rgba(5,18,39,.58)));
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 34%, var(--theme-border-soft, rgba(98,155,255,.24)));
+}
+
+.anki-preview-button,
+.anki-export-button,
+.printable-flashcard-button {
+    color: var(--theme-accent-text, #78bfff) !important;
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 13%, var(--theme-surface, rgba(5,18,39,.58))) !important;
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 42%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
+}
+
+.anki-preview-button:hover,
+.anki-export-button:hover,
+.printable-flashcard-button:hover {
+    color: var(--theme-accent-text, #78bfff) !important;
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 21%, var(--theme-surface, rgba(5,18,39,.58))) !important;
+}
+
+.anki-print-note {
+    color: var(--theme-page-text, #eaf2ff);
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 9%, var(--theme-surface, rgba(5,18,39,.58)));
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 30%, var(--theme-border-soft, rgba(98,155,255,.24)));
+}
+
+/* A semantic outline supplements component-local focus styling and remains
+   visible when keyboard navigation reaches legacy controls. */
+:where(a[href], button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid var(--theme-accent-text, #78bfff) !important;
+    outline-offset: 3px;
+}
+
+/* Remaining Learning Intelligence, Diagnostics, and Spaced Review controls
+   were still using their original dark-only surfaces. These components share
+   the existing panel, surface, primary, and muted text hierarchy. */
+.learning-intelligence-panel-head p,
+.learning-intelligence-weak-panel p,
+.learning-profile-topic-list article span,
+.learning-profile-activity span {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+.learning-intelligence-filters button,
+.learning-diagnostics-filters button,
+.learning-diagnostics-collapse,
+.learning-diagnostics-secondary {
+    color: var(--theme-page-text, #eaf2ff) !important;
+    background: var(--theme-surface-2, rgba(17,31,56,.78)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+}
+
+.learning-intelligence-filters button.active,
+.learning-diagnostics-filters button.active {
+    color: var(--theme-page-text, #eaf2ff) !important;
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 18%, var(--theme-surface-2, rgba(17,31,56,.78))) !important;
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 48%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
+}
+
+.learning-diagnostics-collapse:hover,
+.learning-diagnostics-secondary:hover,
+.learning-diagnostic-question-toggle:hover {
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 11%, var(--theme-surface, rgba(5,18,39,.58))) !important;
+}
+
+.learning-intelligence-table-wrap,
+.review-schedule-table-wrap {
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+}
+
+.learning-intelligence-table th,
+.review-schedule-table th {
+    color: var(--theme-muted-text, #b8c2cc);
+    background: var(--theme-surface-2, rgba(17,31,56,.78));
+    border-bottom-color: var(--theme-border-soft, rgba(98,155,255,.24));
+}
+
+.learning-intelligence-table td,
+.review-schedule-table td {
+    color: var(--theme-page-text, #eaf2ff);
+    border-bottom-color: var(--theme-border-soft, rgba(98,155,255,.24));
+}
+
+.learning-intelligence-table td small,
+.review-schedule-table td small,
+.learning-diagnostics-toolbar label,
+.learning-diagnostics-count {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+.learning-intelligence-empty {
+    color: var(--theme-muted-text, #b8c2cc);
+    background: var(--theme-surface, rgba(5,18,39,.58));
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+}
+
+.li-mastery > div {
+    background: var(--theme-surface-2, rgba(17,31,56,.78));
+}
+
+.li-mastery > div > span {
+    background: linear-gradient(90deg, var(--theme-accent, #1b9ff2), #31c9b4);
+}
+
+.li-score.low {
+    color: light-dark(#b5374d, #ff9aa6);
+}
+
+.li-status,
+.review-state,
+.learning-diagnostic-status {
+    color: var(--theme-page-text, #eaf2ff);
+    background: var(--theme-surface-2, rgba(17,31,56,.78));
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+}
+
+.li-status-weak,
+.review-state-overdue,
+.review-state-due,
+.learning-diagnostic-status.review {
+    color: light-dark(#a63046, #ff9ba6) !important;
+    background: light-dark(#f5dddd, #351822) !important;
+    border-color: light-dark(#d6959e, #723442) !important;
+}
+
+.li-status-developing,
+.review-state-due_soon {
+    color: light-dark(#765511, #ffd890);
+    background: light-dark(#f6ead0, #302717);
+    border-color: light-dark(#d8b66d, #6b5524);
+}
+
+.li-status-proficient {
+    color: light-dark(#285d8f, #9bd0ff);
+    background: light-dark(#e0edf8, #112c45);
+    border-color: light-dark(#8caeca, #315d83);
+}
+
+.li-status-strong,
+.review-state-fresh,
+.learning-diagnostic-status.healthy {
+    color: light-dark(#176343, #83e3c2) !important;
+    background: light-dark(#d8eee4, #0d3028) !important;
+    border-color: light-dark(#81b99d, #216a57) !important;
+}
+
+.li-status-insufficient,
+.learning-diagnostic-status.insufficient {
+    color: light-dark(#53657d, #aebbc9) !important;
+    background: light-dark(#e6ebf0, #172230) !important;
+    border-color: light-dark(#aab7c5, #3a4a5d) !important;
+}
+
+.learning-diagnostic-chevron {
+    color: var(--theme-accent-text, #78bfff);
+}
+
+.learning-diagnostic-details {
+    border-top-color: var(--theme-border-soft, rgba(98,155,255,.24));
+}
+
+.learning-diagnostic-details ul {
+    color: var(--theme-page-text, #eaf2ff);
+}
+
+.learning-intelligence-model-dialog {
+    background: var(--theme-panel-1, rgba(6,20,45,.82));
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+    box-shadow: 0 24px 70px var(--theme-shadow, rgba(0,0,0,.5));
+}
+
+.learning-intelligence-model-dialog p {
+    color: var(--theme-muted-text, #b8c2cc);
 }

@@ -397,6 +397,116 @@ class ThemeSystemTests(unittest.TestCase):
                         ratio, 4.5, f"{theme} {role} is only {ratio:.2f}:1",
                     )
 
+    def test_anki_action_controls_and_print_note_use_semantic_theme_tokens(self):
+        css = self._style_css()
+        expected = {
+            ".anki-source-icon": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface",
+            ),
+            ".anki-preview-button": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface",
+            ),
+            ".anki-export-button": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface",
+            ),
+            ".printable-flashcard-button": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface",
+            ),
+            ".anki-print-note": (
+                "--theme-page-text", "--theme-accent", "--theme-surface",
+            ),
+        }
+        forbidden = {"#86c9ff", "#176de0", "#1f9cff", "#6b46d9", "#8e62e8", "#d8cda8"}
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = [
+                    body for prelude, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
+                    if selector in prelude
+                ]
+                semantic_block = next(
+                    (body for body in blocks if all(token in body for token in tokens)), None
+                )
+                self.assertIsNotNone(semantic_block, f"{selector} must use semantic tokens")
+                self.assertFalse(any(color in semantic_block for color in forbidden))
+
+    def test_shared_keyboard_focus_indicator_uses_accessible_accent_text(self):
+        css = self._style_css()
+        rule = re.search(
+            r":where\(a\[href\], button, input, select, textarea, summary, \[tabindex\]\):focus-visible\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(rule)
+        self.assertIn("outline: 3px solid var(--theme-accent-text", rule.group(1))
+        self.assertIn("outline-offset: 3px", rule.group(1))
+
+    def test_empty_legacy_light_theme_selector_is_removed(self):
+        self.assertNotIn(
+            ':root[style*="--theme-color-scheme: light"] { }', self._style_css()
+        )
+
+    def test_shared_focus_foreground_meets_contrast_across_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                ratio = self._contrast(variables["theme-accent-text"], panel)
+                self.assertGreaterEqual(ratio, 4.5, f"{theme} focus ring is only {ratio:.2f}:1")
+
+    def test_learning_controls_and_secondary_text_use_semantic_theme_tokens(self):
+        css = self._style_css()
+        expected = {
+            ".learning-intelligence-filters button": (
+                "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".learning-intelligence-table th": (
+                "--theme-muted-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".learning-intelligence-table td": (
+                "--theme-page-text", "--theme-border-soft",
+            ),
+            ".learning-diagnostics-collapse": (
+                "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".learning-diagnostics-toolbar label": ("--theme-muted-text",),
+            ".review-schedule-table th": (
+                "--theme-muted-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".learning-intelligence-model-dialog": (
+                "--theme-panel-1", "--theme-border-soft", "--theme-shadow",
+            ),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = [
+                    body for prelude, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
+                    if selector in prelude
+                ]
+                self.assertTrue(
+                    any(all(token in body for token in tokens) for body in blocks),
+                    f"{selector} must resolve through semantic theme tokens",
+                )
+
+    def test_muted_secondary_text_meets_contrast_across_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                surface = self._composite(variables["theme-surface"], panel)
+                ratio = self._contrast(variables["theme-muted-text"], surface)
+                self.assertGreaterEqual(ratio, 4.5, f"{theme} muted text is only {ratio:.2f}:1")
+
     def test_pack_validation_review_uses_spaced_semantic_action_layout(self):
         css = self._style_css()
         summary = re.search(r"\.pack-review-summary\s*\{([^}]*)\}", css)
