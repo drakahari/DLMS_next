@@ -1,6 +1,6 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings, unicodedata
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -841,26 +841,30 @@ def load_content_pack_dataset(pack_id, dataset_id):
     if not isinstance(terms, list):
         raise ValueError("Dataset terms must be a list")
 
+    matching_errors = _matching_record_validation_errors(
+        terms,
+        context=f"matching dataset {dataset_id!r}",
+        left_key="term",
+        right_key="definition",
+        record_name="item",
+    )
+    if matching_errors:
+        raise ValueError("; ".join(matching_errors))
+
     cleaned = []
-    seen = set()
     for item in terms:
-        if not isinstance(item, dict):
-            continue
         term = str(item.get("term") or "").strip()
         definition = str(item.get("definition") or "").strip()
-        if not term or not definition:
-            continue
-        key = (term.casefold(), definition.casefold())
-        if key in seen:
-            continue
-        seen.add(key)
-        cleaned.append({
+        cleaned_item = {
             "term": term,
             "definition": definition,
             "category": str(item.get("category") or "").strip(),
             "explanation": str(item.get("explanation") or "").strip(),
             "verification": item.get("verification") if isinstance(item.get("verification"), dict) else {},
-        })
+        }
+        if str(item.get("id") or "").strip():
+            cleaned_item["id"] = str(item.get("id")).strip()
+        cleaned.append(cleaned_item)
 
     data["terms"] = cleaned
     data["_descriptor"] = descriptor
@@ -949,6 +953,7 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
     if not isinstance(images, list):
         raise ValueError("Quiz dataset images must be a list")
     image_ids = set()
+    normalized_image_ids = {}
     for image in images:
         if not isinstance(image, dict):
             raise ValueError("Each quiz dataset image must be an object")
@@ -956,8 +961,13 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
         rel_file = str(image.get("file") or "").strip()
         if not image_id or not rel_file:
             raise ValueError("Each quiz dataset image requires id and file")
-        if image_id in image_ids:
-            raise ValueError(f"Duplicate image id: {image_id}")
+        normalized_image_id = _matching_comparison_key(image_id)
+        if normalized_image_id in normalized_image_ids:
+            raise ValueError(
+                f"Duplicate image id {image_id!r}; earlier image uses "
+                f"{normalized_image_ids[normalized_image_id]!r}"
+            )
+        normalized_image_ids[normalized_image_id] = image_id
         image_ids.add(image_id)
         image_path = _safe_pack_child(pack["_root"], rel_file)
         if not os.path.isfile(image_path):
@@ -971,7 +981,7 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
         raise ValueError("Quiz dataset must contain at least one question")
     allowed = {"choice", "matching", "hotspot"}
     cleaned = []
-    for raw in questions:
+    for question_number, raw in enumerate(questions, 1):
         if not isinstance(raw, dict):
             continue
         qtype = str(raw.get("type") or "choice").strip().lower()
@@ -981,6 +991,16 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
         image_id = str(raw.get("image_id") or "").strip()
         if image_id and image_id not in image_ids:
             raise ValueError(f"Question references unknown image id: {image_id}")
+        if qtype == "matching":
+            matching_errors = _matching_record_validation_errors(
+                raw.get("pairs") or [],
+                context=f"mixed dataset {dataset_id!r}, matching question {question_number} {question!r}",
+                left_key="left",
+                right_key="right",
+                record_name="pair",
+            )
+            if matching_errors:
+                raise ValueError("; ".join(matching_errors))
         item = dict(raw)
         item["type"] = qtype
         item["question"] = question
@@ -1340,6 +1360,130 @@ def _content_pack_validation_record(name, status, detail):
     return {"name": str(name), "status": str(status), "detail": str(detail)}
 
 
+def _matching_comparison_key(value):
+    """Normalize matching values for deterministic ambiguity checks only."""
+    normalized = unicodedata.normalize("NFKC", str(value or ""))
+    return " ".join(normalized.strip().split()).casefold()
+
+
+def _matching_record_validation_errors(
+    records, *, context, left_key="term", right_key="definition", record_name="item"
+):
+    """Return precise deterministic errors for one matching record collection."""
+    if not isinstance(records, list):
+        return [f"{context}: matching records must be a list"]
+
+    errors = []
+    seen_ids = {}
+    seen_left = {}
+    seen_right = {}
+    seen_pairs = {}
+    distinct_pairs = set()
+
+    for number, record in enumerate(records, 1):
+        location = f"{record_name} {number}"
+        if not isinstance(record, dict):
+            errors.append(f"{context}: {location} must be an object")
+            continue
+
+        original_id = str(record.get("id") or "").strip()
+        original_left = str(record.get(left_key) or "").strip()
+        original_right = str(record.get(right_key) or "").strip()
+        normalized_id = _matching_comparison_key(original_id)
+        normalized_left = _matching_comparison_key(original_left)
+        normalized_right = _matching_comparison_key(original_right)
+
+        if not normalized_left:
+            errors.append(f"{context}: {location} is missing {left_key}")
+        if not normalized_right:
+            errors.append(f"{context}: {location} is missing {right_key}")
+
+        if normalized_id:
+            earlier = seen_ids.get(normalized_id)
+            if earlier:
+                earlier_number, earlier_id, earlier_left, earlier_right, earlier_pair = earlier
+                current_pair = (normalized_left, normalized_right)
+                if current_pair == earlier_pair:
+                    errors.append(
+                        f"{context}: duplicate ID {original_id!r} at {location}; "
+                        f"earlier {record_name} {earlier_number} uses ID {earlier_id!r} "
+                        f"for {earlier_left!r} -> {earlier_right!r}"
+                    )
+                else:
+                    errors.append(
+                        f"{context}: conflicting ID {original_id!r} at {location} "
+                        f"({original_left!r} -> {original_right!r}); earlier {record_name} "
+                        f"{earlier_number} uses ID {earlier_id!r} for "
+                        f"{earlier_left!r} -> {earlier_right!r}"
+                    )
+            else:
+                seen_ids[normalized_id] = (
+                    number, original_id, original_left, original_right,
+                    (normalized_left, normalized_right),
+                )
+
+        if not normalized_left or not normalized_right:
+            continue
+
+        pair_key = (normalized_left, normalized_right)
+        earlier_pair = seen_pairs.get(pair_key)
+        if earlier_pair:
+            earlier_number, earlier_left, earlier_right = earlier_pair
+            errors.append(
+                f"{context}: exact duplicate pair at {location} "
+                f"({original_left!r} -> {original_right!r}); earlier {record_name} "
+                f"{earlier_number} is {earlier_left!r} -> {earlier_right!r}"
+            )
+        else:
+            seen_pairs[pair_key] = (number, original_left, original_right)
+            distinct_pairs.add(pair_key)
+
+        earlier_left = seen_left.get(normalized_left)
+        if earlier_left:
+            earlier_number, earlier_value, earlier_answer, earlier_answer_key = earlier_left
+            if normalized_right == earlier_answer_key:
+                errors.append(
+                    f"{context}: duplicate {left_key} {original_left!r} at {location}; "
+                    f"earlier {record_name} {earlier_number} uses {earlier_value!r}"
+                )
+            else:
+                errors.append(
+                    f"{context}: one {left_key} maps to multiple answers at {location}: "
+                    f"{original_left!r} -> {original_right!r}; earlier {record_name} "
+                    f"{earlier_number} maps {earlier_value!r} -> {earlier_answer!r}"
+                )
+        else:
+            seen_left[normalized_left] = (
+                number, original_left, original_right, normalized_right,
+            )
+
+        earlier_right = seen_right.get(normalized_right)
+        if earlier_right:
+            earlier_number, earlier_answer, earlier_term, earlier_term_key = earlier_right
+            if normalized_left == earlier_term_key:
+                errors.append(
+                    f"{context}: duplicate {right_key} {original_right!r} at {location}; "
+                    f"earlier {record_name} {earlier_number} uses {earlier_answer!r}"
+                )
+            else:
+                errors.append(
+                    f"{context}: multiple terms map to one answer at {location}: "
+                    f"{original_left!r} -> {original_right!r}; earlier {record_name} "
+                    f"{earlier_number} maps {earlier_term!r} -> {earlier_answer!r}"
+                )
+        else:
+            seen_right[normalized_right] = (
+                number, original_right, original_left, normalized_left,
+            )
+
+    if len(distinct_pairs) < 2:
+        errors.append(
+            f"{context}: matching data needs at least two valid distinct pairs; "
+            f"found {len(distinct_pairs)}"
+        )
+    return errors
+
+
 def _safe_zip_member_name(name):
     """Return a normalized safe archive member path or raise ValueError."""
     raw = str(name or "").replace("\\", "/")
@@ -1459,6 +1603,7 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
         ("quiz_datasets", "mixed"),
     ]
     descriptor_ids = set()
+    normalized_descriptor_ids = {}
     declared_paths = []
     all_descriptors_valid = True
     parsed_dataset_files = []
@@ -1482,9 +1627,15 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                 errors.append(f"{key}[{index}] requires id, title, type, and path")
                 all_descriptors_valid = False
                 continue
-            if did in descriptor_ids:
-                errors.append(f"duplicate dataset id: {did}")
+            normalized_did = _matching_comparison_key(did)
+            if normalized_did in normalized_descriptor_ids:
+                errors.append(
+                    f"duplicate dataset id {did!r}; earlier descriptor uses "
+                    f"{normalized_descriptor_ids[normalized_did]!r}"
+                )
                 all_descriptors_valid = False
+            else:
+                normalized_descriptor_ids[normalized_did] = did
             descriptor_ids.add(did)
             try:
                 dataset_path = _safe_pack_child(pack_root, rel_path)
@@ -1530,21 +1681,16 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
             if not isinstance(terms, list) or not terms:
                 errors.append(f"{rel_path}: matching dataset must contain terms")
                 continue
-            seen_terms, seen_definitions = set(), set()
-            for n, term in enumerate(terms, 1):
-                if not isinstance(term, dict):
-                    errors.append(f"{rel_path}: term {n} must be an object")
-                    continue
-                t = str(term.get("term") or "").strip()
-                d = str(term.get("definition") or "").strip()
-                if not t or not d:
-                    errors.append(f"{rel_path}: term {n} has an empty term or definition")
-                tk, dk = t.casefold(), d.casefold()
-                if tk in seen_terms or dk in seen_definitions:
-                    duplicates_ok = False
-                    errors.append(f"{rel_path}: duplicate term or definition detected near item {n}")
-                seen_terms.add(tk)
-                seen_definitions.add(dk)
+            matching_errors = _matching_record_validation_errors(
+                terms,
+                context=f"{rel_path} (dataset {did!r})",
+                left_key="term",
+                right_key="definition",
+                record_name="item",
+            )
+            if matching_errors:
+                duplicates_ok = False
+                errors.extend(matching_errors)
 
         elif group in {"image_datasets", "quiz_datasets"}:
             images = data.get("images") or []
@@ -1555,16 +1701,21 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                 errors.append(f"{rel_path}: images must be a list")
                 continue
 
-            image_ids = set()
+            image_ids = {}
             for n, image in enumerate(images, 1):
                 if not isinstance(image, dict):
                     errors.append(f"{rel_path}: image {n} must be an object")
                     continue
                 image_id = str(image.get("id") or f"image_{n}").strip()
-                if image_id in image_ids:
+                normalized_image_id = _matching_comparison_key(image_id)
+                if normalized_image_id in image_ids:
                     duplicates_ok = False
-                    errors.append(f"{rel_path}: duplicate image id {image_id}")
-                image_ids.add(image_id)
+                    errors.append(
+                        f"{rel_path}: duplicate image id {image_id!r} at image {n}; "
+                        f"earlier image uses {image_ids[normalized_image_id]!r}"
+                    )
+                else:
+                    image_ids[normalized_image_id] = image_id
                 rel_image = str(image.get("file") or "").strip()
                 if not rel_image:
                     errors.append(f"{rel_path}: image {n} is missing file")
@@ -1613,14 +1764,34 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                 questions = data.get("questions") or []
                 if not isinstance(questions, list) or not questions:
                     errors.append(f"{rel_path}: mixed question dataset must contain questions")
+                elif isinstance(questions, list):
+                    for question_number, question in enumerate(questions, 1):
+                        if not isinstance(question, dict):
+                            continue
+                        if str(question.get("type") or "choice").strip().lower() != "matching":
+                            continue
+                        question_text = str(question.get("question") or "").strip()
+                        matching_errors = _matching_record_validation_errors(
+                            question.get("pairs") or [],
+                            context=(
+                                f"{rel_path} (dataset {did!r}), matching question "
+                                f"{question_number} {question_text!r}"
+                            ),
+                            left_key="left",
+                            right_key="right",
+                            record_name="pair",
+                        )
+                        if matching_errors:
+                            duplicates_ok = False
+                            errors.extend(matching_errors)
 
     checks.append(_content_pack_validation_record(
         "Referenced files", "PASS" if referenced_files_ok else "FAIL",
         "all declared dataset/image paths resolved" if referenced_files_ok else "one or more files are missing or unsafe"
     ))
     checks.append(_content_pack_validation_record(
-        "Duplicate IDs / terms", "PASS" if duplicates_ok else "FAIL",
-        "no duplicate dataset/image IDs or matching terms/definitions found" if duplicates_ok else "duplicates were detected"
+        "Matching uniqueness / IDs", "PASS" if duplicates_ok else "FAIL",
+        "dataset/image IDs and matching records are deterministic and unambiguous" if duplicates_ok else "matching ambiguity or an ID collision was detected"
     ))
 
     if image_license_missing:
@@ -5917,9 +6088,13 @@ SOURCE AND ACCURACY RULES
 10. The pack is study material, not professional, clinical, legal, financial, or operational decision support.
 
 STUDY QUALITY RULES
-- Matching definitions must be concise and unambiguous.
+- Matching terms must be unique within each dataset. Where matching records use IDs, every ID must also be unique within that dataset.
+- Matching must use a one-to-one mapping: one term has exactly one answer, and one answer belongs to exactly one term.
+- Definitions/answers must be concise, meaningfully distinct, and unambiguous when shuffled together in a matching round.
+- Do not include duplicate or near-duplicate term/definition pairs, including superficial rewordings that test the same indistinguishable association.
+- Repair every term, answer, pair, or ID collision before delivery. Do not claim that DLMS performs semantic-similarity enforcement; its installer performs deterministic normalized duplicate/conflict checks.
 - Avoid padding a dataset with weak or duplicative terms.
-- Each term should include term, definition, category, explanation when source-supported, and verification/source metadata.
+- Each term should include a unique id when IDs are used, plus term, definition, category, explanation when source-supported, and verification/source metadata.
 - For technical content, exact commands/configuration examples must be checked against the cited version/source.
 - Image questions should identify visually meaningful regions; do not create arbitrary hotspots.
 
@@ -5967,9 +6142,11 @@ MATCHING DATASET FORMAT
   "source": {"organization":"...","dataset":"...","version":"...","url":"https://...","license":"...","verification_status":"source-basis-verified"},
   "verification": {"status":"source-aligned","verified_date":"YYYY-MM-DD","method":"...","sources":["https://..."]},
   "terms": [
-    {"term":"...","definition":"...","category":"...","explanation":"...","verification":{"status":"source-aligned","reference_basis":"...","source_urls":["https://..."]}}
+    {"id":"unique_record_id","term":"...","definition":"...","category":"...","explanation":"...","verification":{"status":"source-aligned","reference_basis":"...","source_urls":["https://..."]}}
   ]
 }
+
+For every matching dataset, verify that normalized IDs (where used), terms, definitions/answers, and complete pairs are unique; mappings are one-to-one; and every answer remains meaningfully distinguishable from every other answer after shuffling.
 
 IMAGE / HOTSPOT DATASET FORMAT
 {
@@ -6014,7 +6191,10 @@ You MUST validate the finished pack after all files are created. Do not merely s
 - datasets, image_datasets, and quiz_datasets (when used) contain descriptor OBJECTS, never path strings
 - every descriptor has id, title, type, path, and the declared file exists
 - every dataset file id matches its manifest descriptor id
-- there are no duplicate dataset IDs, image IDs, matching terms, or matching definitions
+- there are no duplicate normalized dataset IDs, image IDs, or matching record IDs where IDs are used
+- matching terms and definitions/answers are unique after case, Unicode, and whitespace normalization
+- matching pairs form one-to-one mappings with no duplicate or near-duplicate pairs and remain semantically distinct and unambiguous when shuffled
+- every matching collision discovered during review is repaired before delivery
 - every term and definition is non-empty
 - every dataset has source metadata
 - every bundled image exists at its declared path
@@ -6039,7 +6219,7 @@ Use this structure:
     {"name":"Manifest schema","status":"PASS","detail":"schema_version 1"},
     {"name":"Dataset descriptors","status":"PASS","detail":"All descriptor entries are objects with id/title/type/path"},
     {"name":"Referenced files","status":"PASS","detail":"All declared dataset and image files exist"},
-    {"name":"Duplicate IDs","status":"PASS","detail":"No duplicate dataset/image IDs or matching terms/definitions"},
+    {"name":"Matching uniqueness / IDs","status":"PASS","detail":"No normalized dataset/image/record ID collisions; matching terms and answers are unique, one-to-one, distinct, and unambiguous"},
     {"name":"Image licenses","status":"PASS","detail":"Every bundled image has verified redistribution/license metadata"},
     {"name":"JSON parse check","status":"PASS","detail":"Every JSON file parses successfully"},
     {"name":"Top-level folder","status":"PASS","detail":"Exactly one top-level DLMS Study Pack folder contains manifest.json"}
@@ -6496,7 +6676,12 @@ def study_pack_ai_builder():
 
         requested = []
         if include_matching:
-            requested.append("Create one or more high-quality matching datasets with concise answers and source-supported Study Mode explanations.")
+            requested.append(
+                "Create one or more high-quality matching datasets with unique terms, unique record IDs where IDs are used, "
+                "one-to-one term/answer mappings, meaningfully distinct answers, no duplicate or near-duplicate pairs, "
+                "and enough semantic distinction to remain unambiguous when shuffled. Repair all collisions before delivery, "
+                "and include source-supported Study Mode explanations."
+            )
         if include_images:
             requested.append("Create image/diagram hotspot datasets when they genuinely improve learning, following the image count and style request below.")
         if not requested:
@@ -6527,7 +6712,7 @@ def study_pack_ai_builder():
                 .replace("{{domain}}", domain)
                 .replace("{{domain_slug}}", domain_slug)
                 .replace("{{topic}}", topic)
-                .replace("{{content_request}}", "\\n".join(f"- {x}" for x in requested))
+                .replace("{{content_request}}", "\n".join(f"- {x}" for x in requested))
                 .replace("{{difficulty}}", difficulty)
                 .replace("{{size_guidance}}", size_map.get(size, size_map["Standard"]))
                 .replace("{{image_guidance}}", image_guidance)

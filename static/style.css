@@ -7131,16 +7131,26 @@ a.settings-hub-card:hover {
 .medical-ai-builder-open { text-decoration: none; white-space: nowrap; }
 .medical-ai-builder-open:hover { color: #fff; text-decoration: none; }
 .medical-ai-builder-panel,.medical-ai-rules-card,.medical-ai-prompt-panel { margin-top: 20px; }
+.medical-ai-builder-page .medical-ai-prompt-panel {
+    background: linear-gradient(
+        180deg,
+        var(--theme-panel-1, rgba(6,20,45,.82)),
+        var(--theme-panel-2, rgba(5,17,38,.74))
+    );
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+    color: var(--theme-page-text, #eaf2ff);
+}
 .medical-ai-builder-heading {
     display: flex; justify-content: space-between; align-items: flex-start;
     gap: 18px; margin-bottom: 20px;
 }
 .medical-ai-builder-heading h2 { margin: 5px 0 7px; }
-.medical-ai-builder-heading p { margin: 0; color: #bcc9dc; }
+.medical-ai-builder-heading p { margin: 0; color: var(--theme-muted-text, #bcc9dc); line-height: 1.55; }
 .medical-ai-safety-pill {
     flex: 0 0 auto; padding: 7px 10px; border-radius: 999px;
-    background: rgba(0,126,82,.22); border: 1px solid rgba(64,213,157,.34);
-    color: #9ce7c7; font-size: 12px; font-weight: 750;
+    background: var(--theme-surface-2, rgba(17,31,56,.78));
+    border: 1px solid var(--theme-border-soft, rgba(98,155,255,.24));
+    color: var(--theme-page-text, #eaf2ff); font-size: 12px; font-weight: 750;
 }
 .medical-ai-builder-form { display: grid; gap: 18px; }
 .medical-ai-topic-field,.medical-ai-controls-grid label { display: grid; gap: 7px; }
@@ -7175,14 +7185,22 @@ a.settings-hub-card:hover {
 .medical-ai-rules-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .medical-ai-prompt-box {
     box-sizing: border-box; width: 100%; min-height: 520px; resize: vertical;
-    padding: 16px; border-radius: 12px; border: 1px solid rgba(91,146,215,.38);
-    background: rgba(1,8,19,.88); color: #e5edf8;
+    padding: var(--dlms-space-lg); border-radius: 12px;
+    border: 1px solid var(--theme-border-soft, rgba(91,146,215,.38));
+    background: var(--theme-input-bg, rgba(1,8,19,.88));
+    color: var(--theme-input-text, #e5edf8);
     font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-    font-size: 13px; line-height: 1.5; white-space: pre; overflow: auto; color-scheme: var(--theme-color-scheme, dark);
+    font-size: 14px; line-height: 1.62; white-space: pre-wrap;
+    overflow-wrap: anywhere; overflow: auto; color-scheme: var(--theme-color-scheme, dark);
 }
 .medical-ai-prompt-box:focus {
     outline: none; border-color: rgba(75,164,255,.82);
     box-shadow: 0 0 0 3px rgba(46,137,255,.10);
+}
+.medical-ai-prompt-panel .medical-ai-action-row {
+    margin-top: var(--dlms-space-lg);
+    padding-top: var(--dlms-space-md);
+    border-top: 1px solid var(--theme-border-soft, rgba(98,155,255,.24));
 }
 .medical-ai-secondary-button { background: rgba(17,47,82,.76); border-color: rgba(91,146,215,.35); }
 .medical-ai-provider-note,.medical-ai-install-note {
@@ -8110,45 +8128,57 @@ a.settings-hub-card:hover {
 .content-pack-upload-form button { margin: 0; width: 100%; }
 .pack-review-summary {
     display: flex; align-items: center; justify-content: space-between; gap: 20px;
-    margin-bottom: 18px;
+    margin-bottom: var(--dlms-space-xl);
 }
 .pack-review-summary h2 { margin: 4px 0; }
-.pack-review-summary p { margin: 0; color: #9fb2c8; }
-.pack-validation-panel { padding: 0; overflow: hidden; }
+.pack-review-summary p { margin: 0; color: var(--theme-muted-text, #9fb2c8); line-height: 1.55; }
+.pack-validation-panel { padding: 0 0 var(--dlms-space-xs); overflow: hidden; }
 .pack-validation-checks { display: grid; }
 .pack-validation-check {
     display: grid;
     grid-template-columns: 64px minmax(170px, .55fr) minmax(0, 1fr);
-    gap: 12px; align-items: center;
-    padding: 11px 18px; border-top: 1px solid rgba(77,139,205,.14);
+    gap: var(--dlms-space-md); align-items: center;
+    padding: var(--dlms-space-md) var(--dlms-space-xl);
+    border-top: 1px solid var(--theme-border-soft, rgba(77,139,205,.14));
 }
-.pack-validation-check > strong { color: #e7f1fc; }
-.pack-validation-check > span:last-child { color: #9fb2c8; font-size: 13px; }
+.pack-validation-check > strong { color: var(--theme-heading, #e7f1fc); line-height: 1.4; }
+.pack-validation-check > span:last-child { color: var(--theme-muted-text, #9fb2c8); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
 .pack-validation-state {
     display: inline-flex; justify-content: center; padding: 4px 7px;
     border-radius: 999px; font-size: 10px; font-weight: 800;
     letter-spacing: .05em; border: 1px solid rgba(100,150,210,.28);
 }
-.pack-validation-state.pass { color:#77e6ba; border-color:rgba(52,211,153,.35); background:rgba(8,78,59,.38); }
-.pack-validation-state.warn { color:#ffd487; border-color:rgba(245,177,66,.35); background:rgba(101,68,9,.32); }
-.pack-validation-state.fail { color:#ff9baa; border-color:rgba(239,68,68,.36); background:rgba(104,25,36,.38); }
-.pack-validation-messages { margin: 15px 18px 18px; padding: 13px 16px; border-radius: 10px; }
-.pack-validation-messages h3 { margin: 0 0 8px; font-size: 15px; }
+.pack-validation-state.pass { color:var(--theme-page-text,#77e6ba); border-color:color-mix(in srgb,#34d399 48%,var(--theme-border-soft)); background:color-mix(in srgb,#34d399 12%,var(--theme-surface)); }
+.pack-validation-state.warn { color:var(--theme-page-text,#ffd487); border-color:color-mix(in srgb,#f5b142 48%,var(--theme-border-soft)); background:color-mix(in srgb,#f5b142 12%,var(--theme-surface)); }
+.pack-validation-state.fail { color:var(--theme-page-text,#ff9baa); border-color:color-mix(in srgb,#ef4444 48%,var(--theme-border-soft)); background:color-mix(in srgb,#ef4444 12%,var(--theme-surface)); }
+.pack-validation-messages { margin: var(--dlms-space-lg) var(--dlms-space-xl); padding: var(--dlms-space-lg) var(--dlms-space-xl); border-radius: 12px; }
+.pack-validation-messages h3 { margin: 0 0 var(--dlms-space-sm); font-size: 16px; color: var(--theme-heading,#fff); }
 .pack-validation-messages ul { margin: 0; padding-left: 20px; }
-.pack-validation-messages li { margin: 5px 0; line-height: 1.4; }
-.pack-validation-messages.errors { border:1px solid rgba(239,68,68,.32); background:rgba(91,22,31,.27); color:#ffc1ca; }
-.pack-validation-messages.warnings { border:1px solid rgba(245,177,66,.28); background:rgba(91,64,17,.22); color:#f3d7a5; }
+.pack-validation-messages li { margin: var(--dlms-space-sm) 0; line-height: 1.55; overflow-wrap: anywhere; }
+.pack-validation-messages.errors { border:1px solid color-mix(in srgb,#ef4444 44%,var(--theme-border-soft)); background:color-mix(in srgb,#ef4444 10%,var(--theme-surface)); color:var(--theme-page-text,#ffc1ca); }
+.pack-validation-messages.warnings { border:1px solid color-mix(in srgb,#f5b142 40%,var(--theme-border-soft)); background:color-mix(in srgb,#f5b142 9%,var(--theme-surface)); color:var(--theme-page-text,#f3d7a5); }
 .pack-review-actions {
-    display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
-    margin-top: 18px;
+    display: flex; align-items: center; flex-wrap: wrap; gap: var(--dlms-space-md);
+    margin-top: var(--dlms-space-xl); padding: var(--dlms-space-lg) var(--dlms-space-xl);
+    border-top: 1px solid var(--theme-border-soft,rgba(98,155,255,.24));
 }
 .pack-review-actions form { margin: 0; }
 .pack-review-actions .content-pack-confirm-check { margin-bottom: 10px; }
+.pack-review-actions > p { margin: 0; color: var(--theme-muted-text,#b8c2cc); line-height: 1.5; }
 
 @media (max-width: 850px) {
     .content-pack-upload-panel { grid-template-columns: 1fr; }
     .pack-validation-check { grid-template-columns: 58px 1fr; }
     .pack-validation-check > span:last-child { grid-column: 2; }
+}
+
+@media (max-width: 560px) {
+    .pack-review-summary { align-items: flex-start; flex-direction: column; }
+    .pack-validation-check { grid-template-columns: 1fr; padding: var(--dlms-space-md) var(--dlms-space-lg); }
+    .pack-validation-check > span:last-child { grid-column: 1; }
+    .pack-validation-state { justify-self: start; }
+    .pack-validation-messages { margin: var(--dlms-space-md) var(--dlms-space-lg); padding: var(--dlms-space-md); }
+    .pack-review-actions { align-items: stretch; flex-direction: column; padding: var(--dlms-space-lg); }
 }
 
 
@@ -8230,17 +8260,17 @@ a.settings-hub-card:hover {
 .pack-validation-summary-grid {
     display: grid;
     grid-template-columns: repeat(3,minmax(0,1fr));
-    gap: 10px;
-    margin-bottom: 14px;
+    gap: var(--dlms-space-md);
+    margin: 0 var(--dlms-space-xl) var(--dlms-space-lg);
 }
 .pack-validation-summary-grid > div {
-    padding: 12px 14px;
-    border: 1px solid rgba(77,139,205,.22);
+    padding: var(--dlms-space-md) var(--dlms-space-lg);
+    border: 1px solid var(--theme-border-soft,rgba(77,139,205,.22));
     border-radius: 10px;
-    background: rgba(3,14,30,.35);
+    background: var(--theme-surface,rgba(3,14,30,.35));
 }
-.pack-validation-summary-grid span { display: block; color:#8fa5be; font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
-.pack-validation-summary-grid strong { display:block; margin-top:3px; font-size:22px; color:#edf5ff; }
+.pack-validation-summary-grid span { display: block; color:var(--theme-muted-text,#8fa5be); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+.pack-validation-summary-grid strong { display:block; margin-top:var(--dlms-space-xs); font-size:24px; color:var(--theme-heading,#edf5ff); }
 
 @media (max-width: 900px) {
     .pack-detail-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -11187,64 +11217,13 @@ body[data-theme="light"] .pdf-import-page .pdf-bank-open,
     opacity: 1 !important;
 }
 
-/* =========================================================
-   DLMS-001 — THEME COVERAGE PASS 12
-   Medical AI Study Pack Builder safeguard readability.
-
-   Root cause correction:
-   The live builder safeguard uses .medical-ai-safety-pill.
-   Earlier passes targeted .medical-ai-safeguard instead.
-   ========================================================= */
-
-/* Base/dark appearance for the actual live safeguard element. */
+/* Live AI Builder source/status metadata pill. */
 .medical-ai-builder-page .medical-ai-safety-pill {
-    background: rgba(0, 126, 82, 0.22) !important;
-    border: 1px solid rgba(64, 213, 157, 0.34) !important;
-    color: #a9e8ca !important;
-    opacity: 1 !important;
-}
-
-/* Ensure child elements cannot reintroduce pale inherited text. */
-.medical-ai-builder-page .medical-ai-safety-pill,
-.medical-ai-builder-page .medical-ai-safety-pill * {
+    background: var(--theme-surface-2, rgba(17,31,56,.78)) !important;
+    border: 1px solid var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+    color: var(--theme-page-text, #eaf2ff) !important;
     opacity: 1 !important;
     -webkit-text-fill-color: currentColor !important;
-}
-
-/* DLMS applies the selected theme through inline semantic variables on :root.
-   Detect the light color-scheme directly from that root style. */
-:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill {
-    background: #dcece5 !important;
-    border-color: #79a991 !important;
-    color: #29483a !important;
-    -webkit-text-fill-color: #29483a !important;
-}
-
-/* The first emphasized safeguard phrase should be distinctly readable. */
-:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill strong,
-:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill b {
-    color: #075c3b !important;
-    -webkit-text-fill-color: #075c3b !important;
-    font-weight: 800 !important;
-}
-
-/* Cover common wrapper elements used by the explanatory text. */
-:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill span,
-:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill p,
-:root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill small {
-    color: #365548 !important;
-    -webkit-text-fill-color: #365548 !important;
-    opacity: 1 !important;
-}
-
-/* Compatibility fallbacks in case a future theme implementation uses attributes/classes. */
-html[data-theme="light"] .medical-ai-builder-page .medical-ai-safety-pill,
-body[data-theme="light"] .medical-ai-builder-page .medical-ai-safety-pill,
-.theme-light .medical-ai-builder-page .medical-ai-safety-pill {
-    background: #dcece5 !important;
-    border-color: #79a991 !important;
-    color: #29483a !important;
-    -webkit-text-fill-color: #29483a !important;
 }
 
 

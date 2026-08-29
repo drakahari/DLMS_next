@@ -109,6 +109,33 @@ class ImageWorkflowTests(unittest.TestCase):
         self.assertEqual(3, len(db_questions))
         self.assertTrue(runtime[0]["image_url"].endswith("/images/diagram.png"))
 
+    def test_mixed_matching_ambiguity_is_rejected_by_staged_and_runtime_validation(self):
+        root = self.make_pack()
+        mixed_path = root / "data" / "mixed.json"
+        mixed = json.loads(mixed_path.read_text(encoding="utf-8"))
+        mixed["questions"][1]["pairs"] = [
+            {"id":"pair-1","left":" Alpha ","right":"First"},
+            {"id":"PAIR-1","left":"alpha","right":"Second"},
+        ]
+        mixed_path.write_text(json.dumps(mixed), encoding="utf-8")
+
+        report = dlms._validate_staged_content_pack(str(root))
+        self.assertFalse(report["valid"])
+        joined = "\n".join(report["errors"])
+        self.assertIn("matching question 2 'Match these items.'", joined)
+        self.assertIn("conflicting ID", joined)
+        self.assertIn("one left maps to multiple answers", joined)
+        self.assertIn("earlier pair 1", joined)
+
+        with self.assertRaisesRegex(ValueError, "conflicting ID"):
+            dlms.load_content_pack_quiz_dataset("study_images", "mixed")
+
+    def test_distinct_mixed_matching_records_remain_accepted(self):
+        self.make_pack()
+        data = dlms.load_content_pack_quiz_dataset("study_images", "mixed")
+        matching = next(q for q in data["questions"] if q["type"] == "matching")
+        self.assertEqual(2, len(matching["pairs"]))
+
     def test_snapshot_survives_source_pack_removal(self):
         root = self.make_pack()
         runtime = [{"number":1,"type":"choice","question":"Image","image_url":"/content-packs/study_images/assets/images/diagram.png","choices":[{"label":"A","text":"One","is_correct":True}],"correct":["A"]}]

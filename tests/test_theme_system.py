@@ -184,6 +184,59 @@ class ThemeSystemTests(unittest.TestCase):
                         f"{theme} accent text is only {ratio:.2f}:1 on {surface_name}",
                     )
 
+    def test_ai_builder_prompt_and_status_pill_use_semantic_theme_tokens(self):
+        css = self._style_css()
+        pill_blocks = re.findall(
+            r"\.medical-ai-builder-page \.medical-ai-safety-pill\s*\{([^}]*)\}", css
+        )
+        self.assertTrue(pill_blocks)
+        pill = pill_blocks[-1]
+        self.assertIn("var(--theme-page-text", pill)
+        self.assertIn("var(--theme-surface-2", pill)
+        self.assertIn("var(--theme-border-soft", pill)
+        self.assertNotIn(':root[style*="--theme-color-scheme: light"] .medical-ai-builder-page .medical-ai-safety-pill', css)
+
+        prompt = re.search(r"\.medical-ai-prompt-box\s*\{([^}]*)\}", css).group(1)
+        for token in ("--theme-input-bg", "--theme-input-text", "--theme-border-soft"):
+            self.assertIn(token, prompt)
+        self.assertIn("white-space: pre-wrap", prompt)
+        self.assertIn("overflow-wrap: anywhere", prompt)
+
+    def test_ai_builder_status_pill_contrast_across_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                pill_background = self._composite(variables["theme-surface-2"], panel)
+                ratio = self._contrast(variables["theme-page-text"], pill_background)
+                self.assertGreaterEqual(
+                    ratio, 4.5, f"{theme} AI Builder pill contrast is only {ratio:.2f}:1",
+                )
+
+    def test_pack_validation_readability_rules_use_semantic_tokens(self):
+        css = self._style_css()
+        expected = {
+            ".pack-validation-check > strong": "--theme-heading",
+            ".pack-validation-check > span:last-child": "--theme-muted-text",
+            ".pack-validation-summary-grid > div": "--theme-surface",
+            ".pack-validation-summary-grid span": "--theme-muted-text",
+            ".pack-validation-summary-grid strong": "--theme-heading",
+        }
+        for selector, token in expected.items():
+            with self.subTest(selector=selector):
+                blocks = [
+                    body for prelude, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
+                    if selector in {item.strip() for item in prelude.split(",")}
+                ]
+                self.assertTrue(blocks, f"Missing CSS rule for {selector}")
+                self.assertTrue(any(token in block for block in blocks))
+
     def test_review_small_text_uses_accessible_accent_foreground_token(self):
         css = self._style_css()
         match = re.search(
