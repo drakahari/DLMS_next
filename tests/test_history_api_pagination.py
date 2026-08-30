@@ -199,6 +199,27 @@ class HistoryApiPaginationTests(unittest.TestCase):
         with open(os.path.join(root, "static", "review.html"), encoding="utf-8") as f:
             self.assertIn("/api/attempts/${encodeURIComponent(attemptId)}", f.read())
 
+    def test_history_renders_hostile_attempt_text_with_safe_dom_properties(self):
+        hostile_title = '<img src=x onerror="window.historyXssExecuted=true">'
+        quiz_id = self._quiz(hostile_title)
+        self._attempts(quiz_id, 1, "hostile")
+
+        attempt = self.client.get("/api/attempts?page_size=1").get_json()["attempts"][0]
+        self.assertEqual(attempt["quiz_title"], hostile_title)
+
+        response = self.client.get("/history")
+        try:
+            page = response.get_data(as_text=True)
+        finally:
+            response.close()
+        self.assertIn('quizTitle.textContent = String(a.quiz_title || "Unknown Quiz")', page)
+        self.assertIn('modeBadge.textContent = String(a.mode || "Unknown")', page)
+        self.assertIn('originBadge.textContent = String(a.origin || "Quiz")', page)
+        self.assertIn('reviewLink.href = `/review?attempt=${encodeURIComponent(attemptId)}`', page)
+        self.assertNotIn('${a.quiz_title || "Unknown Quiz"}', page)
+        self.assertNotIn('${a.mode || "Unknown"}', page)
+        self.assertNotIn(hostile_title, page)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -183,49 +183,91 @@ function renderAttempts() {
         return;
     }
 
-    box.innerHTML = `
-        <table class="history-results-table">
-            <thead>
-                <tr>
-                    <th scope="col">Quiz</th>
-                    <th scope="col">Origin</th>
-                    <th scope="col">Score</th>
-                    <th scope="col">Date</th>
-                    <th scope="col">Mode</th>
-                    <th scope="col" class="history-review-column">Review</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${dbAttempts.map(a => {
-                    const attemptId = a.id;
-                    const percent = Math.round(asNumber(a.percent));
-                    const score = asNumber(a.score);
-                    const total = asNumber(a.total);
-                    const selected = selectedAttemptId && String(attemptId) === String(selectedAttemptId);
-                    return `
-                        <tr class="history-result-row${selected ? " selected" : ""}" data-attempt="${attemptId}">
-                            <td>
-                                <div class="history-quiz-cell">
-                                    <strong>${a.quiz_title || "Unknown Quiz"}</strong>
-                                    <span>Attempt #${attemptId}</span>
-                                </div>
-                            </td>
-                            <td><span class="history-origin-badge origin-${a.origin_key || "quiz"}">${a.origin || "Quiz"}</span></td>
-                            <td>
-                                <div class="history-score-cell">
-                                    <span class="history-score-badge ${scoreClass(percent)}">${percent}%</span>
-                                    <small>${score}/${total}</small>
-                                </div>
-                            </td>
-                            <td><span class="history-date-cell">${formatDate(a.completed_at)}</span></td>
-                            <td><span class="history-mode-badge">${a.mode || "Unknown"}</span></td>
-                            <td class="history-review-column">
-                                <a class="history-table-review" href="/review?attempt=${attemptId}">Review <span aria-hidden="true">›</span></a>
-                            </td>
-                        </tr>`;
-                }).join("")}
-            </tbody>
-        </table>`;
+    const table = document.createElement("table");
+    table.className = "history-results-table";
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th scope="col">Quiz</th>
+                <th scope="col">Origin</th>
+                <th scope="col">Score</th>
+                <th scope="col">Date</th>
+                <th scope="col">Mode</th>
+                <th scope="col" class="history-review-column">Review</th>
+            </tr>
+        </thead>`;
+    const body = document.createElement("tbody");
+    const supportedOriginKeys = new Set(["quiz", "it", "medical", "study-pack", "law"]);
+
+    dbAttempts.forEach(a => {
+        const attemptId = String(a.id ?? "");
+        const percent = Math.round(asNumber(a.percent));
+        const score = asNumber(a.score);
+        const total = asNumber(a.total);
+        const selected = selectedAttemptId && attemptId === String(selectedAttemptId);
+        const originKey = supportedOriginKeys.has(a.origin_key) ? a.origin_key : "quiz";
+
+        const row = document.createElement("tr");
+        row.className = `history-result-row${selected ? " selected" : ""}`;
+        row.dataset.attempt = attemptId;
+
+        const quizCell = document.createElement("td");
+        const quizCopy = document.createElement("div");
+        quizCopy.className = "history-quiz-cell";
+        const quizTitle = document.createElement("strong");
+        quizTitle.textContent = String(a.quiz_title || "Unknown Quiz");
+        const attemptLabel = document.createElement("span");
+        attemptLabel.textContent = `Attempt #${attemptId}`;
+        quizCopy.append(quizTitle, attemptLabel);
+        quizCell.appendChild(quizCopy);
+
+        const originCell = document.createElement("td");
+        const originBadge = document.createElement("span");
+        originBadge.className = `history-origin-badge origin-${originKey}`;
+        originBadge.textContent = String(a.origin || "Quiz");
+        originCell.appendChild(originBadge);
+
+        const scoreCell = document.createElement("td");
+        const scoreCopy = document.createElement("div");
+        scoreCopy.className = "history-score-cell";
+        const scoreBadge = document.createElement("span");
+        scoreBadge.className = `history-score-badge ${scoreClass(percent)}`;
+        scoreBadge.textContent = `${percent}%`;
+        const scoreDetail = document.createElement("small");
+        scoreDetail.textContent = `${score}/${total}`;
+        scoreCopy.append(scoreBadge, scoreDetail);
+        scoreCell.appendChild(scoreCopy);
+
+        const dateCell = document.createElement("td");
+        const dateText = document.createElement("span");
+        dateText.className = "history-date-cell";
+        dateText.textContent = formatDate(a.completed_at);
+        dateCell.appendChild(dateText);
+
+        const modeCell = document.createElement("td");
+        const modeBadge = document.createElement("span");
+        modeBadge.className = "history-mode-badge";
+        modeBadge.textContent = String(a.mode || "Unknown");
+        modeCell.appendChild(modeBadge);
+
+        const reviewCell = document.createElement("td");
+        reviewCell.className = "history-review-column";
+        const reviewLink = document.createElement("a");
+        reviewLink.className = "history-table-review";
+        reviewLink.href = `/review?attempt=${encodeURIComponent(attemptId)}`;
+        reviewLink.appendChild(document.createTextNode("Review "));
+        const reviewArrow = document.createElement("span");
+        reviewArrow.setAttribute("aria-hidden", "true");
+        reviewArrow.textContent = "›";
+        reviewLink.appendChild(reviewArrow);
+        reviewCell.appendChild(reviewLink);
+
+        row.append(quizCell, originCell, scoreCell, dateCell, modeCell, reviewCell);
+        body.appendChild(row);
+    });
+
+    table.appendChild(body);
+    box.replaceChildren(table);
 
     if (selectedAttemptId) {
         requestAnimationFrame(() => {
