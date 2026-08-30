@@ -6981,6 +6981,13 @@ def medical_generate_anatomy_quiz():
             if not label:
                 continue
             prompt = str(hotspot.get("prompt") or f"Identify the {label}.").strip()
+            concepts = _hotspot_concepts(
+                hotspot,
+                image,
+                hotspot,
+                data,
+                context=f"medical anatomy hotspot {hotspot.get('id') or label!r}",
+            )
 
             runtime_questions.append({
                 "number": qnum,
@@ -6992,6 +6999,7 @@ def medical_generate_anatomy_quiz():
                 "target": hotspot.get("shape") or {},
                 "target_label": label,
                 "explanation": hotspot.get("explanation") or "",
+                "concepts": concepts,
                 "verification": hotspot.get("verification") or {},
                 "image_source": {
                     "organization": source.get("organization") or "",
@@ -7010,6 +7018,7 @@ def medical_generate_anatomy_quiz():
                 "choices": [
                     {"label": "A", "text": label, "is_correct": True}
                 ],
+                "concepts": concepts,
                 "source": {
                     "organization": source.get("organization") or "",
                     "dataset": data.get("title") or dataset_id,
@@ -7099,6 +7108,9 @@ def medical_generate_quiz():
         "pairs": pairs,
         "round_size": round_size,
         "direction": direction,
+        "concepts": _standalone_matching_concepts(
+            data, context=f"matching dataset {dataset_id!r}"
+        ),
         "source": {
             "organization": source.get("organization") or pack.get("publisher") or "",
             "dataset": source.get("dataset") or title,
