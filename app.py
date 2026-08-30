@@ -8939,7 +8939,7 @@ def law_study_home():
 
             <a class="law-hub-card" href="/law/imports">
                 <div class="law-hub-card-icon">▤</div>
-                <div><span class="law-hub-card-kicker">ARCHIVE</span><h2>Saved Imports</h2><p>Open raw AI-generated packets retained for future parsing.</p></div>
+                <div><span class="law-hub-card-kicker">ARCHIVE / RECOVERY</span><h2>Saved Imports</h2><p>Inspect, reparse, or manage raw packets retained from guided and manual imports.</p></div>
                 <span class="law-hub-card-arrow">›</span>
             </a>
         </section>
@@ -9403,6 +9403,28 @@ def safe_law_import_filename(filename):
     return filename
 
 
+def save_law_raw_packet(raw_packet, case_slug=""):
+    """Save one raw Law packet using the durable import-file convention."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    slug = str(case_slug or "").strip()
+    saved_file = (
+        f"law_import_{timestamp}_{slug}.txt"
+        if slug else f"law_import_{timestamp}.txt"
+    )
+    safe_name = safe_law_import_filename(saved_file)
+
+    if not safe_name:
+        raise ValueError("Could not create a safe Law import filename.")
+
+    os.makedirs(LAW_IMPORTS_FOLDER, exist_ok=True)
+    save_path = os.path.join(LAW_IMPORTS_FOLDER, safe_name)
+
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(raw_packet)
+
+    return safe_name
+
+
 
 def parse_law_packet_sections(raw_text):
     """
@@ -9629,21 +9651,12 @@ def law_import_case_packet():
             line_count = len(raw_packet.splitlines())
             char_count = len(raw_packet)
 
-            if action == "save_raw":
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-                if case_slug:
-                    saved_file = f"law_import_{ts}_{case_slug}.txt"
-                else:
-                    saved_file = f"law_import_{ts}.txt"
-
-                save_path = os.path.join(LAW_IMPORTS_FOLDER, saved_file)
-
+            if action in {"save_and_preview", "save_raw"}:
                 try:
-                    os.makedirs(LAW_IMPORTS_FOLDER, exist_ok=True)
+                    saved_file = save_law_raw_packet(raw_packet, case_slug)
 
-                    with open(save_path, "w", encoding="utf-8") as f:
-                        f.write(raw_packet)
+                    if action == "save_and_preview":
+                        return redirect(url_for("law_view_saved_import", filename=saved_file))
 
                     save_message = f"Saved raw case packet as {saved_file}"
 
@@ -9766,9 +9779,10 @@ def law_import_case_packet():
             </label>
 
             <div class="law-action-row">
-                <button type="submit" name="action" value="preview" class="law-primary-action">Preview Packet</button>
-                <button type="submit" name="action" value="save_raw" class="law-secondary-action">Save Raw Packet</button>
-                <button type="button" class="law-secondary-action" onclick="location.href='/law/imports'">Saved Imports</button>
+                <button type="submit" name="action" value="save_and_preview" class="law-primary-action">Save &amp; Preview Case Packet</button>
+                <button type="submit" name="action" value="preview" class="law-secondary-action">Check Pasted Text</button>
+                <button type="submit" name="action" value="save_raw" class="law-quiet-action">Save Raw Packet Only</button>
+                <button type="button" class="law-secondary-action" onclick="location.href='/law/imports'">Saved Imports Archive</button>
                 <button type="button" class="law-secondary-action" onclick="location.href='/law/create'">Create Another Prompt</button>
                 <button type="button" class="law-quiet-action" onclick="location.href='/law'">Back to Law Study</button>
             </div>
@@ -10257,6 +10271,22 @@ def law_create_case_from_import(filename):
     if not parsed_sections:
         return "No recognized Law Study sections were found. Cannot create case review yet.", 400
 
+    registry = load_law_registry()
+
+    # A saved raw packet is the durable input for exactly one structured case.
+    # If a browser retries this POST after a successful submission, open that
+    # existing case rather than creating a duplicate registry/file pair.
+    for existing_case in registry.get("cases", []):
+        if str(existing_case.get("source_import", "")) != safe_name:
+            continue
+
+        existing_id = str(existing_case.get("id", "")).strip()
+        existing_file = secure_filename(str(existing_case.get("file", "")))
+        existing_path = os.path.join(LAW_CASES_FOLDER, existing_file)
+
+        if existing_id and existing_file.lower().endswith(".json") and os.path.isfile(existing_path):
+            return redirect(url_for("law_view_case_review", case_id=existing_id))
+
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     case_slug = extract_law_slug_from_import_filename(safe_name)
 
@@ -10276,7 +10306,6 @@ def law_create_case_from_import(filename):
     title = extract_law_case_title(raw_packet, safe_name)
     course = "Uncategorized"
 
-    registry = load_law_registry()
     pending_workflow = registry.get("pending_case_workflow", {}) or {}
 
     pending_slug = str(pending_workflow.get("case_slug", "")).strip()
@@ -10342,7 +10371,7 @@ def law_create_case_from_import(filename):
         print(f"[LAW CASE ERROR] Failed creating case review: {e}")
         return "Failed to create case review", 500
 
-    return redirect(f"/law/imports/{safe_name}?created_case={case_id}")
+    return redirect(url_for("law_view_case_review", case_id=case_id))
 
 
 
