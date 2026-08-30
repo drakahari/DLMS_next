@@ -72,15 +72,15 @@
   <div id="liWeakList" class="learning-intelligence-weak-list"></div>
 </section>
 
+</main>
+</div>
 <div class="learning-intelligence-model" id="liModel" hidden role="dialog" aria-modal="true" aria-labelledby="liModelTitle">
   <div class="learning-intelligence-model-backdrop" data-li-model-close></div>
-  <div class="learning-intelligence-model-dialog">
-    <button type="button" class="help-lightbox-close" data-li-model-close aria-label="Close">×</button>
+  <div class="learning-intelligence-model-dialog" role="document">
+    <button type="button" class="learning-intelligence-model-close" data-li-model-close aria-label="Close How mastery works">×</button>
     <div class="build-eyebrow">EXPLAINABLE MODEL</div><h2 id="liModelTitle">How DLMS calculates mastery</h2>
     <div id="liModelContent"></div>
   </div>
-</div>
-</main>
 </div>
 <script>
 const state={topics:[],filter:'all',model:{}};
@@ -121,9 +121,34 @@ fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
 document.querySelectorAll('[data-li-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-li-filter]').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.filter=b.dataset.liFilter;render();}));
 document.getElementById('liSearch').addEventListener('input',render);
 const modal=document.getElementById('liModel');
-document.getElementById('liModelButton').addEventListener('click',()=>{modal.hidden=false;});
-document.querySelectorAll('[data-li-model-close]').forEach(x=>x.addEventListener('click',()=>modal.hidden=true));
-document.addEventListener('keydown',e=>{if(e.key==='Escape')modal.hidden=true;});
+const modalTrigger=document.getElementById('liModelButton');
+const modalCloseButton=modal.querySelector('.learning-intelligence-model-close');
+let previousModalFocus=null;
+const closeModal=()=>{
+  if(modal.hidden)return;
+  modal.hidden=true;
+  const focusTarget=previousModalFocus;
+  previousModalFocus=null;
+  focusTarget?.focus?.();
+};
+const openModal=()=>{
+  previousModalFocus=document.activeElement;
+  modal.hidden=false;
+  requestAnimationFrame(()=>modalCloseButton.focus());
+};
+modalTrigger.addEventListener('click',openModal);
+document.querySelectorAll('[data-li-model-close]').forEach(x=>x.addEventListener('click',closeModal));
+document.addEventListener('keydown',e=>{
+  if(modal.hidden)return;
+  if(e.key==='Escape'){e.preventDefault();closeModal();return;}
+  if(e.key!=='Tab')return;
+  const focusable=[...modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter(el=>el.getClientRects().length);
+  if(!focusable.length){e.preventDefault();return;}
+  const first=focusable[0],last=focusable[focusable.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
 document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));
 </script>
 <script src="/static/nav-normalize.js"></script>

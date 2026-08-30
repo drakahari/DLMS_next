@@ -4495,56 +4495,72 @@ def user_static(filename):
         normalized
     )
 
+def _settings_shell_sidebar(label="Settings"):
+    """Minimal sidebar seed populated by the canonical navigation normalizer."""
+    return f"""
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand">
+        <div class="dashboard-brand-mark" aria-hidden="true">⚙</div>
+        <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+    </div>
+    <nav class="dashboard-nav" aria-label="Primary navigation">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">{html.escape(label)}</div>
+</aside>"""
+
+
+app.jinja_env.globals["settings_shell_sidebar"] = _settings_shell_sidebar
+
+
 @app.route("/admin/maintenance")
 def admin_maintenance():
     return render_template_string("""
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Maintenance - DLMS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Tools - DLMS</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
 
-<body>
-<div class="container">
+<body class="dashboard-home system-tools-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("System Tools")|safe }}
+<main class="dashboard-main system-tools-main">
+    <header class="dashboard-header system-tools-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
+        <div>
+            <div class="build-eyebrow">SETTINGS / SYSTEM TOOLS</div>
+            <h1>System Tools</h1>
+            <p>Advanced tools for refreshing generated quiz pages and preparing image-based study content.</p>
+        </div>
+    </header>
 
-    <h1 class="hero-title">🛠 Admin Maintenance</h1>
+    <section class="dashboard-panel system-tools-panel">
+        <section class="system-tools-action">
+            <div>
+                <div class="build-eyebrow">QUIZ PAGE MAINTENANCE</div>
+                <h2>Rebuild All Quiz Pages</h2>
+                <p>Re-render every registered quiz's generated HTML page using the current DLMS quiz-page template. This is useful after upgrading DLMS so older quiz pages receive current interface features.</p>
+                <p class="system-tools-note">This refreshes HTML wrappers only. It does not recreate quiz JSON, change questions or answers, change quiz IDs or registry entries, or rewrite attempt history.</p>
+            </div>
+            <button id="rebuildAllBtn" class="build-primary-button" type="button">🔄 Rebuild All Quiz Pages</button>
+            <p id="rebuildStatus" class="system-tools-status" aria-live="polite"></p>
+        </section>
 
-    <div class="card">
-
-        <h2>Quiz Maintenance</h2>
-
-        <p style="opacity:.8;">
-            Re-render every registered quiz's generated HTML page using the current DLMS quiz-page template.
-            This is useful after upgrading DLMS so older quiz pages receive current interface/template features.
-        </p>
-
-        <p style="opacity:.7; font-size:13px; line-height:1.5;">
-            This rebuilds the HTML wrapper only. It does not recreate quiz JSON, change questions or answers,
-            change quiz IDs/registry entries, or rewrite attempt history. It is a template refresh, not a repair
-            tool for missing or corrupt quiz data.
-        </p>
-
-        <button id="rebuildAllBtn">
-            🔄 Rebuild All Quiz Pages
-        </button>
-
-        <p id="rebuildStatus" style="margin-top:10px;"></p>
-
-        <hr style="margin:24px 0; opacity:.35">
-        <h2>Image Study Editor</h2>
-        <p style="opacity:.8;">Prepare images for study, hide or add simple text overlays, draw precise circle or polygon hit regions, test them, and save the study metadata directly into an installed content pack.</p>
-        <button onclick="location.href='/admin/image-editor'">◎ Open Image Study Editor</button>
-
-        <br><br>
-
-        <button onclick="location.href='/'">
-            ⬅ Back To Dashboard
-        </button>
-
-    </div>
+        <section class="system-tools-action">
+            <div>
+                <div class="build-eyebrow">IMAGE CONTENT</div>
+                <h2>Image Study Editor</h2>
+                <p>Prepare images for study, add non-destructive text overlays, draw precise circle or polygon hit regions, test them, and save metadata into an installed content pack.</p>
+            </div>
+            <a class="build-secondary-link system-tools-secondary-action" href="/admin/image-editor">◎ Open Image Study Editor</a>
+        </section>
+    </section>
+</main>
 </div>
 
 <script>
@@ -4810,7 +4826,7 @@ HOTSPOT_EDITOR_TEMPLATE = r"""
 <div id="hotspotPanel"><div class="hotspot-editor-actions"><button type="button" id="loadExistingBtn">Load Existing</button><button type="button" id="undoBtn">Undo Point</button><button type="button" id="clearBtn">Clear Shape</button><button type="button" id="testBtn">Test Shape</button><button type="button" id="saveBtn" class="build-primary-button">Save Region</button></div><p class="hotspot-editor-help">Polygon: click around the true clickable boundary. Circle: click the center and adjust the radius.</p></div>
 <div id="prepPanel" hidden><div class="image-prep-controls"><label><span>Prep tool</span><select id="prepTool"><option value="mask">Hide / cover text</option><option value="text">Add text label</option></select></label><label id="maskStyleLabel"><span>Cover style</span><select id="maskStyle"><option value="blur">Blur</option><option value="white">White box</option><option value="black">Black box</option></select></label><label id="maskWidthLabel"><span>Width <strong id="maskWVal">0.18</strong></span><input id="maskW" type="range" min="0.03" max="0.60" step="0.01" value="0.18"></label><label id="maskHeightLabel"><span>Height <strong id="maskHVal">0.07</strong></span><input id="maskH" type="range" min="0.02" max="0.35" step="0.01" value="0.07"></label><label id="textValueLabel" hidden><span>Text</span><input id="textValue" type="text" maxlength="180" placeholder="Label text"></label><label id="textSizeLabel" hidden><span>Text size</span><input id="textSize" type="number" min="10" max="48" value="18"></label><label id="textToneLabel" hidden><span>Label style</span><select id="textTone"><option value="light">Light</option><option value="dark">Dark</option></select></label></div><div class="hotspot-editor-actions"><button type="button" id="undoEditBtn">Undo Last Edit</button><button type="button" id="clearEditsBtn">Clear Image Edits</button><button type="button" id="saveEditsBtn" class="build-primary-button">Save Image Prep</button></div><p class="hotspot-editor-help">Edits are non-destructive overlays stored in the content-pack JSON. The original source image is never modified.</p></div>
 <div class="hotspot-editor-stage"><img id="editorImage" alt="Study image" draggable="false"><div id="editorOverlay" class="image-edit-overlay"></div><svg id="editorSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon id="polygonShape"></polygon><circle id="circleShape"></circle><g id="pointHandles"></g></svg><div id="testMarker" class="hotspot-editor-test-marker" hidden></div></div><div class="hotspot-editor-status" id="editorStatus">Choose an image and editing mode.</div><details class="hotspot-editor-json"><summary>Current geometry / image-prep metadata</summary><pre id="geometryPreview">{}</pre></details></section>{% endif %}
-<div class="review-return-row"><a class="review-return-link" href="/admin/maintenance">← Back to Maintenance</a></div></main></div>
+<div class="review-return-row"><a class="review-return-link" href="/admin/maintenance">← System Tools</a></div></main></div>
 <script>
 const EDITOR_DATA={{ editor_data|tojson }};let currentImage=null,currentHotspot=null,points=[],circleCenter=null,testMode=false,editorMode='hotspot',imageEdits=[];
 const imageSelect=document.getElementById('imageSelect'),hotspotSelect=document.getElementById('hotspotSelect'),shapeMode=document.getElementById('shapeMode'),radius=document.getElementById('circleRadius'),radiusValue=document.getElementById('radiusValue'),img=document.getElementById('editorImage'),poly=document.getElementById('polygonShape'),circle=document.getElementById('circleShape'),handles=document.getElementById('pointHandles'),statusEl=document.getElementById('editorStatus'),preview=document.getElementById('geometryPreview'),marker=document.getElementById('testMarker'),overlay=document.getElementById('editorOverlay');
@@ -6782,7 +6798,7 @@ def _medical_not_installed():
             </a>
         </section>
 
-        <section class="dashboard-panel medical-ai-builder-panel">
+        <section class="dashboard-panel medical-ai-builder-panel medical-empty-state-panel">
             <div class="medical-ai-builder-heading">
                 <div>
                     <span class="medical-eyebrow">OPTIONAL CONTENT</span>
@@ -19165,15 +19181,18 @@ def settings_page():
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
-<body class="settings-hub-page">
+<body class="dashboard-home settings-hub-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("Settings")|safe }}
+<main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell">
     <div class="settings-page-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
         <div>
             <span class="settings-eyebrow">SYSTEM</span>
             <h1>⚙️ Settings</h1>
             <p>Configure DLMS by category. Each settings area saves independently.</p>
         </div>
-        <button type="button" class="settings-back-button" onclick="location.href='/'">← Dashboard</button>
     </div>
 
     <div class="settings-hub-grid">
@@ -19231,16 +19250,15 @@ def settings_page():
             <div class="settings-hub-icon icon-cyan">🛠</div>
             <div class="settings-hub-copy">
                 <div class="settings-card-kicker">SYSTEM TOOL</div>
-                <h2>Maintenance</h2>
-                <p>Rebuild existing quiz pages using the current DLMS template.</p>
+                <h2>System Tools</h2>
+                <p>Rebuild generated quiz pages and open advanced image/content maintenance tools.</p>
             </div>
             <span class="settings-hub-arrow">›</span>
         </a>
     </div>
 
-    <div class="settings-migration-note">
-        <strong>Settings migration complete:</strong> Appearance, AI Integration, Parsing, Data &amp; History, and Reset &amp; Recovery now have dedicated pages. The original settings page remains available at <code>/settings/legacy</code> during this test phase as a hidden safety fallback.
-    </div>
+</div>
+</main>
 </div>
 <script src="/static/nav-normalize.js"></script>
 </body>
@@ -19261,9 +19279,13 @@ def settings_appearance_page():
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
-<body class="settings-detail-page">
+<body class="dashboard-home settings-detail-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("Settings")|safe }}
+<main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
         <div>
             <span class="settings-eyebrow">SETTINGS / APPEARANCE</span>
             <h1>🎨 Appearance</h1>
@@ -19365,6 +19387,8 @@ def settings_appearance_page():
         <strong>Safe migration behavior:</strong> saving this page changes only the theme, dashboard title, and background image. It does not touch parsing or AI settings.
     </div>
 </div>
+</main>
+</div>
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>
@@ -19438,9 +19462,13 @@ def settings_ai_page():
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
-<body class="settings-detail-page">
+<body class="dashboard-home settings-detail-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("Settings")|safe }}
+<main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
         <div>
             <span class="settings-eyebrow">SETTINGS / AI INTEGRATION</span>
             <h1>🤖 AI Integration</h1>
@@ -19627,6 +19655,8 @@ def settings_ai_page():
         <strong>Safe migration behavior:</strong> saving this page changes only AI-related configuration. Appearance and parsing settings are not modified.
     </div>
 </div>
+</main>
+</div>
 
 <script>
 const AI_QUESTIONS_PLACEHOLDER = "{" + "{questions}" + "}";
@@ -19740,9 +19770,13 @@ def settings_parsing_page():
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
-<body class="settings-detail-page">
+<body class="dashboard-home settings-detail-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("Settings")|safe }}
+<main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
         <div>
             <span class="settings-eyebrow">SETTINGS / PARSING</span>
             <h1>🧩 Parsing</h1>
@@ -19850,6 +19884,8 @@ def settings_parsing_page():
         <strong>Safe migration behavior:</strong> saving this page changes only parsing-related configuration. Appearance and AI settings are not modified.
     </div>
 </div>
+</main>
+</div>
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>
@@ -19885,7 +19921,7 @@ def settings_create_backup():
         print("[BACKUP ERROR]", exc)
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Backup Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Backup failed</h1><p>DLMS did not modify your existing data.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Unable to create backup</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Backup failed</h1><p>DLMS did not modify your existing data.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Unable to create backup</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, error="DLMS could not create the backup. Check the local application log for details."), 500
 
 
@@ -19921,15 +19957,15 @@ def settings_stage_restore():
         print(f"[RESTORE VALIDATION ERROR] {type(exc).__name__}: {exc}")
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Validation Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY / RESTORE</span><h1>Backup rejected</h1><p>No DLMS data was changed.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore validation failed</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY / RESTORE</span><h1>Backup rejected</h1><p>No DLMS data was changed.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore validation failed</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, error="The backup failed validation and was not accepted. Check the local DLMS log for details."), 400
 
     manifest = report["manifest"]
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
     return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm Restore - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
-<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / DATA SAFETY / RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><button class="settings-back-button" onclick="location.href='/settings/data'">Cancel</button></div>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / DATA SAFETY / RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><button class="settings-back-button" onclick="location.href='/settings/data'">Cancel</button></div>
 <div class="settings-detail-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">✓</div><div><h2>Valid DLMS Backup</h2><p>Review the snapshot metadata before replacing current data.</p></div></div>
 <div class="settings-current-value"><strong>Created:</strong> {{ manifest.created_at or 'Unknown' }}</div>
@@ -19940,7 +19976,7 @@ def settings_stage_restore():
 <div class="settings-warning-panel"><strong>Automatic safety backup</strong><span>Before restoring, DLMS will create a new backup of your current data. If the restore operation fails, your pre-restore snapshot remains available in the DLMS backups folder.</span></div>
 </section>
 <form method="POST" action="/settings/data/restore/confirm/{{ token }}"><div class="settings-form-actions"><button class="settings-primary-button" type="submit">Restore This Backup</button><button class="settings-secondary-button" type="button" onclick="location.href='/settings/data'">Cancel</button></div></form>
-</div></div><script src="/static/nav-normalize.js"></script></body></html>
+</div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, manifest=manifest, report=report, summary=summary, token=token)
 
 
@@ -20021,7 +20057,7 @@ def _settings_confirm_restore_locked(token):
 
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Complete - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div><p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/data'">Data &amp; History</button></div></div></div></body></html>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div><p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/data'">Data &amp; History</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, safety_name=os.path.basename(safety_path))
     except Exception as exc:
         if journal_path is None:
@@ -20041,7 +20077,7 @@ def _settings_confirm_restore_locked(token):
         )
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></body></html>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/data'">← Back to Data &amp; History</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, error=public_error), (
             400 if isinstance(exc, ValueError)
             else 409 if isinstance(exc, DataRootOwnershipError)
@@ -20069,8 +20105,8 @@ def settings_data_page():
     return render_template_string(r"""
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Data & History Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
-<body class="settings-detail-page"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / DATA &amp; HISTORY</span><h1>💾 Data Safety &amp; History</h1><p>Back up or restore DLMS data, then manage saved attempt history separately.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / DATA &amp; HISTORY</span><h1>💾 Data Safety &amp; History</h1><p>Back up or restore DLMS data, then manage saved attempt history separately.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 
 <div class="settings-detail-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">⇩</div><div><h2>Portable Backup</h2><p>Create one ZIP snapshot containing your persistent DLMS data.</p></div></div>
@@ -20093,6 +20129,8 @@ def settings_data_page():
 </div>
 <div class="settings-scope-note"><strong>Portable design:</strong> runtime data is stored separately from the executable. A DLMS backup is intended to move that persistent data between compatible DLMS installations and provide a recovery point before destructive maintenance.</div>
 </div>
+</main>
+</div>
 <script>
 const clearDBBtn=document.getElementById("clearDBBtn"),clearDBStatus=document.getElementById("clearDBStatus");
 clearDBBtn.addEventListener("click",async()=>{if(!confirm("Clear all saved quiz attempts and missed-question history?\n\nYour quizzes will remain available.\n\nCreate a backup first if you may need this history later."))return;clearDBBtn.disabled=true;clearDBStatus.textContent="Clearing saved history...";try{const res=await fetch("/api/clear_db_history",{method:"POST"});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"History clear failed");clearDBStatus.textContent="✅ Saved attempt and missed-question history cleared."}catch(err){console.error("[SETTINGS] Clear history failed:",err);clearDBStatus.textContent="❌ History clear failed. Check the server log."}finally{clearDBBtn.disabled=false}});
@@ -20104,8 +20142,8 @@ clearDBBtn.addEventListener("click",async()=>{if(!confirm("Clear all saved quiz 
 def settings_reset_page():
     return render_template_string(r"""
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Reset & Recovery Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
-<body class="settings-detail-page settings-reset-page"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><div><span class="settings-eyebrow">SETTINGS / RESET &amp; RECOVERY</span><h1>⚠️ Reset &amp; Recovery</h1><p>Choose the narrowest reset that solves the problem. DLMS creates a safety backup before each reset; permanent data removal is separately guarded and does not create an in-place backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
+<body class="dashboard-home settings-detail-page settings-reset-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / RESET &amp; RECOVERY</span><h1>⚠️ Reset &amp; Recovery</h1><p>Choose the narrowest reset that solves the problem. DLMS creates a safety backup before each reset; permanent data removal is separately guarded and does not create an in-place backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 <div class="settings-detail-card settings-reset-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-red">Q</div><div><h2>Reset Quiz Library &amp; Results</h2><p>Remove generated quizzes, quiz database records, attempts/history, quiz assets, and quiz logos while preserving source content and settings.</p></div></div><div class="settings-warning-panel"><strong>Preserved:</strong><span>Study/Content Packs, Smart PDF question/terminology banks, drafts, Law Study content, configuration, and existing backup archives.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_quiz_library" data-label="Quiz Library & Results" type="button">Reset Quiz Library &amp; Results</button></section>
 
@@ -20120,6 +20158,7 @@ def settings_reset_page():
 <div id="resetStatus" class="settings-operation-status" aria-live="polite"></div><div class="settings-form-actions"><button type="button" class="settings-secondary-button" onclick="location.href='/settings'">← Back to Settings</button><button type="button" class="settings-secondary-button" onclick="location.href='/settings/data'">💾 Backup &amp; Restore</button></div></div>
 <div class="settings-scope-note"><strong>Reset vs. removal:</strong> “Reset DLMS to Fresh State” preserves backup ZIPs and recreates the runtime structure so DLMS remains immediately usable. “Remove DLMS Data from This Computer” deletes the entire DLMS runtime-data directory, including backups, and shuts the application down. Neither action removes the executable/source installation.</div>
 </div>
+</main></div>
 <script>
 const resetStatus=document.getElementById("resetStatus");
 document.querySelectorAll(".resetAction").forEach(btn=>btn.addEventListener("click",async()=>{const label=btn.dataset.label;if(!confirm(`⚠ ${label} ⚠\n\nDLMS will create a safety backup first, then perform this reset.\n\nContinue?`))return;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=true);resetStatus.textContent=`Creating safety backup and resetting ${label}...`;try{const res=await fetch(btn.dataset.endpoint,{method:"POST"});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"Reset returned non-ok status");resetStatus.textContent=`✅ ${label} reset completed. Safety backup: ${data.backup||"created"}`;alert(`${label} reset completed.\n\nSafety backup: ${data.backup||"created"}`);location.reload()}catch(err){console.error("[RESET]",err);resetStatus.textContent=`❌ Reset failed: ${err.message}`;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=false)}}));

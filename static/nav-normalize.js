@@ -60,11 +60,10 @@
     if (key === 'analytics') return path === '/dashboard';
     if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile' || path === '/review-schedule' || path === '/learning-diagnostics';
     if (key === 'anki') return path === '/anki' || path.startsWith('/anki/');
-    if (key === 'settings') return path === '/settings' || path.startsWith('/settings/');
+    if (key === 'settings') return path === '/settings' || path.startsWith('/settings/') || path === '/admin/maintenance';
     if (key === 'content') return path === '/content-packs' || path.startsWith('/content-packs/');
     if (key === 'image') return path === '/admin/image-editor' || path.startsWith('/admin/image-editor/') || path.startsWith('/admin/hotspots');
     if (key === 'help') return path === '/help' || path.startsWith('/help/') || path.startsWith('/regex-help') || path.endsWith('help.html');
-    if (key === 'maintenance') return path === '/admin/maintenance';
     return false;
   };
 
@@ -106,8 +105,7 @@
     item('settings','/settings','⚙','Settings'),
     item('content','/content-packs','⬡','Content Packs'),
     item('image','/admin/image-editor','◎','Image Study Editor'),
-    item('help','/help','?','Help'),
-    item('maintenance','/admin/maintenance','⌘','Maintenance')
+    item('help','/help','?','Help')
   ].join('');
 
   const oldNavs = Array.from(sidebar.querySelectorAll(':scope > nav.dashboard-nav'));
@@ -117,6 +115,10 @@
   anchor.before(primary, section, system);
   oldNavs.forEach(el => el.remove());
   oldLabels.forEach(el => el.remove());
+
+  document.querySelector('[data-settings-menu]')?.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+  });
 
   // Quick theme chooser. Settings > Appearance remains the authoritative
   // place to manage appearance; this compact control is only a convenience.
