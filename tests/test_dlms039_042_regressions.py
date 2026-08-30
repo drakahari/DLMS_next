@@ -119,19 +119,28 @@ class Dlms039To042RegressionTests(unittest.TestCase):
         finally:
             conn.close()
         client = dlms.app.test_client()
-        with mock.patch.object(dlms, "rebuild_quiz_json_from_db", return_value=True) as rebuild_json, \
-             mock.patch.object(dlms, "rebuild_quiz_html_from_registry", return_value=True) as rebuild_html:
-            add = client.post(
-                f"/edit_quiz/{quiz_id}", data={"action": f"add_match_pair_{question_id}"},
-                headers={"X-CSRFToken": csrf_token(client)},
-            )
-            delete = client.post(
-                f"/delete_match_pair/{quiz_id}/{pair_id}", headers={"X-CSRFToken": csrf_token(client)},
-            )
+        add = client.post(
+            f"/edit_quiz/{quiz_id}", data={"action": f"add_match_pair_{question_id}"},
+            headers={"X-CSRFToken": csrf_token(client)},
+        )
+        delete = client.post(
+            f"/delete_match_pair/{quiz_id}/{pair_id}", headers={"X-CSRFToken": csrf_token(client)},
+        )
         self.assertEqual(302, add.status_code)
         self.assertEqual(302, delete.status_code)
-        self.assertTrue(rebuild_json.called)
-        self.assertTrue(rebuild_html.called)
+        conn = dlms.get_db()
+        try:
+            remaining = conn.execute(
+                "SELECT left_text, right_text FROM matching_pairs WHERE question_id = ? ORDER BY pair_order",
+                (question_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(3, len(remaining))
+        self.assertIn(("New term", "New match"), [tuple(row) for row in remaining])
+        entry = next(item for item in dlms.load_registry() if item["id"] == quiz_id)
+        self.assertTrue((Path(dlms.DATA_FOLDER) / entry["html"].replace(".html", ".json")).is_file())
+        self.assertTrue((Path(dlms.QUIZ_FOLDER) / entry["html"]).is_file())
 
     def test_manual_and_csv_matching_workflows_use_shared_validation(self):
         client = dlms.app.test_client()

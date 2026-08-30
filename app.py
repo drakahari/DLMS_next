@@ -11986,22 +11986,8 @@ def law_export_case_review_txt(case_id):
 
 
 
-def rebuild_quiz_json_from_db(quiz_id):
-    conn = get_db()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    registry = load_registry()
-    quiz_entry = next((q for q in registry if q.get("id") == quiz_id), None)
-
-    if not quiz_entry or not quiz_entry.get("html"):
-        conn.close()
-        print("[EDIT] Could not find quiz registry entry for JSON rebuild:", quiz_id)
-        return False
-
-    json_name = quiz_entry["html"].replace(".html", ".json")
-    json_path = os.path.join(DATA_FOLDER, json_name)
-
+def _quiz_json_payload_from_db(cur, quiz_id):
+    """Serialize one quiz from the caller's current SQLite transaction."""
     questions = cur.execute(
         """
         SELECT id, question_number, question_text,
@@ -12116,41 +12102,225 @@ def rebuild_quiz_json_from_db(quiz_id):
             choice_item["source"] = source
         quiz_data.append(choice_item)
 
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(quiz_data, f, indent=4)
+    return quiz_data
 
-    conn.close()
+
+def _quiz_registry_entry(registry, quiz_id):
+    return next(
+        (entry for entry in registry if str(entry.get("id")) == str(quiz_id)),
+        None,
+    )
+
+
+def _quiz_artifact_names(quiz_entry):
+    html_name = str((quiz_entry or {}).get("html") or "")
+    if (
+        not html_name.endswith(".html")
+        or html_name != os.path.basename(html_name)
+        or "/" in html_name
+        or "\\" in html_name
+    ):
+        raise ValueError("Quiz registry entry has an unsafe or missing HTML filename")
+    return html_name, html_name[:-5] + ".json"
+
+
+def rebuild_quiz_json_from_db(quiz_id, *, conn=None, quiz_entry=None, output_path=None):
+    owns_connection = conn is None
+    if owns_connection:
+        conn = get_db()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    if quiz_entry is None:
+        quiz_entry = _quiz_registry_entry(load_registry(), quiz_id)
+    if not quiz_entry:
+        if owns_connection:
+            conn.close()
+        print("[EDIT] Could not find quiz registry entry for JSON rebuild:", quiz_id)
+        return False
+
+    _, json_name = _quiz_artifact_names(quiz_entry)
+    json_path = output_path or os.path.join(DATA_FOLDER, json_name)
+    temp_path = None
+    try:
+        payload = _quiz_json_payload_from_db(cur, quiz_id)
+        if output_path is None:
+            os.makedirs(os.path.dirname(json_path), exist_ok=True)
+            temp_path = json_path + f".tmp-{secrets.token_hex(8)}"
+            _write_staged_quiz_json(temp_path, payload)
+            os.replace(temp_path, json_path)
+            temp_path = None
+        else:
+            _write_staged_quiz_json(json_path, payload)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+        if owns_connection:
+            conn.close()
+
     print("[EDIT] Rebuilt quiz JSON:", json_path)
     return True
 
 
 
-def rebuild_quiz_html_from_registry(quiz_id):
-    registry = load_registry()
-    quiz_entry = next((q for q in registry if q.get("id") == quiz_id), None)
+def rebuild_quiz_html_from_registry(quiz_id, *, quiz_entry=None, output_path=None):
+    if quiz_entry is None:
+        quiz_entry = _quiz_registry_entry(load_registry(), quiz_id)
 
-    if not quiz_entry or not quiz_entry.get("html"):
+    if not quiz_entry:
         print("[EDIT] Could not find quiz registry entry for HTML rebuild:", quiz_id)
         return False
 
-    html_name = quiz_entry["html"]
-    json_name = html_name.replace(".html", ".json")
-
-    html_path = os.path.join(QUIZ_FOLDER, html_name)
-
-    build_quiz_html(
-        html_name,
-        json_name,
-        html_path,
-        get_portal_title(),
-        quiz_entry.get("title") or "Edited Quiz",
-        quiz_entry.get("logo"),
-        quiz_id,
-        quiz_entry.get("exam_minutes", 90)
-    )
+    html_name, json_name = _quiz_artifact_names(quiz_entry)
+    html_path = output_path or os.path.join(QUIZ_FOLDER, html_name)
+    temp_path = None
+    try:
+        render_path = html_path
+        if output_path is None:
+            os.makedirs(os.path.dirname(html_path), exist_ok=True)
+            temp_path = html_path + f".tmp-{secrets.token_hex(8)}"
+            render_path = temp_path
+        build_quiz_html(
+            html_name,
+            json_name,
+            render_path,
+            get_portal_title(),
+            quiz_entry.get("title") or "Edited Quiz",
+            quiz_entry.get("logo"),
+            quiz_id,
+            quiz_entry.get("exam_minutes", 90)
+        )
+        if not os.path.isfile(render_path) or os.path.getsize(render_path) == 0:
+            raise RuntimeError("Generated quiz HTML is empty or missing")
+        if temp_path:
+            os.replace(temp_path, html_path)
+            temp_path = None
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
     print("[EDIT] Rebuilt quiz HTML:", html_path)
     return True
+
+
+def _commit_quiz_mutation(conn):
+    """Commit boundary kept separate for deterministic mutation fault tests."""
+    conn.commit()
+
+
+def _stage_quiz_mutation_artifacts(conn, quiz_id, quiz_entry):
+    staging_root = _quiz_publication_staging_root()
+    os.makedirs(staging_root, exist_ok=True)
+    staging_dir = tempfile.mkdtemp(prefix="mutation_", dir=staging_root)
+    html_name, json_name = _quiz_artifact_names(quiz_entry)
+    staged_json = os.path.join(staging_dir, json_name)
+    staged_html = os.path.join(staging_dir, html_name)
+    try:
+        if not rebuild_quiz_json_from_db(
+            quiz_id, conn=conn, quiz_entry=quiz_entry, output_path=staged_json
+        ):
+            raise RuntimeError("Quiz JSON staging failed")
+        if not rebuild_quiz_html_from_registry(
+            quiz_id, quiz_entry=quiz_entry, output_path=staged_html
+        ):
+            raise RuntimeError("Quiz HTML staging failed")
+        return {
+            "staging_dir": staging_dir,
+            "files": [
+                (staged_json, os.path.join(DATA_FOLDER, json_name)),
+                (staged_html, os.path.join(QUIZ_FOLDER, html_name)),
+            ],
+        }
+    except Exception:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
+
+
+def _promote_quiz_mutation_artifacts(staged):
+    """Replace live edit artifacts atomically while retaining exact rollback copies."""
+    promoted = []
+    try:
+        for index, (staged_path, final_path) in enumerate(staged["files"]):
+            os.makedirs(os.path.dirname(final_path), exist_ok=True)
+            backup_path = os.path.join(
+                staged["staging_dir"], f"previous_{index}_{os.path.basename(final_path)}"
+            )
+            existed = os.path.isfile(final_path)
+            if existed:
+                shutil.copy2(final_path, backup_path)
+            os.replace(staged_path, final_path)
+            promoted.append((final_path, backup_path, existed))
+        return promoted
+    except Exception:
+        _restore_quiz_mutation_artifacts(promoted)
+        raise
+
+
+def _restore_quiz_mutation_artifacts(promoted):
+    errors = []
+    for final_path, backup_path, existed in reversed(promoted):
+        try:
+            if existed and os.path.isfile(backup_path):
+                os.replace(backup_path, final_path)
+            elif not existed and os.path.lexists(final_path) and not os.path.islink(final_path):
+                os.remove(final_path)
+        except Exception as exc:
+            errors.append(exc)
+    if errors:
+        raise RuntimeError("Quiz artifact rollback could not be completed") from errors[0]
+
+
+def _remove_new_quiz_logo(filename, original_registry):
+    if not filename or any(entry.get("logo") == filename for entry in original_registry):
+        return
+    path = os.path.join(LOGO_FOLDER, filename)
+    if os.path.basename(path) == filename and os.path.isfile(path) and not os.path.islink(path):
+        os.remove(path)
+
+
+def _finish_quiz_mutation(conn, quiz_id, registry_updates=None, new_logo_filename=None):
+    """Publish one existing-quiz mutation or compensate every handled failure."""
+    staged = None
+    promoted = []
+    original_registry = None
+    registry_attempted = False
+    try:
+        with registry_lock:
+            original_registry = load_registry()
+            updated_registry = [dict(entry) for entry in original_registry]
+            quiz_entry = _quiz_registry_entry(updated_registry, quiz_id)
+            if not quiz_entry:
+                raise RuntimeError("Quiz registry entry is missing")
+            if registry_updates:
+                quiz_entry.update(registry_updates)
+
+            staged = _stage_quiz_mutation_artifacts(conn, quiz_id, quiz_entry)
+            promoted = _promote_quiz_mutation_artifacts(staged)
+            registry_attempted = True
+            save_registry(updated_registry)
+            _commit_quiz_mutation(conn)
+    except Exception:
+        conn.rollback()
+        rollback_errors = []
+        if original_registry is not None and registry_attempted:
+            try:
+                save_registry(original_registry)
+            except Exception as exc:
+                rollback_errors.append(exc)
+        try:
+            _restore_quiz_mutation_artifacts(promoted)
+        except Exception as exc:
+            rollback_errors.append(exc)
+        try:
+            _remove_new_quiz_logo(new_logo_filename, original_registry or [])
+        except Exception as exc:
+            rollback_errors.append(exc)
+        if rollback_errors:
+            raise RuntimeError("Quiz edit failed and rollback was incomplete") from rollback_errors[0]
+        raise
+    finally:
+        if staged:
+            shutil.rmtree(staged["staging_dir"], ignore_errors=True)
 
 
 @app.route("/admin/rebuild_all_quiz_html", methods=["POST"])
@@ -12222,6 +12392,78 @@ def _quiz_owns_matching_pair(cur, quiz_id, pair_id):
     ).fetchone() is not None
 
 
+def _quiz_edit_validation(cur, quiz_id):
+    errors = []
+    warnings = []
+    questions = cur.execute(
+        """
+        SELECT id, question_number, COALESCE(question_type, 'choice') AS question_type
+        FROM questions
+        WHERE quiz_id = ?
+        ORDER BY question_number
+        """,
+        (quiz_id,),
+    ).fetchall()
+    for question in questions:
+        if question["question_type"] == "matching":
+            pair_rows = cur.execute(
+                "SELECT id, left_text, right_text FROM matching_pairs WHERE question_id = ?",
+                (question["id"],),
+            ).fetchall()
+            records = [
+                {"id": row["id"], "left": row["left_text"], "right": row["right_text"]}
+                for row in pair_rows
+            ]
+            errors.extend(_matching_record_validation_errors(
+                records,
+                context=f"quiz {quiz_id}, matching question {question['question_number']}",
+                left_key="left",
+                right_key="right",
+                record_name="pair",
+            ))
+            warnings.extend(_matching_case_only_term_warnings(
+                records,
+                context=f"quiz {quiz_id}, matching question {question['question_number']}",
+                left_key="left",
+                record_name="pair",
+            ))
+            continue
+
+        correct_count = cur.execute(
+            "SELECT COUNT(*) FROM choices WHERE question_id = ? AND is_correct = 1",
+            (question["id"],),
+        ).fetchone()[0]
+        if correct_count == 0:
+            errors.append(
+                f"Question {question['question_number']} must have at least one correct answer."
+            )
+    return errors, warnings
+
+
+def _publish_quiz_edit_request(conn, quiz_id, *, title, exam_minutes, logo_file, timestamp):
+    logo_filename = finalize_logo_from_request(app, timestamp, logo_file=logo_file)
+    updates = {"exam_minutes": exam_minutes}
+    if title:
+        updates["title"] = title
+        if logo_filename:
+            updates["logo"] = logo_filename
+    try:
+        _finish_quiz_mutation(
+            conn,
+            quiz_id,
+            registry_updates=updates,
+            new_logo_filename=logo_filename,
+        )
+    except Exception:
+        # A logo can be finalized before staging begins; remove only this new,
+        # request-owned file if the shared mutation helper did not reach cleanup.
+        try:
+            _remove_new_quiz_logo(logo_filename, load_registry())
+        except Exception:
+            pass
+        raise
+
+
 @app.route("/edit_quiz/<int:quiz_id>", methods=["POST"])
 def save_edited_quiz(quiz_id):
     conn = get_db()
@@ -12243,14 +12485,7 @@ def save_edited_quiz(quiz_id):
             return redirect(f"/edit_quiz/{quiz_id}")
 
     ts = int(time.time())
-
     quiz_logo = request.files.get("quiz_logo")
-
-    logo_filename = finalize_logo_from_request(
-        app,
-        ts,
-        logo_file=quiz_logo
-    )
 
     # =========================
     # SAVE CURRENT FORM VALUES FIRST
@@ -12263,29 +12498,6 @@ def save_edited_quiz(quiz_id):
             "UPDATE quizzes SET title = ? WHERE id = ?",
             (new_title, quiz_id)
         )
-
-        with registry_lock:
-            registry = load_registry()
-
-            for q in registry:
-                if q.get("id") == quiz_id:
-                    q["title"] = new_title
-
-                    if logo_filename:
-                        q["logo"] = logo_filename
-
-                    break
-
-            save_registry(registry)
-
-    # Save per-quiz Exam Mode duration independently of the SQLite schema.
-    with registry_lock:
-        registry = load_registry()
-        for q in registry:
-            if str(q.get("id")) == str(quiz_id):
-                q["exam_minutes"] = exam_minutes
-                break
-        save_registry(registry)
 
     questions = cur.execute(
         "SELECT id, COALESCE(question_type, 'choice') FROM questions WHERE quiz_id = ?",
@@ -12393,11 +12605,16 @@ def save_edited_quiz(quiz_id):
                 (question_id, label, f"Option {label}", 0)
             )
 
-        conn.commit()
-        conn.close()
-
-        rebuild_quiz_json_from_db(quiz_id)
-        rebuild_quiz_html_from_registry(quiz_id)
+        try:
+            _publish_quiz_edit_request(
+                conn, quiz_id, title=new_title, exam_minutes=exam_minutes,
+                logo_file=quiz_logo, timestamp=ts,
+            )
+        except Exception as exc:
+            print(f"[EDIT ERROR] Could not add question atomically: {exc}")
+            flash("Quiz changes could not be saved. The original quiz was preserved.", "error")
+        finally:
+            conn.close()
 
         return redirect(f"/edit_quiz/{quiz_id}")
 
@@ -12413,9 +12630,16 @@ def save_edited_quiz(quiz_id):
             "INSERT INTO matching_pairs(question_id, pair_order, left_text, right_text) VALUES (?, ?, ?, ?)",
             (question_id, next_order, "New term", "New match")
         )
-        conn.commit(); conn.close()
-        rebuild_quiz_json_from_db(quiz_id)
-        rebuild_quiz_html_from_registry(quiz_id)
+        try:
+            _publish_quiz_edit_request(
+                conn, quiz_id, title=new_title, exam_minutes=exam_minutes,
+                logo_file=quiz_logo, timestamp=ts,
+            )
+        except Exception as exc:
+            print(f"[EDIT ERROR] Could not add matching pair atomically: {exc}")
+            flash("Quiz changes could not be saved. The original quiz was preserved.", "error")
+        finally:
+            conn.close()
         return redirect(f"/edit_quiz/{quiz_id}")
 
     # =========================
@@ -12466,73 +12690,41 @@ def save_edited_quiz(quiz_id):
 
             label_index += 1
 
-        conn.commit()
-        conn.close()
-
-        rebuild_quiz_json_from_db(quiz_id)
-        rebuild_quiz_html_from_registry(quiz_id)
+        try:
+            _publish_quiz_edit_request(
+                conn, quiz_id, title=new_title, exam_minutes=exam_minutes,
+                logo_file=quiz_logo, timestamp=ts,
+            )
+        except Exception as exc:
+            print(f"[EDIT ERROR] Could not add choices atomically: {exc}")
+            flash("Quiz changes could not be saved. The original quiz was preserved.", "error")
+        finally:
+            conn.close()
 
         return redirect(f"/edit_quiz/{quiz_id}")
 
     # =========================
     # VALIDATION: each question must have at least one correct answer
     # =========================
-    questions = cur.execute(
-        """
-        SELECT id, question_number, COALESCE(question_type, 'choice') AS question_type
-        FROM questions
-        WHERE quiz_id = ?
-        ORDER BY question_number
-        """,
-        (quiz_id,)
-    ).fetchall()
+    validation_errors, validation_warnings = _quiz_edit_validation(cur, quiz_id)
+    if validation_errors:
+        conn.rollback()
+        conn.close()
+        flash("; ".join(validation_errors), "error")
+        return redirect(url_for("edit_quiz", quiz_id=quiz_id))
+    for warning in validation_warnings:
+        flash(warning, "warning")
 
-    for q in questions:
-        if q["question_type"] == "matching":
-            pair_rows = cur.execute(
-                "SELECT id, left_text, right_text FROM matching_pairs WHERE question_id = ?",
-                (q["id"],)
-            ).fetchall()
-            matching_errors = _matching_record_validation_errors(
-                [
-                    {"id": row["id"], "left": row["left_text"], "right": row["right_text"]}
-                    for row in pair_rows
-                ],
-                context=f"quiz {quiz_id}, matching question {q['question_number']}",
-                left_key="left",
-                right_key="right",
-                record_name="pair",
-            )
-            if matching_errors:
-                conn.rollback(); conn.close()
-                flash("; ".join(matching_errors), "error")
-                return redirect(url_for("edit_quiz", quiz_id=quiz_id))
-            for warning in _matching_case_only_term_warnings(
-                [
-                    {"left": row["left_text"], "right": row["right_text"]}
-                    for row in pair_rows
-                ],
-                context=f"quiz {quiz_id}, matching question {q['question_number']}",
-                left_key="left",
-                record_name="pair",
-            ):
-                flash(warning, "warning")
-            continue
-
-        correct_count = cur.execute(
-            "SELECT COUNT(*) FROM choices WHERE question_id = ? AND is_correct = 1",
-            (q["id"],)
-        ).fetchone()[0]
-        if correct_count == 0:
-            conn.rollback(); conn.close()
-            flash(f"Question {q['question_number']} must have at least one correct answer.", "error")
-            return redirect(url_for("edit_quiz", quiz_id=quiz_id))
-
-    conn.commit()
-    conn.close()
-
-    rebuild_quiz_json_from_db(quiz_id)
-    rebuild_quiz_html_from_registry(quiz_id)
+    try:
+        _publish_quiz_edit_request(
+            conn, quiz_id, title=new_title, exam_minutes=exam_minutes,
+            logo_file=quiz_logo, timestamp=ts,
+        )
+    except Exception as exc:
+        print(f"[EDIT ERROR] Could not save quiz atomically: {exc}")
+        flash("Quiz changes could not be saved. The original quiz was preserved.", "error")
+    finally:
+        conn.close()
 
     return redirect(f"/edit_quiz/{quiz_id}")
 
@@ -12566,11 +12758,13 @@ def delete_question_from_quiz(quiz_id, question_id):
             (idx, q["id"])
         )
 
-    conn.commit()
-    conn.close()
-
-    rebuild_quiz_json_from_db(quiz_id)
-    rebuild_quiz_html_from_registry(quiz_id)
+    try:
+        _finish_quiz_mutation(conn, quiz_id)
+    except Exception as exc:
+        print(f"[EDIT ERROR] Could not delete question atomically: {exc}")
+        flash("The question could not be deleted. The original quiz was preserved.", "error")
+    finally:
+        conn.close()
 
     return redirect(f"/edit_quiz/{quiz_id}")
 
@@ -12631,11 +12825,13 @@ def add_choices_to_question(quiz_id, question_id):
 
         label_index += 1
 
-    conn.commit()
-    conn.close()
-
-    rebuild_quiz_json_from_db(quiz_id)
-    rebuild_quiz_html_from_registry(quiz_id)
+    try:
+        _finish_quiz_mutation(conn, quiz_id)
+    except Exception as exc:
+        print(f"[EDIT ERROR] Could not add choices atomically: {exc}")
+        flash("The choices could not be added. The original quiz was preserved.", "error")
+    finally:
+        conn.close()
 
     return redirect(f"/edit_quiz/{quiz_id}")
 
@@ -12694,11 +12890,13 @@ def delete_choice_from_question(quiz_id, choice_id):
         (choice_id,)
     )
 
-    conn.commit()
-    conn.close()
-
-    rebuild_quiz_json_from_db(quiz_id)
-    rebuild_quiz_html_from_registry(quiz_id)
+    try:
+        _finish_quiz_mutation(conn, quiz_id)
+    except Exception as exc:
+        print(f"[EDIT ERROR] Could not delete choice atomically: {exc}")
+        flash("The choice could not be deleted. The original quiz was preserved.", "error")
+    finally:
+        conn.close()
 
     return redirect(f"/edit_quiz/{quiz_id}")
 
@@ -12728,79 +12926,98 @@ def delete_match_pair_from_question(quiz_id, pair_id):
     remaining = cur.execute("SELECT id FROM matching_pairs WHERE question_id = ? ORDER BY pair_order, id", (question_id,)).fetchall()
     for idx, item in enumerate(remaining, start=1):
         cur.execute("UPDATE matching_pairs SET pair_order = ? WHERE id = ?", (idx, item[0]))
-    conn.commit()
-    conn.close()
-    rebuild_quiz_json_from_db(quiz_id)
-    rebuild_quiz_html_from_registry(quiz_id)
+    try:
+        _finish_quiz_mutation(conn, quiz_id)
+    except Exception as exc:
+        print(f"[EDIT ERROR] Could not delete matching pair atomically: {exc}")
+        flash("The matching pair could not be deleted. The original quiz was preserved.", "error")
+    finally:
+        conn.close()
     return redirect(f"/edit_quiz/{quiz_id}")
 
 
 # =========================
 # DELETE QUIZ (AUTHORITATIVE)
 # =========================
+def _commit_quiz_deletion(conn):
+    """Commit boundary kept separate for deterministic deletion fault tests."""
+    conn.commit()
+
+
+def _cleanup_deleted_quiz_artifacts(quiz_entry, remaining_registry):
+    """Best-effort cleanup after the DB and registry no longer expose a quiz."""
+    if not quiz_entry:
+        return
+    try:
+        html_name, json_name = _quiz_artifact_names(quiz_entry)
+        targets = [
+            os.path.join(QUIZ_FOLDER, html_name),
+            os.path.join(DATA_FOLDER, json_name),
+        ]
+        for target in targets:
+            if os.path.isfile(target) and not os.path.islink(target):
+                try:
+                    os.remove(target)
+                except Exception as exc:
+                    print(f"[DELETE CLEANUP ERROR] Could not remove {target}: {exc}")
+
+        asset_dir = os.path.join(QUIZ_ASSET_FOLDER, os.path.splitext(html_name)[0])
+        if os.path.isdir(asset_dir) and not os.path.islink(asset_dir):
+            try:
+                shutil.rmtree(asset_dir)
+            except Exception as exc:
+                print(f"[DELETE CLEANUP ERROR] Could not remove {asset_dir}: {exc}")
+    except Exception as exc:
+        print(f"[DELETE CLEANUP ERROR] Invalid recorded quiz artifacts: {exc}")
+
+    logo_name = str(quiz_entry.get("logo") or "")
+    logo_is_shared = any(entry.get("logo") == logo_name for entry in remaining_registry)
+    if logo_name and not logo_is_shared and logo_name == os.path.basename(logo_name):
+        logo_path = os.path.join(LOGO_FOLDER, logo_name)
+        if os.path.isfile(logo_path) and not os.path.islink(logo_path):
+            try:
+                os.remove(logo_path)
+            except Exception as exc:
+                print(f"[DELETE CLEANUP ERROR] Could not remove {logo_path}: {exc}")
+
+
 @app.route("/delete_quiz/<int:quiz_id>", methods=["POST"])
 def delete_quiz(quiz_id):
     print("[DELETE] Requested quiz_id:", quiz_id)
-
-    # -------------------------
-    # Load registry FIRST
-    # -------------------------
-    with registry_lock:
-        registry = load_registry()
-        kept = []
-
-        html_file = None
-        json_file = None
-        logo_file = None
-
-        for q in registry:
-            if q.get("id") == quiz_id:
-                print("[DELETE] Removing registry entry:", q)
-
-                html_file = q.get("html")
-
-                if html_file:
-                    json_file = html_file.replace(".html", ".json")
-
-                logo_file = q.get("logo")
-                continue
-
-            kept.append(q)
-
-        save_registry(kept)
-
-    # -------------------------
-    # Delete DB rows (authoritative)
-    # -------------------------
     conn = get_db()
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("DELETE FROM quizzes WHERE id = ?", (quiz_id,))
-    conn.commit()
-    conn.close()
+    deleted_entry = None
+    kept = []
+    try:
+        with registry_lock:
+            original_registry = load_registry()
+            for entry in original_registry:
+                if str(entry.get("id")) == str(quiz_id):
+                    deleted_entry = entry
+                    print("[DELETE] Removing registry entry:", entry)
+                else:
+                    kept.append(entry)
 
-    # -------------------------
-    # Delete files (best effort)
-    # -------------------------
-    if html_file:
-        hp = os.path.join(QUIZ_FOLDER, html_file)
-        if os.path.exists(hp):
-            os.remove(hp)
+            conn.execute("DELETE FROM quizzes WHERE id = ?", (quiz_id,))
+            registry_published = False
+            try:
+                save_registry(kept)
+                registry_published = True
+                _commit_quiz_deletion(conn)
+            except Exception:
+                conn.rollback()
+                if registry_published:
+                    save_registry(original_registry)
+                raise
+    except Exception as exc:
+        conn.rollback()
+        print(f"[DELETE ERROR] Quiz deletion was rolled back: {exc}")
+        flash("The quiz could not be deleted. The existing quiz was preserved.", "error")
+        return redirect("/library")
+    finally:
+        conn.close()
 
-    if json_file:
-        jp = os.path.join(DATA_FOLDER, json_file)
-        if os.path.exists(jp):
-            os.remove(jp)
-
-    if html_file:
-        asset_bucket = os.path.splitext(os.path.basename(html_file))[0]
-        asset_dir = os.path.join(QUIZ_ASSET_FOLDER, asset_bucket)
-        if os.path.isdir(asset_dir):
-            shutil.rmtree(asset_dir, ignore_errors=True)
-
-    if logo_file:
-        lp = os.path.join(LOGO_FOLDER, logo_file)
-        if os.path.exists(lp):
-            os.remove(lp)
+    _cleanup_deleted_quiz_artifacts(deleted_entry, kept)
 
     print("[DELETE] Completed quiz_id:", quiz_id)
     return redirect("/library")
