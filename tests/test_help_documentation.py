@@ -67,6 +67,8 @@ class HelpDocumentationTests(unittest.TestCase):
                     page = handle.read()
                 self.assertIn("Documentation for DLMS 3.0.2.", page)
                 self.assertNotRegex(page, r"Documentation for DLMS 3\.0\.[01]\.")
+                self.assertIn('/static/help-docs.css', page)
+                self.assertRegex(page, r'<body[^>]+class="[^"]*help-page[^"]*"')
                 self.assertIn("/static/help-navigation.js", page)
 
         toc = self._static("help-navigation.js")

@@ -17,6 +17,19 @@ class ThemeSystemTests(unittest.TestCase):
             return f.read()
 
     @staticmethod
+    def _help_css():
+        path = os.path.join(os.path.dirname(dlms.__file__), "static", "help-docs.css")
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @staticmethod
+    def _rule_blocks(css, selector):
+        return [
+            body for prelude, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
+            if selector in {item.strip() for item in prelude.split(",")}
+        ]
+
+    @staticmethod
     def _css_variables(css):
         return dict(re.findall(r"--([\w-]+):\s*([^;]+);", css))
 
@@ -68,6 +81,107 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertIn("--theme-accent", css)
         self.assertIn("--theme-accent-text", css)
         self.assertIn("--theme-color-scheme", css)
+
+    def test_help_components_use_shared_semantic_theme_tokens(self):
+        css = self._help_css()
+        expected = {
+            ".help-panel": (
+                "--theme-panel-1", "--theme-panel-2", "--theme-border",
+                "--theme-page-text",
+            ),
+            ".help-panel p": ("--theme-muted-text",),
+            ".help-card": (
+                "--theme-surface", "--theme-border-soft", "--theme-page-text",
+            ),
+            ".help-card p": ("--theme-muted-text",),
+            ".help-steps > div": ("--theme-muted-text",),
+            ".help-shot": ("--theme-surface-2", "--theme-border-soft"),
+            ".help-shot figcaption": (
+                "--theme-surface", "--theme-muted-text", "--theme-border-soft",
+            ),
+            ".help-toc": (
+                "--theme-surface", "--theme-page-text", "--theme-border-soft",
+            ),
+            ".help-toc a": ("--theme-muted-text",),
+            ".help-topic-nav a": (
+                "--theme-surface", "--theme-link", "--theme-border-soft",
+            ),
+            ".help-index-card": (
+                "--theme-panel-1", "--theme-panel-2", "--theme-page-text",
+            ),
+            ".help-lightbox-dialog": (
+                "--theme-surface-2", "--theme-border", "--theme-shadow",
+            ),
+            ".help-lightbox-caption": (
+                "--theme-surface", "--theme-muted-text", "--theme-border-soft",
+            ),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing Help CSS rule for {selector}")
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must resolve through semantic theme tokens {tokens}",
+                )
+
+    def test_help_step_markup_variants_share_theme_aware_styling(self):
+        css = self._help_css()
+        step = self._rule_blocks(css, ".help-steps > div")
+        self.assertTrue(step)
+        self.assertTrue(any("counter-increment: helpstep" in block for block in step))
+        self.assertTrue(any("display: grid" in block for block in step))
+        self.assertTrue(any("--theme-muted-text" in block for block in step))
+
+        marker = self._rule_blocks(css, ".help-steps > div::before")
+        self.assertTrue(marker)
+        self.assertTrue(any("--theme-accent" in block for block in marker))
+        self.assertTrue(any("--theme-body-base" in block for block in marker))
+
+    def test_help_navigation_and_focus_states_are_theme_aware(self):
+        css = self._help_css()
+        toc_state = self._rule_blocks(css, ".help-toc a.active")
+        self.assertTrue(toc_state)
+        self.assertTrue(any("--theme-heading" in block for block in toc_state))
+        self.assertTrue(any("--theme-accent" in block for block in toc_state))
+        self.assertTrue(any("--theme-surface-2" in block for block in toc_state))
+
+        visited = self._rule_blocks(css, ".help-doc a:visited")
+        self.assertTrue(any("--theme-link" in block for block in visited))
+
+        focus = self._rule_blocks(css, ".help-doc a:focus-visible")
+        self.assertTrue(focus)
+        self.assertTrue(any("outline: 3px solid var(--theme-accent-text" in block for block in focus))
+        self.assertTrue(any("outline-offset: 3px" in block for block in focus))
+
+    def test_help_text_contrast_across_all_four_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                surface = self._composite(variables["theme-surface"], panel)
+                surface_2 = self._composite(variables["theme-surface-2"], panel)
+                accent = self._rgba(variables["theme-accent"])[:3]
+                combinations = {
+                    "panel body": (variables["theme-muted-text"], panel),
+                    "nested card body": (variables["theme-muted-text"], surface),
+                    "panel heading": (variables["theme-heading"], panel),
+                    "nested card text": (variables["theme-page-text"], surface),
+                    "topic link": (variables["theme-link"], surface),
+                    "path text": (variables["theme-accent-text"], surface_2),
+                    "step marker": (variables["theme-body-base"], accent),
+                }
+                for role, (foreground, background) in combinations.items():
+                    ratio = self._contrast(foreground, background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5, f"{theme} Help {role} is only {ratio:.2f}:1",
+                    )
 
     def test_theme_api_rejects_unknown_theme(self):
         client = dlms.app.test_client()
