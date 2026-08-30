@@ -125,24 +125,34 @@ class HelpDocumentationTests(unittest.TestCase):
     def test_visual_guides_have_required_screenshots_alt_text_and_captions(self):
         expected_assets = {
             "help-learning-intelligence.html": (
-                "learning-topics.png",
-                "learning-review-schedule.png",
-                "learning-diagnostics-confusions.png",
-                "learning-question-quality.png",
+                ("mastery", "learning-topics.png"),
+                ("reviews", "learning-review-schedule.png"),
+                ("diagnostics", "learning-diagnostics-confusions.png"),
+                ("diagnostics", "learning-question-quality.png"),
             ),
-            "help-study-packs.html": ("ai-builder-zip-return.png", "study-pack-validation.png"),
-            "help-anki.html": ("anki-print-controls.png", "anki-print-front.png", "anki-print-back.png"),
-            "help-study-modules.html": ("law-create-case.png", "law-import-packet.png"),
-            "help-settings.html": ("settings-navigation.png",),
-            "help-maintenance.html": ("system-tools.png",),
+            "help-study-packs.html": (("ai-workflow", "ai-builder-zip-return.png"), ("ai-workflow", "study-pack-validation.png")),
+            "help-anki.html": (("printable", "anki-print-controls.png"), ("printable", "anki-print-front.png"), ("printable", "anki-print-back.png")),
+            "help-study-modules.html": (("law", "law-create-case.png"), ("law", "law-import-packet.png")),
+            "help-settings.html": (("navigation", "settings-navigation.png"),),
+            "help-maintenance.html": (("tools", "system-tools.png"),),
         }
-        for filename, assets in expected_assets.items():
+        for filename, placements in expected_assets.items():
             page = self._static(filename)
-            for asset in assets:
-                with self.subTest(page=filename, asset=asset):
+            for section_id, asset in placements:
+                with self.subTest(page=filename, section=section_id, asset=asset):
+                    start = page.index(f'id="{section_id}"')
+                    end = page.find('<section ', start + 1)
+                    section = page[start:] if end < 0 else page[start:end]
                     self.assertIn(f'/static/help_assets/{asset}', page)
-                    self.assertRegex(page, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+alt="[^"]+"')
-                    self.assertRegex(page, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+></a><figcaption>[^<]+</figcaption>')
+                    self.assertIn(f'/static/help_assets/{asset}', section)
+                    self.assertRegex(section, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+alt="[^"]+"')
+                    self.assertRegex(section, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+class="help-screenshot-052b"[^>]+loading="eager"[^>]*></a><figcaption>[^<]+</figcaption>')
+                    response = self.client.get(f'/static/help_assets/{asset}')
+                    try:
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(response.mimetype, 'image/png')
+                    finally:
+                        response.close()
 
     def test_help_topic_links_target_registered_topics(self):
         topic_reference = re.compile(r'''href=["']/help/([^"'#?]+)''')
