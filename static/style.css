@@ -7257,6 +7257,25 @@ a.settings-hub-card:hover {
     margin-right: var(--dlms-space-xs);
 }
 .medical-ai-builder-form { display: grid; gap: 18px; }
+.study-pack-workflow-steps {
+    display: flex; flex-wrap: wrap; gap: var(--dlms-space-sm); margin: var(--dlms-space-lg) 0;
+    padding: 0; list-style: none;
+}
+.study-pack-workflow-steps li {
+    display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--dlms-space-md);
+    border: 1px solid var(--theme-border-soft, rgba(98,155,255,.24)); border-radius: 999px;
+    background: var(--theme-surface-2, rgba(17,31,56,.78)); color: var(--theme-muted-text, #bcc9dc);
+    font-size: 12px; font-weight: 750;
+}
+.study-pack-workflow-steps li.is-current {
+    border-color: var(--theme-accent, #4ba4ff); color: var(--theme-accent-text, #fff);
+}
+.study-pack-workflow-steps li.is-complete { color: var(--theme-page-text, #eaf2ff); }
+.study-pack-builder-return-panel {
+    margin-top: var(--dlms-space-xl); padding: var(--dlms-space-xl);
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+}
+.study-pack-builder-return-form { max-width: 720px; }
 .medical-ai-topic-field,.medical-ai-controls-grid label { display: grid; gap: 7px; }
 .medical-ai-topic-field > span,.medical-ai-controls-grid label > span {
     color: #dce9f9; font-size: 13px; font-weight: 750;
@@ -7355,7 +7374,23 @@ a.settings-hub-card:hover {
    GENERIC STUDY PACK PLATFORM + IMAGE STUDY EDITOR
    ========================================================= */
 .study-pack-launch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:20px 0}.study-pack-launch{display:flex;gap:18px;align-items:flex-start;color:inherit;text-decoration:none;padding:24px}.study-pack-launch:hover{text-decoration:none;transform:translateY(-2px)}.study-pack-launch-icon{width:52px;height:52px;display:grid;place-items:center;flex:0 0 52px;border-radius:14px;background:rgba(31,104,180,.28);border:1px solid rgba(95,170,255,.32);font-weight:800}.study-pack-section{margin-top:20px}.study-pack-section>h3{margin-top:24px}.study-ai-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.study-ai-grid label{display:grid;gap:7px}.study-ai-grid label>span{font-size:13px;font-weight:750;color:#dce9f9}.study-ai-grid select{box-sizing:border-box;width:100%;min-height:46px;padding:10px 12px;border-radius:10px;border:1px solid rgba(91,146,215,.42);background:rgba(3,13,30,.78);color:#eaf3ff;color-scheme:dark}.image-editor-mode-tabs{display:flex;gap:8px;margin-bottom:16px}.image-editor-mode-tabs button{background:rgba(10,31,58,.72)}.image-editor-mode-tabs button.active{background:linear-gradient(135deg,#1565d8,#1c8cf0)}.image-prep-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px}.image-prep-controls label{display:grid;gap:7px}.image-prep-controls input,.image-prep-controls select{box-sizing:border-box;min-height:42px;width:100%}.image-edit-overlay,.quiz-image-edit-overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden}.image-edit-item,.quiz-image-edit{position:absolute;box-sizing:border-box}.image-edit-item.mask.blur,.quiz-image-edit.mask.blur{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);background:rgba(170,170,170,.12);border:1px dashed rgba(255,255,255,.45)}.image-edit-item.mask.white,.quiz-image-edit.mask.white{background:#fff}.image-edit-item.mask.black,.quiz-image-edit.mask.black{background:#000}.image-edit-item.text,.quiz-image-edit.text{transform:translate(-50%,-50%);padding:3px 6px;border-radius:5px;font-weight:700;line-height:1.2;white-space:pre-wrap;max-width:50%;text-align:center}.image-edit-item.text.light,.quiz-image-edit.text.light{color:#fff;background:rgba(0,0,0,.68);text-shadow:0 1px 2px #000}.image-edit-item.text.dark,.quiz-image-edit.text.dark{color:#111;background:rgba(255,255,255,.82)}.hotspot-editor-stage{position:relative}.hotspot-editor-stage #editorOverlay{z-index:2}.hotspot-editor-stage #editorSvg{z-index:3}.hotspot-editor-stage #testMarker{z-index:4}.hotspot-image-wrap{position:relative}.quiz-image-edit-overlay{z-index:2}.hotspot-click-marker,.hotspot-correct-marker{z-index:4}
+.study-pack-installed-notice {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--dlms-space-lg);
+    margin-bottom: var(--dlms-space-xl); padding: var(--dlms-space-lg) var(--dlms-space-xl);
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+}
+.study-pack-installed-notice > div { min-width: 0; }
+.study-pack-installed-notice strong { display: block; color: var(--theme-heading, #fff); overflow-wrap: anywhere; }
+.study-pack-installed-notice p { margin: var(--dlms-space-xs) 0 0; color: var(--theme-muted-text, #bcc9dc); line-height: 1.5; }
+.study-pack-section.is-newly-installed { border-color: var(--theme-accent, #4ba4ff); }
 @media(max-width:900px){.study-pack-launch-grid{grid-template-columns:1fr}.study-ai-grid,.image-prep-controls{grid-template-columns:1fr}}
+@media (max-width: 560px) {
+    .study-pack-workflow-steps { gap: var(--dlms-space-xs); }
+    .study-pack-workflow-steps li { font-size: 11px; padding: 0 var(--dlms-space-sm); }
+    .study-pack-builder-return-panel { padding: var(--dlms-space-lg); }
+    .study-pack-installed-notice { align-items: stretch; flex-direction: column; padding: var(--dlms-space-lg); }
+    .study-pack-installed-notice .medical-primary-button { text-align: center; }
+}
 
 
 /* =========================================================

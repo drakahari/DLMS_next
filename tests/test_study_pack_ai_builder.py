@@ -94,6 +94,14 @@ class StudyPackAIBuilderTests(unittest.TestCase):
         self.assertTrue(prompt.endswith("CUSTOM FOOTER"))
         self.assertNotIn("STUDY QUALITY RULES", prompt)
 
+    def test_generated_prompt_offers_guided_zip_return_step(self):
+        page = self._post_builder().get_data(as_text=True)
+        self.assertIn('aria-label="AI Study Pack workflow"', page)
+        self.assertIn("Bring Back Study Pack ZIP", page)
+        self.assertIn('action="/study-packs/ai-builder/import"', page)
+        self.assertIn('name="pack_zip"', page)
+        self.assertIn("Text-only AI responses are not installable", page)
+
 
 if __name__ == "__main__":
     unittest.main()

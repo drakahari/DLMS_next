@@ -2,13 +2,14 @@
 Run from the project root with: python -m unittest tests.test_content_pack_validation
 The suite uses an isolated temporary APP_DATA_DIR and never touches real DLMS data.
 """
-import json, os, tempfile, unittest, zipfile
+import io, json, os, tempfile, unittest, zipfile
 from pathlib import Path
 from unittest import mock
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-pack-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 import app as dlms
+from tests.csrf_test_utils import csrf_token
 
 
 def _bind_dlms_test_paths():
@@ -352,6 +353,167 @@ class ContentPackValidationTests(unittest.TestCase):
             zf.writestr("../evil.txt","no")
         with self.assertRaises(ValueError):
             dlms._inspect_content_pack_zip(str(zpath))
+
+
+class GuidedAIStudyPackImportTests(unittest.TestCase):
+    def _zip_pack(self, root, *, pack_id="study_guided", invalid=False, warning=False):
+        pack = root / f"DLMS_Study_{pack_id}"
+        (pack / "data").mkdir(parents=True)
+        manifest = {
+            "schema_version": 0 if invalid else 1,
+            "id": pack_id,
+            "name": "Guided Import Pack",
+            "version": "1.0.0",
+            "content_domain": "general",
+            "datasets": [{"id": "terms", "title": "Terms", "type": "matching", "path": "data/terms.json"}],
+            "image_datasets": [],
+            "quiz_datasets": [],
+        }
+        data = {
+            "schema_version": 1,
+            "id": "terms",
+            "title": "Terms",
+            "source": {} if warning else {"organization": "DLMS Test", "license": "CC0"},
+            "concepts": ["guided-import"],
+            "terms": [
+                {"term": "Alpha", "definition": "First value.", "concepts": ["alpha"]},
+                {"term": "Beta", "definition": "Second value.", "concepts": ["beta"]},
+            ],
+        }
+        (pack / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (pack / "data" / "terms.json").write_text(json.dumps(data), encoding="utf-8")
+        archive = root / f"{pack_id}.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            for path in pack.rglob("*"):
+                if path.is_file():
+                    zf.write(path, path.relative_to(root).as_posix())
+        return archive
+
+    def _isolated_paths(self):
+        directory = tempfile.TemporaryDirectory(prefix="dlms-guided-pack-tests-")
+        root = Path(directory.name)
+        patches = (
+            mock.patch.object(dlms, "CONTENT_PACK_FOLDER", str(root / "content_packs")),
+            mock.patch.object(dlms, "CONTENT_PACK_STAGING_FOLDER", str(root / "content_pack_staging")),
+        )
+        return directory, root, patches
+
+    def _post_guided_zip(self, client, archive):
+        return client.post(
+            "/study-packs/ai-builder/import",
+            data={
+                "csrf_token": csrf_token(client, "/study-packs/ai-builder"),
+                "pack_zip": (io.BytesIO(archive.read_bytes()), archive.name),
+            },
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+
+    def test_guided_zip_uses_shared_stage_and_installs_to_targeted_study_pack(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            archive = self._zip_pack(root)
+            client = dlms.app.test_client()
+            response = self._post_guided_zip(client, archive)
+            self.assertEqual(302, response.status_code)
+            token = response.headers["Location"].rsplit("/", 1)[-1]
+            _, _, metadata = dlms._load_staged_content_pack(token)
+            self.assertEqual(dlms.CONTENT_PACK_AI_WORKFLOW, metadata.get("workflow"))
+
+            review = client.get(response.headers["Location"])
+            self.assertIn("AI STUDY PACK WORKFLOW", review.get_data(as_text=True))
+            self.assertIn("Back to AI Study Pack Builder", review.get_data(as_text=True))
+
+            installed = client.post(
+                f"/content-packs/import/{token}/install",
+                data={"csrf_token": csrf_token(client, response.headers["Location"]), "confirm_install": "yes"},
+                follow_redirects=False,
+            )
+            self.assertEqual(302, installed.status_code)
+            self.assertEqual("/study-packs?installed=study_guided", installed.headers["Location"])
+            self.assertIn("study_guided", dlms.discover_content_packs())
+            self.assertFalse((Path(dlms.CONTENT_PACK_STAGING_FOLDER) / token).exists())
+            loaded = dlms.load_content_pack_dataset("study_guided", "terms")
+            self.assertEqual(["guided-import"], loaded["concepts"])
+            landing = client.get(installed.headers["Location"]).get_data(as_text=True)
+            self.assertIn('id="installed-study-pack"', landing)
+            self.assertIn("Open Study Pack", landing)
+
+    def test_guided_invalid_and_warning_paths_keep_existing_validation_rules(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            client = dlms.app.test_client()
+            invalid = self._post_guided_zip(client, self._zip_pack(root, pack_id="study_invalid", invalid=True))
+            invalid_page = client.get(invalid.headers["Location"]).get_data(as_text=True)
+            self.assertIn("INSTALL BLOCKED", invalid_page)
+            self.assertNotIn('id="packReviewInstallForm"', invalid_page)
+
+            warning = self._post_guided_zip(client, self._zip_pack(root, pack_id="study_warning", warning=True))
+            warning_token = warning.headers["Location"].rsplit("/", 1)[-1]
+            warning_page = client.get(warning.headers["Location"]).get_data(as_text=True)
+            self.assertIn("Warnings", warning_page)
+            self.assertIn('id="packReviewInstallForm"', warning_page)
+            unconfirmed = client.post(
+                f"/content-packs/import/{warning_token}/install",
+                data={"csrf_token": csrf_token(client, warning.headers["Location"])},
+                follow_redirects=False,
+            )
+            self.assertEqual(302, unconfirmed.status_code)
+            self.assertEqual(warning.headers["Location"], unconfirmed.headers["Location"])
+            self.assertFalse((Path(dlms.CONTENT_PACK_FOLDER) / "DLMS_Study_study_warning").exists())
+
+    def test_guided_cancel_only_removes_its_own_stage_and_manual_import_stays_generic(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            archive = self._zip_pack(root)
+            client = dlms.app.test_client()
+            guided = self._post_guided_zip(client, archive)
+            guided_token = guided.headers["Location"].rsplit("/", 1)[-1]
+            manual = client.post(
+                "/content-packs/import",
+                data={
+                    "csrf_token": csrf_token(client, "/content-packs"),
+                    "pack_zip": (io.BytesIO(archive.read_bytes()), archive.name),
+                },
+                content_type="multipart/form-data",
+                follow_redirects=False,
+            )
+            manual_token = manual.headers["Location"].rsplit("/", 1)[-1]
+            _, _, manual_metadata = dlms._load_staged_content_pack(manual_token)
+            self.assertNotIn("workflow", manual_metadata)
+
+            cancelled = client.post(
+                f"/content-packs/import/{guided_token}/cancel",
+                data={"csrf_token": csrf_token(client, guided.headers["Location"])},
+                follow_redirects=False,
+            )
+            self.assertEqual("/study-packs/ai-builder", cancelled.headers["Location"])
+            self.assertFalse((Path(dlms.CONTENT_PACK_STAGING_FOLDER) / guided_token).exists())
+            self.assertTrue((Path(dlms.CONTENT_PACK_STAGING_FOLDER) / manual_token).exists())
+
+    def test_guided_install_failure_keeps_existing_content_unchanged(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            client = dlms.app.test_client()
+            response = self._post_guided_zip(client, self._zip_pack(root))
+            token = response.headers["Location"].rsplit("/", 1)[-1]
+            with mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                failed = client.post(
+                    f"/content-packs/import/{token}/install",
+                    data={"csrf_token": csrf_token(client, response.headers["Location"]), "confirm_install": "yes"},
+                    follow_redirects=False,
+                )
+            self.assertEqual(response.headers["Location"], failed.headers["Location"])
+            self.assertFalse((Path(dlms.CONTENT_PACK_FOLDER) / "DLMS_Study_study_guided").exists())
+            self.assertTrue((Path(dlms.CONTENT_PACK_STAGING_FOLDER) / token).exists())
 
 if __name__ == "__main__":
     unittest.main()

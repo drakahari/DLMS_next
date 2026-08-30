@@ -31,6 +31,27 @@ class CsrfProtectionTests(unittest.TestCase):
             400,
         )
 
+    def test_guided_study_pack_zip_intake_requires_same_origin_csrf(self):
+        self.assertEqual(
+            self.client.post(
+                "/study-packs/ai-builder/import",
+                data={"pack_zip": (io.BytesIO(b"PK-test"), "pack.zip")},
+                content_type="multipart/form-data",
+            ).status_code,
+            400,
+        )
+        headers = {"Origin": "https://attacker.example"}
+        response = self.client.post(
+            "/study-packs/ai-builder/import",
+            data={
+                "csrf_token": csrf_token(self.client, "/study-packs/ai-builder"),
+                "pack_zip": (io.BytesIO(b"PK-test"), "pack.zip"),
+            },
+            headers=headers,
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(403, response.status_code)
+
     def test_valid_form_and_json_header_tokens_succeed(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
             dlms, "PORTAL_CONFIG", os.path.join(directory, "portal.json")

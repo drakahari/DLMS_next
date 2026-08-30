@@ -5832,19 +5832,37 @@ def home():
 # CONTENT PACKS - STATUS
 # =========================
 
-@app.route("/content-packs/import", methods=["POST"])
-def content_pack_import():
-    upload = request.files.get("pack_zip")
-    if not upload or not upload.filename:
-        flash("Choose a DLMS Study Pack ZIP to validate.", "error")
-        return redirect("/content-packs")
-    if not str(upload.filename).lower().endswith(".zip"):
-        flash("Content Packs must be uploaded as ZIP files.", "error")
-        return redirect("/content-packs")
+CONTENT_PACK_AI_WORKFLOW = "ai-study-pack"
 
+
+def _content_pack_workflow(metadata):
+    """Return the one supported guided-import workflow, if any."""
+    if isinstance(metadata, dict) and metadata.get("workflow") == CONTENT_PACK_AI_WORKFLOW:
+        return CONTENT_PACK_AI_WORKFLOW
+    return None
+
+
+def _content_pack_workflow_return_url(metadata):
+    if _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW:
+        return url_for("study_pack_ai_builder")
+    return "/content-packs"
+
+
+def _stage_content_pack_upload(upload, *, workflow=None):
+    """Stage and independently validate a Study Pack ZIP before installation.
+
+    Both manual Content Pack imports and the guided AI Builder return path use
+    this exact intake boundary.  ``workflow`` is an internal display/redirect
+    context only; it never changes archive, validation, or install behavior.
+    """
+    if workflow not in {None, CONTENT_PACK_AI_WORKFLOW}:
+        raise ValueError("Unsupported Study Pack workflow")
+    if not upload or not upload.filename:
+        raise ValueError("Choose a DLMS Study Pack ZIP to validate")
+    if not str(upload.filename).lower().endswith(".zip"):
+        raise ValueError("Content Packs must be uploaded as ZIP files")
     if request.content_length and request.content_length > CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES:
-        flash("Study Pack ZIP is too large. Maximum upload size is 256 MB.", "error")
-        return redirect("/content-packs")
+        raise UploadTooLargeError("Study Pack ZIP is too large. Maximum upload size is 256 MB.")
 
     token = secrets.token_hex(16)
     stage_dir = _content_pack_stage_path(token)
@@ -5863,7 +5881,8 @@ def content_pack_import():
 
         metadata = {
             "token": token,
-            "root_name": inspection["root_name"],
+            # Store only a relative pack-root path; never trust client paths.
+            "root_name": f"extracted/{inspection['root_name']}",
             "extract_root": "extracted",
             "uploaded_name": secure_filename(upload.filename) or "study_pack.zip",
             "file_count": inspection["file_count"],
@@ -5871,17 +5890,48 @@ def content_pack_import():
             "report": report,
             "created_at": datetime.now().isoformat(timespec="seconds"),
         }
-        # Store only relative pack-root information; never trust client paths.
-        metadata["root_name"] = f"extracted/{inspection['root_name']}"
+        if workflow:
+            metadata["workflow"] = workflow
         with open(os.path.join(stage_dir, "stage.json"), "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
+        return token
+    except Exception:
+        shutil.rmtree(stage_dir, ignore_errors=True)
+        raise
 
+@app.route("/content-packs/import", methods=["POST"])
+def content_pack_import():
+    upload = request.files.get("pack_zip")
+    if not upload or not upload.filename:
+        flash("Choose a DLMS Study Pack ZIP to validate.", "error")
+        return redirect("/content-packs")
+    if not str(upload.filename).lower().endswith(".zip"):
+        flash("Content Packs must be uploaded as ZIP files.", "error")
+        return redirect("/content-packs")
+    if request.content_length and request.content_length > CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES:
+        flash("Study Pack ZIP is too large. Maximum upload size is 256 MB.", "error")
+        return redirect("/content-packs")
+    try:
+        token = _stage_content_pack_upload(upload)
         return redirect(url_for("content_pack_import_review", token=token))
     except Exception as exc:
-        shutil.rmtree(stage_dir, ignore_errors=True)
         print(f"[CONTENT PACK IMPORT ERROR] {type(exc).__name__}: {exc}")
         flash("Study Pack ZIP could not be validated. Check the local DLMS log for details.", "error")
         return redirect("/content-packs")
+
+
+@app.route("/study-packs/ai-builder/import", methods=["POST"])
+def study_pack_ai_builder_import():
+    """Return a completed AI-generated ZIP to the standard import pipeline."""
+    try:
+        token = _stage_content_pack_upload(
+            request.files.get("pack_zip"), workflow=CONTENT_PACK_AI_WORKFLOW
+        )
+        return redirect(url_for("content_pack_import_review", token=token))
+    except Exception as exc:
+        print(f"[AI STUDY PACK IMPORT ERROR] {type(exc).__name__}: {exc}")
+        flash("Study Pack ZIP could not be validated. Check the local DLMS log for details.", "error")
+        return redirect(url_for("study_pack_ai_builder"))
 
 
 @app.route("/content-packs/import/<token>")
@@ -5895,6 +5945,10 @@ def content_pack_import_review(token):
         print(f"[CONTENT PACK REVIEW ERROR] {type(exc).__name__}: {exc}")
         flash("The Study Pack validation session is unavailable or expired.", "error")
         return redirect("/content-packs")
+
+    ai_workflow = _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW
+    return_url = _content_pack_workflow_return_url(metadata)
+    return_label = "AI Study Pack Builder" if ai_workflow else "Content Packs"
 
     return render_template_string(r"""
 <!DOCTYPE html>
@@ -5917,7 +5971,13 @@ def content_pack_import_review(token):
 <div class="dashboard-sidebar-version">Pack Validation</div>
 </aside>
 <main class="dashboard-main content-packs-main">
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">CONTENT PACK IMPORT</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">{{ 'AI STUDY PACK WORKFLOW' if ai_workflow else 'CONTENT PACK IMPORT' }}</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
+
+{% if ai_workflow %}
+<ol class="study-pack-workflow-steps" aria-label="AI Study Pack workflow">
+<li class="is-complete">Configure</li><li class="is-complete">Generate Prompt</li><li class="is-complete">Bring Back ZIP</li><li class="is-current">Validate</li><li>Install</li><li>Study</li>
+</ol>
+{% endif %}
 
 <section class="dashboard-panel pack-review-summary">
 <div>
@@ -5956,13 +6016,14 @@ def content_pack_import_review(token):
 {% if report.valid %}<button class="medical-primary-button" type="submit" form="packReviewInstallForm">Install Study Pack</button>{% endif %}
 <form class="pack-review-cancel-form" method="POST" action="/content-packs/import/{{ token }}/cancel"><button class="medical-ai-secondary-button" type="submit">Cancel &amp; Remove Staging Files</button></form>
 </div>
-<a class="medical-ai-quiet-link pack-review-back-link" href="/content-packs">← Back to Content Packs</a>
+<a class="medical-ai-quiet-link pack-review-back-link" href="{{ return_url }}">← Back to {{ return_label }}</a>
 </section>
 </main></div>
 <script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script>
 <script src="/static/nav-normalize.js"></script>
 </body></html>
-""", token=token, metadata=metadata, report=report, medical_pack_installed=True)
+""", token=token, metadata=metadata, report=report, ai_workflow=ai_workflow,
+       return_url=return_url, return_label=return_label, medical_pack_installed=True)
 
 
 @app.route("/content-packs/import/<token>/install", methods=["POST"])
@@ -5973,6 +6034,7 @@ def content_pack_import_install(token):
 
     destination = None
     pack_root = None
+    metadata = {}
     try:
         stage_dir, pack_root, metadata = _load_staged_content_pack(token)
         report = _validate_staged_content_pack(pack_root)
@@ -6003,6 +6065,8 @@ def content_pack_import_install(token):
 
         _remove_content_pack_stage(token)
         flash(f"Installed Study Pack '{installed.get('name') or pack_id}' successfully.", "success")
+        if _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW:
+            return redirect(url_for("study_packs_home", installed=pack_id))
         return redirect("/content-packs")
     except Exception as exc:
         # If the move occurred but runtime validation failed, restore the staged
@@ -6020,14 +6084,19 @@ def content_pack_import_install(token):
             _load_staged_content_pack(token)
             return redirect(url_for("content_pack_import_review", token=token))
         except Exception:
-            return redirect("/content-packs")
+            return redirect(_content_pack_workflow_return_url(metadata))
 
 
 @app.route("/content-packs/import/<token>/cancel", methods=["POST"])
 def content_pack_import_cancel(token):
+    metadata = {}
+    try:
+        _, _, metadata = _load_staged_content_pack(token)
+    except Exception:
+        pass
     _remove_content_pack_stage(token)
     flash("Study Pack import cancelled; staging files were removed.", "success")
-    return redirect("/content-packs")
+    return redirect(_content_pack_workflow_return_url(metadata))
 
 
 @app.route("/content-packs/details/<folder>")
@@ -7993,6 +8062,7 @@ def _study_pack_catalog():
 def study_packs_home():
     packs = _study_pack_catalog()
     domain_group = str(request.args.get("domain_group") or "").strip().lower()
+    requested_installed_id = str(request.args.get("installed") or "").strip().lower()
     other_mode = domain_group == "other"
     if other_mode:
         def _is_other_pack(pack):
@@ -8000,6 +8070,9 @@ def study_packs_home():
             normalized = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
             return normalized not in {"medical", "it", "it_cybersecurity", "cybersecurity", "law", "legal"}
         packs = [pack for pack in packs if _is_other_pack(pack)]
+    installed_pack_id = next(
+        (pack["id"] for pack in packs if pack["id"] == requested_installed_id), ""
+    )
     return render_template_string(r"""
 <!DOCTYPE html>
 <html lang="en">
@@ -8057,6 +8130,13 @@ def study_packs_home():
     {% endif %}
     {% endwith %}
 
+    {% if installed_pack_id %}
+    <section class="dashboard-panel study-pack-installed-notice" aria-label="Newly installed Study Pack">
+        <div><span class="medical-eyebrow">STUDY PACK INSTALLED</span><strong>{{ installed_pack_id }}</strong><p>Your validated Study Pack is ready. Open it below and choose the dataset you want to study.</p></div>
+        <a class="medical-primary-button" href="#installed-study-pack">Open Study Pack</a>
+    </section>
+    {% endif %}
+
     <section class="study-pack-launch-grid">
         <a class="dashboard-panel study-pack-launch" href="{{ '/study-packs/ai-builder?domain=Other&from=other' if other_mode else '/study-packs/ai-builder' }}">
             <div class="study-pack-launch-icon">AI</div>
@@ -8086,7 +8166,7 @@ def study_packs_home():
     </div>
 
     {% for pack in packs %}
-    <details class="dashboard-panel study-pack-section study-pack-collapsible" data-pack-id="{{ pack.id }}" {% if loop.first %}open{% endif %}>
+    <details id="{{ 'installed-study-pack' if pack.id == installed_pack_id else '' }}" class="dashboard-panel study-pack-section study-pack-collapsible {% if pack.id == installed_pack_id %}is-newly-installed{% endif %}" data-pack-id="{{ pack.id }}" {% if loop.first or pack.id == installed_pack_id %}open{% endif %}>
         <summary class="study-pack-summary">
             <div class="study-pack-summary-main">
                 <span class="study-pack-chevron" aria-hidden="true">›</span>
@@ -8218,6 +8298,11 @@ function readPackState(){try{return JSON.parse(localStorage.getItem(stateKey)||'
 function savePackState(){const state={};packDetails.forEach(el=>state[el.dataset.packId]=el.open);try{localStorage.setItem(stateKey,JSON.stringify(state))}catch(e){}}
 const savedState=readPackState();
 packDetails.forEach(el=>{if(Object.prototype.hasOwnProperty.call(savedState,el.dataset.packId))el.open=!!savedState[el.dataset.packId];el.addEventListener('toggle',savePackState)});
+const installedPack=document.getElementById('installed-study-pack');
+if(installedPack){
+    installedPack.open=true;
+    requestAnimationFrame(()=>installedPack.scrollIntoView({block:'start',behavior:'smooth'}));
+}
 document.getElementById('expandAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=true);savePackState()});
 document.getElementById('collapseAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=false);savePackState()});
 function toggleDatasetDetails(id){
@@ -8228,7 +8313,8 @@ function toggleDatasetDetails(id){
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>
-""", packs=packs, medical_pack_installed=True, other_mode=other_mode)
+""", packs=packs, medical_pack_installed=True, other_mode=other_mode,
+       installed_pack_id=installed_pack_id)
 
 
 
@@ -8456,6 +8542,10 @@ def study_pack_ai_builder():
         </div>
     </header>
 
+    <ol class="study-pack-workflow-steps" aria-label="AI Study Pack workflow">
+        <li class="{{ 'is-complete' if generated_prompt else 'is-current' }}">Configure</li><li class="{{ 'is-current' if generated_prompt else '' }}">Generate Prompt</li><li>Bring Back ZIP</li><li>Validate</li><li>Install</li><li>Study</li>
+    </ol>
+
     <section class="dashboard-panel medical-ai-builder-panel">
         <form method="POST" class="medical-ai-builder-form">
             <input type="hidden" name="from_section" value="{{ from_section }}">
@@ -8506,6 +8596,19 @@ def study_pack_ai_builder():
             <button type="button" class="medical-ai-secondary-button" onclick="copyPrompt()">Copy Prompt</button>
         </div>
     </section>
+
+    {% if topic %}
+    <section class="dashboard-panel study-pack-builder-return-panel">
+        <div class="medical-ai-builder-heading">
+            <div><span class="medical-eyebrow">STEP 3 · BRING BACK ZIP</span><h2>Bring Back Study Pack ZIP</h2><p>Upload the completed DLMS Study Pack ZIP from your AI provider. DLMS will stage and independently validate it before installation.</p></div>
+            <span class="medical-ai-safety-pill">ZIP required</span>
+        </div>
+        <form method="POST" action="/study-packs/ai-builder/import" enctype="multipart/form-data" class="content-pack-upload-form study-pack-builder-return-form">
+            <label class="build-field"><span>Completed Study Pack ZIP</span><input type="file" name="pack_zip" accept=".zip,application/zip" required><small>One top-level Study Pack folder with manifest.json. Text-only AI responses are not installable until packaged with their required files and assets.</small></label>
+            <button class="medical-primary-button" type="submit">Validate Study Pack ZIP</button>
+        </form>
+    </section>
+    {% endif %}
     {% endif %}
 </main>
 </div>
