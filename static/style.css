@@ -9661,6 +9661,8 @@ button:not(.settings-danger-button):not(.dashboard-shutdown):not(.build-icon-dan
 .dashboard-theme-quick{margin:6px 0 14px;padding:10px 12px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.20));border-radius:11px;background:var(--theme-surface,rgba(5,18,39,.42));display:grid;gap:6px}
 .dashboard-theme-quick label{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;font-weight:800;color:var(--theme-muted-text,#9fb0c5)}
 .dashboard-theme-quick select{width:100%;min-height:34px;margin:0;padding:5px 8px;font-size:12px}
+.dashboard-navigation-customize{display:block;margin:-6px 4px 14px;color:var(--theme-muted-text,#9fb0c5);font-size:12px;text-align:center;text-decoration:none}
+.dashboard-navigation-customize:hover,.dashboard-navigation-customize:focus-visible{color:var(--theme-link,#62b5ff);text-decoration:underline}
 
 /* Light theme needs dark typography in several historically hard-coded areas.
    The dynamic variable value lets these selectors stay theme-agnostic. */

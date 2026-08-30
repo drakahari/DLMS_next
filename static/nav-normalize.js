@@ -73,48 +73,61 @@
   const buildOpen = isActive('build');
   const learningOpen = isActive('learning');
   const ankiOpen = isActive('anki');
-  const primary = document.createElement('nav');
-  primary.className = 'dashboard-nav dashboard-nav-normalized';
-  primary.setAttribute('aria-label', 'Primary navigation');
-  primary.innerHTML = [
-    item('dashboard','/','⌂','Dashboard'),
-    item('library','/library','▤','Quiz Library'),
-    `<div class="dashboard-nav-group">${item('build','/upload','✎','Build Quiz')}${buildOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/upload','↳','Quiz Builder', path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import')}${sub('/pdf-import','↳','PDF Import & Banks', path.startsWith('/pdf-import'))}</div>` : ''}</div>`,
-    item('study','/study-packs','▣','Study Packs'),
-    // IT and Medical landing pages already present their genuinely distinct
-    // matching/image/builder workflows as cards. Keep the global sidebar
-    // concise instead of duplicating those destinations in expandable menus.
-    item('it','/it','⌘','IT Study'),
-    item('law','/law','⚖','Law Study'),
-    item('medical','/medical','✚','Medical Study'),
-    item('other','/study-packs?domain_group=other','◇','Other Studies'),
-    item('history','/history','↶','History'),
-    item('analytics','/dashboard','▥','Analytics'),
-    `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','◈','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','↳','Topic Intelligence', path === '/learning-intelligence')}${sub('/learning-profile','↳','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','↳','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','↳','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
-    `<div class="dashboard-nav-group">${item('anki','/anki','◆','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','↳','Custom Deck', path === '/anki/custom')}${sub('/anki/custom#printableCards','↳','Printable Cards', path === '/anki/printable')}${sub('/anki/law','↳','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
-  ].join('');
+  const defaultStudyAreaVisibility = {it: true, law: true, medical: true, other: true};
+  const normalizeStudyAreaVisibility = (value) => {
+    const configured = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    return Object.fromEntries(Object.keys(defaultStudyAreaVisibility).map(key => [
+      key,
+      typeof configured[key] === 'boolean' ? configured[key] : true
+    ]));
+  };
 
-  const section = document.createElement('div');
-  section.className = 'dashboard-nav-section-label';
-  section.innerHTML = '<span>System</span>';
+  const mountNavigation = (studyAreaVisibility) => {
+    const primary = document.createElement('nav');
+    primary.className = 'dashboard-nav dashboard-nav-normalized';
+    primary.setAttribute('aria-label', 'Primary navigation');
+    primary.innerHTML = [
+      item('dashboard','/','⌂','Dashboard'),
+      item('library','/library','▤','Quiz Library'),
+      `<div class="dashboard-nav-group">${item('build','/upload','✎','Build Quiz')}${buildOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/upload','↳','Quiz Builder', path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import')}${sub('/pdf-import','↳','PDF Import & Banks', path.startsWith('/pdf-import'))}</div>` : ''}</div>`,
+      item('study','/study-packs','▣','Study Packs'),
+      // IT and Medical landing pages already present their genuinely distinct
+      // matching/image/builder workflows as cards. Keep the global sidebar
+      // concise instead of duplicating those destinations in expandable menus.
+      studyAreaVisibility.it ? item('it','/it','⌘','IT Study') : '',
+      studyAreaVisibility.law ? item('law','/law','⚖','Law Study') : '',
+      studyAreaVisibility.medical ? item('medical','/medical','✚','Medical Study') : '',
+      studyAreaVisibility.other ? item('other','/study-packs?domain_group=other','◇','Other Studies') : '',
+      item('history','/history','↶','History'),
+      item('analytics','/dashboard','▥','Analytics'),
+      `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','◈','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','↳','Topic Intelligence', path === '/learning-intelligence')}${sub('/learning-profile','↳','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','↳','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','↳','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
+      `<div class="dashboard-nav-group">${item('anki','/anki','◆','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','↳','Custom Deck', path === '/anki/custom')}${sub('/anki/custom#printableCards','↳','Printable Cards', path === '/anki/printable')}${sub('/anki/law','↳','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
+    ].join('');
 
-  const system = document.createElement('nav');
-  system.className = 'dashboard-nav dashboard-nav-system dashboard-nav-normalized';
-  system.setAttribute('aria-label', 'System navigation');
-  system.innerHTML = [
-    item('settings','/settings','⚙','Settings'),
-    item('content','/content-packs','⬡','Content Packs'),
-    item('image','/admin/image-editor','◎','Image Study Editor'),
-    item('help','/help','?','Help')
-  ].join('');
+    const section = document.createElement('div');
+    section.className = 'dashboard-nav-section-label';
+    section.innerHTML = '<span>System</span>';
 
-  const oldNavs = Array.from(sidebar.querySelectorAll(':scope > nav.dashboard-nav'));
-  const oldLabels = Array.from(sidebar.querySelectorAll(':scope > .dashboard-nav-section-label'));
-  const anchor = oldNavs[0] || oldLabels[0] || sidebar.querySelector('.dashboard-shutdown') || sidebar.querySelector('.dashboard-sidebar-version');
-  if (!anchor) return;
-  anchor.before(primary, section, system);
-  oldNavs.forEach(el => el.remove());
-  oldLabels.forEach(el => el.remove());
+    const system = document.createElement('nav');
+    system.className = 'dashboard-nav dashboard-nav-system dashboard-nav-normalized';
+    system.setAttribute('aria-label', 'System navigation');
+    system.innerHTML = [
+      item('settings','/settings','⚙','Settings'),
+      item('content','/content-packs','⬡','Content Packs'),
+      item('image','/admin/image-editor','◎','Image Study Editor'),
+      item('help','/help','?','Help')
+    ].join('');
+
+    const oldNavs = Array.from(sidebar.querySelectorAll(':scope > nav.dashboard-nav'));
+    const oldLabels = Array.from(sidebar.querySelectorAll(':scope > .dashboard-nav-section-label'));
+    const anchor = oldNavs[0] || oldLabels[0] || sidebar.querySelector('.dashboard-shutdown') || sidebar.querySelector('.dashboard-sidebar-version');
+    if (!anchor) return;
+    anchor.before(primary, section, system);
+    oldNavs.forEach(el => el.remove());
+    oldLabels.forEach(el => el.remove());
+  };
+
+  mountNavigation(defaultStudyAreaVisibility);
 
   document.querySelector('[data-settings-menu]')?.addEventListener('click', () => {
     sidebar.classList.toggle('open');
@@ -127,8 +140,16 @@
   themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme"><option value="dark">Dark</option><option value="light">Light</option><option value="purple-gold">Purple & Gold</option><option value="maroon-gold">Maroon & Gold</option></select>`;
   const themeAnchor = sidebar.querySelector('.dashboard-sidebar-version');
   if (themeAnchor) themeAnchor.before(themeQuick); else sidebar.appendChild(themeQuick);
+  const navigationCustomize = document.createElement('a');
+  navigationCustomize.className = 'dashboard-navigation-customize';
+  navigationCustomize.href = '/settings/navigation';
+  navigationCustomize.textContent = 'Customize navigation';
+  themeQuick.after(navigationCustomize);
   const themeSelect = themeQuick.querySelector('select');
-  fetch('/config/portal.json', {cache:'no-store'}).then(r => r.ok ? r.json() : null).then(cfg => { if (cfg?.theme) themeSelect.value = cfg.theme; }).catch(()=>{});
+  fetch('/config/portal.json', {cache:'no-store'}).then(r => r.ok ? r.json() : null).then(cfg => {
+    if (cfg?.theme) themeSelect.value = cfg.theme;
+    mountNavigation(normalizeStudyAreaVisibility(cfg?.study_area_visibility));
+  }).catch(()=>{});
   themeSelect.addEventListener('change', async () => {
     const previous = themeSelect.dataset.previous || '';
     themeSelect.disabled = true;

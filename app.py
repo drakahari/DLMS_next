@@ -5523,6 +5523,12 @@ def load_portal_config():
         "background_image": None,
         "theme": "dark",
         "quiz_folders": ["Uncategorized", "A+", "Network+", "Security+", "Data+", "Cloud+", "Linux+"],
+        "study_area_visibility": {
+            "it": True,
+            "law": True,
+            "medical": True,
+            "other": True,
+        },
 
         # AI Explanation Helper
         "ai_helper_enabled": False,
@@ -5593,6 +5599,16 @@ def load_portal_config():
         cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
 
         cfg["ai_custom_url"] = str(cfg.get("ai_custom_url") or "").strip()
+
+        raw_study_area_visibility = cfg.get("study_area_visibility")
+        if not isinstance(raw_study_area_visibility, dict):
+            raw_study_area_visibility = {}
+        cfg["study_area_visibility"] = {
+            key: raw_study_area_visibility.get(key)
+            if isinstance(raw_study_area_visibility.get(key), bool)
+            else True
+            for key in ("it", "law", "medical", "other")
+        }
 
         return cfg
 
@@ -19511,6 +19527,16 @@ def settings_page():
             <span class="settings-hub-arrow">›</span>
         </a>
 
+        <a class="settings-hub-card is-ready" href="/settings/navigation">
+            <div class="settings-hub-icon icon-green">☰</div>
+            <div class="settings-hub-copy">
+                <div class="settings-card-kicker">AVAILABLE</div>
+                <h2>Navigation</h2>
+                <p>Choose which study areas appear in the DLMS navigation.</p>
+            </div>
+            <span class="settings-hub-arrow">›</span>
+        </a>
+
         <a class="settings-hub-card is-ready" href="/settings/ai">
             <div class="settings-hub-icon icon-purple">🤖</div>
             <div class="settings-hub-copy">
@@ -19569,6 +19595,100 @@ def settings_page():
 </body>
 </html>
 """)
+
+
+@app.route("/settings/navigation")
+def settings_navigation_page():
+    cfg = load_portal_config()
+    visibility = cfg["study_area_visibility"]
+
+    return render_template_string(r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigation Settings - DLMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home settings-detail-page settings-navigation-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("Settings")|safe }}
+<main class="dashboard-main settings-dashboard-main">
+<div class="settings-page-shell settings-detail-shell">
+    <div class="settings-page-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
+        <div>
+            <span class="settings-eyebrow">SETTINGS / NAVIGATION</span>
+            <h1>☰ Navigation</h1>
+            <p>Choose which study areas appear in the DLMS sidebar.</p>
+        </div>
+        <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
+    </div>
+
+    {% if request.args.get('saved') %}
+    <div class="settings-success-banner">✓ Navigation settings saved.</div>
+    {% endif %}
+
+    <form class="settings-detail-card" action="/settings/navigation/save" method="POST">
+        <section class="settings-form-section">
+            <div class="settings-section-heading">
+                <div class="settings-section-icon icon-green">☰</div>
+                <div>
+                    <h2>Study Areas</h2>
+                    <p>Hiding a study area removes it from navigation only. It does not delete, disable, or alter saved content, history, analytics, or direct links.</p>
+                </div>
+            </div>
+
+            <label class="settings-toggle-row">
+                <input type="checkbox" name="study_area_it" {% if visibility.it %}checked{% endif %}>
+                <span><strong>IT Study</strong><small>Show IT Study in the sidebar.</small></span>
+            </label>
+            <label class="settings-toggle-row">
+                <input type="checkbox" name="study_area_law" {% if visibility.law %}checked{% endif %}>
+                <span><strong>Law Study</strong><small>Show Law Study in the sidebar.</small></span>
+            </label>
+            <label class="settings-toggle-row">
+                <input type="checkbox" name="study_area_medical" {% if visibility.medical %}checked{% endif %}>
+                <span><strong>Medical Study</strong><small>Show Medical Study in the sidebar.</small></span>
+            </label>
+            <label class="settings-toggle-row">
+                <input type="checkbox" name="study_area_other" {% if visibility.other %}checked{% endif %}>
+                <span><strong>Other Studies</strong><small>Show the Other Studies pack filter in the sidebar.</small></span>
+            </label>
+        </section>
+
+        <div class="settings-form-actions">
+            <button type="submit" class="settings-primary-button">💾 Save Navigation</button>
+            <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
+        </div>
+    </form>
+
+    <div class="settings-scope-note"><strong>Personalization only:</strong> Study Packs and Settings always remain available. You can still use a hidden area by opening its direct URL, and re-enabling it restores its navigation link.</div>
+</div>
+</main>
+</div>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>
+""", visibility=visibility)
+
+
+@app.route("/settings/navigation/save", methods=["POST"])
+def save_navigation_settings():
+    cfg = load_portal_config()
+    cfg["study_area_visibility"] = {
+        "it": "study_area_it" in request.form,
+        "law": "study_area_law" in request.form,
+        "medical": "study_area_medical" in request.form,
+        "other": "study_area_other" in request.form,
+    }
+
+    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=4)
+
+    return redirect("/settings/navigation?saved=1")
 
 
 @app.route("/settings/appearance")
