@@ -7,6 +7,7 @@
 .help-layout{display:grid;grid-template-columns:minmax(190px,240px) minmax(0,1fr);gap:22px;align-items:start}
 .help-toc{position:sticky;top:18px;border:1px solid rgba(78,138,204,.28);border-radius:14px;background:rgba(5,18,38,.72);padding:14px}
 .help-toc strong{display:block;color:#f2f7ff;margin-bottom:9px;font-size:13px}
+.help-toc .help-toc-local-heading{margin-top:10px}
 .help-toc a{display:block;padding:7px 9px;border-radius:8px;color:#9db2ca;text-decoration:none!important;font-size:12px;line-height:1.25}
 .help-toc a:hover,.help-toc a.active{background:rgba(35,103,177,.23);color:#e7f3ff!important}
 .help-doc{min-width:0;display:grid;gap:18px}

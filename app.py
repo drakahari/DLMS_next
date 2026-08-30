@@ -4576,6 +4576,7 @@ HELP_TOPIC_FILES = {
     "study-modules": "help-study-modules.html",
     "content-management": "help-content-management.html",
     "history-analytics": "help-history-analytics.html",
+    "learning-intelligence": "help-learning-intelligence.html",
     "anki": "help-anki.html",
     "settings": "help-settings.html",
     "maintenance": "help-maintenance.html",
