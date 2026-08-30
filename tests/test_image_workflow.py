@@ -12,7 +12,7 @@ from PIL import Image
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-image-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 import app as dlms
-from tests.csrf_test_utils import csrf_token
+from tests.csrf_test_utils import csrf_headers, csrf_token
 
 
 def _write_test_image(path):
@@ -150,6 +150,94 @@ class ImageWorkflowTests(unittest.TestCase):
         candidates, _ = dlms._smart_review_candidates(cur)
         self.assertTrue(any(candidate["question_id"] == rows[0][0] for candidate in candidates))
         conn.close()
+
+    def test_mixed_choice_generation_preserves_mcq_data_and_learning_evidence_end_to_end(self):
+        root = self.make_pack()
+        mixed_path = root / "data" / "mixed.json"
+        mixed = json.loads(mixed_path.read_text(encoding="utf-8"))
+        mixed["questions"][0]["question"] = "Which generated MCQ option is documented?"
+        mixed["questions"][0]["explanation"] = "The documented option is supported by the source."
+        mixed_path.write_text(json.dumps(mixed), encoding="utf-8")
+        client = dlms.app.test_client()
+        generated = client.post("/study-packs/quiz/generate", data={
+            "csrf_token": csrf_token(client, "/study-packs"),
+            "pack_id": "study_images",
+            "dataset_id": "mixed",
+        })
+        self.assertEqual(302, generated.status_code, generated.get_data(as_text=True))
+
+        conn = dlms.get_db()
+        try:
+            quiz = conn.execute(
+                "SELECT id FROM quizzes WHERE title = ? ORDER BY id DESC LIMIT 1",
+                ("Mixed — Practice",),
+            ).fetchone()
+            self.assertIsNotNone(quiz)
+            quiz_id = quiz["id"]
+            question = conn.execute("""
+                SELECT id, explanation FROM questions
+                WHERE quiz_id = ? AND question_number = 1
+            """, (quiz_id,)).fetchone()
+            choices = conn.execute("""
+                SELECT label, text, is_correct FROM choices
+                WHERE question_id = ? ORDER BY label
+            """, (question["id"],)).fetchall()
+            self.assertEqual(["A", "B"], [row["label"] for row in choices])
+            self.assertEqual([True, False], [bool(row["is_correct"]) for row in choices])
+            self.assertEqual("The documented option is supported by the source.", question["explanation"])
+            self.assertEqual(["choice-skill"], dlms._question_concepts(conn.cursor(), question["id"]))
+        finally:
+            conn.close()
+
+        self.assertTrue(dlms.rebuild_quiz_json_from_db(quiz_id))
+        registry_entry = next(item for item in dlms.load_registry() if item["id"] == quiz_id)
+        rebuilt = json.loads((Path(dlms.DATA_FOLDER) / registry_entry["html"].replace(".html", ".json")).read_text())
+        self.assertEqual(["A"], rebuilt[0]["correct"])
+        self.assertEqual("Which generated MCQ option is documented?", rebuilt[0]["question"])
+        self.assertEqual("The documented option is supported by the source.", rebuilt[0]["explanation"])
+        self.assertEqual(["choice-skill"], rebuilt[0]["concepts"])
+        edit_page = client.get(f"/edit_quiz/{quiz_id}").get_data(as_text=True)
+        self.assertIn("Which generated MCQ option is documented?", edit_page)
+        self.assertIn("The documented option is supported by the source.", edit_page)
+        self.assertIn("choice-skill", edit_page)
+
+        study = client.post("/api/learning-events/study-response", json={
+            "quizId": quiz_id, "questionNumber": 1, "sessionId": "mixed-choice-study",
+            "wasCorrect": False, "questionType": "choice", "selected": ["B"],
+        }, headers=csrf_headers(client))
+        self.assertEqual(200, study.status_code, study.get_data(as_text=True))
+        for index in range(5):
+            exam = client.post("/record_attempt", json={
+                "quizId": quiz_id, "quizTitle": "Mixed — Practice", "attemptId": f"mixed-choice-{index}",
+                "score": 0, "total": 1, "percent": 0, "mode": "Exam",
+                "responseDetails": [{
+                    "attemptQuestionNumber": 1, "questionType": "choice",
+                    "wasCorrect": False, "selected": ["B"],
+                }],
+                "missedDetails": [],
+            }, headers=csrf_headers(client))
+            self.assertEqual(200, exam.status_code, exam.get_data(as_text=True))
+
+        conn = dlms.get_db()
+        try:
+            cur = conn.cursor()
+            event_counts = {
+                row["event_type"]: row["count"]
+                for row in cur.execute("""
+                    SELECT event_type, COUNT(*) AS count FROM learning_events
+                    WHERE question_id = ? GROUP BY event_type
+                """, (question["id"],)).fetchall()
+            }
+            topics = dlms._learning_intelligence_topics(cur, now=datetime.now(timezone.utc))
+            candidates, weak = dlms._smart_review_candidates(cur)
+        finally:
+            conn.close()
+        topic = next(item for item in topics if item["name"] == "choice-skill")
+        self.assertEqual(1, event_counts["study_answer"])
+        self.assertEqual(5, event_counts["exam_answer"])
+        self.assertEqual("weak", topic["status"])
+        self.assertTrue(any(item["name"] == "choice-skill" for item in weak))
+        self.assertTrue(any(item["question_id"] == question["id"] for item in candidates))
 
     def test_image_hotspot_surrogate_uses_explicit_hotspot_concepts(self):
         self.make_pack()

@@ -1078,11 +1078,17 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
     cleaned = []
     for question_number, raw in enumerate(questions, 1):
         if not isinstance(raw, dict):
-            continue
+            raise ValueError(f"Quiz dataset question {question_number} must be an object")
         qtype = str(raw.get("type") or "choice").strip().lower()
-        question = str(raw.get("question") or "").strip()
-        if qtype not in allowed or not question:
-            continue
+        if qtype not in allowed:
+            raise ValueError(
+                f"Quiz dataset question {question_number} has unsupported type {qtype!r}"
+            )
+        question = raw.get("question")
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError(
+                f"Quiz dataset question {question_number} must have a non-empty question string"
+            )
         image_id = str(raw.get("image_id") or "").strip()
         if image_id and image_id not in image_ids:
             raise ValueError(f"Question references unknown image id: {image_id}")
@@ -1096,9 +1102,18 @@ def load_content_pack_quiz_dataset(pack_id, dataset_id):
             )
             if matching_errors:
                 raise ValueError("; ".join(matching_errors))
-        item = dict(raw)
-        item["type"] = qtype
-        item["question"] = question
+            item = dict(raw)
+            item["type"] = qtype
+            item["question"] = question.strip()
+        elif qtype == "choice":
+            item = _normalize_content_pack_choice_question(
+                raw,
+                context=f"quiz dataset {dataset_id!r}, choice question {question_number}",
+            )
+        else:
+            item = dict(raw)
+            item["type"] = qtype
+            item["question"] = question.strip()
         _set_content_pack_concepts(
             item, context=f"quiz dataset {dataset_id!r}, question {question_number} {question!r}"
         )
@@ -1182,16 +1197,12 @@ def _quiz_dataset_runtime(pack_id, data):
                 "source": db_source, "media": media,
             }
         else:
-            choices, correct = [], []
-            for choice in raw.get("choices") or []:
-                if not isinstance(choice, dict): continue
-                text = str(choice.get("text") or "").strip()
-                if not text: continue
-                label = chr(65 + len(choices))
-                is_correct = bool(choice.get("is_correct"))
-                choices.append({"label": label, "text": text, "is_correct": is_correct})
-                if is_correct: correct.append(label)
-            if len(choices) < 2 or not correct: continue
+            normalized = _normalize_content_pack_choice_question(
+                raw,
+                context=f"quiz dataset runtime choice question {raw.get('question')!r}",
+            )
+            choices = normalized["choices"]
+            correct = [choice["label"] for choice in choices if choice["is_correct"]]
             runtime = {**common, "type": "choice", "choices": choices, "correct": correct}
             db = {**runtime, "source": db_source, "media": media}
 
@@ -2360,6 +2371,90 @@ def _matching_record_validation_errors(
     return errors
 
 
+def _content_pack_choice_question_errors(
+    question, *, context, require_single_select=False
+):
+    """Return deterministic structural errors for one mixed choice question."""
+    if not isinstance(question, dict):
+        return [f"{context}: choice question must be an object"]
+
+    errors = []
+    question_text = question.get("question")
+    if not isinstance(question_text, str) or not question_text.strip():
+        errors.append(f"{context}: choice question must have a non-empty question string")
+
+    choices = question.get("choices")
+    if not isinstance(choices, list):
+        return errors + [f"{context}: choices must be a list"]
+    if len(choices) < 2:
+        errors.append(f"{context}: choice question needs at least two choices")
+    if len(choices) > 26:
+        errors.append(f"{context}: choice question may contain at most 26 choices")
+
+    seen_text = {}
+    correct_count = 0
+    for number, choice in enumerate(choices, 1):
+        location = f"choice {number}"
+        if not isinstance(choice, dict):
+            errors.append(f"{context}: {location} must be an object")
+            continue
+        text = choice.get("text")
+        if not isinstance(text, str) or not text.strip():
+            errors.append(f"{context}: {location} must have a non-empty text string")
+        else:
+            normalized = _matching_comparison_key(text)
+            earlier = seen_text.get(normalized)
+            if earlier:
+                errors.append(
+                    f"{context}: duplicate choice text at {location}; "
+                    f"earlier choice {earlier} has the same normalized text"
+                )
+            else:
+                seen_text[normalized] = number
+
+        is_correct = choice.get("is_correct")
+        if not isinstance(is_correct, bool):
+            errors.append(f"{context}: {location} is_correct must be a JSON boolean")
+        elif is_correct:
+            correct_count += 1
+
+    if correct_count == 0:
+        errors.append(f"{context}: choice question must have at least one correct choice")
+    elif require_single_select and correct_count != 1:
+        errors.append(
+            f"{context}: AI Study Pack multiple-choice questions must have exactly one correct choice"
+        )
+    return errors
+
+
+def _normalize_content_pack_choice_question(
+    question, *, context, require_single_select=False
+):
+    """Validate and normalize the canonical Study Pack choice-question form.
+
+    Study Pack authors provide text plus a real JSON ``is_correct`` boolean.
+    DLMS owns the generated A-Z labels used by the quiz runtime.
+    """
+    errors = _content_pack_choice_question_errors(
+        question, context=context, require_single_select=require_single_select
+    )
+    if errors:
+        raise ValueError("; ".join(errors))
+
+    normalized = dict(question)
+    normalized["type"] = "choice"
+    normalized["question"] = question["question"].strip()
+    normalized["choices"] = [
+        {
+            "label": chr(65 + number),
+            "text": choice["text"].strip(),
+            "is_correct": choice["is_correct"],
+        }
+        for number, choice in enumerate(question["choices"])
+    ]
+    return normalized
+
+
 def _safe_zip_member_name(name):
     """Return a normalized safe archive member path or raise ValueError."""
     raw = str(name or "").replace("\\", "/")
@@ -2443,7 +2538,9 @@ def _read_json_file(path, label, errors):
         return None
 
 
-def _validate_staged_content_pack(pack_root, *, normalize_images=False):
+def _validate_staged_content_pack(
+    pack_root, *, normalize_images=False, require_single_select=False
+):
     """Independently validate a staged pack before installation."""
     errors, warnings, checks = [], [], []
     pack_root = os.path.realpath(pack_root)
@@ -2680,6 +2777,9 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                 elif isinstance(questions, list):
                     for question_number, question in enumerate(questions, 1):
                         if not isinstance(question, dict):
+                            errors.append(
+                                f"{rel_path}: mixed question {question_number} must be an object"
+                            )
                             continue
                         try:
                             _content_pack_concepts(
@@ -2688,15 +2788,36 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                             )
                         except ValueError as exc:
                             errors.append(str(exc))
-                        if str(question.get("type") or "choice").strip().lower() != "matching":
+                        qtype = str(question.get("type") or "choice").strip().lower()
+                        question_text = question.get("question")
+                        context = (
+                            f"{rel_path} (dataset {did!r}), {qtype} question "
+                            f"{question_number} {str(question_text or '').strip()!r}"
+                        )
+                        if qtype not in {"choice", "matching", "hotspot"}:
+                            errors.append(
+                                f"{rel_path}: mixed question {question_number} has unsupported type {qtype!r}"
+                            )
                             continue
-                        question_text = str(question.get("question") or "").strip()
+                        if not isinstance(question_text, str) or not question_text.strip():
+                            errors.append(
+                                f"{rel_path}: mixed question {question_number} must have a non-empty question string"
+                            )
+                        if qtype == "choice":
+                            choice_errors = _content_pack_choice_question_errors(
+                                question,
+                                context=context,
+                                require_single_select=require_single_select,
+                            )
+                            if choice_errors:
+                                duplicates_ok = False
+                                errors.extend(choice_errors)
+                            continue
+                        if qtype != "matching":
+                            continue
                         matching_errors = _matching_record_validation_errors(
                             question.get("pairs") or [],
-                            context=(
-                                f"{rel_path} (dataset {did!r}), matching question "
-                                f"{question_number} {question_text!r}"
-                            ),
+                            context=context,
                             left_key="left",
                             right_key="right",
                             record_name="pair",
@@ -2706,10 +2827,7 @@ def _validate_staged_content_pack(pack_root, *, normalize_images=False):
                             errors.extend(matching_errors)
                         warnings.extend(_matching_case_only_term_warnings(
                             question.get("pairs") or [],
-                            context=(
-                                f"{rel_path} (dataset {did!r}), matching question "
-                                f"{question_number} {question_text!r}"
-                            ),
+                            context=context,
                             left_key="left",
                             record_name="pair",
                         ))
@@ -5877,7 +5995,11 @@ def _stage_content_pack_upload(upload, *, workflow=None):
         extract_root = os.path.join(stage_dir, "extracted")
         _extract_content_pack_zip(zip_path, extract_root)
         pack_root = _safe_pack_child(extract_root, inspection["root_name"])
-        report = _validate_staged_content_pack(pack_root, normalize_images=True)
+        report = _validate_staged_content_pack(
+            pack_root,
+            normalize_images=True,
+            require_single_select=(workflow == CONTENT_PACK_AI_WORKFLOW),
+        )
 
         metadata = {
             "token": token,
@@ -5939,7 +6061,12 @@ def content_pack_import_review(token):
     try:
         stage_dir, pack_root, metadata = _load_staged_content_pack(token)
         # Revalidate on every review instead of trusting the saved report.
-        report = _validate_staged_content_pack(pack_root)
+        report = _validate_staged_content_pack(
+            pack_root,
+            require_single_select=(
+                _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW
+            ),
+        )
         metadata["report"] = report
     except Exception as exc:
         print(f"[CONTENT PACK REVIEW ERROR] {type(exc).__name__}: {exc}")
@@ -6037,7 +6164,12 @@ def content_pack_import_install(token):
     metadata = {}
     try:
         stage_dir, pack_root, metadata = _load_staged_content_pack(token)
-        report = _validate_staged_content_pack(pack_root)
+        report = _validate_staged_content_pack(
+            pack_root,
+            require_single_select=(
+                _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW
+            ),
+        )
         if not report["valid"]:
             flash("Study Pack is no longer valid; installation was blocked.", "error")
             return redirect(url_for("content_pack_import_review", token=token))
@@ -7899,6 +8031,30 @@ MATCHING DATASET FORMAT
 
 For every matching dataset, verify that normalized IDs (where used), terms, definitions/answers, and complete pairs are unique; mappings are one-to-one; and every answer remains meaningfully distinguishable from every other answer after shuffling.
 
+MIXED QUESTION / MULTIPLE-CHOICE FORMAT
+Use a quiz_datasets descriptor with type "quiz" for choice, matching, and/or hotspot questions. For a DLMS multiple-choice question, use this exact single-select form:
+{
+  "type": "choice",
+  "question": "Which permission mode lets the owner read and write?",
+  "choices": [
+    {"text":"600","is_correct":true},
+    {"text":"644","is_correct":false},
+    {"text":"640","is_correct":false},
+    {"text":"755","is_correct":false}
+  ],
+  "explanation": "Mode 600 grants read and write permission to the owner only.",
+  "concepts": ["octal-permissions"],
+  "source": {"organization":"...","dataset":"...","version":"...","url":"https://...","license":"..."}
+}
+
+For every generated multiple-choice question:
+- Use "type": "choice", a non-empty "question", and 2–26 choices. DLMS assigns A–Z labels in the supplied choice order; do not provide labels, "correct", "correct_answer", "correct_answers", or answer letters.
+- Use an actual JSON boolean for every "is_correct" value. For AI-generated MCQs, exactly one choice must be true; all others must be false.
+- Do not invent factual answers. Mark an answer correct only when reliable source material supports it. If a valid supportable MCQ cannot be made, omit it instead of guessing.
+- Distractors must be plausible but factually incorrect. Do not use duplicate answer text.
+- Provide a concise explanation that supports the marked answer and does not contradict it. Do not fabricate distractor rationales, citations, URLs, or source claims.
+- Include useful source metadata at the dataset level and at question level when the question uses a different source.
+
 IMAGE / HOTSPOT DATASET FORMAT
 {
   "schema_version": 1,
@@ -7948,6 +8104,7 @@ You MUST validate the finished pack after all files are created. Do not merely s
 - matching pairs form one-to-one mappings with no duplicate or near-duplicate pairs and remain semantically distinct and unambiguous when shuffled
 - every matching collision discovered during review is repaired before delivery
 - every term and definition is non-empty
+- every choice question has a non-empty question, 2–26 distinct non-empty choices, real JSON boolean is_correct values, and exactly one correct choice
 - every dataset has source metadata
 - every bundled image exists at its declared path
 - every bundled image records exact provenance and redistribution/license metadata
@@ -8409,6 +8566,7 @@ def study_pack_ai_builder():
     image_style = "Mixed"
     include_matching = True
     include_images = True
+    include_multiple_choice = False
     generated_prompt = ""
 
     ai_provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
@@ -8429,6 +8587,7 @@ def study_pack_ai_builder():
 
         include_matching = "include_matching" in request.form
         include_images = "include_images" in request.form
+        include_multiple_choice = "include_multiple_choice" in request.form
 
         if difficulty not in {"Foundational","Intermediate","Comprehensive"}:
             difficulty = "Intermediate"
@@ -8448,6 +8607,18 @@ def study_pack_ai_builder():
                 "one-to-one term/answer mappings, meaningfully distinct answers, no duplicate or near-duplicate pairs, "
                 "and enough semantic distinction to remain unambiguous when shuffled. Repair all collisions before delivery, "
                 "and include source-supported Study Mode explanations."
+            )
+        if include_multiple_choice:
+            mcq_counts = {
+                "Compact": "about 10–15",
+                "Standard": "about 20–30",
+                "Large": "about 40–60",
+            }
+            requested.append(
+                f"Create {mcq_counts[size]} source-supported single-select multiple-choice questions. "
+                "Use the DLMS choice-question JSON contract: 2–26 distinct choices, exactly one true "
+                "JSON is_correct value, a concise explanation, and question-level source support. "
+                "Do not guess: omit any question whose correct answer cannot be supported reliably."
             )
         if include_images:
             requested.append("Create image/diagram hotspot datasets when they genuinely improve learning, following the image count and style request below.")
@@ -8574,6 +8745,7 @@ def study_pack_ai_builder():
 
             <div class="medical-ai-option-grid">
                 <label class="medical-ai-option-card"><input type="checkbox" name="include_matching" {% if include_matching %}checked{% endif %}><div><strong>Matching / Terminology</strong><span>Create source-supported matching datasets with Study Mode explanations.</span></div></label>
+                <label class="medical-ai-option-card"><input type="checkbox" name="include_multiple_choice" {% if include_multiple_choice %}checked{% endif %}><div><strong>Multiple-Choice Questions</strong><span>Create source-supported single-select questions with DLMS-assigned A–Z labels.</span></div></label>
                 <label class="medical-ai-option-card"><input type="checkbox" name="include_images" {% if include_images %}checked{% endif %}><div><strong>Images / Diagrams</strong><span>Create one or multiple image-based hotspot datasets when useful.</span></div></label>
             </div>
 
@@ -8637,6 +8809,7 @@ document.getElementById('studyDomain')?.addEventListener('change', (event) => {
         ai_provider=ai_provider,
         include_matching=include_matching,
         include_images=include_images,
+        include_multiple_choice=include_multiple_choice,
         generated_prompt=generated_prompt,
         ai_url=ai_url,
         from_section=from_section,

@@ -47,10 +47,106 @@ class ContentPackValidationTests(unittest.TestCase):
         (root/"PACK_VALIDATION.json").write_text(json.dumps({"schema_version":1,"pack_id":"study_test","overall_status":"PASS","checks":[]}),encoding="utf-8")
         return root
 
+    def make_mixed_choice_pack(self, name, questions, *, pack_id="study_choice"):
+        root = self.make_pack(name)
+        manifest_path = root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["id"] = pack_id
+        manifest["quiz_datasets"] = [{
+            "id": "questions", "title": "Questions", "type": "quiz",
+            "path": "data/questions.json",
+        }]
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        data = {
+            "schema_version": 1,
+            "id": "questions",
+            "title": "Questions",
+            "source": {"organization": "DLMS Test", "license": "CC0"},
+            "questions": questions,
+        }
+        (root / "data" / "questions.json").write_text(json.dumps(data), encoding="utf-8")
+        return root
+
     def test_valid_matching_pack_passes(self):
         root = self.make_pack()
         report = dlms._validate_staged_content_pack(str(root))
         self.assertTrue(report["valid"], report["errors"])
+
+    def test_mixed_choice_questions_are_normalized_and_preserve_tags_compatibility(self):
+        root = self.make_mixed_choice_pack("DLMS_Study_choice_valid", [{
+            "type": "choice",
+            "question": "Which option is documented?",
+            "tags": "choice-skill, documented-option",
+            "explanation": "The documented option is supported by the source.",
+            "choices": [
+                {"label": "Z", "text": "Correct", "is_correct": True},
+                {"label": "Q", "text": "Incorrect", "is_correct": False},
+            ],
+        }])
+        report = dlms._validate_staged_content_pack(str(root))
+        self.assertTrue(report["valid"], report["errors"])
+
+        installed = Path(dlms.CONTENT_PACK_FOLDER) / root.name
+        root.rename(installed)
+        data = dlms.load_content_pack_quiz_dataset("study_choice", "questions")
+        question = data["questions"][0]
+        self.assertEqual(["A", "B"], [choice["label"] for choice in question["choices"]])
+        self.assertEqual(["choice-skill", "documented-option"], question["concepts"])
+        self.assertNotIn("tags", question)
+
+    def test_mixed_choice_validation_rejects_malformed_structure_and_truthy_flags(self):
+        cases = {
+            "missing-choices": {
+                "type": "choice", "question": "Missing choices", "choices": "not-a-list",
+            },
+            "empty-choice": {
+                "type": "choice", "question": "Empty choice", "choices": [
+                    {"text": "", "is_correct": True}, {"text": "Other", "is_correct": False},
+                ],
+            },
+            "truthy-string": {
+                "type": "choice", "question": "Truthy string", "choices": [
+                    {"text": "Correct", "is_correct": "false"}, {"text": "Other", "is_correct": False},
+                ],
+            },
+            "duplicate-text": {
+                "type": "choice", "question": "Duplicate text", "choices": [
+                    {"text": " Same answer ", "is_correct": True}, {"text": "same   answer", "is_correct": False},
+                ],
+            },
+            "no-correct": {
+                "type": "choice", "question": "No correct", "choices": [
+                    {"text": "One", "is_correct": False}, {"text": "Two", "is_correct": False},
+                ],
+            },
+            "too-many": {
+                "type": "choice", "question": "Too many", "choices": [
+                    {"text": f"Choice {index}", "is_correct": index == 0}
+                    for index in range(27)
+                ],
+            },
+        }
+        for name, question in cases.items():
+            with self.subTest(name=name):
+                root = self.make_mixed_choice_pack(
+                    f"DLMS_Study_choice_{name}", [question], pack_id=f"study_choice_{name}"
+                )
+                report = dlms._validate_staged_content_pack(str(root))
+                self.assertFalse(report["valid"])
+                self.assertTrue(report["errors"])
+
+    def test_ai_workflow_requires_exactly_one_correct_choice_but_manual_pack_keeps_multi_select(self):
+        question = {
+            "type": "choice", "question": "Select the valid options.", "choices": [
+                {"text": "One", "is_correct": True}, {"text": "Two", "is_correct": True},
+            ],
+        }
+        root = self.make_mixed_choice_pack("DLMS_Study_choice_multi", [question])
+        manual_report = dlms._validate_staged_content_pack(str(root))
+        ai_report = dlms._validate_staged_content_pack(str(root), require_single_select=True)
+        self.assertTrue(manual_report["valid"], manual_report["errors"])
+        self.assertFalse(ai_report["valid"])
+        self.assertTrue(any("exactly one correct choice" in error for error in ai_report["errors"]))
 
     def test_validation_review_renders_separate_confirmation_and_action_rows(self):
         metadata = {
@@ -356,7 +452,7 @@ class ContentPackValidationTests(unittest.TestCase):
 
 
 class GuidedAIStudyPackImportTests(unittest.TestCase):
-    def _zip_pack(self, root, *, pack_id="study_guided", invalid=False, warning=False):
+    def _zip_pack(self, root, *, pack_id="study_guided", invalid=False, warning=False, questions=None):
         pack = root / f"DLMS_Study_{pack_id}"
         (pack / "data").mkdir(parents=True)
         manifest = {
@@ -369,6 +465,11 @@ class GuidedAIStudyPackImportTests(unittest.TestCase):
             "image_datasets": [],
             "quiz_datasets": [],
         }
+        if questions is not None:
+            manifest["quiz_datasets"] = [{
+                "id": "questions", "title": "Questions", "type": "quiz",
+                "path": "data/questions.json",
+            }]
         data = {
             "schema_version": 1,
             "id": "terms",
@@ -382,6 +483,14 @@ class GuidedAIStudyPackImportTests(unittest.TestCase):
         }
         (pack / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         (pack / "data" / "terms.json").write_text(json.dumps(data), encoding="utf-8")
+        if questions is not None:
+            (pack / "data" / "questions.json").write_text(json.dumps({
+                "schema_version": 1,
+                "id": "questions",
+                "title": "Questions",
+                "source": {"organization": "DLMS Test", "license": "CC0"},
+                "questions": questions,
+            }), encoding="utf-8")
         archive = root / f"{pack_id}.zip"
         with zipfile.ZipFile(archive, "w") as zf:
             for path in pack.rglob("*"):
@@ -465,6 +574,43 @@ class GuidedAIStudyPackImportTests(unittest.TestCase):
             self.assertEqual(302, unconfirmed.status_code)
             self.assertEqual(warning.headers["Location"], unconfirmed.headers["Location"])
             self.assertFalse((Path(dlms.CONTENT_PACK_FOLDER) / "DLMS_Study_study_warning").exists())
+
+    def test_guided_ai_mcq_requires_single_correct_choice(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            archive = self._zip_pack(root, pack_id="study_ai_multi", questions=[{
+                "type": "choice", "question": "Select both.", "choices": [
+                    {"text": "One", "is_correct": True},
+                    {"text": "Two", "is_correct": True},
+                ],
+            }])
+            client = dlms.app.test_client()
+            response = self._post_guided_zip(client, archive)
+            page = client.get(response.headers["Location"]).get_data(as_text=True)
+            self.assertIn("INSTALL BLOCKED", page)
+            self.assertIn("exactly one correct choice", page)
+
+    def test_manual_content_pack_import_keeps_legacy_multi_select_compatibility(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            archive = self._zip_pack(root, pack_id="study_manual_multi", questions=[{
+                "type": "choice", "question": "Select both.", "choices": [
+                    {"text": "One", "is_correct": True},
+                    {"text": "Two", "is_correct": True},
+                ],
+            }])
+            client = dlms.app.test_client()
+            response = client.post("/content-packs/import", data={
+                "csrf_token": csrf_token(client, "/content-packs"),
+                "pack_zip": (io.BytesIO(archive.read_bytes()), archive.name),
+            }, content_type="multipart/form-data", follow_redirects=False)
+            page = client.get(response.headers["Location"]).get_data(as_text=True)
+            self.assertIn("READY TO INSTALL", page)
+            self.assertIn('id="packReviewInstallForm"', page)
 
     def test_guided_cancel_only_removes_its_own_stage_and_manual_import_stays_generic(self):
         directory, root, patches = self._isolated_paths()

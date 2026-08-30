@@ -23,7 +23,7 @@ class StudyPackAIBuilderTests(unittest.TestCase):
             raise AssertionError("Generated prompt textarea was not rendered")
         return html.unescape(match.group(1))
 
-    def _post_builder(self, config=None):
+    def _post_builder(self, config=None, *, include_multiple_choice=False):
         client = dlms.app.test_client()
         token = csrf_token(client, "/study-packs/ai-builder")
         cfg = {
@@ -34,7 +34,7 @@ class StudyPackAIBuilderTests(unittest.TestCase):
         if config:
             cfg.update(config)
         with mock.patch.object(dlms, "load_portal_config", return_value=cfg):
-            return client.post("/study-packs/ai-builder", data={
+            data = {
                 "csrf_token": token,
                 "topic": "Network layers",
                 "domain": "IT / Cybersecurity",
@@ -45,7 +45,10 @@ class StudyPackAIBuilderTests(unittest.TestCase):
                 "ai_provider": "chatgpt",
                 "include_matching": "on",
                 "include_images": "on",
-            })
+            }
+            if include_multiple_choice:
+                data["include_multiple_choice"] = "on"
+            return client.post("/study-packs/ai-builder", data=data)
 
     def test_generated_prompt_uses_real_newlines_without_literal_separators(self):
         response = self._post_builder()
@@ -84,6 +87,26 @@ class StudyPackAIBuilderTests(unittest.TestCase):
         ):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, prompt)
+
+    def test_builder_offers_single_select_mcqs_with_canonical_accuracy_requirements(self):
+        page = self._post_builder(include_multiple_choice=True).get_data(as_text=True)
+        prompt = self._prompt_from_response(self._post_builder(include_multiple_choice=True)).casefold()
+        self.assertIn('name="include_multiple_choice"', page)
+        self.assertIn("multiple-choice questions", page)
+        for requirement in (
+            '"type": "choice"',
+            '"is_correct":true',
+            "dlms assigns a–z labels",
+            "do not invent factual answers",
+            "omit it instead of guessing",
+            "do not fabricate",
+            "exactly one choice must be true",
+            "concise explanation",
+            "reliable source material",
+        ):
+            with self.subTest(requirement=requirement):
+                self.assertIn(requirement, prompt)
+        self.assertIn("source-supported single-select multiple-choice questions", prompt)
 
     def test_customized_prompt_template_is_used_without_being_overwritten(self):
         custom = "CUSTOM HEADER\n{{content_request}}\nCUSTOM FOOTER"
