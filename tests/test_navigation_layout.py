@@ -1,4 +1,5 @@
 import os
+import re
 import unittest
 from unittest import mock
 
@@ -81,6 +82,27 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("grid-template-columns: max-content minmax(0, 1fr)", css)
         self.assertIn("overflow-wrap: anywhere", css)
         self.assertIn("var(--theme-muted-text", css)
+
+    def test_it_summary_supporting_text_uses_full_card_width_and_normal_words(self):
+        pack = {"name": "IT Study", "version": "1"}
+        with mock.patch.object(dlms, "_it_pack_page_data", return_value=(pack, [], [], [])):
+            page = self.client.get("/it").get_data(as_text=True)
+        css = self._static("style.css")
+
+        self.assertIn("IT / Cybersecurity packs", page)
+        rule = re.search(
+            r"\.medical-summary-grid\s+\.dashboard-stat-card\s*\{([^}]*)\}", css
+        )
+        self.assertIsNotNone(rule)
+        self.assertIn("grid-template-columns: minmax(0, 1fr)", rule.group(1))
+        support_rules = re.findall(
+            r"\.medical-summary-grid\s+\.dashboard-stat-card\s*>\s*small\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertTrue(support_rules)
+        self.assertTrue(any("overflow-wrap: break-word" in rule for rule in support_rules))
+        self.assertTrue(any("word-break: normal" in rule for rule in support_rules))
+        self.assertFalse(any("overflow-wrap: anywhere" in rule for rule in support_rules))
 
     def test_learning_intelligence_modal_is_viewport_safe_and_focus_managed(self):
         page = self._static("learning-intelligence.html")

@@ -148,15 +148,22 @@
 }
 .help-steps > div {
     counter-increment: helpstep;
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
+    position: relative;
+    display: block;
+    min-width: 0;
+    min-height: 28px;
+    padding-left: 42px;
     color: var(--theme-muted-text, #b8c2cc);
     line-height: 1.5;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
 }
 .help-steps > div::before {
     content: counter(helpstep);
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 28px;
     height: 28px;
     display: grid;
@@ -168,7 +175,19 @@
     font-weight: 800;
 }
 .help-steps strong { color: var(--theme-heading, #fff); }
-.help-steps > div > div { color: inherit; line-height: inherit; }
+.help-steps > div > div {
+    min-width: 0;
+    color: inherit;
+    line-height: inherit;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+}
+.help-steps > div :is(a, strong, b, em) {
+    display: inline;
+    white-space: normal;
+    word-break: normal;
+}
 
 .help-shot {
     margin: 16px 0 6px;

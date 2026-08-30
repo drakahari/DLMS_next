@@ -6551,6 +6551,30 @@ a.settings-hub-card:hover {
     margin: 18px 0;
 }
 
+/* Summary metrics contain label/value/supporting copy rather than an icon and
+   a copy wrapper. Give all three rows the card's full width instead of placing
+   the supporting text in the generic stat card's 56px icon column. */
+.medical-summary-grid .dashboard-stat-card {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    align-items: start;
+    gap: 2px;
+}
+
+.medical-summary-grid .dashboard-stat-card > span,
+.medical-summary-grid .dashboard-stat-card > strong,
+.medical-summary-grid .dashboard-stat-card > small {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.medical-summary-grid .dashboard-stat-card > small {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+}
+
 .medical-dataset-grid,
 .pack-card-grid {
     display: grid;

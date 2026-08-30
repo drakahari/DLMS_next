@@ -174,6 +174,34 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn("trusted LAN", page)
         self.assertIn("public internet", page)
 
+    def test_numbered_procedures_keep_inline_emphasis_inside_normal_text_flow(self):
+        affected_pages = (
+            "help-study-packs.html",
+            "help-study-modules.html",
+            "help-content-management.html",
+            "help-anki.html",
+        )
+        mixed_inline_step = re.compile(
+            r'<div class="help-steps">.*?<div>[^<]*'
+            r'<strong>[^<]+</strong>[^<]+',
+            re.DOTALL,
+        )
+        for filename in affected_pages:
+            with self.subTest(page=filename):
+                page = self._static(filename)
+                self.assertRegex(page, mixed_inline_step)
+
+        css = self._static("help-docs.css")
+        step_rule = re.search(r"\.help-steps\s*>\s*div\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(step_rule)
+        declarations = step_rule.group(1)
+        self.assertIn("display: block", declarations)
+        self.assertIn("min-width: 0", declarations)
+        self.assertIn("white-space: normal", declarations)
+        self.assertIn("overflow-wrap: break-word", declarations)
+        self.assertIn("word-break: normal", declarations)
+        self.assertNotIn("grid-template-columns", declarations)
+
 
 if __name__ == "__main__":
     unittest.main()
