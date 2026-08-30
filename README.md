@@ -1,29 +1,8 @@
-## Latest Release
-
-DLMS v2.1.0 is now available.
-
-Added a new Law Study workflow for structured legal study and case review
-Added AI-assisted Law Study prompt generation
-Added case packet import support with preview before saving
-Added saved law study imports and raw import viewing
-Added case review creation and a My Case Reviews page
-Added editable case review notes, IRAC-style fields, and Socratic Q&A support
-Added rule flashcard support for legal study review
-Added text export support for saved case reviews
-Improved Law Study workflow navigation, warnings, cancel options, and tooltips
-Updated binaries for Windows 11, macOS Apple Silicon, Fedora 44, Ubuntu 24.04, and Ubuntu 26.04
-
-- Added ability to edit/delete/add questions and answers
-- Added ability to create quick quizzes as a thrid option of creation.
-- Added ability to copy missed questions/answers to clipboard and go to the AI of your choice (including local models!) to research further
-- Added a customizable AI prompt that can be used when checking missed questions/answers
-- Added Ubuntu 26.04 binaries
-
-👉 Download from the [Releases page](../../releases).
-
-Created on 1/9/26 by Mike Buchanan
-
 # DLMS – Digital Learning & Management System
+
+**Current release: DLMS 3.0.2**
+
+👉 Download packaged releases from the [Releases page](../../releases).
 
 DLMS is a self-hosted quiz and learning application designed for study, practice,
 and exam preparation. It supports both **Study Mode** and **Exam Mode**, detailed
@@ -46,10 +25,10 @@ For users who prefer deeper system integration, DLMS can also be enabled as a
 systemd service (this is what I do).
 
 The project emphasizes learning effectiveness, not just assessment. Features like
-Study Mode, confidence analysis, attempt history, and Anki export are intended to
-help users identify weak areas, reinforce understanding, and retain knowledge over
-time—especially in certification, technical training, and self-directed study
-scenarios.
+Study Mode, confidence analysis, Learning Intelligence, attempt history, and Anki
+export are intended to help users identify weak areas, reinforce understanding,
+and retain knowledge over time—especially in certification, technical training,
+and self-directed study scenarios.
 
 DLMS exists because effective learning tools should be:
 
@@ -64,25 +43,29 @@ DLMS runs as a **local web application**.
 
 ## 🚀 How to Use DLMS (Important)
 
-After starting DLMS, **open a web browser** and go to:
+After starting DLMS, use:
 
 👉 **[http://127.0.0.1:9001/](http://127.0.0.1:9001/)**
 
 This is the main interface for the application.
 
-DLMS does **not** open a browser automatically.
+In an interactive desktop session, DLMS normally opens this address in the default
+browser after the local server is ready. In a headless or SSH session it prints the
+address but does not open a browser. See [Browser launch and server options](#browser-launch-and-server-options)
+for explicit controls.
 
 ---
 
 ## ✨ Key Features
 
 * Study Mode and Exam Mode
-* Upload or paste quiz questions
-* Advanced parsing tools using regular expressions (regex)
-* Attempt history and performance tracking
+* Manual, pasted-text, file, matching, image, and Smart PDF quiz builders
+* Reusable Study Packs, including guided AI Study Pack ZIP validation and install
+* IT, Law, Medical, and other study-area workflows
+* Attempt History, Analytics, and Learning Intelligence review planning
 * Confidence analysis (optional)
-* Export missed questions to **Anki**
-* Custom quiz logos and portal appearance
+* Anki export and printable physical flashcards
+* Backups, restore validation, and configurable themes/navigation
 
 ---
 
@@ -124,13 +107,43 @@ for long-term retention.
 
 1. Download the appropriate binary for your operating system from **Releases**
 2. Run the DLMS executable
-3. Open a browser and go to **[http://127.0.0.1:9001/](http://127.0.0.1:9001/)**
+3. Allow DLMS to open the browser, or go to **[http://127.0.0.1:9001/](http://127.0.0.1:9001/)**
 
 ### From source (advanced users)
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-lock.txt
 python app.py
 ```
+
+On Windows, activate the environment with `.venv\Scripts\activate`.
+
+`requirements-lock.txt` records the dependency set used for the verified 3.0.2
+environment. Contributors who intentionally need compatible dependency updates can
+instead install the supported ranges in `requirements.txt`, run the full test suite,
+and then deliberately refresh the lock file.
+
+### Browser launch and server options
+
+Browser launch and network binding are separate choices:
+
+* With no browser flag, DLMS opens a browser in an interactive Windows, macOS, or
+  Linux graphical desktop session. It skips automatic launch for SSH/headless
+  sessions.
+* `python app.py --browser` forces a launch attempt even when a desktop session is
+  not detected.
+* `python app.py --no-browser` always suppresses automatic launch.
+* `DLMS_NO_BROWSER=1` also suppresses launch. The values `true`, `yes`, and `on`
+  are accepted case-insensitively. This setting and `--no-browser` take precedence
+  over `--browser`.
+* DLMS binds to `127.0.0.1` by default. `--host HOST` (or `--host=HOST`) changes
+  only the bind address. Binding to `0.0.0.0` makes the service reachable through
+  an appropriate local network address; it does not make `0.0.0.0` a browser URL.
+
+DLMS has no user authentication. Use a non-loopback bind only on a trusted LAN and
+do not expose it directly to the public internet.
 
 ---
 
@@ -282,3 +295,22 @@ sudo systemctl daemon-reload
 
 No additional cleanup is required. DLMS leaves no background services or hidden
 files once removed.
+
+---
+
+## Release checklist
+
+1. Synchronize the release number in `app.py`, this README, and user-facing Help
+   text; confirm database and backup format versions are changed only when their
+   formats actually change.
+2. Review top-level and Help documentation against the release source, including
+   startup flags, data locations, and changed workflows.
+3. Create a clean environment from `requirements-lock.txt`; run targeted tests,
+   the full isolated test suite, Python compilation, and `git diff --check`.
+4. Build each supported platform artifact with the established platform build
+   process, then smoke-test startup, browser/no-browser operation, static assets,
+   quiz creation, and backup/restore.
+5. Review `git status` and package source from tracked files, for example with
+   `git archive --format=zip --output releases/DLMS-3.0.2-source.zip HEAD`. Inspect
+   the archive to confirm it contains required application assets and excludes
+   `.git`, virtual environments, caches, databases, logs, and local build output.

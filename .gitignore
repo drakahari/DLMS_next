@@ -19,6 +19,9 @@ __pycache__/
 *.pyd
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # ----------------------------
 # Local runtime / data
@@ -28,6 +31,9 @@ __pycache__/
 *.sqlite
 *.sqlite3
 *.log
+*.tmp
+*.temp
+*.bak
 
 # ----------------------------
 # Editor / OS junk
@@ -36,3 +42,6 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+*.swp
+*.swo
+*~

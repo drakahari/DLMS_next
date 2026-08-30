@@ -1,0 +1,22 @@
+# Reproducible DLMS 3.0.2 runtime environment.
+#
+# These direct and transitive versions are the dependency set exercised by the
+# release-readiness suite on Python 3.14.7. Update intentionally: install the
+# supported ranges from requirements.txt, run the full suite, then regenerate
+# and review this file. Build tooling is deliberately not part of runtime.
+blinker==1.9.0
+cached-property==2.0.1
+chevron==0.14.0
+click==8.5.0
+Flask==3.1.3
+Flask-WTF==1.3.0
+frozendict==2.4.7
+genanki==0.13.1
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+Pillow==12.3.0
+pypdf==6.16.2
+PyYAML==6.0.3
+Werkzeug==3.1.8
+WTForms==3.2.2

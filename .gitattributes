@@ -1,0 +1,12 @@
+# Keep source releases focused on supported application source and verification.
+# `git archive` already omits .git and untracked/ignored local files.
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/AGENTS.md export-ignore
+/archive export-ignore
+/archive/** export-ignore
+/legacy_library_ui_2026-08-21.txt export-ignore
+/MATCHING_PROTOTYPE_NOTES.md export-ignore
+/README_MEDICAL_V0.4.md export-ignore
+/README_MEDICAL_V0.5.md export-ignore
+/docs/screenshots/requirements.txt export-ignore
