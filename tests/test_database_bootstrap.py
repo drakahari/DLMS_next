@@ -257,8 +257,10 @@ class DatabaseBootstrapTests(unittest.TestCase):
         self.assertFalse((unowned / "results.db").exists())
 
         source = Path(dlms.__file__).read_text(encoding="utf-8")
-        bootstrap_call = source.index("# ✅ INITIALIZE DATABASE ONCE, AT IMPORT TIME\nensure_db_initialized()")
+        restore_reconciliation_call = source.index("\n_run_restore_startup_reconciliation()")
+        bootstrap_call = source.index("\nensure_db_initialized()", restore_reconciliation_call)
         reconciliation_call = source.index("\n_run_quiz_publication_startup_reconciliation()")
+        self.assertLess(restore_reconciliation_call, bootstrap_call)
         self.assertLess(bootstrap_call, reconciliation_call)
 
 

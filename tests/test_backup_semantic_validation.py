@@ -191,7 +191,7 @@ class BackupSemanticValidationTests(unittest.TestCase):
         with zipfile.ZipFile(archive_path, "w") as archive:
             archive.writestr(dlms.DLMS_BACKUP_MANIFEST, json.dumps(manifest))
             archive.writestr("DLMS_DATA/config/portal.json", "{}")
-        safety = self.root / "safety.zip"
+        safety = Path(dlms.BACKUP_FOLDER) / "semantic-safety.zip"
         safety.write_bytes(b"preserved")
         events = []
 
@@ -199,10 +199,16 @@ class BackupSemanticValidationTests(unittest.TestCase):
             events.append("semantic")
             return {"status": "valid"}
 
+        fake_journal = {"state": "safety_backup_created"}
         with mock.patch.object(dlms, "_restore_staging_dir", return_value=str(stage_dir)), \
              mock.patch.object(dlms, "_validate_staged_backup_semantics", side_effect=semantic), \
              mock.patch.object(dlms, "_prepare_staged_restore_database", side_effect=lambda *_: events.append("migrate")), \
              mock.patch.object(dlms, "_create_dlms_backup", side_effect=lambda *_: (events.append("backup") or (str(safety), {}))), \
+             mock.patch.object(dlms, "_new_restore_operation", return_value=("journal.json", fake_journal)), \
+             mock.patch.object(dlms, "_update_restore_operation_journal"), \
+             mock.patch.object(dlms, "_validate_restore_operation_journal", return_value={}), \
+             mock.patch.object(dlms, "_finish_restore_operation_cleanup"), \
+             mock.patch.object(dlms, "_validate_current_restored_database"), \
              mock.patch.object(dlms, "_apply_restored_data", side_effect=lambda *_: events.append("apply")), \
              mock.patch.object(dlms, "reconcile_quiz_publications", side_effect=lambda: events.append("reconcile")):
             response = client.post(
@@ -221,6 +227,8 @@ class BackupSemanticValidationTests(unittest.TestCase):
         with zipfile.ZipFile(archive_path, "w") as archive:
             archive.writestr(dlms.DLMS_BACKUP_MANIFEST, json.dumps(manifest))
             archive.writestr("DLMS_DATA/config/portal.json", "{}")
+        safety = Path(dlms.BACKUP_FOLDER) / "rollback-safety.zip"
+        safety.write_bytes(archive_path.read_bytes())
         apply_calls = []
 
         def apply_then_rollback(path):
@@ -228,10 +236,20 @@ class BackupSemanticValidationTests(unittest.TestCase):
             if len(apply_calls) == 1:
                 raise OSError("simulated apply failure")
 
+        fake_journal = {"state": "live_apply_started"}
+
+        def recover(*_args):
+            apply_then_rollback("journal-rollback")
+            return "rolled_back"
+
         with mock.patch.object(dlms, "_restore_staging_dir", return_value=str(stage_dir)), \
              mock.patch.object(dlms, "_validate_staged_backup_semantics", return_value={"status": "valid"}), \
              mock.patch.object(dlms, "_prepare_staged_restore_database", return_value={"status": "current"}), \
-             mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(archive_path), {})), \
+             mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {})), \
+             mock.patch.object(dlms, "_new_restore_operation", return_value=("journal.json", fake_journal)), \
+             mock.patch.object(dlms, "_update_restore_operation_journal"), \
+             mock.patch.object(dlms, "_read_restore_operation_journal", return_value=(fake_journal, {})), \
+             mock.patch.object(dlms, "_recover_one_restore_operation", side_effect=recover), \
              mock.patch.object(dlms, "_apply_restored_data", side_effect=apply_then_rollback), \
              mock.patch.object(dlms, "reconcile_quiz_publications"):
             response = client.post(

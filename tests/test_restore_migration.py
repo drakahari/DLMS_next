@@ -25,10 +25,13 @@ class RestoreMigrationTests(unittest.TestCase):
         dlms._initialize_data_root_ownership(str(self.live))
         self.restore_staging = self.live / "backup_restore_staging"
         self.restore_staging.mkdir()
+        self.backups = self.live / "backups"
+        self.backups.mkdir()
         self.db_path = self.live / "results.db"
         self.patches = [
             mock.patch.object(dlms, "APP_DATA_DIR", str(self.live)),
             mock.patch.object(dlms, "DB_PATH", str(self.db_path)),
+            mock.patch.object(dlms, "BACKUP_FOLDER", str(self.backups)),
             mock.patch.object(dlms, "BACKUP_RESTORE_STAGING_FOLDER", str(self.restore_staging)),
         ]
         for patcher in self.patches:
@@ -199,6 +202,7 @@ class RestoreMigrationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(events, [("apply", 2), ("reconcile", 2)])
+        self.assertEqual(list(Path(dlms._restore_operation_root()).glob("restore_*.json")), [])
         self.assertEqual(self._schema_version(self.db_path), 2)
         self.assertEqual(self._quiz_title(self.db_path), "Restored Legacy")
         conn = sqlite3.connect(self.db_path)
@@ -244,6 +248,7 @@ class RestoreMigrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self._quiz_title(self.db_path), "Restored Current")
         self.assertEqual(self._schema_version(self.db_path), 2)
+        self.assertEqual(list(Path(dlms._restore_operation_root()).glob("restore_*.json")), [])
         migration.assert_not_called()
 
     def test_future_backup_is_rejected_before_safety_backup_or_live_change(self):
@@ -343,6 +348,8 @@ class RestoreMigrationTests(unittest.TestCase):
         self.assertEqual(apply.call_count, 2)
         self.assertTrue(any("automatic rollback also failed" in str(call) for call in logged.call_args_list))
         self.assertIn(b"could not complete the restore", response.data)
+        self.assertEqual(len(list(Path(dlms._restore_operation_root()).glob("restore_*.json"))), 1)
+        self.assertTrue(safety.exists())
 
     def test_unowned_live_root_blocks_restore_before_migration_or_backup(self):
         current = self.root / "unowned-source.db"
