@@ -122,6 +122,28 @@ class HelpDocumentationTests(unittest.TestCase):
                         local_path = os.path.join(dlms.STATIC_ROOT, asset.removeprefix("/static/"))
                         self.assertTrue(os.path.isfile(local_path), local_path)
 
+    def test_visual_guides_have_required_screenshots_alt_text_and_captions(self):
+        expected_assets = {
+            "help-learning-intelligence.html": (
+                "learning-topics.png",
+                "learning-review-schedule.png",
+                "learning-diagnostics-confusions.png",
+                "learning-question-quality.png",
+            ),
+            "help-study-packs.html": ("ai-builder-zip-return.png", "study-pack-validation.png"),
+            "help-anki.html": ("anki-print-controls.png", "anki-print-front.png", "anki-print-back.png"),
+            "help-study-modules.html": ("law-create-case.png", "law-import-packet.png"),
+            "help-settings.html": ("settings-navigation.png",),
+            "help-maintenance.html": ("system-tools.png",),
+        }
+        for filename, assets in expected_assets.items():
+            page = self._static(filename)
+            for asset in assets:
+                with self.subTest(page=filename, asset=asset):
+                    self.assertIn(f'/static/help_assets/{asset}', page)
+                    self.assertRegex(page, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+alt="[^"]+"')
+                    self.assertRegex(page, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+></a><figcaption>[^<]+</figcaption>')
+
     def test_help_topic_links_target_registered_topics(self):
         topic_reference = re.compile(r'''href=["']/help/([^"'#?]+)''')
         pages = glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html"))
