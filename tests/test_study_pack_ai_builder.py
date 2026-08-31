@@ -103,6 +103,8 @@ class StudyPackAIBuilderTests(unittest.TestCase):
             "exactly one choice must be true",
             "concise explanation",
             "reliable source material",
+            "vary the supplied correct-choice position",
+            "do not force a perfectly equal distribution",
         ):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, prompt)

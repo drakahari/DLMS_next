@@ -2455,6 +2455,119 @@ def _normalize_content_pack_choice_question(
     return normalized
 
 
+def _content_pack_answer_position_concentration(questions):
+    """Describe an obviously suspicious single-select answer-position skew."""
+    positions = []
+    for question in questions if isinstance(questions, list) else []:
+        if not isinstance(question, dict):
+            continue
+        if str(question.get("type") or "choice").strip().lower() != "choice":
+            continue
+        choices = question.get("choices")
+        if not isinstance(choices, list):
+            continue
+        correct = [
+            index for index, choice in enumerate(choices)
+            if isinstance(choice, dict) and choice.get("is_correct") is True
+        ]
+        if len(correct) == 1:
+            positions.append(correct[0])
+
+    total = len(positions)
+    if total < 4:
+        return None
+    counts = {}
+    for position in positions:
+        counts[position] = counts.get(position, 0) + 1
+    position, count = max(counts.items(), key=lambda item: item[1])
+    concentration = count / total
+    if count != total and (total < 8 or concentration < 0.75):
+        return None
+    return {
+        "position": position,
+        "label": chr(65 + position),
+        "count": count,
+        "total": total,
+        "percentage": round(concentration * 100),
+    }
+
+
+def _randomize_staged_ai_answer_positions(pack_root, manifest):
+    """Repair pathological AI MCQ position distributions in staged JSON files.
+
+    Whole choice objects are moved so correctness flags and any choice metadata
+    stay together. Question-level explanations, concepts, sources, and other
+    metadata are not modified.
+    """
+    corrections = []
+    rng = random.SystemRandom()
+    for descriptor in manifest.get("quiz_datasets") or []:
+        if not isinstance(descriptor, dict):
+            continue
+        rel_path = str(descriptor.get("path") or "").strip()
+        if not rel_path:
+            continue
+        dataset_path = _safe_pack_child(pack_root, rel_path)
+        with open(dataset_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        questions = data.get("questions") if isinstance(data, dict) else None
+        skew = _content_pack_answer_position_concentration(questions)
+        if not skew:
+            continue
+
+        position_counts = {}
+        randomized = 0
+        for question in questions:
+            if not isinstance(question, dict):
+                continue
+            if str(question.get("type") or "choice").strip().lower() != "choice":
+                continue
+            choices = question.get("choices")
+            if not isinstance(choices, list) or len(choices) < 2:
+                continue
+            correct_choices = [
+                choice for choice in choices
+                if isinstance(choice, dict) and choice.get("is_correct") is True
+            ]
+            if len(correct_choices) != 1:
+                continue
+
+            shuffled = list(choices)
+            rng.shuffle(shuffled)
+            least_used = min(position_counts.get(index, 0) for index in range(len(shuffled)))
+            candidates = [
+                index for index in range(len(shuffled))
+                if position_counts.get(index, 0) == least_used
+            ]
+            target = rng.choice(candidates)
+            current = next(
+                index for index, choice in enumerate(shuffled)
+                if isinstance(choice, dict) and choice.get("is_correct") is True
+            )
+            shuffled[current], shuffled[target] = shuffled[target], shuffled[current]
+            question["choices"] = shuffled
+            position_counts[target] = position_counts.get(target, 0) + 1
+            randomized += 1
+
+        if not randomized:
+            continue
+        temporary_path = dataset_path + ".answer-position.tmp"
+        try:
+            with open(temporary_path, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+            os.replace(temporary_path, dataset_path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
+        corrections.append(
+            f"{rel_path}: DLMS detected {skew['count']} of {skew['total']} correct answers "
+            f"in position {skew['label']} ({skew['percentage']}%) and safely randomized "
+            f"the choices for {randomized} single-select questions."
+        )
+    return corrections
+
+
 def _safe_zip_member_name(name):
     """Return a normalized safe archive member path or raise ValueError."""
     raw = str(name or "").replace("\\", "/")
@@ -2637,6 +2750,7 @@ def _validate_staged_content_pack(
     image_license_missing = 0
     dataset_source_missing = 0
     normalized_image_paths = set()
+    answer_distribution_warnings = []
 
     for group, did, rel_path, data in parsed_dataset_files:
         if data.get("schema_version") != CONTENT_PACK_SCHEMA_VERSION:
@@ -2775,6 +2889,13 @@ def _validate_staged_content_pack(
                 if not isinstance(questions, list) or not questions:
                     errors.append(f"{rel_path}: mixed question dataset must contain questions")
                 elif isinstance(questions, list):
+                    skew = _content_pack_answer_position_concentration(questions)
+                    if skew:
+                        answer_distribution_warnings.append(
+                            f"{rel_path}: suspicious correct-answer position concentration: "
+                            f"{skew['count']} of {skew['total']} single-select questions use "
+                            f"position {skew['label']} ({skew['percentage']}%)."
+                        )
                     for question_number, question in enumerate(questions, 1):
                         if not isinstance(question, dict):
                             errors.append(
@@ -2839,6 +2960,14 @@ def _validate_staged_content_pack(
     checks.append(_content_pack_validation_record(
         "Matching uniqueness / IDs", "PASS" if duplicates_ok else "FAIL",
         "dataset/image IDs and matching records are deterministic and unambiguous" if duplicates_ok else "matching ambiguity or an ID collision was detected"
+    ))
+    warnings.extend(answer_distribution_warnings)
+    checks.append(_content_pack_validation_record(
+        "Answer-position distribution",
+        "WARN" if answer_distribution_warnings else "PASS",
+        f"{len(answer_distribution_warnings)} suspicious dataset(s) need review"
+        if answer_distribution_warnings else
+        "no obviously pathological single-select answer-position concentration detected",
     ))
 
     if image_license_missing:
@@ -6017,6 +6146,16 @@ def _stage_content_pack_upload(upload, *, workflow=None):
             normalize_images=True,
             require_single_select=(workflow == CONTENT_PACK_AI_WORKFLOW),
         )
+        answer_position_corrections = []
+        if workflow == CONTENT_PACK_AI_WORKFLOW and report["valid"]:
+            answer_position_corrections = _randomize_staged_ai_answer_positions(
+                pack_root, report["manifest"]
+            )
+            if answer_position_corrections:
+                report = _validate_staged_content_pack(
+                    pack_root, require_single_select=True
+                )
+                report["warnings"].extend(answer_position_corrections)
 
         metadata = {
             "token": token,
@@ -6029,6 +6168,8 @@ def _stage_content_pack_upload(upload, *, workflow=None):
             "report": report,
             "created_at": datetime.now().isoformat(timespec="seconds"),
         }
+        if answer_position_corrections:
+            metadata["answer_position_corrections"] = answer_position_corrections
         if workflow:
             metadata["workflow"] = workflow
         with open(os.path.join(stage_dir, "stage.json"), "w", encoding="utf-8") as f:
@@ -6084,6 +6225,7 @@ def content_pack_import_review(token):
                 _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW
             ),
         )
+        report["warnings"].extend(metadata.get("answer_position_corrections") or [])
         metadata["report"] = report
     except Exception as exc:
         print(f"[CONTENT PACK REVIEW ERROR] {type(exc).__name__}: {exc}")
@@ -8067,6 +8209,7 @@ Use a quiz_datasets descriptor with type "quiz" for choice, matching, and/or hot
 For every generated multiple-choice question:
 - Use "type": "choice", a non-empty "question", and 2–26 choices. DLMS assigns A–Z labels in the supplied choice order; do not provide labels, "correct", "correct_answer", "correct_answers", or answer letters.
 - Use an actual JSON boolean for every "is_correct" value. For AI-generated MCQs, exactly one choice must be true; all others must be false.
+- Vary the supplied order of the correct choice across the question set so DLMS-assigned answer positions are not pathologically concentrated in A or any other position. Natural variation is sufficient; do not force a perfectly equal distribution.
 - Do not invent factual answers. Mark an answer correct only when reliable source material supports it. If a valid supportable MCQ cannot be made, omit it instead of guessing.
 - Distractors must be plausible but factually incorrect. Do not use duplicate answer text.
 - Provide a concise explanation that supports the marked answer and does not contradict it. Do not fabricate distractor rationales, citations, URLs, or source claims.
@@ -8122,6 +8265,7 @@ You MUST validate the finished pack after all files are created. Do not merely s
 - every matching collision discovered during review is repaired before delivery
 - every term and definition is non-empty
 - every choice question has a non-empty question, 2–26 distinct non-empty choices, real JSON boolean is_correct values, and exactly one correct choice
+- correct-choice positions across each multiple-choice dataset have been reviewed for suspicious concentration; they need not be perfectly equal
 - every dataset has source metadata
 - every bundled image exists at its declared path
 - every bundled image records exact provenance and redistribution/license metadata
@@ -8635,6 +8779,8 @@ def study_pack_ai_builder():
                 f"Create {mcq_counts[size]} source-supported single-select multiple-choice questions. "
                 "Use the DLMS choice-question JSON contract: 2–26 distinct choices, exactly one true "
                 "JSON is_correct value, a concise explanation, and question-level source support. "
+                "Vary the supplied correct-choice position naturally across the question set; do not put "
+                "every correct answer in the same position and do not force perfect equality. "
                 "Do not guess: omit any question whose correct answer cannot be supported reliably."
             )
         if include_images:
@@ -26185,13 +26331,13 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
         <br>
 
         <div class="quiz-return-buttons">
-            <button id="returnPortalBtn" onclick="location.href='/'">
+            <a id="returnPortalBtn" href="/">
                 🏠 Return To Dashboard
-            </button>
+            </a>
 
-            <button id="returnLibraryBtn" onclick="location.href='/library'">
+            <a id="returnLibraryBtn" href="/library">
                 📚 Return To Quiz Library
-            </button>
+            </a>
         </div>
 </div>
 </div>

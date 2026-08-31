@@ -859,12 +859,17 @@ body.home .quiz-card img {
     display: grid;
     grid-template-columns: 1fr;
     gap: 12px;
+    position: relative;
+    isolation: isolate;
 }
 
 #returnPortalBtn,
 #returnLibraryBtn,
-.quiz-return-buttons button {
-    display: block;
+.quiz-return-buttons button,
+.quiz-return-buttons a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     box-sizing: border-box;
     min-height: 52px;
@@ -874,11 +879,25 @@ body.home .quiz-card img {
     border: 1px solid rgba(130,160,210,0.24);
     font-weight: 700;
     letter-spacing: 0.2px;
+    color: #ffffff;
+    text-align: center;
+    text-decoration: none;
+    pointer-events: auto;
+    position: relative;
+    z-index: 1;
 }
 
-.quiz-return-buttons button:hover {
+.quiz-return-buttons button:hover,
+.quiz-return-buttons a:hover {
     background: linear-gradient(180deg, rgba(34,56,94,0.98), rgba(26,44,76,0.98));
     border-color: rgba(100,170,255,0.38);
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.quiz-return-buttons a:focus-visible {
+    outline: 3px solid #7cc4ff;
+    outline-offset: 3px;
 }
 
 /* =======================
@@ -936,14 +955,17 @@ body.blurred .blur-wrapper {
     align-items: center;
     justify-content: center;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.25s ease;
+    transition: opacity 0.25s ease, visibility 0s linear 0.25s;
     z-index: 999;
 }
 
 .pause-overlay.show {
     opacity: 1;
+    visibility: visible;
     pointer-events: auto;
+    transition-delay: 0s;
 }
 
 .pause-overlay-content {
@@ -1192,7 +1214,8 @@ body.blurred .blur-wrapper {
         gap: 10px;
     }
 
-    .quiz-return-buttons button {
+    .quiz-return-buttons button,
+    .quiz-return-buttons a {
         min-height: 64px;
         font-size: 20px;
     }

@@ -89,6 +89,26 @@ class GeneratedQuizSecurityTests(unittest.TestCase):
         self.assertIn("escapeHtml(source.attribution)", script)
         self.assertIn("safeExternalUrl(source.url)", script)
 
+    def test_return_navigation_uses_full_native_links_and_inactive_overlay_is_hidden(self):
+        generated = self._build("Portal", "Navigation Test")
+        self.assertIn('<a id="returnPortalBtn" href="/">', generated)
+        self.assertIn('<a id="returnLibraryBtn" href="/library">', generated)
+        self.assertNotIn('id="returnLibraryBtn" onclick=', generated)
+
+        styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
+        inactive_overlay = re.search(
+            r"\.pause-overlay\s*\{(?P<body>.*?)\n\}", styles, re.DOTALL
+        )
+        active_overlay = re.search(
+            r"\.pause-overlay\.show\s*\{(?P<body>.*?)\n\}", styles, re.DOTALL
+        )
+        self.assertIsNotNone(inactive_overlay)
+        self.assertIsNotNone(active_overlay)
+        self.assertIn("visibility: hidden", inactive_overlay.group("body"))
+        self.assertIn("pointer-events: none", inactive_overlay.group("body"))
+        self.assertIn("visibility: visible", active_overlay.group("body"))
+        self.assertIn("pointer-events: auto", active_overlay.group("body"))
+
 
 if __name__ == "__main__":
     unittest.main()

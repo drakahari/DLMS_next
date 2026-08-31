@@ -148,6 +148,39 @@ class ContentPackValidationTests(unittest.TestCase):
         self.assertFalse(ai_report["valid"])
         self.assertTrue(any("exactly one correct choice" in error for error in ai_report["errors"]))
 
+    def test_validator_warns_for_pathological_answer_position_concentration(self):
+        questions = [
+            {
+                "type": "choice",
+                "question": f"Question {number}",
+                "choices": [
+                    {"text": f"Correct {number}", "is_correct": True},
+                    {"text": f"Distractor B {number}", "is_correct": False},
+                    {"text": f"Distractor C {number}", "is_correct": False},
+                    {"text": f"Distractor D {number}", "is_correct": False},
+                ],
+            }
+            for number in range(1, 26)
+        ]
+        root = self.make_mixed_choice_pack(
+            "DLMS_Study_choice_all_a", questions, pack_id="study_choice_all_a"
+        )
+
+        report = dlms._validate_staged_content_pack(
+            str(root), require_single_select=True
+        )
+
+        self.assertTrue(report["valid"], report["errors"])
+        self.assertTrue(any(
+            "25 of 25 single-select questions use position A" in warning
+            for warning in report["warnings"]
+        ))
+        distribution_check = next(
+            check for check in report["checks"]
+            if check["name"] == "Answer-position distribution"
+        )
+        self.assertEqual("WARN", distribution_check["status"])
+
     def test_validation_review_renders_separate_confirmation_and_action_rows(self):
         metadata = {
             "uploaded_name": "DLMS_Study_linux_permissions.zip",
@@ -591,6 +624,70 @@ class GuidedAIStudyPackImportTests(unittest.TestCase):
             page = client.get(response.headers["Location"]).get_data(as_text=True)
             self.assertIn("INSTALL BLOCKED", page)
             self.assertIn("exactly one correct choice", page)
+
+    def test_guided_ai_all_a_choices_are_safely_randomized_with_metadata_intact(self):
+        directory, root, patches = self._isolated_paths()
+        questions = []
+        for number in range(1, 26):
+            questions.append({
+                "type": "choice",
+                "question": f"Question {number}",
+                "explanation": f"Explanation {number}",
+                "concepts": [f"concept-{number}"],
+                "source": {"organization": "DLMS Test", "record": number},
+                "provenance": {"source_line": number},
+                "choices": [
+                    {
+                        "text": f"Correct {number}", "is_correct": True,
+                        "choice_metadata": {"kind": "answer", "number": number},
+                    },
+                    {"text": f"Distractor B {number}", "is_correct": False},
+                    {"text": f"Distractor C {number}", "is_correct": False},
+                    {"text": f"Distractor D {number}", "is_correct": False},
+                ],
+            })
+
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            client = dlms.app.test_client()
+            response = self._post_guided_zip(
+                client,
+                self._zip_pack(
+                    root, pack_id="study_ai_all_a", questions=questions
+                ),
+            )
+            self.assertEqual(302, response.status_code)
+            token = response.headers["Location"].rsplit("/", 1)[-1]
+            _, pack_root, metadata = dlms._load_staged_content_pack(token)
+            staged = json.loads(
+                (Path(pack_root) / "data" / "questions.json").read_text(encoding="utf-8")
+            )
+
+            positions = []
+            for number, question in enumerate(staged["questions"], 1):
+                correct_positions = [
+                    index for index, choice in enumerate(question["choices"])
+                    if choice["is_correct"]
+                ]
+                self.assertEqual(1, len(correct_positions))
+                positions.append(correct_positions[0])
+                correct = question["choices"][correct_positions[0]]
+                self.assertEqual(f"Correct {number}", correct["text"])
+                self.assertEqual(
+                    {"kind": "answer", "number": number},
+                    correct["choice_metadata"],
+                )
+                self.assertEqual(f"Explanation {number}", question["explanation"])
+                self.assertEqual([f"concept-{number}"], question["concepts"])
+                self.assertEqual({"source_line": number}, question["provenance"])
+
+            self.assertGreater(len(set(positions)), 1)
+            self.assertLessEqual(max(positions.count(position) for position in set(positions)), 7)
+            self.assertTrue(metadata.get("answer_position_corrections"))
+            page = client.get(response.headers["Location"]).get_data(as_text=True)
+            self.assertIn("safely randomized the choices for 25", page)
+            self.assertNotIn("suspicious correct-answer position concentration", page)
 
     def test_manual_content_pack_import_keeps_legacy_multi_select_compatibility(self):
         directory, root, patches = self._isolated_paths()
