@@ -21,6 +21,31 @@ let timeRemaining = examDurationMinutes * 60;
 let examStartTime = null;
 let examStartedAt = null;
 let learningSessionId = null;
+let studyAIConfig = null;
+let studyAIConfigRequest = null;
+
+function loadStudyAIConfig() {
+    if (studyAIConfigRequest) return studyAIConfigRequest;
+
+    studyAIConfigRequest = fetch("/config/portal.json", { cache: "no-store" })
+        .then(res => res.json())
+        .then(config => {
+            studyAIConfig = config;
+            return config;
+        })
+        .catch(err => {
+            console.error("[AI Study Mode] Failed to load config:", err);
+            studyAIConfig = null;
+            return null;
+        })
+        .finally(() => {
+            studyAIConfigRequest = null;
+        });
+
+    return studyAIConfigRequest;
+}
+
+loadStudyAIConfig();
 
 function createLearningSessionId() {
     return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `study-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -211,10 +236,8 @@ function renderQuestion() {
     // Matching v1 is intentionally kept out of AI/Anki single-choice helpers.
     // Those workflows assume A-Z choices and can be extended separately later.
     const studyAiBtn = document.getElementById("studyAiBtn");
-    const studyAiCopyBtn = document.getElementById("studyAiCopyBtn");
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
     if (studyAiBtn) studyAiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
-    if (studyAiCopyBtn) studyAiCopyBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
     if (studyAnkiBtn) studyAnkiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
 
     if (q.type === "hotspot") {
@@ -972,10 +995,6 @@ function startQuiz(isExam) {
     if (studyAiBtn) {
         studyAiBtn.style.display = examMode ? "none" : "inline-block";
     }
-    const studyAiCopyBtn = document.getElementById("studyAiCopyBtn");
-    if (studyAiCopyBtn) {
-        studyAiCopyBtn.style.display = examMode ? "none" : "inline-block";
-    }
 
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
     if (studyAnkiBtn) {
@@ -1487,10 +1506,32 @@ function resetDatabase() {
 /* =====================================================
    Review Study Question with AI (NEW FEATURE)
 ===================================================== */
-window.reviewCurrentQuestionWithAI = async function(copyPromptOnly = false) {
+function copyStudyAIPromptSynchronously(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
     try {
-        const res = await fetch("/config/portal.json", { cache: "no-store" });
-        const aiConfig = await res.json();
+        return document.execCommand("copy");
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
+window.reviewCurrentQuestionWithAI = function() {
+    try {
+        const aiConfig = studyAIConfig;
+
+        if (!aiConfig) {
+            loadStudyAIConfig();
+            alert("AI Helper settings are still loading. Please try again.");
+            return;
+        }
 
         if (!aiConfig || !aiConfig.ai_helper_enabled) {
             alert("AI Helper is disabled in Settings.");
@@ -1579,27 +1620,13 @@ Please:
 
 ${questionBlock.trim()}`;
 
-        if (copyPromptOnly) {
-            try {
-                if (navigator.clipboard && window.isSecureContext) {
-                    await navigator.clipboard.writeText(finalPrompt);
-                } else {
-                    const textarea = document.createElement("textarea");
-                    textarea.value = finalPrompt;
-                    textarea.style.position = "fixed";
-                    textarea.style.left = "-9999px";
-                    document.body.appendChild(textarea);
-                    textarea.focus();
-                    textarea.select();
-                    document.execCommand("copy");
-                    document.body.removeChild(textarea);
-                }
-                alert("Explain prompt copied.");
-            } catch (copyErr) {
-                console.warn("[AI Study Mode] Clipboard copy failed:", copyErr);
-                alert("Could not copy the explain prompt. Check the browser console for details.");
-            }
-            return;
+        // =========================
+        // COPY TO CLIPBOARD
+        // =========================
+        try {
+            copyStudyAIPromptSynchronously(finalPrompt);
+        } catch (copyErr) {
+            console.warn("[AI Study Mode] Clipboard copy failed:", copyErr);
         }
 
         // =========================
@@ -1611,19 +1638,12 @@ ${questionBlock.trim()}`;
             gemini: "https://gemini.google.com/"
         };
 
-        const configuredUrl = aiConfig.ai_provider === "local"
+        const url = aiConfig.ai_provider === "local"
             ? (aiConfig.ai_custom_url || "").trim()
             : providers[aiConfig.ai_provider];
 
-        let url = null;
-        try {
-            const parsed = new URL(String(configuredUrl || ""));
-            if (["http:", "https:"].includes(parsed.protocol)) url = parsed.href;
-        } catch (urlErr) {
-            url = null;
-        }
         if (!url) {
-            alert("No valid HTTP or HTTPS AI provider URL is configured. Check Settings.");
+            alert("No AI provider configured in Settings.");
             return;
         }
 
@@ -1633,8 +1653,4 @@ ${questionBlock.trim()}`;
         console.error("[AI Study Mode] Failed:", err);
         alert("AI feature failed:\n\n" + err.message);
     }
-};
-
-window.copyCurrentQuestionExplainPrompt = function() {
-    return window.reviewCurrentQuestionWithAI(true);
 };

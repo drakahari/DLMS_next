@@ -192,33 +192,16 @@ function getAIProviderUrl() {
     return providers[aiConfig.ai_provider] || null;
 }
 
-function safeAIProviderUrl(value) {
-    try {
-        const url = new URL(String(value || ""));
-        return ["http:", "https:"].includes(url.protocol) ? url.href : null;
-    } catch (err) {
-        return null;
-    }
-}
-
-function openAIProvider(value) {
-    const url = safeAIProviderUrl(value);
-    if (!url) {
-        alert("No valid HTTP or HTTPS AI provider URL is configured. Check Settings.");
-        return false;
-    }
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (!opened) console.warn("[AI Helper] Popup blocked");
-    return Boolean(opened);
-}
-
 async function copyTextToClipboard(text) {
     if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
         return;
     }
 
-    // Fallback for localhost / older browser edge cases
+    copyTextToClipboardSynchronously(text);
+}
+
+function copyTextToClipboardSynchronously(text) {
     const textarea = document.createElement("textarea");
     textarea.value = text;
     textarea.style.position = "fixed";
@@ -471,7 +454,7 @@ async function loadReview() {
                         📋 Copy Explain Prompt
                     </button>
 
-                    <button type="button" onclick="openAIExplain(${index})">
+                    <button type="button" onclick="openAIExplain(${index}, this)">
                         🤖 Explain with AI
                     </button>
                 </div>`}
@@ -571,10 +554,12 @@ window.copyAIExplainPrompt = async function(index, btn) {
     }
 };
 
-window.openAIExplain = async function(index) {
+window.openAIExplain = function(index, btn) {
     try {
         if (!aiConfig) {
-            await loadAIConfig();
+            loadAIConfig();
+            alert("AI Helper settings are still loading. Please try again.");
+            return;
         }
 
         if (!aiConfig || !aiConfig.ai_helper_enabled) {
@@ -582,9 +567,31 @@ window.openAIExplain = async function(index) {
             return;
         }
 
+        const prompt = buildPrompt(index);
+
+        if (aiConfig.ai_auto_copy_prompt) {
+            try {
+                copyTextToClipboardSynchronously(prompt);
+                const oldText = btn.innerText;
+                btn.innerText = "✅ Prompt Copied";
+                setTimeout(() => btn.innerText = oldText, 1500);
+            } catch (copyErr) {
+                console.warn("[AI Helper] Could not auto-copy prompt:", copyErr);
+            }
+        }
+
         const url = getAIProviderUrl();
 
-        openAIProvider(url);
+        if (!url) {
+            alert("No AI provider URL is configured. Check Settings.");
+            return;
+        }
+
+        const opened = window.open(url, "_blank", "noopener,noreferrer");
+
+        if (!opened) {
+            console.warn("[AI Helper] Popup blocked");
+        }
 
     } catch (err) {
         console.error("[AI Helper] Open failed:", err);
@@ -592,10 +599,12 @@ window.openAIExplain = async function(index) {
     }
 };
 
-window.explainSelectedWithAI = async function() {
+window.explainSelectedWithAI = function() {
     try {
         if (!aiConfig) {
-            await loadAIConfig();
+            loadAIConfig();
+            alert("AI Helper settings are still loading. Please try again.");
+            return;
         }
 
         if (!aiConfig || !aiConfig.ai_helper_enabled) {
@@ -624,9 +633,28 @@ window.explainSelectedWithAI = async function() {
             return;
         }
 
+        const prompt = applyPromptTemplate(buildQuestionBlock(selectedQuestions));
+
+        if (aiConfig.ai_auto_copy_prompt) {
+            try {
+                copyTextToClipboardSynchronously(prompt);
+            } catch (copyErr) {
+                console.warn("[AI Helper] Clipboard copy failed:", copyErr);
+            }
+        }
+
         const url = getAIProviderUrl();
 
-        openAIProvider(url);
+        if (!url) {
+            alert("No AI provider URL is configured. Check Settings.");
+            return;
+        }
+
+        const opened = window.open(url, "_blank", "noopener,noreferrer");
+
+        if (!opened) {
+            console.warn("[AI Helper] Popup blocked");
+        }
 
     } catch (err) {
         console.error("[AI Helper] Explain selected failed:", err);

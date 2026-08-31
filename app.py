@@ -5645,20 +5645,6 @@ Sources Used
 # =========================
 # PORTAL CONFIG MANAGEMENT
 # =========================
-def _normalize_ai_provider_url(value):
-    """Return an absolute HTTP(S) provider URL or an empty string."""
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    try:
-        parsed = urlsplit(raw)
-    except ValueError:
-        return ""
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
-        return ""
-    return raw
-
-
 def load_portal_config():
     default = {
         "title": "Training & Practice Center",
@@ -5678,8 +5664,6 @@ def load_portal_config():
         "ai_helper_enabled": True,
         "ai_provider": "chatgpt",
         "ai_custom_url": "",
-        # Kept only for compatibility with older portal.json files; launch
-        # actions no longer access the clipboard automatically.
         "ai_auto_copy_prompt": True,
         "ai_prompt_template": """You are a technical tutor helping a student learn from mistakes.
 
@@ -5744,7 +5728,7 @@ def load_portal_config():
         provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
         cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
 
-        cfg["ai_custom_url"] = _normalize_ai_provider_url(cfg.get("ai_custom_url"))
+        cfg["ai_custom_url"] = str(cfg.get("ai_custom_url") or "").strip()
 
         raw_study_area_visibility = cfg.get("study_area_visibility")
         if not isinstance(raw_study_area_visibility, dict):
@@ -8943,7 +8927,7 @@ def study_pack_ai_builder():
         </div>
         <textarea id="studyPrompt" class="medical-ai-prompt-box" rows="30">{{ generated_prompt }}</textarea>
         <div class="medical-ai-action-row">
-            {% if ai_url %}<a class="medical-primary-button" href="{{ ai_url }}" target="_blank" rel="noopener noreferrer">Open AI Provider</a>{% endif %}
+            {% if ai_url %}<button type="button" class="medical-primary-button" onclick="copyAndOpen('{{ ai_url }}')">Copy Prompt &amp; Open AI</button>{% endif %}
             <button type="button" class="medical-ai-secondary-button" onclick="copyPrompt()">Copy Prompt</button>
         </div>
     </section>
@@ -8968,6 +8952,7 @@ def study_pack_ai_builder():
 function box(){return document.getElementById('studyPrompt')}
 function selectP(){const b=box();if(!b)return null;b.focus();b.select();b.setSelectionRange(0,b.value.length);return b}
 function copyPrompt(show=true){const b=selectP();if(!b)return false;let ok=false;try{ok=document.execCommand('copy')}catch(e){}if(show)alert(ok?'Prompt copied.':'Prompt selected; press Ctrl+C.');return ok}
+function copyAndOpen(u){copyPrompt(false);window.open(u,'_blank','noopener,noreferrer')}
 document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));
 document.getElementById('studyDomain')?.addEventListener('change', (event) => {
     document.getElementById('medicalGuardrailNotice')?.classList.toggle('is-hidden', event.target.value !== 'Medical');
@@ -9430,7 +9415,7 @@ def law_create_case_review():
             <textarea id="lawPromptBox" class="law-prompt-box" rows="18">{{ generated_prompt }}</textarea>
             <div class="law-action-row">
                 {% if ai_provider_url %}
-                <a class="law-primary-action" href="{{ ai_provider_url }}" target="_blank" rel="noopener noreferrer">Open AI Provider</a>
+                <button type="button" class="law-primary-action" onclick="copyPromptAndOpenAi('{{ ai_provider_url }}')">Copy Prompt &amp; Open AI</button>
                 {% endif %}
                 <button type="button" class="law-secondary-action" onclick="copyLawPrompt()">Copy Prompt</button>
             </div>
@@ -9463,6 +9448,15 @@ function copyLawPromptToClipboard(showAlert = true) {
     return false;
 }
 function copyLawPrompt() { copyLawPromptToClipboard(true); }
+function openSelectedAi(url) {
+    if (!url) { alert("No AI provider URL is configured."); return; }
+    window.open(url, "_blank", "noopener,noreferrer");
+}
+function copyPromptAndOpenAi(url) {
+    const copied = copyLawPromptToClipboard(false);
+    if (!copied) alert("The prompt could not be copied automatically. It is selected, so press Ctrl+C manually. The AI site will now open.");
+    openSelectedAi(url);
+}
 </script>
 
 <script>
@@ -20296,6 +20290,15 @@ def settings_ai_page():
                 </span>
             </label>
 
+            <label class="settings-toggle-row">
+                <input type="checkbox"
+                       name="ai_auto_copy_prompt"
+                       {% if cfg.ai_auto_copy_prompt %}checked{% endif %}>
+                <span>
+                    <strong>Automatically copy the explanation prompt</strong>
+                    <small>Copies the prepared DLMS prompt before opening the selected AI provider.</small>
+                </span>
+            </label>
         </section>
 
         <section class="settings-form-section">
@@ -20325,7 +20328,7 @@ def settings_ai_page():
                    style="margin-bottom:10px;">
 
             <div class="settings-field-help">
-                Used only when the provider is Local / Custom URL. Use an absolute HTTP or HTTPS URL.
+                Used only when the provider is Local / Custom URL.
             </div>
         </section>
 
@@ -20518,15 +20521,13 @@ def save_ai_settings():
     cfg = load_portal_config()
 
     cfg["ai_helper_enabled"] = ("ai_helper_enabled" in request.form)
+    cfg["ai_auto_copy_prompt"] = ("ai_auto_copy_prompt" in request.form)
 
     valid_ai_providers = {"chatgpt", "claude", "gemini", "local"}
     provider = request.form.get("ai_provider", "chatgpt").strip().lower()
     cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
 
-    submitted_custom_url = request.form.get("ai_custom_url", "").strip()
-    cfg["ai_custom_url"] = _normalize_ai_provider_url(submitted_custom_url)
-    if submitted_custom_url and not cfg["ai_custom_url"]:
-        return "Custom AI URL must be an absolute HTTP or HTTPS URL.", 400
+    cfg["ai_custom_url"] = request.form.get("ai_custom_url", "").strip()
     cfg["ai_prompt_template"] = request.form.get("ai_prompt_template", "").strip()
     cfg["study_pack_ai_prompt_template"] = request.form.get("study_pack_ai_prompt_template", "").strip() or DEFAULT_STUDY_CONTENT_PACK_PROMPT
     cfg["medical_study_pack_ai_addendum"] = request.form.get("medical_study_pack_ai_addendum", "").strip() or DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM
@@ -21145,6 +21146,15 @@ fetch("/config/portal.json")
                 Used only when provider is Local / Custom URL.
             </p>
 
+            <label>
+                <input type="checkbox"
+                       name="ai_auto_copy_prompt"
+                       {% if cfg.ai_auto_copy_prompt %}checked{% endif %}>
+                Copy explanation prompt before opening AI site
+            </label>
+
+            <br><br>
+
             <h3>📝 AI Prompt Template</h3>
 
             <p style="opacity:.75; font-size:13px;">
@@ -21418,15 +21428,13 @@ def save_settings():
     # AI EXPLANATION HELPER SETTINGS
     # =========================
     cfg["ai_helper_enabled"] = ("ai_helper_enabled" in request.form)
+    cfg["ai_auto_copy_prompt"] = ("ai_auto_copy_prompt" in request.form)
 
     valid_ai_providers = {"chatgpt", "claude", "gemini", "local"}
     provider = request.form.get("ai_provider", "chatgpt").strip().lower()
     cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
 
-    submitted_custom_url = request.form.get("ai_custom_url", "").strip()
-    cfg["ai_custom_url"] = _normalize_ai_provider_url(submitted_custom_url)
-    if submitted_custom_url and not cfg["ai_custom_url"]:
-        return "Custom AI URL must be an absolute HTTP or HTTPS URL.", 400
+    cfg["ai_custom_url"] = request.form.get("ai_custom_url", "").strip()
     # =========================
     # AI PROMPT TEMPLATE
     # =========================
@@ -26300,13 +26308,6 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
                         class="hidden"
                         onclick="reviewCurrentQuestionWithAI()">
                     ✨ Review This Question with AI
-                </button>
-
-                <button id="studyAiCopyBtn"
-                        type="button"
-                        class="hidden"
-                        onclick="copyCurrentQuestionExplainPrompt()">
-                    📋 Copy Explain Prompt
                 </button>
 
                 <button id="studyAnkiBtn"
