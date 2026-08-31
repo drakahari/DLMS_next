@@ -18108,8 +18108,8 @@ function renumberQuestions() {
 
         const questionType = question.querySelector(".question-type");
         questionType.name = `question_type_${qNumber}`;
-        const roundSize = block.querySelector(".matching-round-size");
-        const direction = block.querySelector(".matching-direction");
+        const roundSize = question.querySelector(".matching-round-size");
+        const direction = question.querySelector(".matching-direction");
         if (roundSize) roundSize.name = `matching_round_size_${qNumber}`;
         if (direction) direction.name = `matching_direction_${qNumber}`;
 
