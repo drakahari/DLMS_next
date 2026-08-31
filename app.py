@@ -5519,11 +5519,11 @@ Sources Used
 def load_portal_config():
     default = {
         "title": "Training & Practice Center",
-        "show_confidence": False,
+        "show_confidence": True,
         "enable_regex_replace": False,
         "background_image": None,
         "theme": "dark",
-        "quiz_folders": ["Uncategorized", "A+", "Network+", "Security+", "Data+", "Cloud+", "Linux+"],
+        "quiz_folders": ["Uncategorized"],
         "study_area_visibility": {
             "it": True,
             "law": True,
@@ -5532,7 +5532,7 @@ def load_portal_config():
         },
 
         # AI Explanation Helper
-        "ai_helper_enabled": False,
+        "ai_helper_enabled": True,
         "ai_provider": "chatgpt",
         "ai_custom_url": "",
         "ai_auto_copy_prompt": True,
@@ -13812,7 +13812,7 @@ def quiz_library():
         <section class="library-summary-grid" aria-label="Library summary">
             <div class="library-stat-card"><span>Visible</span><strong>{{ visible_count }}</strong><small>available quizzes</small></div>
             <div class="library-stat-card"><span>Hidden</span><strong>{{ hidden_count }}</strong><small>hidden quizzes</small></div>
-            <div class="library-stat-card"><span>Folders</span><strong>{{ folder_names|length }}</strong><small>library folders</small></div>
+            <div class="library-stat-card"><span>Folders</span><strong>{{ display_folder_names|length }}</strong><small>folders in this view</small></div>
             <div class="library-stat-card"><span>This View</span><strong>{{ quizzes|length }}</strong><small>{{ view|capitalize }} items</small></div>
         </section>
 
