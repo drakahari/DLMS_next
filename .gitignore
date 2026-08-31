@@ -4,6 +4,7 @@
 dist/
 build/
 *.spec
+!DLMS.spec
 
 # Local release artifacts (never commit)
 releases/

@@ -158,17 +158,17 @@ class HelpDocumentationTests(unittest.TestCase):
     def test_visual_guides_have_required_screenshots_alt_text_and_captions(self):
         expected_assets = {
             "help-learning-intelligence.html": (
-                ("mastery", "learning-topics.png"),
-                ("reviews", "learning-review-schedule.png"),
-                ("diagnostics", "learning-diagnostics-confusions.png"),
-                ("diagnostics", "learning-question-quality.png"),
+                ("mastery", "learning-topics.webp"),
+                ("reviews", "learning-review-schedule.webp"),
+                ("diagnostics", "learning-diagnostics-confusions.webp"),
+                ("diagnostics", "learning-question-quality.webp"),
             ),
-            "help-study-packs.html": (("ai-workflow", "ai-builder-zip-return.png"), ("ai-workflow", "study-pack-validation.png")),
-            "help-anki.html": (("printable", "anki-print-controls.png"), ("printable", "anki-print-front.png"), ("printable", "anki-print-back.png")),
-            "help-study-modules.html": (("law", "law-create-case.png"), ("law", "law-import-packet.png")),
-            "help-settings.html": (("navigation", "settings-navigation.png"),),
+            "help-study-packs.html": (("ai-workflow", "ai-builder-zip-return.webp"), ("ai-workflow", "study-pack-validation.webp")),
+            "help-anki.html": (("printable", "anki-print-controls.webp"), ("printable", "anki-print-front.webp"), ("printable", "anki-print-back.webp")),
+            "help-study-modules.html": (("law", "law-create-case.webp"), ("law", "law-import-packet.webp")),
+            "help-settings.html": (("navigation", "settings-navigation.webp"),),
             "help-maintenance.html": (
-                ("tools", "system-tools.png"),
+                ("tools", "system-tools.webp"),
                 ("data-safety", "settings-data_history.webp"),
                 ("reset-recovery", "settings-reset_recovery.webp"),
             ),

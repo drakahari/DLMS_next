@@ -125,6 +125,22 @@ environment. Contributors who intentionally need compatible dependency updates c
 instead install the supported ranges in `requirements.txt`, run the full test suite,
 and then deliberately refresh the lock file.
 
+### Building release binaries
+
+Build on each target operating system from a clean checkout and isolated virtual
+environment:
+
+```bash
+python -m pip install -r requirements-build.txt
+pyinstaller --clean --noconfirm DLMS.spec
+```
+
+`DLMS.spec` is the canonical one-file build manifest. Its only local data inputs
+are `static/` and `init.sql`; databases, settings, backups, logs, caches, tests,
+development directories, and per-user runtime data are not build inputs. Inspect
+the resulting `dist/` artifact and perform the release smoke tests before
+distribution.
+
 ### Browser launch and server options
 
 Browser launch and network binding are separate choices:
@@ -307,9 +323,10 @@ files once removed.
    startup flags, data locations, and changed workflows.
 3. Create a clean environment from `requirements-lock.txt`; run targeted tests,
    the full isolated test suite, Python compilation, and `git diff --check`.
-4. Build each supported platform artifact with the established platform build
-   process, then smoke-test startup, browser/no-browser operation, static assets,
-   quiz creation, and backup/restore.
+4. Build each supported platform artifact from `requirements-build.txt` with
+   `pyinstaller --clean --noconfirm DLMS.spec`, inspect the artifact contents, then
+   smoke-test startup, browser/no-browser operation, static assets, quiz creation,
+   and backup/restore.
 5. Review `git status` and package source from tracked files, for example with
    `git archive --format=zip --output releases/DLMS-3.0.2-source.zip HEAD`. Inspect
    the archive to confirm it contains required application assets and excludes

@@ -49,6 +49,31 @@ class ReleaseDocumentationTests(unittest.TestCase):
             "*.log",
         ):
             self.assertIn(pattern, ignored)
+        self.assertIn("!DLMS.spec", ignored)
+
+    def test_canonical_pyinstaller_manifest_has_narrow_local_inputs(self):
+        spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")
+        build_requirements = (ROOT / "requirements-build.txt").read_text(encoding="utf-8")
+
+        self.assertIn('project_root / "app.py"', spec)
+        self.assertIn('project_root / "static"', spec)
+        self.assertIn('project_root / "init.sql"', spec)
+        self.assertNotIn("Tree(", spec)
+        for forbidden in (
+            "results.db",
+            "portal.json",
+            "quizzes.json",
+            ".secret_key",
+            "backups",
+            "uploads",
+            "tests",
+            ".venv",
+        ):
+            self.assertNotIn(forbidden, spec)
+
+        self.assertIn("-r requirements-lock.txt", build_requirements)
+        self.assertRegex(build_requirements, r"(?m)^PyInstaller==[^\s]+$")
+        self.assertRegex(build_requirements, r"(?m)^pyinstaller-hooks-contrib==[^\s]+$")
 
     def test_source_archive_excludes_confirmed_development_only_files(self):
         attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
