@@ -115,6 +115,37 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn("System Tools", maintenance)
         self.assertIn("portable backup", maintenance)
 
+    def test_data_safety_and_reset_help_matches_current_user_facing_contract(self):
+        maintenance = self._static("help-maintenance.html")
+        for section_id in ("tools", "data-safety", "reset-recovery"):
+            with self.subTest(section=section_id):
+                self.assertIn(f'id="{section_id}"', maintenance)
+
+        for wording in (
+            "Create &amp; Download Backup",
+            "Recent safety backups",
+            "Validate Backup &amp; Continue",
+            "pre-restore safety backup",
+            "attempts, their saved answers, and missed-question/history records",
+            "quizzes themselves remain available",
+            "Choose the narrowest reset",
+            "Reset Quiz Library &amp; Results",
+            "Clear Imported / Source Content",
+            "Packs marked as protected are preserved",
+            "Reset Application Settings",
+            "Reset DLMS to Fresh State",
+            "backup ZIPs in the DLMS backup folder are deliberately preserved",
+            "Remove DLMS Data from This Computer",
+            "REMOVE DLMS DATA",
+            "executable or source installation itself is not removed",
+        ):
+            with self.subTest(wording=wording):
+                self.assertIn(wording, maintenance)
+
+        settings = self._static("help-settings.html")
+        self.assertIn('/help/maintenance#data-safety', settings)
+        self.assertIn('/help/maintenance#reset-recovery', settings)
+
     def test_help_asset_references_exist(self):
         asset_reference = re.compile(r'''(?:src|href)=["'](/static/help_assets/[^"']+)["']''')
         for path in glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html")):
@@ -136,7 +167,11 @@ class HelpDocumentationTests(unittest.TestCase):
             "help-anki.html": (("printable", "anki-print-controls.png"), ("printable", "anki-print-front.png"), ("printable", "anki-print-back.png")),
             "help-study-modules.html": (("law", "law-create-case.png"), ("law", "law-import-packet.png")),
             "help-settings.html": (("navigation", "settings-navigation.png"),),
-            "help-maintenance.html": (("tools", "system-tools.png"),),
+            "help-maintenance.html": (
+                ("tools", "system-tools.png"),
+                ("data-safety", "settings-data_history.webp"),
+                ("reset-recovery", "settings-reset_recovery.webp"),
+            ),
         }
         for filename, placements in expected_assets.items():
             page = self._static(filename)
@@ -148,11 +183,14 @@ class HelpDocumentationTests(unittest.TestCase):
                     self.assertIn(f'/static/help_assets/{asset}', page)
                     self.assertIn(f'/static/help_assets/{asset}', section)
                     self.assertRegex(section, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+alt="[^"]+"')
-                    self.assertRegex(section, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+class="help-screenshot-052b"[^>]+loading="eager"[^>]*></a><figcaption>[^<]+</figcaption>')
+                    self.assertRegex(section, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+alt="[^"]+"[^>]*></a><figcaption>[^<]+</figcaption>')
+                    if asset.endswith(".png"):
+                        self.assertRegex(section, rf'<img[^>]+src="/static/help_assets/{re.escape(asset)}"[^>]+class="help-screenshot-052b"[^>]+loading="eager"')
                     response = self.client.get(f'/static/help_assets/{asset}')
                     try:
                         self.assertEqual(response.status_code, 200)
-                        self.assertEqual(response.mimetype, 'image/png')
+                        expected_mimetype = 'image/png' if asset.endswith('.png') else 'image/webp'
+                        self.assertEqual(response.mimetype, expected_mimetype)
                     finally:
                         response.close()
 
