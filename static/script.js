@@ -211,8 +211,10 @@ function renderQuestion() {
     // Matching v1 is intentionally kept out of AI/Anki single-choice helpers.
     // Those workflows assume A-Z choices and can be extended separately later.
     const studyAiBtn = document.getElementById("studyAiBtn");
+    const studyAiCopyBtn = document.getElementById("studyAiCopyBtn");
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
     if (studyAiBtn) studyAiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
+    if (studyAiCopyBtn) studyAiCopyBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
     if (studyAnkiBtn) studyAnkiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
 
     if (q.type === "hotspot") {
@@ -970,6 +972,10 @@ function startQuiz(isExam) {
     if (studyAiBtn) {
         studyAiBtn.style.display = examMode ? "none" : "inline-block";
     }
+    const studyAiCopyBtn = document.getElementById("studyAiCopyBtn");
+    if (studyAiCopyBtn) {
+        studyAiCopyBtn.style.display = examMode ? "none" : "inline-block";
+    }
 
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
     if (studyAnkiBtn) {
@@ -1481,7 +1487,7 @@ function resetDatabase() {
 /* =====================================================
    Review Study Question with AI (NEW FEATURE)
 ===================================================== */
-window.reviewCurrentQuestionWithAI = async function() {
+window.reviewCurrentQuestionWithAI = async function(copyPromptOnly = false) {
     try {
         const res = await fetch("/config/portal.json", { cache: "no-store" });
         const aiConfig = await res.json();
@@ -1573,25 +1579,27 @@ Please:
 
 ${questionBlock.trim()}`;
 
-        // =========================
-        // COPY TO CLIPBOARD
-        // =========================
-        try {
-            if (navigator.clipboard && window.isSecureContext) {
-                await navigator.clipboard.writeText(finalPrompt);
-            } else {
-                const textarea = document.createElement("textarea");
-                textarea.value = finalPrompt;
-                textarea.style.position = "fixed";
-                textarea.style.left = "-9999px";
-                document.body.appendChild(textarea);
-                textarea.focus();
-                textarea.select();
-                document.execCommand("copy");
-                document.body.removeChild(textarea);
+        if (copyPromptOnly) {
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(finalPrompt);
+                } else {
+                    const textarea = document.createElement("textarea");
+                    textarea.value = finalPrompt;
+                    textarea.style.position = "fixed";
+                    textarea.style.left = "-9999px";
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    document.execCommand("copy");
+                    document.body.removeChild(textarea);
+                }
+                alert("Explain prompt copied.");
+            } catch (copyErr) {
+                console.warn("[AI Study Mode] Clipboard copy failed:", copyErr);
+                alert("Could not copy the explain prompt. Check the browser console for details.");
             }
-        } catch (copyErr) {
-            console.warn("[AI Study Mode] Clipboard copy failed:", copyErr);
+            return;
         }
 
         // =========================
@@ -1603,12 +1611,19 @@ ${questionBlock.trim()}`;
             gemini: "https://gemini.google.com/"
         };
 
-        const url = aiConfig.ai_provider === "local"
+        const configuredUrl = aiConfig.ai_provider === "local"
             ? (aiConfig.ai_custom_url || "").trim()
             : providers[aiConfig.ai_provider];
 
+        let url = null;
+        try {
+            const parsed = new URL(String(configuredUrl || ""));
+            if (["http:", "https:"].includes(parsed.protocol)) url = parsed.href;
+        } catch (urlErr) {
+            url = null;
+        }
         if (!url) {
-            alert("No AI provider configured in Settings.");
+            alert("No valid HTTP or HTTPS AI provider URL is configured. Check Settings.");
             return;
         }
 
@@ -1618,4 +1633,8 @@ ${questionBlock.trim()}`;
         console.error("[AI Study Mode] Failed:", err);
         alert("AI feature failed:\n\n" + err.message);
     }
+};
+
+window.copyCurrentQuestionExplainPrompt = function() {
+    return window.reviewCurrentQuestionWithAI(true);
 };
