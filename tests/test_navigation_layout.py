@@ -15,6 +15,14 @@ class NavigationLayoutTests(unittest.TestCase):
     def setUp(self):
         self.client = dlms.app.test_client()
 
+    def test_dashboard_renders_full_release_candidate_version(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(page.count(f"DLMS v{dlms.APP_VERSION}"), 2)
+        self.assertNotRegex(page, r"DLMS v3\.0\.2(?! RC4)")
+
     def test_settings_hub_uses_standard_shell_without_migration_copy(self):
         response = self.client.get("/settings")
         page = response.get_data(as_text=True)

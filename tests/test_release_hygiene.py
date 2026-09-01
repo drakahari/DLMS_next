@@ -36,6 +36,29 @@ class ReleaseDocumentationTests(unittest.TestCase):
                 with self.subTest(page=path.name):
                     self.assertIn(f"Documentation for DLMS {version}.", contents)
 
+    def test_user_visible_release_text_does_not_drop_the_rc_label(self):
+        bare_release = re.compile(r"DLMS(?: v)?3\.0\.2(?! RC4)")
+        paths = [
+            ROOT / "app.py",
+            ROOT / "README.md",
+            ROOT / "requirements-build.txt",
+            ROOT / "requirements-lock.txt",
+            *(ROOT / "static").glob("*.html"),
+        ]
+        for path in paths:
+            with self.subTest(path=path.relative_to(ROOT)):
+                contents = path.read_text(encoding="utf-8")
+                self.assertNotRegex(contents, bare_release)
+
+        app_source = (ROOT / "app.py").read_text(encoding="utf-8")
+        dashboard = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(dashboard.count("DLMS v{{ app_version }}"), 2)
+        self.assertEqual(app_source.count("DLMS v{{ app_version }}"), 5)
+        self.assertEqual(
+            app_source.count('lines.append(f"# Exported from DLMS v{APP_VERSION}")'),
+            3,
+        )
+
     def test_checksum_helper_writes_standard_manifest_for_staged_artifacts(self):
         script = ROOT / "tools" / "generate_sha256sums.py"
         self.assertTrue(script.is_file())

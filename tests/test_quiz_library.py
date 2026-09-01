@@ -86,6 +86,7 @@ class QuizLibraryTests(unittest.TestCase):
             export = response.get_data(as_text=True)
             for expected in (
                 "# DLMS Quiz Export",
+                f"# Exported from DLMS v{dlms.APP_VERSION}",
                 "# Format: DLMS text",
                 "# Import compatible: No - contains multiple quizzes",
                 "# Total quizzes: 1",
