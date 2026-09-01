@@ -66,10 +66,11 @@ class GeneralSecurityHardeningTests(unittest.TestCase):
             second = dlms.load_secret_key()
             self.assertEqual(first, second)
             self.assertGreaterEqual(len(first), 64)
-            self.assertEqual(
-                stat.S_IMODE(os.stat(os.path.join(directory, ".secret_key")).st_mode),
-                0o600,
-            )
+            if os.name != "nt":
+                self.assertEqual(
+                    stat.S_IMODE(os.stat(os.path.join(directory, ".secret_key")).st_mode),
+                    0o600,
+                )
         self.assertTrue(dlms._backup_rel_is_excluded(".secret_key"))
         source = Path(dlms.__file__).read_text(encoding="utf-8")
         self.assertNotIn('app.secret_key = "dlms-dev"', source)

@@ -400,8 +400,9 @@ class CsrfProtectionTests(unittest.TestCase):
             first = dlms.load_secret_key()
             second = dlms.load_secret_key()
             self.assertEqual(first, second)
-            mode = stat.S_IMODE(os.stat(os.path.join(directory, ".secret_key")).st_mode)
-            self.assertEqual(mode, 0o600)
+            if os.name != "nt":
+                mode = stat.S_IMODE(os.stat(os.path.join(directory, ".secret_key")).st_mode)
+                self.assertEqual(mode, 0o600)
         with mock.patch.dict(os.environ, {"DLMS_SECRET_KEY": "managed-secret"}):
             self.assertEqual(dlms.load_secret_key(), "managed-secret")
 
