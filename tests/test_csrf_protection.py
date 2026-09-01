@@ -310,7 +310,7 @@ class CsrfProtectionTests(unittest.TestCase):
             self.assertEqual(self.client.post("/api/shutdown", headers=headers).status_code, 403)
             timer.assert_not_called()
         with mock.patch.object(dlms, "_run_reset_with_backup") as reset:
-            for route in ("/api/reset_quiz_library", "/api/reset_source_content", "/api/reset_app_settings", "/api/reset_all_data"):
+            for route in ("/api/reset_quiz_library", "/api/reset_learning_intelligence", "/api/reset_source_content", "/api/reset_app_settings", "/api/reset_all_data"):
                 self.assertEqual(self.client.post(route, headers=headers).status_code, 403)
             reset.assert_not_called()
         with mock.patch.object(dlms, "get_db") as get_db:

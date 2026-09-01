@@ -13207,6 +13207,15 @@ def _reset_quiz_library_core():
     _ensure_runtime_data_dirs()
 
 
+def _reset_learning_intelligence_core():
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        with conn:
+            conn.execute("DELETE FROM learning_events")
+    finally:
+        conn.close()
+
+
 def _reset_source_content_core():
     # Use the same dependency-preservation path as normal Content Pack deletion
     # before removing non-protected installed packs. This keeps legacy generated
@@ -13275,6 +13284,19 @@ def reset_quiz_library():
     except Exception as exc:
         print("[RESET QUIZ LIBRARY ERROR]", exc)
         message, status = _destructive_operation_error(exc, "Quiz-library reset")
+        return jsonify(status="error", error=message), status
+
+
+@app.route("/api/reset_learning_intelligence", methods=["POST"])
+def reset_learning_intelligence():
+    try:
+        backup_name = _run_reset_with_backup(
+            "learning-intelligence", _reset_learning_intelligence_core
+        )
+        return jsonify(status="ok", backup=backup_name)
+    except Exception as exc:
+        print("[RESET LEARNING INTELLIGENCE ERROR]", exc)
+        message, status = _destructive_operation_error(exc, "Learning Intelligence reset")
         return jsonify(status="error", error=message), status
 
 
@@ -20934,6 +20956,8 @@ def settings_reset_page():
 <body class="dashboard-home settings-detail-page settings-reset-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
 <div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / RESET &amp; RECOVERY</span><h1>⚠️ Reset &amp; Recovery</h1><p>Choose the narrowest reset that solves the problem. DLMS creates a safety backup before each reset; permanent data removal is separately guarded and does not create an in-place backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 <div class="settings-detail-card settings-reset-card">
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-orange">L</div><div><h2>Reset Learning Intelligence</h2><p>Clear the answer evidence DLMS uses for mastery, recommendations, diagnostics, and scheduled review.</p></div></div><div class="settings-warning-panel"><strong>This resets:</strong><span>Learning Intelligence evidence and all derived mastery, recommendation, diagnostic, and review-schedule results.</span></div><div class="settings-warning-panel"><strong>Preserved:</strong><span>Quizzes, questions, concepts/tags, Study Packs, settings, saved attempts, missed-question history, source content, and backup archives.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_learning_intelligence" data-label="Learning Intelligence" data-confirm-text="Reset Learning Intelligence?&#10;&#10;This clears the answer evidence used for mastery, recommendations, diagnostics, and scheduled review. Your quizzes, concepts/tags, Study Packs, settings, saved attempts, and missed-question history will remain.&#10;&#10;DLMS will create a safety backup first. Continue?" type="button">Reset Learning Intelligence</button></section>
+
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-red">Q</div><div><h2>Reset Quiz Library &amp; Results</h2><p>Remove generated quizzes, quiz database records, attempts/history, quiz assets, and quiz logos while preserving source content and settings.</p></div></div><div class="settings-warning-panel"><strong>Preserved:</strong><span>Study/Content Packs, Smart PDF question/terminology banks, drafts, Law Study content, configuration, and existing backup archives.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_quiz_library" data-label="Quiz Library & Results" type="button">Reset Quiz Library &amp; Results</button></section>
 
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-orange">S</div><div><h2>Clear Imported / Source Content</h2><p>Remove reusable source material without deleting already generated quizzes.</p></div></div><div class="settings-critical-panel"><strong>This removes:</strong><span>Non-protected installed Content Packs, Smart PDF source banks, PDF/image-builder drafts, and import/staging content. Protected packs are preserved. Existing quiz dependencies are snapshotted before a removable Content Pack is deleted.</span></div><button class="settings-danger-button resetAction" data-endpoint="/api/reset_source_content" data-label="Imported / Source Content" type="button">Clear Imported / Source Content</button></section>
@@ -20950,7 +20974,7 @@ def settings_reset_page():
 </main></div>
 <script>
 const resetStatus=document.getElementById("resetStatus");
-document.querySelectorAll(".resetAction").forEach(btn=>btn.addEventListener("click",async()=>{const label=btn.dataset.label;if(!confirm(`⚠ ${label} ⚠\n\nDLMS will create a safety backup first, then perform this reset.\n\nContinue?`))return;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=true);resetStatus.textContent=`Creating safety backup and resetting ${label}...`;try{const res=await fetch(btn.dataset.endpoint,{method:"POST"});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"Reset returned non-ok status");resetStatus.textContent=`✅ ${label} reset completed. Safety backup: ${data.backup||"created"}`;alert(`${label} reset completed.\n\nSafety backup: ${data.backup||"created"}`);location.reload()}catch(err){console.error("[RESET]",err);resetStatus.textContent=`❌ Reset failed: ${err.message}`;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=false)}}));
+document.querySelectorAll(".resetAction").forEach(btn=>btn.addEventListener("click",async()=>{const label=btn.dataset.label;const confirmation=btn.dataset.confirmText||`⚠ ${label} ⚠\n\nDLMS will create a safety backup first, then perform this reset.\n\nContinue?`;if(!confirm(confirmation))return;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=true);resetStatus.textContent=`Creating safety backup and resetting ${label}...`;try{const res=await fetch(btn.dataset.endpoint,{method:"POST"});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"Reset returned non-ok status");resetStatus.textContent=`✅ ${label} reset completed. Safety backup: ${data.backup||"created"}`;alert(`${label} reset completed.\n\nSafety backup: ${data.backup||"created"}`);location.reload()}catch(err){console.error("[RESET]",err);resetStatus.textContent=`❌ Reset failed: ${err.message}`;document.querySelectorAll(".resetAction").forEach(b=>b.disabled=false)}}));
 const removeConfirm=document.getElementById("removeDlmsConfirmation"),removeBtn=document.getElementById("removeAllDlmsDataBtn");
 removeConfirm.addEventListener("input",()=>{removeBtn.disabled=removeConfirm.value.trim()!=="REMOVE DLMS DATA"});
 removeBtn.addEventListener("click",async()=>{const phrase=removeConfirm.value.trim();if(phrase!=="REMOVE DLMS DATA")return;if(!confirm("☠ PERMANENT DLMS DATA REMOVAL ☠\n\nThis will delete the entire DLMS application-data directory INCLUDING ALL BACKUPS, then shut DLMS down.\n\nThe executable/source installation will remain.\n\nThis cannot be undone unless you copied a backup somewhere outside DLMS.\n\nContinue?"))return;document.querySelectorAll("button,input").forEach(el=>el.disabled=true);resetStatus.textContent="Permanently removing DLMS runtime data and shutting down...";try{const res=await fetch("/api/remove_all_dlms_data",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmation:phrase})});const data=await res.json();if(!res.ok||data.status!=="ok")throw new Error(data.error||"Permanent removal failed");resetStatus.textContent="✅ DLMS runtime data removed. DLMS is shutting down. The executable/source installation was preserved.";alert("DLMS runtime data has been removed, including backups.\n\nDLMS will now shut down.\n\nThe executable/source installation was NOT removed.")}catch(err){console.error("[REMOVE DLMS DATA]",err);resetStatus.textContent=`❌ Permanent removal failed: ${err.message}`;document.querySelectorAll("button,input").forEach(el=>el.disabled=false);removeBtn.disabled=removeConfirm.value.trim()!=="REMOVE DLMS DATA"}});
