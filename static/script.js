@@ -366,29 +366,26 @@ function renderHotspotQuestion(q, key, selected, choicesEl) {
             style="left:${Number(answer.x) * 100}%;top:${Number(answer.y) * 100}%"></span>`;
     }
 
-    let correctMarker = "";
-    if (!examMode && hasAnswer && !isCorrect) {
-        const center = hotspotCenter(q.target);
-        correctMarker = `<span class="hotspot-correct-marker"
-            style="left:${center.x * 100}%;top:${center.y * 100}%"></span>`;
-    }
-
     let feedback = "";
     if (!examMode && hasAnswer) {
-        const verification = q.verification || {};
-        const verified = verification.status === "source-checked"
-            ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
-        const explanation = q.explanation
-            ? `<div class="matching-study-explanation">${escapeHtml(q.explanation)}</div>` : "";
-        const referenceBasis = verification.reference_basis
-            ? `<div class="matching-study-source">Reference basis: ${escapeHtml(verification.reference_basis)}</div>` : "";
+        let details = `<div>Try another location on the image.</div>`;
+        if (isCorrect) {
+            const verification = q.verification || {};
+            const verified = verification.status === "source-checked"
+                ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
+            const explanation = q.explanation
+                ? `<div class="matching-study-explanation">${escapeHtml(q.explanation)}</div>` : "";
+            const referenceBasis = verification.reference_basis
+                ? `<div class="matching-study-source">Reference basis: ${escapeHtml(verification.reference_basis)}</div>` : "";
+            details = `<div class="matching-study-correct-answer"><strong>Structure:</strong> ${escapeHtml(q.target_label || "")}</div>
+                <div class="matching-study-meta">${verified}</div>
+                ${explanation}
+                ${referenceBasis}`;
+        }
 
         feedback = `<div class="matching-study-feedback ${isCorrect ? "is-correct" : "is-wrong"}">
             <div class="matching-study-feedback-title">${isCorrect ? "✓ Correct" : "✕ Not quite"}</div>
-            <div class="matching-study-correct-answer"><strong>Structure:</strong> ${escapeHtml(q.target_label || "")}</div>
-            <div class="matching-study-meta">${verified}</div>
-            ${explanation}
-            ${referenceBasis}
+            ${details}
         </div>`;
     }
 
@@ -404,7 +401,6 @@ function renderHotspotQuestion(q, key, selected, choicesEl) {
                 <img class="hotspot-image" src="${escapeHtml(q.image_url || "")}" alt="${escapeHtml(q.image_alt || "Anatomy image")}" draggable="false">
                 ${renderImageStudyEdits(q.image_edits)}
                 ${marker}
-                ${correctMarker}
             </div>
             ${attribution}
             ${feedback}
@@ -445,26 +441,27 @@ function shuffledIndexes(length) {
 function matchingFeedbackHtml(q, pair, leftIndex, chosen) {
     if (examMode || chosen === "") return "";
     const isCorrect = Number(chosen) === leftIndex;
-    const correctText = escapeHtml(pair.right);
-    const category = pair.category ? `<span class="matching-study-chip">${escapeHtml(pair.category)}</span>` : "";
-    const verification = (pair.verification && typeof pair.verification === "object") ? pair.verification : {};
-    const source = (pair.source && typeof pair.source === "object")
-        ? pair.source
-        : ((q.source && typeof q.source === "object") ? q.source : {});
-    const verificationStatus = String(verification.status || "").toLowerCase();
-    const isSourceChecked = ["source-checked", "source-aligned", "source-basis-verified", "verified"].includes(verificationStatus);
-    const verified = isSourceChecked ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
-    const explanation = pair.explanation ? `<div class="matching-study-explanation">${escapeHtml(pair.explanation)}</div>` : "";
-    const referenceText = verification.reference_basis || source.dataset || source.work || source.organization || "";
-    const sourceUrls = Array.isArray(verification.source_urls) ? verification.source_urls.filter(Boolean) : [];
-    const sourceUrl = safeExternalUrl(sourceUrls[0] || source.url || "");
-    const referenceBasis = referenceText ? `<div class="matching-study-source"><strong>Reference basis:</strong> ${escapeHtml(referenceText)}</div>` : "";
-    const sourceLink = sourceUrl ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a></div>` : "";
+    let details = `<div>Try a different match.</div>`;
+    if (isCorrect) {
+        const category = pair.category ? `<span class="matching-study-chip">${escapeHtml(pair.category)}</span>` : "";
+        const verification = (pair.verification && typeof pair.verification === "object") ? pair.verification : {};
+        const source = (pair.source && typeof pair.source === "object")
+            ? pair.source
+            : ((q.source && typeof q.source === "object") ? q.source : {});
+        const verificationStatus = String(verification.status || "").toLowerCase();
+        const isSourceChecked = ["source-checked", "source-aligned", "source-basis-verified", "verified"].includes(verificationStatus);
+        const verified = isSourceChecked ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
+        const explanation = pair.explanation ? `<div class="matching-study-explanation">${escapeHtml(pair.explanation)}</div>` : "";
+        const referenceText = verification.reference_basis || source.dataset || source.work || source.organization || "";
+        const sourceUrls = Array.isArray(verification.source_urls) ? verification.source_urls.filter(Boolean) : [];
+        const sourceUrl = safeExternalUrl(sourceUrls[0] || source.url || "");
+        const referenceBasis = referenceText ? `<div class="matching-study-source"><strong>Reference basis:</strong> ${escapeHtml(referenceText)}</div>` : "";
+        const sourceLink = sourceUrl ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a></div>` : "";
+        details = `<div class="matching-study-meta">${category}${verified}</div>${explanation}${referenceBasis}${sourceLink}`;
+    }
     return `<div class="matching-study-feedback ${isCorrect ? "is-correct" : "is-wrong"}">
         <div class="matching-study-feedback-title">${isCorrect ? "✓ Correct" : "✕ Not quite"}</div>
-        ${isCorrect ? "" : `<div class="matching-study-correct-answer"><strong>Correct match:</strong> ${correctText}</div>`}
-        <div class="matching-study-meta">${category}${verified}</div>
-        ${explanation}${referenceBasis}${sourceLink}
+        ${details}
     </div>`;
 }
 
@@ -616,6 +613,22 @@ function safeExternalUrl(value) {
     }
 }
 
+function choiceStudyState(q, selected) {
+    const correctIndexes = (q.correct || [])
+        .map(letter => String(letter).toUpperCase().charCodeAt(0) - 65)
+        .sort((a, b) => a - b);
+    const isMulti = correctIndexes.length > 1;
+    const evaluable = !isMulti || selected.length === correctIndexes.length;
+    const isCorrect = evaluable
+        ? selected.length === correctIndexes.length && selected.every((value, idx) => value === correctIndexes[idx])
+        : null;
+    return {
+        correctIndexes,
+        isCorrect,
+        hasIncorrectSelection: selected.some(value => !correctIndexes.includes(value)),
+    };
+}
+
 /* =====================================================
    SELECT CHOICE
 ===================================================== */
@@ -645,12 +658,8 @@ function selectChoice(i) {
         }
 
         userAnswers[key] = arr;
-        const correctIndexes = (q.correct || []).map(letter => String(letter).toUpperCase().charCodeAt(0) - 65).sort((a,b) => a-b);
-        const evaluable = !isMulti || arr.length === correctIndexes.length;
-        const isCorrect = evaluable
-            ? arr.length === correctIndexes.length && arr.every((v, idx) => v === correctIndexes[idx])
-            : null;
-        recordStudyLearningEvent(q, isCorrect, arr.map(idx => String.fromCharCode(65 + idx)));
+        const state = choiceStudyState(q, arr);
+        recordStudyLearningEvent(q, state.isCorrect, arr.map(idx => String.fromCharCode(65 + idx)));
         renderQuestion();
         return;
     }
@@ -826,9 +835,8 @@ function applyStudyFeedback() {
     const key = `q${index}`;
     const selected = userAnswers[key] || [];
 
-    const correctIndexes = q.correct.map(letter =>
-        String(letter).toUpperCase().charCodeAt(0) - 65
-    );
+    const state = choiceStudyState(q, selected);
+    const correctIndexes = state.correctIndexes;
 
     const buttons = document.querySelectorAll("#choices .choice");
 
@@ -851,14 +859,21 @@ function applyStudyFeedback() {
     const choicesEl = document.getElementById("choices");
     if (choicesEl) {
         choicesEl.querySelector(".choice-study-explanation")?.remove();
-        if (selected.length && (q.explanation || (q.source && q.source.url))) {
-            const source = (q.source && typeof q.source === "object") ? q.source : {};
-            const explanation = q.explanation
-                ? `<div class="matching-study-explanation">${escapeHtml(q.explanation)}</div>` : "";
-            const sourceUrl = safeExternalUrl(source.url);
-            const sourceLine = sourceUrl
-                ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.dataset || source.url)}</a></div>` : "";
-            choicesEl.insertAdjacentHTML("beforeend", `<div class="matching-study-feedback choice-study-explanation">${explanation}${sourceLine}</div>`);
+        if (selected.length) {
+            if (state.isCorrect) {
+                const source = (q.source && typeof q.source === "object") ? q.source : {};
+                const explanation = q.explanation
+                    ? `<div class="matching-study-explanation">${escapeHtml(q.explanation)}</div>` : "";
+                const sourceUrl = safeExternalUrl(source.url);
+                const sourceLine = sourceUrl
+                    ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.dataset || source.url)}</a></div>` : "";
+                choicesEl.insertAdjacentHTML("beforeend", `<div class="matching-study-feedback is-correct choice-study-explanation"><div class="matching-study-feedback-title">✓ Correct</div>${explanation}${sourceLine}</div>`);
+            } else {
+                const message = state.hasIncorrectSelection
+                    ? "✕ Not quite — try another answer."
+                    : "Keep going — select all correct answers.";
+                choicesEl.insertAdjacentHTML("beforeend", `<div class="matching-study-feedback is-wrong choice-study-explanation"><div class="matching-study-feedback-title">${message}</div></div>`);
+            }
         }
     }
 }
