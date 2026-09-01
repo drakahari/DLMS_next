@@ -252,7 +252,12 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertIn('class="pdf-review-bulk-actions"', question_html)
         self.assertIn('id="pdfSelectionCount" aria-live="polite"', question_html)
         styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
-        self.assertIn(".pdf-import-page #pdfDeleteSelected {", styles)
+        default_style = styles[
+            styles.index(".pdf-import-page #pdfDeleteSelected {"):
+            styles.index(".pdf-import-page #pdfDeleteSelected:hover")
+        ]
+        self.assertIn("border-color:var(--theme-border-soft", default_style)
+        self.assertNotIn("#ef4444", default_style)
         self.assertIn(".pdf-import-page #pdfDeleteSelected:hover", styles)
         self.assertIn(".pdf-import-page #pdfDeleteSelected:focus-visible", styles)
 
