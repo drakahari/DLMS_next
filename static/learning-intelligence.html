@@ -32,7 +32,7 @@
     <div><div class="build-eyebrow">TOPIC ACCURACY</div><h2>Concept performance</h2><p>Study responses are de-duplicated by session/question so repeated clicks do not inflate evidence.</p></div>
     <button class="build-secondary-link" id="liModelButton" type="button">How mastery works</button>
   </div>
-  <div class="learning-intelligence-toolbar">
+  <div class="learning-intelligence-toolbar" id="liToolbar">
     <div class="learning-intelligence-filters" role="group" aria-label="Topic filters">
       <button type="button" class="active" data-li-filter="all">All</button>
       <button type="button" data-li-filter="weak">Weak Areas</button>
@@ -44,6 +44,11 @@
     <input id="liSearch" class="learning-intelligence-search" type="search" placeholder="Search topics…" aria-label="Search topics">
   </div>
   <div id="liLoading" class="learning-intelligence-empty">Loading learning intelligence…</div>
+  <div id="liNoEvidence" class="learning-intelligence-empty learning-intelligence-no-evidence" role="status" hidden>
+    <strong>No Learning Intelligence data exists yet.</strong>
+    <p>Your tagged concepts are preserved. New mastery data will appear after you answer tagged questions in Study or Exam Mode.</p>
+    <button class="build-secondary-link" id="liToggleZeroEvidence" type="button" aria-expanded="false" aria-controls="liTableWrap" hidden>View preserved tagged concepts</button>
+  </div>
   <div id="liEmpty" class="learning-intelligence-empty" hidden>No concepts match this view.</div>
   <div class="learning-intelligence-table-wrap" id="liTableWrap" hidden>
     <table class="learning-intelligence-table">
@@ -83,13 +88,17 @@
   </div>
 </div>
 <script>
-const state={topics:[],filter:'all',model:{}};
+const state={topics:[],filter:'all',model:{},hasEvidence:true,showZeroEvidence:false};
 const pct=v=>v==null?'—':`${Math.round(v)}%`;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function render(){
  const q=document.getElementById('liSearch').value.trim().toLowerCase();
- const rows=state.topics.filter(t=>(state.filter==='all'||t.status===state.filter)&&(!q||t.name.toLowerCase().includes(q)));
- document.getElementById('liEmpty').hidden=rows.length!==0;
+ const noEvidence=!state.hasEvidence;
+ const visibleTopics=noEvidence&&!state.showZeroEvidence?[]:state.topics;
+ const rows=visibleTopics.filter(t=>(state.filter==='all'||t.status===state.filter)&&(!q||t.name.toLowerCase().includes(q)));
+ document.getElementById('liNoEvidence').hidden=!noEvidence;
+ document.getElementById('liToolbar').hidden=noEvidence&&!state.showZeroEvidence;
+ document.getElementById('liEmpty').hidden=rows.length!==0||(noEvidence&&!state.showZeroEvidence);
  document.getElementById('liTableWrap').hidden=rows.length===0;
  document.getElementById('liRows').innerHTML=rows.map(t=>`<tr>
  <td><strong>${esc(t.name)}</strong><small>${t.question_count} tagged question${t.question_count===1?'':'s'}</small></td>
@@ -109,6 +118,10 @@ function renderWeak(){
 fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
  state.topics=data.topics||[];state.model=data.model||{};
  const s=data.summary||{};
+ state.hasEvidence=Number(s.concepts_with_evidence||0)>0;
+ const zeroEvidenceToggle=document.getElementById('liToggleZeroEvidence');
+ zeroEvidenceToggle.hidden=state.hasEvidence||state.topics.length===0;
+ zeroEvidenceToggle.textContent=`View ${state.topics.length} preserved tagged concept${state.topics.length===1?'':'s'}`;
  document.getElementById('liEvidenceTopics').textContent=s.concepts_with_evidence??0;
  document.getElementById('liEvidenceNote').textContent=`of ${s.concepts??0} concepts`;
  document.getElementById('liAverageAccuracy').textContent=pct(s.average_accuracy);
@@ -120,6 +133,7 @@ fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
 }).catch(()=>{document.getElementById('liLoading').textContent='Learning intelligence could not be loaded.';});
 document.querySelectorAll('[data-li-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-li-filter]').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.filter=b.dataset.liFilter;render();}));
 document.getElementById('liSearch').addEventListener('input',render);
+document.getElementById('liToggleZeroEvidence').addEventListener('click',e=>{state.showZeroEvidence=!state.showZeroEvidence;e.currentTarget.setAttribute('aria-expanded',String(state.showZeroEvidence));e.currentTarget.textContent=state.showZeroEvidence?'Hide preserved tagged concepts':`View ${state.topics.length} preserved tagged concept${state.topics.length===1?'':'s'}`;render();});
 const modal=document.getElementById('liModel');
 const modalTrigger=document.getElementById('liModelButton');
 const modalCloseButton=modal.querySelector('.learning-intelligence-model-close');

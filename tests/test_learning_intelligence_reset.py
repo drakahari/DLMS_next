@@ -91,6 +91,16 @@ class LearningIntelligenceResetTests(unittest.TestCase):
             if table != "learning_events":
                 self.assertEqual(after[table], count, table)
 
+        conn = dlms.get_db()
+        try:
+            payload = dlms._learning_intelligence_payload(conn.cursor())
+        finally:
+            conn.close()
+        self.assertEqual(payload["summary"]["concepts_with_evidence"], 0)
+        self.assertEqual(payload["summary"]["concepts"], 1)
+        self.assertEqual(payload["topics"][0]["name"], "Retained concept")
+        self.assertEqual(payload["topics"][0]["evidence"], 0)
+
     def test_reset_rolls_back_when_learning_event_delete_fails(self):
         self._seed_preserved_data()
         conn = dlms.get_db()
