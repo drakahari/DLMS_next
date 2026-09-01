@@ -185,6 +185,17 @@ class ActiveImageHardeningTests(unittest.TestCase):
             self.assertEqual(rejected.status_code, 302)
             self.assertEqual(len(list(draft_root.glob("*/fake.png"))), 0)
 
+    def test_image_builder_permission_panel_has_scoped_wrapping_layout(self):
+        self.assertIn('class="image-builder-rights"', dlms.IMAGE_QUIZ_BUILDER_TEMPLATE)
+        self.assertIn('name="rights_ok" required', dlms.IMAGE_QUIZ_BUILDER_TEMPLATE)
+        self.assertIn("not cleared for redistribution", dlms.IMAGE_QUIZ_BUILDER_TEMPLATE)
+
+        styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
+        self.assertIn(".image-builder-rights input[type=\"checkbox\"]", styles)
+        self.assertIn("grid-template-columns:20px minmax(0,1fr)", styles)
+        self.assertIn(".image-builder-rights span { min-width:0;overflow-wrap:anywhere; }", styles)
+        self.assertIn(".image-builder-submit-row { margin-top:18px;justify-content:flex-start;flex-wrap:wrap; }", styles)
+
 
 if __name__ == "__main__":
     unittest.main()

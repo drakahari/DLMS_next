@@ -89,6 +89,29 @@ class GeneratedQuizSecurityTests(unittest.TestCase):
         self.assertIn("escapeHtml(source.attribution)", script)
         self.assertIn("safeExternalUrl(source.url)", script)
 
+    def test_provenance_rejects_empty_relative_and_local_dlms_urls(self):
+        script = Path(dlms.STATIC_ROOT, "script.js").read_text(encoding="utf-8")
+        url_block = script[
+            script.index("function safeExternalUrl"):
+            script.index("function safeProvenanceLabel")
+        ]
+        label_block = script[
+            script.index("function safeProvenanceLabel"):
+            script.index("function choiceStudyState")
+        ]
+
+        self.assertIn('if (!raw) return "";', url_block)
+        self.assertIn("new URL(raw)", url_block)
+        self.assertNotIn("window.location.href", url_block)
+        self.assertIn('["http:", "https:"]', url_block)
+        self.assertIn('hostname === "localhost"', url_block)
+        self.assertIn("/^127", url_block)
+        self.assertIn("url.origin === window.location.origin", url_block)
+        self.assertIn("return url.href", url_block)
+        self.assertIn("html?|json", label_block)
+        self.assertIn("safeProvenanceLabel(source, sourceUrl)", script)
+        self.assertRegex(script, r"const sourceLine = sourceUrl\s+\?")
+
     def test_return_navigation_uses_full_native_links_and_inactive_overlay_is_hidden(self):
         generated = self._build("Portal", "Navigation Test")
         self.assertIn('<a id="returnPortalBtn" href="/">', generated)

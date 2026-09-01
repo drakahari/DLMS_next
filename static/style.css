@@ -7592,23 +7592,27 @@ a.settings-hub-card:hover {
 .image-builder-feature-grid .dashboard-panel { padding:18px; }
 .image-builder-feature-grid strong { color:#eaf3ff;font-size:17px; }
 .image-builder-feature-grid p { color:#aebdd1;line-height:1.5;margin-bottom:0; }
-.image-builder-settings,.image-builder-images,.image-builder-questions,.image-builder-finish { margin-bottom:18px; }
+.image-builder-settings,.image-builder-images,.image-builder-questions,.image-builder-finish { margin-bottom:22px;padding:22px; }
 .image-builder-section-heading { display:flex;align-items:center;gap:14px;margin-bottom:18px; }
 .image-builder-section-heading > div:nth-child(2) { flex:1; }
 .image-builder-section-heading h2 { margin:3px 0; }
 .image-builder-section-heading p { margin:4px 0 0;color:#aebdd1; }
-.image-builder-settings-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:14px; }
+.image-builder-settings-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 16px; }
 .image-builder-wide { grid-column:1/-1; }
+.image-builder-main .build-field { gap:7px;min-width:0; }
+.image-builder-main .build-field > span { line-height:1.4; }
+.image-builder-main .build-field :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea) { box-sizing:border-box;width:100%;min-height:44px;padding:10px 12px;line-height:1.45; }
+.image-builder-main .build-field textarea { min-height:76px; }
 .image-builder-thumb-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px; }
 .image-builder-thumb { display:grid;gap:8px;padding:10px;border:1px solid rgba(79,145,215,.28);border-radius:12px;background:rgba(4,18,38,.62); }
 .image-builder-thumb img { width:100%;aspect-ratio:4/3;object-fit:contain;background:rgba(0,0,0,.35);border-radius:8px; }
 .image-builder-thumb strong { overflow-wrap:anywhere; }
 .image-builder-thumb input { box-sizing:border-box;width:100%;padding:8px 9px;color:#eaf3ff;background:rgba(3,13,30,.75);border:1px solid rgba(91,146,215,.35);border-radius:7px; }
-.image-builder-question-card { margin:16px 0;padding:18px;border:1px solid rgba(80,151,226,.32);border-radius:14px;background:rgba(4,18,39,.66); }
+.image-builder-question-card { margin:18px 0;padding:21px;border:1px solid rgba(80,151,226,.32);border-radius:14px;background:rgba(4,18,39,.66); }
 .image-builder-question-head,.image-builder-subhead,.image-builder-submit-row { display:flex;justify-content:space-between;align-items:center;gap:12px; }
 .image-builder-question-head { margin-bottom:14px; }
 .image-builder-question-head strong { color:#eef6ff;font-size:17px; }
-.image-builder-question-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+.image-builder-question-grid { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px; }
 .image-builder-question-grid textarea { resize:vertical;min-height:64px; }
 .image-builder-subhead { margin:16px 0 9px; }
 .image-builder-subhead span { color:#9fb0c5;font-size:12px; }
@@ -7625,8 +7629,12 @@ a.settings-hub-card:hover {
 .image-builder-hotspot-handle { fill:#e8f5ff;stroke:#1478ba;stroke-width:2; }
 .image-builder-hotspot-actions { display:flex;align-items:center;gap:12px;margin-top:8px; }
 .hotspot-status { color:#9fb2c9;font-size:13px; }
-.image-builder-rights { display:flex;gap:10px;align-items:flex-start;color:#c5d0df;line-height:1.45; }
-.image-builder-submit-row { margin-top:18px;justify-content:flex-start; }
+.image-builder-finish { display:grid;gap:18px;overflow:hidden; }
+.image-builder-rights { display:grid;grid-template-columns:20px minmax(0,1fr);gap:11px;align-items:start;margin:0;padding:15px 16px;border:1px solid var(--theme-border-soft,rgba(91,146,215,.35));border-radius:11px;background:var(--theme-surface,rgba(5,18,39,.48));color:#c5d0df;line-height:1.55; }
+.image-builder-rights input[type="checkbox"] { box-sizing:border-box;width:18px!important;height:18px;min-width:18px!important;max-width:18px!important;margin:3px 0 0; }
+.image-builder-rights span { min-width:0;overflow-wrap:anywhere; }
+.image-builder-submit-row { margin-top:18px;justify-content:flex-start;flex-wrap:wrap; }
+.image-builder-finish .image-builder-submit-row { margin-top:0; }
 .question-media-block { margin:4px 0 18px; }
 .question-media-wrap { position:relative;display:inline-block;max-width:min(100%,900px);border:1px solid rgba(82,153,230,.34);border-radius:12px;overflow:hidden;background:rgba(0,0,0,.35); }
 .question-media-image { display:block;max-width:100%;max-height:560px;width:auto;height:auto; }
@@ -7646,6 +7654,8 @@ a.settings-hub-card:hover {
   .image-builder-pair-row { grid-template-columns:1fr; }
   .image-builder-pair-row > span { display:none; }
   .image-builder-section-heading { align-items:flex-start;flex-wrap:wrap; }
+  .image-builder-settings,.image-builder-images,.image-builder-questions,.image-builder-finish { padding:17px; }
+  .image-builder-submit-row { align-items:stretch; }
 }
 
 
@@ -8714,6 +8724,18 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .pdf-import-filter-row { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
 .pdf-import-filter-row button { margin:0; padding:8px 12px; background:rgba(9,29,52,.88); }
 .pdf-import-filter-row button.active { background:linear-gradient(135deg,#1565d8,#1c8cf0); }
+.pdf-import-page .pdf-review-bulk-help { margin:0 0 12px;padding:0 15px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.28));border-radius:11px;background:var(--theme-surface,rgba(5,18,39,.52));color:var(--theme-muted-text,#b8c2cc); }
+.pdf-import-page .pdf-review-bulk-help summary { cursor:pointer;padding:12px 0;color:var(--theme-heading,#fff);font-weight:800; }
+.pdf-import-page .pdf-review-bulk-help[open] summary { margin-bottom:1px; }
+.pdf-import-page .pdf-review-bulk-help-body { display:grid;gap:8px;padding:0 0 14px;line-height:1.55; }
+.pdf-import-page .pdf-review-bulk-help-body p { margin:0;color:var(--theme-muted-text,#b8c2cc)!important; }
+.pdf-import-page .pdf-review-bulk-bar { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px 18px;margin:0 0 16px;padding:15px;min-width:0; }
+.pdf-import-page .pdf-review-bulk-actions { display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:0; }
+.pdf-import-page .pdf-review-bulk-bar button { display:inline-flex;align-items:center;justify-content:center;width:auto;min-height:38px;margin:0;padding:8px 12px;white-space:normal;line-height:1.25;color:var(--theme-page-text,#eaf2ff)!important;background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;border-color:var(--theme-border-soft,rgba(98,155,255,.32))!important;box-shadow:none!important; }
+.pdf-import-page .pdf-review-bulk-bar .pdf-review-danger-action { color:var(--theme-danger-text,#ff9ca5)!important;background:color-mix(in srgb,#ef4444 12%,var(--theme-surface,rgba(5,18,39,.58)))!important;border-color:color-mix(in srgb,#ef4444 48%,var(--theme-border-soft,rgba(98,155,255,.24)))!important; }
+.pdf-import-page .pdf-review-bulk-status { justify-self:end;margin:0;padding:7px 10px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.28));border-radius:999px;color:var(--theme-heading,#fff);background:var(--theme-surface-2,rgba(17,31,56,.78));font-size:13px;font-weight:800;white-space:nowrap; }
+.pdf-import-page .pdf-review-select-toggle { color:var(--theme-page-text,#eaf2ff); }
+.pdf-import-page .pdf-review-select-toggle input[type="checkbox"] { width:16px!important;height:16px;min-width:16px!important;max-width:16px!important;margin:0; }
 .pdf-import-question-list { display:grid; gap:14px; }
 .pdf-import-question-card { margin-top:0; padding:18px; }
 .pdf-import-question-card.status-review { border-color:rgba(245,158,11,.48); }
@@ -8772,9 +8794,12 @@ body.it-study-page .medical-ai-builder-teaser-icon {
   .pdf-import-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .pdf-import-intro,.pdf-import-create-bar { align-items:stretch; flex-direction:column; }
   .pdf-import-badges { justify-content:flex-start; }
+  .pdf-import-page .pdf-review-bulk-bar { grid-template-columns:1fr; }
+  .pdf-import-page .pdf-review-bulk-status { justify-self:start; }
 }
 @media (max-width:650px) {
   .pdf-import-choice-grid,.pdf-feedback-grid { grid-template-columns:1fr; }
+  .pdf-import-page .pdf-review-bulk-actions > button { flex:1 1 190px; }
 }
 
 

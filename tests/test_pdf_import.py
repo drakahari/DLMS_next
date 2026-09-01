@@ -217,6 +217,49 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertIn('<option value="" selected>Choose a correct answer</option>', html)
         self.assertNotIn('<option value="A" selected>', html)
 
+    def test_review_pages_explain_bulk_selection_scope_and_commit_timing(self):
+        question_draft = {
+            "id": "bulk_help_questions", "source_name": "questions.pdf", "page_count": 1,
+            "document_type": "question_bank", "detection": {}, "recovery_mode": False,
+            "quiz_title": "Questions", "exam_minutes": 30,
+            "summary": {"detected": 1, "complete": 1, "review": 0, "incomplete": 0},
+            "questions": [{
+                "number": 1, "question": "Which?", "correct": "A", "declared_answer_text": "",
+                "explanation": "Because.", "choice_feedback": {},
+                "choices": [{"label": "A", "text": "One"}, {"label": "B", "text": "Two"}],
+                "pages": [1], "status": "complete", "issues": [],
+            }],
+        }
+        glossary_draft = {
+            "id": "bulk_help_terms", "source_name": "terms.pdf", "page_count": 1,
+            "document_type": "glossary", "detection": {}, "recovery_mode": False,
+            "quiz_title": "Terms", "exam_minutes": 30,
+            "summary": {"detected": 1, "complete": 1, "review": 0, "incomplete": 0},
+            "terms": [{
+                "number": 1, "term": "Access control", "definition": "Restricts access.",
+                "pages": [1], "status": "complete", "issues": [],
+            }],
+        }
+        dlms._save_pdf_import_draft(question_draft)
+        dlms._save_pdf_import_draft(glossary_draft)
+        client = dlms.app.test_client()
+
+        question_html = client.get("/pdf-import/review/bulk_help_questions").get_data(as_text=True)
+        self.assertIn("How filters and bulk actions work", question_html)
+        self.assertIn("selects only cards in the current filtered view", question_html)
+        self.assertIn("Mark Selected for Deletion", question_html)
+        self.assertIn("Save Reviewed Question Bank", question_html)
+        self.assertIn('class="pdf-review-bulk-actions"', question_html)
+        self.assertIn('id="pdfSelectionCount" aria-live="polite"', question_html)
+
+        glossary_html = client.get("/pdf-import/review/bulk_help_terms").get_data(as_text=True)
+        self.assertIn("How filters and bulk actions work", glossary_html)
+        self.assertIn("selections remain when you switch filters", glossary_html)
+        self.assertIn("Exclude Selected", glossary_html)
+        self.assertIn("Save Reviewed Terminology Bank", glossary_html)
+        self.assertIn('class="pdf-review-bulk-actions"', glossary_html)
+        self.assertIn('id="pdfTermSelectionCount" aria-live="polite"', glossary_html)
+
     def test_save_rejects_recovery_question_without_deliberate_correct_answer(self):
         draft = {
             "id": "blank_correct_save", "source_name": "recovery.pdf", "page_count": 1,

@@ -452,7 +452,7 @@ function matchingFeedbackHtml(q, pair, leftIndex, chosen) {
         const isSourceChecked = ["source-checked", "source-aligned", "source-basis-verified", "verified"].includes(verificationStatus);
         const verified = isSourceChecked ? `<span class="matching-study-chip verified">✓ Source checked</span>` : "";
         const explanation = pair.explanation ? `<div class="matching-study-explanation">${escapeHtml(pair.explanation)}</div>` : "";
-        const referenceText = verification.reference_basis || source.dataset || source.work || source.organization || "";
+        const referenceText = verification.reference_basis || safeProvenanceLabel(source);
         const sourceUrls = Array.isArray(verification.source_urls) ? verification.source_urls.filter(Boolean) : [];
         const sourceUrl = safeExternalUrl(sourceUrls[0] || source.url || "");
         const referenceBasis = referenceText ? `<div class="matching-study-source"><strong>Reference basis:</strong> ${escapeHtml(referenceText)}</div>` : "";
@@ -605,12 +605,35 @@ function escapeHtml(value) {
 }
 
 function safeExternalUrl(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
     try {
-        const url = new URL(String(value ?? ""), window.location.href);
-        return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+        const url = new URL(raw);
+        if (!["http:", "https:"].includes(url.protocol)) return "";
+        const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+        const isLoopback = hostname === "localhost"
+            || hostname.endsWith(".localhost")
+            || hostname === "0.0.0.0"
+            || hostname === "::1"
+            || hostname === "[::1]"
+            || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+        if (isLoopback || url.origin === window.location.origin) return "";
+        return url.href;
     } catch (_error) {
         return "";
     }
+}
+
+function safeProvenanceLabel(source, fallback = "") {
+    const values = [source?.dataset, source?.work, source?.organization];
+    for (const value of values) {
+        const label = String(value ?? "").trim();
+        if (!label) continue;
+        if (/^https?:/i.test(label) && !safeExternalUrl(label)) continue;
+        if (/(?:^|[\\/])[^\\/]+\.(?:html?|json)(?:[?#].*)?$/i.test(label)) continue;
+        return label;
+    }
+    return fallback;
 }
 
 function choiceStudyState(q, selected) {
@@ -866,7 +889,7 @@ function applyStudyFeedback() {
                     ? `<div class="matching-study-explanation">${escapeHtml(q.explanation)}</div>` : "";
                 const sourceUrl = safeExternalUrl(source.url);
                 const sourceLine = sourceUrl
-                    ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.dataset || source.url)}</a></div>` : "";
+                    ? `<div class="matching-study-source"><strong>Source:</strong> <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(safeProvenanceLabel(source, sourceUrl))}</a></div>` : "";
                 choicesEl.insertAdjacentHTML("beforeend", `<div class="matching-study-feedback is-correct choice-study-explanation"><div class="matching-study-feedback-title">✓ Correct</div>${explanation}${sourceLine}</div>`);
             } else {
                 const message = state.hasIncorrectSelection
