@@ -254,12 +254,12 @@ class PDFImportParserTests(unittest.TestCase):
         styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
         default_style = styles[
             styles.index(".pdf-import-page #pdfDeleteSelected {"):
-            styles.index(".pdf-import-page #pdfDeleteSelected:hover")
+            styles.index(".pdf-import-page .pdf-review-bulk-status")
         ]
         self.assertIn("border-color:var(--theme-border-soft", default_style)
         self.assertNotIn("#ef4444", default_style)
-        self.assertIn(".pdf-import-page #pdfDeleteSelected:hover", styles)
-        self.assertIn(".pdf-import-page #pdfDeleteSelected:focus-visible", styles)
+        self.assertNotIn(".pdf-import-page #pdfDeleteSelected:hover", styles)
+        self.assertNotIn(".pdf-import-page #pdfDeleteSelected:focus-visible", styles)
 
         glossary_html = client.get("/pdf-import/review/bulk_help_terms").get_data(as_text=True)
         self.assertIn("How filters and bulk actions work", glossary_html)
