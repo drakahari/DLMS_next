@@ -14138,11 +14138,11 @@ def quiz_library():
         <section class="library-footer-actions dashboard-panel">
             <div>
                 <h2>Library Tools</h2>
-                <p>Create new content or export a backup/reference copy of your complete library.</p>
+                <p>Download a human-readable TXT reference of your complete quiz library. This reference is not a restorable or importable library package. Use <strong>Export</strong> on an individual quiz for an import-friendly classic MCQ text file, or <a href="/settings/data">Settings → Data &amp; History</a> portable backup for migration or full restore.</p>
             </div>
             <div class="library-footer-buttons">
                 <a class="library-secondary-action" href="/create_short_quiz">✎ Create Short Quiz</a>
-                <a class="library-secondary-action" href="/export/all_quizzes.txt" title="Export All creates a backup/reference file. Use Export Quiz on an individual quiz for an import-friendly file.">⇩ Export All Quizzes</a>
+                <a class="library-secondary-action" href="/export/all_quizzes.txt" title="Downloads a human-readable reference only; it cannot restore or import a quiz library.">⇩ Download Quiz Library Reference (TXT)</a>
             </div>
         </section>
     </main>

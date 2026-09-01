@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sqlite3
 import tempfile
 import unittest
 from unittest import mock
@@ -9,6 +10,96 @@ import app as dlms
 
 
 class QuizLibraryTests(unittest.TestCase):
+    def test_library_tools_identifies_reference_export_and_portability_options(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-export-ui-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                response = dlms.app.test_client().get("/library")
+
+            self.assertEqual(response.status_code, 200)
+            html = response.get_data(as_text=True)
+            self.assertIn("Download Quiz Library Reference (TXT)", html)
+            self.assertIn('href="/export/all_quizzes.txt"', html)
+            self.assertIn("human-readable TXT reference", html)
+            self.assertIn("not a restorable or importable library package", html)
+            self.assertIn("import-friendly classic MCQ text file", html)
+            self.assertIn('href="/settings/data"', html)
+            self.assertIn("portable backup for migration or full restore", html)
+            self.assertNotIn("⇩ Export All Quizzes", html)
+
+    def test_quiz_library_reference_keeps_existing_text_export_contract(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-reference-") as directory:
+            db_path = os.path.join(directory, "results.db")
+            quiz_registry = os.path.join(directory, "quizzes.json")
+            conn = sqlite3.connect(db_path)
+            conn.executescript("""
+                CREATE TABLE quizzes (
+                    id INTEGER PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    source_file TEXT NOT NULL
+                );
+                CREATE TABLE questions (
+                    id INTEGER PRIMARY KEY,
+                    quiz_id INTEGER NOT NULL,
+                    question_number INTEGER NOT NULL,
+                    question_text TEXT NOT NULL
+                );
+                CREATE TABLE choices (
+                    id INTEGER PRIMARY KEY,
+                    question_id INTEGER NOT NULL,
+                    label TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    is_correct INTEGER NOT NULL
+                );
+                INSERT INTO quizzes VALUES (7, 'Network Basics', 'network.html');
+                INSERT INTO questions VALUES (11, 7, 1, 'Which protocol resolves names?');
+                INSERT INTO choices VALUES (21, 11, 'A', 'DNS', 1);
+                INSERT INTO choices VALUES (22, 11, 'B', 'SSH', 0);
+            """)
+            conn.commit()
+            conn.close()
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([
+                    {
+                        "id": 7,
+                        "title": "Network Basics",
+                        "html": "network.html",
+                        "folder": "Networking",
+                    }
+                ], handle)
+
+            with mock.patch.object(dlms, "DB_PATH", db_path), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry):
+                response = dlms.app.test_client().get("/export/all_quizzes.txt")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, "text/plain")
+            self.assertEqual(
+                response.headers["Content-Disposition"],
+                "attachment; filename=dlms_all_quizzes_export.txt",
+            )
+            export = response.get_data(as_text=True)
+            for expected in (
+                "# DLMS Quiz Export",
+                "# Format: DLMS text",
+                "# Import compatible: No - contains multiple quizzes",
+                "# Total quizzes: 1",
+                "QUIZ: Network Basics",
+                "QUIZ ID: 7",
+                "FOLDER: Networking",
+                "1. Which protocol resolves names?",
+                "A. DNS",
+                "B. SSH",
+                "Correct Answer: A",
+            ):
+                with self.subTest(expected=expected):
+                    self.assertIn(expected, export)
+
     def test_fresh_empty_library_does_not_count_unrendered_default_folders(self):
         with tempfile.TemporaryDirectory(prefix="dlms-empty-library-") as directory:
             config_dir = os.path.join(directory, "config")

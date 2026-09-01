@@ -146,6 +146,18 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn('/help/maintenance#data-safety', settings)
         self.assertIn('/help/maintenance#reset-recovery', settings)
 
+    def test_help_distinguishes_library_reference_quiz_export_and_portable_backup(self):
+        maintenance = self._static("help-maintenance.html")
+        for wording in (
+            "Download Quiz Library Reference (TXT)",
+            "human-readable reference",
+            "not a restorable or importable library package",
+            "import-friendly classic MCQ text file",
+            "migration to another DLMS installation or a full restore",
+        ):
+            with self.subTest(wording=wording):
+                self.assertIn(wording, maintenance)
+
     def test_help_asset_references_exist(self):
         asset_reference = re.compile(r'''(?:src|href)=["'](/static/help_assets/[^"']+)["']''')
         for path in glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html")):
