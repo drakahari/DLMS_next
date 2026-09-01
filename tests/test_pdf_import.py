@@ -251,6 +251,10 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertIn("Save Reviewed Question Bank", question_html)
         self.assertIn('class="pdf-review-bulk-actions"', question_html)
         self.assertIn('id="pdfSelectionCount" aria-live="polite"', question_html)
+        styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
+        self.assertIn(".pdf-import-page #pdfDeleteSelected {", styles)
+        self.assertIn(".pdf-import-page #pdfDeleteSelected:hover", styles)
+        self.assertIn(".pdf-import-page #pdfDeleteSelected:focus-visible", styles)
 
         glossary_html = client.get("/pdf-import/review/bulk_help_terms").get_data(as_text=True)
         self.assertIn("How filters and bulk actions work", glossary_html)
