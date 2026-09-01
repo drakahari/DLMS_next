@@ -1,6 +1,6 @@
 # DLMS – Digital Learning & Management System
 
-**Current release: DLMS 3.0.2**
+**Current release: DLMS 3.0.2 RC4**
 
 👉 Download packaged releases from the [Releases page](../../releases).
 
@@ -120,7 +120,7 @@ python app.py
 
 On Windows, activate the environment with `.venv\Scripts\activate`.
 
-`requirements-lock.txt` records the dependency set used for the verified 3.0.2
+`requirements-lock.txt` records the dependency set used for the verified 3.0.2 RC4
 environment. Contributors who intentionally need compatible dependency updates can
 instead install the supported ranges in `requirements.txt`, run the full test suite,
 and then deliberately refresh the lock file.
@@ -140,6 +140,23 @@ are `static/` and `init.sql`; databases, settings, backups, logs, caches, tests,
 development directories, and per-user runtime data are not build inputs. Inspect
 the resulting `dist/` artifact and perform the release smoke tests before
 distribution.
+
+Build natively for each target architecture; PyInstaller does not produce
+cross-platform binaries. Stage the final artifacts with these names:
+
+* Windows: `DLMS-3.0.2-RC4-windows-x86_64.exe`
+* Linux: `DLMS-3.0.2-RC4-linux-x86_64`
+* macOS: `DLMS-3.0.2-RC4-macos-arm64` and/or `DLMS-3.0.2-RC4-macos-x86_64`
+
+After staging the final binaries/packages in `releases/`, generate the shared
+checksum manifest from the same checkout:
+
+```bash
+python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-RC4-*
+```
+
+The user-facing release name is `DLMS 3.0.2 RC4`; the matching Git tag convention
+is `v3.0.2-rc.4`.
 
 ### Browser launch and server options
 
@@ -328,6 +345,8 @@ files once removed.
    smoke-test startup, browser/no-browser operation, static assets, quiz creation,
    and backup/restore.
 5. Review `git status` and package source from tracked files, for example with
-   `git archive --format=zip --output releases/DLMS-3.0.2-source.zip HEAD`. Inspect
+   `git archive --format=zip --output releases/DLMS-3.0.2-RC4-source.zip HEAD`. Inspect
    the archive to confirm it contains required application assets and excludes
    `.git`, virtual environments, caches, databases, logs, and local build output.
+6. Generate `releases/SHA256SUMS.txt` from the final staged binaries/packages with
+   `python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-RC4-*`.

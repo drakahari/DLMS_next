@@ -47,25 +47,27 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn("System Tools &amp; Recovery", index)
 
     def test_legacy_help_targets_remain_available(self):
+        version_text = f"Documentation for DLMS {dlms.APP_VERSION}."
         for path in ("/help/quiz-help", "/help/advanced-features"):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 try:
                     self.assertEqual(response.status_code, 200)
-                    self.assertIn("Documentation for DLMS 3.0.2.", response.get_data(as_text=True))
+                    self.assertIn(version_text, response.get_data(as_text=True))
                 finally:
                     response.close()
 
-        self.assertIn("Documentation for DLMS 3.0.2.", self._static("about.html"))
+        self.assertIn(version_text, self._static("about.html"))
 
     def test_help_pages_use_current_version_and_shared_toc_script(self):
         help_files = glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html"))
         self.assertGreater(len(help_files), 1)
+        version_text = f"Documentation for DLMS {dlms.APP_VERSION}."
         for path in help_files:
             with self.subTest(path=os.path.basename(path)):
                 with open(path, encoding="utf-8") as handle:
                     page = handle.read()
-                self.assertIn("Documentation for DLMS 3.0.2.", page)
+                self.assertIn(version_text, page)
                 self.assertNotRegex(page, r"Documentation for DLMS 3\.0\.[01]\.")
                 self.assertIn('/static/help-docs.css', page)
                 self.assertRegex(page, r'<body[^>]+class="[^"]*help-page[^"]*"')

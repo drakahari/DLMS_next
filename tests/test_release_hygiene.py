@@ -1,4 +1,8 @@
+import hashlib
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,6 +17,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
 
         version = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
         self.assertIsNotNone(version)
+        self.assertEqual(version.group(1), "3.0.2 RC4")
         self.assertIn(f"Current release: DLMS {version.group(1)}", readme)
         self.assertNotIn("DLMS v2.1.0 is now available", readme)
         for setting in ("--browser", "--no-browser", "DLMS_NO_BROWSER"):
@@ -20,6 +25,44 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("interactive desktop session", readme)
         self.assertIn("requirements-lock.txt", readme)
         self.assertIn("git archive", readme)
+
+    def test_release_metadata_and_help_use_the_rc4_display_version(self):
+        version = "3.0.2 RC4"
+        self.assertIn(f"Reproducible DLMS {version} runtime environment.", (ROOT / "requirements-lock.txt").read_text(encoding="utf-8"))
+        self.assertIn(f"Canonical DLMS {version} build tools.", (ROOT / "requirements-build.txt").read_text(encoding="utf-8"))
+        for path in (ROOT / "static").glob("*.html"):
+            contents = path.read_text(encoding="utf-8")
+            if "Documentation for DLMS" in contents:
+                with self.subTest(page=path.name):
+                    self.assertIn(f"Documentation for DLMS {version}.", contents)
+
+    def test_checksum_helper_writes_standard_manifest_for_staged_artifacts(self):
+        script = ROOT / "tools" / "generate_sha256sums.py"
+        self.assertTrue(script.is_file())
+        with tempfile.TemporaryDirectory(prefix="dlms-checksums-") as directory:
+            root = Path(directory)
+            windows = root / "DLMS-3.0.2-RC4-windows-x86_64.exe"
+            linux = root / "DLMS-3.0.2-RC4-linux-x86_64"
+            manifest = root / "SHA256SUMS.txt"
+            windows.write_bytes(b"windows release artifact")
+            linux.write_bytes(b"linux release artifact")
+
+            result = subprocess.run(
+                [sys.executable, str(script), "--output", str(manifest), str(windows), str(linux)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                manifest.read_text(encoding="utf-8"),
+                "\n".join((
+                    f"{hashlib.sha256(linux.read_bytes()).hexdigest()}  {linux.name}",
+                    f"{hashlib.sha256(windows.read_bytes()).hexdigest()}  {windows.name}",
+                    "",
+                )),
+            )
 
     def test_runtime_requirements_are_bounded_and_lock_is_complete(self):
         requirements = [
