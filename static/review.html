@@ -713,6 +713,8 @@ window.exportMissedAnkiApkg = function() {
         return;
     }
 
+    let downloadName = "DLMS_Missed_Questions.apkg";
+
     fetch("/export/anki", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -723,13 +725,16 @@ window.exportMissedAnkiApkg = function() {
     })
     .then(res => {
         if (!res.ok) throw new Error("APKG export failed");
+        const disposition = res.headers.get("Content-Disposition") || "";
+        const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+        if (filenameMatch) downloadName = filenameMatch[1];
         return res.blob();
     })
     .then(blob => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "missed_questions.apkg";
+        a.download = downloadName;
         document.body.appendChild(a);
         a.click();
         a.remove();

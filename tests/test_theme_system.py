@@ -481,6 +481,9 @@ class ThemeSystemTests(unittest.TestCase):
             ".anki-custom-selection-summary": ("--theme-heading",),
             ".anki-custom-selection-row": ("--theme-page-text", "--theme-border-soft"),
             ".anki-custom-selection-meta": ("--theme-muted-text",),
+            ".anki-custom-selection-toolbar": ("--theme-page-text", "--theme-surface", "--theme-border-soft"),
+            ".anki-custom-selection-count": ("--theme-heading",),
+            ".anki-clear-selection-button": ("--theme-page-text", "--theme-surface-2", "--theme-border-soft"),
         }
         for selector, tokens in expected.items():
             with self.subTest(selector=selector):
@@ -503,10 +506,13 @@ class ThemeSystemTests(unittest.TestCase):
                 body = self._rgba(variables["theme-body-base"])[:3]
                 panel = self._composite(variables["theme-panel-1"], body)
                 surface = self._composite(variables["theme-surface"], panel)
+                surface_2 = self._composite(variables["theme-surface-2"], panel)
                 combinations = {
                     "selection text": (variables["theme-page-text"], surface),
                     "selection heading": (variables["theme-heading"], surface),
                     "selection helper": (variables["theme-muted-text"], surface),
+                    "selection count": (variables["theme-heading"], surface),
+                    "clear selection": (variables["theme-page-text"], surface_2),
                     "input text": (
                         variables["theme-input-text"],
                         self._composite(variables["theme-input-bg"], panel),

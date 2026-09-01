@@ -24034,8 +24034,23 @@ def make_safe_anki_download_name(name, fallback="dlms_anki_deck"):
     cleaned = secure_filename(str(name or "").strip())
     cleaned = os.path.splitext(cleaned)[0]
     if not cleaned:
-        cleaned = fallback
+        cleaned = secure_filename(str(fallback or "").strip())
+        cleaned = os.path.splitext(cleaned)[0]
+    if not cleaned:
+        cleaned = "dlms_anki_deck"
     return f"{cleaned}.apkg"
+
+
+def make_safe_anki_deck_name(name, fallback="DLMS Anki Deck"):
+    normalized = unicodedata.normalize("NFKC", str(name or ""))
+    cleaned = "".join(
+        " " if unicodedata.category(character).startswith("C") else character
+        for character in normalized
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = cleaned.replace("::", " - ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .-")
+    return (cleaned[:120].rstrip() or fallback)
 
 
 @app.route("/anki")
@@ -24647,6 +24662,10 @@ def anki_custom_deck():
                     <label><span>Template</span><select disabled><option>Avery 5388 — 3 × 5, 3 per sheet</option></select></label>
                     <label><span>Duplex flip</span><select name="duplex_flip"><option value="long">Long edge — same card order</option><option value="short">Short edge — reverse back order</option></select></label>
                 </div>
+                <div class="anki-custom-selection-toolbar" aria-label="Selected card controls">
+                    <span class="anki-custom-selection-count" id="ankiSelectedCount" aria-live="polite">0 cards selected</span>
+                    <button type="button" class="anki-clear-selection-button" id="ankiClearSelection" disabled>Clear Selected Cards</button>
+                </div>
                 <div class="anki-action-grid anki-action-grid-three">
                     <button type="submit" class="anki-preview-button" formaction="/anki/custom" formmethod="POST">Preview Deck</button>
                     <button type="submit" class="anki-export-button" formaction="/anki/export/custom" formmethod="POST">Export .apkg</button>
@@ -24724,6 +24743,34 @@ if (shutdownBtn) {
         }
     });
 }
+
+const customAnkiForm = document.getElementById("customAnkiForm");
+const ankiSelectedCount = document.getElementById("ankiSelectedCount");
+const ankiClearSelection = document.getElementById("ankiClearSelection");
+const customAnkiCardSelections = customAnkiForm
+    ? Array.from(customAnkiForm.querySelectorAll('input[type="checkbox"][name$="_cards"]'))
+    : [];
+
+function updateCustomAnkiSelectionCount() {
+    const selectedCount = customAnkiCardSelections.filter(checkbox => checkbox.checked).length;
+    if (ankiSelectedCount) {
+        ankiSelectedCount.textContent = `${selectedCount} card${selectedCount === 1 ? "" : "s"} selected`;
+    }
+    if (ankiClearSelection) ankiClearSelection.disabled = selectedCount === 0;
+}
+
+customAnkiCardSelections.forEach(checkbox => {
+    checkbox.addEventListener("change", updateCustomAnkiSelectionCount);
+});
+
+if (ankiClearSelection) {
+    ankiClearSelection.addEventListener("click", () => {
+        customAnkiCardSelections.forEach(checkbox => { checkbox.checked = false; });
+        updateCustomAnkiSelectionCount();
+    });
+}
+
+updateCustomAnkiSelectionCount();
 
 if (window.location.hash === "#ankiPreview" || {{ "true" if preview_requested else "false" }}) {
     const preview = document.getElementById("ankiPreview");
@@ -25542,6 +25589,7 @@ def export_anki_genanki():
             mq.question_text,
             mq.choices_text,
             mq.correct_text,
+            qu.id AS quiz_id,
             qu.title AS quiz_title
         FROM missed_questions mq
         JOIN attempts a ON a.id = mq.attempt_id
@@ -25586,13 +25634,22 @@ def export_anki_genanki():
             "back": back
         })
 
-    deck_name = rows[0]["quiz_title"] or "DLMS Missed Questions"
+    quiz_id = rows[0]["quiz_id"]
+    registry_map, _installed_packs, _origin_by_quiz_id = _attempt_history_context()
+    registry_entry = registry_map.get(int(quiz_id), {}) if quiz_id is not None else {}
+    source_title = registry_entry.get("title") or rows[0]["quiz_title"] or "DLMS Quiz"
+    safe_title = make_safe_anki_deck_name(source_title, "DLMS Quiz")
+    deck_name = f"{safe_title} - Missed Questions"
+    download_name = make_safe_anki_download_name(
+        f"{safe_title}_Missed_Questions",
+        "DLMS_Missed_Questions",
+    )
 
     apkg_path = export_quiz_to_apkg(deck_name, deck_rows)
 
     return _send_temp_anki_package(
         apkg_path,
-        "dlms_missed_questions.apkg"
+        download_name,
     )
 
 
