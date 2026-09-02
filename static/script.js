@@ -265,6 +265,11 @@ function renderQuestion() {
     }
 
     choicesEl.innerHTML = renderQuestionMedia(q);
+    const isMultiChoice = Array.isArray(q.correct) && q.correct.length > 1;
+    choicesEl.setAttribute("role", "group");
+    choicesEl.setAttribute(
+        "aria-label", isMultiChoice ? "Select all correct answers" : "Select one answer"
+    );
     (q.choices || []).forEach((choice, i) => {
         let cls = "choice";
 
@@ -275,9 +280,14 @@ if (examMode && selected.includes(i)) {
 }
 
 
-        const choiceElement = document.createElement("div");
+        const choiceElement = document.createElement("button");
+        choiceElement.type = "button";
         choiceElement.className = cls;
         choiceElement.dataset.index = String(i);
+        choiceElement.setAttribute("aria-pressed", String(selected.includes(i)));
+        choiceElement.setAttribute(
+            "aria-label", `${String(choice.label ?? "")}. ${String(choice.text ?? "")}`
+        );
         choiceElement.addEventListener("click", () => selectChoice(i));
 
         const labelElement = document.createElement("b");
@@ -866,6 +876,7 @@ function applyStudyFeedback() {
     // Clear previous feedback
     buttons.forEach(btn => {
         btn.classList.remove("correct-choice", "wrong-choice");
+        btn.setAttribute("aria-pressed", String(selected.includes(Number(btn.dataset.index))));
     });
 
     // Mark ONLY what the user picked
@@ -874,8 +885,10 @@ function applyStudyFeedback() {
 
         if (correctIndexes.includes(idx)) {
             buttons[idx].classList.add("correct-choice");   // green
+            buttons[idx].setAttribute("aria-label", `${buttons[idx].getAttribute("aria-label")}. Correct.`);
         } else {
             buttons[idx].classList.add("wrong-choice");     // red
+            buttons[idx].setAttribute("aria-label", `${buttons[idx].getAttribute("aria-label")}. Incorrect.`);
         }
     });
 
