@@ -5747,6 +5747,92 @@ Sources Used
 # =========================
 # PORTAL CONFIG MANAGEMENT
 # =========================
+def _fsync_json_directory(path):
+    """Best-effort directory durability after replacing a durable JSON file."""
+    descriptor = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+        os.fsync(descriptor)
+    except OSError:
+        # Directory handles/fsync are unavailable on some supported platforms.
+        pass
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _preserve_malformed_json(path):
+    """Keep one recoverable copy of malformed JSON without backup-file churn."""
+    with open(path, "rb") as source:
+        malformed_bytes = source.read()
+
+    backup_path = path + ".corrupt"
+    try:
+        with open(backup_path, "rb") as existing_backup:
+            if existing_backup.read() == malformed_bytes:
+                return backup_path
+    except FileNotFoundError:
+        pass
+
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    descriptor, temp_path = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.corrupt-", suffix=".tmp", dir=directory
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as temporary:
+            descriptor = None
+            temporary.write(malformed_bytes)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temp_path, backup_path)
+        _fsync_json_directory(directory)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+    return backup_path
+
+
+def _atomic_write_json(path, payload, *, indent=2, ensure_ascii=True, expected_type=None):
+    """Durably replace one user-owned JSON file while retaining malformed input."""
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+
+    if os.path.isfile(path):
+        malformed = False
+        try:
+            with open(path, "r", encoding="utf-8") as current:
+                current_payload = json.load(current)
+            malformed = expected_type is not None and not isinstance(current_payload, expected_type)
+        except (json.JSONDecodeError, UnicodeError):
+            malformed = True
+        if malformed:
+            _preserve_malformed_json(path)
+
+    descriptor, temp_path = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=directory
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as temporary:
+            descriptor = None
+            json.dump(payload, temporary, indent=indent, ensure_ascii=ensure_ascii)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        with open(temp_path, "r", encoding="utf-8") as temporary:
+            validated = json.load(temporary)
+        if expected_type is not None and not isinstance(validated, expected_type):
+            raise ValueError(f"JSON payload must contain {expected_type.__name__}")
+        os.replace(temp_path, path)
+        _fsync_json_directory(directory)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
 def load_portal_config():
     default = {
         "title": "Training & Practice Center",
@@ -5791,8 +5877,7 @@ def load_portal_config():
     # First run: create portal.json
     if not os.path.exists(PORTAL_CONFIG):
         try:
-            with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
-                json.dump(default, f, indent=2)
+            _atomic_write_json(PORTAL_CONFIG, default, expected_type=dict)
             print("[PORTAL CONFIG] Created default portal.json")
         except Exception as e:
             print("[PORTAL CONFIG][ERROR] Failed to create portal.json:", e)
@@ -5802,51 +5887,78 @@ def load_portal_config():
     # Normal load (MERGE, do not FILTER)
     try:
         with open(PORTAL_CONFIG, "r", encoding="utf-8") as f:
-            data = json.load(f) or {}
-
-        # Merge defaults with stored values
-        cfg = default.copy()
-        cfg.update(data)
-
-        # Normalize booleans (checkbox safety)
-        cfg["show_confidence"] = bool(cfg.get("show_confidence", False))
-        cfg["enable_regex_replace"] = bool(cfg.get("enable_regex_replace", False))
-
-        # Normalize title
-        cfg["title"] = str(cfg.get("title") or default["title"]).strip()
-
-        # Normalize background
-        bg = cfg.get("background_image")
-        cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
-
-        valid_themes = {"dark", "light", "purple-gold", "maroon-gold"}
-        theme = str(cfg.get("theme") or "dark").strip().lower()
-        cfg["theme"] = theme if theme in valid_themes else "dark"
-
-        cfg["ai_helper_enabled"] = bool(cfg.get("ai_helper_enabled", False))
-        cfg["ai_auto_copy_prompt"] = bool(cfg.get("ai_auto_copy_prompt", True))
-
-        valid_ai_providers = {"chatgpt", "claude", "gemini", "local"}
-        provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
-        cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
-
-        cfg["ai_custom_url"] = str(cfg.get("ai_custom_url") or "").strip()
-
-        raw_study_area_visibility = cfg.get("study_area_visibility")
-        if not isinstance(raw_study_area_visibility, dict):
-            raw_study_area_visibility = {}
-        cfg["study_area_visibility"] = {
-            key: raw_study_area_visibility.get(key)
-            if isinstance(raw_study_area_visibility.get(key), bool)
-            else True
-            for key in ("it", "law", "medical", "other")
-        }
-
-        return cfg
-
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeError) as e:
+        try:
+            _preserve_malformed_json(PORTAL_CONFIG)
+        except Exception as preserve_error:
+            raise RuntimeError(
+                "Malformed portal.json could not be preserved safely"
+            ) from preserve_error
+        print("[PORTAL CONFIG][ERROR] Failed to load portal.json:", e)
+        return default.copy()
     except Exception as e:
         print("[PORTAL CONFIG][ERROR] Failed to load portal.json:", e)
         return default.copy()
+
+    if not isinstance(data, dict):
+        try:
+            _preserve_malformed_json(PORTAL_CONFIG)
+        except Exception as preserve_error:
+            raise RuntimeError(
+                "Malformed portal.json could not be preserved safely"
+            ) from preserve_error
+        print("[PORTAL CONFIG][ERROR] portal.json must contain a JSON object")
+        return default.copy()
+
+    if (
+        ("quiz_folders" in data and not isinstance(data["quiz_folders"], list))
+        or (
+            "study_area_visibility" in data
+            and not isinstance(data["study_area_visibility"], dict)
+        )
+    ):
+        _preserve_malformed_json(PORTAL_CONFIG)
+
+    # Merge defaults with stored values
+    cfg = default.copy()
+    cfg.update(data)
+
+    # Normalize booleans (checkbox safety)
+    cfg["show_confidence"] = bool(cfg.get("show_confidence", False))
+    cfg["enable_regex_replace"] = bool(cfg.get("enable_regex_replace", False))
+
+    # Normalize title
+    cfg["title"] = str(cfg.get("title") or default["title"]).strip()
+
+    # Normalize background
+    bg = cfg.get("background_image")
+    cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
+
+    valid_themes = {"dark", "light", "purple-gold", "maroon-gold"}
+    theme = str(cfg.get("theme") or "dark").strip().lower()
+    cfg["theme"] = theme if theme in valid_themes else "dark"
+
+    cfg["ai_helper_enabled"] = bool(cfg.get("ai_helper_enabled", False))
+    cfg["ai_auto_copy_prompt"] = bool(cfg.get("ai_auto_copy_prompt", True))
+
+    valid_ai_providers = {"chatgpt", "claude", "gemini", "local"}
+    provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
+    cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
+
+    cfg["ai_custom_url"] = str(cfg.get("ai_custom_url") or "").strip()
+
+    raw_study_area_visibility = cfg.get("study_area_visibility")
+    if not isinstance(raw_study_area_visibility, dict):
+        raw_study_area_visibility = {}
+    cfg["study_area_visibility"] = {
+        key: raw_study_area_visibility.get(key)
+        if isinstance(raw_study_area_visibility.get(key), bool)
+        else True
+        for key in ("it", "law", "medical", "other")
+    }
+
+    return cfg
 
 
 def save_portal_config(title, show_confidence=False, enable_regex_replace=False, background_image=None):
@@ -5859,8 +5971,7 @@ def save_portal_config(title, show_confidence=False, enable_regex_replace=False,
     if background_image is not None:
         cfg["background_image"] = background_image
 
-    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+    _atomic_write_json(PORTAL_CONFIG, cfg, expected_type=dict)
 
 
 def get_quiz_folders():
@@ -5916,8 +6027,7 @@ def save_quiz_folders(folders):
 
     cfg["quiz_folders"] = cleaned
 
-    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+    _atomic_write_json(PORTAL_CONFIG, cfg, expected_type=dict)
 
 
 
@@ -5951,8 +6061,7 @@ def load_law_registry():
 
     if not os.path.exists(LAW_REGISTRY):
         try:
-            with open(LAW_REGISTRY, "w", encoding="utf-8") as f:
-                json.dump(default, f, indent=2)
+            _atomic_write_json(LAW_REGISTRY, default, expected_type=dict)
             return default.copy()
         except Exception as e:
             print(f"[LAW REGISTRY ERROR] create failed: {e}")
@@ -5960,22 +6069,46 @@ def load_law_registry():
 
     try:
         with open(LAW_REGISTRY, "r", encoding="utf-8") as f:
-            data = json.load(f) or {}
-
-        cfg = default.copy()
-        cfg.update(data)
-
-        if not isinstance(cfg.get("cases"), list):
-            cfg["cases"] = []
-
-        if not isinstance(cfg.get("folders"), list):
-            cfg["folders"] = default["folders"]
-
-        return cfg
-
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeError) as e:
+        try:
+            _preserve_malformed_json(LAW_REGISTRY)
+        except Exception as preserve_error:
+            raise RuntimeError(
+                "Malformed law.json could not be preserved safely"
+            ) from preserve_error
+        print(f"[LAW REGISTRY ERROR] load failed: {e}")
+        return default.copy()
     except Exception as e:
         print(f"[LAW REGISTRY ERROR] load failed: {e}")
         return default.copy()
+
+    if not isinstance(data, dict):
+        try:
+            _preserve_malformed_json(LAW_REGISTRY)
+        except Exception as preserve_error:
+            raise RuntimeError(
+                "Malformed law.json could not be preserved safely"
+            ) from preserve_error
+        print("[LAW REGISTRY ERROR] law.json must contain a JSON object")
+        return default.copy()
+
+    if (
+        ("cases" in data and not isinstance(data["cases"], list))
+        or ("folders" in data and not isinstance(data["folders"], list))
+    ):
+        _preserve_malformed_json(LAW_REGISTRY)
+
+    cfg = default.copy()
+    cfg.update(data)
+
+    if not isinstance(cfg.get("cases"), list):
+        cfg["cases"] = []
+
+    if not isinstance(cfg.get("folders"), list):
+        cfg["folders"] = default["folders"]
+
+    return cfg
 
 
 def save_law_registry(registry):
@@ -5993,8 +6126,7 @@ def save_law_registry(registry):
         registry.setdefault("cases", [])
         registry.setdefault("folders", [])
 
-        with open(LAW_REGISTRY, "w", encoding="utf-8") as f:
-            json.dump(registry, f, indent=2)
+        _atomic_write_json(LAW_REGISTRY, registry, expected_type=dict)
 
     except Exception as e:
         print(f"[LAW REGISTRY ERROR] save failed: {e}")
@@ -10607,8 +10739,7 @@ def law_create_case_from_import(filename):
     try:
         os.makedirs(LAW_CASES_FOLDER, exist_ok=True)
 
-        with open(case_path, "w", encoding="utf-8") as f:
-            json.dump(case_data, f, indent=2)
+        _atomic_write_json(case_path, case_data, expected_type=dict)
 
         cases = registry.get("cases", [])
 
@@ -11449,8 +11580,7 @@ def law_update_case_review_details(case_id):
         case_data["course"] = new_course
         case_data["updated_at"] = now
 
-        with open(case_path, "w", encoding="utf-8") as f:
-            json.dump(case_data, f, indent=2)
+        _atomic_write_json(case_path, case_data, expected_type=dict)
 
         registry = load_law_registry()
 
@@ -11992,8 +12122,7 @@ def law_update_case_review_notes(case_id):
         case_data["student_notes"] = student_notes
         case_data["updated_at"] = now
 
-        with open(case_path, "w", encoding="utf-8") as f:
-            json.dump(case_data, f, indent=2)
+        _atomic_write_json(case_path, case_data, expected_type=dict)
 
         registry = load_law_registry()
 
@@ -12052,8 +12181,7 @@ def law_update_socratic_answers(case_id):
         case_data["socratic_student_answers"] = answers
         case_data["updated_at"] = now
 
-        with open(case_path, "w", encoding="utf-8") as f:
-            json.dump(case_data, f, indent=2)
+        _atomic_write_json(case_path, case_data, expected_type=dict)
 
         registry = load_law_registry()
 
@@ -12107,8 +12235,7 @@ def law_update_irac_response(case_id):
         case_data["irac_student_response"] = irac_response
         case_data["updated_at"] = now
 
-        with open(case_path, "w", encoding="utf-8") as f:
-            json.dump(case_data, f, indent=2)
+        _atomic_write_json(case_path, case_data, expected_type=dict)
 
         registry = load_law_registry()
 
@@ -14736,8 +14863,9 @@ def _save_pdf_question_bank(bank):
         raise ValueError("Question bank is missing an id")
     os.makedirs(PDF_QUESTION_BANK_FOLDER, exist_ok=True)
     bank["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    with open(_pdf_bank_path(bank_id), "w", encoding="utf-8") as f:
-        json.dump(bank, f, indent=2, ensure_ascii=False)
+    _atomic_write_json(
+        _pdf_bank_path(bank_id), bank, ensure_ascii=False, expected_type=dict
+    )
 
 def _load_pdf_question_bank(bank_id):
     path = _pdf_bank_path(bank_id)
@@ -14905,8 +15033,9 @@ def _save_pdf_terminology_bank(bank):
         raise ValueError("Terminology bank is missing an id")
     os.makedirs(PDF_TERMINOLOGY_BANK_FOLDER, exist_ok=True)
     bank["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    with open(_pdf_term_bank_path(bank_id), "w", encoding="utf-8") as f:
-        json.dump(bank, f, indent=2, ensure_ascii=False)
+    _atomic_write_json(
+        _pdf_term_bank_path(bank_id), bank, ensure_ascii=False, expected_type=dict
+    )
 
 def _load_pdf_terminology_bank(bank_id):
     path = _pdf_term_bank_path(bank_id)
@@ -20187,8 +20316,7 @@ def save_navigation_settings():
         "other": "study_area_other" in request.form,
     }
 
-    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4)
+    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
 
     return redirect("/settings/navigation?saved=1")
 
@@ -20347,8 +20475,7 @@ def save_appearance_settings():
             return f"Invalid background image: {html.escape(str(exc))}", 400
         cfg["background_image"] = filename
 
-    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4)
+    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
 
     return redirect("/settings/appearance?saved=1")
 
@@ -20361,8 +20488,7 @@ def api_set_theme():
     if requested not in {"dark", "light", "purple-gold", "maroon-gold"}:
         return jsonify({"ok": False, "error": "Unsupported theme"}), 400
     cfg["theme"] = requested
-    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4)
+    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
     return jsonify({"ok": True, "theme": requested})
 
 
@@ -20671,8 +20797,7 @@ def save_ai_settings():
     cfg["medical_study_pack_ai_addendum"] = request.form.get("medical_study_pack_ai_addendum", "").strip() or DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM
     cfg["law_ai_prompt_template"] = request.form.get("law_ai_prompt_template", "").strip() or DEFAULT_LAW_AI_PROMPT
 
-    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4)
+    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
 
     return redirect("/settings/ai?saved=1")
 
@@ -20833,8 +20958,7 @@ def save_parsing_settings():
     cfg["auto_bom_clean"] = ("auto_bom_clean" in request.form)
     cfg["enable_show_invisibles"] = ("enable_show_invisibles" in request.form)
 
-    with open(PORTAL_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4)
+    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
 
     return redirect("/settings/parsing?saved=1")
 
