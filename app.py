@@ -4153,12 +4153,107 @@ def _validate_current_restored_database(database_path):
     return {"version": DLMS_SCHEMA_VERSION, "sqlite": sqlite_report}
 
 
+def _regenerate_staged_quiz_html(staged_data_root, database_path):
+    """Replace restored quiz HTML with trusted application-generated artifacts."""
+    staged_root = os.path.abspath(staged_data_root)
+    real_root = os.path.realpath(staged_root)
+    if os.path.islink(staged_root) or not os.path.isdir(real_root):
+        raise ValueError("Backup staging data is missing or unsafe")
+
+    registry_path = os.path.join(real_root, "config", "quizzes.json")
+    if os.path.isfile(registry_path) and not os.path.islink(registry_path):
+        registry = _validate_restored_json(registry_path, "config/quizzes.json")
+    elif os.path.lexists(registry_path):
+        raise ValueError("config/quizzes.json is not a safe regular file")
+    else:
+        # Older or incomplete snapshots may not have a quiz registry. They can
+        # still restore their database and history, but no backed-up active HTML
+        # is allowed to survive without a validated registry mapping.
+        registry = []
+
+    portal_title = "Training & Practice Center"
+    portal_path = os.path.join(real_root, "config", "portal.json")
+    if os.path.isfile(portal_path) and not os.path.islink(portal_path):
+        portal = _validate_restored_json(portal_path, "config/portal.json")
+        portal_title = portal.get("title") or portal_title
+    elif os.path.lexists(portal_path):
+        raise ValueError("config/portal.json is not a safe regular file")
+
+    database_real = os.path.realpath(database_path)
+    if not _is_same_path_or_ancestor(real_root, database_real):
+        raise ValueError("Staged results.db escapes the validated restore root")
+    conn = None
+    try:
+        uri = Path(database_real).as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        canonical_quizzes = {
+            int(row[0]): str(row[1] or "")
+            for row in conn.execute("SELECT id, title FROM quizzes").fetchall()
+        }
+    except sqlite3.Error as exc:
+        raise ValueError("Staged quiz metadata could not be read safely") from exc
+    finally:
+        if conn is not None:
+            conn.close()
+
+    generated_root = tempfile.mkdtemp(prefix=".restore-quiz-html-", dir=real_root)
+    quiz_root = os.path.join(real_root, "quizzes")
+    generated = 0
+    skipped = 0
+    try:
+        for entry in registry:
+            if not entry.get("html"):
+                skipped += 1
+                continue
+            html_name, json_name = _quiz_artifact_names(entry)
+
+            raw_quiz_id = entry.get("id")
+            canonical_quiz_id = None
+            if not isinstance(raw_quiz_id, bool):
+                try:
+                    candidate_id = int(raw_quiz_id)
+                    if candidate_id > 0:
+                        canonical_quiz_id = candidate_id
+                except (TypeError, ValueError):
+                    pass
+
+            canonical_title = canonical_quizzes.get(canonical_quiz_id)
+            quiz_title = canonical_title or entry.get("title") or "Restored Quiz"
+            output_path = os.path.join(generated_root, html_name)
+            build_quiz_html(
+                html_name,
+                json_name,
+                output_path,
+                portal_title,
+                quiz_title,
+                entry.get("logo"),
+                canonical_quiz_id,
+                entry.get("exam_minutes", 90),
+            )
+            if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
+                raise ValueError(f"Generated quiz HTML is empty or missing: {html_name}")
+            generated += 1
+
+        if os.path.lexists(quiz_root):
+            if os.path.islink(quiz_root) or not os.path.isdir(quiz_root):
+                raise ValueError("Restored quizzes path is not a safe directory")
+            shutil.rmtree(quiz_root)
+        os.replace(generated_root, quiz_root)
+        generated_root = None
+    finally:
+        if generated_root and os.path.isdir(generated_root):
+            shutil.rmtree(generated_root, ignore_errors=True)
+
+    return {"generated": generated, "skipped": skipped}
+
+
 def _prepare_staged_restore_database(staged_data_root):
-    """Migrate and fully validate staged results.db before any live-data mutation."""
+    """Migrate, validate, and prepare staged data before live-data mutation."""
     database_path = _staged_restore_database_path(staged_data_root)
     try:
         bootstrap_result = bootstrap_database(database_path)
         validation = _validate_current_restored_database(database_path)
+        quiz_html = _regenerate_staged_quiz_html(staged_data_root, database_path)
     except UnsupportedDatabaseSchemaVersionError as exc:
         print(f"[RESTORE DATABASE VERSION ERROR] {exc}")
         raise RestoreFutureSchemaError(RESTORE_FUTURE_SCHEMA_PUBLIC_ERROR) from exc
@@ -4169,6 +4264,7 @@ def _prepare_staged_restore_database(staged_data_root):
         "path": database_path,
         "bootstrap": bootstrap_result,
         "validation": validation,
+        "quiz_html": quiz_html,
     }
 
 
@@ -12267,7 +12363,7 @@ def _quiz_registry_entry(registry, quiz_id):
 def _quiz_artifact_names(quiz_entry):
     html_name = str((quiz_entry or {}).get("html") or "")
     if (
-        not html_name.endswith(".html")
+        not html_name.lower().endswith(".html")
         or html_name != os.path.basename(html_name)
         or "/" in html_name
         or "\\" in html_name
