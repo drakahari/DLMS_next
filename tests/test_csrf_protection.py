@@ -368,7 +368,7 @@ class CsrfProtectionTests(unittest.TestCase):
             dlms, "_validate_staged_backup_semantics", return_value={"status": "valid"}
         ):
             backup_response = self.client.post(
-                "/settings/data/restore/stage",
+                "/settings/backup/restore/stage",
                 data={"csrf_token": token, "backup_file": (io.BytesIO(b"PK-test"), "backup.zip")},
                 content_type="multipart/form-data",
             )
@@ -431,7 +431,7 @@ class CsrfFrontendStaticTests(unittest.TestCase):
 
     def test_mutation_pages_use_shared_bootstrap(self):
         for marker in (
-            "/pdf-import/analyze", "/settings/data/restore/stage", "/content-packs/import",
+            "/pdf-import/analyze", "/settings/backup/restore/stage", "/content-packs/import",
             "/api/clear_db_history", "/admin/rebuild_all_quiz_html",
         ):
             # A route can also appear in preflight tables and handlers. Find an

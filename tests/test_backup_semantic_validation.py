@@ -174,7 +174,7 @@ class BackupSemanticValidationTests(unittest.TestCase):
              mock.patch.object(dlms, "_create_dlms_backup", side_effect=lambda *_: events.append("backup")), \
              mock.patch.object(dlms, "_apply_restored_data", side_effect=lambda *_: events.append("apply")):
             response = client.post(
-                "/settings/data/restore/confirm/" + "a" * 32,
+                "/settings/backup/restore/confirm/" + "a" * 32,
                 headers=csrf_headers(client),
             )
         self.assertEqual(response.status_code, 400)
@@ -212,7 +212,7 @@ class BackupSemanticValidationTests(unittest.TestCase):
              mock.patch.object(dlms, "_apply_restored_data", side_effect=lambda *_: events.append("apply")), \
              mock.patch.object(dlms, "reconcile_quiz_publications", side_effect=lambda: events.append("reconcile")):
             response = client.post(
-                "/settings/data/restore/confirm/" + "b" * 32,
+                "/settings/backup/restore/confirm/" + "b" * 32,
                 headers=csrf_headers(client),
             )
         self.assertEqual(response.status_code, 200)
@@ -253,7 +253,7 @@ class BackupSemanticValidationTests(unittest.TestCase):
              mock.patch.object(dlms, "_apply_restored_data", side_effect=apply_then_rollback), \
              mock.patch.object(dlms, "reconcile_quiz_publications"):
             response = client.post(
-                "/settings/data/restore/confirm/" + "c" * 32,
+                "/settings/backup/restore/confirm/" + "c" * 32,
                 headers=csrf_headers(client),
             )
         self.assertEqual(response.status_code, 500)

@@ -21,7 +21,7 @@ class GeneralSecurityHardeningTests(unittest.TestCase):
         with mock.patch.object(dlms, "_create_dlms_backup", side_effect=RuntimeError(sensitive)), \
              mock.patch("builtins.print") as logged:
             response = self.client.post(
-                "/settings/data/backup/create", headers=csrf_headers(self.client)
+                "/settings/backup/create", headers=csrf_headers(self.client)
             )
         self.assertEqual(response.status_code, 500)
         body = response.get_data(as_text=True)

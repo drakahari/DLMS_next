@@ -174,7 +174,7 @@ class RestoreMigrationTests(unittest.TestCase):
 
     def _confirm(self, token):
         return self.client.post(
-            f"/settings/data/restore/confirm/{token}",
+            f"/settings/backup/restore/confirm/{token}",
             headers=csrf_headers(self.client),
         )
 

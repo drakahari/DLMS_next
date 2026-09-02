@@ -28,7 +28,7 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn("human-readable TXT reference", html)
             self.assertIn("not a restorable or importable library package", html)
             self.assertIn("import-friendly classic MCQ text file", html)
-            self.assertIn('href="/settings/data"', html)
+            self.assertIn('href="/settings/backup"', html)
             self.assertIn("portable backup for migration or full restore", html)
             self.assertNotIn("⇩ Export All Quizzes", html)
 

@@ -11,7 +11,7 @@
     ['learning-intelligence', 'Learning Intelligence'],
     ['anki', 'Anki & Printable Cards'],
     ['settings', 'Settings & Personalization'],
-    ['maintenance', 'System Tools & Recovery'],
+    ['maintenance', 'System Tools & Data Management'],
     ['troubleshooting', 'Troubleshooting'],
   ];
 

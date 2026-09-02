@@ -46,7 +46,7 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertNotRegex(index, r"DLMS 3\.0\.2(?! RC4)")
         self.assertIn("Learning Intelligence", index)
         self.assertIn("Anki &amp; Printable Cards", index)
-        self.assertIn("System Tools &amp; Recovery", index)
+        self.assertIn("System Tools &amp; Data Management", index)
 
     def test_legacy_help_targets_remain_available(self):
         version_text = f"Documentation for DLMS {dlms.APP_VERSION}."
@@ -81,7 +81,27 @@ class HelpDocumentationTests(unittest.TestCase):
         toc = self._static("help-navigation.js")
         self.assertIn("Learning Intelligence", toc)
         self.assertIn("Anki & Printable Cards", toc)
-        self.assertIn("System Tools & Recovery", toc)
+        self.assertIn("System Tools & Data Management", toc)
+
+    def test_help_pages_do_not_use_retired_settings_section_names(self):
+        retired_names = (
+            "Data & History",
+            "Data &amp; History",
+            "Reset & Recovery",
+            "Reset &amp; Recovery",
+            "Maintenance & Recovery",
+            "Maintenance &amp; Recovery",
+        )
+        help_files = glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html"))
+        help_files.extend(
+            os.path.join(dlms.STATIC_ROOT, filename)
+            for filename in ("about.html", "quiz-help.html", "advanced-features.html")
+        )
+        for path in help_files:
+            page = self._static(os.path.basename(path))
+            for retired_name in retired_names:
+                with self.subTest(page=os.path.basename(path), retired_name=retired_name):
+                    self.assertNotIn(retired_name, page)
 
     def test_study_pack_help_documents_current_guided_zip_and_mcq_workflow(self):
         page = self._static("help-study-packs.html")
@@ -124,7 +144,7 @@ class HelpDocumentationTests(unittest.TestCase):
 
     def test_data_safety_and_reset_help_matches_current_user_facing_contract(self):
         maintenance = self._static("help-maintenance.html")
-        for section_id in ("tools", "data-safety", "reset-recovery"):
+        for section_id in ("tools", "backup-restore", "reset-remove"):
             with self.subTest(section=section_id):
                 self.assertIn(f'id="{section_id}"', maintenance)
 
@@ -135,6 +155,8 @@ class HelpDocumentationTests(unittest.TestCase):
             "pre-restore safety backup",
             "attempts, their saved answers, and missed-question/history records",
             "quizzes themselves remain available",
+            "Backup &amp; Restore",
+            "Reset &amp; Remove",
             "Choose the narrowest reset",
             "Reset Quiz Library &amp; Results",
             "Clear Imported / Source Content",
@@ -150,8 +172,10 @@ class HelpDocumentationTests(unittest.TestCase):
                 self.assertIn(wording, maintenance)
 
         settings = self._static("help-settings.html")
-        self.assertIn('/help/maintenance#data-safety', settings)
-        self.assertIn('/help/maintenance#reset-recovery', settings)
+        self.assertIn('/help/maintenance#backup-restore', settings)
+        self.assertIn('/help/maintenance#reset-remove', settings)
+        self.assertNotIn("Data &amp; History", settings)
+        self.assertNotIn("Reset &amp; Recovery", settings)
 
     def test_help_distinguishes_library_reference_quiz_export_and_portable_backup(self):
         maintenance = self._static("help-maintenance.html")
@@ -188,8 +212,8 @@ class HelpDocumentationTests(unittest.TestCase):
             "help-settings.html": (("navigation", "settings-navigation.webp"),),
             "help-maintenance.html": (
                 ("tools", "system-tools.webp"),
-                ("data-safety", "settings-data_history.webp"),
-                ("reset-recovery", "settings-reset_recovery.webp"),
+                ("backup-restore", "settings-backup_restore.webp"),
+                ("reset-remove", "settings-reset_remove.webp"),
             ),
         }
         for filename, placements in expected_assets.items():

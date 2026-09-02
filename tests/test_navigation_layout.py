@@ -32,12 +32,18 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn('id="dashboardSidebar"', page)
         self.assertIn('data-settings-menu', page)
         self.assertIn("System Tools", page)
+        self.assertIn('href="/settings/backup"', page)
+        self.assertIn("Backup &amp; Restore", page)
+        self.assertIn('href="/settings/reset-remove"', page)
+        self.assertIn("Reset &amp; Remove", page)
+        self.assertNotIn("Data &amp; History", page)
+        self.assertNotIn("Reset &amp; Recovery", page)
         self.assertNotIn("← Dashboard", page)
         self.assertNotIn("Settings migration complete", page)
         self.assertNotIn("settings-migration-note", self._static("style.css"))
 
     def test_settings_category_pages_use_standard_shell(self):
-        for path in ("/settings/appearance", "/settings/ai", "/settings/parsing", "/settings/data", "/settings/reset"):
+        for path in ("/settings/appearance", "/settings/ai", "/settings/parsing", "/settings/backup", "/settings/reset-remove"):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 page = response.get_data(as_text=True)
@@ -46,6 +52,31 @@ class NavigationLayoutTests(unittest.TestCase):
                 self.assertIn('id="dashboardSidebar"', page)
                 self.assertIn('data-settings-menu', page)
                 self.assertIn("/settings", page)
+
+    def test_settings_data_destinations_and_history_clear_location_match_current_ia(self):
+        backup = self.client.get("/settings/backup").get_data(as_text=True)
+        reset = self.client.get("/settings/reset-remove").get_data(as_text=True)
+
+        self.assertIn("SETTINGS / BACKUP &amp; RESTORE", backup)
+        self.assertIn("/settings/backup/create", backup)
+        self.assertIn("/settings/backup/restore/stage", backup)
+        self.assertNotIn("Persistent Exam Result Storage", backup)
+        self.assertNotIn("clearDBBtn", backup)
+
+        self.assertIn("SETTINGS / RESET &amp; REMOVE", reset)
+        self.assertIn("Persistent Exam Result Storage", reset)
+        self.assertIn('id="clearDBBtn"', reset)
+        self.assertIn('/api/clear_db_history', reset)
+        self.assertIn('location.href=\'/settings/backup\'', reset)
+
+    def test_legacy_settings_data_destinations_redirect_to_current_pages(self):
+        data = self.client.get("/settings/data")
+        reset = self.client.get("/settings/reset")
+
+        self.assertEqual(data.status_code, 302)
+        self.assertTrue(data.headers["Location"].endswith("/settings/backup"))
+        self.assertEqual(reset.status_code, 302)
+        self.assertTrue(reset.headers["Location"].endswith("/settings/reset-remove"))
 
     def test_legacy_settings_route_remains_available(self):
         response = self.client.get("/settings/legacy")

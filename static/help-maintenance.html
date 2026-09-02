@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>System Tools &amp; Recovery — DLMS Help</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/help-docs.css"><link rel="icon" href="/static/favicon.ico"></head>
-<body class="dashboard-home help-page" data-help-topic="maintenance"><div class="dashboard-shell"><aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">🛠</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Help Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a></nav><div class="dashboard-sidebar-version">DLMS Help Center</div></aside><main class="dashboard-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button><div><div class="build-eyebrow">DLMS HELP CENTER</div><h1>System Tools &amp; Recovery</h1><p>Use advanced maintenance deliberately, and choose the narrowest recovery action that solves the problem.</p></div></header><div class="help-layout"><nav class="help-toc"></nav><article class="help-doc">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>System Tools &amp; Data Management — DLMS Help</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/help-docs.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home help-page" data-help-topic="maintenance"><div class="dashboard-shell"><aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">🛠</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Help Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a></nav><div class="dashboard-sidebar-version">DLMS Help Center</div></aside><main class="dashboard-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button><div><div class="build-eyebrow">DLMS HELP CENTER</div><h1>System Tools &amp; Data Management</h1><p>Use advanced maintenance deliberately, create backups before major changes, and choose the narrowest reset or removal action that solves the problem.</p></div></header><div class="help-layout"><nav class="help-toc"></nav><article class="help-doc">
 
 <section class="help-panel help-anchor" id="tools">
 <h2>System Tools</h2>
@@ -9,10 +9,10 @@
 <p>System Tools also provides a secondary route to Image Study Editor. Ordinary study, quiz creation, and Study Pack use do not require System Tools.</p>
 </section>
 
-<section class="help-panel help-anchor" id="data-safety">
-<h2>Data Safety &amp; History</h2>
-<p>Open <a href="/settings/data"><strong>Settings → Data &amp; History</strong></a> when you want to create or restore a portable backup, review recent backups stored on this device, or clear saved result history without deleting quizzes.</p>
-<figure class="help-shot"><a href="/static/help_assets/settings-data_history.webp" target="_blank" rel="noopener"><img src="/static/help_assets/settings-data_history.webp" alt="Data Safety and History settings with portable backup, restore, recent backups, and saved-results controls" width="1161" height="1355" loading="lazy"></a><figcaption>Data &amp; History keeps backup, restore, and saved-result controls separate from quiz management.</figcaption></figure>
+<section class="help-panel help-anchor" id="backup-restore">
+<h2>Backup &amp; Restore</h2>
+<p>Open <a href="/settings/backup"><strong>Settings → Backup &amp; Restore</strong></a> when you want to create or restore a portable backup or review recent backups stored on this device.</p>
+<figure class="help-shot"><a href="/static/help_assets/settings-backup_restore.webp" target="_blank" rel="noopener"><img src="/static/help_assets/settings-backup_restore.webp" alt="Backup and Restore settings with portable backup, recent backups, and validated restore controls" width="1161" height="1032" loading="lazy"></a><figcaption>Backup &amp; Restore keeps portable backup and restore controls together.</figcaption></figure>
 
 <h3>Portable Backup</h3>
 <p><strong>Create &amp; Download Backup</strong> creates a portable ZIP snapshot and downloads it. The snapshot includes persistent quizzes and generated runtime data, the database and attempt history, settings, installed Study/Content Packs, quiz assets and persistent logos, Smart PDF source banks, PDF and image-builder drafts, Law Study content, and saved backgrounds.</p>
@@ -26,15 +26,16 @@
 <p>Restore is intentionally cautious. First select a DLMS portable-backup ZIP and choose <strong>Validate Backup &amp; Continue</strong>. DLMS checks the archive and its persistent data before showing a review-and-confirmation page; active data has not been replaced at that point.</p>
 <p>After confirmation, DLMS creates a pre-restore safety backup of the current data before applying the validated snapshot. If applying or finalizing the restore fails, DLMS attempts to return to that pre-restore state rather than reporting a partial success. Keep the original uploaded backup and any important safety backup until you have confirmed the restored installation behaves as expected.</p>
 
+</section>
+
+<section class="help-panel help-anchor" id="reset-remove">
+<h2>Reset &amp; Remove</h2>
+<div class="help-callout warn"><strong>Choose the narrowest reset that solves the problem.</strong> The first four reset actions create a safety backup before changing data. Permanent removal of the complete data directory is different: it creates no in-place backup and also removes backups stored inside that directory.</div>
+<figure class="help-shot"><a href="/static/help_assets/settings-reset_remove.webp" target="_blank" rel="noopener"><img src="/static/help_assets/settings-reset_remove.webp" alt="Reset and Remove settings showing saved-result clearing, scoped reset actions, and permanent DLMS data removal" width="1161" height="2725" loading="lazy"></a><figcaption>Reset &amp; Remove explains what each action removes and preserves before you confirm it.</figcaption></figure>
+
 <h3>Persistent Exam Result Storage</h3>
 <p><strong>Clear Saved Results from Database and Dashboard</strong> removes stored attempts, their saved answers, and missed-question/history records. The quizzes themselves remain available in the Quiz Library.</p>
 <div class="help-callout warn"><strong>History-only cleanup:</strong> use this action when you want to start performance history over without resetting quizzes, Study Packs, settings, or other content. Deleted history cannot be recovered unless it exists in a backup.</div>
-</section>
-
-<section class="help-panel help-anchor" id="reset-recovery">
-<h2>Reset &amp; Recovery</h2>
-<div class="help-callout warn"><strong>Choose the narrowest reset that solves the problem.</strong> The first four reset actions create a safety backup before changing data. Permanent removal of the complete data directory is different: it creates no in-place backup and also removes backups stored inside that directory.</div>
-<figure class="help-shot"><a href="/static/help_assets/settings-reset_recovery.webp" target="_blank" rel="noopener"><img src="/static/help_assets/settings-reset_recovery.webp" alt="Reset and Recovery settings showing scoped reset actions and permanent DLMS data removal" width="1161" height="1355" loading="lazy"></a><figcaption>Reset &amp; Recovery explains what each action removes and preserves before you confirm it.</figcaption></figure>
 
 <h3>Reset Quiz Library &amp; Results</h3>
 <p>This removes quiz database records, questions and choices, concept and learning-event records tied to those questions, attempts and missed-question history, the Quiz Library registry, generated quiz JSON/HTML, quiz asset buckets, and quiz logos.</p>
@@ -56,5 +57,5 @@
 <div class="help-callout danger"><strong>Copy backups out first:</strong> this action does not create an automatic recovery backup. Download or copy every backup you want to keep somewhere outside the DLMS data directory before continuing. The DLMS executable or source installation itself is not removed; launching it again creates a new empty data directory.</div>
 </section>
 
-<div class="help-topic-nav"><a href="/settings/data">Open Data &amp; History</a><a href="/settings/reset">Open Reset &amp; Recovery</a><a href="/settings">Open Settings</a></div>
+<div class="help-topic-nav"><a href="/settings/backup">Open Backup &amp; Restore</a><a href="/settings/reset-remove">Open Reset &amp; Remove</a><a href="/settings">Open Settings</a></div>
 <div class="help-version">Documentation for DLMS 3.0.2 RC4.</div></article></div></main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script><script src="/static/help-navigation.js"></script></body></html>

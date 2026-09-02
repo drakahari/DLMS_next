@@ -142,7 +142,7 @@ class LearningIntelligenceResetTests(unittest.TestCase):
 
     def test_reset_page_explains_scope_and_preserved_data(self):
         client = dlms.app.test_client()
-        response = client.get("/settings/reset")
+        response = client.get("/settings/reset-remove")
 
         self.assertEqual(response.status_code, 200)
         page = response.get_data(as_text=True)
