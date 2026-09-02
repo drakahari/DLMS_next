@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 
 import app as dlms
+from tests.csrf_test_utils import csrf_headers
 
 
 class QuizLibraryTests(unittest.TestCase):
@@ -126,6 +127,62 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIsNotNone(folder_count)
             self.assertEqual(folder_count.group(1), "0")
             self.assertNotIn('class="library-folder"', html)
+
+    def test_empty_folder_stays_available_for_move_without_rendering_a_section(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-folders-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([
+                    {
+                        "id": 7,
+                        "title": "Network Basics",
+                        "html": "network.html",
+                        "folder": "Uncategorized",
+                    }
+                ], handle)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                client = dlms.app.test_client()
+                add_response = client.post(
+                    "/add_quiz_folder",
+                    data={"folder": "Course Review", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                self.assertEqual(add_response.status_code, 302)
+
+                empty_folder_html = client.get("/library").get_data(as_text=True)
+                self.assertNotIn("<h2>Course Review</h2>", empty_folder_html)
+                self.assertIn('<option value="Course Review"', empty_folder_html)
+                self.assertIn("Drag folder headers to reorder folders.", empty_folder_html)
+                self.assertIn("Drag quiz cards to reorder quizzes inside a folder.", empty_folder_html)
+
+                move_response = client.post(
+                    "/move_quiz_folder",
+                    data={"id": "7", "folder": "Course Review", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                self.assertEqual(move_response.status_code, 302)
+                populated_folder_html = client.get("/library").get_data(as_text=True)
+                self.assertIn("<h2>Course Review</h2>", populated_folder_html)
+                self.assertNotIn("<h2>Uncategorized</h2>", populated_folder_html)
+
+                move_back_response = client.post(
+                    "/move_quiz_folder",
+                    data={"id": "7", "folder": "Uncategorized", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                self.assertEqual(move_back_response.status_code, 302)
+                empty_again_html = client.get("/library").get_data(as_text=True)
+                self.assertNotIn("<h2>Course Review</h2>", empty_again_html)
+                self.assertIn('<option value="Course Review"', empty_again_html)
+
+                with open(portal_config, encoding="utf-8") as handle:
+                    self.assertIn("Course Review", json.load(handle)["quiz_folders"])
 
     def test_fresh_configuration_enables_confidence_and_ai_helpers(self):
         with tempfile.TemporaryDirectory(prefix="dlms-fresh-config-") as directory:

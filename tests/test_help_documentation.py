@@ -189,6 +189,26 @@ class HelpDocumentationTests(unittest.TestCase):
             with self.subTest(wording=wording):
                 self.assertIn(wording, maintenance)
 
+    def test_quiz_help_documents_current_folder_visibility_and_controls(self):
+        quizzes = self._static("help-quizzes.html")
+        self.assertIn('href="#library-folders"', quizzes)
+        self.assertIn('id="library-folders"', quizzes)
+        for wording in (
+            "New Folder",
+            "folder sections only when they contain at least one quiz in the selected",
+            "may not appear as a folder section yet",
+            "If the last quiz leaves a folder",
+            "Uncategorized",
+            "cannot be renamed or deleted",
+            "choose <strong>Move</strong>",
+            "select the destination folder, and choose <strong>Save</strong>",
+            "Drag a folder header to reorder",
+            "Drag a quiz card to reorder it inside its current folder",
+            "does not transfer quizzes between folders",
+        ):
+            with self.subTest(wording=wording):
+                self.assertIn(wording, quizzes)
+
     def test_help_asset_references_exist(self):
         asset_reference = re.compile(r'''(?:src|href)=["'](/static/help_assets/[^"']+)["']''')
         for path in glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html")):
