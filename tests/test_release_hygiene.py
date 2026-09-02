@@ -104,6 +104,21 @@ class ReleaseDocumentationTests(unittest.TestCase):
                 )),
             )
 
+    def test_native_artifact_verification_is_a_documented_release_gate(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        procedure = (ROOT / "docs" / "RELEASE_VERIFICATION.md").read_text(encoding="utf-8")
+        verifier = (ROOT / "tools" / "verify_release_artifact.py").read_text(encoding="utf-8")
+
+        self.assertIn("docs/RELEASE_VERIFICATION.md", readme)
+        for target in ("windows-x86_64", "linux-x86_64", "macos-arm64"):
+            with self.subTest(target=target):
+                self.assertIn(f"verify_release_artifact.py {target}", procedure)
+        self.assertIn("--checksums releases/SHA256SUMS.txt", procedure)
+        self.assertIn("--smoke", procedure)
+        self.assertIn("QUIZAPP_DATA_DIR", verifier)
+        self.assertIn("Shutdown DLMS", procedure)
+        self.assertIn("not sign, notarize, publish, upload, or create installers", procedure)
+
     def test_macos_release_is_a_native_app_zip_with_first_run_guidance(self):
         spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

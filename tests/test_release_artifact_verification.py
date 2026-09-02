@@ -1,0 +1,141 @@
+"""Regression coverage for the native release artifact verification helper."""
+
+import hashlib
+import os
+import plistlib
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "tools" / "verify_release_artifact.py"
+VERSION = "3.0.2 RC4"
+
+
+def _write_source_root(root: Path) -> None:
+    (root / "app.py").write_text(f'APP_VERSION = "{VERSION}"\n', encoding="utf-8")
+
+
+def _write_pe(path: Path) -> None:
+    contents = bytearray(0x100)
+    contents[:2] = b"MZ"
+    contents[0x3C:0x40] = struct.pack("<I", 0x80)
+    contents[0x80:0x84] = b"PE\0\0"
+    contents[0x84:0x86] = struct.pack("<H", 0x8664)
+    path.write_bytes(contents)
+
+
+def _write_macos_zip(path: Path, *, runtime_member: str | None = None) -> None:
+    executable = b"\xcf\xfa\xed\xfe" + struct.pack("<I", 0x0100000C) + (b"\0" * 24)
+    metadata = plistlib.dumps({"CFBundleGetInfoString": "DLMS 3.0.2 RC4"})
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("DLMS.app/Contents/Info.plist", metadata)
+        archive.writestr("DLMS.app/Contents/MacOS/DLMS", executable)
+        archive.writestr("DLMS.app/Contents/Resources/static/style.css", "body {}")
+        if runtime_member:
+            archive.writestr(runtime_member, "must not ship")
+
+
+class ReleaseArtifactVerificationTests(unittest.TestCase):
+    def _run(self, *arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_windows_artifact_name_architecture_and_checksum_are_verified(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            artifact = root / "DLMS-3.0.2-RC4-windows-x86_64.exe"
+            _write_pe(artifact)
+            manifest = root / "SHA256SUMS.txt"
+            manifest.write_text(
+                f"{hashlib.sha256(artifact.read_bytes()).hexdigest()}  {artifact.name}\n",
+                encoding="utf-8",
+            )
+
+            result = self._run(
+                "windows-x86_64", str(artifact), "--checksums", str(manifest),
+                "--source-root", str(root),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Verified DLMS-3.0.2-RC4-windows-x86_64.exe", result.stdout)
+
+    def test_verifier_rejects_bad_name_or_checksum(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            artifact = root / "DLMS-windows.exe"
+            _write_pe(artifact)
+            manifest = root / "SHA256SUMS.txt"
+            manifest.write_text(f"{'0' * 64}  {artifact.name}\n", encoding="utf-8")
+
+            result = self._run(
+                "windows-x86_64", str(artifact), "--checksums", str(manifest),
+                "--source-root", str(root),
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Expected artifact name", result.stderr)
+            self.assertIn("SHA256 mismatch", result.stderr)
+
+    def test_macos_zip_requires_native_bundle_shape_architecture_and_no_runtime_data(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            artifact = root / "DLMS-3.0.2-RC4-macos-arm64.zip"
+            _write_macos_zip(artifact)
+
+            good = self._run("macos-arm64", str(artifact), "--source-root", str(root))
+            self.assertEqual(good.returncode, 0, good.stderr)
+
+            _write_macos_zip(artifact, runtime_member="DLMS.app/Contents/Resources/results.db")
+            bad = self._run("macos-arm64", str(artifact), "--source-root", str(root))
+            self.assertEqual(bad.returncode, 1)
+            self.assertIn("includes runtime/user data", bad.stderr)
+
+    def test_linux_artifact_must_be_executable_x86_64_elf(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            artifact = root / "DLMS-3.0.2-RC4-linux-x86_64"
+            contents = bytearray(64)
+            contents[:4] = b"\x7fELF"
+            contents[4] = 2
+            contents[5] = 1
+            contents[18:20] = struct.pack("<H", 62)
+            artifact.write_bytes(contents)
+            artifact.chmod(0o644)
+
+            blocked = self._run("linux-x86_64", str(artifact), "--source-root", str(root))
+            self.assertEqual(blocked.returncode, 1)
+            self.assertIn("not marked executable", blocked.stderr)
+
+            artifact.chmod(0o755)
+            passed = self._run("linux-x86_64", str(artifact), "--source-root", str(root))
+            self.assertEqual(passed.returncode, 0, passed.stderr)
+
+    def test_expected_data_directory_can_be_reported_without_an_artifact_or_app_import(self):
+        result = self._run("macos-arm64", "--print-expected-data-dir")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected = (
+            str(Path.home() / "Library" / "Application Support" / "DLMS")
+            if sys.platform == "darwin"
+            else "~/Library/Application Support/DLMS"
+        )
+        self.assertEqual(result.stdout.strip(), expected)
+        self.assertNotIn("Database schema", result.stdout + result.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

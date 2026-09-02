@@ -213,6 +213,17 @@ python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DL
 The user-facing release name is `DLMS 3.0.2 RC4`; the matching Git tag convention
 is `v3.0.2-rc.4`.
 
+### Native artifact verification
+
+Follow [the native release-verification procedure](docs/RELEASE_VERIFICATION.md)
+for every staged Windows, Linux, and Apple Silicon macOS artifact. It provides a
+small structural/checksum verifier and a native start, route, Shutdown DLMS, and
+restart smoke test that uses a temporary controlled data directory. Native UAT on
+each target OS remains required for desktop launch, security prompts, browser
+behavior, and the representative quiz workflow; the procedure distinguishes those
+steps explicitly. It does not add signing, notarization, installers, publishing,
+or CI release automation.
+
 ### Browser launch and server options
 
 Browser launch and network binding are separate choices:
@@ -411,13 +422,19 @@ files once removed.
 3. Create a clean environment from `requirements-lock.txt`; run targeted tests,
    the full isolated test suite, Python compilation, and `git diff --check`.
 4. Build each supported platform artifact from `requirements-build.txt` with the
-   canonical `DLMS.spec`. On macOS, verify that the result is `dist/DLMS.app`, ZIP
-   that bundle with `ditto`, and confirm the archive has no separate raw executable.
-   Inspect every artifact, then smoke-test startup, browser/no-browser operation,
-   static assets, quiz creation, and backup/restore.
+   canonical `DLMS.spec`. Follow
+   [Native Release Verification](docs/RELEASE_VERIFICATION.md) on each target OS:
+   stage the prescribed name, run artifact structure/architecture validation and
+   the controlled native start/route/shutdown/restart smoke test, then complete
+   the required desktop UAT. On macOS, verify that the result is `dist/DLMS.app`,
+   ZIP that bundle with `ditto`, and confirm the archive has no separate raw
+   executable. Do not imply Intel macOS support without a native Intel build and
+   UAT.
 5. Review `git status` and package source from tracked files, for example with
    `git archive --format=zip --output releases/DLMS-3.0.2-RC4-source.zip HEAD`. Inspect
    the archive to confirm it contains required application assets and excludes
    `.git`, virtual environments, caches, databases, logs, and local build output.
 6. Generate `releases/SHA256SUMS.txt` from the final staged binaries/packages with
    `python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-RC4-*`.
+   Re-run the artifact verifier with `--checksums releases/SHA256SUMS.txt` for
+   every staged native artifact before upload.
