@@ -10,7 +10,10 @@ another operating system.
 checksum checks are therefore safe to run from a development checkout without
 creating or selecting normal DLMS user data. Its optional native smoke test sets
 `QUIZAPP_DATA_DIR` to a temporary directory and verifies that DLMS initializes
-only that controlled data root.
+only that controlled data root. The smoke client retains the HTML-created DLMS
+session and CSRF cookies, then sends the session-bound CSRF token with matching
+same-origin request headers for **Shutdown DLMS**; it does not bypass the
+application security boundary.
 
 ## Before every target build
 

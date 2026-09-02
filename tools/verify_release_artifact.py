@@ -9,6 +9,7 @@ checks cannot initialize a developer's normal DLMS data directory.
 from __future__ import annotations
 
 import argparse
+import http.cookiejar
 import hashlib
 import os
 import platform
@@ -254,22 +255,48 @@ def _assert_port_available() -> None:
             raise RuntimeError("Port 9001 is in use; stop the existing DLMS server before smoke testing") from exc
 
 
-def _request(path: str, method: str = "GET") -> tuple[int, bytes]:
-    request = urllib.request.Request(f"{SERVER_URL}{path}", method=method)
+class SmokeHttpClient:
+    """Small same-origin browser-session analogue for the native smoke test."""
+
+    def __init__(self) -> None:
+        self.cookies = http.cookiejar.CookieJar()
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookies))
+
+    def csrf_token(self) -> str:
+        for cookie in self.cookies:
+            if cookie.name == "dlms_csrf_token":
+                return cookie.value
+        raise RuntimeError("DLMS did not provide a CSRF token cookie during the smoke-test session")
+
+
+def _request(
+    path: str,
+    method: str = "GET",
+    *,
+    client: SmokeHttpClient | None = None,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, bytes]:
+    request = urllib.request.Request(f"{SERVER_URL}{path}", headers=headers or {}, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=1.5) as response:
+        opener = client.opener if client is not None else None
+        response_context = (
+            opener.open(request, timeout=1.5)
+            if opener is not None
+            else urllib.request.urlopen(request, timeout=1.5)
+        )
+        with response_context as response:
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
 
 
-def _wait_for_server(process: subprocess.Popen[bytes]) -> None:
+def _wait_for_server(process: subprocess.Popen[bytes], client: SmokeHttpClient) -> None:
     deadline = time.monotonic() + SMOKE_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError(f"DLMS exited before becoming reachable (exit code {process.returncode})")
         try:
-            status, body = _request("/")
+            status, body = _request("/", client=client)
             if status == 200 and b"DLMS" in body:
                 return
         except (OSError, urllib.error.URLError):
@@ -278,7 +305,7 @@ def _wait_for_server(process: subprocess.Popen[bytes]) -> None:
     raise RuntimeError("DLMS local server did not become reachable within 20 seconds")
 
 
-def _assert_smoke_routes() -> None:
+def _assert_smoke_routes(client: SmokeHttpClient) -> None:
     expected = {
         "/": b"DLMS",
         "/static/style.css": b"body",
@@ -287,13 +314,25 @@ def _assert_smoke_routes() -> None:
         "/library": b"Quiz Library",
     }
     for path, marker in expected.items():
-        status, body = _request(path)
+        status, body = _request(path, client=client)
         if status != 200 or marker not in body:
             raise RuntimeError(f"Smoke request failed for {path} (HTTP {status})")
 
 
-def _shutdown_cleanly(process: subprocess.Popen[bytes]) -> None:
-    status, _ = _request("/api/shutdown", method="POST")
+def _shutdown_cleanly(process: subprocess.Popen[bytes], client: SmokeHttpClient) -> None:
+    # Match the in-app fetch contract: retain the HTML session cookies, send the
+    # session-bound CSRF token, and declare the local request origin explicitly.
+    status, _ = _request(
+        "/api/shutdown",
+        method="POST",
+        client=client,
+        headers={
+            "X-CSRFToken": client.csrf_token(),
+            "Origin": SERVER_URL,
+            "Referer": f"{SERVER_URL}/",
+            "Sec-Fetch-Site": "same-origin",
+        },
+    )
     if status != 200:
         raise RuntimeError(f"Shutdown DLMS returned HTTP {status}")
     try:
@@ -331,10 +370,11 @@ def smoke_test(artifact: Path, target: str) -> None:
         for run_number in (1, 2):
             with (work_root / f"run-{run_number}.log").open("wb") as log:
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=environment)
+                client = SmokeHttpClient()
                 try:
-                    _wait_for_server(process)
-                    _assert_smoke_routes()
-                    _shutdown_cleanly(process)
+                    _wait_for_server(process, client)
+                    _assert_smoke_routes(client)
+                    _shutdown_cleanly(process, client)
                 except Exception:
                     if process.poll() is None:
                         process.terminate()

@@ -1,6 +1,7 @@
 """Regression coverage for the native release artifact verification helper."""
 
 import hashlib
+import importlib.util
 import os
 import plistlib
 import struct
@@ -10,11 +11,16 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools" / "verify_release_artifact.py"
 VERSION = "3.0.2 RC4"
+SPEC = importlib.util.spec_from_file_location("release_artifact_verifier", SCRIPT)
+assert SPEC is not None and SPEC.loader is not None
+VERIFIER = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(VERIFIER)
 
 
 def _write_source_root(root: Path) -> None:
@@ -135,6 +141,36 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         )
         self.assertEqual(result.stdout.strip(), expected)
         self.assertNotIn("Database schema", result.stdout + result.stderr)
+
+    def test_shutdown_uses_session_bound_csrf_and_same_origin_browser_headers(self):
+        client = mock.Mock()
+        client.csrf_token.return_value = "session-bound-token"
+        process = mock.Mock()
+        process.returncode = 0
+        with mock.patch.object(VERIFIER, "_request", return_value=(200, b'{"status":"ok"}')) as request:
+            VERIFIER._shutdown_cleanly(process, client)
+
+        request.assert_called_once_with(
+            "/api/shutdown",
+            method="POST",
+            client=client,
+            headers={
+                "X-CSRFToken": "session-bound-token",
+                "Origin": VERIFIER.SERVER_URL,
+                "Referer": f"{VERIFIER.SERVER_URL}/",
+                "Sec-Fetch-Site": "same-origin",
+            },
+        )
+        process.wait.assert_called_once_with(timeout=VERIFIER.SHUTDOWN_TIMEOUT_SECONDS)
+
+    def test_shutdown_rejection_is_not_hidden_or_bypassed(self):
+        client = mock.Mock()
+        client.csrf_token.return_value = "session-bound-token"
+        process = mock.Mock()
+        with mock.patch.object(VERIFIER, "_request", return_value=(400, b'{"error":"missing token"}')):
+            with self.assertRaisesRegex(RuntimeError, "Shutdown DLMS returned HTTP 400"):
+                VERIFIER._shutdown_cleanly(process, client)
+        process.wait.assert_not_called()
 
 
 if __name__ == "__main__":
