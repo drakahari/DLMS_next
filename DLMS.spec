@@ -18,7 +18,21 @@ app_version_match = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTI
 if app_version_match is None:
     raise ValueError("DLMS.spec could not determine APP_VERSION from app.py")
 app_release_version = app_version_match.group(1)
-app_bundle_version = app_release_version.split(" ", 1)[0]
+app_bundle_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?: RC(\d+))?", app_release_version)
+if app_bundle_match is None:
+    raise ValueError("APP_VERSION is not compatible with the macOS bundle version format")
+major, minor, patch = (int(value) for value in app_bundle_match.groups()[:3])
+if not (1 <= major <= 9999 and 0 <= minor <= 99 and 0 <= patch <= 99):
+    raise ValueError("APP_VERSION exceeds the macOS bundle version component limits")
+app_bundle_version = f"{major}.{minor}.{patch}"
+rc_build = app_bundle_match.group(4)
+if rc_build is None:
+    app_bundle_build_version = app_bundle_version
+else:
+    rc_build = int(rc_build)
+    if not 1 <= rc_build <= 255:
+        raise ValueError("The macOS final-candidate build number must be between 1 and 255")
+    app_bundle_build_version = f"{app_bundle_version}fc{rc_build}"
 
 bundle_data = [
     (str(project_root / "static"), "static"),
@@ -66,7 +80,10 @@ if sys.platform == "darwin":
         icon=str(project_root / "static" / "favicon.ico"),
         bundle_identifier="io.github.drakahari.DLMS",
         version=app_bundle_version,
-        info_plist={"CFBundleGetInfoString": f"DLMS {app_release_version}"},
+        info_plist={
+            "CFBundleGetInfoString": f"DLMS {app_release_version}",
+            "CFBundleVersion": app_bundle_build_version,
+        },
     )
 else:
     executable = EXE(

@@ -132,6 +132,19 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("xattr -dr com.apple.quarantine /Applications/DLMS.app", troubleshooting)
         self.assertIn("fallback troubleshooting rather than routine installation guidance", troubleshooting)
 
+    def test_macos_bundle_version_fields_follow_current_release_metadata(self):
+        spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")
+        metadata_source = spec.split("bundle_data =", 1)[0]
+        metadata = {"SPEC": str(ROOT / "DLMS.spec")}
+        exec(compile(metadata_source, "DLMS.spec metadata", "exec"), metadata)
+
+        self.assertEqual(metadata["app_release_version"], "3.0.2 RC4")
+        self.assertEqual(metadata["app_bundle_version"], "3.0.2")
+        self.assertEqual(metadata["app_bundle_build_version"], "3.0.2fc4")
+        self.assertIn("version=app_bundle_version", spec)
+        self.assertIn('"CFBundleVersion": app_bundle_build_version', spec)
+        self.assertIn('bundle_identifier="io.github.drakahari.DLMS"', spec)
+
     def test_runtime_requirements_are_bounded_and_lock_is_complete(self):
         requirements = [
             line.strip()
