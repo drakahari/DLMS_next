@@ -268,6 +268,22 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertIn("Save Reviewed Terminology Bank", glossary_html)
         self.assertIn('class="pdf-review-bulk-actions"', glossary_html)
         self.assertIn('id="pdfTermSelectionCount" aria-live="polite"', glossary_html)
+        self.assertIn('class="pdf-status complete">COMPLETE</span>', glossary_html)
+        self.assertIn('<span>Exclude term</span>', glossary_html)
+        term_action_style = styles[
+            styles.index(".pdf-import-page #pdfTermExcludeSelected {"):
+            styles.index(".pdf-import-page #pdfTermExcludeSelected:disabled")
+        ]
+        self.assertIn("color:light-dark(#8f2435,#ff9eaa)", term_action_style)
+        self.assertIn("background:color-mix(in srgb,var(--theme-accent", term_action_style)
+        self.assertIn("border-color:var(--theme-border-soft", term_action_style)
+        self.assertNotIn("#ef4444", term_action_style)
+        disabled_style = styles[
+            styles.index(".pdf-import-page #pdfTermExcludeSelected:disabled"):
+            styles.index(".pdf-import-page .pdf-review-bulk-status")
+        ]
+        self.assertIn("cursor:not-allowed", disabled_style)
+        self.assertIn("opacity:.58", disabled_style)
 
     def test_save_rejects_recovery_question_without_deliberate_correct_answer(self):
         draft = {

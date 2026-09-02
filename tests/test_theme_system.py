@@ -350,6 +350,56 @@ class ThemeSystemTests(unittest.TestCase):
                     ratio, 4.5, f"{theme} AI Builder pill contrast is only {ratio:.2f}:1",
                 )
 
+    def test_smart_pdf_complete_status_and_exclusion_controls_are_theme_aware(self):
+        css = self._style_css()
+        complete = self._rule_blocks(css, ".pdf-status.complete")
+        self.assertTrue(complete)
+        self.assertTrue(any(
+            "color:light-dark(#115d3f,#9af0c5)" in block
+            and "background:light-dark(#dcefe5,#123b2d)" in block
+            and "border-color:light-dark(#6fa98b,#3d8061)" in block
+            for block in complete
+        ))
+        for foreground, background, scheme in (
+            ("#115d3f", "#dcefe5", "light"),
+            ("#9af0c5", "#123b2d", "dark"),
+        ):
+            with self.subTest(scheme=scheme):
+                ratio = self._contrast(foreground, self._rgba(background)[:3])
+                self.assertGreaterEqual(
+                    ratio, 4.5, f"{scheme} COMPLETE pill contrast is only {ratio:.2f}:1",
+                )
+
+        row_toggle = self._rule_blocks(
+            css, ".pdf-import-page .pdf-term-review-card .pdf-delete-toggle"
+        )
+        self.assertTrue(row_toggle)
+        self.assertTrue(any(
+            "color:light-dark(#8f2435,#ff9eaa)" in block
+            and "font-weight:700" in block
+            for block in row_toggle
+        ))
+        row_checkbox = self._rule_blocks(
+            css,
+            '.pdf-import-page .pdf-term-review-card .pdf-delete-toggle input[type="checkbox"]',
+        )
+        self.assertTrue(row_checkbox)
+        self.assertTrue(any(
+            "accent-color:light-dark(#a52e40,#e65b6a)" in block
+            for block in row_checkbox
+        ))
+        for foreground, background, scheme in (
+            ("#8f2435", "#e6eef8", "light"),
+            ("#ff9eaa", "#111f38", "dark"),
+            ("#ff9eaa", "#411f67", "purple-gold"),
+            ("#ff9eaa", "#232428", "maroon-gold"),
+        ):
+            with self.subTest(exclusion_scheme=scheme):
+                ratio = self._contrast(foreground, self._rgba(background)[:3])
+                self.assertGreaterEqual(
+                    ratio, 4.5, f"{scheme} exclusion text contrast is only {ratio:.2f}:1",
+                )
+
     def test_pack_validation_readability_rules_use_semantic_tokens(self):
         css = self._style_css()
         expected = {

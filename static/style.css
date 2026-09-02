@@ -8734,6 +8734,8 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .pdf-import-page .pdf-review-bulk-bar button { display:inline-flex;align-items:center;justify-content:center;width:auto;min-height:38px;margin:0;padding:8px 12px;white-space:normal;line-height:1.25;color:var(--theme-page-text,#eaf2ff)!important;background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;border-color:var(--theme-border-soft,rgba(98,155,255,.32))!important;box-shadow:none!important; }
 .pdf-import-page .pdf-review-bulk-bar .pdf-review-danger-action { color:var(--theme-danger-text,#ff9ca5)!important;background:color-mix(in srgb,#ef4444 12%,var(--theme-surface,rgba(5,18,39,.58)))!important;border-color:color-mix(in srgb,#ef4444 48%,var(--theme-border-soft,rgba(98,155,255,.24)))!important; }
 .pdf-import-page #pdfDeleteSelected { color:var(--theme-page-text,#eaf2ff)!important;background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;border-color:var(--theme-border-soft,rgba(98,155,255,.32))!important; }
+.pdf-import-page #pdfTermExcludeSelected { color:light-dark(#8f2435,#ff9eaa)!important;background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;border-color:var(--theme-border-soft,rgba(98,155,255,.32))!important; }
+.pdf-import-page #pdfTermExcludeSelected:disabled { color:var(--theme-muted-text,#b8c2cc)!important;cursor:not-allowed;opacity:.58; }
 .pdf-import-page .pdf-review-bulk-status { justify-self:end;margin:0;padding:7px 10px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.28));border-radius:999px;color:var(--theme-heading,#fff);background:var(--theme-surface-2,rgba(17,31,56,.78));font-size:13px;font-weight:800;white-space:nowrap; }
 .pdf-import-page .pdf-review-select-toggle { color:var(--theme-page-text,#eaf2ff); }
 .pdf-import-page .pdf-review-select-toggle input[type="checkbox"] { width:16px!important;height:16px;min-width:16px!important;max-width:16px!important;margin:0; }
@@ -8745,6 +8747,7 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .pdf-import-question-head > div { display:flex; align-items:center; flex-wrap:wrap; gap:9px; }
 .pdf-import-question-head small { color:#8499b1; }
 .pdf-status { display:inline-flex; padding:4px 8px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.05em; border:1px solid rgba(52,211,153,.34); color:#7ce6bd; background:rgba(6,78,59,.35); }
+.pdf-status.complete { border-color:light-dark(#6fa98b,#3d8061);color:light-dark(#115d3f,#9af0c5);background:light-dark(#dcefe5,#123b2d); }
 .pdf-status.review { border-color:rgba(245,158,11,.44); color:#f4c76f; background:rgba(104,66,5,.34); }
 .pdf-status.incomplete { border-color:rgba(248,113,113,.42); color:#ff9d9d; background:rgba(112,20,30,.34); }
 .pdf-delete-toggle {
@@ -8756,6 +8759,15 @@ body.it-study-page .medical-ai-builder-teaser-icon {
     color:#ffaaaa;
     font-size:12px;
     white-space:nowrap;
+}
+
+.pdf-import-page .pdf-term-review-card .pdf-delete-toggle {
+    color:light-dark(#8f2435,#ff9eaa);
+    font-weight:700;
+}
+
+.pdf-import-page .pdf-term-review-card .pdf-delete-toggle input[type="checkbox"] {
+    accent-color:light-dark(#a52e40,#e65b6a);
 }
 
 /* Smart PDF review templates constrain normal form inputs to 100% width.
