@@ -2,6 +2,8 @@ import os, tempfile, unittest, uuid
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-learning-actions-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 
 
@@ -144,4 +146,3 @@ class SmartReviewDiversityRegressionTests(unittest.TestCase):
         self.assertIn("Diversity question A?", texts)
         self.assertIn("Diversity question B?", texts)
         self.assertEqual(len([c for c in selected if c["question_text"] in texts]), len({c["question_text"] for c in selected}))
-

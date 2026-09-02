@@ -1,4 +1,6 @@
 import unittest
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 
 class RemainingRoadmapFeatureTests(unittest.TestCase):

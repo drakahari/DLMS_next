@@ -10,6 +10,8 @@ from unittest import mock
 from PIL import Image
 from werkzeug.datastructures import FileStorage, MultiDict
 
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 from tests.csrf_test_utils import csrf_token
 

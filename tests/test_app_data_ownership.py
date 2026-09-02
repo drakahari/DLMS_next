@@ -8,6 +8,8 @@ from unittest import mock
 _IMPORT_DATA = tempfile.TemporaryDirectory(prefix="dlms-ownership-app-")
 os.environ["QUIZAPP_DATA_DIR"] = _IMPORT_DATA.name
 
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 from tests.csrf_test_utils import csrf_headers
 

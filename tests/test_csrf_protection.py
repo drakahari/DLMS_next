@@ -9,6 +9,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 from tests.csrf_test_utils import csrf_headers, csrf_token
 

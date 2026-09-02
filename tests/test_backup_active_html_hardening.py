@@ -12,6 +12,8 @@ from unittest import mock
 
 _IMPORT_DATA = tempfile.TemporaryDirectory(prefix="dlms-backup-html-app-")
 os.environ["QUIZAPP_DATA_DIR"] = _IMPORT_DATA.name
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 from tests.csrf_test_utils import csrf_headers
 
@@ -155,6 +157,8 @@ class BackupActiveHtmlHardeningTests(unittest.TestCase):
         self.assertEqual(200, served.status_code)
         self.assertNotIn(self.ATTACK_MARKER.encode(), served.data)
         self.assertEqual(404, removed.status_code)
+        served.close()
+        removed.close()
 
     def test_restore_route_never_applies_backup_supplied_quiz_html(self):
         archive_path = self._create_backup()

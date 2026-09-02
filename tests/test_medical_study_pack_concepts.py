@@ -11,6 +11,8 @@ from PIL import Image
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-medical-concepts-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 from tests.csrf_test_utils import csrf_headers, csrf_token
 

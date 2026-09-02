@@ -12,6 +12,8 @@ from PIL import Image
 _IMPORT_DATA = tempfile.TemporaryDirectory(prefix="dlms-backup-semantic-app-")
 os.environ["QUIZAPP_DATA_DIR"] = _IMPORT_DATA.name
 
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 from tests.csrf_test_utils import csrf_headers
 

@@ -3,6 +3,8 @@ from datetime import datetime, timezone, timedelta
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-adaptive-review-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 
 

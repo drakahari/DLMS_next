@@ -7,6 +7,8 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
 import app as dlms
 
 
