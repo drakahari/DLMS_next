@@ -21649,42 +21649,415 @@ def save_settings():
 # =====================================================
 # RECORD QUIZ ATTEMPT (DB-ID CANONICAL)
 # =====================================================
+class LearningPayloadError(ValueError):
+    """A client learning/attempt payload failed trust-boundary validation."""
+
+
+LEARNING_MODES = {"exam": "Exam", "study": "Study"}
+LEARNING_QUESTION_TYPES = {"choice", "matching", "hotspot"}
+
+
+def _learning_integer(value, field, *, minimum=None, maximum=None, allow_numeric_string=False):
+    if allow_numeric_string and isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise LearningPayloadError(f"{field} must be an integer")
+    if minimum is not None and value < minimum:
+        raise LearningPayloadError(f"{field} must be at least {minimum}")
+    if maximum is not None and value > maximum:
+        raise LearningPayloadError(f"{field} must be no greater than {maximum}")
+    return value
+
+
+def _learning_identifier(value, field, *, maximum=128):
+    if not isinstance(value, str) or not value.strip():
+        raise LearningPayloadError(f"{field} must be a non-empty string")
+    value = value.strip()
+    if len(value) > maximum:
+        raise LearningPayloadError(f"{field} must be {maximum} characters or fewer")
+    return value
+
+
+def _optional_learning_identifier(value, field, *, maximum=128):
+    if value is None:
+        return None
+    return _learning_identifier(value, field, maximum=maximum)
+
+
+def _attempt_timestamp(value, field):
+    if value is None:
+        return None, None
+    if not isinstance(value, str) or not value.strip() or len(value) > 64:
+        raise LearningPayloadError(f"{field} must be an ISO-8601 timestamp")
+    value = value.strip()
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise LearningPayloadError(f"{field} must be an ISO-8601 timestamp") from exc
+    return value, parsed
+
+
+def _attempt_percent(score, total):
+    # Match JavaScript Math.round for the non-negative values accepted here.
+    return ((score * 100 * 2) + total) // (total * 2)
+
+
+def _question_response_context(cur, quiz_id, question_number):
+    return cur.execute(
+        """
+        SELECT id, question_number, question_text,
+               COALESCE(question_type, 'choice') AS question_type
+        FROM questions
+        WHERE quiz_id = ? AND question_number = ?
+        ORDER BY id
+        LIMIT 1
+        """,
+        (quiz_id, question_number),
+    ).fetchone()
+
+
+def _learning_question_type(value, question, field):
+    if not isinstance(value, str):
+        raise LearningPayloadError(f"{field} must be a supported question type")
+    question_type = value.strip().lower()
+    if question_type not in LEARNING_QUESTION_TYPES:
+        raise LearningPayloadError(f"{field} must be choice, matching, or hotspot")
+    stored_type = str(question["question_type"] or "choice").strip().lower()
+    if question_type == "hotspot":
+        # Generated hotspot quizzes deliberately persist a choice surrogate.
+        if stored_type != "choice" or not str(question["question_text"] or "").endswith("[Image hotspot]"):
+            raise LearningPayloadError(f"{field} does not match the stored question type")
+    elif question_type != stored_type:
+        raise LearningPayloadError(f"{field} does not match the stored question type")
+    return question_type
+
+
+def _strict_correctness(value, field, *, allow_none=False):
+    if value is None and allow_none:
+        return None
+    if not isinstance(value, bool):
+        raise LearningPayloadError(f"{field} must be true or false")
+    return value
+
+
+def _choice_response(cur, question_id, selected, *, study):
+    if not isinstance(selected, list):
+        raise LearningPayloadError("selected must be an array for a choice question")
+    labels = []
+    for value in selected:
+        if not isinstance(value, str) or not value:
+            raise LearningPayloadError("selected choice labels must be non-empty strings")
+        labels.append(value)
+    if len(labels) != len(set(labels)):
+        raise LearningPayloadError("selected choice labels must not contain duplicates")
+
+    choices = cur.execute(
+        "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY label",
+        (question_id,),
+    ).fetchall()
+    allowed = {row["label"] for row in choices}
+    correct = {row["label"] for row in choices if row["is_correct"]}
+    if not choices or not correct:
+        raise LearningPayloadError("the stored choice question is not scoreable")
+    if any(label not in allowed for label in labels):
+        raise LearningPayloadError("selected contains an unknown choice label")
+
+    if study and len(correct) > 1 and len(labels) != len(correct):
+        correctness = None
+    else:
+        correctness = set(labels) == correct
+    return labels, correctness
+
+
+def _matching_response(cur, question_id, selected, *, study):
+    # Early content-pack clients represented an unanswered match as [].
+    if selected == []:
+        selected = {}
+    if not isinstance(selected, dict):
+        raise LearningPayloadError("selected must be an object for a matching question")
+    pair_count = cur.execute(
+        "SELECT COUNT(*) FROM matching_pairs WHERE question_id = ?", (question_id,)
+    ).fetchone()[0]
+    if pair_count < 2:
+        raise LearningPayloadError("the stored matching question is not scoreable")
+
+    normalized = {}
+    for raw_left, raw_right in selected.items():
+        left = _learning_integer(
+            raw_left, "selected matching key", minimum=0,
+            maximum=pair_count - 1, allow_numeric_string=True,
+        )
+        right = _learning_integer(
+            raw_right, "selected matching value", minimum=0,
+            maximum=pair_count - 1, allow_numeric_string=True,
+        )
+        if left in normalized:
+            raise LearningPayloadError("selected matching keys must be unique")
+        normalized[left] = right
+    if len(set(normalized.values())) != len(normalized):
+        raise LearningPayloadError("selected matching answers must not be reused")
+
+    complete = len(normalized) == pair_count and all(index in normalized for index in range(pair_count))
+    correctness = all(normalized[index] == index for index in range(pair_count)) if complete else (None if study else False)
+    return {str(key): value for key, value in sorted(normalized.items())}, correctness
+
+
+def _hotspot_response(selected, *, study):
+    if selected is None and not study:
+        return None
+    if not isinstance(selected, dict) or set(selected) != {"x", "y"}:
+        raise LearningPayloadError("selected must contain only x and y for a hotspot question")
+    coordinates = {}
+    for key in ("x", "y"):
+        value = selected[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise LearningPayloadError(f"selected hotspot {key} must be a number")
+        value = float(value)
+        if value != value or value in (float("inf"), float("-inf")) or not 0 <= value <= 1:
+            raise LearningPayloadError(f"selected hotspot {key} must be between 0 and 1")
+        coordinates[key] = value
+    return coordinates
+
+
+def _validate_question_response(cur, question, detail, *, study, field):
+    if not isinstance(detail, dict):
+        raise LearningPayloadError(f"{field} must be an object")
+    question_type = _learning_question_type(
+        detail.get("questionType"), question, f"{field}.questionType"
+    )
+    submitted_correctness = _strict_correctness(
+        detail.get("wasCorrect"), f"{field}.wasCorrect", allow_none=study
+    )
+    if question_type == "choice":
+        selected, computed_correctness = _choice_response(
+            cur, question["id"], detail.get("selected"), study=study
+        )
+    elif question_type == "matching":
+        selected, computed_correctness = _matching_response(
+            cur, question["id"], detail.get("selected"), study=study
+        )
+    else:
+        selected = _hotspot_response(detail.get("selected"), study=study)
+        # Hotspot geometry is a runtime artifact, while the canonical DB row is
+        # intentionally a lightweight choice surrogate. Its strict boolean is
+        # therefore validated but cannot yet be independently recomputed here.
+        computed_correctness = False if selected is None else submitted_correctness
+
+    if submitted_correctness is not computed_correctness:
+        raise LearningPayloadError(f"{field}.wasCorrect is inconsistent with selected")
+    return {
+        "attemptQuestionNumber": question["question_number"],
+        "questionType": question_type,
+        "wasCorrect": computed_correctness,
+        "selected": selected,
+        "questionId": question["id"],
+    }
+
+
+def _validate_missed_details(cur, raw_details, questions, responses):
+    if not isinstance(raw_details, list):
+        raise LearningPayloadError("missedDetails must be an array")
+    if len(raw_details) > len(questions):
+        raise LearningPayloadError("missedDetails contains too many questions")
+    normalized = []
+    seen = set()
+    for index, detail in enumerate(raw_details):
+        field = f"missedDetails[{index}]"
+        if not isinstance(detail, dict):
+            raise LearningPayloadError(f"{field} must be an object")
+        number = _learning_integer(
+            detail.get("attemptQuestionNumber"), f"{field}.attemptQuestionNumber", minimum=1
+        )
+        if number in seen or number not in questions:
+            raise LearningPayloadError(f"{field} does not identify one unique quiz question")
+        seen.add(number)
+        response = responses[number]
+        if response["wasCorrect"] is not False:
+            raise LearningPayloadError(f"{field} is inconsistent with the recorded correctness")
+        question_type = detail.get("questionType") or response["questionType"]
+        if not isinstance(question_type, str) or question_type.strip().lower() != response["questionType"]:
+            raise LearningPayloadError(f"{field}.questionType is inconsistent with responseDetails")
+        cleaned = dict(detail)
+        cleaned["attemptQuestionNumber"] = number
+        cleaned["questionType"] = response["questionType"]
+        cleaned["selected"] = response["selected"]
+        if response["questionType"] == "choice":
+            choice_rows = cur.execute(
+                "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY label",
+                (response["questionId"],),
+            ).fetchall()
+            cleaned["correctLetters"] = [row["label"] for row in choice_rows if row["is_correct"]]
+            cleaned["selectedLetters"] = list(response["selected"])
+        elif response["questionType"] == "matching":
+            pair_rows = cur.execute(
+                """
+                SELECT left_text, right_text FROM matching_pairs
+                WHERE question_id = ? ORDER BY pair_order, id
+                """,
+                (response["questionId"],),
+            ).fetchall()
+            selections = response["selected"]
+            cleaned["correctLetters"] = []
+            cleaned["selectedLetters"] = []
+            cleaned["correctText"] = [
+                f"{row['left_text']} ↔ {row['right_text']}" for row in pair_rows
+            ]
+            cleaned["selectedText"] = [
+                f"{row['left_text']} ↔ " + (
+                    pair_rows[int(selections[str(pair_index)])]["right_text"]
+                    if str(pair_index) in selections else "[No answer]"
+                )
+                for pair_index, row in enumerate(pair_rows)
+            ]
+        else:
+            hotspot = detail.get("hotspot")
+            if not isinstance(hotspot, dict):
+                raise LearningPayloadError(f"{field}.hotspot must be an object")
+            selected_point = hotspot.get("selected")
+            if selected_point != response["selected"]:
+                raise LearningPayloadError(f"{field}.hotspot selected point is inconsistent")
+            try:
+                cleaned_shape = _validate_hotspot_shape(hotspot.get("target"))
+            except (TypeError, ValueError) as exc:
+                raise LearningPayloadError(f"{field}.hotspot target is invalid") from exc
+            cleaned_hotspot = dict(hotspot)
+            cleaned_hotspot["selected"] = response["selected"]
+            cleaned_hotspot["target"] = cleaned_shape
+            target_row = cur.execute(
+                """
+                SELECT text FROM choices
+                WHERE question_id = ? AND is_correct = 1
+                ORDER BY label LIMIT 1
+                """,
+                (response["questionId"],),
+            ).fetchone()
+            target_label = target_row["text"] if target_row else "Target structure"
+            cleaned_hotspot["targetLabel"] = target_label
+            cleaned["hotspot"] = cleaned_hotspot
+            cleaned["correctLetters"] = ["A"]
+            cleaned["selectedLetters"] = []
+            cleaned["correctText"] = [target_label]
+            cleaned["selectedText"] = [
+                "Image location selected" if response["selected"] is not None else "[No answer]"
+            ]
+        normalized.append(cleaned)
+    return normalized
+
+
+def _validate_attempt_payload(cur, data):
+    if not isinstance(data, dict):
+        raise LearningPayloadError("Request body must be a JSON object")
+    quiz_id = _learning_integer(data.get("quizId"), "quizId", minimum=1, allow_numeric_string=True)
+    if not cur.execute("SELECT 1 FROM quizzes WHERE id = ?", (quiz_id,)).fetchone():
+        raise LearningPayloadError("quizId does not identify an existing quiz")
+    attempt_id = _learning_identifier(data.get("attemptId"), "attemptId")
+    session_id = _optional_learning_identifier(data.get("sessionId"), "sessionId")
+
+    mode_value = data.get("mode")
+    if mode_value is None:
+        mode_value = "Study"
+    if not isinstance(mode_value, str) or mode_value.strip().lower() not in LEARNING_MODES:
+        raise LearningPayloadError("mode must be Study or Exam")
+    mode = LEARNING_MODES[mode_value.strip().lower()]
+
+    score = _learning_integer(data.get("score"), "score", minimum=0)
+    total = _learning_integer(data.get("total"), "total", minimum=1)
+    percent = _learning_integer(data.get("percent"), "percent", minimum=0, maximum=100)
+
+    rows = cur.execute(
+        """
+        SELECT id, question_number, question_text,
+               COALESCE(question_type, 'choice') AS question_type
+        FROM questions WHERE quiz_id = ? ORDER BY question_number, id
+        """,
+        (quiz_id,),
+    ).fetchall()
+    if not rows or len(rows) != total:
+        raise LearningPayloadError("total does not match the stored quiz question count")
+    questions = {row["question_number"]: row for row in rows}
+    if len(questions) != len(rows):
+        raise LearningPayloadError("the stored quiz has ambiguous question numbers")
+
+    raw_responses = data.get("responseDetails")
+    if not isinstance(raw_responses, list) or len(raw_responses) != len(rows):
+        raise LearningPayloadError("responseDetails must contain one response for every quiz question")
+    responses = {}
+    for index, detail in enumerate(raw_responses):
+        field = f"responseDetails[{index}]"
+        if not isinstance(detail, dict):
+            raise LearningPayloadError(f"{field} must be an object")
+        number = _learning_integer(
+            detail.get("attemptQuestionNumber"), f"{field}.attemptQuestionNumber", minimum=1
+        )
+        if number in responses or number not in questions:
+            raise LearningPayloadError(f"{field} does not identify one unique quiz question")
+        responses[number] = _validate_question_response(
+            cur, questions[number], detail, study=False, field=field
+        )
+    if set(responses) != set(questions):
+        raise LearningPayloadError("responseDetails must cover every quiz question")
+
+    computed_score = sum(1 for detail in responses.values() if detail["wasCorrect"])
+    computed_percent = _attempt_percent(computed_score, len(rows))
+    if score != computed_score or score > total:
+        raise LearningPayloadError("score is inconsistent with responseDetails")
+    if percent != computed_percent:
+        raise LearningPayloadError("percent is inconsistent with score and total")
+
+    started_at, started_value = _attempt_timestamp(data.get("startedAt"), "startedAt")
+    completed_at, completed_value = _attempt_timestamp(data.get("completedAt"), "completedAt")
+    if started_value is not None and completed_value is not None:
+        try:
+            if completed_value < started_value:
+                raise LearningPayloadError("completedAt must not be before startedAt")
+        except TypeError as exc:
+            raise LearningPayloadError("startedAt and completedAt must use compatible timezones") from exc
+    time_remaining = data.get("timeRemaining")
+    if time_remaining is not None:
+        time_remaining = _learning_integer(
+            time_remaining, "timeRemaining", minimum=0, maximum=1440 * 60
+        )
+
+    missed_details = _validate_missed_details(
+        cur, data.get("missedDetails", []), questions, responses
+    )
+    return {
+        "quiz_id": quiz_id,
+        "attempt_id": attempt_id,
+        "session_id": session_id,
+        "score": computed_score,
+        "total": len(rows),
+        "percent": computed_percent,
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "time_remaining": time_remaining,
+        "mode": mode,
+        "response_details": [responses[number] for number in sorted(responses)],
+        "missed_details": missed_details,
+    }
+
+
 @app.route("/record_attempt", methods=["POST"])
 def record_attempt():
-    data = request.get_json(force=True) or {}
-
-    # --- Input from UI ---
-    quiz_id = data.get("quizId")      # REGISTRY ID (from frontend)
-    quiz_title = (data.get("quizTitle") or "").strip()
-
-    score = data.get("score")
-    total = data.get("total")
-    percent = data.get("percent")
-    attempt_id = data.get("attemptId")
-    started_at = data.get("startedAt")
-    completed_at = data.get("completedAt")
-    time_remaining = data.get("timeRemaining")
-    mode = data.get("mode") or "Study"
-    missed_details = data.get("missedDetails") or []
-    response_details = data.get("responseDetails") or []
-
-    # --- Basic validation ---
-    if quiz_id is None:
-        return jsonify({"error": "Missing quizId"}), 400
-    if not attempt_id:
-        return jsonify({"error": "Missing attemptId"}), 400
-    if score is None or total is None:
-        return jsonify({"error": "Missing score/total"}), 400
-
-    try:
-        quiz_id = int(quiz_id)
-    except (TypeError, ValueError):
-        return jsonify({"error": f"Invalid quizId: {quiz_id}"}), 400
+    data = request.get_json(silent=True)
 
     conn = get_db()
     cur = conn.cursor()
 
     try:
+        validated = _validate_attempt_payload(cur, data)
+        quiz_id = validated["quiz_id"]
+        score = validated["score"]
+        total = validated["total"]
+        percent = validated["percent"]
+        attempt_id = validated["attempt_id"]
+        started_at = validated["started_at"]
+        completed_at = validated["completed_at"]
+        time_remaining = validated["time_remaining"]
+        mode = validated["mode"]
+        response_details = validated["response_details"]
+        missed_details = validated["missed_details"]
+
         # ------------------------------------------------------------
         # 1) Resolve REGISTRY ID → DB QUIZ ID (AUTHORITATIVE)
         # ------------------------------------------------------------
@@ -21737,24 +22110,14 @@ def record_attempt():
         )
 
         for detail in response_details:
-            if not isinstance(detail, dict):
-                continue
-            qnum = detail.get("attemptQuestionNumber")
-            try:
-                qnum = int(qnum)
-            except (TypeError, ValueError):
-                continue
-            qrow = cur.execute(
-                "SELECT id FROM questions WHERE quiz_id = ? AND question_number = ?",
-                (quiz_id, qnum),
-            ).fetchone()
+            qnum = detail["attemptQuestionNumber"]
             _record_learning_event(
                 cur,
                 event_type="exam_answer",
                 quiz_id=quiz_id,
-                question_id=(qrow[0] if qrow else None),
+                question_id=detail["questionId"],
                 attempt_id=attempt_id,
-                session_id=data.get("sessionId"),
+                session_id=validated["session_id"],
                 mode=mode,
                 was_correct=detail.get("wasCorrect"),
                 response={
@@ -21790,7 +22153,10 @@ def record_attempt():
             # the quiz player so History/Review can reconstruct the image response.
             if submitted_question_type == "hotspot":
                 question_type = "hotspot"
-                question_text = md.get("question") or (qrow["question_text"] if qrow else "")
+                question_text = qrow["question_text"] if qrow else ""
+                suffix = " [Image hotspot]"
+                if question_text.endswith(suffix):
+                    question_text = question_text[:-len(suffix)]
             else:
                 question_type = qrow["question_type"] if qrow else (submitted_question_type or "choice")
                 question_text = qrow["question_text"] if qrow else (md.get("question") or "")
@@ -21902,6 +22268,9 @@ def record_attempt():
         conn.commit()
         return jsonify({"ok": True, "attempt_id": attempt_id}), 200
 
+    except LearningPayloadError as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 400
     except Exception as e:
         conn.rollback()
         print(f"DB ERROR in /record_attempt: {e}")
@@ -21923,38 +22292,54 @@ def record_attempt():
 
 @app.route("/api/learning-events/study-response", methods=["POST"])
 def record_study_learning_event():
-    data = request.get_json(silent=True) or {}
-    try:
-        quiz_id = int(data.get("quizId"))
-        question_number = int(data.get("questionNumber"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "Invalid quizId/questionNumber"}), 400
+    data = request.get_json(silent=True)
 
     conn = get_db()
     cur = conn.cursor()
     try:
-        row = cur.execute(
-            "SELECT id FROM questions WHERE quiz_id = ? AND question_number = ?",
-            (quiz_id, question_number),
-        ).fetchone()
+        if not isinstance(data, dict):
+            raise LearningPayloadError("Request body must be a JSON object")
+        quiz_id = _learning_integer(
+            data.get("quizId"), "quizId", minimum=1, allow_numeric_string=True
+        )
+        question_number = _learning_integer(
+            data.get("questionNumber"), "questionNumber", minimum=1,
+            allow_numeric_string=True,
+        )
+        session_id = _optional_learning_identifier(data.get("sessionId"), "sessionId")
+        row = _question_response_context(cur, quiz_id, question_number)
         if not row:
             return jsonify({"error": "Question not found"}), 404
+        detail = _validate_question_response(
+            cur,
+            row,
+            {
+                "questionType": data.get("questionType") or row["question_type"],
+                "wasCorrect": data.get("wasCorrect"),
+                "selected": data.get("selected"),
+            },
+            study=True,
+            field="study response",
+        )
         _record_learning_event(
             cur,
             event_type="study_answer",
             quiz_id=quiz_id,
-            question_id=row[0],
-            session_id=data.get("sessionId"),
+            question_id=row["id"],
+            session_id=session_id,
             mode="Study",
-            was_correct=data.get("wasCorrect"),
+            was_correct=detail["wasCorrect"],
             response={
                 "question_number": question_number,
-                "question_type": data.get("questionType") or "choice",
-                "selected": data.get("selected"),
+                "question_type": detail["questionType"],
+                "selected": detail["selected"],
             },
         )
         conn.commit()
         return jsonify({"ok": True}), 200
+    except LearningPayloadError as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:
         conn.rollback()
         print(f"[LEARNING EVENT ERROR] {type(exc).__name__}: {exc}")

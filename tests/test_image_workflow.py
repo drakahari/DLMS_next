@@ -211,11 +211,21 @@ class ImageWorkflowTests(unittest.TestCase):
         for index in range(5):
             exam = client.post("/record_attempt", json={
                 "quizId": quiz_id, "quizTitle": "Mixed — Practice", "attemptId": f"mixed-choice-{index}",
-                "score": 0, "total": 1, "percent": 0, "mode": "Exam",
-                "responseDetails": [{
-                    "attemptQuestionNumber": 1, "questionType": "choice",
-                    "wasCorrect": False, "selected": ["B"],
-                }],
+                "score": 0, "total": 3, "percent": 0, "mode": "Exam",
+                "responseDetails": [
+                    {
+                        "attemptQuestionNumber": 1, "questionType": "choice",
+                        "wasCorrect": False, "selected": ["B"],
+                    },
+                    {
+                        "attemptQuestionNumber": 2, "questionType": "matching",
+                        "wasCorrect": False, "selected": {"0": 1, "1": 0},
+                    },
+                    {
+                        "attemptQuestionNumber": 3, "questionType": "hotspot",
+                        "wasCorrect": False, "selected": {"x": 0.1, "y": 0.1},
+                    },
+                ],
                 "missedDetails": [],
             }, headers=csrf_headers(client))
             self.assertEqual(200, exam.status_code, exam.get_data(as_text=True))

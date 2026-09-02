@@ -271,7 +271,7 @@ class MedicalStudyPackConceptTests(unittest.TestCase):
             "sessionId": "medical-study-session",
             "wasCorrect": False,
             "questionType": "matching",
-            "selected": [],
+            "selected": {"0": 1, "1": 0},
         }, headers=csrf_headers(client))
         self.assertEqual(200, study.status_code, study.get_data(as_text=True))
 
@@ -290,7 +290,7 @@ class MedicalStudyPackConceptTests(unittest.TestCase):
                     "attemptQuestionNumber": 1,
                     "questionType": "matching",
                     "wasCorrect": False,
-                    "selected": [],
+                    "selected": {"0": 1, "1": 0},
                 }],
                 "missedDetails": [],
             }, headers=csrf_headers(client))

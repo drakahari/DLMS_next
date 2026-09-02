@@ -35,8 +35,16 @@ class GeneralSecurityHardeningTests(unittest.TestCase):
     def test_api_exception_returns_stable_json_and_logs_detail(self):
         sensitive = "OperationalError near /srv/private/results.db"
         connection = mock.MagicMock()
-        connection.cursor.return_value.execute.return_value.fetchone.return_value = (7,)
+        connection.cursor.return_value.execute.return_value.fetchone.return_value = {
+            "id": 7,
+            "question_number": 1,
+            "question_text": "Question",
+            "question_type": "choice",
+        }
         with mock.patch.object(dlms, "get_db", return_value=connection), \
+             mock.patch.object(dlms, "_validate_question_response", return_value={
+                 "questionType": "choice", "wasCorrect": False, "selected": ["B"],
+             }), \
              mock.patch.object(dlms, "_record_learning_event", side_effect=RuntimeError(sensitive)), \
              mock.patch("builtins.print") as logged:
             response = self.client.post(
