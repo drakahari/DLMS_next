@@ -66,12 +66,22 @@ class ReleaseDocumentationTests(unittest.TestCase):
             root = Path(directory)
             windows = root / "DLMS-3.0.2-RC4-windows-x86_64.exe"
             linux = root / "DLMS-3.0.2-RC4-linux-x86_64"
+            macos = root / "DLMS-3.0.2-RC4-macos-arm64.zip"
             manifest = root / "SHA256SUMS.txt"
             windows.write_bytes(b"windows release artifact")
             linux.write_bytes(b"linux release artifact")
+            macos.write_bytes(b"macOS DLMS.app ZIP artifact")
 
             result = subprocess.run(
-                [sys.executable, str(script), "--output", str(manifest), str(windows), str(linux)],
+                [
+                    sys.executable,
+                    str(script),
+                    "--output",
+                    str(manifest),
+                    str(windows),
+                    str(linux),
+                    str(macos),
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -82,10 +92,45 @@ class ReleaseDocumentationTests(unittest.TestCase):
                 manifest.read_text(encoding="utf-8"),
                 "\n".join((
                     f"{hashlib.sha256(linux.read_bytes()).hexdigest()}  {linux.name}",
+                    f"{hashlib.sha256(macos.read_bytes()).hexdigest()}  {macos.name}",
                     f"{hashlib.sha256(windows.read_bytes()).hexdigest()}  {windows.name}",
                     "",
                 )),
             )
+
+    def test_macos_release_is_a_native_app_zip_with_first_run_guidance(self):
+        spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        getting_started = (ROOT / "static" / "help-getting-started.html").read_text(encoding="utf-8")
+        troubleshooting = (ROOT / "static" / "help-troubleshooting.html").read_text(encoding="utf-8")
+
+        compile(spec, "DLMS.spec", "exec")
+        self.assertIn('if sys.platform == "darwin":', spec)
+        self.assertIn("app_bundle = BUNDLE(", spec)
+        self.assertIn('name="DLMS.app"', spec)
+        self.assertIn("exclude_binaries=True", spec)
+        self.assertIn("console=False", spec)
+        self.assertIn('codesign_identity=None', spec)
+
+        macos_zip = "DLMS-3.0.2-RC4-macos-arm64.zip"
+        for document in (readme, getting_started):
+            self.assertIn(macos_zip, document)
+            self.assertIn("DLMS.app", document)
+            self.assertIn("Control-click", document)
+            self.assertIn("Open Anyway", document)
+
+        self.assertIn("Privacy & Security", readme)
+        self.assertIn("Privacy &amp; Security", getting_started)
+        self.assertIn("ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app", readme)
+        self.assertIn("Contents/MacOS/DLMS", readme)
+        self.assertNotIn("* macOS: `DLMS-3.0.2-RC4-macos-arm64`", readme)
+        self.assertIn("not part of the normal installation", readme)
+        self.assertGreater(
+            readme.index("xattr -dr com.apple.quarantine /Applications/DLMS.app"),
+            readme.index("Open Anyway"),
+        )
+        self.assertIn("xattr -dr com.apple.quarantine /Applications/DLMS.app", troubleshooting)
+        self.assertIn("fallback troubleshooting rather than routine installation guidance", troubleshooting)
 
     def test_runtime_requirements_are_bounded_and_lock_is_complete(self):
         requirements = [

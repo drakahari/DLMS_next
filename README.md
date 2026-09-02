@@ -103,11 +103,36 @@ for long-term retention.
 
 ## 🖥️ Running DLMS
 
-### From a prebuilt binary (recommended)
+### From a packaged release (recommended)
 
-1. Download the appropriate binary for your operating system from **Releases**
-2. Run the DLMS executable
-3. Allow DLMS to open the browser, or go to **[http://127.0.0.1:9001/](http://127.0.0.1:9001/)**
+On Windows or Linux, download the matching release artifact, run the DLMS
+executable, and allow it to open the browser. You can also open
+**[http://127.0.0.1:9001/](http://127.0.0.1:9001/)** yourself after DLMS starts.
+
+#### macOS on Apple Silicon
+
+1. Download and extract `DLMS-3.0.2-RC4-macos-arm64.zip` from **Releases**.
+2. Drag `DLMS.app` into `/Applications`.
+3. Open DLMS from Finder or Applications. DLMS starts locally and normally opens
+   its browser interface automatically.
+4. Because this release is not signed with an Apple Developer ID and is not
+   notarized, Gatekeeper may block the first launch. Where available, Control-click
+   `DLMS.app`, choose **Open**, then confirm **Open**. Otherwise try opening the app
+   once, then use **System Settings → Privacy & Security → Open Anyway** and confirm
+   the launch.
+
+Removing the quarantine attribute is not part of the normal installation. If the
+two Gatekeeper choices above are unavailable, first verify the ZIP against the
+release `SHA256SUMS.txt`, then use this targeted troubleshooting fallback:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/DLMS.app
+```
+
+The documented macOS package is built for Apple Silicon (`arm64`). An Intel
+(`x86_64`) package should be published only when it has been built with an Intel
+Python environment and smoke-tested on Intel macOS; the Apple Silicon ZIP is not
+an Intel build.
 
 ### From source (advanced users)
 
@@ -135,18 +160,40 @@ python -m pip install -r requirements-build.txt
 pyinstaller --clean --noconfirm DLMS.spec
 ```
 
-`DLMS.spec` is the canonical one-file build manifest. Its only local data inputs
-are `static/` and `init.sql`; databases, settings, backups, logs, caches, tests,
-development directories, and per-user runtime data are not build inputs. Inspect
-the resulting `dist/` artifact and perform the release smoke tests before
-distribution.
+`DLMS.spec` is the canonical platform-aware build manifest. Windows and Linux
+retain one-file executables. On macOS it creates a windowed, onedir-style native
+`dist/DLMS.app` bundle; the executable and its dependencies live inside the app
+bundle. Its only local data inputs are `static/` and `init.sql`; databases,
+settings, backups, logs, caches, tests, development directories, and per-user
+runtime data are not build inputs. Inspect the resulting `dist/` artifact and
+perform the release smoke tests before distribution.
 
 Build natively for each target architecture; PyInstaller does not produce
 cross-platform binaries. Stage the final artifacts with these names:
 
 * Windows: `DLMS-3.0.2-RC4-windows-x86_64.exe`
 * Linux: `DLMS-3.0.2-RC4-linux-x86_64`
-* macOS: `DLMS-3.0.2-RC4-macos-arm64` and/or `DLMS-3.0.2-RC4-macos-x86_64`
+* macOS Apple Silicon: `DLMS-3.0.2-RC4-macos-arm64.zip`
+
+For the Apple Silicon build, use a native `arm64` Python environment on an Apple
+Silicon Mac, verify its architecture, build the canonical spec, and archive only
+the application bundle:
+
+```bash
+python -c "import platform; assert platform.machine() == 'arm64', platform.machine()"
+python -m pip install -r requirements-build.txt
+python -m PyInstaller --clean --noconfirm DLMS.spec
+test -d dist/DLMS.app
+mkdir -p releases
+ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.0.2-RC4-macos-arm64.zip
+```
+
+The ZIP should expose one top-level `DLMS.app`. The bundle contains
+`Contents/Info.plist`, `Contents/MacOS/DLMS`, and its packaged resources and
+frameworks. Do not include the `build/` directory, runtime data, or an additional
+raw DLMS executable in the release ZIP. If an Intel build is intentionally
+produced and tested from an `x86_64` Python environment, use the distinct name
+`DLMS-3.0.2-RC4-macos-x86_64.zip`.
 
 After staging the final binaries/packages in `releases/`, generate the shared
 checksum manifest from the same checkout:
@@ -307,6 +354,21 @@ These temporary folders are created by PyInstaller and are safe to delete.
 
 ---
 
+### 🍎 macOS Cleanup
+
+1. Quit DLMS.
+2. Remove `/Applications/DLMS.app`.
+3. Remove the application data directory if you also want to delete saved DLMS
+   content and settings:
+
+```text
+~/Library/Application Support/DLMS
+```
+
+Removing the app does not automatically remove this per-user data directory.
+
+---
+
 ### 🐧 Linux Cleanup
 
 1. Stop DLMS if it is running
@@ -340,10 +402,11 @@ files once removed.
    startup flags, data locations, and changed workflows.
 3. Create a clean environment from `requirements-lock.txt`; run targeted tests,
    the full isolated test suite, Python compilation, and `git diff --check`.
-4. Build each supported platform artifact from `requirements-build.txt` with
-   `pyinstaller --clean --noconfirm DLMS.spec`, inspect the artifact contents, then
-   smoke-test startup, browser/no-browser operation, static assets, quiz creation,
-   and backup/restore.
+4. Build each supported platform artifact from `requirements-build.txt` with the
+   canonical `DLMS.spec`. On macOS, verify that the result is `dist/DLMS.app`, ZIP
+   that bundle with `ditto`, and confirm the archive has no separate raw executable.
+   Inspect every artifact, then smoke-test startup, browser/no-browser operation,
+   static assets, quiz creation, and backup/restore.
 5. Review `git status` and package source from tracked files, for example with
    `git archive --format=zip --output releases/DLMS-3.0.2-RC4-source.zip HEAD`. Inspect
    the archive to confirm it contains required application assets and excludes
