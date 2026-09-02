@@ -80,7 +80,12 @@ python tools/verify_release_artifact.py macos-arm64 releases/DLMS-3.0.2-RC4-maco
 The verifier requires exactly one top-level `DLMS.app`, validates
 `Contents/Info.plist` and `Contents/MacOS/DLMS`, confirms the executable is
 arm64 Mach-O, rejects common runtime-data entries, then runs the controlled
-start/route/shutdown/restart smoke test against the bundled executable.
+start/route/shutdown/restart smoke test against the bundled executable. For the
+smoke launch it extracts the ZIP with macOS `ditto`, preserving the framework
+symlinks and metadata that Python ZIP extraction cannot faithfully restore. It
+also removes shell Python-launcher overrides so the app uses its embedded
+PyInstaller runtime, like a Finder launch. If startup fails, the verifier prints
+the captured packaged-launch diagnostic tail.
 
 Native UAT still required: extract the staged ZIP, drag `DLMS.app` to
 `/Applications`, and launch it through Finder. Verify the documented Gatekeeper

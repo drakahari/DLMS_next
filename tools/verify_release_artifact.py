@@ -30,6 +30,7 @@ from pathlib import Path
 SERVER_URL = "http://127.0.0.1:9001"
 SMOKE_TIMEOUT_SECONDS = 20
 SHUTDOWN_TIMEOUT_SECONDS = 12
+MACOS_DITTO = Path("/usr/bin/ditto")
 RUNTIME_DATA_NAMES = {
     ".secret_key",
     "backups",
@@ -345,15 +346,55 @@ def _shutdown_cleanly(process: subprocess.Popen[bytes], client: SmokeHttpClient)
         raise RuntimeError(f"DLMS exited unexpectedly after shutdown (exit code {process.returncode})")
 
 
+def _extract_macos_bundle_for_smoke(artifact: Path, extraction_root: Path) -> Path:
+    """Extract the app with macOS tooling so bundle symlinks remain intact."""
+    ditto = MACOS_DITTO
+    if not ditto.is_file():
+        raise RuntimeError("macOS ditto is required to extract a native DLMS.app smoke artifact")
+    extraction_root.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [str(ditto), "-x", "-k", str(artifact), str(extraction_root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        suffix = f": {detail[-1200:]}" if detail else ""
+        raise RuntimeError(f"macOS ditto extraction failed (exit code {result.returncode}){suffix}")
+    executable = extraction_root / "DLMS.app" / "Contents" / "MacOS" / "DLMS"
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        raise RuntimeError("macOS ditto extraction did not produce an executable DLMS.app bundle")
+    return executable
+
+
 def _smoke_command(artifact: Path, target: str, work_root: Path) -> list[str]:
     if target == "windows-x86_64" or target == "linux-x86_64":
         return [str(artifact), "--no-browser"]
     extraction_root = work_root / "macos-artifact"
-    with zipfile.ZipFile(artifact) as archive:
-        archive.extractall(extraction_root)
-    executable = extraction_root / "DLMS.app" / "Contents" / "MacOS" / "DLMS"
-    executable.chmod(executable.stat().st_mode | 0o111)
+    executable = _extract_macos_bundle_for_smoke(artifact, extraction_root)
     return [str(executable), "--no-browser"]
+
+
+def _launch_log_tail(path: Path, limit: int = 8000) -> str:
+    try:
+        contents = path.read_bytes()[-limit:].decode("utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+    return contents
+
+
+def _smoke_environment(data_root: Path, target: str, source: dict[str, str] | None = None) -> dict[str, str]:
+    """Return an isolated environment suitable for a packaged DLMS launch."""
+    environment = dict(os.environ if source is None else source)
+    environment["QUIZAPP_DATA_DIR"] = str(data_root)
+    environment["DLMS_NO_BROWSER"] = "1"
+    if target.startswith("macos-"):
+        # Finder does not inherit the calling shell's Python launcher settings.
+        # Let the PyInstaller runtime select only the Python embedded in DLMS.app.
+        for name in ("PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE", "__PYVENV_LAUNCHER__", "VIRTUAL_ENV"):
+            environment.pop(name, None)
+    return environment
 
 
 def smoke_test(artifact: Path, target: str) -> None:
@@ -364,21 +405,31 @@ def smoke_test(artifact: Path, target: str) -> None:
         work_root = Path(temporary)
         data_root = work_root / "data-root"
         command = _smoke_command(artifact, target, work_root)
-        environment = os.environ.copy()
-        environment["QUIZAPP_DATA_DIR"] = str(data_root)
-        environment["DLMS_NO_BROWSER"] = "1"
+        environment = _smoke_environment(data_root, target)
         for run_number in (1, 2):
             with (work_root / f"run-{run_number}.log").open("wb") as log:
-                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=environment)
+                process = subprocess.Popen(
+                    command,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    env=environment,
+                    cwd=str(work_root),
+                )
                 client = SmokeHttpClient()
                 try:
                     _wait_for_server(process, client)
                     _assert_smoke_routes(client)
                     _shutdown_cleanly(process, client)
-                except Exception:
+                except Exception as exc:
                     if process.poll() is None:
                         process.terminate()
                         process.wait(timeout=5)
+                    log.flush()
+                    diagnostics = _launch_log_tail(Path(log.name))
+                    if diagnostics:
+                        raise RuntimeError(
+                            f"{exc}\nPackaged launch diagnostics (last 8000 bytes):\n{diagnostics}"
+                        ) from exc
                     raise
         if not (data_root / ".dlms-data-root").is_file():
             raise RuntimeError("Packaged DLMS did not initialize the isolated smoke-test data root")

@@ -109,6 +109,58 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
             self.assertEqual(bad.returncode, 1)
             self.assertIn("includes runtime/user data", bad.stderr)
 
+    def test_macos_smoke_uses_ditto_to_preserve_the_bundled_app_structure(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            artifact = root / "DLMS-3.0.2-RC4-macos-arm64.zip"
+            _write_macos_zip(artifact)
+            work_root = root / "smoke"
+            executable = work_root / "macos-artifact" / "DLMS.app" / "Contents" / "MacOS" / "DLMS"
+            ditto = root / "ditto"
+            ditto.write_text("test ditto", encoding="utf-8")
+
+            def emulate_ditto(command, **_kwargs):
+                self.assertEqual(command[:3], [str(ditto), "-x", "-k"])
+                executable.parent.mkdir(parents=True)
+                executable.write_bytes(b"native app executable")
+                executable.chmod(0o755)
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with mock.patch.object(VERIFIER, "MACOS_DITTO", ditto), mock.patch.object(
+                VERIFIER.subprocess, "run", side_effect=emulate_ditto
+            ) as run:
+                command = VERIFIER._smoke_command(artifact, "macos-arm64", work_root)
+
+            self.assertEqual(command, [str(executable), "--no-browser"])
+            self.assertEqual(run.call_args.args[0], [str(ditto), "-x", "-k", str(artifact), str(work_root / "macos-artifact")])
+
+    def test_failed_packaged_launch_exposes_bounded_log_diagnostics(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            log = Path(directory) / "launch.log"
+            log.write_text("PyInstaller framework resolution failed", encoding="utf-8")
+            self.assertEqual(VERIFIER._launch_log_tail(log), "PyInstaller framework resolution failed")
+
+    def test_macos_smoke_environment_keeps_data_isolation_but_removes_shell_python_overrides(self):
+        data_root = Path("/tmp/dlms-smoke-data")
+        environment = VERIFIER._smoke_environment(
+            data_root,
+            "macos-arm64",
+            {
+                "PYTHONHOME": "/wrong/python",
+                "PYTHONPATH": "/wrong/path",
+                "PYTHONEXECUTABLE": "/wrong/python",
+                "__PYVENV_LAUNCHER__": "/wrong/python",
+                "VIRTUAL_ENV": "/wrong/venv",
+                "KEEP_ME": "yes",
+            },
+        )
+
+        self.assertEqual(environment["QUIZAPP_DATA_DIR"], str(data_root))
+        self.assertEqual(environment["DLMS_NO_BROWSER"], "1")
+        self.assertEqual(environment["KEEP_ME"], "yes")
+        for name in ("PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE", "__PYVENV_LAUNCHER__", "VIRTUAL_ENV"):
+            self.assertNotIn(name, environment)
+
     def test_linux_artifact_must_be_executable_x86_64_elf(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
