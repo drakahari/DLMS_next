@@ -270,20 +270,30 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertIn('id="pdfTermSelectionCount" aria-live="polite"', glossary_html)
         self.assertIn('class="pdf-status complete">COMPLETE</span>', glossary_html)
         self.assertIn('<span>Exclude term</span>', glossary_html)
-        term_action_style = styles[
-            styles.index(".pdf-import-page #pdfTermExcludeSelected {"):
-            styles.index(".pdf-import-page #pdfTermExcludeSelected:disabled")
+        self.assertIn(
+            'class="build-secondary-link" id="pdfTermExcludeSelected">Exclude Selected</button>',
+            glossary_html,
+        )
+        self.assertNotIn(
+            'class="build-secondary-link pdf-review-danger-action" id="pdfTermExcludeSelected"',
+            glossary_html,
+        )
+        self.assertIn(
+            "confirm(`Exclude ${cards.length} selected term(s) from generated practice?`)",
+            glossary_html,
+        )
+        shared_bulk_style = styles[
+            styles.index(".pdf-import-page .pdf-review-bulk-bar button {"):
+            styles.index(".pdf-import-page .pdf-review-bulk-bar .pdf-review-danger-action")
         ]
-        self.assertIn("color:light-dark(#8f2435,#ff9eaa)", term_action_style)
-        self.assertIn("background:color-mix(in srgb,var(--theme-accent", term_action_style)
-        self.assertIn("border-color:var(--theme-border-soft", term_action_style)
-        self.assertNotIn("#ef4444", term_action_style)
-        disabled_style = styles[
-            styles.index(".pdf-import-page #pdfTermExcludeSelected:disabled"):
-            styles.index(".pdf-import-page .pdf-review-bulk-status")
-        ]
-        self.assertIn("cursor:not-allowed", disabled_style)
-        self.assertIn("opacity:.58", disabled_style)
+        for token in (
+            "color:var(--theme-page-text",
+            "background:color-mix(in srgb,var(--theme-accent",
+            "border-color:var(--theme-border-soft",
+        ):
+            self.assertIn(token, shared_bulk_style)
+        for state in ("", ":hover", ":focus", ":focus-visible", ":disabled"):
+            self.assertNotIn(f"#pdfTermExcludeSelected{state}", styles)
 
     def test_save_rejects_recovery_question_without_deliberate_correct_answer(self):
         draft = {
