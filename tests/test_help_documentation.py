@@ -209,6 +209,33 @@ class HelpDocumentationTests(unittest.TestCase):
             with self.subTest(wording=wording):
                 self.assertIn(wording, quizzes)
 
+    def test_getting_started_and_troubleshooting_explain_dlms_lifecycle(self):
+        getting_started = self._static("help-getting-started.html")
+        troubleshooting = self._static("help-troubleshooting.html")
+
+        self.assertIn('id="lifecycle"', getting_started)
+        for wording in (
+            "Closing the browser tab or window does not shut down DLMS",
+            "continues running locally",
+            "http://127.0.0.1:9001/",
+            "instead of starting another server copy",
+            "<strong>Shutdown DLMS</strong>",
+            "Windows, macOS, and Linux",
+        ):
+            with self.subTest(page="getting-started", wording=wording):
+                self.assertIn(wording, getting_started)
+
+        self.assertIn('id="browser-closed"', troubleshooting)
+        for wording in (
+            "Closing a browser only closes the interface",
+            "already-running DLMS process",
+            "do not start another server copy",
+            "<strong>Shutdown DLMS</strong>",
+            "If the local address no longer responds",
+        ):
+            with self.subTest(page="troubleshooting", wording=wording):
+                self.assertIn(wording, troubleshooting)
+
     def test_help_asset_references_exist(self):
         asset_reference = re.compile(r'''(?:src|href)=["'](/static/help_assets/[^"']+)["']''')
         for path in glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html")):

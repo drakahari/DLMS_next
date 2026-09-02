@@ -54,6 +54,14 @@ browser after the local server is ready. In a headless or SSH session it prints 
 address but does not open a browser. See [Browser launch and server options](#browser-launch-and-server-options)
 for explicit controls.
 
+The browser is DLMS's interface, not the application process itself. Closing the
+browser tab or window does not shut down DLMS; the local process continues running.
+To return to an instance that is still running, reopen a browser and visit
+**[http://127.0.0.1:9001/](http://127.0.0.1:9001/)** instead of starting another
+server copy. When you are finished, use **Shutdown DLMS** in the application
+sidebar and confirm the prompt to fully exit. After shutdown, launch DLMS normally
+the next time you want to use it.
+
 ---
 
 ## ✨ Key Features

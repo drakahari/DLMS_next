@@ -23,6 +23,12 @@ class ReleaseDocumentationTests(unittest.TestCase):
         for setting in ("--browser", "--no-browser", "DLMS_NO_BROWSER"):
             self.assertIn(setting, readme)
         self.assertIn("interactive desktop session", readme)
+        self.assertRegex(
+            readme,
+            r"Closing the\s+browser tab or window does not shut down DLMS",
+        )
+        self.assertRegex(readme, r"instead of starting another\s+server copy")
+        self.assertIn("use **Shutdown DLMS**", readme)
         self.assertIn("requirements-lock.txt", readme)
         self.assertIn("git archive", readme)
 
