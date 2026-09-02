@@ -80,13 +80,11 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertEqual(reset.status_code, 302)
         self.assertTrue(reset.headers["Location"].endswith("/settings/reset-remove"))
 
-    def test_legacy_settings_route_remains_available(self):
+    def test_legacy_settings_route_redirects_to_appearance(self):
         response = self.client.get("/settings/legacy")
-        page = response.get_data(as_text=True)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Dashboard Configuration", page)
-        self.assertNotIn('class="dashboard-shell"', page)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/settings/appearance"))
 
     def test_system_tools_uses_standard_shell_and_keeps_rebuild_action(self):
         response = self.client.get("/admin/maintenance")
