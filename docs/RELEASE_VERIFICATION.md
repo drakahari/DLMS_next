@@ -39,6 +39,12 @@ The command validates the PE architecture, final name, controlled data-root
 initialization, server availability, root/static/Help/Settings/Library routes,
 clean Shutdown DLMS, and a successful restart.
 
+After a successful protected `POST /api/shutdown`, the current Windows
+PyInstaller/SIGINT shutdown path may report exit code `2`. The verifier accepts
+that code only for this acknowledged Windows shutdown; startup exits, rejected
+shutdown requests, timeouts, and every other unexpected nonzero exit remain
+failures.
+
 Native UAT still required: launch the staged `.exe` through the normal Explorer
 path, accept or document any Windows security prompt, confirm the browser UI
 opens, open Help, Settings, and Quiz Library, and inspect the displayed data

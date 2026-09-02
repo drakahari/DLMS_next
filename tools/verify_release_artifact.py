@@ -320,7 +320,17 @@ def _assert_smoke_routes(client: SmokeHttpClient) -> None:
             raise RuntimeError(f"Smoke request failed for {path} (HTTP {status})")
 
 
-def _shutdown_cleanly(process: subprocess.Popen[bytes], client: SmokeHttpClient) -> None:
+def _clean_shutdown_returncodes(target: str) -> set[int]:
+    """Return only the normal completion statuses for an acknowledged shutdown."""
+    if target == "windows-x86_64":
+        # DLMS deliberately raises SIGINT after responding to /api/shutdown.
+        # The Windows PyInstaller process reports that controlled interruption
+        # as status 2, rather than a POSIX signal-derived return code.
+        return {0, 2}
+    return {0, -2, 130}
+
+
+def _shutdown_cleanly(process: subprocess.Popen[bytes], client: SmokeHttpClient, target: str) -> None:
     # Match the in-app fetch contract: retain the HTML session cookies, send the
     # session-bound CSRF token, and declare the local request origin explicitly.
     status, _ = _request(
@@ -342,7 +352,7 @@ def _shutdown_cleanly(process: subprocess.Popen[bytes], client: SmokeHttpClient)
         process.terminate()
         process.wait(timeout=5)
         raise RuntimeError("Shutdown DLMS did not terminate the packaged process cleanly") from exc
-    if process.returncode not in {0, -2, 130}:
+    if process.returncode not in _clean_shutdown_returncodes(target):
         raise RuntimeError(f"DLMS exited unexpectedly after shutdown (exit code {process.returncode})")
 
 
@@ -419,7 +429,7 @@ def smoke_test(artifact: Path, target: str) -> None:
                 try:
                     _wait_for_server(process, client)
                     _assert_smoke_routes(client)
-                    _shutdown_cleanly(process, client)
+                    _shutdown_cleanly(process, client, target)
                 except Exception as exc:
                     if process.poll() is None:
                         process.terminate()

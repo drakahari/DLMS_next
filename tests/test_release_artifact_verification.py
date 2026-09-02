@@ -200,7 +200,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         process = mock.Mock()
         process.returncode = 0
         with mock.patch.object(VERIFIER, "_request", return_value=(200, b'{"status":"ok"}')) as request:
-            VERIFIER._shutdown_cleanly(process, client)
+            VERIFIER._shutdown_cleanly(process, client, "linux-x86_64")
 
         request.assert_called_once_with(
             "/api/shutdown",
@@ -221,8 +221,29 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         process = mock.Mock()
         with mock.patch.object(VERIFIER, "_request", return_value=(400, b'{"error":"missing token"}')):
             with self.assertRaisesRegex(RuntimeError, "Shutdown DLMS returned HTTP 400"):
-                VERIFIER._shutdown_cleanly(process, client)
+                VERIFIER._shutdown_cleanly(process, client, "windows-x86_64")
         process.wait.assert_not_called()
+
+    def test_windows_sigint_exit_two_is_accepted_only_after_successful_shutdown(self):
+        client = mock.Mock()
+        client.csrf_token.return_value = "session-bound-token"
+        process = mock.Mock()
+        process.returncode = 2
+        with mock.patch.object(VERIFIER, "_request", return_value=(200, b'{"status":"ok"}')):
+            VERIFIER._shutdown_cleanly(process, client, "windows-x86_64")
+
+        self.assertEqual(VERIFIER._clean_shutdown_returncodes("windows-x86_64"), {0, 2})
+        self.assertNotIn(2, VERIFIER._clean_shutdown_returncodes("linux-x86_64"))
+        self.assertNotIn(1, VERIFIER._clean_shutdown_returncodes("windows-x86_64"))
+
+    def test_unexpected_windows_exit_after_shutdown_remains_a_failure(self):
+        client = mock.Mock()
+        client.csrf_token.return_value = "session-bound-token"
+        process = mock.Mock()
+        process.returncode = 1
+        with mock.patch.object(VERIFIER, "_request", return_value=(200, b'{"status":"ok"}')):
+            with self.assertRaisesRegex(RuntimeError, "exit code 1"):
+                VERIFIER._shutdown_cleanly(process, client, "windows-x86_64")
 
 
 if __name__ == "__main__":
