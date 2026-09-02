@@ -167,7 +167,7 @@ function updateSummary(summary, total) {
 function renderAttempts() {
     const box = document.getElementById("dbHistoryBox");
 
-    if (!dbAttempts.length) {
+    if (!dbAttempts.length && historyOriginFilter === "all") {
         box.innerHTML = `
             <div class="history-table-empty">
                 <div class="history-table-empty-icon">↶</div>

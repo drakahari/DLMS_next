@@ -201,6 +201,29 @@ class HistoryApiPaginationTests(unittest.TestCase):
         with open(os.path.join(root, "static", "review.html"), encoding="utf-8") as f:
             self.assertIn("/api/attempts/${encodeURIComponent(attemptId)}", f.read())
 
+    def test_history_empty_states_distinguish_unfiltered_and_empty_origin_filters(self):
+        root = os.path.dirname(os.path.dirname(__file__))
+        history_path = os.path.join(root, "static", "history.html")
+        with open(history_path, encoding="utf-8") as f:
+            source = f.read()
+
+        # With no attempts, the unfiltered response remains empty and the UI
+        # presents the first-run guidance.
+        self.assertEqual(self.client.get("/api/attempts?origin=all").get_json()["total"], 0)
+        self.assertIn('if (!dbAttempts.length && historyOriginFilter === "all")', source)
+        self.assertIn("No saved attempts yet", source)
+
+        # A saved IT attempt must not make an empty Medical filter claim that
+        # no attempts have ever been saved.
+        it_quiz_id = self._quiz("IT attempt", "it")
+        self._attempts(it_quiz_id, 1, "it")
+        self.assertEqual(self.client.get("/api/attempts?origin=medical").get_json()["total"], 0)
+        self.assertIn(
+            'if (!dbAttempts.length) {\n'
+            '        box.innerHTML = `<div class="history-table-empty"><div class="history-table-empty-icon">↶</div><h2>No attempts in this category</h2>',
+            source,
+        )
+
     def test_history_renders_hostile_attempt_text_with_safe_dom_properties(self):
         hostile_title = '<img src=x onerror="window.historyXssExecuted=true">'
         quiz_id = self._quiz(hostile_title)
