@@ -10431,11 +10431,11 @@ body[data-theme="light"] .dashboard-nav-submenu,
     font-size: 12.5px;
 }
 
-/* Keep an open parent visibly contextual, while the selected child carries
-   the strongest selected-page treatment. */
-.dashboard-nav-normalized .dashboard-nav-group:has(.dashboard-nav-subitem.active) > .dashboard-nav-item.active {
-    background: color-mix(in srgb, var(--theme-accent,#1b9ff2) 13%, var(--theme-surface,transparent));
-    border-color: color-mix(in srgb, var(--theme-accent,#1b9ff2) 38%, transparent);
+/* An open parent is context, not a second selected destination. The child
+   page keeps the only filled active treatment. */
+.dashboard-nav-normalized .dashboard-nav-item.nav-context {
+    background: transparent;
+    border-color: transparent;
     box-shadow: none;
 }
 
@@ -10444,17 +10444,6 @@ body[data-theme="light"] .dashboard-nav-submenu,
     background: color-mix(in srgb, var(--theme-accent,#1b9ff2) 22%, var(--theme-surface,transparent)) !important;
     border-color: color-mix(in srgb, var(--theme-accent,#1b9ff2) 52%, transparent) !important;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent,#1b9ff2) 12%, transparent);
-}
-
-.dashboard-nav-normalized .dashboard-nav-subitem.active::before {
-    content: "";
-    position: absolute;
-    top: 7px;
-    bottom: 7px;
-    left: -14px;
-    width: 2px;
-    border-radius: 2px;
-    background: var(--theme-accent,#1b9ff2);
 }
 
 .dashboard-theme-quick {

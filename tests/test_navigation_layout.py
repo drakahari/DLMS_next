@@ -108,6 +108,7 @@ class NavigationLayoutTests(unittest.TestCase):
     def test_sidebar_scanability_keeps_ordered_destinations_and_marks_nested_context(self):
         source = self._static("nav-normalize.js")
         css = self._static("style.css")
+        learning_page = self._static("learning-intelligence.html")
 
         self.assertIn("primarySection('Study')", source)
         self.assertIn("primarySection('Progress & tools')", source)
@@ -115,11 +116,47 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertLess(source.index("primarySection('Progress & tools')"), source.index("item('history'"))
         self.assertIn("const isActiveParent", source)
         self.assertIn("const current = active && !isActiveParent(key)", source)
+        self.assertIn("const context = active && isActiveParent(key)", source)
         self.assertIn("key === 'anki' && ankiOpen && path !== '/anki'", source)
         self.assertIn("dashboard-nav-primary-section-label", css)
-        self.assertIn("dashboard-nav-group:has(.dashboard-nav-subitem.active)", css)
-        self.assertIn("dashboard-nav-subitem.active::before", css)
+        self.assertIn("dashboard-nav-item.nav-context", css)
+        self.assertNotIn("dashboard-nav-subitem.active::before", css)
         self.assertIn("var(--theme-accent", css)
+        for page in ("learning-intelligence.html", "learning-profile.html", "review-schedule.html", "learning-diagnostics.html"):
+            with self.subTest(page=page):
+                self.assertIn('data-navigation-seed="canonical"', self._static(page))
+        self.assertIn('class="dashboard-nav-item active nav-context" data-nav-key="learning"', learning_page)
+        self.assertIn('class="dashboard-nav-subitem active" href="/learning-intelligence" aria-current="page"', learning_page)
+
+    def test_learning_intelligence_expansion_model_keeps_the_current_section_open_without_reloading_its_landing_page(self):
+        source = self._static("nav-normalize.js")
+
+        self.assertIn("const learningOpen = isActive('learning')", source)
+        self.assertIn("path !== '/anki'", source)
+        self.assertIn('data-navigation-seed="canonical"', self._static("learning-intelligence.html"))
+        self.assertIn("const canonicalSeed = sidebar.querySelector", source)
+        self.assertIn("if (canonicalSeed)", source)
+        self.assertIn("path !== '/learning-intelligence'", source)
+        self.assertIn("event.preventDefault()", source)
+
+    def test_learning_intelligence_seed_pages_have_one_current_child_and_a_context_only_parent(self):
+        expected_child_pages = {
+            "learning-intelligence.html": "/learning-intelligence",
+            "learning-profile.html": "/learning-profile",
+            "review-schedule.html": "/review-schedule",
+            "learning-diagnostics.html": "/learning-diagnostics",
+        }
+
+        for filename, current_href in expected_child_pages.items():
+            with self.subTest(filename=filename):
+                page = self._static(filename)
+                self.assertIn('class="dashboard-nav-item active nav-context" data-nav-key="learning"', page)
+                self.assertNotIn('data-nav-key="learning" href="/learning-intelligence" aria-current="page"', page)
+                self.assertEqual(1, page.count('aria-current="page"'))
+                self.assertIn(
+                    f'class="dashboard-nav-subitem active" href="{current_href}" aria-current="page"',
+                    page,
+                )
 
     def test_navigation_configuration_reconciles_visibility_without_a_second_mount(self):
         source = self._static("nav-normalize.js")

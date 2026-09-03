@@ -78,7 +78,8 @@
   const item = (key, href, icon, label) => {
     const active = isActive(key);
     const current = active && !isActiveParent(key);
-    return `<a class="dashboard-nav-item${active ? ' active' : ''}" data-nav-key="${key}" href="${href}"${current ? ' aria-current="page"' : ''}><span class="dashboard-nav-icon">${icon}</span><span>${label}</span></a>`;
+    const context = active && isActiveParent(key);
+    return `<a class="dashboard-nav-item${active ? ' active' : ''}${context ? ' nav-context' : ''}" data-nav-key="${key}" href="${href}"${current ? ' aria-current="page"' : ''}><span class="dashboard-nav-icon">${icon}</span><span>${label}</span></a>`;
   };
   const sub = (href, icon, label, active=false) => `<a class="dashboard-nav-subitem${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="dashboard-nav-subicon">${icon}</span><span>${label}</span></a>`;
   const primarySection = (label) => `<div class="dashboard-nav-section-label dashboard-nav-primary-section-label"><span>${label}</span></div>`;
@@ -117,6 +118,15 @@
   };
 
   const mountNavigation = (studyAreaVisibility) => {
+    // Learning Intelligence pages ship with this exact canonical sidebar
+    // because their content is otherwise ready to paint before this shared
+    // script can replace the one-link template seed. Keep that stable DOM.
+    const canonicalSeed = sidebar.querySelector(':scope > .dashboard-nav-normalized[data-navigation-seed="canonical"]');
+    if (canonicalSeed) {
+      applyStudyAreaVisibility(studyAreaVisibility);
+      return;
+    }
+
     const primary = document.createElement('nav');
     primary.className = 'dashboard-nav dashboard-nav-normalized';
     primary.setAttribute('aria-label', 'Primary navigation');
@@ -169,6 +179,16 @@
 
   document.querySelector('[data-settings-menu]')?.addEventListener('click', () => {
     sidebar.classList.toggle('open');
+  });
+
+  // The Learning Intelligence parent and Topic Intelligence lead to the
+  // same landing page. Once already there, do not reload the page merely for
+  // a repeated parent click; the section stays expanded while it is current.
+  sidebar.addEventListener('click', event => {
+    const learningParent = event.target.closest('.dashboard-nav-item[data-nav-key="learning"]');
+    if (!learningParent || path !== '/learning-intelligence' || event.defaultPrevented) return;
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
   });
 
   // Quick theme chooser. Settings > Appearance remains the authoritative
