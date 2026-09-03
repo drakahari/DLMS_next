@@ -25,6 +25,8 @@ let studyAIConfig = null;
 let studyAIConfigRequest = null;
 let pendingExamAttempt = null;
 let examAttemptSaveInProgress = false;
+let studyLearningEventSequence = 0;
+const studyLearningEventSaves = new Map();
 
 function loadStudyAIConfig() {
     if (studyAIConfigRequest) return studyAIConfigRequest;
@@ -53,20 +55,151 @@ function createLearningSessionId() {
     return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `study-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function recordStudyLearningEvent(q, wasCorrect, selected) {
+function createStudyLearningEventId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    studyLearningEventSequence += 1;
+    return `${learningSessionId || "study"}-${Date.now()}-${studyLearningEventSequence}-${Math.random().toString(16).slice(2)}`;
+}
+
+function ensureStudyLearningEventStatus() {
+    let status = document.getElementById("studyLearningEventStatus");
+    if (status) return status;
+
+    const choices = document.getElementById("choices");
+    if (!choices) return null;
+
+    status = document.createElement("div");
+    status.id = "studyLearningEventStatus";
+    status.className = "study-learning-save-status";
+    status.hidden = true;
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
+    const message = document.createElement("span");
+    message.className = "study-learning-save-message";
+    status.appendChild(message);
+
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "study-learning-save-retry";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", () => {
+        void retryStudyLearningEventSaves();
+    });
+    status.appendChild(retry);
+
+    choices.insertAdjacentElement("afterend", status);
+    return status;
+}
+
+function updateStudyLearningEventStatus() {
+    const failed = Array.from(studyLearningEventSaves.values())
+        .filter(record => record.state === "failed");
+    const retrying = Array.from(studyLearningEventSaves.values())
+        .some(record => record.retrying === true);
+    const status = document.getElementById("studyLearningEventStatus")
+        || ((failed.length || retrying) ? ensureStudyLearningEventStatus() : null);
+    if (!status) return;
+
+    const message = status.querySelector(".study-learning-save-message");
+    const retry = status.querySelector(".study-learning-save-retry");
+    if (!failed.length && !retrying) {
+        status.hidden = true;
+        return;
+    }
+
+    status.hidden = false;
+    status.classList.toggle("is-retrying", retrying && !failed.length);
+    if (message) {
+        message.textContent = retrying && !failed.length
+            ? "Retrying learning progress save…"
+            : "Learning progress was not saved.";
+    }
+    if (retry) {
+        retry.hidden = failed.length === 0;
+        retry.disabled = retrying;
+    }
+}
+
+async function saveStudyLearningEvent(record, retrying = false) {
+    const current = studyLearningEventSaves.get(record.questionKey);
+    if (!current || current.eventId !== record.eventId) return false;
+
+    record.state = "saving";
+    record.retrying = retrying;
+    updateStudyLearningEventStatus();
+    try {
+        const response = await fetch("/api/learning-events/study-response", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(record.payload)
+        });
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (_error) {
+            data = null;
+        }
+        if (
+            !response.ok
+            || !data
+            || data.ok !== true
+            || String(data.event_id || "") !== record.eventId
+        ) {
+            throw new Error(`Learning event acknowledgement failed (HTTP ${response.status})`);
+        }
+
+        const latest = studyLearningEventSaves.get(record.questionKey);
+        if (latest && latest.eventId === record.eventId) {
+            studyLearningEventSaves.delete(record.questionKey);
+            updateStudyLearningEventStatus();
+        }
+        return true;
+    } catch (error) {
+        const latest = studyLearningEventSaves.get(record.questionKey);
+        if (latest && latest.eventId === record.eventId) {
+            record.state = "failed";
+            record.retrying = false;
+            updateStudyLearningEventStatus();
+        }
+        console.warn("Learning event save failed (quiz remains usable):", error);
+        return false;
+    }
+}
+
+async function retryStudyLearningEventSaves() {
+    const failed = Array.from(studyLearningEventSaves.values())
+        .filter(record => record.state === "failed");
+    if (!failed.length) return;
+
+    failed.forEach(record => {
+        record.retrying = true;
+    });
+    updateStudyLearningEventStatus();
+    await Promise.all(failed.map(record => saveStudyLearningEvent(record, true)));
+}
+
+async function recordStudyLearningEvent(q, wasCorrect, selected) {
     if (examMode || !q || !window.QUIZ_ID) return;
-    fetch("/api/learning-events/study-response", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            quizId: window.QUIZ_ID,
-            questionOrdinal: index + 1,
-            questionType: q.type || "choice",
-            sessionId: learningSessionId,
-            wasCorrect: wasCorrect,
-            selected: selected
-        })
-    }).catch(err => console.warn("Learning event save failed (quiz remains usable):", err));
+    const eventId = createStudyLearningEventId();
+    const payload = {
+        quizId: window.QUIZ_ID,
+        questionOrdinal: index + 1,
+        questionType: q.type || "choice",
+        eventId: eventId,
+        sessionId: learningSessionId,
+        wasCorrect: wasCorrect,
+        selected: selected
+    };
+    const record = {
+        eventId: eventId,
+        questionKey: `${learningSessionId || "study"}:${payload.questionOrdinal}`,
+        payload: payload,
+        state: "saving",
+        retrying: false
+    };
+    studyLearningEventSaves.set(record.questionKey, record);
+    await saveStudyLearningEvent(record);
 }
 
 
@@ -436,7 +569,7 @@ function selectHotspot(event) {
 
     userAnswers[`q${index}`] = {x, y};
     if (!examMode) {
-        recordStudyLearningEvent(q, pointInHotspot(x, y, q.target), {x, y});
+        void recordStudyLearningEvent(q, pointInHotspot(x, y, q.target), {x, y});
     }
     renderQuestion();
 }
@@ -555,7 +688,7 @@ function commitMatchingAnswer(leftIndex, rightIndex) {
         const pairs = Array.isArray(q.pairs) ? q.pairs : [];
         const complete = pairs.length >= 2 && pairs.every((_, pairIndex) => answers[pairIndex] !== undefined);
         const correct = complete ? pairs.every((_, pairIndex) => Number(answers[pairIndex]) === pairIndex) : null;
-        recordStudyLearningEvent(q, correct, answers);
+        void recordStudyLearningEvent(q, correct, answers);
     }
     renderQuestion();
 }
@@ -694,7 +827,7 @@ function selectChoice(i) {
 
         userAnswers[key] = arr;
         const state = choiceStudyState(q, arr);
-        recordStudyLearningEvent(q, state.isCorrect, arr.map(idx => String.fromCharCode(65 + idx)));
+        void recordStudyLearningEvent(q, state.isCorrect, arr.map(idx => String.fromCharCode(65 + idx)));
         renderQuestion();
         return;
     }
@@ -1037,6 +1170,9 @@ function startQuiz(isExam) {
     matchingPendingRightIndex = null;
     studyAnkiSelections.clear();
     learningSessionId = createLearningSessionId();
+    studyLearningEventSequence = 0;
+    studyLearningEventSaves.clear();
+    updateStudyLearningEventStatus();
 
     if (examMode) {
         examStartTime = new Date().toISOString();

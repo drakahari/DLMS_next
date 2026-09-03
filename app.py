@@ -22548,6 +22548,7 @@ def record_study_learning_event():
             minimum=1,
             allow_numeric_string=True,
         )
+        event_id = _optional_learning_identifier(data.get("eventId"), "eventId")
         session_id = _optional_learning_identifier(data.get("sessionId"), "sessionId")
         row = _question_response_context_by_ordinal(cur, quiz_id, question_ordinal)
         if not row:
@@ -22564,22 +22565,77 @@ def record_study_learning_event():
             field="study response",
             attempt_question_number=question_ordinal,
         )
+        event_response = {
+            "question_number": question_ordinal,
+            "question_type": detail["questionType"],
+            "selected": detail["selected"],
+        }
+        if event_id:
+            # The packaged application uses one SQLite database, but Flask may
+            # service overlapping requests on different connections.  Acquire
+            # the write reservation before checking the idempotency key so two
+            # concurrent copies cannot both observe a missing event and insert.
+            conn.execute("BEGIN IMMEDIATE")
+            existing = cur.execute(
+                """
+                SELECT quiz_id, question_id, session_id, mode,
+                       was_correct, response_json
+                FROM learning_events
+                WHERE event_type = 'study_answer' AND attempt_id = ?
+                ORDER BY id
+                """,
+                (event_id,),
+            ).fetchall()
+            if existing:
+                expected_correctness = (
+                    None if detail["wasCorrect"] is None
+                    else (1 if detail["wasCorrect"] else 0)
+                )
+                try:
+                    durable_response = json.loads(existing[0]["response_json"] or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    durable_response = None
+                exact_retry = (
+                    len(existing) == 1
+                    and existing[0]["quiz_id"] == quiz_id
+                    and existing[0]["question_id"] == row["id"]
+                    and existing[0]["session_id"] == session_id
+                    and existing[0]["mode"] == "Study"
+                    and existing[0]["was_correct"] == expected_correctness
+                    and durable_response == event_response
+                )
+                if not exact_retry:
+                    raise LearningPayloadError(
+                        "eventId already identifies a different learning event"
+                    )
+                conn.commit()
+                return jsonify({
+                    "ok": True,
+                    "event_id": event_id,
+                    "already_recorded": True,
+                }), 200
         _record_learning_event(
             cur,
             event_type="study_answer",
             quiz_id=quiz_id,
             question_id=row["id"],
+            # Study responses have no completed attempt. Reuse this nullable,
+            # indexed identity field for the client event key; Study analytics
+            # continue to group evidence by session and question.
+            attempt_id=event_id,
             session_id=session_id,
             mode="Study",
             was_correct=detail["wasCorrect"],
-            response={
-                "question_number": question_ordinal,
-                "question_type": detail["questionType"],
-                "selected": detail["selected"],
-            },
+            response=event_response,
         )
         conn.commit()
-        return jsonify({"ok": True}), 200
+        acknowledgement = {"ok": True}
+        if event_id:
+            acknowledgement.update({
+                "event_id": event_id,
+                "already_recorded": False,
+            })
+        return jsonify(acknowledgement), 200
     except LearningPayloadError as exc:
         conn.rollback()
         return jsonify({"error": str(exc)}), 400

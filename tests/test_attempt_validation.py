@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests._isolation import ensure_test_data_isolation
 
@@ -33,7 +34,8 @@ class AttemptValidationTests(unittest.TestCase):
         conn = dlms.get_db()
         for table in (
             "missed_questions", "attempt_answers", "learning_events", "attempts",
-            "matching_pairs", "choices", "question_concepts", "questions", "quizzes",
+            "matching_pairs", "choices", "question_concepts", "concepts",
+            "questions", "quizzes",
         ):
             conn.execute(f"DELETE FROM {table}")
         conn.execute(
@@ -473,6 +475,274 @@ class AttemptValidationTests(unittest.TestCase):
         self.assertEqual(1, len(rows))
         self.assertEqual(("Study", 0), (rows[0]["mode"], rows[0]["was_correct"]))
         self.assertIn('"selected": ["B"]', rows[0]["response_json"])
+
+    def test_study_event_exact_retry_is_idempotent_and_reaches_learning_intelligence(self):
+        conn = dlms.get_db()
+        try:
+            dlms._set_question_concepts(conn.cursor(), self.choice_id, ["DLMS-095"])
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = {
+            "quizId": self.quiz_id,
+            "questionOrdinal": 1,
+            "questionType": "choice",
+            "eventId": "study-event-idempotent",
+            "sessionId": "study-session-idempotent",
+            "wasCorrect": False,
+            "selected": ["B"],
+        }
+        first = self.client.post(
+            "/api/learning-events/study-response", json=payload, headers=self.headers
+        )
+        retry = self.client.post(
+            "/api/learning-events/study-response", json=payload, headers=self.headers
+        )
+
+        self.assertEqual(200, first.status_code, first.get_data(as_text=True))
+        self.assertEqual(
+            {
+                "ok": True,
+                "event_id": "study-event-idempotent",
+                "already_recorded": False,
+            },
+            first.get_json(),
+        )
+        self.assertEqual(200, retry.status_code, retry.get_data(as_text=True))
+        self.assertTrue(retry.get_json()["already_recorded"])
+
+        conn = dlms.get_db()
+        try:
+            durable_count = conn.execute(
+                """
+                SELECT COUNT(*) FROM learning_events
+                WHERE event_type = 'study_answer' AND attempt_id = ?
+                """,
+                (payload["eventId"],),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(1, durable_count)
+
+        intelligence = self.client.get("/api/learning-intelligence/topics")
+        self.assertEqual(200, intelligence.status_code)
+        topic = next(
+            item for item in intelligence.get_json()["topics"]
+            if item["name"] == "DLMS-095"
+        )
+        self.assertEqual(1, topic["evidence"])
+        self.assertEqual(0, topic["correct"])
+
+    def test_study_event_id_is_validated_before_any_write(self):
+        base = {
+            "quizId": self.quiz_id,
+            "questionOrdinal": 1,
+            "questionType": "choice",
+            "sessionId": "study-session-invalid-event-id",
+            "wasCorrect": True,
+            "selected": ["A"],
+        }
+        for event_id in ("", 42, "x" * 129):
+            with self.subTest(event_id=event_id):
+                response = self.client.post(
+                    "/api/learning-events/study-response",
+                    json=dict(base, eventId=event_id),
+                    headers=self.headers,
+                )
+                self.assertEqual(400, response.status_code, response.get_data(as_text=True))
+
+        conn = dlms.get_db()
+        try:
+            self.assertEqual(
+                0,
+                conn.execute(
+                    """
+                    SELECT COUNT(*) FROM learning_events
+                    WHERE session_id = ?
+                    """,
+                    (base["sessionId"],),
+                ).fetchone()[0],
+            )
+        finally:
+            conn.close()
+
+    def test_study_event_conflicting_retry_is_rejected_without_duplicate(self):
+        event_id = "study-event-conflict"
+        original = {
+            "quizId": self.quiz_id,
+            "questionOrdinal": 1,
+            "questionType": "choice",
+            "eventId": event_id,
+            "sessionId": "study-session-conflict",
+            "wasCorrect": False,
+            "selected": ["B"],
+        }
+        first = self.client.post(
+            "/api/learning-events/study-response", json=original, headers=self.headers
+        )
+        self.assertEqual(200, first.status_code, first.get_data(as_text=True))
+
+        conflicting = dict(original, wasCorrect=True, selected=["A"])
+        rejected = self.client.post(
+            "/api/learning-events/study-response", json=conflicting, headers=self.headers
+        )
+        self.assertEqual(400, rejected.status_code, rejected.get_data(as_text=True))
+        self.assertIn("different learning event", rejected.get_json()["error"])
+
+        conn = dlms.get_db()
+        try:
+            rows = conn.execute(
+                """
+                SELECT was_correct, response_json FROM learning_events
+                WHERE event_type = 'study_answer' AND attempt_id = ?
+                """,
+                (event_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(1, len(rows))
+        self.assertEqual(0, rows[0]["was_correct"])
+        self.assertIn('"selected": ["B"]', rows[0]["response_json"])
+
+    def test_study_event_repeated_write_failure_can_retry_successfully(self):
+        payload = {
+            "quizId": self.quiz_id,
+            "questionOrdinal": 1,
+            "questionType": "choice",
+            "eventId": "study-event-write-retry",
+            "sessionId": "study-session-write-retry",
+            "wasCorrect": True,
+            "selected": ["A"],
+        }
+        with mock.patch.object(
+            dlms, "_record_learning_event", side_effect=OSError("simulated disk failure")
+        ):
+            for _ in range(2):
+                failed = self.client.post(
+                    "/api/learning-events/study-response",
+                    json=payload,
+                    headers=self.headers,
+                )
+                self.assertEqual(500, failed.status_code, failed.get_data(as_text=True))
+                self.assertFalse(failed.get_json().get("ok", False))
+
+        conn = dlms.get_db()
+        try:
+            self.assertEqual(
+                0,
+                conn.execute(
+                    "SELECT COUNT(*) FROM learning_events WHERE attempt_id = ?",
+                    (payload["eventId"],),
+                ).fetchone()[0],
+            )
+        finally:
+            conn.close()
+
+        saved = self.client.post(
+            "/api/learning-events/study-response", json=payload, headers=self.headers
+        )
+        self.assertEqual(200, saved.status_code, saved.get_data(as_text=True))
+        self.assertEqual(payload["eventId"], saved.get_json()["event_id"])
+
+        conn = dlms.get_db()
+        try:
+            self.assertEqual(
+                1,
+                conn.execute(
+                    "SELECT COUNT(*) FROM learning_events WHERE attempt_id = ?",
+                    (payload["eventId"],),
+                ).fetchone()[0],
+            )
+        finally:
+            conn.close()
+
+    def test_study_event_ids_cover_multi_select_matching_and_hotspot(self):
+        conn = dlms.get_db()
+        try:
+            conn.execute(
+                """
+                INSERT INTO questions(
+                    quiz_id, question_number, question_text, question_type
+                ) VALUES (?, 4, 'Multi-select question', 'choice')
+                """,
+                (self.quiz_id,),
+            )
+            multi_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.executemany(
+                """
+                INSERT INTO choices(question_id, label, text, is_correct)
+                VALUES (?, ?, ?, ?)
+                """,
+                [
+                    (multi_id, "A", "Correct A", 1),
+                    (multi_id, "B", "Incorrect", 0),
+                    (multi_id, "C", "Correct C", 1),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payloads = [
+            {
+                "quizId": self.quiz_id,
+                "questionOrdinal": 4,
+                "questionType": "choice",
+                "eventId": "study-event-multi",
+                "sessionId": "study-session-types",
+                "wasCorrect": True,
+                "selected": ["A", "C"],
+            },
+            {
+                "quizId": self.quiz_id,
+                "questionOrdinal": 2,
+                "questionType": "matching",
+                "eventId": "study-event-matching",
+                "sessionId": "study-session-types",
+                "wasCorrect": True,
+                "selected": {"0": 0, "1": 1},
+            },
+            {
+                "quizId": self.quiz_id,
+                "questionOrdinal": 3,
+                "questionType": "hotspot",
+                "eventId": "study-event-hotspot",
+                "sessionId": "study-session-types",
+                "wasCorrect": False,
+                "selected": {"x": 0.1, "y": 0.2},
+            },
+        ]
+        for payload in payloads:
+            with self.subTest(question_type=payload["questionType"]):
+                response = self.client.post(
+                    "/api/learning-events/study-response",
+                    json=payload,
+                    headers=self.headers,
+                )
+                self.assertEqual(200, response.status_code, response.get_data(as_text=True))
+                self.assertEqual(payload["eventId"], response.get_json()["event_id"])
+
+        conn = dlms.get_db()
+        try:
+            rows = conn.execute(
+                """
+                SELECT attempt_id, question_id FROM learning_events
+                WHERE event_type = 'study_answer' AND session_id = ?
+                ORDER BY id
+                """,
+                ("study-session-types",),
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(
+            [
+                ("study-event-multi", multi_id),
+                ("study-event-matching", self.matching_id),
+                ("study-event-hotspot", self.hotspot_id),
+            ],
+            [tuple(row) for row in rows],
+        )
 
     def test_study_response_resolves_duplicate_source_number_by_runtime_ordinal(self):
         conn = dlms.get_db()
