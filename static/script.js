@@ -23,6 +23,8 @@ let examStartedAt = null;
 let learningSessionId = null;
 let studyAIConfig = null;
 let studyAIConfigRequest = null;
+let pendingExamAttempt = null;
+let examAttemptSaveInProgress = false;
 
 function loadStudyAIConfig() {
     if (studyAIConfigRequest) return studyAIConfigRequest;
@@ -58,7 +60,7 @@ function recordStudyLearningEvent(q, wasCorrect, selected) {
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
             quizId: window.QUIZ_ID,
-            questionNumber: q.number || (index + 1),
+            questionOrdinal: index + 1,
             questionType: q.type || "choice",
             sessionId: learningSessionId,
             wasCorrect: wasCorrect,
@@ -1170,17 +1172,112 @@ function stopExamTimer() {
     }
 }
 
+function renderExamResult(pending, state) {
+    const quizDiv = document.getElementById("quiz");
+    const resultDiv = document.getElementById("result");
+    if (quizDiv) quizDiv.classList.add("hidden");
+    if (!resultDiv) return;
+
+    const saved = state === "saved";
+    const saving = state === "saving";
+    const reviewAttempt = encodeURIComponent(String(pending.attemptId));
+    const persistenceStatus = saved
+        ? `<p role="status">Your attempt was saved successfully.</p>`
+        : saving
+            ? `<p role="status">Saving your attempt…</p>`
+            : `<p role="alert">Your score was calculated, but this attempt was not saved. Retry before leaving this page if you want it in History, Analytics, Learning Intelligence, and Review.</p>`;
+    const persistenceAction = saved
+        ? `<button onclick="location.href='/history?attempt=${reviewAttempt}'">
+                📌 Review This Attempt
+            </button>`
+        : saving
+            ? `<button disabled aria-disabled="true">Saving Attempt…</button>`
+            : `<button onclick="retryExamAttemptSave()">Retry Saving Attempt</button>`;
+
+    resultDiv.classList.remove("hidden");
+    resultDiv.style.display = "block";
+    resultDiv.innerHTML = `
+        <h2>Exam Results</h2>
+        <p><b>Score:</b> ${pending.score} / ${pending.total} (${pending.percent}%)</p>
+        ${persistenceStatus}
+        ${persistenceAction}
+
+        <button onclick="location.href='/history'">
+            📜 View Full History
+        </button>
+
+        <button onclick="location.reload()">
+            🔁 Retake Exam
+        </button>
+
+        <button onclick="location.href='/'">
+            🏠 Return to Dashboard
+        </button>
+    `;
+}
+
+async function savePendingExamAttempt() {
+    const pending = pendingExamAttempt;
+    if (!pending || examAttemptSaveInProgress) return;
+
+    examAttemptSaveInProgress = true;
+    renderExamResult(pending, "saving");
+    try {
+        const response = await fetch("/record_attempt", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(pending.payload)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (
+            !response.ok ||
+            data.ok !== true ||
+            String(data.attempt_id || "") !== String(pending.attemptId)
+        ) {
+            throw new Error(data.error || `Attempt save failed (HTTP ${response.status})`);
+        }
+
+        try {
+            saveHistory(
+                pending.percent,
+                pending.score,
+                pending.total,
+                pending.missed,
+                pending.attemptId
+            );
+        } catch (historyError) {
+            console.warn("Local history mirror could not be updated:", historyError);
+        }
+        pendingExamAttempt = null;
+        renderExamResult(pending, "saved");
+        console.log("RESULT UI RENDERED. Attempt ID:", pending.attemptId);
+    } catch (error) {
+        console.error("Attempt persistence failed:", error);
+        renderExamResult(pending, "failed");
+    } finally {
+        examAttemptSaveInProgress = false;
+    }
+}
+
+function retryExamAttemptSave() {
+    void savePendingExamAttempt();
+}
+
 /* =====================================================
    SUBMIT — EXAM ONLY
 ===================================================== */
 /* =====================================================
    SUBMIT — EXAM ONLY
 ===================================================== */
-function submitQuiz(force = false) {
+async function submitQuiz(force = false) {
 
     // Do nothing in Study Mode
     if (!examMode) {
         console.log("submitQuiz called but examMode = false; ignoring.");
+        return;
+    }
+
+    if (pendingExamAttempt || examAttemptSaveInProgress) {
         return;
     }
 
@@ -1225,7 +1322,7 @@ function submitQuiz(force = false) {
                     pointInHotspot(Number(point.x), Number(point.y), q.target);
 
                 answerDetails.push({
-                    attemptQuestionNumber: q.number || (i + 1),
+                    attemptQuestionNumber: i + 1,
                     questionType: "hotspot",
                     wasCorrect: !!isCorrect,
                     selected: point ? {x: Number(point.x), y: Number(point.y)} : null
@@ -1265,7 +1362,7 @@ function submitQuiz(force = false) {
                 const matchAns = (ans && typeof ans === "object" && !Array.isArray(ans)) ? ans : {};
                 const isCorrect = pairs.length >= 2 && pairs.every((pair, pairIndex) => Number(matchAns[pairIndex]) === pairIndex);
                 answerDetails.push({
-                    attemptQuestionNumber: q.number || (i + 1),
+                    attemptQuestionNumber: i + 1,
                     questionType: "matching",
                     wasCorrect: !!isCorrect,
                     selected: matchAns
@@ -1314,7 +1411,7 @@ function submitQuiz(force = false) {
                 ans.every((v, idx) => v === correctIndexes[idx]);
 
             answerDetails.push({
-                attemptQuestionNumber: q.number || (i + 1),
+                attemptQuestionNumber: i + 1,
                 questionType: "choice",
                 wasCorrect: !!isCorrect,
                 selected: ans.map(idx => String.fromCharCode(65 + idx))
@@ -1382,18 +1479,7 @@ function submitQuiz(force = false) {
         ? crypto.randomUUID()
         : String(Date.now());
 
-    // Save history for dashboard/history.html
-    saveHistory(percent, correct, total, missed, attemptId);
-
-
-    // =========================
-    // ALSO SAVE TO SERVER DB
-    // (safe: if it fails nothing breaks)
-    // =========================
-    fetch("/record_attempt", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    const attemptPayload = {
             quizTitle: window.quiz_title || QUIZ_FILE || "Unknown Quiz",
             quizId: window.QUIZ_ID,
 
@@ -1410,50 +1496,16 @@ function submitQuiz(force = false) {
             responseDetails: answerDetails,
 
             missedDetails: missed
-        })
-
-    })
-    .then(res => res.json().catch(() => ({})))
-    .then(data => console.log("DB save response:", data))
-    .catch(err => console.warn("DB save failed (but app is fine):", err));
-
-
-
-    // existing code continues normally after this
-    const quizDiv = document.getElementById("quiz");
-    const resultDiv = document.getElementById("result");
-
-
-    if (quizDiv) quizDiv.classList.add("hidden");
-
-    if (resultDiv) {
-        resultDiv.classList.remove("hidden");
-        resultDiv.style.display = "block";
-
-        resultDiv.innerHTML = `
-            <h2>Exam Results</h2>
-            <p><b>Score:</b> ${correct} / ${total} (${percent}%)</p>
-
-            <button onclick="location.href='/history?attempt=${attemptId}'">
-                📌 Review This Attempt
-            </button>
-
-            <button onclick="location.href='/history'">
-                📜 View Full History
-            </button>
-
-
-            <button onclick="location.reload()">
-                🔁 Retake Exam
-            </button>
-
-            <button onclick="location.href='/'">
-                🏠 Return to Dashboard
-            </button>
-        `;
-    }
-
-    console.log("RESULT UI RENDERED. Attempt ID:", attemptId);
+    };
+    pendingExamAttempt = {
+        attemptId: attemptId,
+        score: correct,
+        total: total,
+        percent: percent,
+        missed: missed,
+        payload: attemptPayload
+    };
+    await savePendingExamAttempt();
 }
 
 

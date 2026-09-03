@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS questions (
 
     quiz_id INTEGER NOT NULL,
 
-    -- Original question number from the source quiz
+    -- Canonical 1-based runtime ordinal. A differing positive source number is
+    -- retained as source_number metadata in media_json.
     question_number INTEGER NOT NULL,
 
     question_text TEXT NOT NULL,

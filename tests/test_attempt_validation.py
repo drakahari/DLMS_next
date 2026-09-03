@@ -292,6 +292,126 @@ class AttemptValidationTests(unittest.TestCase):
         self.assertEqual("Left 1 ↔ Right 2\nLeft 2 ↔ Right 1", missed["selected_text"])
         self.assertNotIn("attacker supplied", missed["correct_text"] + missed["selected_text"])
 
+    def test_nonsequential_stored_numbers_use_runtime_ordinals_end_to_end(self):
+        conn = dlms.get_db()
+        try:
+            conn.executemany(
+                "UPDATE questions SET question_number = ? WHERE id = ?",
+                [(10, self.choice_id), (20, self.matching_id), (30, self.hotspot_id)],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = self._payload("nonsequential-attempt")
+        payload["missedDetails"] = [{
+            "attemptQuestionNumber": 2,
+            "questionType": "matching",
+        }]
+        response = self._post_attempt(payload)
+        self.assertEqual(200, response.status_code, response.get_data(as_text=True))
+        self.assertEqual(
+            {"attempts": 1, "learning_events": 4, "missed_questions": 1},
+            self._attempt_write_counts("nonsequential-attempt"),
+        )
+
+        summary = self.client.get("/api/attempts/nonsequential-attempt")
+        self.assertEqual(200, summary.status_code, summary.get_data(as_text=True))
+        self.assertEqual("nonsequential-attempt", summary.get_json()["id"])
+        missed = self.client.get(
+            "/api/missed_questions?attempt=nonsequential-attempt"
+        )
+        self.assertEqual(200, missed.status_code, missed.get_data(as_text=True))
+        self.assertEqual(2, missed.get_json()[0]["attempt_question_number"])
+
+        conn = dlms.get_db()
+        try:
+            event_question_ids = [
+                row[0]
+                for row in conn.execute(
+                    """
+                    SELECT question_id FROM learning_events
+                    WHERE attempt_id = ? AND event_type = 'exam_answer'
+                    ORDER BY id
+                    """,
+                    ("nonsequential-attempt",),
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+        self.assertEqual(
+            [self.choice_id, self.matching_id, self.hotspot_id], event_question_ids
+        )
+
+    def test_duplicate_stored_numbers_remain_unambiguous_by_runtime_ordinal(self):
+        conn = dlms.get_db()
+        try:
+            conn.execute(
+                "UPDATE questions SET question_number = 1 WHERE id = ?",
+                (self.matching_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = self._payload("duplicate-number-attempt")
+        payload["missedDetails"] = [{
+            "attemptQuestionNumber": 2,
+            "questionType": "matching",
+        }]
+        response = self._post_attempt(payload)
+        self.assertEqual(200, response.status_code, response.get_data(as_text=True))
+
+        conn = dlms.get_db()
+        try:
+            event_question_ids = [
+                row[0]
+                for row in conn.execute(
+                    """
+                    SELECT question_id FROM learning_events
+                    WHERE attempt_id = ? AND event_type = 'exam_answer'
+                    ORDER BY id
+                    """,
+                    ("duplicate-number-attempt",),
+                ).fetchall()
+            ]
+            missed_number = conn.execute(
+                """
+                SELECT attempt_question_number FROM missed_questions
+                WHERE attempt_id = ?
+                """,
+                ("duplicate-number-attempt",),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(
+            [self.choice_id, self.matching_id, self.hotspot_id], event_question_ids
+        )
+        self.assertEqual(2, missed_number)
+
+    def test_exact_attempt_retry_is_idempotent_but_conflicting_retry_is_rejected(self):
+        payload = self._payload("retry-attempt")
+        payload["missedDetails"] = [{
+            "attemptQuestionNumber": 2,
+            "questionType": "matching",
+        }]
+        first = self._post_attempt(payload)
+        self.assertEqual(200, first.status_code, first.get_data(as_text=True))
+        before = self._attempt_write_counts("retry-attempt")
+
+        retry = self._post_attempt(payload)
+        self.assertEqual(200, retry.status_code, retry.get_data(as_text=True))
+        self.assertTrue(retry.get_json()["already_recorded"])
+        self.assertEqual(before, self._attempt_write_counts("retry-attempt"))
+
+        conflicting = self._payload("retry-attempt")
+        conflicting.update(score=0, percent=0)
+        conflicting["responseDetails"][0].update(selected=["B"], wasCorrect=False)
+        rejected = self._post_attempt(conflicting)
+        self.assertEqual(400, rejected.status_code, rejected.get_data(as_text=True))
+        self.assertIn("different attempt", rejected.get_json()["error"])
+        self.assertEqual(before, self._attempt_write_counts("retry-attempt"))
+
     def test_zero_full_and_study_mode_attempt_boundaries_remain_valid(self):
         zero = self._payload("valid-zero")
         zero.update(score=0, percent=0)
@@ -353,6 +473,43 @@ class AttemptValidationTests(unittest.TestCase):
         self.assertEqual(1, len(rows))
         self.assertEqual(("Study", 0), (rows[0]["mode"], rows[0]["was_correct"]))
         self.assertIn('"selected": ["B"]', rows[0]["response_json"])
+
+    def test_study_response_resolves_duplicate_source_number_by_runtime_ordinal(self):
+        conn = dlms.get_db()
+        try:
+            conn.execute(
+                "UPDATE questions SET question_number = 1 WHERE id = ?",
+                (self.matching_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        response = self.client.post(
+            "/api/learning-events/study-response",
+            json={
+                "quizId": self.quiz_id,
+                "questionOrdinal": 2,
+                "questionType": "matching",
+                "sessionId": "duplicate-study",
+                "wasCorrect": True,
+                "selected": {"0": 0, "1": 1},
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(200, response.status_code, response.get_data(as_text=True))
+        conn = dlms.get_db()
+        try:
+            row = conn.execute(
+                """
+                SELECT question_id, response_json FROM learning_events
+                WHERE session_id = 'duplicate-study'
+                """
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(self.matching_id, row["question_id"])
+        self.assertIn('"question_number": 2', row["response_json"])
 
     def test_incomplete_matching_study_response_preserves_unknown_correctness(self):
         response = self.client.post(

@@ -148,6 +148,11 @@ class AtomicQuizPublicationTests(unittest.TestCase):
         json_name = html_name.replace(".html", ".json")
         self.assertTrue((Path(dlms.DATA_FOLDER) / json_name).is_file())
         self.assertTrue((Path(dlms.QUIZ_FOLDER) / html_name).is_file())
+        runtime = json.loads(
+            (Path(dlms.DATA_FOLDER) / json_name).read_text(encoding="utf-8")
+        )
+        self.assertEqual([1, 2], [item["number"] for item in runtime])
+        self.assertTrue(all("source_number" not in item for item in runtime))
         self.assertEqual(quiz_id, dlms.load_registry()[0]["id"])
         self.assertEqual(35, dlms.load_registry()[0]["exam_minutes"])
         self.assertEqual(
@@ -166,6 +171,97 @@ class AtomicQuizPublicationTests(unittest.TestCase):
         self.assertEqual({"publication-choice", "publication-matching"}, concepts)
         staging = Path(dlms._quiz_publication_staging_root())
         self.assertFalse(staging.exists() and any(staging.iterdir()))
+
+    def test_nonsequential_source_numbers_publish_with_canonical_ordinals(self):
+        questions = [
+            {
+                "number": source_number,
+                "type": "choice",
+                "question": f"Source question {source_number}",
+                "choices": [
+                    {"label": "A", "text": "Correct", "is_correct": True},
+                    {"label": "B", "text": "Incorrect", "is_correct": False},
+                ],
+            }
+            for source_number in (10, 20, 30)
+        ]
+        original = json.loads(json.dumps(questions))
+
+        quiz_id, html_name = dlms._publish_quiz(
+            "Nonsequential", questions, filename_prefix="nonsequential"
+        )
+        runtime = json.loads(
+            (Path(dlms.DATA_FOLDER) / html_name.replace(".html", ".json")).read_text(
+                encoding="utf-8"
+            )
+        )
+        conn = dlms.get_db()
+        try:
+            rows = conn.execute(
+                """
+                SELECT question_number, media_json FROM questions
+                WHERE quiz_id = ? ORDER BY question_number, id
+                """,
+                (quiz_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        self.assertEqual(original, questions)
+        self.assertEqual([1, 2, 3], [item["number"] for item in runtime])
+        self.assertEqual([10, 20, 30], [item["source_number"] for item in runtime])
+        self.assertEqual([1, 2, 3], [row["question_number"] for row in rows])
+        self.assertEqual(
+            [10, 20, 30],
+            [json.loads(row["media_json"])["source_number"] for row in rows],
+        )
+
+    def test_ambiguous_or_invalid_source_numbers_do_not_discard_questions(self):
+        source_numbers = [1, 1, 0, None, -2]
+        questions = []
+        for index, source_number in enumerate(source_numbers, start=1):
+            question = {
+                "type": "choice",
+                "question": f"Question payload {index}",
+                "choices": [
+                    {"label": "A", "text": "Correct", "is_correct": True},
+                    {"label": "B", "text": "Incorrect", "is_correct": False},
+                ],
+            }
+            if source_number is not None:
+                question["number"] = source_number
+            questions.append(question)
+
+        quiz_id, html_name = dlms._publish_quiz(
+            "Ambiguous source numbers", questions, filename_prefix="ambiguous_numbers"
+        )
+        runtime = json.loads(
+            (Path(dlms.DATA_FOLDER) / html_name.replace(".html", ".json")).read_text(
+                encoding="utf-8"
+            )
+        )
+        conn = dlms.get_db()
+        try:
+            db_numbers = [
+                row[0]
+                for row in conn.execute(
+                    """
+                    SELECT question_number FROM questions
+                    WHERE quiz_id = ? ORDER BY question_number, id
+                    """,
+                    (quiz_id,),
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+
+        self.assertEqual(5, len(runtime))
+        self.assertEqual([1, 2, 3, 4, 5], [item["number"] for item in runtime])
+        self.assertEqual([1, 2, 3, 4, 5], db_numbers)
+        self.assertNotIn("source_number", runtime[0])
+        self.assertEqual(1, runtime[1]["source_number"])
+        for item in runtime[2:]:
+            self.assertNotIn("source_number", item)
 
     def _make_asset_pack(self):
         root = Path(dlms.CONTENT_PACK_FOLDER) / "DLMS_Study_atomic_assets"

@@ -1748,6 +1748,43 @@ def reconcile_quiz_publications():
     return report
 
 
+def _normalize_quiz_question_ordinals(runtime_questions, db_questions):
+    """Return publication copies with one deterministic 1-based identity.
+
+    Source documents may number questions from an arbitrary starting point or
+    repeat a number. Runtime attempts use list position, so publication owns a
+    canonical ordinal while retaining a meaningful positive source number as
+    metadata when it differs.
+    """
+    if len(runtime_questions) != len(db_questions):
+        raise ValueError("Runtime and database question lists must have the same length")
+
+    runtime_payload = copy.deepcopy(runtime_questions)
+    db_payload = (
+        runtime_payload
+        if db_questions is runtime_questions
+        else copy.deepcopy(db_questions)
+    )
+
+    for ordinal, (runtime_question, db_question) in enumerate(
+        zip(runtime_payload, db_payload), start=1
+    ):
+        if not isinstance(runtime_question, dict) or not isinstance(db_question, dict):
+            raise ValueError(f"Question {ordinal} must be an object")
+        for question in (runtime_question, db_question):
+            original = question.get("number")
+            if (
+                not isinstance(original, bool)
+                and isinstance(original, int)
+                and original > 0
+                and original != ordinal
+            ):
+                question.setdefault("source_number", original)
+            question["number"] = ordinal
+
+    return runtime_payload, db_payload
+
+
 def _publish_quiz(
     quiz_title,
     runtime_questions,
@@ -1768,6 +1805,9 @@ def _publish_quiz(
     db_questions = runtime_questions if db_questions is None else db_questions
     if not db_questions:
         raise ValueError("No database questions were produced")
+    runtime_questions, db_questions = _normalize_quiz_question_ordinals(
+        runtime_questions, db_questions
+    )
 
     html_name, json_name = _generated_quiz_artifact_names(filename_prefix)
     asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(html_name)[0])[:120]
@@ -14042,6 +14082,14 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
         question_type = (q.get("type") or "choice").strip().lower()
         if question_type not in {"choice", "matching"}:
             question_type = "choice"
+        media_payload = q.get("media") or {
+            key: q.get(key)
+            for key in ("image_url", "image_alt", "image_edits", "image_source")
+            if q.get(key) is not None
+        }
+        if q.get("source_number") is not None and isinstance(media_payload, dict):
+            media_payload = dict(media_payload)
+            media_payload["source_number"] = q["source_number"]
 
         cur.execute(
             """
@@ -14071,11 +14119,7 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
                 (q.get("source") or {}).get("url"),
                 (q.get("source") or {}).get("license"),
                 q.get("explanation") or "",
-                json.dumps(q.get("media") or {
-                    key: q.get(key)
-                    for key in ("image_url", "image_alt", "image_edits", "image_source")
-                    if q.get(key) is not None
-                }, ensure_ascii=False),
+                json.dumps(media_payload, ensure_ascii=False),
             ),
         )
 
@@ -21711,6 +21755,21 @@ def _question_response_context(cur, quiz_id, question_number):
     ).fetchone()
 
 
+def _question_response_context_by_ordinal(cur, quiz_id, ordinal):
+    """Resolve one question by the same stable order used by runtime quizzes."""
+    return cur.execute(
+        """
+        SELECT id, question_number, question_text,
+               COALESCE(question_type, 'choice') AS question_type
+        FROM questions
+        WHERE quiz_id = ?
+        ORDER BY question_number, id
+        LIMIT 1 OFFSET ?
+        """,
+        (quiz_id, ordinal - 1),
+    ).fetchone()
+
+
 def _learning_question_type(value, question, field):
     if not isinstance(value, str):
         raise LearningPayloadError(f"{field} must be a supported question type")
@@ -21814,7 +21873,9 @@ def _hotspot_response(selected, *, study):
     return coordinates
 
 
-def _validate_question_response(cur, question, detail, *, study, field):
+def _validate_question_response(
+    cur, question, detail, *, study, field, attempt_question_number=None
+):
     if not isinstance(detail, dict):
         raise LearningPayloadError(f"{field} must be an object")
     question_type = _learning_question_type(
@@ -21841,7 +21902,11 @@ def _validate_question_response(cur, question, detail, *, study, field):
     if submitted_correctness is not computed_correctness:
         raise LearningPayloadError(f"{field}.wasCorrect is inconsistent with selected")
     return {
-        "attemptQuestionNumber": question["question_number"],
+        "attemptQuestionNumber": (
+            question["question_number"]
+            if attempt_question_number is None
+            else attempt_question_number
+        ),
         "questionType": question_type,
         "wasCorrect": computed_correctness,
         "selected": selected,
@@ -21876,6 +21941,7 @@ def _validate_missed_details(cur, raw_details, questions, responses):
         cleaned["attemptQuestionNumber"] = number
         cleaned["questionType"] = response["questionType"]
         cleaned["selected"] = response["selected"]
+        cleaned["questionId"] = response["questionId"]
         if response["questionType"] == "choice":
             choice_rows = cur.execute(
                 "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY label",
@@ -21969,9 +22035,10 @@ def _validate_attempt_payload(cur, data):
     ).fetchall()
     if not rows or len(rows) != total:
         raise LearningPayloadError("total does not match the stored quiz question count")
-    questions = {row["question_number"]: row for row in rows}
-    if len(questions) != len(rows):
-        raise LearningPayloadError("the stored quiz has ambiguous question numbers")
+    # attemptQuestionNumber is the 1-based runtime ordinal. Stored/source
+    # question numbers remain display metadata and are not required to be
+    # unique for older quizzes published before ordinal normalization.
+    questions = {ordinal: row for ordinal, row in enumerate(rows, start=1)}
 
     raw_responses = data.get("responseDetails")
     if not isinstance(raw_responses, list) or len(raw_responses) != len(rows):
@@ -21987,7 +22054,12 @@ def _validate_attempt_payload(cur, data):
         if number in responses or number not in questions:
             raise LearningPayloadError(f"{field} does not identify one unique quiz question")
         responses[number] = _validate_question_response(
-            cur, questions[number], detail, study=False, field=field
+            cur,
+            questions[number],
+            detail,
+            study=False,
+            field=field,
+            attempt_question_number=number,
         )
     if set(responses) != set(questions):
         raise LearningPayloadError("responseDetails must cover every quiz question")
@@ -22032,6 +22104,94 @@ def _validate_attempt_payload(cur, data):
     }
 
 
+def _attempt_retry_matches_existing(cur, validated, attempt_columns):
+    """Return True only when a retry exactly matches one durable attempt."""
+    identity_column = "attempt_id" if "attempt_id" in attempt_columns else "id"
+    rows = cur.execute(
+        f"""
+        SELECT id AS attempt_pk, quiz_id, score, total, percent,
+               started_at, completed_at, time_remaining, mode
+        FROM attempts
+        WHERE CAST({identity_column} AS TEXT) = ?
+        """,
+        (validated["attempt_id"],),
+    ).fetchall()
+    if not rows:
+        return False
+    if len(rows) != 1:
+        raise LearningPayloadError("attemptId is not unique in saved attempt history")
+
+    row = rows[0]
+    expected_summary = (
+        validated["quiz_id"],
+        validated["score"],
+        validated["total"],
+        validated["percent"],
+        validated["started_at"],
+        validated["completed_at"],
+        validated["time_remaining"],
+        validated["mode"],
+    )
+    durable_summary = (
+        row["quiz_id"], row["score"], row["total"], row["percent"],
+        row["started_at"], row["completed_at"], row["time_remaining"],
+        row["mode"],
+    )
+    if durable_summary != expected_summary:
+        raise LearningPayloadError("attemptId already identifies a different attempt")
+
+    event_rows = cur.execute(
+        """
+        SELECT question_id, was_correct, response_json
+        FROM learning_events
+        WHERE attempt_id = ? AND event_type = 'exam_answer'
+        ORDER BY id
+        """,
+        (validated["attempt_id"],),
+    ).fetchall()
+    if len(event_rows) != len(validated["response_details"]):
+        raise LearningPayloadError("attemptId already identifies a different attempt")
+    for event, response in zip(event_rows, validated["response_details"]):
+        try:
+            durable_response = json.loads(event["response_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            raise LearningPayloadError(
+                "attemptId already identifies a different attempt"
+            ) from None
+        expected_response = {
+            "question_number": response["attemptQuestionNumber"],
+            "question_type": response["questionType"],
+            "selected": response["selected"],
+        }
+        if (
+            event["question_id"] != response["questionId"]
+            or event["was_correct"] != (1 if response["wasCorrect"] else 0)
+            or durable_response != expected_response
+        ):
+            raise LearningPayloadError("attemptId already identifies a different attempt")
+
+    references = [str(row["attempt_pk"]), validated["attempt_id"]]
+    placeholders = ",".join("?" for _ in references)
+    durable_missed = [
+        missed[0]
+        for missed in cur.execute(
+            f"""
+            SELECT attempt_question_number
+            FROM missed_questions
+            WHERE CAST(attempt_id AS TEXT) IN ({placeholders})
+            ORDER BY attempt_question_number, id
+            """,
+            references,
+        ).fetchall()
+    ]
+    expected_missed = sorted(
+        detail["attemptQuestionNumber"] for detail in validated["missed_details"]
+    )
+    if durable_missed != expected_missed:
+        raise LearningPayloadError("attemptId already identifies a different attempt")
+    return True
+
+
 @app.route("/record_attempt", methods=["POST"])
 def record_attempt():
     data = request.get_json(silent=True)
@@ -22062,7 +22222,14 @@ def record_attempt():
         # 2) Insert attempt
         # ------------------------------------------------------------
         cur.execute("PRAGMA table_info(attempts)")
-        acols = [r[1] for r in cur.fetchall()]
+        acols = {r[1] for r in cur.fetchall()}
+
+        if _attempt_retry_matches_existing(cur, validated, acols):
+            return jsonify({
+                "ok": True,
+                "attempt_id": attempt_id,
+                "already_recorded": True,
+            }), 200
 
         if "attempt_id" in acols:
             cur.execute("""
@@ -22136,8 +22303,8 @@ def record_attempt():
             cur.execute("""
                 SELECT q.question_text, q.id, COALESCE(q.question_type, 'choice') AS question_type
                 FROM questions q
-                WHERE q.quiz_id = ? AND q.question_number = ?
-            """, (quiz_id, aqn))
+                WHERE q.quiz_id = ? AND q.id = ?
+            """, (quiz_id, md["questionId"]))
             qrow = cur.fetchone()
 
             submitted_question_type = str(md.get("questionType") or "").strip().lower()
@@ -22297,12 +22464,14 @@ def record_study_learning_event():
         quiz_id = _learning_integer(
             data.get("quizId"), "quizId", minimum=1, allow_numeric_string=True
         )
-        question_number = _learning_integer(
-            data.get("questionNumber"), "questionNumber", minimum=1,
+        question_ordinal = _learning_integer(
+            data.get("questionOrdinal", data.get("questionNumber")),
+            "questionOrdinal",
+            minimum=1,
             allow_numeric_string=True,
         )
         session_id = _optional_learning_identifier(data.get("sessionId"), "sessionId")
-        row = _question_response_context(cur, quiz_id, question_number)
+        row = _question_response_context_by_ordinal(cur, quiz_id, question_ordinal)
         if not row:
             return jsonify({"error": "Question not found"}), 404
         detail = _validate_question_response(
@@ -22315,6 +22484,7 @@ def record_study_learning_event():
             },
             study=True,
             field="study response",
+            attempt_question_number=question_ordinal,
         )
         _record_learning_event(
             cur,
@@ -22325,7 +22495,7 @@ def record_study_learning_event():
             mode="Study",
             was_correct=detail["wasCorrect"],
             response={
-                "question_number": question_number,
+                "question_number": question_ordinal,
                 "question_type": detail["questionType"],
                 "selected": detail["selected"],
             },
