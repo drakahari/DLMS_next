@@ -13,6 +13,42 @@ from tests.csrf_test_utils import csrf_headers
 
 
 class QuizLibraryTests(unittest.TestCase):
+    def test_library_uses_vendored_sortable_with_existing_order_initialization(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-sortable-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                client = dlms.app.test_client()
+                response = client.get("/library")
+                asset = client.get("/static/vendor/sortablejs-1.15.0.min.js")
+
+            self.assertEqual(response.status_code, 200)
+            html = response.get_data(as_text=True)
+            self.assertIn(
+                'src="/static/vendor/sortablejs-1.15.0.min.js"', html
+            )
+            self.assertNotIn("cdnjs.cloudflare.com/ajax/libs/Sortable", html)
+            self.assertIn("Sortable.create(folderList", html)
+            self.assertIn('draggable: ".library-folder"', html)
+            self.assertIn('handle: ".library-folder-header"', html)
+            self.assertIn("document.querySelectorAll(\".library-folder-body\")", html)
+            self.assertIn('draggable: ".quiz-card"', html)
+            self.assertIn('handle: ".quiz-card"', html)
+
+            self.assertEqual(asset.status_code, 200)
+            try:
+                self.assertTrue(
+                    asset.get_data(as_text=True).startswith(
+                        "/*! Sortable 1.15.0 - MIT"
+                    )
+                )
+            finally:
+                asset.close()
+
     def test_library_tools_identifies_reference_export_and_portability_options(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-export-ui-") as directory:
             config_dir = os.path.join(directory, "config")

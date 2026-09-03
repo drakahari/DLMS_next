@@ -14594,7 +14594,7 @@ def quiz_library():
     <title>Quiz Library - {{ portal_title }}</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <script src="/static/vendor/sortablejs-1.15.0.min.js"></script>
 </head>
 <body class="dashboard-home library-page">
 <div class="dashboard-shell">
