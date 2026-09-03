@@ -14715,7 +14715,8 @@ def quiz_library():
             </div>
         </section>
 
-        <div class="library-tip">Drag folder headers to reorder folders. Drag quiz cards to reorder quizzes inside a folder.</div>
+        <div class="library-tip">Drag folder headers to reorder folders. Drag quiz cards to reorder quizzes inside a folder. Use the Up and Down buttons for keyboard reordering.</div>
+        <div id="libraryReorderStatus" class="library-reorder-status" aria-live="polite" aria-atomic="true"></div>
 
         {% if quizzes %}
         <section id="quizList" class="library-folder-list">
@@ -14734,8 +14735,14 @@ def quiz_library():
                         </div>
                     </div>
 
-                    {% if folder_name|lower != "uncategorized" %}
                     <div class="library-folder-actions">
+                        {% if display_folder_names|length > 1 %}
+                        <div class="library-reorder-controls" role="group" aria-label="Reorder {{ folder_name }}">
+                            <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="folder" data-library-reorder-direction="-1" onclick="moveLibraryFolder(event, this, -1)" aria-label="Move {{ folder_name }} up" title="Move folder up" {% if loop.first %}disabled{% endif %}>↑</button>
+                            <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="folder" data-library-reorder-direction="1" onclick="moveLibraryFolder(event, this, 1)" aria-label="Move {{ folder_name }} down" title="Move folder down" {% if loop.last %}disabled{% endif %}>↓</button>
+                        </div>
+                        {% endif %}
+                    {% if folder_name|lower != "uncategorized" %}
                         <div class="folder-actions">
                             <button type="button" class="library-icon-button" onclick="showRenameFolderForm(event, this)" title="Rename folder">✎</button>
                             <form method="POST" action="/rename_quiz_folder" class="rename-folder-form library-inline-form" style="display:none;">
@@ -14751,8 +14758,8 @@ def quiz_library():
                             <input type="hidden" name="view" value="{{ view }}">
                             <button type="submit" class="library-icon-button library-danger-icon" title="Delete folder">🗑</button>
                         </form>
-                    </div>
                     {% endif %}
+                    </div>
                 </div>
 
                 <div class="library-folder-body" data-folder-name="{{ folder_name }}">
@@ -14780,6 +14787,13 @@ def quiz_library():
                                 <a class="library-primary-action compact" href="/quizzes/{{ q['html'] }}">▶ Open Quiz</a>
                                 <a class="library-secondary-action compact" href="/edit_quiz/{{ q['id'] }}">✎ Edit</a>
                                 <a class="library-secondary-action compact" href="/export/quiz/{{ q['id'] }}.txt" title="Exports this quiz as an import-friendly DLMS text file.">⇩ Export</a>
+
+                                {% if folder_quizzes|length > 1 %}
+                                <div class="library-reorder-controls" role="group" aria-label="Reorder {{ q['title'] }} within {{ folder_name }}">
+                                    <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="quiz" data-library-reorder-direction="-1" onclick="moveLibraryQuiz(event, this, -1)" aria-label="Move {{ q['title'] }} up within {{ folder_name }}" title="Move quiz up" {% if loop.first %}disabled{% endif %}>↑</button>
+                                    <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="quiz" data-library-reorder-direction="1" onclick="moveLibraryQuiz(event, this, 1)" aria-label="Move {{ q['title'] }} down within {{ folder_name }}" title="Move quiz down" {% if loop.last %}disabled{% endif %}>↓</button>
+                                </div>
+                                {% endif %}
 
                                 <form method="POST" action="/toggle_hidden" class="library-action-form">
                                     <input type="hidden" name="id" value="{{ q['id'] }}">
@@ -14938,6 +14952,109 @@ function hideMoveQuizForm(event, button) {
     moveButton.style.display = "";
 }
 
+function libraryReorderStatus(message) {
+    const status = document.getElementById("libraryReorderStatus");
+    if (status) status.textContent = message;
+}
+
+function libraryDirectItems(container, selector) {
+    return [...container.children].filter(item => item.matches(selector));
+}
+
+function librarySearchIsActive() {
+    return Boolean(document.getElementById("librarySearch")?.value.trim());
+}
+
+function updateLibraryReorderControls() {
+    const searchIsActive = librarySearchIsActive();
+    document.querySelectorAll('[data-library-reorder="folder"]').forEach(button => {
+        const folder = button.closest(".library-folder");
+        const list = folder && folder.parentElement;
+        const folders = list ? libraryDirectItems(list, ".library-folder") : [];
+        const position = folders.indexOf(folder);
+        const direction = Number(button.dataset.libraryReorderDirection);
+        button.disabled = searchIsActive || list?.dataset.reorderPending === "true" ||
+            position < 0 || position + direction < 0 || position + direction >= folders.length;
+    });
+    document.querySelectorAll('[data-library-reorder="quiz"]').forEach(button => {
+        const card = button.closest(".library-quiz-card");
+        const body = card && card.parentElement;
+        const cards = body ? libraryDirectItems(body, ".library-quiz-card") : [];
+        const position = cards.indexOf(card);
+        const direction = Number(button.dataset.libraryReorderDirection);
+        button.disabled = searchIsActive || body?.dataset.reorderPending === "true" ||
+            position < 0 || position + direction < 0 || position + direction >= cards.length;
+    });
+}
+
+async function postLibraryReorder(url, payload) {
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.status !== "ok") throw new Error("Could not save the new order.");
+}
+
+function saveLibraryFolderOrder(folderList) {
+    const folders = libraryDirectItems(folderList, ".library-folder")
+        .map(folder => folder.getAttribute("data-folder-name"))
+        .filter(Boolean);
+    return postLibraryReorder("/save_folder_order", {folders});
+}
+
+function saveLibraryQuizOrder(body) {
+    const folder = body.getAttribute("data-folder-name") || "Uncategorized";
+    const order = libraryDirectItems(body, ".library-quiz-card")
+        .map(card => card.getAttribute("data-id"))
+        .filter(Boolean);
+    return postLibraryReorder("/save_quiz_order_in_folder", {folder, order});
+}
+
+async function moveLibraryItem(item, container, selector, direction, saveOrder, label) {
+    if (!item || !container || ![-1, 1].includes(direction) ||
+        container.dataset.reorderPending === "true" || librarySearchIsActive()) return;
+    const items = libraryDirectItems(container, selector);
+    const position = items.indexOf(item);
+    const target = items[position + direction];
+    if (!target) return;
+
+    if (direction < 0) container.insertBefore(item, target);
+    else container.insertBefore(target, item);
+    container.dataset.reorderPending = "true";
+    updateLibraryReorderControls();
+
+    try {
+        await saveOrder(container);
+        libraryReorderStatus(`${label} moved ${direction < 0 ? "up" : "down"}.`);
+    } catch {
+        if (direction < 0) container.insertBefore(target, item);
+        else container.insertBefore(item, target);
+        libraryReorderStatus("The new order could not be saved. The item was returned to its previous position.");
+    } finally {
+        delete container.dataset.reorderPending;
+        updateLibraryReorderControls();
+    }
+}
+
+function moveLibraryFolder(event, button, direction) {
+    event.preventDefault();
+    event.stopPropagation();
+    const folder = button.closest(".library-folder");
+    void moveLibraryItem(folder, folder?.parentElement, ".library-folder", direction,
+        saveLibraryFolderOrder, folder?.getAttribute("data-folder-name") || "Folder");
+}
+
+function moveLibraryQuiz(event, button, direction) {
+    event.preventDefault();
+    event.stopPropagation();
+    const card = button.closest(".library-quiz-card");
+    const label = card?.querySelector(".library-quiz-title-row h3")?.textContent.trim() || "Quiz";
+    void moveLibraryItem(card, card?.parentElement, ".library-quiz-card", direction,
+        saveLibraryQuizOrder, label);
+}
+
 document.addEventListener("DOMContentLoaded", function() {
     const collapsedFolders = getCollapsedLibraryFolders();
     document.querySelectorAll(".library-folder").forEach(folder => {
@@ -14959,6 +15076,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 });
                 folder.classList.toggle("library-search-empty", visibleCards === 0);
             });
+            updateLibraryReorderControls();
         });
     }
 
@@ -14971,14 +15089,10 @@ document.addEventListener("DOMContentLoaded", function() {
             filter: "form, input, button, select, textarea, a",
             preventOnFilter: false,
             onEnd: function() {
-                const folders = [...document.querySelectorAll(".library-folder")]
-                    .map(folder => folder.getAttribute("data-folder-name"))
-                    .filter(Boolean);
-                fetch("/save_folder_order", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({ folders })
+                void saveLibraryFolderOrder(folderList).catch(() => {
+                    libraryReorderStatus("The new folder order could not be saved.");
                 });
+                updateLibraryReorderControls();
             }
         });
     }
@@ -14992,19 +15106,16 @@ document.addEventListener("DOMContentLoaded", function() {
                 filter: "form, input, button, select, textarea, a",
                 preventOnFilter: false,
                 onEnd: function() {
-                    const folderName = body.getAttribute("data-folder-name") || "Uncategorized";
-                    const order = [...body.querySelectorAll(".quiz-card")]
-                        .map(card => card.getAttribute("data-id"))
-                        .filter(Boolean);
-                    fetch("/save_quiz_order_in_folder", {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({ folder: folderName, order: order })
+                    void saveLibraryQuizOrder(body).catch(() => {
+                        libraryReorderStatus("The new quiz order could not be saved.");
                     });
+                    updateLibraryReorderControls();
                 }
             });
         });
     }
+
+    updateLibraryReorderControls();
 });
 
 const shutdownBtn = document.getElementById("shutdownBtn");

@@ -222,6 +222,95 @@ class QuizLibraryTests(unittest.TestCase):
                 with open(portal_config, encoding="utf-8") as handle:
                     self.assertIn("Course Review", json.load(handle)["quiz_folders"])
 
+    def test_library_renders_compact_native_keyboard_reorder_controls(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-keyboard-reorder-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "Networking"]}, handle)
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([
+                    {"id": 1, "title": "Routing", "html": "routing.html", "folder": "Networking"},
+                    {"id": 2, "title": "Switching", "html": "switching.html", "folder": "Networking"},
+                    {"id": 3, "title": "General", "html": "general.html", "folder": "Uncategorized"},
+                ], handle)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                response = dlms.app.test_client().get("/library")
+
+            self.assertEqual(response.status_code, 200)
+            html = response.get_data(as_text=True)
+            for expected in (
+                'data-library-reorder="folder"',
+                'data-library-reorder="quiz"',
+                'data-library-reorder-direction="-1"',
+                'data-library-reorder-direction="1"',
+                'aria-label="Move Networking up"',
+                'aria-label="Move Routing down within Networking"',
+                'id="libraryReorderStatus"',
+                'aria-live="polite"',
+                'onclick="moveLibraryFolder(event, this, -1)"',
+                'onclick="moveLibraryQuiz(event, this, 1)"',
+            ):
+                with self.subTest(expected=expected):
+                    self.assertIn(expected, html)
+
+            self.assertIn("function moveLibraryItem", html)
+            self.assertIn("container.dataset.reorderPending", html)
+            self.assertIn("function saveLibraryFolderOrder", html)
+            self.assertIn("function saveLibraryQuizOrder", html)
+            self.assertIn('postLibraryReorder("/save_folder_order", {folders})', html)
+            self.assertIn('postLibraryReorder("/save_quiz_order_in_folder", {folder, order})', html)
+            self.assertIn('libraryDirectItems(body, ".library-quiz-card")', html)
+            self.assertIn("librarySearchIsActive()", html)
+
+    def test_folder_scoped_reorder_preserves_existing_ordering_guards(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-reorder-persistence-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "Networking", "Security"]}, handle)
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([
+                    {"id": 1, "title": "Routing", "html": "routing.html", "folder": "Networking"},
+                    {"id": 2, "title": "Switching", "html": "switching.html", "folder": "Networking"},
+                    {"id": 3, "title": "Firewall", "html": "firewall.html", "folder": "Security"},
+                ], handle)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry):
+                client = dlms.app.test_client()
+                quiz_response = client.post(
+                    "/save_quiz_order_in_folder",
+                    json={"folder": "Networking", "order": ["switching.html", "firewall.html", "switching.html"]},
+                    headers=csrf_headers(client, "/library"),
+                )
+                folder_response = client.post(
+                    "/save_folder_order",
+                    json={"folders": ["Security", "Networking", "Security"]},
+                    headers=csrf_headers(client, "/library"),
+                )
+                saved_quizzes = dlms.load_registry()
+                saved_folders = dlms.get_quiz_folders()
+
+            self.assertEqual(200, quiz_response.status_code)
+            self.assertEqual({"status": "ok"}, quiz_response.get_json())
+            self.assertEqual(200, folder_response.status_code)
+            self.assertEqual({"status": "ok"}, folder_response.get_json())
+            # The foreign Security ID and duplicate Network ID are ignored; the
+            # existing folder-only persistence route remains the guardrail.
+            self.assertEqual(
+                ["switching.html", "routing.html", "firewall.html"],
+                [quiz["html"] for quiz in saved_quizzes],
+            )
+            self.assertEqual(["Security", "Networking", "Uncategorized"], saved_folders)
+
     def test_fresh_configuration_enables_confidence_and_ai_helpers(self):
         with tempfile.TemporaryDirectory(prefix="dlms-fresh-config-") as directory:
             portal_config = os.path.join(directory, "config", "portal.json")
