@@ -6888,12 +6888,33 @@ a.settings-hub-card:hover {
 
 .hotspot-image-wrap {
     position: relative;
+    display: block;
+    box-sizing: border-box;
     width: min(100%, 720px);
     margin: 14px auto 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    box-shadow: none;
     cursor: crosshair;
     user-select: none;
     -webkit-user-select: none;
     touch-action: manipulation;
+}
+
+.hotspot-image-wrap:hover,
+.hotspot-image-wrap:active {
+    background: transparent;
+    transform: none;
+    box-shadow: none;
+}
+
+.hotspot-image-wrap:focus-visible {
+    outline-offset: 4px;
 }
 
 .hotspot-image {

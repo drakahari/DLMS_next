@@ -1,4 +1,4 @@
-"""DLMS-085 regressions for core keyboard-operable quiz choices."""
+"""DLMS-085/DLMS-098 regressions for keyboard-operable quiz answers."""
 
 import re
 from pathlib import Path
@@ -65,12 +65,40 @@ def test_choice_buttons_receive_the_existing_theme_aware_keyboard_focus_indicato
     assert any("font-weight: inherit" in rule for rule in choice_rules)
 
 
-def test_matching_keeps_its_existing_native_keyboard_path_and_hotspot_is_not_reframed_as_keyboard_equivalent():
+def test_matching_keeps_its_existing_native_keyboard_path_and_hotspot_uses_one_native_button_control():
     matching = _function_block(SCRIPT, "renderMatchingQuestion")
     hotspot = _function_block(SCRIPT, "renderHotspotQuestion")
 
     assert '<select class="matching-select"' in matching
     assert 'type="button" class="matching-answer-chip' in matching
     assert 'type="button" class="matching-drop-target' in matching
+    assert '<button type="button" class="hotspot-image-wrap"' in hotspot
     assert 'onclick="selectHotspot(event)"' in hotspot
-    assert "tabindex" not in hotspot
+    assert 'aria-label="Select the requested structure on the image"' in hotspot
+    assert 'aria-describedby="hotspot-instructions-${key}"' in hotspot
+    assert hotspot.count('onclick="selectHotspot(event)"') == 1
+    # Native buttons synthesize exactly one click for Enter/Space, so no
+    # additional keyboard listener can double-record a study response.
+    assert "addEventListener(\"keydown\"" not in hotspot
+    assert "addEventListener(\"keypress\"" not in hotspot
+
+
+def test_hotspot_keyboard_activation_uses_the_existing_answer_and_scoring_path():
+    selection = _function_block(SCRIPT, "selectHotspot")
+    keyboard_point = _function_block(SCRIPT, "hotspotKeyboardPoint")
+
+    assert "event.detail === 0" in selection
+    assert "({x, y} = hotspotKeyboardPoint(q.target));" in selection
+    assert "event.clientX - rect.left" in selection
+    assert "event.clientY - rect.top" in selection
+    assert "void recordStudyLearningEvent(q, pointInHotspot(x, y, q.target), {x, y});" in selection
+    assert "renderQuestion()" in selection
+    assert "pointInHotspot(center.x, center.y, shape)" in keyboard_point
+    assert "pointInHotspot(point.x, point.y, shape)" in keyboard_point
+
+
+def test_hotspot_button_preserves_image_layout_and_uses_the_shared_theme_focus_indicator():
+    hotspot_rules = re.findall(r"\.hotspot-image-wrap\s*\{([^}]*)\}", STYLE)
+    assert any("padding: 0" in rule and "background: transparent" in rule for rule in hotspot_rules)
+    assert any("border-radius: 14px" in rule for rule in hotspot_rules)
+    assert ".hotspot-image-wrap:focus-visible" in STYLE

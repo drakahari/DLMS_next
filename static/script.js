@@ -484,9 +484,47 @@ function hotspotCenter(shape) {
     return {x: 0.5, y: 0.5};
 }
 
+function hotspotKeyboardPoint(shape) {
+    const center = hotspotCenter(shape);
+    if (Number.isFinite(center.x) && Number.isFinite(center.y) && pointInHotspot(center.x, center.y, shape)) {
+        return center;
+    }
+
+    // A polygon's arithmetic center can fall outside a concave shape. Find a
+    // point between a pair of scan-line intersections so keyboard activation
+    // still selects the same valid region as a mouse click.
+    if (shape && shape.type === "polygon" && Array.isArray(shape.points)) {
+        const points = shape.points
+            .map(point => [Number(point[0]), Number(point[1])])
+            .filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+        if (points.length >= 3) {
+            const minY = Math.min(...points.map(point => point[1]));
+            const maxY = Math.max(...points.map(point => point[1]));
+            for (let step = 1; step < 25; step++) {
+                const y = minY + ((maxY - minY) * step / 25);
+                const intersections = [];
+                for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+                    const [xi, yi] = points[i];
+                    const [xj, yj] = points[j];
+                    if ((yi > y) !== (yj > y)) {
+                        intersections.push((xj - xi) * (y - yi) / (yj - yi) + xi);
+                    }
+                }
+                intersections.sort((a, b) => a - b);
+                for (let i = 0; i + 1 < intersections.length; i += 2) {
+                    const point = {x: (intersections[i] + intersections[i + 1]) / 2, y};
+                    if (pointInHotspot(point.x, point.y, shape)) return point;
+                }
+            }
+        }
+    }
+
+    return {x: 0.5, y: 0.5};
+}
+
 function renderImageStudyEdits(edits) {
     if (!Array.isArray(edits) || !edits.length) return "";
-    return `<div class="quiz-image-edit-overlay">${edits.map(edit => {
+    return `<span class="quiz-image-edit-overlay">${edits.map(edit => {
         if (!edit || typeof edit !== "object") return "";
         if (edit.type === "mask") {
             const style = ["blur","white","black"].includes(edit.style) ? edit.style : "blur";
@@ -497,7 +535,7 @@ function renderImageStudyEdits(edits) {
             return `<span class="quiz-image-edit text ${tone}" style="left:${Number(edit.x)*100}%;top:${Number(edit.y)*100}%;font-size:${Math.max(10,Math.min(48,Number(edit.size)||18))}px">${escapeHtml(edit.text || "")}</span>`;
         }
         return "";
-    }).join("")}</div>`;
+    }).join("")}</span>`;
 }
 
 function renderHotspotQuestion(q, key, selected, choicesEl) {
@@ -541,12 +579,12 @@ function renderHotspotQuestion(q, key, selected, choicesEl) {
 
     choicesEl.innerHTML = `
         <div class="hotspot-question">
-            <div class="matching-instructions">Click the requested structure on the image.</div>
-            <div class="hotspot-image-wrap" onclick="selectHotspot(event)">
+            <div class="matching-instructions" id="hotspot-instructions-${key}">Click the requested structure on the image, or focus the image and press Enter or Space.</div>
+            <button type="button" class="hotspot-image-wrap" onclick="selectHotspot(event)" aria-label="Select the requested structure on the image" aria-describedby="hotspot-instructions-${key}">
                 <img class="hotspot-image" src="${escapeHtml(q.image_url || "")}" alt="${escapeHtml(q.image_alt || "Anatomy image")}" draggable="false">
                 ${renderImageStudyEdits(q.image_edits)}
                 ${marker}
-            </div>
+            </button>
             ${attribution}
             ${feedback}
         </div>`;
@@ -557,15 +595,24 @@ function selectHotspot(event) {
     const q = quiz[index];
     if (!q || q.type !== "hotspot") return;
 
-    const wrap = event.currentTarget;
-    const img = wrap.querySelector(".hotspot-image");
-    if (!img) return;
+    let x;
+    let y;
+    if (event.detail === 0) {
+        // Native buttons synthesize one click for Enter/Space. Unlike a pointer
+        // click, that event has no image coordinates, so select a valid point
+        // inside the requested hotspot.
+        ({x, y} = hotspotKeyboardPoint(q.target));
+    } else {
+        const wrap = event.currentTarget;
+        const img = wrap.querySelector(".hotspot-image");
+        if (!img) return;
 
-    const rect = img.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
+        const rect = img.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
 
-    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+        x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    }
 
     userAnswers[`q${index}`] = {x, y};
     if (!examMode) {
