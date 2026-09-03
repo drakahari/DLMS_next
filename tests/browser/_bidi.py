@@ -174,6 +174,28 @@ class FirefoxBidi:
             },
         )
 
+    def set_files(self, selector: str, paths: list[str]) -> None:
+        encoded = json.dumps(selector)
+        result = self.command(
+            "script.evaluate",
+            {
+                "expression": f"document.querySelector({encoded})",
+                "target": {"context": self.context},
+                "awaitPromise": False,
+            },
+        ).get("result") or {}
+        shared_id = result.get("sharedId")
+        if result.get("type") != "node" or not shared_id:
+            raise BidiError(f"File input not found: {selector}")
+        self.command(
+            "input.setFiles",
+            {
+                "context": self.context,
+                "element": {"sharedId": shared_id},
+                "files": [os.fspath(path) for path in paths],
+            },
+        )
+
     def press_key(self, value: str) -> None:
         self.command(
             "input.performActions",

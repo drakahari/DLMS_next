@@ -188,6 +188,7 @@ def browser_stack(tmp_path_factory):
             browser.close()
         _terminate_process_tree(browser_process)
         _terminate_process_tree(server_process)
+        shutil.rmtree(work_root, ignore_errors=True)
 
 
 def _wait_for_database_value(path, query, expected, timeout=6.0):
@@ -204,6 +205,12 @@ def _wait_for_database_value(path, query, expected, timeout=6.0):
             pass
         time.sleep(0.05)
     raise AssertionError(f"Database value was {last_value!r}, expected {expected!r}: {query}")
+
+
+def _database_value(path, query, parameters=()):
+    with sqlite3.connect(path, timeout=0.5) as connection:
+        row = connection.execute(query, parameters).fetchone()
+    return row[0] if row else None
 
 
 def test_library_reorder_control_persists_after_refresh(browser_stack):
@@ -287,3 +294,140 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser.click("#result button[onclick*='/history']")
     browser.wait_for("location.pathname === '/history'")
     browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
+
+
+def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    edited_title = "Browser Edited Workflow"
+    edited_question = "Browser edited question one?"
+
+    browser.navigate(f"{browser_stack.base_url}/edit_quiz/{quiz_id}")
+    browser.wait_for("document.querySelectorAll('.question-text').length === 2")
+    assert browser.evaluate(
+        f"(() => {{ document.querySelector('[name=quiz_title]').value = {json.dumps(edited_title)}; "
+        f"document.querySelector('.question-text').value = {json.dumps(edited_question)}; "
+        "return true; })()"
+    ) is True
+    browser.click("#edit-quiz-form .build-primary-button")
+    browser.wait_for(
+        f"location.pathname === '/edit_quiz/{quiz_id}' && "
+        f"document.querySelector('[name=quiz_title]').value === {json.dumps(edited_title)}"
+    )
+    assert browser.evaluate("document.querySelector('.question-text').value") == edited_question
+
+    browser.navigate(
+        f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}?edited=1"
+    )
+    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    assert browser.evaluate("document.title.includes('Browser Edited Workflow')") is True
+    assert browser.evaluate("quiz[0].question") == edited_question
+
+
+def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack):
+    browser = browser_stack.browser
+    database = browser_stack.data_root / "results.db"
+    before = _database_value(
+        database,
+        "SELECT COUNT(*) FROM learning_events WHERE event_type = 'study_answer'",
+    )
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    assert browser.evaluate(
+        "(() => { const originalFetch = window.fetch.bind(window); let failStudySave = true; "
+        "window.fetch = (...args) => { const target = String(args[0]); "
+        "if (failStudySave && target.includes('/api/learning-events/study-response')) { "
+        "failStudySave = false; return Promise.resolve(new Response("
+        "JSON.stringify({error: 'forced browser regression failure'}), "
+        "{status: 503, headers: {'Content-Type': 'application/json'}})); } "
+        "return originalFetch(...args); }; return true; })()"
+    ) is True
+
+    browser.click(".study-mode-btn")
+    browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for(
+        "!document.getElementById('studyLearningEventStatus').hidden && "
+        "document.querySelector('.study-learning-save-message').textContent.includes('not saved')"
+    )
+    assert _database_value(
+        database,
+        "SELECT COUNT(*) FROM learning_events WHERE event_type = 'study_answer'",
+    ) == before
+
+    browser.click(".study-learning-save-retry")
+    browser.wait_for("document.getElementById('studyLearningEventStatus').hidden")
+    _wait_for_database_value(
+        database,
+        "SELECT COUNT(*) FROM learning_events WHERE event_type = 'study_answer'",
+        before + 1,
+    )
+
+
+def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    original_title = "Browser Critical Workflow"
+    changed_title = "Browser Restore Mutation"
+    original_question = "Browser question one?"
+    changed_question = "Browser restore mutation question?"
+    database = browser_stack.data_root / "results.db"
+
+    browser.navigate(f"{browser_stack.base_url}/edit_quiz/{quiz_id}")
+    browser.wait_for("document.querySelector('[name=quiz_title]') !== null")
+    browser.evaluate(
+        f"(() => {{ document.querySelector('[name=quiz_title]').value = {json.dumps(changed_title)}; "
+        f"document.querySelector('.question-text').value = {json.dumps(changed_question)}; "
+        "return true; })()"
+    )
+    browser.click("#edit-quiz-form .build-primary-button")
+    _wait_for_database_value(
+        database,
+        "SELECT title FROM quizzes WHERE id = %d" % quiz_id,
+        changed_title,
+    )
+    assert _database_value(
+        database,
+        "SELECT question_text FROM questions WHERE quiz_id = ? ORDER BY question_number LIMIT 1",
+        (quiz_id,),
+    ) == changed_question
+
+    browser.navigate(f"{browser_stack.base_url}/settings/backup")
+    browser.wait_for("document.getElementById('backupFile') !== null")
+    browser.set_files("#backupFile", [browser_stack.metadata["restore_path"]])
+    browser.click("form[action='/settings/backup/restore/stage'] button[type='submit']")
+    browser.wait_for("document.querySelector('h1')?.textContent.includes('Review backup before restore')")
+    assert _database_value(
+        database,
+        "SELECT title FROM quizzes WHERE id = ?",
+        (quiz_id,),
+    ) == changed_title
+    assert _database_value(
+        database,
+        "SELECT question_text FROM questions WHERE quiz_id = ? ORDER BY question_number LIMIT 1",
+        (quiz_id,),
+    ) == changed_question
+    assert browser.evaluate(
+        "document.body.textContent.includes('2 quizzes') && "
+        "document.body.textContent.includes('Nothing has been restored yet')"
+    ) is True
+
+    browser.click("form[action*='/restore/confirm/'] button[type='submit']")
+    browser.wait_for("document.querySelector('h1')?.textContent.includes('Restore complete')", timeout=12.0)
+    _wait_for_database_value(
+        database,
+        "SELECT title FROM quizzes WHERE id = %d" % quiz_id,
+        original_title,
+    )
+    assert _database_value(
+        database,
+        "SELECT question_text FROM questions WHERE quiz_id = ? ORDER BY question_number LIMIT 1",
+        (quiz_id,),
+    ) == original_question
+    browser.navigate(
+        f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}?restored=1"
+    )
+    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    assert browser.evaluate("document.title") == original_title
+    assert browser.evaluate("quiz[0].question") == original_question

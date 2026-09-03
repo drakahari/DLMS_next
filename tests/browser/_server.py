@@ -57,10 +57,13 @@ def seed_browser_data():
     dlms.save_registry(registry)
     dlms.save_quiz_folders(["Uncategorized", "Browser Regression"])
 
+    restore_path, _ = dlms._create_dlms_backup("browser-restore-fixture")
+
     metadata = {
         "critical_id": critical_id,
         "critical_html": critical_html,
         "companion_html": companion_html,
+        "restore_path": restore_path,
     }
     Path(dlms.APP_DATA_DIR, "browser_fixture.json").write_text(
         json.dumps(metadata), encoding="utf-8"
