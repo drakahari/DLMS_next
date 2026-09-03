@@ -9338,10 +9338,72 @@ body.help-page .dashboard-main *::after {
 .learning-intelligence-page .dashboard-main{min-width:0;}
 .learning-intelligence-header{padding-bottom:18px;}
 .learning-intelligence-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px;}
+.learning-intelligence-summary .dashboard-stat-card{
+    grid-template-columns:minmax(0,1fr);
+    grid-template-rows:auto auto minmax(0,1fr);
+    align-content:start;
+    align-items:start;
+    gap:4px;
+    min-height:124px;
+    padding:16px 18px;
+}
+.learning-intelligence-summary .dashboard-stat-card>span,
+.learning-intelligence-summary .dashboard-stat-card>strong,
+.learning-intelligence-summary .dashboard-stat-card>small{
+    display:block;
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    word-break:normal;
+    overflow-wrap:break-word;
+}
+.learning-intelligence-summary .dashboard-stat-card>span{line-height:1.3;}
+.learning-intelligence-summary .dashboard-stat-card>strong{line-height:1.1;}
+.learning-intelligence-summary .dashboard-stat-card>small{
+    align-self:end;
+    padding-top:6px;
+    line-height:1.35;
+}
 .learning-intelligence-panel,.learning-intelligence-weak-panel{padding:22px;margin-bottom:16px;}
 .learning-intelligence-panel-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:16px;}
 .learning-intelligence-panel-head h2,.learning-intelligence-weak-panel h2{margin:3px 0 5px;}
 .learning-intelligence-panel-head p,.learning-intelligence-weak-panel p{margin:0;opacity:.78;}
+.learning-intelligence-page .build-secondary-link{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    align-self:flex-start;
+    flex:0 0 auto;
+    width:auto;
+    max-width:100%;
+    min-height:40px;
+    margin:0;
+    padding:9px 13px;
+    border:1px solid color-mix(in srgb,var(--theme-accent,#1b9ff2) 44%,var(--theme-border-soft,rgba(98,155,255,.24)));
+    border-radius:9px;
+    color:var(--theme-page-text,#eaf2ff)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 10%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;
+    box-shadow:none;
+    font-size:13px;
+    font-weight:750;
+    line-height:1.25;
+    text-align:center;
+    text-decoration:none;
+    white-space:normal;
+    overflow-wrap:break-word;
+    word-break:normal;
+}
+.learning-intelligence-page .build-secondary-link:hover,
+.learning-intelligence-page .build-secondary-link:focus-visible{
+    color:var(--theme-heading,#fff)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 18%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;
+    border-color:var(--theme-accent,#1b9ff2);
+    text-decoration:none;
+}
+.learning-intelligence-page .build-secondary-link:active{
+    color:var(--theme-heading,#fff)!important;
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 24%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;
+}
 .learning-intelligence-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:0 0 14px;}
 .learning-intelligence-filters{display:flex;gap:7px;flex-wrap:wrap;}
 .learning-intelligence-filters button{width:auto;margin:0;padding:8px 11px;border:1px solid #29476c;background:#0d2038;color:#c6d5e8;border-radius:9px;font-weight:700;}
@@ -9360,7 +9422,7 @@ body.help-page .dashboard-main *::after {
 .learning-intelligence-empty{padding:22px;text-align:center;color:#9eb0c6;border:1px dashed #28435f;border-radius:12px;}
 .learning-intelligence-no-evidence strong{display:block;color:var(--theme-heading,#eef4fb);font-size:18px;}
 .learning-intelligence-no-evidence p{max-width:680px;margin:8px auto 0;}
-.learning-intelligence-no-evidence .build-secondary-link{margin-top:14px;}
+.learning-intelligence-no-evidence .build-secondary-link{margin:14px auto 0;}
 .learning-intelligence-weak-list{display:grid;gap:9px;margin-top:14px;}.learning-intelligence-weak-list article{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 15px;border:1px solid #55303b;background:#25151c;border-radius:11px;}.learning-intelligence-weak-list article span{display:block;color:#bdaab0;font-size:12px;margin-top:3px;}.li-weak-score{font-weight:800;color:#ff9ca7;white-space:nowrap;}
 .learning-intelligence-model[hidden] { display: none !important; }
 .learning-intelligence-model {
@@ -9414,7 +9476,8 @@ body.help-page .dashboard-main *::after {
     .learning-intelligence-model{padding:12px;}
     .learning-intelligence-model-dialog{max-height:calc(100dvh - 24px);padding:20px 50px 20px 20px;}
 }
-@media(max-width:900px){.learning-intelligence-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.learning-intelligence-toolbar,.learning-intelligence-panel-head{align-items:stretch;flex-direction:column;}.learning-intelligence-search{max-width:none;}}
+@media(max-width:1100px){.learning-intelligence-summary{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:900px){.learning-intelligence-toolbar,.learning-intelligence-panel-head{align-items:stretch;flex-direction:column;}.learning-intelligence-panel-head .build-secondary-link{align-self:flex-start;}.learning-intelligence-search{max-width:none;}}
 @media(max-width:560px){.learning-intelligence-summary{grid-template-columns:1fr;}.learning-intelligence-panel,.learning-intelligence-weak-panel{padding:16px;}}
 
 /* =========================================================

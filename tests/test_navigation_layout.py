@@ -159,6 +159,52 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("overflow: auto", css)
         self.assertIn(".learning-intelligence-model-close", css)
 
+    def test_learning_intelligence_summary_uses_full_width_text_rows(self):
+        page = self._static("learning-intelligence.html")
+        css = self._static("style.css")
+
+        card = re.search(
+            r"\.learning-intelligence-summary\s+\.dashboard-stat-card\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(card)
+        self.assertIn("grid-template-columns:minmax(0,1fr)", card.group(1))
+        self.assertIn("min-height:124px", card.group(1))
+
+        text_rows = re.search(
+            r"\.learning-intelligence-summary\s+\.dashboard-stat-card>span,\s*"
+            r"\.learning-intelligence-summary\s+\.dashboard-stat-card>strong,\s*"
+            r"\.learning-intelligence-summary\s+\.dashboard-stat-card>small\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(text_rows)
+        self.assertIn("width:100%", text_rows.group(1))
+        self.assertIn("overflow-wrap:break-word", text_rows.group(1))
+        self.assertIn("word-break:normal", text_rows.group(1))
+
+        self.assertRegex(
+            css,
+            r"@media\(max-width:1100px\)\s*\{\s*\.learning-intelligence-summary"
+            r"\s*\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)",
+        )
+        self.assertRegex(
+            css,
+            r"@media\(max-width:560px\)\s*\{\.learning-intelligence-summary"
+            r"\{grid-template-columns:1fr;\}",
+        )
+
+        action = re.search(
+            r"\.learning-intelligence-page\s+\.build-secondary-link\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(action)
+        self.assertIn("flex:0 0 auto", action.group(1))
+        self.assertIn("max-width:100%", action.group(1))
+        self.assertIn("white-space:normal", action.group(1))
+        self.assertEqual(page.count('class="build-secondary-link"'), 3)
+        self.assertIn('class="build-secondary-link" id="liModelButton"', page)
+        self.assertIn('class="build-secondary-link" id="liToggleZeroEvidence"', page)
+
 
 if __name__ == "__main__":
     unittest.main()

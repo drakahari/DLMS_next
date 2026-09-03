@@ -640,6 +640,19 @@ class ThemeSystemTests(unittest.TestCase):
     def test_learning_controls_and_secondary_text_use_semantic_theme_tokens(self):
         css = self._style_css()
         expected = {
+            ".learning-intelligence-page .build-secondary-link": (
+                "--theme-page-text", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft",
+            ),
+            ".learning-intelligence-page .build-secondary-link:hover": (
+                "--theme-heading", "--theme-accent", "--theme-surface-2",
+            ),
+            ".learning-intelligence-page .build-secondary-link:focus-visible": (
+                "--theme-heading", "--theme-accent", "--theme-surface-2",
+            ),
+            ".learning-intelligence-page .build-secondary-link:active": (
+                "--theme-heading", "--theme-accent", "--theme-surface-2",
+            ),
             ".learning-intelligence-filters button": (
                 "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
             ),
@@ -669,6 +682,40 @@ class ThemeSystemTests(unittest.TestCase):
                 self.assertTrue(
                     any(all(token in body for token in tokens) for body in blocks),
                     f"{selector} must resolve through semantic theme tokens",
+                )
+
+    def test_learning_intelligence_secondary_action_contrast_across_palettes(self):
+        active_rules = self._rule_blocks(
+            self._style_css(),
+            ".learning-intelligence-page .build-secondary-link:active",
+        )
+        self.assertTrue(any("24%" in rule for rule in active_rules))
+
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                surface = self._composite(variables["theme-surface-2"], panel)
+                accent = self._rgba(variables["theme-accent"])[:3]
+
+                # Match the strongest 24% accent mix used by the active state;
+                # normal and hover retain still greater foreground contrast.
+                active_background = tuple(
+                    accent[index] * .24 + surface[index] * .76
+                    for index in range(3)
+                )
+                ratio = self._contrast(
+                    variables["theme-page-text"], active_background,
+                )
+                self.assertGreaterEqual(
+                    ratio, 4.5,
+                    f"{theme} Learning Intelligence action contrast is only {ratio:.2f}:1",
                 )
 
     def test_muted_secondary_text_meets_contrast_across_palettes(self):
