@@ -3684,6 +3684,14 @@ DLMS_BACKUP_CRITICAL_JSON_TYPES = {
 RESTORE_FUTURE_SCHEMA_PUBLIC_ERROR = (
     "This backup uses a newer DLMS database schema and cannot be restored by this version."
 )
+RESTORE_STAGING_MARKER = "dlms-validated-restore-stage"
+RESTORE_STAGING_VERSION = 1
+RESTORE_STAGING_STATE_FILENAME = "restore-stage.json"
+# A restore confirmation is normally completed in minutes. Keeping an
+# abandoned validated archive for 24 hours gives an interrupted user ample
+# time to return while preventing repeated large uploads from accumulating.
+RESTORE_STAGING_STALE_SECONDS = 24 * 60 * 60
+RESTORE_STAGING_MAX_CLEANUP_ENTRIES = 1000
 
 
 class RestoreFutureSchemaError(ValueError):
@@ -4369,6 +4377,161 @@ def _restore_staging_dir(token):
     if not DLMS_BACKUP_TOKEN_RE.fullmatch(str(token or "")):
         raise ValueError("Invalid restore token")
     return os.path.join(BACKUP_RESTORE_STAGING_FOLDER, token)
+
+
+def _restore_staging_root_for_cleanup():
+    """Return the helper-owned staging root without following a symlink."""
+    configured_root = os.path.abspath(BACKUP_RESTORE_STAGING_FOLDER)
+    if os.path.lexists(configured_root) and os.path.islink(configured_root):
+        raise ValueError("Restore staging root must not be a symlink")
+    real_root = os.path.realpath(configured_root)
+    if not _is_same_path_or_ancestor(
+        _canonical_data_root(APP_DATA_DIR), real_root
+    ):
+        raise ValueError("Restore staging root escapes the application-data directory")
+    return real_root
+
+
+def _restore_stage_has_regular_file(stage_dir, filename):
+    path = os.path.join(stage_dir, filename)
+    return os.path.isfile(path) and not os.path.islink(path)
+
+
+def _restore_stage_has_validated_report(stage_dir):
+    """Recognize legacy validated stages without re-reading a large ZIP."""
+    if not (
+        _restore_stage_has_regular_file(stage_dir, "restore.zip")
+        and _restore_stage_has_regular_file(stage_dir, "report.json")
+    ):
+        return False
+    try:
+        with open(os.path.join(stage_dir, "report.json"), "r", encoding="utf-8") as f:
+            report = json.load(f)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    manifest = report.get("manifest") if isinstance(report, dict) else None
+    return (
+        isinstance(manifest, dict)
+        and manifest.get("kind") == "dlms-portable-backup"
+        and manifest.get("schema_version") == DLMS_BACKUP_SCHEMA_VERSION
+        and isinstance(report.get("file_count"), int)
+        and not isinstance(report.get("file_count"), bool)
+        and isinstance(report.get("uncompressed_bytes"), int)
+        and not isinstance(report.get("uncompressed_bytes"), bool)
+    )
+
+
+def _restore_stage_has_valid_marker(stage_dir, token):
+    if not _restore_stage_has_regular_file(stage_dir, RESTORE_STAGING_STATE_FILENAME):
+        return False
+    try:
+        with open(
+            os.path.join(stage_dir, RESTORE_STAGING_STATE_FILENAME),
+            "r", encoding="utf-8",
+        ) as f:
+            state = json.load(f)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(state, dict)
+        and state.get("marker") == RESTORE_STAGING_MARKER
+        and state.get("schema_version") == RESTORE_STAGING_VERSION
+        and state.get("token") == token
+        and isinstance(state.get("created_at"), str)
+        and bool(state["created_at"])
+        and _restore_stage_has_validated_report(stage_dir)
+    )
+
+
+def _is_owned_validated_restore_stage(stage_dir, token):
+    """Accept only a direct token directory containing validated DLMS state."""
+    root = _restore_staging_root_for_cleanup()
+    expected = os.path.join(root, token)
+    if os.path.normcase(os.path.abspath(stage_dir)) != os.path.normcase(expected):
+        return False
+    if not os.path.isdir(stage_dir) or os.path.islink(stage_dir):
+        return False
+    # New stages carry an explicit marker. The strict report shape preserves
+    # cancellation and eventual cleanup for validated stages from older builds.
+    return (
+        _restore_stage_has_valid_marker(stage_dir, token)
+        or _restore_stage_has_validated_report(stage_dir)
+    )
+
+
+def _restore_operation_state_exists():
+    """Conservatively retain staging while any restore recovery state exists."""
+    root = _restore_operation_root()
+    if not os.path.lexists(root):
+        return False
+    if os.path.islink(root) or not os.path.isdir(root):
+        return True
+    try:
+        return bool(os.listdir(root))
+    except OSError:
+        return True
+
+
+def _cancel_validated_restore_stage(token):
+    """Remove one known-valid, non-recovery restore stage; missing is harmless."""
+    stage_dir = _restore_staging_dir(token)
+    root = _restore_staging_root_for_cleanup()
+    stage_dir = os.path.join(root, token)
+    if not os.path.lexists(stage_dir):
+        return "missing"
+    if _restore_operation_state_exists():
+        return "recovery"
+    if not _is_owned_validated_restore_stage(stage_dir, token):
+        return "unrecognized"
+    shutil.rmtree(stage_dir)
+    return "removed"
+
+
+def _cleanup_stale_restore_staging(*, now=None):
+    """Bounded startup cleanup for old validated stages without recovery state."""
+    report = {"removed": 0, "preserved": 0, "recovery": 0, "failed": 0}
+    try:
+        root = _restore_staging_root_for_cleanup()
+        if not os.path.lexists(root):
+            return report
+        if not os.path.isdir(root):
+            raise ValueError("Restore staging root is not a directory")
+        if _restore_operation_state_exists():
+            report["recovery"] = 1
+            return report
+        cutoff = (time.time() if now is None else float(now)) - RESTORE_STAGING_STALE_SECONDS
+        names = sorted(os.listdir(root))[:RESTORE_STAGING_MAX_CLEANUP_ENTRIES]
+    except Exception as exc:
+        print(
+            "[RESTORE STAGING CLEANUP ERROR] Could not inspect restore staging: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        report["failed"] += 1
+        return report
+
+    for name in names:
+        if not DLMS_BACKUP_TOKEN_RE.fullmatch(name):
+            report["preserved"] += 1
+            continue
+        stage_dir = os.path.join(root, name)
+        try:
+            if not _is_owned_validated_restore_stage(stage_dir, name):
+                report["preserved"] += 1
+                continue
+            if os.path.getmtime(stage_dir) >= cutoff:
+                report["preserved"] += 1
+                continue
+            if _cancel_validated_restore_stage(name) == "removed":
+                report["removed"] += 1
+            else:
+                report["preserved"] += 1
+        except Exception as exc:
+            print(
+                "[RESTORE STAGING CLEANUP ERROR] "
+                f"{name}: {type(exc).__name__}: {exc}"
+            )
+            report["failed"] += 1
+    return report
 
 
 def _apply_restored_data(staged_data_root):
@@ -21191,6 +21354,16 @@ def settings_stage_restore():
             saved_report = {k: v for k, v in report.items() if k != "members"}
             saved_report["semantic_validation"] = semantic_result
             json.dump(saved_report, f, indent=2)
+        _atomic_write_json(
+            os.path.join(stage_dir, RESTORE_STAGING_STATE_FILENAME),
+            {
+                "marker": RESTORE_STAGING_MARKER,
+                "schema_version": RESTORE_STAGING_VERSION,
+                "token": token,
+                "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            },
+            expected_type=dict,
+        )
     except Exception as exc:
         shutil.rmtree(stage_dir, ignore_errors=True)
         print(f"[RESTORE VALIDATION ERROR] {type(exc).__name__}: {exc}")
@@ -21204,7 +21377,7 @@ def settings_stage_restore():
     return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm Restore - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><button class="settings-back-button" onclick="location.href='/settings/backup'">Cancel</button></div>
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><form method="POST" action="/settings/backup/restore/cancel/{{ token }}"><button class="settings-back-button" type="submit">Cancel</button></form></div>
 <div class="settings-detail-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">✓</div><div><h2>Valid DLMS Backup</h2><p>Review the snapshot metadata before replacing current data.</p></div></div>
 <div class="settings-current-value"><strong>Created:</strong> {{ manifest.created_at or 'Unknown' }}</div>
@@ -21215,9 +21388,31 @@ def settings_stage_restore():
 {% if semantic_validation.get('portal_config', {}).get('status') == 'normalized' %}<div class="settings-warning-panel"><strong>Custom AI URL will be cleared</strong><span>The backup contained a relative, DLMS-local, or unsupported Custom AI URL. The rest of the validated backup can be restored normally; configure a new absolute HTTP or HTTPS destination afterward if needed.</span></div>{% endif %}
 <div class="settings-warning-panel"><strong>Automatic safety backup</strong><span>Before restoring, DLMS will create a new backup of your current data. If the restore operation fails, your pre-restore snapshot remains available in the DLMS backups folder.</span></div>
 </section>
-<form method="POST" action="/settings/backup/restore/confirm/{{ token }}"><div class="settings-form-actions"><button class="settings-primary-button" type="submit">Restore This Backup</button><button class="settings-secondary-button" type="button" onclick="location.href='/settings/backup'">Cancel</button></div></form>
+<div class="settings-form-actions"><form method="POST" action="/settings/backup/restore/confirm/{{ token }}"><button class="settings-primary-button" type="submit">Restore This Backup</button></form><form method="POST" action="/settings/backup/restore/cancel/{{ token }}"><button class="settings-secondary-button" type="submit">Cancel</button></form></div>
 </div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, manifest=manifest, report=report, semantic_validation=semantic_result, summary=summary, token=token)
+
+
+@app.route("/settings/data/restore/cancel/<token>", methods=["POST"])
+@app.route("/settings/backup/restore/cancel/<token>", methods=["POST"])
+def settings_cancel_restore(token):
+    with RESTORE_OPERATION_LOCK:
+        try:
+            result = _cancel_validated_restore_stage(token)
+        except ValueError:
+            return "Invalid restore cancellation request", 400
+        except Exception as exc:
+            print(
+                "[RESTORE STAGING CLEANUP ERROR] Could not cancel restore stage: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            return "Could not cancel the staged restore", 500
+
+    if result == "unrecognized":
+        return "Restore staging is not available", 404
+    if result == "recovery":
+        return "Restore recovery is in progress or requires recovery", 409
+    return redirect("/settings/backup?restore_cancelled=1")
 
 
 @app.route("/settings/data/restore/confirm/<token>", methods=["POST"])
@@ -21363,6 +21558,7 @@ def settings_backup_page():
 
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-blue">⇧</div><div><h2>Restore from Backup</h2><p>Upload a DLMS portable-backup ZIP. DLMS validates it and shows a confirmation page before changing anything.</p></div></div>
 {% if request.args.get('restore_error') %}<div class="settings-critical-panel"><strong>Restore file not accepted</strong><span>Select a DLMS ZIP backup created by this Backup &amp; Restore page.</span></div>{% endif %}
+{% if request.args.get('restore_cancelled') %}<div class="settings-warning-panel"><strong>Restore cancelled</strong><span>The validated backup staging files were removed. No DLMS data was changed.</span></div>{% endif %}
 <div class="settings-warning-panel"><strong>Restore is deliberately cautious.</strong><span>The uploaded ZIP is checked for archive integrity, traversal/symlink attacks, schema compatibility, duplicate paths, and expansion limits. DLMS also creates a pre-restore backup of the current data before applying the snapshot.</span></div>
 <form method="POST" action="/settings/backup/restore/stage" enctype="multipart/form-data"><label class="settings-field-label" for="backupFile">DLMS backup ZIP</label><input id="backupFile" class="settings-file-input" type="file" name="backup_file" accept=".zip,application/zip" required><div class="settings-form-actions"><button type="submit" class="settings-primary-button">Validate Backup &amp; Continue</button></div></form>
 </section>
@@ -27264,7 +27460,20 @@ def _run_restore_startup_reconciliation():
         raise
 
 
+def _run_restore_staging_startup_cleanup():
+    """Discard only old validated uploads after restore recovery is settled."""
+    try:
+        return _cleanup_stale_restore_staging()
+    except Exception as exc:
+        print(
+            "[RESTORE STAGING CLEANUP ERROR] startup cleanup will retry next launch "
+            f"({type(exc).__name__}: {exc})"
+        )
+        return {"removed": 0, "preserved": 0, "recovery": 0, "failed": 1}
+
+
 _run_restore_startup_reconciliation()
+_run_restore_staging_startup_cleanup()
 ensure_db_initialized()
 _run_quiz_publication_startup_reconciliation()
 
