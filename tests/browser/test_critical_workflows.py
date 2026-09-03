@@ -211,6 +211,22 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
     browser.navigate(f"{browser_stack.base_url}/library")
     browser.wait_for("document.querySelectorAll('.library-quiz-card').length === 2")
 
+    browser.activate()
+    browser.set_viewport(800, 700)
+    assert browser.evaluate(
+        "(() => { const sidebar = document.getElementById('dashboardSidebar'); "
+        "const menu = document.getElementById('menuButton'); "
+        "sidebar.classList.add('open'); menu.setAttribute('aria-expanded', 'true'); "
+        "sidebar.querySelector('a[href]').focus(); "
+        "return document.activeElement.closest('#dashboardSidebar') === sidebar; })()"
+    ) is True
+    browser.press_key("\ue00c")
+    browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open')")
+    assert browser.evaluate(
+        "document.getElementById('menuButton').getAttribute('aria-expanded') === 'false' && "
+        "document.activeElement === document.getElementById('menuButton')"
+    ) is True
+
     order_expression = (
         "[...document.querySelectorAll('.library-quiz-card')]"
         ".map(card => card.dataset.title).join('|')"

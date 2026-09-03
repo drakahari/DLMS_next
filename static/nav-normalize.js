@@ -177,9 +177,34 @@
   const initialStudyAreaVisibility = readCachedStudyAreaVisibility() || defaultStudyAreaVisibility;
   mountNavigation(initialStudyAreaVisibility);
 
+  const menuButtons = Array.from(document.querySelectorAll('.dashboard-menu-button'));
+  const syncMenuState = () => {
+    const open = sidebar.classList.contains('open');
+    menuButtons.forEach(button => button.setAttribute('aria-expanded', String(open)));
+  };
+  const syncMenuStateAfterEvent = () => setTimeout(syncMenuState, 0);
+
   document.querySelector('[data-settings-menu]')?.addEventListener('click', () => {
     sidebar.classList.toggle('open');
   });
+  menuButtons.forEach(button => button.addEventListener('click', event => {
+    syncMenuStateAfterEvent();
+    if (event.detail === 0) {
+      setTimeout(() => {
+        if (sidebar.classList.contains('open')) {
+          sidebar.querySelector('a[href], button:not(:disabled), select')?.focus();
+        }
+      }, 0);
+    }
+  }));
+  document.addEventListener('click', syncMenuStateAfterEvent);
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !sidebar.classList.contains('open')) return;
+    sidebar.classList.remove('open');
+    syncMenuState();
+    menuButtons[0]?.focus();
+  });
+  syncMenuState();
 
   // The Learning Intelligence parent and Topic Intelligence lead to the
   // same landing page. Once already there, do not reload the page merely for
@@ -294,7 +319,12 @@
 
     modal.querySelectorAll('[data-help-lightbox-close]').forEach(el => el.addEventListener('click', closeLightbox));
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && !modal.hidden) closeLightbox();
+      if (modal.hidden) return;
+      if (event.key === 'Escape') closeLightbox();
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        closeButton.focus();
+      }
     });
   }
 })();

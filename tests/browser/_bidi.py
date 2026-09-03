@@ -174,6 +174,36 @@ class FirefoxBidi:
             },
         )
 
+    def press_key(self, value: str) -> None:
+        self.command(
+            "input.performActions",
+            {
+                "context": self.context,
+                "actions": [{
+                    "type": "key",
+                    "id": "keyboard",
+                    "actions": [
+                        {"type": "keyDown", "value": value},
+                        {"type": "keyUp", "value": value},
+                    ],
+                }],
+            },
+        )
+        self.command("input.releaseActions", {"context": self.context})
+
+    def activate(self) -> None:
+        self.command("browsingContext.activate", {"context": self.context})
+
+    def set_viewport(self, width: int, height: int) -> None:
+        self.command(
+            "browsingContext.setViewport",
+            {
+                "context": self.context,
+                "viewport": {"width": width, "height": height},
+                "devicePixelRatio": 1,
+            },
+        )
+
     def _send_json(self, value: dict) -> None:
         payload = json.dumps(value, separators=(",", ":")).encode("utf-8")
         mask = os.urandom(4)

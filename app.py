@@ -5336,7 +5336,7 @@ def admin_maintenance():
 {{ settings_shell_sidebar("System Tools")|safe }}
 <main class="dashboard-main system-tools-main">
     <header class="dashboard-header system-tools-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <div class="build-eyebrow">SETTINGS / SYSTEM TOOLS</div>
             <h1>System Tools</h1>
@@ -5623,7 +5623,7 @@ HOTSPOT_EDITOR_TEMPLATE = r"""
 <div class="dashboard-brand"><div class="dashboard-brand-mark">◎</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
 <nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>{% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}</nav>
 <div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item active" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Image Study Editor</div></aside>
-<main class="dashboard-main hotspot-editor-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">MAINTENANCE · IMAGE STUDY</div><h1>Image Study Editor</h1><p>Prepare study images without altering the original file: mask unwanted text, add simple labels, and calibrate clickable regions for image-based quizzes.</p></div></header>
+<main class="dashboard-main hotspot-editor-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">MAINTENANCE · IMAGE STUDY</div><h1>Image Study Editor</h1><p>Prepare study images without altering the original file: mask unwanted text, add simple labels, and calibrate clickable regions for image-based quizzes.</p></div></header>
 <section class="dashboard-panel hotspot-editor-picker"><form method="GET" action="/admin/image-editor"><label><span>Installed image dataset</span><select id="datasetKey">{% for item in catalog %}<option value="{{ item.pack_id }}::{{ item.dataset_kind }}::{{ item.dataset_id }}" {% if item.pack_id == selected_pack and item.dataset_id == selected_dataset and item.dataset_kind == selected_kind %}selected{% endif %}>{{ item.pack_name }} — {{ item.title }}{% if item.dataset_kind == 'quiz' %} · Question Set{% endif %}</option>{% endfor %}</select></label><input type="hidden" name="pack" id="packField" value="{{ selected_pack }}"><input type="hidden" name="kind" id="kindField" value="{{ selected_kind }}"><input type="hidden" name="dataset" id="datasetField" value="{{ selected_dataset }}"><button type="submit">Load Dataset</button></form>{% if load_error %}<div class="flash error">{{ load_error }}</div>{% endif %}{% if not catalog %}<p>No installed content pack currently declares an image dataset.</p>{% endif %}</section>
 {% if editor_data %}<section class="dashboard-panel hotspot-editor-workspace">
 <div class="image-editor-mode-tabs"><button type="button" id="hotspotModeBtn" class="active">Clickable Regions</button><button type="button" id="prepModeBtn">Image Prep</button></div>
@@ -7025,7 +7025,7 @@ def content_pack_import_review(token):
 <div class="dashboard-sidebar-version">Pack Validation</div>
 </aside>
 <main class="dashboard-main content-packs-main">
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">{{ 'AI STUDY PACK WORKFLOW' if ai_workflow else 'CONTENT PACK IMPORT' }}</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">{{ 'AI STUDY PACK WORKFLOW' if ai_workflow else 'CONTENT PACK IMPORT' }}</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
 
 {% if ai_workflow %}
 <ol class="study-pack-workflow-steps" aria-label="AI Study Pack workflow">
@@ -7194,7 +7194,7 @@ def content_pack_details(folder):
 <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
 <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
 </nav><div class="dashboard-sidebar-version">Pack Details</div></aside>
-<main class="dashboard-main content-packs-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">CONTENT PACK REPORT</div><h1>{{ report.pack_name }}</h1><p>Installed Study Pack metadata and independent DLMS validation.</p></div></header>
+<main class="dashboard-main content-packs-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">CONTENT PACK REPORT</div><h1>{{ report.pack_name }}</h1><p>Installed Study Pack metadata and independent DLMS validation.</p></div></header>
 <section class="dashboard-panel pack-detail-hero"><div><span class="medical-eyebrow">{{ manifest.get('content_domain') or manifest.get('extends') or 'GENERAL' }}{% if manifest.get('version') %} · v{{ manifest.get('version') }}{% endif %}</span><h2>{{ report.pack_name }}</h2><p>{{ manifest.get('description') or 'No pack description provided.' }}</p></div><span class="content-pack-status {{ 'is-valid' if report.valid else 'is-invalid' }}">{{ 'Valid' if report.valid else 'Invalid' }}</span></section>
 <section class="pack-detail-stat-grid"><article class="dashboard-stat-card"><span>Datasets</span><strong>{{ matching + image + mixed }}</strong><small>{{ matching }} matching · {{ image }} image · {{ mixed }} mixed</small></article><article class="dashboard-stat-card"><span>Storage</span><strong>{{ report.size }}</strong><small>{{ report.file_count }} files</small></article><article class="dashboard-stat-card"><span>Generated Quizzes</span><strong>{{ report.generated_quizzes }}</strong><small>tracked from this pack</small></article><article class="dashboard-stat-card"><span>Warnings</span><strong>{{ report.warnings|length }}</strong><small>{{ report.errors|length }} blocking errors</small></article></section>
 <section class="dashboard-panel pack-validation-panel"><div class="content-pack-manager-heading"><div><span class="medical-eyebrow">INDEPENDENT VALIDATION</span><h2>Validation Report</h2></div><span class="pack-count-pill">{{ report.checks|length }} checks</span></div><div class="pack-validation-checks">{% for check in report.checks %}<div class="pack-validation-check"><span class="pack-validation-state {{ check.status|lower }}">{{ check.status }}</span><strong>{{ check.name }}</strong><span>{{ check.detail }}</span></div>{% endfor %}</div>{% if report.errors %}<div class="pack-validation-messages errors"><h3>Blocking problems</h3><ul>{% for item in report.errors %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}{% if report.warnings %}<div class="pack-validation-messages warnings"><h3>Warnings</h3><ul>{% for item in report.warnings %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}</section>
@@ -7289,7 +7289,7 @@ def content_packs_page():
 
     <main class="dashboard-main content-packs-main">
         <header class="dashboard-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div><div class="medical-eyebrow">CONTENT MANAGEMENT</div><h1>Content Packs</h1>
             <p>Validate, inspect, open, and safely remove installed study content.</p></div>
         </header>
@@ -7882,7 +7882,7 @@ def _medical_not_installed():
 
     <main class="dashboard-main medical-main">
         <header class="dashboard-header medical-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="medical-eyebrow">MEDICAL STUDY</div>
                 <h1>Medical Study</h1>
@@ -8030,7 +8030,7 @@ def medical_study_home():
 
     <main class="dashboard-main medical-main">
         <header class="dashboard-header medical-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="medical-eyebrow">MEDICAL STUDY</div>
                 <h1>{{ pack.name }}</h1>
@@ -8147,7 +8147,7 @@ def medical_matching():
 
     <main class="dashboard-main medical-main">
         <header class="dashboard-header medical-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="medical-eyebrow">MEDICAL STUDY · TERMINOLOGY</div>
                 <h1>Terminology &amp; Matching</h1>
@@ -8317,7 +8317,7 @@ def medical_anatomy():
 
     <main class="dashboard-main medical-main">
         <header class="dashboard-header medical-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="medical-eyebrow">MEDICAL STUDY · VISUAL PRACTICE</div>
                 <h1>Anatomy &amp; Images</h1>
@@ -8791,7 +8791,7 @@ def _it_empty_page():
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>IT Study - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home medical-study-page it-study-page"><div class="dashboard-shell">""" + _IT_SIDEBAR + r"""
 <main class="dashboard-main medical-main">
-<header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">IT STUDY</div><h1>DLMS IT Study</h1><p>IT Study is ready. Install or create IT / Cybersecurity Study Packs to populate focused concept and diagram practice.</p></div></header>
+<header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">IT STUDY</div><h1>DLMS IT Study</h1><p>IT Study is ready. Install or create IT / Cybersecurity Study Packs to populate focused concept and diagram practice.</p></div></header>
 <section class="medical-summary-grid"><article class="dashboard-stat-card"><span>Installed Packs</span><strong>0</strong><small>IT content is optional</small></article><article class="dashboard-stat-card"><span>Study Banks</span><strong>0</strong><small>create or install content</small></article><article class="dashboard-stat-card"><span>Image Sets</span><strong>0</strong><small>no diagrams installed</small></article></section>
 <section class="medical-section-launch-grid">
 <a class="dashboard-panel medical-section-launch-card" href="/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&amp;from=it"><div class="medical-section-launch-icon">AI</div><div class="medical-section-launch-copy"><span class="medical-eyebrow">CREATE</span><h2>Create an IT Study Pack</h2><p>Open the unified AI Study Pack Builder with IT / Cybersecurity preselected.</p><span class="medical-section-launch-action">Open AI Study Pack Builder →</span></div></a>
@@ -8814,7 +8814,7 @@ def it_study_home():
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>IT Study - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home medical-study-page it-study-page"><div class="dashboard-shell">""" + _IT_SIDEBAR + r"""
 <main class="dashboard-main medical-main">
-<header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">IT STUDY</div><h1>DLMS IT Study</h1><p>Focused IT and cybersecurity practice collected automatically from installed IT-domain Study Packs.</p></div></header>
+<header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">IT STUDY</div><h1>DLMS IT Study</h1><p>Focused IT and cybersecurity practice collected automatically from installed IT-domain Study Packs.</p></div></header>
 <section class="medical-summary-grid"><article class="dashboard-stat-card"><span>Installed Packs</span><strong>{{ pack_count }}</strong><small>IT / Cybersecurity packs</small></article><article class="dashboard-stat-card"><span>Study Banks</span><strong>{{ datasets|length }}</strong><small>{{ total_terms }} concepts</small></article><article class="dashboard-stat-card"><span>Visual Sets</span><strong>{{ image_datasets|length }}</strong><small>{{ total_hotspots }} targets across {{ total_images }} images</small></article></section>
 <section class="medical-section-launch-grid">
 <a class="dashboard-panel medical-section-launch-card" href="/it/matching"><div class="medical-section-launch-icon">↔</div><div class="medical-section-launch-copy"><span class="medical-eyebrow">TEXT STUDY</span><h2>Concepts &amp; Matching</h2><p>Practice protocols, models, terminology, commands, security concepts, and other source-documented IT material.</p><div class="medical-dataset-meta"><span>{{ datasets|length }} study banks</span><span>{{ total_terms }} concepts</span></div><span class="medical-section-launch-action">Open Concepts &amp; Matching →</span></div></a>
@@ -8835,7 +8835,7 @@ def it_matching():
     return render_template_string(r"""
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>IT Concepts & Matching - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home medical-study-page it-study-page"><div class="dashboard-shell">""" + _IT_SIDEBAR + r"""
-<main class="dashboard-main medical-main"><header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">IT STUDY · CONCEPTS</div><h1>Concepts &amp; Matching</h1><p>Choose an installed IT study bank, configure the round, and launch focused matching practice.</p></div></header>
+<main class="dashboard-main medical-main"><header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">IT STUDY · CONCEPTS</div><h1>Concepts &amp; Matching</h1><p>Choose an installed IT study bank, configure the round, and launch focused matching practice.</p></div></header>
 <section class="medical-summary-grid medical-subpage-summary"><article class="dashboard-stat-card"><span>Study Banks</span><strong>{{ datasets|length }}</strong><small>installed IT datasets</small></article><article class="dashboard-stat-card"><span>Total Concepts</span><strong>{{ total_terms }}</strong><small>across available banks</small></article><article class="dashboard-stat-card medical-subpage-back-card"><span>IT Study</span><a href="/it">← Back to IT Study</a><small>choose another study area</small></article></section>
 {% if datasets %}<section class="dashboard-panel medical-compact-dataset-panel"><div class="medical-compact-panel-heading"><div><span class="medical-eyebrow">INSTALLED IT CONTENT</span><h2>Study Banks</h2><p>Expand a row for details or launch a quiz directly.</p></div><div class="medical-compact-panel-actions"><button type="button" class="medical-ai-secondary-button" onclick="document.querySelectorAll('.it-detail-row').forEach(r=>r.hidden=false)">Expand All</button><button type="button" class="medical-ai-secondary-button" onclick="document.querySelectorAll('.it-detail-row').forEach(r=>r.hidden=true)">Collapse All</button></div></div><div class="study-dataset-table-wrap medical-dataset-table-wrap"><table class="study-dataset-table medical-dataset-table"><thead><tr><th>Type</th><th>Study Bank</th><th>Concepts</th><th>Round Options</th><th class="study-dataset-action-col">Action</th></tr></thead><tbody>
 {% for d in datasets %}<tr><td><span class="study-type-badge matching">Matching</span></td><td><button type="button" class="study-dataset-title-button" onclick="const r=document.getElementById('it-match-{{ loop.index }}');r.hidden=!r.hidden">{{ d.title }}</button><small>{{ d.category }}</small></td><td><strong>{{ d.term_count }}</strong><small>items</small></td><td><form id="it-match-form-{{ loop.index }}" method="POST" action="/study-packs/generate"></form><div class="study-table-inline-form"><input form="it-match-form-{{ loop.index }}" type="hidden" name="pack_id" value="{{ d.pack_id }}"><input form="it-match-form-{{ loop.index }}" type="hidden" name="dataset_id" value="{{ d.id }}"><label><span>Pairs</span><input form="it-match-form-{{ loop.index }}" type="number" name="round_size" min="2" max="{{ d.term_count }}" value="{{ 10 if d.term_count >= 10 else d.term_count }}"></label><label><span>Direction</span><select form="it-match-form-{{ loop.index }}" name="direction"><option value="random">Random</option><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option></select></label></div></td><td class="study-dataset-action-col"><button form="it-match-form-{{ loop.index }}" class="medical-primary-button study-table-primary" type="submit">Create Quiz</button></td></tr><tr id="it-match-{{ loop.index }}" class="study-dataset-detail-row it-detail-row" hidden><td colspan="5"><div class="medical-dataset-detail-content"><p>{{ d.description or 'No additional description supplied.' }}</p><div class="medical-dataset-detail-meta"><span><strong>Pack:</strong> {{ d.pack_name }}</span><span><strong>Dataset:</strong> {{ d.id }}</span></div></div></td></tr>{% endfor %}
@@ -8854,7 +8854,7 @@ def it_images():
     return render_template_string(r"""
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>IT Diagrams & Images - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home medical-study-page it-study-page"><div class="dashboard-shell">""" + _IT_SIDEBAR + r"""
-<main class="dashboard-main medical-main"><header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="medical-eyebrow">IT STUDY · VISUAL PRACTICE</div><h1>Diagrams &amp; Images</h1><p>Practice visual identification from installed IT diagrams, hardware images, architecture figures, and other source-documented visuals.</p></div></header>
+<main class="dashboard-main medical-main"><header class="dashboard-header medical-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">IT STUDY · VISUAL PRACTICE</div><h1>Diagrams &amp; Images</h1><p>Practice visual identification from installed IT diagrams, hardware images, architecture figures, and other source-documented visuals.</p></div></header>
 <section class="medical-summary-grid medical-subpage-summary"><article class="dashboard-stat-card"><span>Image Sets</span><strong>{{ image_datasets|length }}</strong><small>installed visual datasets</small></article><article class="dashboard-stat-card"><span>Targets</span><strong>{{ total_hotspots }}</strong><small>across {{ total_images }} images</small></article><article class="dashboard-stat-card medical-subpage-back-card"><span>IT Study</span><a href="/it">← Back to IT Study</a><small>choose another study area</small></article></section>
 {% if image_datasets %}<section class="dashboard-panel medical-compact-dataset-panel"><div class="medical-compact-panel-heading"><div><span class="medical-eyebrow">INSTALLED VISUAL CONTENT</span><h2>Image Study Sets</h2><p>Launch image practice or expand a row for source-pack details.</p></div></div><div class="study-dataset-table-wrap medical-dataset-table-wrap"><table class="study-dataset-table medical-dataset-table"><thead><tr><th>Type</th><th>Image Study Set</th><th>Images</th><th>Targets</th><th class="study-dataset-action-col">Action</th></tr></thead><tbody>
 {% for d in image_datasets %}<tr><td><span class="study-type-badge image">Image</span></td><td><button type="button" class="study-dataset-title-button" onclick="const r=document.getElementById('it-image-{{ loop.index }}');r.hidden=!r.hidden">{{ d.title }}</button><small>{{ d.category }}</small></td><td><strong>{{ d.image_count }}</strong></td><td><strong>{{ d.hotspot_count }}</strong></td><td class="study-dataset-action-col"><form method="POST" action="/study-packs/image/generate"><input type="hidden" name="pack_id" value="{{ d.pack_id }}"><input type="hidden" name="dataset_id" value="{{ d.id }}"><button class="medical-primary-button study-table-primary" type="submit">Create Quiz</button></form></td></tr><tr id="it-image-{{ loop.index }}" class="study-dataset-detail-row" hidden><td colspan="5"><div class="medical-dataset-detail-content"><p>{{ d.description or 'No additional description supplied.' }}</p><div class="medical-dataset-detail-meta"><span><strong>Pack:</strong> {{ d.pack_name }}</span><span><strong>Dataset:</strong> {{ d.id }}</span></div></div></td></tr>{% endfor %}
@@ -9204,7 +9204,7 @@ def study_packs_home():
 
 <main class="dashboard-main study-packs-main">
     <header class="dashboard-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <div class="medical-eyebrow">{{ "CROSS-DOMAIN STUDY" if other_mode else "CUSTOM STUDY CONTENT" }}</div>
             <h1>{{ "Other Studies" if other_mode else "Study Packs" }}</h1>
@@ -9640,7 +9640,7 @@ def study_pack_ai_builder():
 
 <main class="dashboard-main medical-main">
     <header class="dashboard-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <div class="medical-eyebrow">ANY SUBJECT · CUSTOM CONTENT</div>
             <h1>AI Study Pack Builder</h1>
@@ -9833,7 +9833,7 @@ def law_study_home():
 
     <main class="dashboard-main law-hub-main">
         <header class="dashboard-header law-hub-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="law-hub-eyebrow">LAW STUDY</div>
                 <h1>Casework &amp; Review</h1>
@@ -10106,7 +10106,7 @@ def law_create_case_review():
 
 <main class="dashboard-main law-subpage-main">
     <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <div class="law-subpage-eyebrow">LAW STUDY</div>
             <h1>Create Case Review</h1>
@@ -10670,7 +10670,7 @@ def law_import_case_packet():
 
 <main class="dashboard-main law-subpage-main">
     <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <div class="law-subpage-eyebrow">LAW STUDY</div>
             <h1>Import Case Packet</h1>
@@ -10891,7 +10891,7 @@ def law_saved_imports():
 
 <main class="dashboard-main law-subpage-main">
     <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <div class="law-subpage-eyebrow">LAW STUDY</div>
             <h1>Saved Law Imports</h1>
@@ -11076,7 +11076,7 @@ def law_view_saved_import(filename):
 </aside>
 <main class="dashboard-main law-subpage-main">
     <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div><div class="law-subpage-eyebrow">LAW STUDY · SAVED IMPORT</div><h1>View Law Import</h1><p>Inspect the raw packet and recognized study sections before creating a structured case review.</p></div>
     </header>
 
@@ -11397,7 +11397,7 @@ def law_case_reviews():
 
 <main class="dashboard-main law-subpage-main">
     <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <div class="law-subpage-eyebrow">LAW STUDY</div>
             <h1>My Case Reviews</h1>
@@ -11612,7 +11612,7 @@ def law_view_case_review(case_id):
 </aside>
 <main class="dashboard-main law-subpage-main law-study-view">
     <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div><div class="law-subpage-eyebrow">LAW STUDY · CASE REVIEW</div><h1>{{ case_data.title }}</h1><p>{{ case_data.course or "Uncategorized" }} · Structured case review</p></div>
     </header>
 
@@ -12340,7 +12340,7 @@ def edit_quiz(quiz_id):
 
     <main class="dashboard-main build-modern-main edit-quiz-main">
         <header class="dashboard-header build-page-header edit-quiz-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="build-eyebrow">QUIZ LIBRARY</div>
                 <h1>Edit Quiz</h1>
@@ -14735,7 +14735,7 @@ def quiz_library():
 
     <main class="dashboard-main library-main">
         <header class="dashboard-header library-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <h1>{{ portal_title }}</h1>
                 <p>Quiz Library <span>•</span> Organize <span>•</span> Launch <span>•</span> Manage</p>
@@ -14777,7 +14777,7 @@ def quiz_library():
 
                 <div class="library-search-wrap">
                     <span aria-hidden="true">⌕</span>
-                    <input id="librarySearch" type="search" placeholder="Search quizzes..." autocomplete="off">
+                    <input id="librarySearch" type="search" placeholder="Search quizzes..." autocomplete="off" aria-label="Search quizzes">
                 </div>
             </div>
 
@@ -14806,7 +14806,7 @@ def quiz_library():
             <article class="library-folder" data-folder-name="{{ folder_name }}" data-folder-draggable="true">
                 <div class="library-folder-header" onclick="toggleLibraryFolder(event, this)">
                     <div class="library-folder-title-group">
-                        <span class="folder-toggle-icon">▼</span>
+                        <button type="button" class="folder-toggle-icon library-folder-toggle-button" aria-label="Collapse {{ folder_name }}" aria-expanded="true" aria-controls="library-folder-body-{{ loop.index }}" onclick="toggleLibraryFolder(event, this)">▼</button>
                         <svg class="dlms-folder-icon dlms-folder-icon-large" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                             <path d="M3.5 7.25A2.25 2.25 0 0 1 5.75 5h4.1l2 2h6.4a2.25 2.25 0 0 1 2.25 2.25v7A2.25 2.25 0 0 1 18.25 18.5H5.75A2.25 2.25 0 0 1 3.5 16.25z"/>
                         </svg>
@@ -14825,7 +14825,7 @@ def quiz_library():
                         {% endif %}
                     {% if folder_name|lower != "uncategorized" %}
                         <div class="folder-actions">
-                            <button type="button" class="library-icon-button" onclick="showRenameFolderForm(event, this)" title="Rename folder">✎</button>
+                            <button type="button" class="library-icon-button" onclick="showRenameFolderForm(event, this)" title="Rename folder" aria-label="Rename {{ folder_name }}">✎</button>
                             <form method="POST" action="/rename_quiz_folder" class="rename-folder-form library-inline-form" style="display:none;">
                                 <input type="hidden" name="old_folder" value="{{ folder_name }}">
                                 <input type="hidden" name="view" value="{{ view }}">
@@ -14837,13 +14837,13 @@ def quiz_library():
                         <form method="POST" action="/delete_quiz_folder" onsubmit="return confirm('Delete this folder? Quizzes inside it will move to Uncategorized.');">
                             <input type="hidden" name="folder" value="{{ folder_name }}">
                             <input type="hidden" name="view" value="{{ view }}">
-                            <button type="submit" class="library-icon-button library-danger-icon" title="Delete folder">🗑</button>
+                            <button type="submit" class="library-icon-button library-danger-icon" title="Delete folder" aria-label="Delete {{ folder_name }} folder">🗑</button>
                         </form>
                     {% endif %}
                     </div>
                 </div>
 
-                <div class="library-folder-body" data-folder-name="{{ folder_name }}">
+                <div class="library-folder-body" id="library-folder-body-{{ loop.index }}" data-folder-name="{{ folder_name }}">
                     {% for q in folder_quizzes %}
                     <article class="quiz-card library-quiz-card" data-id="{{ q['html'] }}" data-title="{{ q['title']|lower }}" data-search="{{ (q['title'] ~ ' ' ~ folder_name)|lower }}">
                         <div class="library-quiz-main">
@@ -14954,11 +14954,15 @@ function setLibraryFolderCollapsed(folder, collapsed) {
     if (!body || !icon) return;
     body.style.display = collapsed ? "none" : "";
     icon.textContent = collapsed ? "▶" : "▼";
+    icon.setAttribute("aria-expanded", String(!collapsed));
+    const folderName = folder.getAttribute("data-folder-name") || "folder";
+    icon.setAttribute("aria-label", `${collapsed ? "Expand" : "Collapse"} ${folderName}`);
     folder.classList.toggle("collapsed", collapsed);
 }
 
 function toggleLibraryFolder(event, header) {
-    if (event.target.closest("form, input, button, select, textarea, a")) return;
+    const nativeToggle = header.matches(".library-folder-toggle-button");
+    if (!nativeToggle && event.target.closest("form, input, button, select, textarea, a")) return;
     const folder = header.closest(".library-folder");
     const folderName = folder.getAttribute("data-folder-name");
     if (!folderName) return;
@@ -14989,6 +14993,7 @@ function hideRenameFolderForm(event, button) {
     if (!form || !renameButton) return;
     form.style.display = "none";
     renameButton.style.display = "";
+    renameButton.focus();
 }
 
 function showAddFolderForm(event, button) {
@@ -15010,6 +15015,7 @@ function hideAddFolderForm(event, button) {
     if (!form || !newFolderButton) return;
     form.style.display = "none";
     newFolderButton.style.display = "";
+    newFolderButton.focus();
 }
 
 function showMoveQuizForm(event, button) {
@@ -15031,6 +15037,7 @@ function hideMoveQuizForm(event, button) {
     if (!form || !moveButton) return;
     form.style.display = "none";
     moveButton.style.display = "";
+    moveButton.focus();
 }
 
 function libraryReorderStatus(message) {
@@ -15470,7 +15477,7 @@ IMAGE_QUIZ_BUILDER_TEMPLATE = r"""
 <aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▧</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
 <nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>{% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}</nav>
 <div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a></nav><div class="dashboard-sidebar-version">Build from Images</div></aside>
-<main class="dashboard-main image-builder-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">IMAGE-BASED QUIZ BUILDER</div><h1>Build from Images</h1><p>Use images exactly as they are, attach questions below them, or create clickable hotspot questions. Editing is optional.</p></div></header>
+<main class="dashboard-main image-builder-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">IMAGE-BASED QUIZ BUILDER</div><h1>Build from Images</h1><p>Use images exactly as they are, attach questions below them, or create clickable hotspot questions. Editing is optional.</p></div></header>
 
 {% if not draft %}
 <section class="dashboard-panel image-builder-intro"><div class="image-builder-step-badge">1</div><div><span class="build-method-label">UPLOAD</span><h2>Choose one or more images</h2><p>Upload clean diagrams, screenshots, photographs, figures, or other study images. You can use them as-is.</p></div>
@@ -17154,7 +17161,7 @@ def pdf_import_page():
 </div>
 {% endif %}
 {% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT</div><h1>Import Study Content from PDF</h1><p>DLMS can recognize structured question banks or glossary/terminology material, parse the full source, and let you review it before generating manageable quizzes.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT</div><h1>Import Study Content from PDF</h1><p>DLMS can recognize structured question banks or glossary/terminology material, parse the full source, and let you review it before generating manageable quizzes.</p></div></header>
 <section class="dashboard-panel pdf-import-intro"><div><span class="build-method-label">SAFE ADDITIVE WORKFLOW</span><h2>Your existing parsers are untouched</h2><p>This is a separate importer. The original text upload, paste parser, CSV matching importer, manual builder, and image builder continue to work exactly as before.</p></div>
 <div class="pdf-import-badges"><span>Question banks</span><span>Glossary / terminology</span><span>Automatic detection</span><span>Cross-page content</span><span>Inline repair</span></div></section>
 <section class="dashboard-panel">
@@ -17400,7 +17407,7 @@ def _render_pdf_glossary_review(draft):
 <aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">Terminology Review</div></aside>
 <main class="dashboard-main pdf-import-main">
 {% with messages=get_flashed_messages(with_categories=true) %}{% if messages %}<div class="pdf-import-flash-stack">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · TERMINOLOGY</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. {% if draft.recovery_mode or draft.detection.recovery_mode %}Automatic parsing confidence was low, so DLMS preserved recoverable text for manual term/definition reconstruction.{% else %}Review every detected term/definition pair before saving the reusable terminology bank.{% endif %}</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · TERMINOLOGY</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. {% if draft.recovery_mode or draft.detection.recovery_mode %}Automatic parsing confidence was low, so DLMS preserved recoverable text for manual term/definition reconstruction.{% else %}Review every detected term/definition pair before saving the reusable terminology bank.{% endif %}</p></div></header>
 <section class="pdf-import-summary-grid"><article class="dashboard-stat-card"><span>Detected</span><strong>{{ draft.summary.detected }}</strong><small>terms</small></article><article class="dashboard-stat-card"><span>Complete</span><strong>{{ draft.summary.complete }}</strong><small>ready</small></article><article class="dashboard-stat-card"><span>Review</span><strong>{{ draft.summary.review }}</strong><small>needs attention</small></article><article class="dashboard-stat-card"><span>Incomplete</span><strong>{{ draft.summary.incomplete }}</strong><small>repair or exclude</small></article></section>
 <div class="pdf-import-filter-row"><button type="button" data-filter="all" class="active">All</button><button type="button" data-filter="complete">Complete</button><button type="button" data-filter="review">Needs Review</button><button type="button" data-filter="incomplete">Incomplete</button></div>
 <details class="pdf-review-bulk-help">
@@ -17595,7 +17602,7 @@ def pdf_import_review(draft_id):
 </div>
 {% endif %}
 {% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · REVIEW</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. {% if draft.recovery_mode or draft.detection.recovery_mode %}Automatic parsing confidence was low, so DLMS preserved recoverable text and editable fields for manual reconstruction. Verify each kept record carefully.{% else %}DLMS parsed the full source. Repair anything misread or exclude unusable questions, then save the reusable question bank.{% endif %}</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · REVIEW</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. {% if draft.recovery_mode or draft.detection.recovery_mode %}Automatic parsing confidence was low, so DLMS preserved recoverable text and editable fields for manual reconstruction. Verify each kept record carefully.{% else %}DLMS parsed the full source. Repair anything misread or exclude unusable questions, then save the reusable question bank.{% endif %}</p></div></header>
 <section class="pdf-import-summary-grid">
 <article class="dashboard-stat-card"><span>Detected</span><strong>{{ draft.summary.detected }}</strong><small>questions</small></article>
 <article class="dashboard-stat-card"><span>Complete</span><strong>{{ draft.summary.complete }}</strong><small>ready</small></article>
@@ -18068,7 +18075,7 @@ def pdf_question_bank_page(bank_id):
 <aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">PDF Question Bank</div></aside>
 <main class="dashboard-main pdf-import-main">
 {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="pdf-import-flash-stack">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">PDF QUESTION BANK</div><h1>{{ bank.title }}</h1><p>{{ bank.source_name }} · All parsed source questions are retained. Generate as many manageable quizzes as you want without re-importing the PDF.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">PDF QUESTION BANK</div><h1>{{ bank.title }}</h1><p>{{ bank.source_name }} · All parsed source questions are retained. Generate as many manageable quizzes as you want without re-importing the PDF.</p></div></header>
 <section class="pdf-import-summary-grid">
 <article class="dashboard-stat-card"><span>Parsed</span><strong>{{ questions|length }}</strong><small>source questions</small></article>
 <article class="dashboard-stat-card"><span>Active</span><strong>{{ active|length }}</strong><small>available</small></article>
@@ -18229,7 +18236,7 @@ def pdf_terminology_bank_page(bank_id):
 <aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">PDF Terminology Bank</div></aside>
 <main class="dashboard-main pdf-import-main">
 {% with messages=get_flashed_messages(with_categories=true) %}{% if messages %}<div class="pdf-import-flash-stack">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button">☰</button><div><div class="build-eyebrow">PDF TERMINOLOGY BANK</div><h1>{{ bank.title }}</h1><p>{{ bank.source_name }} · The reviewed glossary stays intact while DLMS generates matching or multiple-choice practice from selected terms.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">PDF TERMINOLOGY BANK</div><h1>{{ bank.title }}</h1><p>{{ bank.source_name }} · The reviewed glossary stays intact while DLMS generates matching or multiple-choice practice from selected terms.</p></div></header>
 <section class="pdf-import-summary-grid"><article class="dashboard-stat-card"><span>Parsed</span><strong>{{ terms|length }}</strong><small>source terms</small></article><article class="dashboard-stat-card"><span>Active</span><strong>{{ active|length }}</strong><small>available</small></article><article class="dashboard-stat-card"><span>Used</span><strong>{{ used|length }}</strong><small>unique terms</small></article><article class="dashboard-stat-card"><span>Generated</span><strong>{{ bank.generated_quizzes|length }}</strong><small>quizzes</small></article></section>
 <section class="dashboard-panel pdf-bank-generator"><div class="pdf-bank-panel-heading"><div><span class="build-method-label">GENERATE PRACTICE</span><h2>Create Practice from Terminology Bank</h2><p>Choose a manageable set. The source bank remains unchanged.</p></div></div>
 <form method="POST" action="/pdf-import/terms/{{ bank.id }}/generate" class="pdf-term-generator-form">
@@ -18383,7 +18390,7 @@ def upload_page():
     </aside>
     <main class="dashboard-main build-modern-main">
         <header class="dashboard-header build-page-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="build-eyebrow">QUIZ BUILDER</div>
                 <h1>Create a New Quiz</h1>
@@ -18574,7 +18581,7 @@ def paste_page():
     </aside>
     <main class="dashboard-main build-modern-main">
         <header class="dashboard-header build-page-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="build-eyebrow">PASTE QUESTIONS</div>
                 <h1>Create from Pasted Text</h1>
@@ -18845,7 +18852,7 @@ def matching_bank_import():
 
     <main class="dashboard-main build-modern-main">
         <header class="dashboard-header build-page-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="build-eyebrow">BUILD QUIZ</div>
                 <h1>Import Matching Bank</h1>
@@ -18990,7 +18997,7 @@ def create_short_quiz_page():
     </aside>
     <main class="dashboard-main build-modern-main">
         <header class="dashboard-header build-page-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="build-eyebrow">MANUAL QUIZ BUILDER</div>
                 <h1>Create a Short Quiz</h1>
@@ -20797,7 +20804,7 @@ def settings_page():
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <span class="settings-eyebrow">SYSTEM</span>
             <h1>⚙️ Settings</h1>
@@ -20907,7 +20914,7 @@ def settings_navigation_page():
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <span class="settings-eyebrow">SETTINGS / NAVIGATION</span>
             <h1>☰ Navigation</h1>
@@ -20998,7 +21005,7 @@ def settings_appearance_page():
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <span class="settings-eyebrow">SETTINGS / APPEARANCE</span>
             <h1>🎨 Appearance</h1>
@@ -21179,7 +21186,7 @@ def settings_ai_page():
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <span class="settings-eyebrow">SETTINGS / AI INTEGRATION</span>
             <h1>🤖 AI Integration</h1>
@@ -21491,7 +21498,7 @@ def settings_parsing_page():
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
         <div>
             <span class="settings-eyebrow">SETTINGS / PARSING</span>
             <h1>🧩 Parsing</h1>
@@ -21636,7 +21643,7 @@ def settings_create_backup():
         print("[BACKUP ERROR]", exc)
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Backup Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Backup failed</h1><p>DLMS did not modify your existing data.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Unable to create backup</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Backup failed</h1><p>DLMS did not modify your existing data.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Unable to create backup</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, error="DLMS could not create the backup. Check the local application log for details."), 500
 
 
@@ -21683,7 +21690,7 @@ def settings_stage_restore():
         print(f"[RESTORE VALIDATION ERROR] {type(exc).__name__}: {exc}")
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Validation Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY / RESTORE</span><h1>Backup rejected</h1><p>No DLMS data was changed.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore validation failed</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY / RESTORE</span><h1>Backup rejected</h1><p>No DLMS data was changed.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore validation failed</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, error="The backup failed validation and was not accepted. Check the local DLMS log for details."), 400
 
     manifest = report["manifest"]
@@ -21691,7 +21698,7 @@ def settings_stage_restore():
     return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm Restore - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><form method="POST" action="/settings/backup/restore/cancel/{{ token }}"><button class="settings-back-button" type="submit">Cancel</button></form></div>
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><form method="POST" action="/settings/backup/restore/cancel/{{ token }}"><button class="settings-back-button" type="submit">Cancel</button></form></div>
 <div class="settings-detail-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">✓</div><div><h2>Valid DLMS Backup</h2><p>Review the snapshot metadata before replacing current data.</p></div></div>
 <div class="settings-current-value"><strong>Created:</strong> {{ manifest.created_at or 'Unknown' }}</div>
@@ -21819,7 +21826,7 @@ def _settings_confirm_restore_locked(token):
 
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Complete - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div>{% if cleanup_pending %}<div class="settings-warning-panel"><strong>Cleanup will finish automatically</strong><span>The restored data is complete. DLMS will retry removal of temporary restore files the next time it starts.</span></div>{% endif %}<p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/backup'">Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div>{% if cleanup_pending %}<div class="settings-warning-panel"><strong>Cleanup will finish automatically</strong><span>The restored data is complete. DLMS will retry removal of temporary restore files the next time it starts.</span></div>{% endif %}<p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/backup'">Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, safety_name=os.path.basename(safety_path), cleanup_pending=cleanup_pending)
     except Exception as exc:
         if journal_path is None:
@@ -21839,7 +21846,7 @@ def _settings_confirm_restore_locked(token):
         )
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, error=public_error), (
             400 if isinstance(exc, ValueError)
             else 409 if isinstance(exc, DataRootOwnershipError)
@@ -21873,7 +21880,7 @@ def settings_backup_page():
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Backup & Restore Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>💾 Backup &amp; Restore</h1><p>Create portable backups or validate and restore an existing DLMS backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>💾 Backup &amp; Restore</h1><p>Create portable backups or validate and restore an existing DLMS backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 
 <div class="settings-detail-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">⇩</div><div><h2>Portable Backup</h2><p>Create one ZIP snapshot containing your persistent DLMS data.</p></div></div>
@@ -21909,7 +21916,7 @@ def settings_reset_remove_page():
     return render_template_string(r"""
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Reset & Remove Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home settings-detail-page settings-reset-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">SETTINGS / RESET &amp; REMOVE</span><h1>⚠️ Reset &amp; Remove</h1><p>Clear saved results, choose the narrowest reset that solves the problem, or permanently remove DLMS data. Scoped resets create safety backups; permanent removal does not.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">SETTINGS / RESET &amp; REMOVE</span><h1>⚠️ Reset &amp; Remove</h1><p>Clear saved results, choose the narrowest reset that solves the problem, or permanently remove DLMS data. Scoped resets create safety backups; permanent removal does not.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 <div class="settings-detail-card settings-reset-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">↶</div><div><h2>Persistent Exam Result Storage</h2><p>Clear completed attempts and missed-question history without deleting quizzes.</p></div></div>
 <div class="settings-warning-panel"><strong>This action cannot be undone unless you have a backup.</strong><span>Clearing history permanently removes saved attempts, attempt answers, and missed-question records. Quizzes remain in the Quiz Library.</span></div>
@@ -25168,7 +25175,7 @@ def anki_tools():
 
     <main class="dashboard-main anki-tools-main">
         <header class="dashboard-header anki-tools-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="anki-tools-eyebrow">STUDY EXPORTS</div>
                 <h1>Anki Tools</h1>
@@ -25519,7 +25526,7 @@ def anki_custom_deck():
 
     <main class="dashboard-main anki-tools-main">
         <header class="dashboard-header anki-tools-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="anki-tools-eyebrow">ANKI TOOLS · CUSTOM DECK</div>
                 <h1>Build a Custom Anki Deck</h1>
@@ -26015,7 +26022,7 @@ def anki_law_tools():
 
     <main class="dashboard-main anki-tools-main">
         <header class="dashboard-header anki-tools-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
             <div>
                 <div class="anki-tools-eyebrow">ANKI TOOLS · LAW STUDY</div>
                 <h1>Law Study → Anki</h1>

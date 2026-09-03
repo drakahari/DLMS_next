@@ -3025,6 +3025,18 @@ a.settings-hub-card:hover {
     text-align: center;
 }
 
+.library-page .library-folder-toggle-button {
+    flex: 0 0 18px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
 .library-page .library-icon-button {
     width: 34px;
     height: 34px;
@@ -12375,4 +12387,21 @@ body:not([class]) > .container > .hero-title {
 
 .learning-intelligence-model-dialog p {
     color: var(--theme-muted-text, #b8c2cc);
+}
+
+/* Honor the operating-system motion preference without changing the normal
+   visual treatment for users who have not requested reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+    html:focus-within {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
 }
