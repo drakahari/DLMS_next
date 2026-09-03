@@ -256,6 +256,10 @@ class RestoreStagingCleanupTests(unittest.TestCase):
 
     def test_successful_restore_still_cleans_its_staging_directory(self):
         token, stage_dir = self._stage()
+        transient_upload = Path(dlms.UPLOAD_FOLDER) / "in-progress.txt"
+        transient_upload.write_text("temporary", encoding="utf-8")
+        secret = self.live / ".secret_key"
+        secret.write_bytes(b"local secret")
 
         response = self.client.post(
             f"/settings/backup/restore/confirm/{token}",
@@ -264,7 +268,40 @@ class RestoreStagingCleanupTests(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
         self.assertFalse(stage_dir.exists())
-        self.assertEqual('{"state":"original"}', self.live_sentinel.read_text(encoding="utf-8"))
+        self.assertFalse(self.live_sentinel.exists())
+        self.assertTrue(Path(dlms.DATA_FOLDER).is_dir())
+        self.assertEqual("temporary", transient_upload.read_text(encoding="utf-8"))
+        self.assertEqual(b"local secret", secret.read_bytes())
+        self.assertIsNotNone(dlms._read_data_root_marker(str(self.live)))
+
+    def test_post_commit_cleanup_failure_reports_success_and_defers_cleanup(self):
+        token, stage_dir = self._stage()
+
+        with mock.patch.object(
+            dlms,
+            "_finish_restore_operation_cleanup",
+            side_effect=OSError("simulated cleanup failure"),
+        ):
+            response = self.client.post(
+                f"/settings/backup/restore/confirm/{token}",
+                headers=csrf_headers(self.client, "/settings/backup"),
+            )
+
+        self.assertEqual(200, response.status_code)
+        self.assertIn(b"Restore complete", response.data)
+        self.assertIn(b"Cleanup will finish automatically", response.data)
+        self.assertFalse(self.live_sentinel.exists())
+        self.assertTrue(stage_dir.exists())
+        journals = list(Path(dlms._restore_operation_root()).glob("restore_*.json"))
+        self.assertEqual(1, len(journals))
+        journal = json.loads(journals[0].read_text(encoding="utf-8"))
+        self.assertEqual("complete", journal["state"])
+
+        recovery = dlms.reconcile_restore_operations()
+        self.assertEqual(1, recovery["preserved"])
+        self.assertFalse(stage_dir.exists())
+        self.assertFalse(journals[0].exists())
+        self.assertFalse(self.live_sentinel.exists())
 
 
 if __name__ == "__main__":

@@ -117,7 +117,7 @@ class RestoreCrashRecoveryTests(unittest.TestCase):
         self.assertEqual(self._title(), "Original Live")
         self.assertEqual(dlms.reconcile_restore_operations()["abandoned"], 1)
 
-    def test_live_apply_crash_rolls_back_partial_root_before_publication_recovery(self):
+    def test_live_apply_crash_rolls_back_exact_snapshot_before_publication_recovery(self):
         self._journal("live_apply_started")
         self._partially_mutate_live()
         observed = []
@@ -135,13 +135,10 @@ class RestoreCrashRecoveryTests(unittest.TestCase):
         self.assertEqual(observed, [("Original Live", "original")])
         self.assertEqual(self._title(), "Original Live")
         self.assertEqual(self.sentinel.read_text(encoding="utf-8"), "original")
-        self.assertEqual(
-            (self.root / "unrelated-after-safety.txt").read_text(encoding="utf-8"),
-            "leave me",
-        )
+        self.assertFalse((self.root / "unrelated-after-safety.txt").exists())
         self.assertEqual(self._journal_files(), [])
 
-    def test_rollback_removes_only_a_recorded_restore_introduced_root(self):
+    def test_rollback_removes_all_roots_absent_from_safety_snapshot(self):
         self._journal(
             "live_apply_started",
             restore_roots=["results.db", "live-state.txt", "restored-only"],
@@ -160,7 +157,7 @@ class RestoreCrashRecoveryTests(unittest.TestCase):
 
         self.assertEqual(report["rolled_back"], 1)
         self.assertFalse(restored_only.exists())
-        self.assertEqual((unrelated / "keep.txt").read_text(encoding="utf-8"), "keep")
+        self.assertFalse(unrelated.exists())
 
     def test_all_pre_reconciliation_crash_states_conservatively_roll_back(self):
         for state in (

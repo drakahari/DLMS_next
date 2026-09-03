@@ -110,6 +110,10 @@ class BackupValidationTests(unittest.TestCase):
             archive.writestr(link, "target")
         self._assert_rejected_before_testzip(path, "symbolic link")
 
+    def test_case_variant_of_protected_root_is_rejected(self):
+        path = self._write_backup([("DLMS_DATA/.SECRET_KEY", b"replacement")])
+        self._assert_rejected_before_testzip(path, "protected runtime path")
+
     def test_special_file_is_rejected_before_decompression(self):
         path = self._path("fifo.zip")
         fifo = zipfile.ZipInfo("DLMS_DATA/config/fifo")

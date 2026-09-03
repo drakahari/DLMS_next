@@ -134,9 +134,25 @@ class BackupSemanticValidationTests(unittest.TestCase):
         dlms._validate_backup_manifest_semantics(self._manifest(self.root), self.root)
         with self.assertRaisesRegex(ValueError, "Unsupported backup schema_version"):
             dlms._validate_backup_manifest_semantics(self._manifest(schema_version=999), self.root)
+        with self.assertRaisesRegex(ValueError, "Unsupported backup schema_version"):
+            dlms._validate_backup_manifest_semantics(self._manifest(schema_version=True), self.root)
+        with self.assertRaisesRegex(ValueError, "file_count is missing or invalid"):
+            dlms._validate_backup_manifest_semantics(self._manifest(file_count=False), self.root)
         with self.assertRaisesRegex(ValueError, "included_roots does not match"):
             dlms._validate_backup_manifest_semantics(
                 self._manifest(included_roots=["other"]), self.root
+            )
+        with self.assertRaisesRegex(ValueError, "duplicate roots"):
+            dlms._validate_backup_manifest_semantics(
+                self._manifest(included_roots=["config", "CONFIG"]), self.root
+            )
+
+    def test_case_colliding_staged_roots_are_rejected(self):
+        (self.root / "config").mkdir()
+        (self.root / "CONFIG").mkdir()
+        with self.assertRaisesRegex(ValueError, "case-colliding top-level roots"):
+            dlms._validate_backup_manifest_semantics(
+                self._manifest(included_roots=["config"]), self.root
             )
 
     def test_complete_staged_backup_passes_and_requires_results_database(self):

@@ -171,6 +171,51 @@ class AppDataOwnershipTests(unittest.TestCase):
              mock.patch.object(dlms, "ensure_db_initialized"):
             dlms._apply_restored_data(str(staged))
 
+    def test_restore_apply_stops_before_live_mutation_if_sqlite_sidecar_removal_fails(self):
+        staged = self.root / "sidecar-staged"
+        staged.mkdir()
+        (staged / "results.db").write_bytes(b"staged database")
+        owned = self._owned_root("sidecar-restore")
+        database = owned / "results.db"
+        database.write_bytes(b"live database")
+        sidecar = owned / "results.db-wal"
+        sidecar.write_bytes(b"live wal")
+
+        with mock.patch.object(dlms, "APP_DATA_DIR", str(owned)), \
+             mock.patch.object(dlms, "DB_PATH", str(database)), \
+             mock.patch.object(dlms, "_remove_live_restore_root") as remove_root, \
+             mock.patch.object(dlms.os, "remove", side_effect=PermissionError("sidecar busy")), \
+             mock.patch.object(dlms, "_ensure_runtime_data_dirs"), \
+             mock.patch.object(dlms, "ensure_db_initialized"):
+            with self.assertRaisesRegex(PermissionError, "sidecar busy"):
+                dlms._apply_restored_data(str(staged))
+
+        remove_root.assert_not_called()
+        self.assertEqual(b"live database", database.read_bytes())
+        self.assertEqual(b"live wal", sidecar.read_bytes())
+
+    def test_exact_restore_unlinks_stale_live_symlink_without_touching_target(self):
+        staged = self.root / "symlink-staged"
+        staged.mkdir()
+        owned = self._owned_root("symlink-restore")
+        external = self.root / "external-data"
+        external.mkdir()
+        sentinel = external / "keep.txt"
+        sentinel.write_text("keep", encoding="utf-8")
+        linked = owned / "stale-linked-root"
+        try:
+            linked.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks are not available")
+
+        with mock.patch.object(dlms, "APP_DATA_DIR", str(owned)), \
+             mock.patch.object(dlms, "_ensure_runtime_data_dirs"), \
+             mock.patch.object(dlms, "ensure_db_initialized"):
+            dlms._apply_restored_data(str(staged))
+
+        self.assertFalse(linked.exists())
+        self.assertEqual("keep", sentinel.read_text(encoding="utf-8"))
+
     def test_fresh_state_reset_preserves_ownership_marker(self):
         owned = self._owned_root("reset-root")
         (owned / "discard.txt").write_text("data", encoding="utf-8")

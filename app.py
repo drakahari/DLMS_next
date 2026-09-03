@@ -3830,7 +3830,9 @@ def _backup_rel_is_excluded(rel_path):
     if not rel:
         return True
     parts = rel.split("/")
-    if len(parts) == 1 and parts[0] in {DLMS_DATA_ROOT_MARKER, ".secret_key"}:
+    if len(parts) == 1 and parts[0].casefold() in {
+        DLMS_DATA_ROOT_MARKER.casefold(), ".secret_key"
+    }:
         return True
     if parts[0].casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
         return True
@@ -4276,19 +4278,35 @@ def _validate_backup_manifest_semantics(manifest, staged_data_root):
         raise ValueError("Backup manifest must be a JSON object")
     if manifest.get("kind") != "dlms-portable-backup":
         raise ValueError("Backup manifest kind is incompatible with DLMS")
-    if manifest.get("schema_version") != DLMS_BACKUP_SCHEMA_VERSION:
+    schema_version = manifest.get("schema_version")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != DLMS_BACKUP_SCHEMA_VERSION
+    ):
         raise ValueError(f"Unsupported backup schema_version {manifest.get('schema_version')!r}")
     for field, expected in (("created_at", str), ("dlms_version", str), ("included_roots", list), ("summary", dict)):
         if field in manifest and not isinstance(manifest[field], expected):
             raise ValueError(f"Backup manifest field {field} has an incompatible value")
-    if "file_count" not in manifest or not isinstance(manifest["file_count"], int) or manifest["file_count"] < 0:
+    if (
+        "file_count" not in manifest
+        or not isinstance(manifest["file_count"], int)
+        or isinstance(manifest["file_count"], bool)
+        or manifest["file_count"] < 0
+    ):
         raise ValueError("Backup manifest file_count is missing or invalid")
     if isinstance(manifest.get("included_roots"), list):
         declared = manifest["included_roots"]
         if any(not isinstance(item, str) or not item or "/" in item or "\\" in item for item in declared):
             raise ValueError("Backup manifest included_roots contains an invalid root")
         actual = sorted(os.listdir(staged_data_root), key=str.casefold)
-        if {item.casefold() for item in declared} != {item.casefold() for item in actual}:
+        declared_keys = [item.casefold() for item in declared]
+        actual_keys = [item.casefold() for item in actual]
+        if len(declared_keys) != len(set(declared_keys)):
+            raise ValueError("Backup manifest included_roots contains duplicate roots")
+        if len(actual_keys) != len(set(actual_keys)):
+            raise ValueError("Restored data contains case-colliding top-level roots")
+        if set(declared_keys) != set(actual_keys):
             raise ValueError("Backup manifest included_roots does not match restored data")
 
 
@@ -4648,27 +4666,88 @@ def _cleanup_stale_restore_staging(*, now=None):
     return report
 
 
+def _validated_staged_restore_roots(staged_data_root):
+    """Return safe staged top-level roots keyed case-insensitively."""
+    staged_root = os.path.abspath(staged_data_root)
+    real_staged_root = os.path.realpath(staged_root)
+    if os.path.islink(staged_root) or not os.path.isdir(real_staged_root):
+        raise ValueError("Backup staging data is missing or unsafe")
+
+    roots = {}
+    for root_name in sorted(os.listdir(real_staged_root), key=str.casefold):
+        safe_name = _restore_operation_safe_name(root_name, label="restored root")
+        if safe_name.casefold() in {
+            DLMS_DATA_ROOT_MARKER.casefold(), ".secret_key"
+        }:
+            raise ValueError(f"Restore contains protected root: {safe_name}")
+        if safe_name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
+            raise ValueError(f"Restore contains protected root: {safe_name}")
+        key = safe_name.casefold()
+        if key in roots:
+            raise ValueError("Restore contains case-colliding top-level roots")
+        source = os.path.join(real_staged_root, safe_name)
+        if os.path.islink(source) or not (
+            os.path.isfile(source) or os.path.isdir(source)
+        ):
+            raise ValueError(f"Restored root is not a safe file or directory: {safe_name}")
+        roots[key] = safe_name
+    return real_staged_root, roots
+
+
+def _remove_live_restore_root(root_name):
+    """Remove one direct, backup-eligible live root without following links."""
+    safe_name = _restore_operation_safe_name(root_name, label="live restore root")
+    if safe_name.casefold() in {
+        DLMS_DATA_ROOT_MARKER.casefold(), ".secret_key"
+    }:
+        raise ValueError(f"Live restore root is protected: {safe_name}")
+    if safe_name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
+        raise ValueError(f"Live restore root is protected: {safe_name}")
+    target = os.path.join(os.path.abspath(APP_DATA_DIR), safe_name)
+    if os.path.isdir(target) and not os.path.islink(target):
+        shutil.rmtree(target)
+    elif os.path.lexists(target):
+        os.remove(target)
+
+
 def _apply_restored_data(staged_data_root):
-    """Replace only top-level roots present in the validated backup snapshot."""
+    """Replace the complete backup-eligible live snapshot with staged data."""
     _require_owned_app_data_root("restore DLMS backup data")
-    roots = sorted(os.listdir(staged_data_root), key=str.casefold)
-    for root_name in roots:
-        if root_name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
-            raise ValueError(f"Restore contains protected root: {root_name}")
-        src = os.path.join(staged_data_root, root_name)
+    real_staged_root, staged_roots = _validated_staged_restore_roots(
+        staged_data_root
+    )
+    live_root = _canonical_data_root(APP_DATA_DIR)
+    staged_relative = os.path.relpath(real_staged_root, live_root)
+    staged_container = None
+    if staged_relative != os.pardir and not staged_relative.startswith(os.pardir + os.sep):
+        staged_container = staged_relative.split(os.sep, 1)[0].casefold()
+
+    # Old SQLite sidecars must never be allowed to accompany the replacement
+    # database. Treat an inability to remove one as an apply failure before any
+    # persistent live root is replaced or removed.
+    if "results.db" in staged_roots:
+        for sidecar in (DB_PATH + "-wal", DB_PATH + "-shm", DB_PATH + "-journal"):
+            if os.path.lexists(sidecar):
+                os.remove(sidecar)
+
+    # A portable backup is a snapshot, not a merge. Remove every current root
+    # that the backup inventory would have captured but which the snapshot does
+    # not contain. Protected/runtime roots such as backups, uploads, the data
+    # ownership marker, and the local secret remain outside restore semantics.
+    for live_name in sorted(os.listdir(APP_DATA_DIR), key=str.casefold):
+        if (
+            _backup_rel_is_excluded(live_name)
+            or live_name.casefold() == staged_container
+        ):
+            continue
+        staged_name = staged_roots.get(live_name.casefold())
+        if staged_name != live_name:
+            _remove_live_restore_root(live_name)
+
+    for root_name in staged_roots.values():
+        src = os.path.join(real_staged_root, root_name)
         dst = os.path.join(APP_DATA_DIR, root_name)
-        if root_name.casefold() == "results.db":
-            for sidecar in (DB_PATH + "-wal", DB_PATH + "-shm", DB_PATH + "-journal"):
-                if os.path.exists(sidecar):
-                    try:
-                        os.remove(sidecar)
-                    except OSError:
-                        pass
-        if os.path.lexists(dst):
-            if os.path.isdir(dst) and not os.path.islink(dst):
-                shutil.rmtree(dst)
-            else:
-                os.remove(dst)
+        _remove_live_restore_root(root_name)
         if os.path.isdir(src):
             shutil.copytree(src, dst)
         else:
@@ -4803,7 +4882,9 @@ def _validate_restore_operation_journal(journal, journal_path):
         seen = set()
         for value in values:
             name = _restore_operation_safe_name(value, label=f"{label} root")
-            if name in {DLMS_DATA_ROOT_MARKER, ".secret_key"}:
+            if name.casefold() in {
+                DLMS_DATA_ROOT_MARKER.casefold(), ".secret_key"
+            }:
                 raise ValueError(f"restore journal {label} root is protected")
             if name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
                 raise ValueError(f"restore journal {label} root is excluded")
@@ -21719,15 +21800,27 @@ def _settings_confirm_restore_locked(token):
                 ) from restore_exc
         finally:
             shutil.rmtree(temp_extract, ignore_errors=True)
-        _update_restore_operation_journal(journal_path, journal, "complete")
-        _restore_operation_checkpoint("complete", journal)
-        paths = _validate_restore_operation_journal(journal, journal_path)
-        _finish_restore_operation_cleanup(journal_path, paths)
+        cleanup_pending = False
+        try:
+            _update_restore_operation_journal(journal_path, journal, "complete")
+            _restore_operation_checkpoint("complete", journal)
+            paths = _validate_restore_operation_journal(journal, journal_path)
+            _finish_restore_operation_cleanup(journal_path, paths)
+        except Exception as cleanup_exc:
+            # reconciliation_completed is the durable success boundary. A
+            # helper cleanup failure after it must not turn a completed restore
+            # into an ambiguous failure response; startup recovery can safely
+            # finish cleanup while preserving the restored snapshot.
+            cleanup_pending = True
+            print(
+                "[RESTORE CLEANUP ERROR] Restore completed; helper cleanup will "
+                f"retry at startup: {type(cleanup_exc).__name__}: {cleanup_exc}"
+            )
 
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Complete - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div><p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/backup'">Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
-""", safety_name=os.path.basename(safety_path))
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div>{% if cleanup_pending %}<div class="settings-warning-panel"><strong>Cleanup will finish automatically</strong><span>The restored data is complete. DLMS will retry removal of temporary restore files the next time it starts.</span></div>{% endif %}<p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/backup'">Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
+""", safety_name=os.path.basename(safety_path), cleanup_pending=cleanup_pending)
     except Exception as exc:
         if journal_path is None:
             try:
