@@ -116,6 +116,16 @@ Do not weaken, delete, or bypass a legitimate test merely to make the suite pass
 
 If an existing test is incorrect because requirements changed, explain why before updating it.
 
+### Browser / Screenshot Test Cleanup
+
+When using Firefox, Chromium, Chrome, or another browser in headless mode for runtime validation, screenshots, or visual inspection:
+
+* Do not leave browser processes or background terminals running after the validation step completes.
+* Explicitly terminate any browser process started for the test, whether the test succeeds, fails, or times out.
+* After browser-based validation, check for lingering background processes when practical and clean up only the processes created by the validation task.
+* Do not broadly kill unrelated browser sessions belonging to the user.
+* Prefer commands or scripts with bounded timeouts so failed screenshot or browser checks cannot remain running indefinitely.
+
 ## Completion Standard
 
 Do not report a task as complete merely because code was edited.
