@@ -6008,14 +6008,23 @@ def load_portal_config():
         print("[PORTAL CONFIG][ERROR] portal.json must contain a JSON object")
         return default.copy()
 
-    if (
-        ("quiz_folders" in data and not isinstance(data["quiz_folders"], list))
-        or (
-            "study_area_visibility" in data
-            and not isinstance(data["study_area_visibility"], dict)
-        )
-    ):
+    malformed_quiz_folders = (
+        "quiz_folders" in data and not isinstance(data["quiz_folders"], list)
+    )
+    malformed_study_area_visibility = (
+        "study_area_visibility" in data
+        and not isinstance(data["study_area_visibility"], dict)
+    )
+    if malformed_quiz_folders or malformed_study_area_visibility:
         _preserve_malformed_json(PORTAL_CONFIG)
+
+    # Preserve the original malformed document first, then ensure a structured
+    # field cannot be merged into active configuration in the wrong shape.
+    # study_area_visibility is normalized below before use; quiz_folders needs
+    # the same boundary because get_quiz_folders() iterates its value directly.
+    if malformed_quiz_folders:
+        data = data.copy()
+        data["quiz_folders"] = list(default["quiz_folders"])
 
     # Merge defaults with stored values
     cfg = default.copy()
