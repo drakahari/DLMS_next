@@ -105,6 +105,20 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("item('image','/admin/image-editor','◎','Image Study Editor')", source)
         self.assertNotIn("item('maintenance','/admin/maintenance'", source)
 
+    def test_navigation_configuration_reconciles_visibility_without_a_second_mount(self):
+        source = self._static("nav-normalize.js")
+
+        self.assertIn("const studyAreaVisibilityCacheKey = 'dlms.studyAreaVisibility.v1'", source)
+        self.assertIn("const initialStudyAreaVisibility = readCachedStudyAreaVisibility()", source)
+        self.assertIn("data-nav-key=\"${key}\"", source)
+        self.assertIn("if (navItem) navItem.hidden = !visible", source)
+        self.assertIn("form[action=\"/settings/navigation/save\"]", source)
+
+        configuration_sync = source[source.index("fetch('/config/portal.json'"):source.index("themeSelect.addEventListener('change'")]
+        self.assertIn("applyStudyAreaVisibility(visibility)", configuration_sync)
+        self.assertIn("cacheStudyAreaVisibility(visibility)", configuration_sync)
+        self.assertNotIn("mountNavigation(", configuration_sync)
+
     def test_image_editor_context_link_uses_system_tools(self):
         self.assertIn("← System Tools", dlms.HOTSPOT_EDITOR_TEMPLATE)
         self.assertNotIn("← Back to Maintenance", dlms.HOTSPOT_EDITOR_TEMPLATE)

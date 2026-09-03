@@ -67,19 +67,44 @@
     return false;
   };
 
-  const item = (key, href, icon, label) => `<a class="dashboard-nav-item${isActive(key) ? ' active' : ''}" href="${href}"${isActive(key) ? ' aria-current="page"' : ''}><span class="dashboard-nav-icon">${icon}</span><span>${label}</span></a>`;
+  const item = (key, href, icon, label) => `<a class="dashboard-nav-item${isActive(key) ? ' active' : ''}" data-nav-key="${key}" href="${href}"${isActive(key) ? ' aria-current="page"' : ''}><span class="dashboard-nav-icon">${icon}</span><span>${label}</span></a>`;
   const sub = (href, icon, label, active=false) => `<a class="dashboard-nav-subitem${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="dashboard-nav-subicon">${icon}</span><span>${label}</span></a>`;
 
   const buildOpen = isActive('build');
   const learningOpen = isActive('learning');
   const ankiOpen = isActive('anki');
   const defaultStudyAreaVisibility = {it: true, law: true, medical: true, other: true};
+  const studyAreaVisibilityCacheKey = 'dlms.studyAreaVisibility.v1';
   const normalizeStudyAreaVisibility = (value) => {
     const configured = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     return Object.fromEntries(Object.keys(defaultStudyAreaVisibility).map(key => [
       key,
       typeof configured[key] === 'boolean' ? configured[key] : true
     ]));
+  };
+  const readCachedStudyAreaVisibility = () => {
+    try {
+      const cached = JSON.parse(localStorage.getItem(studyAreaVisibilityCacheKey) || 'null');
+      if (!cached || typeof cached !== 'object' || Array.isArray(cached)) return null;
+      if (!Object.keys(defaultStudyAreaVisibility).every(key => typeof cached[key] === 'boolean')) return null;
+      return normalizeStudyAreaVisibility(cached);
+    } catch (_error) {
+      return null;
+    }
+  };
+  const cacheStudyAreaVisibility = (visibility) => {
+    try {
+      localStorage.setItem(studyAreaVisibilityCacheKey, JSON.stringify(visibility));
+    } catch (_error) {
+      // Private browsing and locked-down local storage must not affect navigation.
+    }
+  };
+  const applyStudyAreaVisibility = (visibility) => {
+    const normalized = normalizeStudyAreaVisibility(visibility);
+    Object.entries(normalized).forEach(([key, visible]) => {
+      const navItem = sidebar.querySelector(`.dashboard-nav-normalized [data-nav-key="${key}"]`);
+      if (navItem) navItem.hidden = !visible;
+    });
   };
 
   const mountNavigation = (studyAreaVisibility) => {
@@ -94,10 +119,10 @@
       // IT and Medical landing pages already present their genuinely distinct
       // matching/image/builder workflows as cards. Keep the global sidebar
       // concise instead of duplicating those destinations in expandable menus.
-      studyAreaVisibility.it ? item('it','/it','⌘','IT Study') : '',
-      studyAreaVisibility.law ? item('law','/law','⚖','Law Study') : '',
-      studyAreaVisibility.medical ? item('medical','/medical','✚','Medical Study') : '',
-      studyAreaVisibility.other ? item('other','/study-packs?domain_group=other','◇','Other Studies') : '',
+      item('it','/it','⌘','IT Study'),
+      item('law','/law','⚖','Law Study'),
+      item('medical','/medical','✚','Medical Study'),
+      item('other','/study-packs?domain_group=other','◇','Other Studies'),
       item('history','/history','↶','History'),
       item('analytics','/dashboard','▥','Analytics'),
       `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','◈','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','↳','Topic Intelligence', path === '/learning-intelligence')}${sub('/learning-profile','↳','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','↳','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','↳','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
@@ -125,9 +150,11 @@
     anchor.before(primary, section, system);
     oldNavs.forEach(el => el.remove());
     oldLabels.forEach(el => el.remove());
+    applyStudyAreaVisibility(studyAreaVisibility);
   };
 
-  mountNavigation(defaultStudyAreaVisibility);
+  const initialStudyAreaVisibility = readCachedStudyAreaVisibility() || defaultStudyAreaVisibility;
+  mountNavigation(initialStudyAreaVisibility);
 
   document.querySelector('[data-settings-menu]')?.addEventListener('click', () => {
     sidebar.classList.toggle('open');
@@ -148,8 +175,19 @@
   const themeSelect = themeQuick.querySelector('select');
   fetch('/config/portal.json', {cache:'no-store'}).then(r => r.ok ? r.json() : null).then(cfg => {
     if (cfg?.theme) themeSelect.value = cfg.theme;
-    mountNavigation(normalizeStudyAreaVisibility(cfg?.study_area_visibility));
+    const visibility = normalizeStudyAreaVisibility(cfg?.study_area_visibility);
+    applyStudyAreaVisibility(visibility);
+    cacheStudyAreaVisibility(visibility);
   }).catch(()=>{});
+  document.querySelector('form[action="/settings/navigation/save"]')?.addEventListener('submit', event => {
+    const form = event.currentTarget;
+    cacheStudyAreaVisibility({
+      it: form.elements.study_area_it.checked,
+      law: form.elements.study_area_law.checked,
+      medical: form.elements.study_area_medical.checked,
+      other: form.elements.study_area_other.checked,
+    });
+  });
   themeSelect.addEventListener('change', async () => {
     const previous = themeSelect.dataset.previous || '';
     themeSelect.disabled = true;

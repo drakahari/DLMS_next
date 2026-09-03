@@ -116,10 +116,14 @@ class StudyAreaVisibilityTests(unittest.TestCase):
         self.assertEqual({"it": False, "law": False, "medical": False, "other": False}, dlms.load_portal_config()["study_area_visibility"])
 
         source = Path(dlms.STATIC_ROOT, "nav-normalize.js").read_text(encoding="utf-8")
-        self.assertIn("studyAreaVisibility.it ? item('it','/it','⌘','IT Study') : ''", source)
-        self.assertIn("studyAreaVisibility.law ? item('law','/law','⚖','Law Study') : ''", source)
-        self.assertIn("studyAreaVisibility.medical ? item('medical','/medical','✚','Medical Study') : ''", source)
-        self.assertIn("studyAreaVisibility.other ? item('other','/study-packs?domain_group=other','◇','Other Studies') : ''", source)
+        # The shared sidebar is mounted once. Configuration then changes only
+        # the visibility of its optional study-area links, avoiding a second
+        # asynchronous DOM replacement and the resulting layout shift.
+        self.assertIn("item('it','/it','⌘','IT Study')", source)
+        self.assertIn("item('law','/law','⚖','Law Study')", source)
+        self.assertIn("item('medical','/medical','✚','Medical Study')", source)
+        self.assertIn("item('other','/study-packs?domain_group=other','◇','Other Studies')", source)
+        self.assertIn("if (navItem) navItem.hidden = !visible", source)
         self.assertIn("item('study','/study-packs','▣','Study Packs')", source)
         self.assertIn("item('settings','/settings','⚙','Settings')", source)
 
@@ -137,8 +141,9 @@ class StudyAreaVisibilityTests(unittest.TestCase):
         source = Path(dlms.STATIC_ROOT, "nav-normalize.js").read_text(encoding="utf-8")
         css = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
 
-        self.assertIn("mountNavigation(defaultStudyAreaVisibility)", source)
-        self.assertIn("mountNavigation(normalizeStudyAreaVisibility(cfg?.study_area_visibility))", source)
+        self.assertIn("const initialStudyAreaVisibility = readCachedStudyAreaVisibility() || defaultStudyAreaVisibility", source)
+        self.assertIn("applyStudyAreaVisibility(visibility)", source)
+        self.assertNotIn("mountNavigation(normalizeStudyAreaVisibility(cfg?.study_area_visibility))", source)
         self.assertIn("navigationCustomize.href = '/settings/navigation'", source)
         self.assertIn("dashboard-navigation-customize", source)
         self.assertIn(".dashboard-sidebar.open", css)
