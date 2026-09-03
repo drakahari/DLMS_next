@@ -1,6 +1,6 @@
-from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for
+from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for, has_request_context
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings, unicodedata
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings, unicodedata, ipaddress
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -634,6 +634,10 @@ RASTER_IMAGE_FORMATS = {
     ".gif": "GIF", ".webp": "WEBP",
 }
 PASSIVE_PACK_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+# Browser-served runtime data contains generated quiz JSON plus plain-text parser
+# logs. Other formats have no supported role beneath /data and must not cross a
+# backup restore into that same-origin route.
+BROWSER_SERVED_DATA_EXTENSIONS = frozenset({".json", ".txt"})
 UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 QUIZ_TEXT_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
 MATCHING_CSV_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
@@ -651,6 +655,46 @@ IMAGE_MAX_PIXELS = 80_000_000
 IMAGE_MAX_WIDTH = 16_000
 IMAGE_MAX_HEIGHT = 16_000
 IMAGE_MAX_FRAMES = 100
+
+
+def _validate_custom_ai_url(value, *, browser_origin=None):
+    """Return one safe absolute web URL or raise for an unsafe custom target."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError("Custom AI URL must be text")
+    candidate = value.strip()
+    if not candidate:
+        return ""
+    if any(ord(character) < 32 or ord(character) == 127 for character in candidate):
+        raise ValueError("Custom AI URL contains unsupported control characters")
+    if "\\" in candidate:
+        raise ValueError("Custom AI URL contains an unsupported path separator")
+
+    parsed = urlsplit(candidate)
+    origin = _canonical_request_origin(candidate, allow_path=True)
+    if origin is None or parsed.scheme.lower() not in {"http", "https"}:
+        raise ValueError("Custom AI URL must be an absolute HTTP or HTTPS URL")
+
+    if browser_origin is None and has_request_context():
+        browser_origin = _request_facing_origin()
+    if browser_origin is not None and origin == browser_origin:
+        raise ValueError("Custom AI URL must not point back to this DLMS instance")
+
+    # A backup may have been created through a different loopback hostname than
+    # the one used during restore. Reject that local DLMS origin as well, while
+    # preserving local AI services on their own ports (for example :11434).
+    dlms_port = int(globals().get("DLMS_SERVER_PORT", 9001))
+    hostname = origin[1].rstrip(".")
+    try:
+        loopback_target = ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        loopback_target = hostname == "localhost" or hostname.endswith(".localhost")
+    same_browser_host = browser_origin is not None and origin[1] == browser_origin[1]
+    if (loopback_target or same_browser_host) and origin[2] == dlms_port:
+        raise ValueError("Custom AI URL must not point back to this DLMS instance")
+
+    return candidate
 
 
 class UploadTooLargeError(ValueError):
@@ -4022,12 +4066,61 @@ def _validate_restored_json(path, relative_path):
     return value
 
 
+def _validate_restored_browser_data(staged_data_root):
+    """Allow only the runtime JSON and parser logs served beneath /data."""
+    data_root = os.path.join(staged_data_root, "data")
+    if not os.path.lexists(data_root):
+        return []
+    if os.path.islink(data_root) or not os.path.isdir(data_root):
+        raise ValueError("Restored browser data path is not a safe directory")
+
+    validated = []
+    for current_root, _dirs, filenames in os.walk(data_root, followlinks=False):
+        for filename in filenames:
+            path = os.path.join(current_root, filename)
+            relative_path = os.path.relpath(path, staged_data_root).replace("\\", "/")
+            extension = os.path.splitext(filename)[1].lower()
+            if extension not in BROWSER_SERVED_DATA_EXTENSIONS:
+                allowed = ", ".join(sorted(BROWSER_SERVED_DATA_EXTENSIONS))
+                raise ValueError(
+                    f"Unsafe restored browser-served file {relative_path}: "
+                    f"only {allowed} files are supported beneath data/"
+                )
+            validated.append(relative_path)
+    return sorted(validated, key=str.casefold)
+
+
+def _normalize_restored_portal_custom_ai_url(staged_data_root):
+    """Clear an unsafe optional AI URL without rejecting an otherwise safe backup."""
+    portal_path = os.path.join(staged_data_root, "config", "portal.json")
+    if not os.path.exists(portal_path):
+        return {"status": "absent"}
+    portal = _validate_restored_json(portal_path, "config/portal.json")
+    if "ai_custom_url" not in portal:
+        return {"status": "absent"}
+
+    raw_url = portal.get("ai_custom_url")
+    try:
+        safe_url = _validate_custom_ai_url(raw_url)
+        status = "valid"
+    except ValueError:
+        safe_url = ""
+        status = "normalized"
+
+    if raw_url != safe_url:
+        status = "normalized"
+        portal["ai_custom_url"] = safe_url
+        _atomic_write_json(portal_path, portal, indent=4, expected_type=dict)
+    return {"status": status}
+
+
 def _validate_restored_assets(staged_data_root):
     validated = []
     for relative_root, extensions in [
         ("static/bg", RASTER_IMAGE_FORMATS),
         ("static/logos", RASTER_IMAGE_FORMATS),
         ("quiz_assets", PASSIVE_PACK_IMAGE_EXTENSIONS),
+        ("image_builder_drafts", PASSIVE_PACK_IMAGE_EXTENSIONS),
     ]:
         root = os.path.join(staged_data_root, *relative_root.split("/"))
         if not os.path.isdir(root):
@@ -4104,11 +4197,15 @@ def _validate_staged_backup_semantics(staged_data_root, manifest):
     if not any(item["path"] == "results.db" for item in sqlite_files):
         raise ValueError("Backup is missing required DLMS database results.db")
 
+    browser_data = _validate_restored_browser_data(staged_data_root)
+    portal_config = _normalize_restored_portal_custom_ai_url(staged_data_root)
     assets = _validate_restored_assets(staged_data_root)
     return {
         "status": "valid",
         "sqlite": sqlite_files,
         "json_files": json_files,
+        "browser_data": browser_data,
+        "portal_config": portal_config,
         "assets": assets,
         "compatibility": "schema-version-1; optional descriptive manifest fields may be absent",
     }
@@ -5946,7 +6043,12 @@ def load_portal_config():
     provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
     cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
 
-    cfg["ai_custom_url"] = str(cfg.get("ai_custom_url") or "").strip()
+    try:
+        cfg["ai_custom_url"] = _validate_custom_ai_url(cfg.get("ai_custom_url"))
+    except ValueError:
+        # Legacy or manually edited settings remain loadable, but an unsafe
+        # target is never exposed to browser-side launch helpers.
+        cfg["ai_custom_url"] = ""
 
     raw_study_area_visibility = cfg.get("study_area_visibility")
     if not isinstance(raw_study_area_visibility, dict):
@@ -9161,7 +9263,7 @@ def study_pack_ai_builder():
         </div>
         <textarea id="studyPrompt" class="medical-ai-prompt-box" rows="30">{{ generated_prompt }}</textarea>
         <div class="medical-ai-action-row">
-            {% if ai_url %}<button type="button" class="medical-primary-button" onclick="copyAndOpen('{{ ai_url }}')">Copy Prompt &amp; Open AI</button>{% endif %}
+            {% if ai_url %}<button type="button" class="medical-primary-button" onclick='copyAndOpen({{ ai_url|tojson }})'>Copy Prompt &amp; Open AI</button>{% endif %}
             <button type="button" class="medical-ai-secondary-button" onclick="copyPrompt()">Copy Prompt</button>
         </div>
     </section>
@@ -9649,7 +9751,7 @@ def law_create_case_review():
             <textarea id="lawPromptBox" class="law-prompt-box" rows="18">{{ generated_prompt }}</textarea>
             <div class="law-action-row">
                 {% if ai_provider_url %}
-                <button type="button" class="law-primary-action" onclick="copyPromptAndOpenAi('{{ ai_provider_url }}')">Copy Prompt &amp; Open AI</button>
+                <button type="button" class="law-primary-action" onclick='copyPromptAndOpenAi({{ ai_provider_url|tojson }})'>Copy Prompt &amp; Open AI</button>
                 {% endif %}
                 <button type="button" class="law-secondary-action" onclick="copyLawPrompt()">Copy Prompt</button>
             </div>
@@ -11645,11 +11747,16 @@ def law_delete_case_review(case_id):
 
 @app.route("/data/<path:filename>")
 def serve_data(filename):
+    extension = os.path.splitext(str(filename or ""))[1].lower()
+    if extension not in BROWSER_SERVED_DATA_EXTENSIONS:
+        return "Unsupported data file", 415
     return send_from_directory(DATA_FOLDER, filename)
 
 
 @app.route("/quizzes/<path:filename>")
 def serve_quiz(filename):
+    if os.path.splitext(str(filename or ""))[1].lower() != ".html":
+        return "Unsupported quiz file", 415
     return send_from_directory(QUIZ_FOLDER, filename)
 
 
@@ -20592,7 +20699,7 @@ def settings_ai_page():
                    style="margin-bottom:10px;">
 
             <div class="settings-field-help">
-                Used only when the provider is Local / Custom URL.
+                Used only when the provider is Local / Custom URL. Enter an absolute http:// or https:// address for the external AI service; DLMS-local pages are not accepted.
             </div>
         </section>
 
@@ -20791,7 +20898,12 @@ def save_ai_settings():
     provider = request.form.get("ai_provider", "chatgpt").strip().lower()
     cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
 
-    cfg["ai_custom_url"] = request.form.get("ai_custom_url", "").strip()
+    try:
+        cfg["ai_custom_url"] = _validate_custom_ai_url(
+            request.form.get("ai_custom_url", "")
+        )
+    except ValueError as exc:
+        return str(exc), 400
     cfg["ai_prompt_template"] = request.form.get("ai_prompt_template", "").strip()
     cfg["study_pack_ai_prompt_template"] = request.form.get("study_pack_ai_prompt_template", "").strip() or DEFAULT_STUDY_CONTENT_PACK_PROMPT
     cfg["medical_study_pack_ai_addendum"] = request.form.get("medical_study_pack_ai_addendum", "").strip() or DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM
@@ -21026,11 +21138,12 @@ def settings_stage_restore():
 <div class="settings-current-value"><strong>Files:</strong> {{ report.file_count }}</div>
 <div class="settings-current-value"><strong>Uncompressed data:</strong> {{ '%.1f'|format(report.uncompressed_bytes / 1048576) }} MB</div>
 <div class="settings-current-value"><strong>Snapshot summary:</strong> {{ summary.get('quizzes',0) }} quizzes · {{ summary.get('attempts',0) }} attempts · {{ summary.get('content_packs',0) }} Content Packs · {{ summary.get('pdf_question_banks',0) }} question banks · {{ summary.get('pdf_terminology_banks',0) }} terminology banks</div>
+{% if semantic_validation.get('portal_config', {}).get('status') == 'normalized' %}<div class="settings-warning-panel"><strong>Custom AI URL will be cleared</strong><span>The backup contained a relative, DLMS-local, or unsupported Custom AI URL. The rest of the validated backup can be restored normally; configure a new absolute HTTP or HTTPS destination afterward if needed.</span></div>{% endif %}
 <div class="settings-warning-panel"><strong>Automatic safety backup</strong><span>Before restoring, DLMS will create a new backup of your current data. If the restore operation fails, your pre-restore snapshot remains available in the DLMS backups folder.</span></div>
 </section>
 <form method="POST" action="/settings/backup/restore/confirm/{{ token }}"><div class="settings-form-actions"><button class="settings-primary-button" type="submit">Restore This Backup</button><button class="settings-secondary-button" type="button" onclick="location.href='/settings/backup'">Cancel</button></div></form>
 </div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
-""", manifest=manifest, report=report, summary=summary, token=token)
+""", manifest=manifest, report=report, semantic_validation=semantic_result, summary=summary, token=token)
 
 
 @app.route("/settings/data/restore/confirm/<token>", methods=["POST"])
