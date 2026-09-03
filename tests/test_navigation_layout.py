@@ -105,6 +105,22 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("item('image','/admin/image-editor','◎','Image Study Editor')", source)
         self.assertNotIn("item('maintenance','/admin/maintenance'", source)
 
+    def test_sidebar_scanability_keeps_ordered_destinations_and_marks_nested_context(self):
+        source = self._static("nav-normalize.js")
+        css = self._static("style.css")
+
+        self.assertIn("primarySection('Study')", source)
+        self.assertIn("primarySection('Progress & tools')", source)
+        self.assertLess(source.index("primarySection('Study')"), source.index("item('study'"))
+        self.assertLess(source.index("primarySection('Progress & tools')"), source.index("item('history'"))
+        self.assertIn("const isActiveParent", source)
+        self.assertIn("const current = active && !isActiveParent(key)", source)
+        self.assertIn("key === 'anki' && ankiOpen && path !== '/anki'", source)
+        self.assertIn("dashboard-nav-primary-section-label", css)
+        self.assertIn("dashboard-nav-group:has(.dashboard-nav-subitem.active)", css)
+        self.assertIn("dashboard-nav-subitem.active::before", css)
+        self.assertIn("var(--theme-accent", css)
+
     def test_navigation_configuration_reconciles_visibility_without_a_second_mount(self):
         source = self._static("nav-normalize.js")
 

@@ -67,12 +67,21 @@
     return false;
   };
 
-  const item = (key, href, icon, label) => `<a class="dashboard-nav-item${isActive(key) ? ' active' : ''}" data-nav-key="${key}" href="${href}"${isActive(key) ? ' aria-current="page"' : ''}><span class="dashboard-nav-icon">${icon}</span><span>${label}</span></a>`;
-  const sub = (href, icon, label, active=false) => `<a class="dashboard-nav-subitem${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="dashboard-nav-subicon">${icon}</span><span>${label}</span></a>`;
-
   const buildOpen = isActive('build');
   const learningOpen = isActive('learning');
   const ankiOpen = isActive('anki');
+  const isActiveParent = (key) => (
+    (key === 'build' && buildOpen) ||
+    (key === 'learning' && learningOpen) ||
+    (key === 'anki' && ankiOpen && path !== '/anki')
+  );
+  const item = (key, href, icon, label) => {
+    const active = isActive(key);
+    const current = active && !isActiveParent(key);
+    return `<a class="dashboard-nav-item${active ? ' active' : ''}" data-nav-key="${key}" href="${href}"${current ? ' aria-current="page"' : ''}><span class="dashboard-nav-icon">${icon}</span><span>${label}</span></a>`;
+  };
+  const sub = (href, icon, label, active=false) => `<a class="dashboard-nav-subitem${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="dashboard-nav-subicon">${icon}</span><span>${label}</span></a>`;
+  const primarySection = (label) => `<div class="dashboard-nav-section-label dashboard-nav-primary-section-label"><span>${label}</span></div>`;
   const defaultStudyAreaVisibility = {it: true, law: true, medical: true, other: true};
   const studyAreaVisibilityCacheKey = 'dlms.studyAreaVisibility.v1';
   const normalizeStudyAreaVisibility = (value) => {
@@ -115,6 +124,7 @@
       item('dashboard','/','⌂','Dashboard'),
       item('library','/library','▤','Quiz Library'),
       `<div class="dashboard-nav-group">${item('build','/upload','✎','Build Quiz')}${buildOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/upload','↳','Quiz Builder', path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import')}${sub('/pdf-import','↳','PDF Import & Banks', path.startsWith('/pdf-import'))}</div>` : ''}</div>`,
+      primarySection('Study'),
       item('study','/study-packs','▣','Study Packs'),
       // IT and Medical landing pages already present their genuinely distinct
       // matching/image/builder workflows as cards. Keep the global sidebar
@@ -123,6 +133,7 @@
       item('law','/law','⚖','Law Study'),
       item('medical','/medical','✚','Medical Study'),
       item('other','/study-packs?domain_group=other','◇','Other Studies'),
+      primarySection('Progress & tools'),
       item('history','/history','↶','History'),
       item('analytics','/dashboard','▥','Analytics'),
       `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','◈','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','↳','Topic Intelligence', path === '/learning-intelligence')}${sub('/learning-profile','↳','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','↳','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','↳','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
