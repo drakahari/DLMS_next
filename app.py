@@ -2097,7 +2097,9 @@ def _quiz_asset_url(bucket, relative_path):
     return f"/quiz-assets/{bucket}/{rel}"
 
 
-def _snapshot_one_pack_asset(pack_id, asset_url, bucket, *, destination_root=None):
+def _snapshot_one_pack_asset(
+    pack_id, asset_url, bucket, *, destination_root=None, created_assets=None
+):
     """Copy one content-pack asset into quiz-owned storage and return its stable runtime URL."""
     asset_url = str(asset_url or "")
     prefix = f"/content-packs/{pack_id}/assets/"
@@ -2122,18 +2124,36 @@ def _snapshot_one_pack_asset(pack_id, asset_url, bucket, *, destination_root=Non
     dest = _safe_pack_child(dest_root, rel)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     if not os.path.isfile(dest):
-        shutil.copy2(src, dest)
+        descriptor, temporary_path = tempfile.mkstemp(
+            prefix=f".{os.path.basename(dest)}.", suffix=ext,
+            dir=os.path.dirname(dest),
+        )
+        os.close(descriptor)
+        try:
+            shutil.copy2(src, temporary_path)
+            _decode_raster_image(temporary_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
+            os.replace(temporary_path, dest)
+            if created_assets is not None:
+                created_assets.add(dest)
+        finally:
+            try:
+                os.remove(temporary_path)
+            except FileNotFoundError:
+                pass
     return _quiz_asset_url(bucket, rel), True
 
 
-def _snapshot_pack_refs_recursive(pack_id, value, bucket, *, destination_root=None):
+def _snapshot_pack_refs_recursive(
+    pack_id, value, bucket, *, destination_root=None, created_assets=None
+):
     """Recursively rewrite any runtime content-pack asset URLs to quiz-owned copies."""
     changed = 0
     if isinstance(value, dict):
         out = {}
         for key, item in value.items():
             new_item, n = _snapshot_pack_refs_recursive(
-                pack_id, item, bucket, destination_root=destination_root
+                pack_id, item, bucket, destination_root=destination_root,
+                created_assets=created_assets,
             )
             out[key] = new_item
             changed += n
@@ -2142,17 +2162,40 @@ def _snapshot_pack_refs_recursive(pack_id, value, bucket, *, destination_root=No
         out = []
         for item in value:
             new_item, n = _snapshot_pack_refs_recursive(
-                pack_id, item, bucket, destination_root=destination_root
+                pack_id, item, bucket, destination_root=destination_root,
+                created_assets=created_assets,
             )
             out.append(new_item)
             changed += n
         return out, changed
     if isinstance(value, str):
         new_value, did_change = _snapshot_one_pack_asset(
-            pack_id, value, bucket, destination_root=destination_root
+            pack_id, value, bucket, destination_root=destination_root,
+            created_assets=created_assets,
         )
         return new_value, int(did_change)
     return value, 0
+
+
+def _cleanup_new_pack_migration_assets(created_assets):
+    """Best-effort rollback limited to files created by one migration step."""
+    asset_root = os.path.realpath(QUIZ_ASSET_FOLDER)
+    for path in sorted(created_assets, key=lambda item: item.count(os.sep), reverse=True):
+        candidate = os.path.realpath(path)
+        if not candidate.startswith(asset_root + os.sep):
+            continue
+        try:
+            if os.path.isfile(candidate) and not os.path.islink(candidate):
+                os.remove(candidate)
+            parent = os.path.dirname(candidate)
+            while parent != asset_root and parent.startswith(asset_root + os.sep):
+                try:
+                    os.rmdir(parent)
+                except OSError:
+                    break
+                parent = os.path.dirname(parent)
+        except OSError as exc:
+            print(f"[CONTENT PACK MIGRATION CLEANUP ERROR] {candidate}: {exc}")
 
 
 def _snapshot_runtime_questions(pack_id, runtime_questions, db_questions, bucket, *, destination_root=None):
@@ -2215,58 +2258,89 @@ def _snapshot_existing_pack_dependencies(pack_id):
             except Exception:
                 continue
             bucket = "legacy_" + re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(name)[0])[:110]
-            new_payload, count = _snapshot_pack_refs_recursive(pack_id, payload, bucket)
-            if count:
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(new_payload, f, indent=4, ensure_ascii=False)
-                migrated_files += 1
-                migrated_refs += count
+            created_assets = set()
+            try:
+                new_payload, count = _snapshot_pack_refs_recursive(
+                    pack_id, payload, bucket, created_assets=created_assets
+                )
+                if count:
+                    _atomic_write_json(
+                        path, new_payload, indent=4, ensure_ascii=False,
+                        expected_type=type(payload),
+                    )
+                    migrated_files += 1
+                    migrated_refs += count
+            except Exception:
+                _cleanup_new_pack_migration_assets(created_assets)
+                raise
 
     # DB question media, so later quiz rebuilds stay independent.
     conn = get_db()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    columns = {r["name"] for r in cur.execute("PRAGMA table_info(questions)").fetchall()}
-    if "media_json" in columns:
-        rows = cur.execute("""
-            SELECT q.id AS question_id, q.quiz_id, q.media_json
-            FROM questions q
-            WHERE q.media_json IS NOT NULL AND q.media_json != ''
-        """).fetchall()
-        for row in rows:
-            try:
-                payload = json.loads(row["media_json"])
-            except Exception:
-                continue
-            bucket = f"legacy_quiz_{row['quiz_id']}"
-            new_payload, count = _snapshot_pack_refs_recursive(pack_id, payload, bucket)
-            if count:
-                cur.execute("UPDATE questions SET media_json = ? WHERE id = ?",
-                            (json.dumps(new_payload, ensure_ascii=False), row["question_id"]))
-                migrated_refs += count
+    created_assets = set()
+    try:
+        columns = {
+            r["name"] for r in cur.execute("PRAGMA table_info(questions)").fetchall()
+        }
+        if "media_json" in columns:
+            rows = cur.execute("""
+                SELECT q.id AS question_id, q.quiz_id, q.media_json
+                FROM questions q
+                WHERE q.media_json IS NOT NULL AND q.media_json != ''
+            """).fetchall()
+            for row in rows:
+                try:
+                    payload = json.loads(row["media_json"])
+                except Exception:
+                    continue
+                bucket = f"legacy_quiz_{row['quiz_id']}"
+                new_payload, count = _snapshot_pack_refs_recursive(
+                    pack_id, payload, bucket, created_assets=created_assets
+                )
+                if count:
+                    cur.execute(
+                        "UPDATE questions SET media_json = ? WHERE id = ?",
+                        (json.dumps(new_payload, ensure_ascii=False), row["question_id"]),
+                    )
+                    migrated_refs += count
 
-    # Saved hotspot-attempt response JSON, if this schema version has it.
-    answer_columns = {r["name"] for r in cur.execute("PRAGMA table_info(attempt_answers)").fetchall()}
-    if "response_json" in answer_columns:
-        rows = cur.execute("""
-            SELECT id, attempt_id, response_json
-            FROM attempt_answers
-            WHERE response_json IS NOT NULL AND response_json != ''
-        """).fetchall()
-        for row in rows:
-            try:
-                payload = json.loads(row["response_json"])
-            except Exception:
-                continue
-            bucket = "legacy_attempt_" + re.sub(r"[^A-Za-z0-9_.-]+", "_", str(row["attempt_id"]))[:100]
-            new_payload, count = _snapshot_pack_refs_recursive(pack_id, payload, bucket)
-            if count:
-                cur.execute("UPDATE attempt_answers SET response_json = ? WHERE id = ?",
-                            (json.dumps(new_payload, ensure_ascii=False), row["id"]))
-                migrated_refs += count
+        # Saved hotspot-attempt response JSON, if this schema version has it.
+        answer_columns = {
+            r["name"]
+            for r in cur.execute("PRAGMA table_info(attempt_answers)").fetchall()
+        }
+        if "response_json" in answer_columns:
+            rows = cur.execute("""
+                SELECT id, attempt_id, response_json
+                FROM attempt_answers
+                WHERE response_json IS NOT NULL AND response_json != ''
+            """).fetchall()
+            for row in rows:
+                try:
+                    payload = json.loads(row["response_json"])
+                except Exception:
+                    continue
+                bucket = "legacy_attempt_" + re.sub(
+                    r"[^A-Za-z0-9_.-]+", "_", str(row["attempt_id"])
+                )[:100]
+                new_payload, count = _snapshot_pack_refs_recursive(
+                    pack_id, payload, bucket, created_assets=created_assets
+                )
+                if count:
+                    cur.execute(
+                        "UPDATE attempt_answers SET response_json = ? WHERE id = ?",
+                        (json.dumps(new_payload, ensure_ascii=False), row["id"]),
+                    )
+                    migrated_refs += count
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        _cleanup_new_pack_migration_assets(created_assets)
+        raise
+    finally:
+        conn.close()
     return {"files": migrated_files, "references": migrated_refs}
 
 
@@ -7346,7 +7420,11 @@ def delete_content_pack():
         flash(message, "success")
     except Exception as exc:
         print(f"[CONTENT PACK DELETE ERROR] {type(exc).__name__}: {exc}")
-        flash("The Study Pack could not be deleted. No other content was intentionally changed.", "error")
+        flash(
+            "The Study Pack could not be deleted. Any completed legacy-asset "
+            "preservation remains safe and can be reused when deletion is retried.",
+            "error",
+        )
 
     return redirect("/content-packs")
 
