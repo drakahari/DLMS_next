@@ -1,6 +1,6 @@
 from flask import Flask, send_from_directory, request, redirect, render_template_string, jsonify, Response, flash, url_for, has_request_context
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
-import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings, unicodedata, ipaddress
+import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings, unicodedata, ipaddress, copy
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -6232,6 +6232,71 @@ def save_law_registry(registry):
 
     except Exception as e:
         print(f"[LAW REGISTRY ERROR] save failed: {e}")
+        raise
+
+
+def _law_registry_case_for_mutation(registry, case_id):
+    """Return the current mutable case entry or fail before durable changes."""
+    for case in registry.get("cases", []):
+        if str(case.get("id")) == str(case_id):
+            return case
+    raise ValueError("Law case registry entry changed before the operation completed")
+
+
+def _commit_law_case_and_registry(
+    case_path, case_data, registry, *, previous_case_data=None, new_case=False
+):
+    """Commit one case file and its registry metadata with narrow rollback."""
+    if new_case and os.path.lexists(case_path):
+        raise FileExistsError("Law case file already exists")
+    if not new_case and not isinstance(previous_case_data, dict):
+        raise ValueError("Existing Law case data is required for rollback")
+
+    _atomic_write_json(case_path, case_data, expected_type=dict)
+    try:
+        save_law_registry(registry)
+    except Exception as registry_error:
+        try:
+            if new_case:
+                if os.path.lexists(case_path):
+                    if not os.path.isfile(case_path):
+                        raise RuntimeError("New Law case path is no longer a regular file")
+                    os.remove(case_path)
+            else:
+                _atomic_write_json(
+                    case_path, previous_case_data, expected_type=dict
+                )
+        except Exception as rollback_error:
+            raise RuntimeError(
+                "Law registry save failed and the case-file rollback also failed"
+            ) from rollback_error
+        raise
+
+
+def _delete_law_case_and_registry(case_path, registry, case_id):
+    """Remove a case without deleting its file before registry durability."""
+    cases = registry.get("cases", [])
+    _law_registry_case_for_mutation(registry, case_id)
+    if os.path.lexists(case_path) and not os.path.isfile(case_path):
+        raise ValueError("Law case path is not a regular file")
+
+    previous_registry = copy.deepcopy(registry)
+    registry["cases"] = [
+        case for case in cases if str(case.get("id")) != str(case_id)
+    ]
+    save_law_registry(registry)
+
+    try:
+        if os.path.isfile(case_path):
+            os.remove(case_path)
+    except Exception as remove_error:
+        try:
+            save_law_registry(previous_registry)
+        except Exception as rollback_error:
+            raise RuntimeError(
+                "Law case removal failed and the registry rollback also failed"
+            ) from rollback_error
+        raise
 
 
 
@@ -9521,7 +9586,11 @@ def law_create_case_review():
                 "course": course,
                 "created_at": datetime.now().isoformat(timespec="seconds")
             }
-            save_law_registry(law_registry)
+            try:
+                save_law_registry(law_registry)
+            except Exception as e:
+                print(f"[LAW WORKFLOW ERROR] Failed starting case workflow: {e}")
+                return "Failed to start Law case workflow", 500
 
         provider_urls = {
             "chatgpt": "https://chatgpt.com/",
@@ -10103,7 +10172,11 @@ def law_cancel_pending_workflow():
 
     if "pending_case_workflow" in registry:
         registry.pop("pending_case_workflow", None)
-        save_law_registry(registry)
+        try:
+            save_law_registry(registry)
+        except Exception as e:
+            print(f"[LAW WORKFLOW ERROR] Failed cancelling case workflow: {e}")
+            return "Failed to cancel Law case workflow", 500
 
     return redirect("/law/import?workflow_cancelled=1")
 
@@ -10841,9 +10914,7 @@ def law_create_case_from_import(filename):
     try:
         os.makedirs(LAW_CASES_FOLDER, exist_ok=True)
 
-        _atomic_write_json(case_path, case_data, expected_type=dict)
-
-        cases = registry.get("cases", [])
+        cases = list(registry.get("cases", []))
 
         cases.append({
             "id": case_id,
@@ -10863,7 +10934,9 @@ def law_create_case_from_import(filename):
         if "pending_case_workflow" in registry:
             registry.pop("pending_case_workflow", None)
 
-        save_law_registry(registry)
+        _commit_law_case_and_registry(
+            case_path, case_data, registry, new_case=True
+        )
 
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed creating case review: {e}")
@@ -11676,24 +11749,25 @@ def law_update_case_review_details(case_id):
         with open(case_path, "r", encoding="utf-8") as f:
             case_data = json.load(f) or {}
 
+        previous_case_data = copy.deepcopy(case_data)
         now = datetime.now().isoformat(timespec="seconds")
 
         case_data["title"] = new_title
         case_data["course"] = new_course
         case_data["updated_at"] = now
 
-        _atomic_write_json(case_path, case_data, expected_type=dict)
-
         registry = load_law_registry()
+        registry_case = _law_registry_case_for_mutation(registry, case_id)
+        registry_case["title"] = new_title
+        registry_case["course"] = new_course
+        registry_case["updated_at"] = now
 
-        for case in registry.get("cases", []):
-            if str(case.get("id")) == str(case_id):
-                case["title"] = new_title
-                case["course"] = new_course
-                case["updated_at"] = now
-                break
-
-        save_law_registry(registry)
+        _commit_law_case_and_registry(
+            case_path,
+            case_data,
+            registry,
+            previous_case_data=previous_case_data,
+        )
 
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed updating case review details: {e}")
@@ -11720,20 +11794,8 @@ def law_delete_case_review(case_id):
     case_path = os.path.join(LAW_CASES_FOLDER, case_file)
 
     try:
-        # Remove case JSON file
-        if os.path.exists(case_path) and os.path.isfile(case_path):
-            os.remove(case_path)
-
-        # Remove case from registry
         registry = load_law_registry()
-
-        remaining_cases = [
-            case for case in registry.get("cases", [])
-            if str(case.get("id")) != str(case_id)
-        ]
-
-        registry["cases"] = remaining_cases
-        save_law_registry(registry)
+        _delete_law_case_and_registry(case_path, registry, case_id)
 
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed deleting case review: {e}")
@@ -12224,21 +12286,22 @@ def law_update_case_review_notes(case_id):
         with open(case_path, "r", encoding="utf-8") as f:
             case_data = json.load(f) or {}
 
+        previous_case_data = copy.deepcopy(case_data)
         now = datetime.now().isoformat(timespec="seconds")
 
         case_data["student_notes"] = student_notes
         case_data["updated_at"] = now
 
-        _atomic_write_json(case_path, case_data, expected_type=dict)
-
         registry = load_law_registry()
+        registry_case = _law_registry_case_for_mutation(registry, case_id)
+        registry_case["updated_at"] = now
 
-        for case in registry.get("cases", []):
-            if str(case.get("id")) == str(case_id):
-                case["updated_at"] = now
-                break
-
-        save_law_registry(registry)
+        _commit_law_case_and_registry(
+            case_path,
+            case_data,
+            registry,
+            previous_case_data=previous_case_data,
+        )
 
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed updating case review notes: {e}")
@@ -12271,6 +12334,7 @@ def law_update_socratic_answers(case_id):
         with open(case_path, "r", encoding="utf-8") as f:
             case_data = json.load(f) or {}
 
+        previous_case_data = copy.deepcopy(case_data)
         sections = case_data.get("sections", {}) or {}
         socratic_questions = parse_socratic_questions(sections.get("socratic_review", ""))
 
@@ -12288,16 +12352,16 @@ def law_update_socratic_answers(case_id):
         case_data["socratic_student_answers"] = answers
         case_data["updated_at"] = now
 
-        _atomic_write_json(case_path, case_data, expected_type=dict)
-
         registry = load_law_registry()
+        registry_case = _law_registry_case_for_mutation(registry, case_id)
+        registry_case["updated_at"] = now
 
-        for case in registry.get("cases", []):
-            if str(case.get("id")) == str(case_id):
-                case["updated_at"] = now
-                break
-
-        save_law_registry(registry)
+        _commit_law_case_and_registry(
+            case_path,
+            case_data,
+            registry,
+            previous_case_data=previous_case_data,
+        )
 
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed updating Socratic answers: {e}")
@@ -12337,21 +12401,22 @@ def law_update_irac_response(case_id):
         with open(case_path, "r", encoding="utf-8") as f:
             case_data = json.load(f) or {}
 
+        previous_case_data = copy.deepcopy(case_data)
         now = datetime.now().isoformat(timespec="seconds")
 
         case_data["irac_student_response"] = irac_response
         case_data["updated_at"] = now
 
-        _atomic_write_json(case_path, case_data, expected_type=dict)
-
         registry = load_law_registry()
+        registry_case = _law_registry_case_for_mutation(registry, case_id)
+        registry_case["updated_at"] = now
 
-        for case in registry.get("cases", []):
-            if str(case.get("id")) == str(case_id):
-                case["updated_at"] = now
-                break
-
-        save_law_registry(registry)
+        _commit_law_case_and_registry(
+            case_path,
+            case_data,
+            registry,
+            previous_case_data=previous_case_data,
+        )
 
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed updating IRAC response: {e}")
