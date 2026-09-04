@@ -25446,6 +25446,15 @@ def anki_custom_deck():
     selected_quiz = request.form.getlist("quiz_cards")
     selected_missed = request.form.getlist("missed_cards")
     selected_law = request.form.getlist("law_cards")
+    selected_quiz_tokens = set(selected_quiz)
+    quiz_groups = []
+    for quiz in sources["quiz_groups"]:
+        quiz_view = dict(quiz)
+        quiz_view["selected_count"] = sum(
+            f"quiz:{quiz.get('id')}:{card.get('question_id')}" in selected_quiz_tokens
+            for card in quiz.get("cards", [])
+        )
+        quiz_groups.append(quiz_view)
 
     preview_requested = request.method == "POST"
     preview_rows = []
@@ -25568,12 +25577,36 @@ def anki_custom_deck():
                 </div>
 
                 {% if quiz_groups %}
+                    <div class="anki-custom-quiz-toolbar">
+                        <label class="anki-custom-quiz-filter" for="ankiQuizFilter">
+                            <span>Filter quizzes</span>
+                            <input type="search"
+                                   id="ankiQuizFilter"
+                                   placeholder="Search by quiz name"
+                                   autocomplete="off"
+                                   aria-describedby="ankiQuizFilterStatus">
+                        </label>
+                        <div class="anki-custom-quiz-toolbar-actions" aria-label="Quiz accordion controls">
+                            <button type="button" class="anki-custom-quiz-control" id="ankiExpandAllQuizzes" aria-controls="ankiQuizGroups">Expand All</button>
+                            <button type="button" class="anki-custom-quiz-control" id="ankiCollapseAllQuizzes" aria-controls="ankiQuizGroups">Collapse All</button>
+                        </div>
+                        <span class="anki-custom-quiz-filter-status" id="ankiQuizFilterStatus" aria-live="polite">{{ quiz_groups|length }} quiz{% if quiz_groups|length != 1 %}zes{% endif %} shown</span>
+                    </div>
+                    <div id="ankiQuizGroups">
                     {% for quiz in quiz_groups %}
-                    <details class="anki-custom-selection-group" style="margin:10px 0;border-radius:11px;">
+                    <details class="anki-custom-selection-group anki-custom-quiz-group" id="ankiQuizGroup{{ loop.index }}" style="margin:10px 0;border-radius:11px;">
                         <summary class="anki-custom-selection-summary" style="cursor:pointer;padding:12px 14px;font-weight:700;">
-                            {{ quiz.title }} · {{ quiz.cards|length }} questions
+                            <span class="anki-custom-quiz-title">{{ quiz.title }}</span>
+                            <span class="anki-custom-quiz-summary-meta">
+                                <span>{{ quiz.cards|length }} question{% if quiz.cards|length != 1 %}s{% endif %}</span>
+                                <span class="anki-custom-quiz-selection-count" data-anki-quiz-selection-count>{{ quiz.selected_count }} of {{ quiz.cards|length }} selected</span>
+                            </span>
                         </summary>
-                        <div style="padding:0 14px 12px;">
+                        <div class="anki-custom-quiz-content" id="ankiQuizQuestions{{ loop.index }}" style="padding:0 14px 12px;">
+                            <div class="anki-custom-quiz-bulk-actions" aria-label="Question selection controls for {{ quiz.title }}">
+                                <button type="button" class="anki-custom-quiz-control" data-anki-quiz-select-all aria-controls="ankiQuizQuestions{{ loop.index }}">Select All Questions</button>
+                                <button type="button" class="anki-custom-quiz-control" data-anki-quiz-clear aria-controls="ankiQuizQuestions{{ loop.index }}" {% if quiz.selected_count == 0 %}disabled{% endif %}>Clear Quiz Selection</button>
+                            </div>
                             {% for card in quiz.cards %}
                             {% set token = "quiz:" ~ quiz.id ~ ":" ~ card.question_id %}
                             <label class="anki-custom-selection-row" style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;">
@@ -25584,6 +25617,7 @@ def anki_custom_deck():
                         </div>
                     </details>
                     {% endfor %}
+                    </div>
                 {% else %}
                     <div class="anki-empty-message">No quizzes are currently available.</div>
                 {% endif %}
@@ -25757,20 +25791,92 @@ if (shutdownBtn) {
 const customAnkiForm = document.getElementById("customAnkiForm");
 const ankiSelectedCount = document.getElementById("ankiSelectedCount");
 const ankiClearSelection = document.getElementById("ankiClearSelection");
+const ankiQuizFilter = document.getElementById("ankiQuizFilter");
+const ankiQuizFilterStatus = document.getElementById("ankiQuizFilterStatus");
+const ankiExpandAllQuizzes = document.getElementById("ankiExpandAllQuizzes");
+const ankiCollapseAllQuizzes = document.getElementById("ankiCollapseAllQuizzes");
 const customAnkiCardSelections = customAnkiForm
     ? Array.from(customAnkiForm.querySelectorAll('input[type="checkbox"][name$="_cards"]'))
     : [];
+const customAnkiQuizGroups = customAnkiForm
+    ? Array.from(customAnkiForm.querySelectorAll(".anki-custom-quiz-group"))
+    : [];
 
-function updateCustomAnkiSelectionCount() {
+function getCustomAnkiQuizSelections(quizGroup) {
+    return Array.from(quizGroup.querySelectorAll('input[type="checkbox"][name="quiz_cards"]'));
+}
+
+function updateCustomAnkiQuizSelectionCount(quizGroup) {
+    const quizSelections = getCustomAnkiQuizSelections(quizGroup);
+    const selectedCount = quizSelections.filter(checkbox => checkbox.checked).length;
+    const selectionCount = quizGroup.querySelector("[data-anki-quiz-selection-count]");
+    const selectAll = quizGroup.querySelector("[data-anki-quiz-select-all]");
+    const clearSelection = quizGroup.querySelector("[data-anki-quiz-clear]");
+    if (selectionCount) {
+        selectionCount.textContent = `${selectedCount} of ${quizSelections.length} selected`;
+    }
+    if (selectAll) selectAll.disabled = quizSelections.length === 0 || selectedCount === quizSelections.length;
+    if (clearSelection) clearSelection.disabled = selectedCount === 0;
+}
+
+function updateCustomAnkiSelectionCount(changedQuizGroup = null) {
     const selectedCount = customAnkiCardSelections.filter(checkbox => checkbox.checked).length;
     if (ankiSelectedCount) {
         ankiSelectedCount.textContent = `${selectedCount} card${selectedCount === 1 ? "" : "s"} selected`;
     }
     if (ankiClearSelection) ankiClearSelection.disabled = selectedCount === 0;
+    if (changedQuizGroup) updateCustomAnkiQuizSelectionCount(changedQuizGroup);
+    else customAnkiQuizGroups.forEach(updateCustomAnkiQuizSelectionCount);
+}
+
+function visibleCustomAnkiQuizGroups() {
+    return customAnkiQuizGroups.filter(quizGroup => !quizGroup.hidden);
+}
+
+function updateCustomAnkiQuizFilter() {
+    const query = (ankiQuizFilter?.value || "").trim().toLocaleLowerCase();
+    let visibleCount = 0;
+    customAnkiQuizGroups.forEach(quizGroup => {
+        const title = quizGroup.querySelector(".anki-custom-quiz-title")?.textContent || "";
+        const matches = !query || title.toLocaleLowerCase().includes(query);
+        quizGroup.hidden = !matches;
+        if (matches) visibleCount += 1;
+    });
+    if (ankiQuizFilterStatus) {
+        const total = customAnkiQuizGroups.length;
+        ankiQuizFilterStatus.textContent = query
+            ? `${visibleCount} of ${total} quizzes shown`
+            : `${total} quiz${total === 1 ? "" : "zes"} shown`;
+    }
+    const noVisibleQuizzes = visibleCount === 0;
+    if (ankiExpandAllQuizzes) ankiExpandAllQuizzes.disabled = noVisibleQuizzes;
+    if (ankiCollapseAllQuizzes) ankiCollapseAllQuizzes.disabled = noVisibleQuizzes;
 }
 
 customAnkiCardSelections.forEach(checkbox => {
-    checkbox.addEventListener("change", updateCustomAnkiSelectionCount);
+    checkbox.addEventListener("change", () => {
+        updateCustomAnkiSelectionCount(checkbox.closest(".anki-custom-quiz-group"));
+    });
+});
+
+customAnkiQuizGroups.forEach(quizGroup => {
+    const quizSelections = getCustomAnkiQuizSelections(quizGroup);
+    quizGroup.querySelector("[data-anki-quiz-select-all]")?.addEventListener("click", () => {
+        quizSelections.forEach(checkbox => { checkbox.checked = true; });
+        updateCustomAnkiSelectionCount(quizGroup);
+    });
+    quizGroup.querySelector("[data-anki-quiz-clear]")?.addEventListener("click", () => {
+        quizSelections.forEach(checkbox => { checkbox.checked = false; });
+        updateCustomAnkiSelectionCount(quizGroup);
+    });
+});
+
+ankiQuizFilter?.addEventListener("input", updateCustomAnkiQuizFilter);
+ankiExpandAllQuizzes?.addEventListener("click", () => {
+    visibleCustomAnkiQuizGroups().forEach(quizGroup => { quizGroup.open = true; });
+});
+ankiCollapseAllQuizzes?.addEventListener("click", () => {
+    visibleCustomAnkiQuizGroups().forEach(quizGroup => { quizGroup.open = false; });
 });
 
 if (ankiClearSelection) {
@@ -25781,6 +25887,7 @@ if (ankiClearSelection) {
 }
 
 updateCustomAnkiSelectionCount();
+updateCustomAnkiQuizFilter();
 
 if (window.location.hash === "#ankiPreview" || {{ "true" if preview_requested else "false" }}) {
     const preview = document.getElementById("ankiPreview");
@@ -25796,7 +25903,7 @@ if (window.location.hash === "#ankiPreview" || {{ "true" if preview_requested el
         deck_name=deck_name,
         preview_requested=preview_requested,
         preview_rows=preview_rows,
-        quiz_groups=sources["quiz_groups"],
+        quiz_groups=quiz_groups,
         missed_cards=sources["missed_cards"],
         law_groups=sources["law_groups"],
         selected_quiz=selected_quiz,

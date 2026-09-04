@@ -11808,6 +11808,103 @@ body[data-theme="light"] .pdf-import-page .pdf-bank-open,
 .anki-custom-selection-meta {
     color: var(--theme-muted-text,#667b95);
 }
+.anki-custom-quiz-toolbar {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    align-items: end;
+    gap: 10px 14px;
+    margin: 14px 0 12px;
+    padding: 12px;
+    color: var(--theme-page-text,#17253a);
+    background: var(--theme-surface,#eef5fb);
+    border: 1px solid var(--theme-border-soft,#bdd0e5);
+    border-radius: 10px;
+}
+.anki-custom-quiz-filter {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+}
+.anki-custom-quiz-filter input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 38px;
+    margin: 0;
+    padding: 7px 10px;
+    color: var(--theme-input-text,#17253a);
+    background: var(--theme-input-bg,#fff);
+    border: 1px solid var(--theme-border-soft,#bdd0e5);
+    border-radius: 8px;
+    font: inherit;
+}
+.anki-custom-quiz-toolbar-actions,
+.anki-custom-quiz-bulk-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.anki-custom-quiz-filter-status {
+    grid-column: 1 / -1;
+    color: var(--theme-muted-text,#667b95);
+    font-size: 12px;
+}
+.anki-custom-quiz-summary-meta {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-left: 8px;
+    color: var(--theme-muted-text,#667b95);
+    font-size: 12px;
+    font-weight: 650;
+}
+.anki-custom-quiz-selection-count {
+    padding: 3px 7px;
+    color: var(--theme-page-text,#17253a);
+    background: color-mix(in srgb,var(--theme-accent,#1684cf) 7%,var(--theme-surface-2,#e5eef7));
+    border: 1px solid color-mix(in srgb,var(--theme-accent,#1684cf) 26%,var(--theme-border-soft,#bdd0e5));
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.anki-custom-quiz-content {
+    min-width: 0;
+}
+.anki-custom-quiz-bulk-actions {
+    justify-content: flex-end;
+    padding: 9px 0 7px;
+}
+#customAnkiForm .anki-custom-quiz-control {
+    width: auto;
+    min-height: 34px;
+    margin: 0;
+    padding: 6px 10px;
+    color: var(--theme-page-text,#17253a);
+    background: var(--theme-surface-2,#e5eef7);
+    border: 1px solid var(--theme-border-soft,#bdd0e5);
+    border-radius: 8px;
+    box-shadow: none;
+    font-size: 12px;
+    font-weight: 700;
+}
+#customAnkiForm .anki-custom-quiz-control:hover:not(:disabled) {
+    color: var(--theme-heading,#10213a);
+    background: color-mix(in srgb,var(--theme-accent,#1684cf) 10%,var(--theme-surface-2,#e5eef7));
+    border-color: color-mix(in srgb,var(--theme-accent,#1684cf) 38%,var(--theme-border-soft,#bdd0e5));
+    transform: none;
+}
+#customAnkiForm .anki-custom-quiz-control:active:not(:disabled) {
+    background: color-mix(in srgb,var(--theme-accent,#1684cf) 15%,var(--theme-surface-2,#e5eef7));
+    transform: scale(.98);
+}
+#customAnkiForm .anki-custom-quiz-control:disabled {
+    cursor: not-allowed;
+    opacity: .58;
+    transform: none;
+}
+.anki-custom-quiz-group[hidden] {
+    display: none;
+}
 .anki-custom-selection-toolbar {
     display:flex;
     align-items:center;
@@ -11842,6 +11939,20 @@ body[data-theme="light"] .pdf-import-page .pdf-bank-open,
 .anki-clear-selection-button:disabled {
     cursor:not-allowed;
     opacity:.58;
+}
+
+@media (max-width: 620px) {
+    .anki-custom-quiz-toolbar {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+    .anki-custom-quiz-filter-status {
+        grid-column: auto;
+    }
+    .anki-custom-quiz-toolbar-actions,
+    .anki-custom-quiz-bulk-actions {
+        justify-content: flex-start;
+    }
 }
 
 /* Law Study Anki: text around controls/cards */

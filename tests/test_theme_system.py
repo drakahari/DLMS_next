@@ -670,7 +670,7 @@ class ThemeSystemTests(unittest.TestCase):
         ):
             self.assertNotIn(old_color, custom)
         self.assertIn('class="anki-custom-deck-name"', custom)
-        self.assertGreaterEqual(custom.count('class="anki-custom-selection-group"'), 3)
+        self.assertGreaterEqual(custom.count("anki-custom-selection-group"), 3)
         self.assertGreaterEqual(custom.count('class="anki-custom-selection-summary"'), 3)
         self.assertGreaterEqual(custom.count('class="anki-custom-selection-row"'), 3)
         self.assertIn('class="anki-custom-selection-meta"', custom)
@@ -683,6 +683,12 @@ class ThemeSystemTests(unittest.TestCase):
             ".anki-custom-selection-summary": ("--theme-heading",),
             ".anki-custom-selection-row": ("--theme-page-text", "--theme-border-soft"),
             ".anki-custom-selection-meta": ("--theme-muted-text",),
+            ".anki-custom-quiz-toolbar": ("--theme-page-text", "--theme-surface", "--theme-border-soft"),
+            ".anki-custom-quiz-filter input": ("--theme-input-text", "--theme-input-bg", "--theme-border-soft"),
+            ".anki-custom-quiz-filter-status": ("--theme-muted-text",),
+            ".anki-custom-quiz-summary-meta": ("--theme-muted-text",),
+            ".anki-custom-quiz-selection-count": ("--theme-page-text", "--theme-accent", "--theme-surface-2", "--theme-border-soft"),
+            "#customAnkiForm .anki-custom-quiz-control": ("--theme-page-text", "--theme-surface-2", "--theme-border-soft"),
             ".anki-custom-selection-toolbar": ("--theme-page-text", "--theme-surface", "--theme-border-soft"),
             ".anki-custom-selection-count": ("--theme-heading",),
             ".anki-clear-selection-button": ("--theme-page-text", "--theme-surface-2", "--theme-border-soft"),
@@ -714,6 +720,8 @@ class ThemeSystemTests(unittest.TestCase):
                     "selection heading": (variables["theme-heading"], surface),
                     "selection helper": (variables["theme-muted-text"], surface),
                     "selection count": (variables["theme-heading"], surface),
+                    "quiz selection count": (variables["theme-page-text"], surface_2),
+                    "quiz controls": (variables["theme-page-text"], surface_2),
                     "clear selection": (variables["theme-page-text"], surface_2),
                     "input text": (
                         variables["theme-input-text"],

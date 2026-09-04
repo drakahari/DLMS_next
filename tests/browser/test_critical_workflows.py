@@ -256,6 +256,129 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
     assert browser.wait_for(f"{order_expression} === {json.dumps(expected_order)}") is True
 
 
+def test_custom_anki_quiz_filter_bulk_and_accordion_state(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/anki/custom")
+    browser.wait_for("document.querySelectorAll('.anki-custom-quiz-group').length === 2")
+
+    group = (
+        "title => [...document.querySelectorAll('.anki-custom-quiz-group')]"
+        ".find(item => item.querySelector('.anki-custom-quiz-title')"
+        ".textContent.includes(title))"
+    )
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.anki-custom-quiz-group')]"
+        ".every(item => !item.open)"
+    ) is True
+
+    browser.click("#ankiExpandAllQuizzes")
+    browser.wait_for(
+        "[...document.querySelectorAll('.anki-custom-quiz-group')]"
+        ".every(item => item.open)"
+    )
+    browser.click("#ankiCollapseAllQuizzes")
+    browser.wait_for(
+        "[...document.querySelectorAll('.anki-custom-quiz-group')]"
+        ".every(item => !item.open)"
+    )
+
+    assert browser.evaluate(
+        f"(() => {{ const item = ({group})('Browser Critical Workflow');"
+        "item.open = true; const control = item.querySelector('[data-anki-quiz-select-all]');"
+        "control.focus(); const accessible = control.tagName === 'BUTTON' && "
+        "control.type === 'button' && document.activeElement === control;"
+        "control.click(); return accessible; })()"
+    ) is True
+    browser.wait_for(
+        f"({group})('Browser Critical Workflow')"
+        ".querySelectorAll('[name=quiz_cards]:checked').length === 2"
+    )
+    assert browser.evaluate(
+        f"(() => {{ const critical = ({group})('Browser Critical Workflow');"
+        f"const companion = ({group})('Browser Companion'); return {{"
+        "criticalSelected: critical.querySelectorAll('[name=quiz_cards]:checked').length,"
+        "companionSelected: companion.querySelectorAll('[name=quiz_cards]:checked').length,"
+        "criticalCount: critical.querySelector('[data-anki-quiz-selection-count]').textContent.trim(),"
+        "globalCount: document.getElementById('ankiSelectedCount').textContent.trim()}; })()"
+    ) == {
+        "criticalSelected": 2,
+        "companionSelected": 0,
+        "criticalCount": "2 of 2 selected",
+        "globalCount": "2 cards selected",
+    }
+    assert browser.evaluate(
+        f"(() => {{ const item = ({group})('Browser Critical Workflow');"
+        "item.querySelector('summary').click();"
+        "return !item.open && item.querySelectorAll('[name=quiz_cards]:checked').length === 2; })()"
+    ) is True
+
+    assert browser.evaluate(
+        "(() => { const filter = document.getElementById('ankiQuizFilter');"
+        "filter.value = 'Companion'; filter.dispatchEvent(new Event('input', {bubbles:true}));"
+        "return true; })()"
+    ) is True
+    filtered = browser.evaluate(
+        f"(() => {{ const critical = ({group})('Browser Critical Workflow');"
+        f"const companion = ({group})('Browser Companion'); return {{"
+        "criticalHidden: critical.hidden,"
+        "criticalSelected: critical.querySelectorAll('[name=quiz_cards]:checked').length,"
+        "companionHidden: companion.hidden, companionOpen: companion.open,"
+        "status: document.getElementById('ankiQuizFilterStatus').textContent.trim()}; })()"
+    )
+    assert filtered == {
+        "criticalHidden": True,
+        "criticalSelected": 2,
+        "companionHidden": False,
+        "companionOpen": False,
+        "status": "1 of 2 quizzes shown",
+    }
+
+    browser.click("#ankiExpandAllQuizzes")
+    assert browser.evaluate(
+        f"(() => {{ const critical = ({group})('Browser Critical Workflow');"
+        f"const companion = ({group})('Browser Companion');"
+        "return !critical.open && companion.open; })()"
+    ) is True
+    assert browser.evaluate(
+        "(() => { const filter = document.getElementById('ankiQuizFilter');"
+        "filter.value = ''; filter.dispatchEvent(new Event('input', {bubbles:true})); return true; })()"
+    ) is True
+    assert browser.evaluate(
+        f"(() => {{ const critical = ({group})('Browser Critical Workflow');"
+        f"const companion = ({group})('Browser Companion'); return {{"
+        "criticalHidden: critical.hidden, criticalOpen: critical.open,"
+        "criticalSelected: critical.querySelectorAll('[name=quiz_cards]:checked').length,"
+        "companionOpen: companion.open}; })()"
+    ) == {
+        "criticalHidden": False,
+        "criticalOpen": False,
+        "criticalSelected": 2,
+        "companionOpen": True,
+    }
+
+    assert browser.evaluate(
+        f"(() => {{ const companion = ({group})('Browser Companion');"
+        "companion.querySelector('[name=quiz_cards]').click();"
+        f"const critical = ({group})('Browser Critical Workflow');"
+        "critical.querySelector('[data-anki-quiz-clear]').click(); return true; })()"
+    ) is True
+    assert browser.evaluate(
+        f"(() => {{ const critical = ({group})('Browser Critical Workflow');"
+        f"const companion = ({group})('Browser Companion'); return {{"
+        "criticalSelected: critical.querySelectorAll('[name=quiz_cards]:checked').length,"
+        "companionSelected: companion.querySelectorAll('[name=quiz_cards]:checked').length,"
+        "criticalCount: critical.querySelector('[data-anki-quiz-selection-count]').textContent.trim(),"
+        "companionCount: companion.querySelector('[data-anki-quiz-selection-count]').textContent.trim(),"
+        "globalCount: document.getElementById('ankiSelectedCount').textContent.trim()}; })()"
+    ) == {
+        "criticalSelected": 0,
+        "companionSelected": 1,
+        "criticalCount": "0 of 2 selected",
+        "companionCount": "1 of 1 selected",
+        "globalCount": "1 card selected",
+    }
+
+
 def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
