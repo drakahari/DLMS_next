@@ -139,6 +139,7 @@ class HelpDocumentationTests(unittest.TestCase):
         for wording in ("Printable", "Avery 5388", "long-edge", "short-edge", "duplex", "Missed Questions", "DLMS-exported multiple-choice card"):
             with self.subTest(printable=wording):
                 self.assertIn(wording, anki)
+        self.assertIn("Anki Tools → Custom Deck &amp; Printable Cards", anki)
 
         maintenance = self._static("help-maintenance.html")
         self.assertIn("System Tools", maintenance)

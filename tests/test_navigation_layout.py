@@ -128,6 +128,29 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn('class="dashboard-nav-item active nav-context" data-nav-key="learning"', learning_page)
         self.assertIn('class="dashboard-nav-subitem active" href="/learning-intelligence" aria-current="page"', learning_page)
 
+    def test_anki_submenu_uses_one_shared_custom_and_printable_destination(self):
+        source = self._static("nav-normalize.js")
+
+        self.assertIn(
+            "sub('/anki/custom','↳','Custom Deck & Printable Cards', path === '/anki/custom')",
+            source,
+        )
+        self.assertIn("sub('/anki/law','↳','Law Study Anki', path === '/anki/law')", source)
+        self.assertNotIn("sub('/anki/custom#printableCards'", source)
+        self.assertNotIn("'Printable Cards', path === '/anki/printable'", source)
+
+        custom_page = self.client.get("/anki/custom").get_data(as_text=True)
+        law_page = self.client.get("/anki/law").get_data(as_text=True)
+        self.assertIn("Custom Deck &amp; Printable Cards", custom_page)
+        self.assertIn("Custom Deck &amp; Printable Cards", law_page)
+        self.assertIn('id="printableCards"', custom_page)
+        printable_rules = [
+            rule for rule in dlms.app.url_map.iter_rules()
+            if rule.rule == "/anki/printable"
+        ]
+        self.assertEqual(len(printable_rules), 1)
+        self.assertIn("POST", printable_rules[0].methods)
+
     def test_learning_intelligence_expansion_model_keeps_the_current_section_open_without_reloading_its_landing_page(self):
         source = self._static("nav-normalize.js")
 

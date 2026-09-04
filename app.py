@@ -9811,7 +9811,7 @@ def law_study_home():
             <div class="dashboard-nav-group">
                 <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
                 <div class="dashboard-nav-submenu">
-                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck &amp; Printable Cards</span></a>
                     <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
                 </div>
             </div>
@@ -25155,7 +25155,7 @@ def anki_tools():
             <div class="dashboard-nav-group">
                 <a class="dashboard-nav-item active" href="/anki" aria-current="page"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
                 <div class="dashboard-nav-submenu">
-                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck &amp; Printable Cards</span></a>
                     <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
                 </div>
             </div>
@@ -25547,7 +25547,7 @@ def anki_custom_deck():
             <div class="dashboard-nav-group">
                 <a class="dashboard-nav-item active" href="/anki" aria-current="page"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
                 <div class="dashboard-nav-submenu">
-                    <a class="dashboard-nav-subitem active" href="/anki/custom" aria-current="page"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem active" href="/anki/custom" aria-current="page"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck &amp; Printable Cards</span></a>
                     <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
                 </div>
             </div>
@@ -26254,6 +26254,7 @@ def anki_law_tools():
             <div class="dashboard-nav-group">
                 <a class="dashboard-nav-item active" href="/anki" aria-current="page"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
                 <div class="dashboard-nav-submenu">
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck &amp; Printable Cards</span></a>
                     <a class="dashboard-nav-subitem active" href="/anki/law" aria-current="page"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
                 </div>
             </div>

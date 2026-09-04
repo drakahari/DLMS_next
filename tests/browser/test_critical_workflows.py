@@ -460,6 +460,45 @@ def test_custom_anki_quiz_filter_bulk_and_accordion_state(browser_stack):
     }
 
 
+def test_anki_submenu_consolidates_custom_and_printable_navigation(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/anki/custom#printableCards")
+    browser.wait_for(
+        "document.querySelector('.dashboard-nav-normalized .dashboard-nav-submenu') !== null && "
+        "document.getElementById('printableCards') !== null"
+    )
+
+    submenu = browser.evaluate(
+        "(() => { const group = document.querySelector('[data-nav-key=anki]').closest('.dashboard-nav-group');"
+        "const links = [...group.querySelectorAll('.dashboard-nav-subitem')];"
+        "const label = link => link.lastElementChild.textContent.trim(); return {"
+        "labels:links.map(label),"
+        "hrefs:links.map(link => new URL(link.href).pathname + new URL(link.href).hash),"
+        "active:links.filter(link => link.classList.contains('active')).map(label),"
+        "current:links.filter(link => link.getAttribute('aria-current') === 'page').map(label),"
+        "hash:location.hash, targetPresent:Boolean(document.getElementById('printableCards')),"
+        "targetVisible:(() => { const rect=document.getElementById('printableCards').getBoundingClientRect();"
+        "return rect.top < innerHeight && rect.bottom > 0; })()}; })()"
+    )
+    assert submenu == {
+        "labels": ["Custom Deck & Printable Cards", "Law Study Anki"],
+        "hrefs": ["/anki/custom", "/anki/law"],
+        "active": ["Custom Deck & Printable Cards"],
+        "current": ["Custom Deck & Printable Cards"],
+        "hash": "#printableCards",
+        "targetPresent": True,
+        "targetVisible": True,
+    }
+
+    browser.navigate(f"{browser_stack.base_url}/anki/law")
+    browser.wait_for(
+        "document.querySelector('.dashboard-nav-normalized .dashboard-nav-subitem.active') !== null"
+    )
+    assert browser.evaluate(
+        "document.querySelector('.dashboard-nav-normalized .dashboard-nav-subitem.active').lastElementChild.textContent.trim()"
+    ) == "Law Study Anki"
+
+
 def test_custom_anki_non_quiz_bulk_selection_and_law_filter_state(browser_stack):
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/anki/custom")
