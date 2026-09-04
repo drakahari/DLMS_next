@@ -388,6 +388,60 @@ class ThemeSystemTests(unittest.TestCase):
                     f"{theme} AI Builder assurance-chip contrast is only {ratio:.2f}:1",
                 )
 
+    def test_study_icon_tiles_use_theme_aware_contrast_across_palettes(self):
+        css = self._style_css()
+        expected = {
+            r"\.medical-dataset-icon,\s*\.pack-card-icon": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft", "12%", "34%",
+            ),
+            r"\.medical-section-launch-icon": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft", "12%", "34%",
+            ),
+            r"\.medical-ai-builder-teaser-icon": (
+                "--theme-page-text", "--theme-accent-2", "--theme-surface-2",
+                "--theme-border-soft", "14%", "38%",
+            ),
+        }
+        for selector, declarations in expected.items():
+            with self.subTest(selector=selector):
+                rule = re.search(selector + r"\s*\{([^}]*)\}", css)
+                self.assertIsNotNone(rule)
+                for declaration in declarations:
+                    self.assertIn(declaration, rule.group(1))
+
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    dynamic_css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(dynamic_css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                surface = self._composite(variables["theme-surface-2"], panel)
+                accent = self._rgba(variables["theme-accent"])[:3]
+                accent_2 = self._rgba(variables["theme-accent-2"])[:3]
+                launch_background = tuple(
+                    accent[index] * .12 + surface[index] * .88
+                    for index in range(3)
+                )
+                builder_background = tuple(
+                    accent_2[index] * .14 + surface[index] * .86
+                    for index in range(3)
+                )
+                for role, foreground, background in (
+                    ("launch", variables["theme-accent-text"], launch_background),
+                    ("builder", variables["theme-page-text"], builder_background),
+                ):
+                    ratio = self._contrast(foreground, background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"{theme} {role} icon-tile contrast is only {ratio:.2f}:1",
+                    )
+
     def test_smart_pdf_complete_status_and_exclusion_controls_are_theme_aware(self):
         css = self._style_css()
         complete = self._rule_blocks(css, ".pdf-status.complete")

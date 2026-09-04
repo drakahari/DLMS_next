@@ -6747,9 +6747,9 @@ a.settings-hub-card:active {
     height: 46px;
     flex: 0 0 46px;
     border-radius: 13px;
-    background: rgba(30, 126, 213, .18);
-    border: 1px solid rgba(95, 174, 255, .30);
-    color: #8ad8ff;
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 12%, var(--theme-surface-2, rgba(17,31,56,.78)));
+    border: 1px solid color-mix(in srgb, var(--theme-accent, #1b9ff2) 34%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    color: var(--theme-accent-text, #78bfff);
     font-size: 23px;
     font-weight: 800;
 }
@@ -7309,9 +7309,9 @@ a.settings-hub-card:active {
     display: grid;
     place-items: center;
     border-radius: 14px;
-    color: #83d2ff;
-    border: 1px solid rgba(72, 166, 255, 0.42);
-    background: rgba(18, 73, 128, 0.38);
+    color: var(--theme-accent-text, #78bfff);
+    border: 1px solid color-mix(in srgb, var(--theme-accent, #1b9ff2) 34%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 12%, var(--theme-surface-2, rgba(17,31,56,.78)));
     font-size: 25px;
     font-weight: 800;
 }
@@ -7393,8 +7393,10 @@ a.settings-hub-card:active {
 }
 .medical-ai-builder-teaser-icon {
     width: 58px; height: 58px; display: grid; place-items: center;
-    border-radius: 16px; background: rgba(91,56,216,.24);
-    border: 1px solid rgba(169,139,255,.36); color: #c8b8ff;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--theme-accent-2, #138ad6) 14%, var(--theme-surface-2, rgba(17,31,56,.78)));
+    border: 1px solid color-mix(in srgb, var(--theme-accent-2, #138ad6) 38%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    color: var(--theme-page-text, #eaf2ff);
     font-weight: 850; letter-spacing: .6px;
 }
 .medical-ai-builder-teaser-copy { min-width: 0; }
