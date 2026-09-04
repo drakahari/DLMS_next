@@ -10506,6 +10506,13 @@ body[data-theme="light"] .dashboard-nav-submenu,
     border-radius: 10px;
 }
 
+/* Author display rules override the browser's built-in [hidden] behavior.
+   Keep Settings-controlled study-area links out of both the visual layout and
+   navigation flow when the shared sidebar marks them hidden. */
+.dashboard-nav-normalized .dashboard-nav-item[hidden] {
+    display: none;
+}
+
 .dashboard-nav-normalized .dashboard-nav-icon {
     width: 24px;
     flex-basis: 24px;

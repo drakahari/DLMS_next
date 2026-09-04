@@ -90,6 +90,18 @@ class StudyAreaVisibilityTests(unittest.TestCase):
                 self.assertIn(label, page)
         self.assertIn("removes it from navigation only", page)
 
+    def test_navigation_controls_use_labeled_native_inputs_and_submit_button(self):
+        page = self.client.get("/settings/navigation").get_data(as_text=True)
+
+        self.assertEqual(4, page.count('class="settings-toggle-row"'))
+        self.assertEqual(4, page.count('type="checkbox" name="study_area_'))
+        self.assertIn(
+            '<button type="submit" class="settings-primary-button">💾 Save Navigation</button>',
+            page,
+        )
+        self.assertIn('aria-label="Toggle navigation"', page)
+        self.assertIn('aria-controls="dashboardSidebar"', page)
+
     def test_save_visibility_preserves_unrelated_settings(self):
         self._write_config({
             "title": "Keep This Title",
@@ -126,6 +138,55 @@ class StudyAreaVisibilityTests(unittest.TestCase):
         self.assertIn("if (navItem) navItem.hidden = !visible", source)
         self.assertIn("item('study','/study-packs','▣','Study Packs')", source)
         self.assertIn("item('settings','/settings','⚙','Settings')", source)
+
+        css = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
+        self.assertRegex(
+            css,
+            r"\.dashboard-nav-normalized\s+\.dashboard-nav-item\[hidden\]\s*\{[^}]*display:\s*none",
+        )
+
+    def test_saved_visibility_survives_redirect_reload_and_reenable(self):
+        response = self._save_visibility()
+        self.assertEqual(302, response.status_code)
+
+        redirected = self.client.get(response.headers["Location"]).get_data(as_text=True)
+        self.assertIn("Navigation settings saved.", redirected)
+        for key in ("it", "law", "medical", "other"):
+            with self.subTest(stage="redirect", key=key):
+                self.assertNotIn(f'name="study_area_{key}" checked', redirected)
+
+        persisted = self.client.get("/config/portal.json").get_json()
+        self.assertEqual(
+            {"it": False, "law": False, "medical": False, "other": False},
+            persisted["study_area_visibility"],
+        )
+
+        reloaded = dlms.app.test_client().get("/settings/navigation").get_data(as_text=True)
+        for key in ("it", "law", "medical", "other"):
+            with self.subTest(stage="reload", key=key):
+                self.assertNotIn(f'name="study_area_{key}" checked', reloaded)
+
+        self.assertEqual(302, self._save_visibility(law=True).status_code)
+        reenabling = self.client.get("/settings/navigation").get_data(as_text=True)
+        self.assertIn('name="study_area_law" checked', reenabling)
+        for key in ("it", "medical", "other"):
+            with self.subTest(stage="reenabled", key=key):
+                self.assertNotIn(f'name="study_area_{key}" checked', reenabling)
+
+    def test_navigation_visibility_changes_leave_study_content_and_history_untouched(self):
+        content = self.root / "study-packs" / "saved-study-content.json"
+        history = self.root / "results.db"
+        content.parent.mkdir(parents=True)
+        content.write_bytes(b'{"saved":true}')
+        history.write_bytes(b"saved-history-marker")
+
+        self.assertEqual(302, self._save_visibility().status_code)
+        self.assertEqual(b'{"saved":true}', content.read_bytes())
+        self.assertEqual(b"saved-history-marker", history.read_bytes())
+
+        self.assertEqual(302, self._save_visibility(it=True, law=True, medical=True, other=True).status_code)
+        self.assertEqual(b'{"saved":true}', content.read_bytes())
+        self.assertEqual(b"saved-history-marker", history.read_bytes())
 
     def test_hidden_area_urls_remain_usable_and_reenabling_restores_visibility(self):
         self.assertEqual(302, self._save_visibility().status_code)

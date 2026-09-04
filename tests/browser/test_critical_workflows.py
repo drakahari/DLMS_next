@@ -256,6 +256,87 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
     assert browser.wait_for(f"{order_expression} === {json.dumps(expected_order)}") is True
 
 
+def test_navigation_visibility_persists_through_settings_and_page_reload(browser_stack):
+    browser = browser_stack.browser
+    keys = ("it", "law", "medical", "other")
+    key_list = json.dumps(keys)
+
+    browser.navigate(f"{browser_stack.base_url}/settings/navigation")
+    browser.wait_for("document.querySelectorAll('[name^=study_area_]').length === 4")
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.settings-toggle-row')].every(row => "
+        "row.tagName === 'LABEL' && row.querySelector('input[type=checkbox]')) && "
+        "document.querySelector('.settings-primary-button').type === 'submit'"
+    ) is True
+    assert browser.evaluate(
+        "(() => { document.querySelectorAll('[name^=study_area_]').forEach(input => {"
+        "input.checked = false; }); return true; })()"
+    ) is True
+    browser.click(".settings-primary-button")
+    browser.wait_for(
+        "location.pathname === '/settings/navigation' && "
+        "new URLSearchParams(location.search).get('saved') === '1'"
+    )
+    assert browser.evaluate(
+        "[...document.querySelectorAll('[name^=study_area_]')].every(input => !input.checked)"
+    ) is True
+    browser.wait_for(
+        f"{key_list}.every(key => document.querySelector(`[data-nav-key=${{key}}]`)?.hidden)"
+    )
+    assert browser.evaluate(
+        f"{key_list}.every(key => "
+        "getComputedStyle(document.querySelector(`[data-nav-key=${key}]`)).display === 'none')"
+    ) is True
+
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector('.dashboard-nav-normalized') !== null")
+    browser.wait_for(
+        f"{key_list}.every(key => document.querySelector(`[data-nav-key=${{key}}]`)?.hidden)"
+    )
+    assert browser.evaluate(
+        f"{key_list}.every(key => "
+        "getComputedStyle(document.querySelector(`[data-nav-key=${key}]`)).display === 'none') && "
+        "getComputedStyle(document.querySelector('[data-nav-key=study]')).display !== 'none' && "
+        "getComputedStyle(document.querySelector('[data-nav-key=settings]')).display !== 'none'"
+    ) is True
+
+    browser.navigate(f"{browser_stack.base_url}/library?navigation-reload=1")
+    browser.wait_for(
+        f"{key_list}.every(key => document.querySelector(`[data-nav-key=${{key}}]`)?.hidden)"
+    )
+    assert browser.evaluate(
+        f"{key_list}.every(key => "
+        "getComputedStyle(document.querySelector(`[data-nav-key=${key}]`)).display === 'none')"
+    ) is True
+
+    browser.navigate(f"{browser_stack.base_url}/settings/navigation")
+    browser.wait_for("document.querySelector('[name=study_area_law]') !== null")
+    browser.evaluate("document.querySelector('[name=study_area_law]').checked = true; true")
+    browser.click(".settings-primary-button")
+    browser.wait_for(
+        "location.pathname === '/settings/navigation' && "
+        "document.querySelector('[name=study_area_law]').checked"
+    )
+    browser.navigate(f"{browser_stack.base_url}/library?navigation-reenabled=1")
+    browser.wait_for("document.querySelector('[data-nav-key=law]')?.hidden === false")
+    assert browser.evaluate(
+        "getComputedStyle(document.querySelector('[data-nav-key=law]')).display !== 'none' && "
+        "['it','medical','other'].every(key => "
+        "getComputedStyle(document.querySelector(`[data-nav-key=${key}]`)).display === 'none')"
+    ) is True
+
+    browser.navigate(f"{browser_stack.base_url}/settings/navigation")
+    browser.wait_for("document.querySelectorAll('[name^=study_area_]').length === 4")
+    browser.evaluate(
+        "document.querySelectorAll('[name^=study_area_]').forEach(input => { input.checked = true; }); true"
+    )
+    browser.click(".settings-primary-button")
+    browser.wait_for(
+        "location.pathname === '/settings/navigation' && "
+        "[...document.querySelectorAll('[name^=study_area_]')].every(input => input.checked)"
+    )
+
+
 def test_custom_anki_quiz_filter_bulk_and_accordion_state(browser_stack):
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/anki/custom")
