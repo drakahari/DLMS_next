@@ -10,6 +10,11 @@ import app as dlms
 class AnkiMissedSummaryLabelTests(unittest.TestCase):
     def _render_summary(self, summary):
         with mock.patch.object(dlms, "get_anki_quiz_choices", return_value=[]), \
+             mock.patch.object(
+                 dlms,
+                 "get_anki_law_case_choices",
+                 return_value=[{"card_count": 20}],
+             ), \
              mock.patch.object(dlms, "get_anki_missed_summary", return_value=summary):
             response = dlms.app.test_client().get("/anki")
         self.assertEqual(response.status_code, 200)
@@ -48,7 +53,7 @@ class AnkiMissedSummaryLabelTests(unittest.TestCase):
         self.assertRegex(html, r"<span>Quizzes</span>\s*<strong>0</strong>")
         self.assertIn('<span class="anki-summary-support">Available to export</span>', html)
         self.assertIn("<span>Law Flashcards</span>", html)
-        self.assertIn("<strong>{{ total_law_cards }}</strong>", self._anki_route_source())
+        self.assertRegex(html, r"<span>Law Flashcards</span>\s*<strong>20</strong>")
         self.assertIn('<span class="anki-summary-support">Recognized cards</span>', html)
 
         with open(dlms.resource_path("static/style.css"), "r", encoding="utf-8") as handle:
@@ -75,15 +80,6 @@ class AnkiMissedSummaryLabelTests(unittest.TestCase):
             css,
         )
         self.assertIn("grid-template-columns", metric_row.group(1))
-
-    @staticmethod
-    def _anki_route_source():
-        with open(dlms.__file__, "r", encoding="utf-8") as handle:
-            source = handle.read()
-        start = source.index('@app.route("/anki")')
-        end = source.index('@app.route("/anki/custom"', start)
-        return source[start:end]
-
 
 if __name__ == "__main__":
     unittest.main()

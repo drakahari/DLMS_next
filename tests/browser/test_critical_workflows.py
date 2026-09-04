@@ -710,6 +710,11 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
 
 def test_anki_summary_cards_across_themes_and_widths(browser_stack):
     browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/anki/custom")
+    browser.wait_for("document.querySelectorAll('[name=law_cards]').length === 3")
+    custom_law_count = browser.evaluate(
+        "document.querySelectorAll('[name=law_cards]').length"
+    )
 
     for theme in ("dark", "light", "purple-gold", "maroon-gold"):
         browser.navigate(f"{browser_stack.base_url}/settings")
@@ -741,6 +746,7 @@ def test_anki_summary_cards_across_themes_and_widths(browser_stack):
                 "cardOverflows:cards.map(item => item.scrollWidth > item.clientWidth),"
                 "primaryDisplays:cards.map(item => getComputedStyle(item.querySelector('.anki-summary-primary')).display),"
                 "labels:cards.map(item => item.querySelector('.anki-summary-primary span').textContent.trim()),"
+                "lawCount:cards[2].querySelector('strong').textContent.trim(),"
                 "labelTransforms:cards.map(item => getComputedStyle(item.querySelector('.anki-summary-primary')).textTransform),"
                 "supportSingleLines:cards.filter(item => item.querySelector('.anki-summary-support')).every(item => {"
                 "const range=document.createRange(); range.selectNodeContents(item.querySelector('.anki-summary-support'));"
@@ -758,6 +764,7 @@ def test_anki_summary_cards_across_themes_and_widths(browser_stack):
             assert "Repeat count overlaps revisit status." in summary["text"]
             assert summary["itemCount"] == 3
             assert summary["labels"] == ["Quizzes", "Questions Ever Missed:", "Law Flashcards"]
+            assert summary["lawCount"] == str(custom_law_count) == "3"
             assert summary["associated"] is True
             assert summary["overflow"] is False
             assert not any(summary["cardOverflows"])

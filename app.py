@@ -25066,6 +25066,7 @@ def make_safe_anki_deck_name(name, fallback="DLMS Anki Deck"):
 @app.route("/anki")
 def anki_tools():
     quizzes = get_anki_quiz_choices()
+    law_cases = get_anki_law_case_choices()
 
     anki_source = (request.args.get("source") or "").strip().lower()
     preview_rows = []
@@ -25106,6 +25107,7 @@ def anki_tools():
 
     missed_summary = get_anki_missed_summary()
     total_missed_cards = missed_summary["total"]
+    total_law_cards = sum(case["card_count"] for case in law_cases)
 
     return render_template_string(r"""
 <!DOCTYPE html>
@@ -25444,6 +25446,7 @@ if (window.location.hash === "#ankiPreview") {
         selected_missed_status=selected_missed_status,
         missed_summary=missed_summary,
         total_missed_cards=total_missed_cards,
+        total_law_cards=total_law_cards,
     )
 
 
