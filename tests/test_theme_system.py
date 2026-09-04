@@ -642,27 +642,15 @@ class ThemeSystemTests(unittest.TestCase):
         expected = {
             "a.settings-hub-card:hover": (
                 "--theme-page-text", "--theme-accent", "--theme-border",
-                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "8%",
+                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "6%",
             ),
             "a.settings-hub-card:focus-visible": (
                 "--theme-page-text", "--theme-accent", "--theme-border",
-                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "8%",
+                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "6%",
             ),
             "a.settings-hub-card:active": (
                 "--theme-page-text", "--theme-accent", "--theme-border",
-                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "13%",
-            ),
-            "a.settings-hub-card:hover .settings-hub-icon": (
-                "--theme-accent-text", "--theme-accent", "--theme-surface",
-                "--theme-border-soft", "12%",
-            ),
-            "a.settings-hub-card:focus-visible .settings-hub-icon": (
-                "--theme-accent-text", "--theme-accent", "--theme-surface",
-                "--theme-border-soft", "12%",
-            ),
-            "a.settings-hub-card:active .settings-hub-icon": (
-                "--theme-accent-text", "--theme-accent", "--theme-surface",
-                "--theme-border-soft", "12%",
+                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "11%",
             ),
             ".settings-hub-copy p": ("--theme-muted-text",),
             ".settings-card-kicker": ("--theme-accent-text",),
@@ -680,6 +668,7 @@ class ThemeSystemTests(unittest.TestCase):
         hover = self._rule_blocks(css, "a.settings-hub-card:hover")
         self.assertFalse(any("rgba(8,25,54" in block for block in hover))
         self.assertFalse(any("rgba(7,21,44" in block for block in hover))
+        self.assertNotIn("a.settings-hub-card:hover .settings-hub-icon", css)
 
     def test_settings_hub_state_contrast_across_all_four_palettes(self):
         client = dlms.app.test_client()
@@ -693,20 +682,8 @@ class ThemeSystemTests(unittest.TestCase):
                 body = self._rgba(variables["theme-body-base"])[:3]
                 panel = self._composite(variables["theme-panel-1"], body)
                 accent = self._rgba(variables["theme-accent"])[:3]
-                surface = self._composite(variables["theme-surface"], panel)
-                icon_background = tuple(
-                    accent[index] * .12 + surface[index] * .88
-                    for index in range(3)
-                )
-                icon_ratio = self._contrast(
-                    variables["theme-accent-text"], icon_background,
-                )
-                self.assertGreaterEqual(
-                    icon_ratio, 4.5,
-                    f"{theme} Settings interaction icon is only {icon_ratio:.2f}:1",
-                )
 
-                for state, accent_share in (("hover/focus", .08), ("active", .13)):
+                for state, accent_share in (("hover/focus", .06), ("active", .11)):
                     state_background = tuple(
                         accent[index] * accent_share + panel[index] * (1 - accent_share)
                         for index in range(3)

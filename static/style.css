@@ -2207,26 +2207,26 @@ a.settings-hub-card:focus-visible {
     color: var(--theme-page-text, #eaf2ff);
     text-decoration: none;
     transform: translateY(-3px);
-    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 58%, var(--theme-border, rgba(86,158,255,.35)));
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 42%, var(--theme-border, rgba(86,158,255,.35)));
     background: linear-gradient(
         180deg,
-        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-1, rgba(6,20,45,.82))),
-        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-2, rgba(5,17,38,.74)))
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 6%, var(--theme-panel-1, rgba(6,20,45,.82))),
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 6%, var(--theme-panel-2, rgba(5,17,38,.74)))
     );
     box-shadow:
         0 14px 34px var(--theme-shadow, rgba(0,0,0,.42)),
-        0 0 22px color-mix(in srgb, var(--theme-accent, #1b9ff2) 10%, transparent);
+        0 0 22px color-mix(in srgb, var(--theme-accent, #1b9ff2) 6%, transparent);
 }
 
 a.settings-hub-card:active {
     color: var(--theme-page-text, #eaf2ff);
     text-decoration: none;
     transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 68%, var(--theme-border, rgba(86,158,255,.35)));
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 56%, var(--theme-border, rgba(86,158,255,.35)));
     background: linear-gradient(
         180deg,
-        color-mix(in srgb, var(--theme-accent, #1b9ff2) 13%, var(--theme-panel-1, rgba(6,20,45,.82))),
-        color-mix(in srgb, var(--theme-accent, #1b9ff2) 13%, var(--theme-panel-2, rgba(5,17,38,.74)))
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 11%, var(--theme-panel-1, rgba(6,20,45,.82))),
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 11%, var(--theme-panel-2, rgba(5,17,38,.74)))
     );
     box-shadow: 0 8px 20px var(--theme-shadow, rgba(0,0,0,.42));
 }
@@ -2248,18 +2248,6 @@ a.settings-hub-card:active {
     font-weight: 800;
     border: 1px solid rgba(255,255,255,.12);
     background: rgba(25, 60, 100, .42);
-}
-
-.settings-hub-icon {
-    transition: color .16s ease, border-color .16s ease, background .16s ease;
-}
-
-a.settings-hub-card:hover .settings-hub-icon,
-a.settings-hub-card:focus-visible .settings-hub-icon,
-a.settings-hub-card:active .settings-hub-icon {
-    color: var(--theme-accent-text, #78bfff);
-    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 38%, var(--theme-border-soft, rgba(98,155,255,.24)));
-    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 12%, var(--theme-surface, rgba(5,18,39,.58)));
 }
 
 .settings-hub-copy h2 {

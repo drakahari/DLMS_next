@@ -494,10 +494,6 @@ def test_settings_hub_interaction_states_follow_each_theme(browser_stack):
         ))
         move_pointer(coordinates["x"], coordinates["y"])
         browser.wait_for(f"document.querySelector({encoded_selector}).matches(':hover')")
-        browser.wait_for(
-            f"getComputedStyle(document.querySelector({encoded_selector} + ' .settings-hub-icon')).color === "
-            f"getComputedStyle(document.querySelector({encoded_selector} + ' .settings-hub-arrow')).color"
-        )
         hovered = snapshot()
         assert hovered["background"] != normal["background"]
         assert "rgb(8, 25, 54)" not in hovered["background"]
@@ -505,7 +501,7 @@ def test_settings_hub_interaction_states_follow_each_theme(browser_stack):
         assert hovered["heading"] == hovered["headingToken"]
         assert hovered["description"] == hovered["muted"]
         assert hovered["kicker"] == hovered["accentText"]
-        assert hovered["icon"] == hovered["accentText"]
+        assert hovered["icon"] == normal["icon"]
         assert hovered["arrow"] == hovered["accentText"]
         assert hovered["transform"] != "none"
 
@@ -516,6 +512,6 @@ def test_settings_hub_interaction_states_follow_each_theme(browser_stack):
             assert pressed["background"] != hovered["background"]
             assert pressed["color"] == pressed["pageText"]
             assert pressed["description"] == pressed["muted"]
-            assert pressed["icon"] == pressed["accentText"]
+            assert pressed["icon"] == normal["icon"]
         finally:
             browser.command("input.releaseActions", {"context": browser.context})
