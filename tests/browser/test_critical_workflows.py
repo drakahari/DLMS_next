@@ -639,6 +639,46 @@ def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack):
     assert browser.evaluate("quiz[0].question") == edited_question
 
 
+def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+
+    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken")
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+
+        for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
+            browser.navigate(f"{quiz_url}?theme={theme}&mode={mode_selector[1:]}")
+            browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+            browser.click(mode_selector)
+            browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+            shell = browser.evaluate(
+                "(() => {"
+                "const resolve = name => { const probe = document.createElement('span');"
+                "probe.style.color = `var(${name})`; document.body.appendChild(probe);"
+                "const result = getComputedStyle(probe).color; probe.remove(); return result; };"
+                "const header = getComputedStyle(document.querySelector('.active-quiz-logo-banner'));"
+                "const question = getComputedStyle(document.querySelector('.quiz-question-card'));"
+                "const returns = getComputedStyle(document.querySelector('.quiz-return-buttons'));"
+                "const link = document.getElementById('returnPortalBtn');"
+                "const linkStyle = getComputedStyle(link);"
+                "return {header:header.backgroundImage, question:question.backgroundImage,"
+                "returns:returns.backgroundImage, linkBackground:linkStyle.backgroundColor,"
+                "linkColor:linkStyle.color, pageText:resolve('--theme-page-text')}; })()"
+            )
+            assert shell["header"] != "none"
+            assert shell["header"] != shell["question"]
+            assert shell["returns"] != "none"
+            assert shell["returns"] != shell["question"]
+            assert shell["linkBackground"] != "rgba(0, 0, 0, 0)"
+            assert shell["linkColor"] == shell["pageText"]
+
+
 def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack):
     browser = browser_stack.browser
     database = browser_stack.data_root / "results.db"

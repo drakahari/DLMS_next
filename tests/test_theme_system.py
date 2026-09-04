@@ -795,6 +795,91 @@ class ThemeSystemTests(unittest.TestCase):
                 ratio = self._contrast(variables["theme-accent-text"], panel)
                 self.assertGreaterEqual(ratio, 4.5, f"{theme} focus ring is only {ratio:.2f}:1")
 
+    def test_generated_quiz_shell_uses_semantic_theme_tokens(self):
+        css = re.sub(r"/\*.*?\*/", "", self._style_css(), flags=re.DOTALL)
+        expected = {
+            ".active-quiz-logo-banner": (
+                "--theme-accent", "--theme-panel-1", "--theme-panel-2",
+                "--theme-border", "--theme-shadow", "8%",
+            ),
+            ".quiz-return-buttons": (
+                "--theme-accent", "--theme-panel-1", "--theme-panel-2",
+                "--theme-border", "--theme-shadow", "4%",
+            ),
+            ".quiz-return-buttons a": (
+                "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".quiz-return-buttons a:hover": (
+                "--theme-heading", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft", "9%",
+            ),
+            ".quiz-return-buttons a:focus-visible": (
+                "--theme-accent-text",
+            ),
+            ".quiz-return-buttons a:active": (
+                "--theme-heading", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft", "--theme-shadow", "14%",
+            ),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing generated quiz shell rule for {selector}")
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must resolve through semantic theme tokens {tokens}",
+                )
+
+        semantic_header = next(
+            block for block in self._rule_blocks(css, ".active-quiz-logo-banner")
+            if "--theme-panel-1" in block
+        )
+        semantic_returns = next(
+            block for block in self._rule_blocks(css, ".quiz-return-buttons")
+            if "--theme-panel-1" in block
+        )
+        for old_navy in ("rgba(5,16,36,0.82)", "rgba(6,18,40,0.78)"):
+            self.assertNotIn(old_navy, semantic_header)
+            self.assertNotIn(old_navy, semantic_returns)
+
+    def test_generated_quiz_shell_text_contrast_across_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                accent = self._rgba(variables["theme-accent"])[:3]
+                header = tuple(
+                    accent[index] * .08 + panel[index] * .92 for index in range(3)
+                )
+                return_link = self._composite(variables["theme-surface-2"], panel)
+
+                for role, foreground, background in (
+                    ("quiz title", variables["theme-heading"], header),
+                    ("return link", variables["theme-page-text"], return_link),
+                ):
+                    ratio = self._contrast(foreground, background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5, f"{theme} {role} is only {ratio:.2f}:1",
+                    )
+
+                for state, accent_share in (("hover/focus", .09), ("active", .14)):
+                    state_background = tuple(
+                        accent[index] * accent_share
+                        + return_link[index] * (1 - accent_share)
+                        for index in range(3)
+                    )
+                    ratio = self._contrast(variables["theme-heading"], state_background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"{theme} return link {state} is only {ratio:.2f}:1",
+                    )
+
     def test_settings_hub_interaction_states_use_semantic_theme_tokens(self):
         css = self._style_css()
         expected = {

@@ -554,9 +554,15 @@ body.home .quiz-card img {
     margin-bottom: 16px;
     padding: 14px 18px;
     border-radius: 18px;
-    background: linear-gradient(180deg, rgba(5,16,36,0.82), rgba(5,16,36,0.66));
-    border: 1px solid rgba(90,150,255,0.22);
-    box-shadow: 0 10px 28px rgba(0,0,0,0.32);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-1, rgba(6,20,45,.82))),
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-2, rgba(5,17,38,.74)))
+    );
+    border: 1px solid color-mix(in srgb, var(--theme-accent, #1b9ff2) 42%, var(--theme-border, rgba(86,158,255,.35)));
+    box-shadow:
+        0 10px 28px var(--theme-shadow, rgba(0,0,0,.32)),
+        0 0 20px color-mix(in srgb, var(--theme-accent, #1b9ff2) 6%, transparent);
 }
 
 .active-logo-slot {
@@ -900,9 +906,13 @@ body.home .quiz-card img {
     margin-top: 18px;
     padding: 18px 20px;
     border-radius: 18px;
-    background: linear-gradient(180deg, rgba(6,18,40,0.78), rgba(6,18,40,0.62));
-    border: 1px solid rgba(95,155,255,0.20);
-    box-shadow: 0 10px 28px rgba(0,0,0,0.32);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 4%, var(--theme-panel-1, rgba(6,20,45,.82))),
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 4%, var(--theme-panel-2, rgba(5,17,38,.74)))
+    );
+    border: 1px solid color-mix(in srgb, var(--theme-accent, #1b9ff2) 30%, var(--theme-border, rgba(86,158,255,.35)));
+    box-shadow: 0 10px 28px var(--theme-shadow, rgba(0,0,0,.32));
     display: grid;
     grid-template-columns: 1fr;
     gap: 12px;
@@ -922,29 +932,43 @@ body.home .quiz-card img {
     min-height: 52px;
     margin: 0;
     border-radius: 12px;
-    background: linear-gradient(180deg, rgba(25,40,68,0.94), rgba(20,34,58,0.94));
-    border: 1px solid rgba(130,160,210,0.24);
+    background: var(--theme-surface-2, rgba(17,31,56,.78));
+    border: 1px solid var(--theme-border-soft, rgba(98,155,255,.24));
     font-weight: 700;
     letter-spacing: 0.2px;
-    color: #ffffff;
+    color: var(--theme-page-text, #eaf2ff);
     text-align: center;
     text-decoration: none;
     pointer-events: auto;
     position: relative;
     z-index: 1;
+    transition: transform .12s ease, background .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
 
 .quiz-return-buttons button:hover,
-.quiz-return-buttons a:hover {
-    background: linear-gradient(180deg, rgba(34,56,94,0.98), rgba(26,44,76,0.98));
-    border-color: rgba(100,170,255,0.38);
-    color: #ffffff;
+.quiz-return-buttons a:hover,
+.quiz-return-buttons button:focus-visible,
+.quiz-return-buttons a:focus-visible {
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 9%, var(--theme-surface-2, rgba(17,31,56,.78)));
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 42%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    color: var(--theme-heading, #fff);
     text-decoration: none;
+    transform: translateY(-1px);
 }
 
+.quiz-return-buttons button:focus-visible,
 .quiz-return-buttons a:focus-visible {
-    outline: 3px solid #7cc4ff;
+    outline: 3px solid var(--theme-accent-text, #78bfff);
     outline-offset: 3px;
+}
+
+.quiz-return-buttons button:active,
+.quiz-return-buttons a:active {
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 14%, var(--theme-surface-2, rgba(17,31,56,.78)));
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 55%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    color: var(--theme-heading, #fff);
+    transform: translateY(0);
+    box-shadow: inset 0 1px 3px var(--theme-shadow, rgba(0,0,0,.32));
 }
 
 /* =======================
@@ -10111,7 +10135,6 @@ h1,h2,h3,
 
 /* Generated quiz runtime: all ordinary quiz chrome now uses semantic surfaces. */
 .mode-banner,
-.active-quiz-logo-banner,
 .top-bar,.quiz-toolbar,
 .quiz-progress-card,
 .quiz-question-card,
