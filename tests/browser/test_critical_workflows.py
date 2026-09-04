@@ -708,6 +708,49 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
             assert shell["titleColor"] == shell["shellText"]
 
 
+def test_anki_missed_summary_labels_across_themes_and_widths(browser_stack):
+    browser = browser_stack.browser
+
+    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken")
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+
+        for width in (1280, 640):
+            browser.set_viewport(width, 900)
+            browser.navigate(f"{browser_stack.base_url}/anki?theme={theme}&width={width}")
+            browser.wait_for("document.querySelector('.anki-missed-summary-card') !== null")
+            summary = browser.evaluate(
+                "(() => {"
+                "const card = document.querySelector('.anki-missed-summary-card');"
+                "const items = [...card.querySelectorAll('.anki-missed-summary-metrics li')];"
+                "const resolve = name => { const probe = document.createElement('span');"
+                "probe.style.color = `var(${name})`; document.body.appendChild(probe);"
+                "const result = getComputedStyle(probe).color; probe.remove(); return result; };"
+                "return {text:card.textContent.replace(/\\s+/g,' ').trim(),"
+                "itemCount:items.length, associated:items.every(item => "
+                "Boolean(item.querySelector('strong') && item.querySelector('span'))),"
+                "overflow:card.scrollWidth > card.clientWidth,"
+                "totalColor:getComputedStyle(card.querySelector('.anki-missed-summary-total strong')).color,"
+                "metricColors:items.map(item => getComputedStyle(item.querySelector('strong')).color),"
+                "heading:resolve('--theme-heading')}; })()"
+            )
+            assert "Questions Ever Missed:" in summary["text"]
+            assert "not yet revisited" in summary["text"]
+            assert "revisited later" in summary["text"]
+            assert "missed more than once" in summary["text"]
+            assert "also included in one of the revisit counts" in summary["text"]
+            assert summary["itemCount"] == 3
+            assert summary["associated"] is True
+            assert summary["overflow"] is False
+            assert summary["totalColor"] == summary["heading"]
+            assert all(color == summary["heading"] for color in summary["metricColors"])
+
+
 def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack):
     browser = browser_stack.browser
     database = browser_stack.data_root / "results.db"

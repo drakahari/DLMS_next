@@ -25189,10 +25189,17 @@ def anki_tools():
                 <strong>{{ quizzes|length }}</strong>
                 <span class="dashboard-stat-note">available to export</span>
             </div>
-            <div class="dashboard-stat-card">
-                <span class="dashboard-stat-label">Missed Questions</span>
-                <strong>{{ total_missed_cards }}</strong>
-                <span class="dashboard-stat-note">{{ missed_summary.currently_weak }} weak · {{ missed_summary.repeated }} repeated · {{ missed_summary.recovered }} recovered</span>
+            <div class="dashboard-stat-card anki-missed-summary-card" role="group" aria-labelledby="ankiMissedSummaryTitle" aria-describedby="ankiMissedOverlapNote">
+                <p class="anki-missed-summary-total" id="ankiMissedSummaryTitle">
+                    <span>Questions Ever Missed:</span>
+                    <strong>{{ total_missed_cards }}</strong>
+                </p>
+                <ul class="anki-missed-summary-metrics" aria-label="Missed-question details">
+                    <li><strong>{{ missed_summary.currently_weak }}</strong> <span>not yet revisited</span></li>
+                    <li><strong>{{ missed_summary.recovered }}</strong> <span>revisited later</span></li>
+                    <li><strong>{{ missed_summary.repeated }}</strong> <span>missed more than once</span></li>
+                </ul>
+                <small class="anki-missed-summary-note" id="ankiMissedOverlapNote">Missed-more-than-once questions are also included in one of the revisit counts.</small>
             </div>
             <div class="dashboard-stat-card">
                 <span class="dashboard-stat-label">Law Flashcards</span>
