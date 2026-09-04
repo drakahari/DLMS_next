@@ -8111,13 +8111,31 @@ a.settings-hub-card:active {
 }
 
 .content-pack-action.danger {
-    border-color: rgba(248, 113, 113, .30);
-    background: rgba(94, 23, 35, .46);
-    color: #ffabb4;
+    border-color: light-dark(#c67783, #7d3846);
+    background: light-dark(#f0d8dc, #351822);
+    color: light-dark(#7a2030, #ffb4be);
 }
 
-.content-pack-action.danger:hover {
-    background: rgba(140, 31, 47, .62);
+.content-pack-action.danger:hover:not(:disabled) {
+    border-color: light-dark(#ad4c5c, #a95464);
+    background: light-dark(#e8c0c6, #4a202a);
+    color: light-dark(#671622, #ffd0d5);
+}
+
+.content-pack-action.danger:active:not(:disabled) {
+    border-color: light-dark(#9e3e4f, #c96a79);
+    background: light-dark(#dfabb4, #5a2530);
+    color: light-dark(#59121d, #fff0f2);
+}
+
+.content-pack-action.danger:disabled {
+    cursor: not-allowed;
+    opacity: .65;
+    background: var(--theme-surface-2, rgba(17,31,56,.78));
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+    color: var(--theme-muted-text, #b8c2cc);
+    transform: none;
+    box-shadow: none;
 }
 
 .content-pack-action.disabled {

@@ -442,6 +442,66 @@ class ThemeSystemTests(unittest.TestCase):
                         f"{theme} {role} icon-tile contrast is only {ratio:.2f}:1",
                     )
 
+    def test_content_pack_destructive_action_uses_readable_theme_aware_states(self):
+        css = self._style_css()
+        expected = {
+            ".content-pack-action.danger": (
+                "light-dark(#c67783, #7d3846)",
+                "light-dark(#f0d8dc, #351822)",
+                "light-dark(#7a2030, #ffb4be)",
+            ),
+            ".content-pack-action.danger:hover:not(:disabled)": (
+                "light-dark(#ad4c5c, #a95464)",
+                "light-dark(#e8c0c6, #4a202a)",
+                "light-dark(#671622, #ffd0d5)",
+            ),
+            ".content-pack-action.danger:active:not(:disabled)": (
+                "light-dark(#9e3e4f, #c96a79)",
+                "light-dark(#dfabb4, #5a2530)",
+                "light-dark(#59121d, #fff0f2)",
+            ),
+        }
+        for selector, declarations in expected.items():
+            with self.subTest(selector=selector):
+                rule = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+                self.assertIsNotNone(rule)
+                for declaration in declarations:
+                    self.assertIn(declaration, rule.group(1))
+
+        disabled = re.search(
+            r"\.content-pack-action\.danger:disabled\s*\{([^}]*)\}", css
+        )
+        self.assertIsNotNone(disabled)
+        for declaration in (
+            "cursor: not-allowed", "opacity: .65", "--theme-surface-2",
+            "--theme-border-soft", "--theme-muted-text", "transform: none",
+        ):
+            self.assertIn(declaration, disabled.group(1))
+
+        focus = re.search(
+            r":where\(a\[href\], button, input, select, textarea, summary, \[tabindex\]\):focus-visible\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(focus)
+        self.assertIn("outline: 3px solid var(--theme-accent-text", focus.group(1))
+        self.assertIn("outline-offset: 3px", focus.group(1))
+
+        for state, light_text, light_background, dark_text, dark_background in (
+            ("normal", "#7a2030", "#f0d8dc", "#ffb4be", "#351822"),
+            ("hover", "#671622", "#e8c0c6", "#ffd0d5", "#4a202a"),
+            ("pressed", "#59121d", "#dfabb4", "#fff0f2", "#5a2530"),
+        ):
+            for scheme, foreground, background in (
+                ("light", light_text, light_background),
+                ("dark", dark_text, dark_background),
+            ):
+                with self.subTest(state=state, scheme=scheme):
+                    ratio = self._contrast(foreground, self._rgba(background)[:3])
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"Content Pack Delete {state} {scheme} contrast is only {ratio:.2f}:1",
+                    )
+
     def test_smart_pdf_complete_status_and_exclusion_controls_are_theme_aware(self):
         css = self._style_css()
         complete = self._rule_blocks(css, ".pdf-status.complete")
