@@ -700,6 +700,104 @@ class ThemeSystemTests(unittest.TestCase):
                             f"{theme} Settings {state} {role} is only {ratio:.2f}:1",
                         )
 
+    def test_settings_header_uses_the_shared_theme_aware_hero_accent(self):
+        css = self._style_css()
+        headers = re.findall(r"\.settings-page-header\s*\{([^}]*)\}", css)
+        self.assertTrue(headers)
+        self.assertTrue(any(
+            "isolation: isolate" in header and "overflow: hidden" in header
+            for header in headers
+        ))
+
+        accent = re.search(r"\.settings-page-header::after\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(accent)
+        for declaration in (
+            "--theme-accent", "radial-gradient", "linear-gradient", "pointer-events: none",
+        ):
+            self.assertIn(declaration, accent.group(1))
+
+        content = re.search(r"\.settings-page-header > \*\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(content)
+        self.assertIn("position: relative", content.group(1))
+        self.assertIn("z-index: 1", content.group(1))
+
+    def test_content_pack_and_study_badges_use_readable_shared_theme_styles(self):
+        css = self._style_css()
+        neutral_chips = (
+            ".content-packs-page .pack-count-pill",
+            ".content-packs-page .content-pack-counts span",
+            ".content-packs-page .medical-dataset-meta span",
+            ".medical-study-page .medical-dataset-meta span",
+            ".it-study-page .medical-dataset-meta span",
+        )
+        for selector in neutral_chips:
+            with self.subTest(selector=selector):
+                self.assertIn(selector, css, f"Missing shared chip rule for {selector}")
+
+        neutral_rule = re.search(
+            r"\.content-packs-page \.pack-count-pill,[\s\S]*?\.it-study-page \.pack-meta span\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(neutral_rule)
+        for declaration in (
+            "--theme-page-text", "--theme-accent", "--theme-surface-2",
+            "--theme-border-soft", "7%", "opacity: 1",
+        ):
+            self.assertIn(declaration, neutral_rule.group(1))
+
+        semantic_pairs = {
+            ".study-type-badge.matching,\n.pack-validation-state.info": (
+                "#285d8f", "#e0edf8", "#9bd0ff", "#112c45",
+            ),
+            ".study-type-badge.image,\n.pack-validation-state.pass": (
+                "#176343", "#d8eee4", "#83e3c2", "#0d3028",
+            ),
+            ".study-type-badge.mixed": (
+                "#674384", "#eee6f7", "#e2c6ff", "#302142",
+            ),
+            ".pack-validation-state.warn,\n.content-pack-inline-warning,\n.content-pack-protected": (
+                "#765511", "#f6ead0", "#ffd890", "#302717",
+            ),
+            ".pack-validation-state.fail,\n.content-pack-inline-error": (
+                "#8f2435", "#f5dddd", "#ff9eaa", "#351822",
+            ),
+        }
+        for selector, (light_text, light_background, dark_text, dark_background) in semantic_pairs.items():
+            with self.subTest(selector=selector):
+                self.assertIn(selector, css)
+                for foreground, background, scheme in (
+                    (light_text, light_background, "light"),
+                    (dark_text, dark_background, "dark"),
+                ):
+                    ratio = self._contrast(foreground, self._rgba(background)[:3])
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"{selector} {scheme} contrast is only {ratio:.2f}:1",
+                    )
+
+    def test_shared_neutral_chip_text_contrast_across_all_four_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                surface = self._composite(variables["theme-surface-2"], panel)
+                accent = self._rgba(variables["theme-accent"])[:3]
+                chip_background = tuple(
+                    accent[index] * .07 + surface[index] * .93
+                    for index in range(3)
+                )
+                ratio = self._contrast(variables["theme-page-text"], chip_background)
+                self.assertGreaterEqual(
+                    ratio, 4.5,
+                    f"{theme} neutral metadata chip contrast is only {ratio:.2f}:1",
+                )
+
     def test_learning_controls_and_secondary_text_use_semantic_theme_tokens(self):
         css = self._style_css()
         expected = {

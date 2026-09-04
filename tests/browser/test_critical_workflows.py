@@ -485,6 +485,15 @@ def test_settings_hub_interaction_states_follow_each_theme(browser_stack):
         browser.navigate(f"{browser_stack.base_url}/settings?theme={theme}")
         browser.wait_for(f"document.querySelector({encoded_selector}) !== null")
         browser.set_viewport(1280, 900)
+        hero = browser.evaluate(
+            "(() => { const header = document.querySelector('.settings-page-header');"
+            "const accent = getComputedStyle(header, '::after');"
+            "return { background: accent.backgroundImage, pointerEvents: accent.pointerEvents,"
+            "contentZIndex: getComputedStyle(header.querySelector(':scope > *')).zIndex }; })()"
+        )
+        assert hero["background"] != "none"
+        assert hero["pointerEvents"] == "none"
+        assert hero["contentZIndex"] == "1"
         move_pointer(1, 1)
         normal = snapshot()
 

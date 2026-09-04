@@ -12258,6 +12258,97 @@ body:not([class]) > .container > .hero-title {
     border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 30%, var(--theme-border-soft, rgba(98,155,255,.24)));
 }
 
+/* Settings headers share the Dashboard hero's restrained decorative accent.
+   The layer uses the active palette rather than a fixed blue, and sits behind
+   all header controls and copy. */
+.settings-page-header {
+    isolation: isolate;
+    overflow: hidden;
+}
+
+.settings-page-header > * {
+    position: relative;
+    z-index: 1;
+}
+
+.settings-page-header::after {
+    content: "";
+    position: absolute;
+    right: -20px;
+    top: -110px;
+    width: 420px;
+    height: 300px;
+    pointer-events: none;
+    background:
+        radial-gradient(
+            circle at center,
+            color-mix(in srgb, var(--theme-accent, #1b9ff2) 18%, transparent),
+            transparent 60%
+        ),
+        linear-gradient(
+            135deg,
+            transparent 25%,
+            color-mix(in srgb, var(--theme-accent, #1b9ff2) 10%, transparent),
+            transparent 70%
+        );
+    transform: rotate(-8deg);
+}
+
+/* Metadata and count chips are neutral information, not selected controls.
+   Keep their surface light and their text fully opaque across the Content
+   Packs, Medical Study, and IT Study pages. */
+.content-packs-page .pack-count-pill,
+.content-packs-page .content-pack-counts span,
+.content-packs-page .medical-dataset-meta span,
+.content-packs-page .pack-meta span,
+.medical-study-page .medical-dataset-meta span,
+.medical-study-page .pack-meta span,
+.it-study-page .medical-dataset-meta span,
+.it-study-page .pack-meta span {
+    color: var(--theme-page-text, #eaf2ff) !important;
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 7%, var(--theme-surface-2, rgba(17,31,56,.78))) !important;
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 26%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+
+/* Dataset types and validation outcomes retain their semantic color while
+   using contrast-checked foreground/background pairs in either color scheme. */
+.study-type-badge.matching,
+.pack-validation-state.info {
+    color: light-dark(#285d8f, #9bd0ff) !important;
+    background: light-dark(#e0edf8, #112c45) !important;
+    border-color: light-dark(#8caeca, #315d83) !important;
+}
+
+.study-type-badge.image,
+.pack-validation-state.pass {
+    color: light-dark(#176343, #83e3c2) !important;
+    background: light-dark(#d8eee4, #0d3028) !important;
+    border-color: light-dark(#81b99d, #216a57) !important;
+}
+
+.study-type-badge.mixed {
+    color: light-dark(#674384, #e2c6ff) !important;
+    background: light-dark(#eee6f7, #302142) !important;
+    border-color: light-dark(#b39aca, #6e4f8b) !important;
+}
+
+.pack-validation-state.warn,
+.content-pack-inline-warning,
+.content-pack-protected {
+    color: light-dark(#765511, #ffd890) !important;
+    background: light-dark(#f6ead0, #302717) !important;
+    border-color: light-dark(#d8b66d, #6b5524) !important;
+}
+
+.pack-validation-state.fail,
+.content-pack-inline-error {
+    color: light-dark(#8f2435, #ff9eaa) !important;
+    background: light-dark(#f5dddd, #351822) !important;
+    border-color: light-dark(#d6959e, #723442) !important;
+}
+
 /* A semantic outline supplements component-local focus styling and remains
    visible when keyboard navigation reaches legacy controls. */
 :where(a[href], button, input, select, textarea, summary, [tabindex]):focus-visible {
