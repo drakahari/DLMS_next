@@ -110,6 +110,7 @@ class AnkiCustomDeckScalabilityTests(unittest.TestCase):
     def test_non_quiz_bulk_controls_counts_and_law_filter_are_accessible(self):
         html = self._get_page()
 
+        self.assertIn('<details open class="anki-custom-selection-group anki-custom-bulk-group anki-custom-performance-group"', html)
         self.assertIn('id="ankiPerformanceGroup"', html)
         self.assertIn('data-anki-selection-name="missed_cards"', html)
         self.assertIn('id="ankiPerformanceSelectionCount" data-anki-group-selection-count>0 of 2 selected', html)
@@ -137,6 +138,25 @@ class AnkiCustomDeckScalabilityTests(unittest.TestCase):
             "visibleCustomAnkiLawGroups().forEach(lawGroup => { lawGroup.open = false; })",
             html,
         )
+
+    def test_performance_history_open_state_uses_guarded_local_storage(self):
+        html = self._get_page()
+
+        self.assertIn(
+            'const ankiPerformanceOpenStateKey = "dlms.anki.custom.performanceHistory.openState.v1";',
+            html,
+        )
+        self.assertIn(
+            'JSON.parse(localStorage.getItem(ankiPerformanceOpenStateKey) || "null")',
+            html,
+        )
+        self.assertIn('typeof savedState === "boolean" ? savedState : null', html)
+        self.assertIn(
+            "if (savedOpenState !== null) ankiPerformanceGroup.open = savedOpenState;",
+            html,
+        )
+        self.assertIn('ankiPerformanceGroup.addEventListener("toggle"', html)
+        self.assertIn("JSON.stringify(ankiPerformanceGroup.open)", html)
 
     def test_server_render_preserves_checked_questions_and_quiz_count(self):
         client = dlms.app.test_client()

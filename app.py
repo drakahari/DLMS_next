@@ -25875,6 +25875,8 @@ const ankiLawFilter = document.getElementById("ankiLawFilter");
 const ankiLawFilterStatus = document.getElementById("ankiLawFilterStatus");
 const ankiExpandAllLawCases = document.getElementById("ankiExpandAllLawCases");
 const ankiCollapseAllLawCases = document.getElementById("ankiCollapseAllLawCases");
+const ankiPerformanceGroup = document.getElementById("ankiPerformanceGroup");
+const ankiPerformanceOpenStateKey = "dlms.anki.custom.performanceHistory.openState.v1";
 const customAnkiCardSelections = customAnkiForm
     ? Array.from(customAnkiForm.querySelectorAll('input[type="checkbox"][name$="_cards"]'))
     : [];
@@ -25887,6 +25889,28 @@ const customAnkiQuizGroups = customAnkiForm
 const customAnkiLawGroups = customAnkiForm
     ? Array.from(customAnkiForm.querySelectorAll(".anki-custom-law-group"))
     : [];
+
+function readCustomAnkiPerformanceOpenState() {
+    try {
+        const savedState = JSON.parse(localStorage.getItem(ankiPerformanceOpenStateKey) || "null");
+        return typeof savedState === "boolean" ? savedState : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+if (ankiPerformanceGroup) {
+    const savedOpenState = readCustomAnkiPerformanceOpenState();
+    if (savedOpenState !== null) ankiPerformanceGroup.open = savedOpenState;
+    ankiPerformanceGroup.addEventListener("toggle", () => {
+        try {
+            localStorage.setItem(
+                ankiPerformanceOpenStateKey,
+                JSON.stringify(ankiPerformanceGroup.open),
+            );
+        } catch (error) {}
+    });
+}
 
 function getCustomAnkiGroupSelections(selectionGroup) {
     const selectionName = selectionGroup.dataset.ankiSelectionName;

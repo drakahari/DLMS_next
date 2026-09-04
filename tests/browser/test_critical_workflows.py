@@ -567,6 +567,95 @@ def test_custom_anki_non_quiz_bulk_selection_and_law_filter_state(browser_stack)
     ) is True
 
 
+def test_custom_anki_performance_accordion_state_persists(browser_stack):
+    browser = browser_stack.browser
+    storage_key = "dlms.anki.custom.performanceHistory.openState.v1"
+
+    try:
+        browser.navigate(f"{browser_stack.base_url}/anki/custom")
+        browser.evaluate(f"localStorage.removeItem({json.dumps(storage_key)}); true")
+        browser.navigate(f"{browser_stack.base_url}/anki/custom?first-visit=1")
+        browser.wait_for("document.getElementById('ankiPerformanceGroup') !== null")
+
+        assert browser.evaluate(
+            "(() => { const group = document.getElementById('ankiPerformanceGroup');"
+            "const summary = group.querySelector('summary'); summary.focus(); return {"
+            "open:group.open, nativeDetails:group.tagName === 'DETAILS',"
+            "nativeSummary:summary.tagName === 'SUMMARY', focused:document.activeElement === summary}; })()"
+        ) == {
+            "open": True,
+            "nativeDetails": True,
+            "nativeSummary": True,
+            "focused": True,
+        }
+
+        browser.evaluate(
+            "(() => { const performance = document.getElementById('ankiPerformanceGroup');"
+            "const quiz = document.querySelector('.anki-custom-quiz-group');"
+            "const law = document.querySelector('.anki-custom-law-group');"
+            "performance.querySelector('[name=missed_cards]').click();"
+            "quiz.open = true; law.open = true; performance.querySelector('summary').click();"
+            "return true; })()"
+        )
+        browser.wait_for("document.getElementById('ankiPerformanceGroup').open === false")
+        state_after_collapse = browser.evaluate(
+            "(() => { const performance = document.getElementById('ankiPerformanceGroup');"
+            "const quiz = document.querySelector('.anki-custom-quiz-group');"
+            "const law = document.querySelector('.anki-custom-law-group'); return {"
+            "open:performance.open, missed:performance.querySelectorAll('[name=missed_cards]:checked').length,"
+            "quizOpen:quiz.open, lawOpen:law.open}; })()"
+        )
+        assert state_after_collapse == {
+            "open": False,
+            "missed": 1,
+            "quizOpen": True,
+            "lawOpen": True,
+        }
+        browser.wait_for(
+            f"localStorage.getItem({json.dumps(storage_key)}) === 'false'"
+        )
+
+        browser.navigate(f"{browser_stack.base_url}/anki/custom?collapsed-reload=1")
+        browser.wait_for("document.getElementById('ankiPerformanceGroup') !== null")
+        assert browser.evaluate(
+            "(() => ({open:document.getElementById('ankiPerformanceGroup').open,"
+            "selected:document.querySelectorAll('[name=missed_cards]:checked').length}))()"
+        ) == {"open": False, "selected": 0}
+
+        browser.evaluate(
+            "document.querySelector('#ankiPerformanceGroup summary').click(); true"
+        )
+        browser.wait_for(
+            f"localStorage.getItem({json.dumps(storage_key)}) === 'true'"
+        )
+        browser.navigate(f"{browser_stack.base_url}/anki/custom?expanded-reload=1")
+        browser.wait_for("document.getElementById('ankiPerformanceGroup')?.open === true")
+
+        browser.navigate(f"{browser_stack.base_url}/anki")
+        browser.navigate(f"{browser_stack.base_url}/anki/custom?return-visit=1")
+        browser.wait_for("document.getElementById('ankiPerformanceGroup')?.open === true")
+
+        browser.evaluate(
+            f"localStorage.setItem({json.dumps(storage_key)}, '{{malformed'); true"
+        )
+        browser.navigate(f"{browser_stack.base_url}/anki/custom?malformed-state=1")
+        browser.wait_for("document.getElementById('ankiPerformanceGroup') !== null")
+        assert browser.evaluate(
+            "document.getElementById('ankiPerformanceGroup').open"
+        ) is True
+
+        browser.evaluate(
+            f"localStorage.setItem({json.dumps(storage_key)}, JSON.stringify({{open:false}})); true"
+        )
+        browser.navigate(f"{browser_stack.base_url}/anki/custom?stale-state=1")
+        browser.wait_for("document.getElementById('ankiPerformanceGroup') !== null")
+        assert browser.evaluate(
+            "document.getElementById('ankiPerformanceGroup').open"
+        ) is True
+    finally:
+        browser.evaluate(f"localStorage.removeItem({json.dumps(storage_key)}); true")
+
+
 def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser = browser_stack.browser
     attempts_before = _database_value(
