@@ -655,6 +655,28 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
         for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
             browser.navigate(f"{quiz_url}?theme={theme}&mode={mode_selector[1:]}")
             browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+            pre_quiz = browser.evaluate(
+                "(() => {"
+                "const bounds = selector => { const rect = document.querySelector(selector).getBoundingClientRect();"
+                "return {left:rect.left,right:rect.right}; };"
+                "const probe = document.createElement('span');"
+                "probe.style.color = 'light-dark(var(--theme-panel-1), var(--theme-heading))';"
+                "document.body.appendChild(probe); const shellText = getComputedStyle(probe).color;"
+                "probe.remove();"
+                "return {hero:bounds('#quizWrapper > .container > .hero-title'),"
+                "modeCard:bounds('#modeSelect'), mode:bounds('.mode-banner'),"
+                "returns:bounds('.quiz-return-buttons'),"
+                "heroColor:getComputedStyle(document.querySelector('#quizWrapper > .container > .hero-title')).color,"
+                "shellText}; })()"
+            )
+            assert abs(pre_quiz["modeCard"]["left"] - pre_quiz["hero"]["left"]) < 1
+            assert abs(pre_quiz["modeCard"]["right"] - pre_quiz["hero"]["right"]) < 1
+            assert abs(pre_quiz["modeCard"]["left"] - pre_quiz["returns"]["left"]) < 1
+            assert abs(pre_quiz["modeCard"]["right"] - pre_quiz["returns"]["right"]) < 1
+            assert pre_quiz["mode"]["left"] >= pre_quiz["modeCard"]["left"]
+            assert pre_quiz["mode"]["right"] <= pre_quiz["modeCard"]["right"]
+            assert pre_quiz["heroColor"] == pre_quiz["shellText"]
+
             browser.click(mode_selector)
             browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
             shell = browser.evaluate(
@@ -667,9 +689,15 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
                 "const returns = getComputedStyle(document.querySelector('.quiz-return-buttons'));"
                 "const link = document.getElementById('returnPortalBtn');"
                 "const linkStyle = getComputedStyle(link);"
+                "const titleStyle = getComputedStyle(document.querySelector('.active-quiz-title'));"
+                "const shellProbe = document.createElement('span');"
+                "shellProbe.style.color = 'light-dark(var(--theme-panel-1), var(--theme-heading))';"
+                "document.body.appendChild(shellProbe); const shellText = getComputedStyle(shellProbe).color;"
+                "shellProbe.remove();"
                 "return {header:header.backgroundImage, question:question.backgroundImage,"
                 "returns:returns.backgroundImage, linkBackground:linkStyle.backgroundColor,"
-                "linkColor:linkStyle.color, pageText:resolve('--theme-page-text')}; })()"
+                "linkColor:linkStyle.color, titleColor:titleStyle.color, shellText,"
+                "pageText:resolve('--theme-page-text')}; })()"
             )
             assert shell["header"] != "none"
             assert shell["header"] != shell["question"]
@@ -677,6 +705,7 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
             assert shell["returns"] != shell["question"]
             assert shell["linkBackground"] != "rgba(0, 0, 0, 0)"
             assert shell["linkColor"] == shell["pageText"]
+            assert shell["titleColor"] == shell["shellText"]
 
 
 def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack):

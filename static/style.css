@@ -442,6 +442,7 @@ body.home .quiz-card img {
     justify-content: space-between;
     gap: 20px;
     width: 100%;
+    box-sizing: border-box;
     padding: 18px 22px;
     border-radius: 18px;
     background: linear-gradient(180deg, rgba(7,18,38,0.82), rgba(7,18,38,0.68));
@@ -556,8 +557,8 @@ body.home .quiz-card img {
     border-radius: 18px;
     background: linear-gradient(
         180deg,
-        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-1, rgba(6,20,45,.82))),
-        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-2, rgba(5,17,38,.74)))
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, light-dark(var(--theme-heading, #0b1b33), var(--theme-panel-1, rgba(6,20,45,.82)))),
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 6%, light-dark(var(--theme-heading, #0b1b33), var(--theme-panel-2, rgba(5,17,38,.74))))
     );
     border: 1px solid color-mix(in srgb, var(--theme-accent, #1b9ff2) 42%, var(--theme-border, rgba(86,158,255,.35)));
     box-shadow:
@@ -592,8 +593,29 @@ body.home .quiz-card img {
     font-size: 20px;
     font-weight: 800;
     letter-spacing: 0.4px;
-    color: #ffffff;
+    color: light-dark(var(--theme-panel-1, #fff), var(--theme-heading, #fff));
     text-shadow: 0 0 8px rgba(0,0,0,0.75);
+}
+
+/* Generated quizzes keep their title shell dark in every theme while the
+   active palette supplies the border and restrained accent glow. */
+#quizWrapper > .container > .hero-title {
+    color: light-dark(var(--theme-panel-1, #fff), var(--theme-heading, #fff)) !important;
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, light-dark(var(--theme-heading, #0b1b33), var(--theme-panel-1, rgba(6,20,45,.82)))),
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 6%, light-dark(var(--theme-heading, #0b1b33), var(--theme-panel-2, rgba(5,17,38,.74))))
+    );
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 42%, var(--theme-border, rgba(86,158,255,.35)));
+    box-shadow:
+        0 10px 28px var(--theme-shadow, rgba(0,0,0,.32)),
+        0 0 20px color-mix(in srgb, var(--theme-accent, #1b9ff2) 6%, transparent);
+}
+
+#quizWrapper > .container > .hero-title span,
+.active-quiz-title {
+    color: light-dark(var(--theme-panel-1, #fff), var(--theme-heading, #fff)) !important;
+    text-shadow: 0 2px 8px rgba(0,0,0,.72) !important;
 }
 
 /* Toolbar */
@@ -10022,7 +10044,7 @@ h1,h2,h3,
 .library-page .library-hero h2,
 .library-page .library-folder-title-group h2,
 .library-page .library-quiz-title-row h3,
-#qHeader,#qText,.active-quiz-title,.quiz-title {
+#qHeader,#qText,.quiz-title {
     color:var(--theme-heading,#fff)!important;
     text-shadow:0 2px 8px color-mix(in srgb,var(--theme-shadow,rgba(0,0,0,.42)) 42%,transparent)!important;
 }
@@ -10173,7 +10195,7 @@ h1,h2,h3,
     border-color:#cf3c4b!important;
 }
 .mode-center h2,.mode-center h3,
-.active-quiz-title,.quiz-progress-meta,#qHeader,#qText {
+.quiz-progress-meta,#qHeader,#qText {
     color:var(--theme-heading,#fff)!important;
 }
 

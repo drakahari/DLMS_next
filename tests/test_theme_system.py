@@ -800,7 +800,19 @@ class ThemeSystemTests(unittest.TestCase):
         expected = {
             ".active-quiz-logo-banner": (
                 "--theme-accent", "--theme-panel-1", "--theme-panel-2",
-                "--theme-border", "--theme-shadow", "8%",
+                "--theme-heading", "--theme-border", "--theme-shadow",
+                "light-dark", "8%",
+            ),
+            "#quizWrapper > .container > .hero-title": (
+                "--theme-accent", "--theme-panel-1", "--theme-panel-2",
+                "--theme-heading", "--theme-border", "--theme-shadow",
+                "light-dark", "8%",
+            ),
+            ".active-quiz-title": (
+                "--theme-panel-1", "--theme-heading", "light-dark",
+            ),
+            ".mode-banner": (
+                "width: 100%", "box-sizing: border-box",
             ),
             ".quiz-return-buttons": (
                 "--theme-accent", "--theme-panel-1", "--theme-panel-2",
@@ -854,13 +866,24 @@ class ThemeSystemTests(unittest.TestCase):
                 body = self._rgba(variables["theme-body-base"])[:3]
                 panel = self._composite(variables["theme-panel-1"], body)
                 accent = self._rgba(variables["theme-accent"])[:3]
+                shell_base = (
+                    self._rgba(variables["theme-heading"])[:3]
+                    if variables["theme-color-scheme"] == "light"
+                    else panel
+                )
                 header = tuple(
-                    accent[index] * .08 + panel[index] * .92 for index in range(3)
+                    accent[index] * .08 + shell_base[index] * .92 for index in range(3)
                 )
                 return_link = self._composite(variables["theme-surface-2"], panel)
+                shell_text = (
+                    variables["theme-panel-1"]
+                    if variables["theme-color-scheme"] == "light"
+                    else variables["theme-heading"]
+                )
 
                 for role, foreground, background in (
-                    ("quiz title", variables["theme-heading"], header),
+                    ("pre-quiz title", shell_text, header),
+                    ("active quiz title", shell_text, header),
                     ("return link", variables["theme-page-text"], return_link),
                 ):
                     ratio = self._contrast(foreground, background)
