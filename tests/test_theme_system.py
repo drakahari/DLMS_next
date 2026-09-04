@@ -352,6 +352,42 @@ class ThemeSystemTests(unittest.TestCase):
                     ratio, 4.5, f"{theme} AI Builder pill contrast is only {ratio:.2f}:1",
                 )
 
+    def test_ai_builder_assurance_chips_share_readable_metadata_chip_treatment(self):
+        css = self._style_css()
+        chips = re.search(
+            r"\.medical-ai-builder-points span,\s*\.medical-ai-rules-grid span\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(chips)
+        for declaration in (
+            "padding: 6px 9px", "border-radius: 999px", "--theme-page-text",
+            "--theme-accent", "--theme-surface-2", "--theme-border-soft",
+            "font-size: 12px", "font-weight: 700", "opacity: 1",
+        ):
+            self.assertIn(declaration, chips.group(1))
+
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    dynamic_css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(dynamic_css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                surface = self._composite(variables["theme-surface-2"], panel)
+                accent = self._rgba(variables["theme-accent"])[:3]
+                background = tuple(
+                    accent[index] * .07 + surface[index] * .93
+                    for index in range(3)
+                )
+                ratio = self._contrast(variables["theme-page-text"], background)
+                self.assertGreaterEqual(
+                    ratio, 4.5,
+                    f"{theme} AI Builder assurance-chip contrast is only {ratio:.2f}:1",
+                )
+
     def test_smart_pdf_complete_status_and_exclusion_controls_are_theme_aware(self):
         css = self._style_css()
         complete = self._rule_blocks(css, ".pdf-status.complete")

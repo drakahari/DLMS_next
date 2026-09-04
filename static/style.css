@@ -7404,8 +7404,10 @@ a.settings-hub-card:active {
 .medical-ai-builder-points span,
 .medical-ai-rules-grid span {
     padding: 6px 9px; border-radius: 999px;
-    border: 1px solid rgba(91,155,235,.22);
-    background: rgba(13,40,72,.52); color: #c7d8eb; font-size: 12px;
+    border: 1px solid color-mix(in srgb, var(--theme-accent, #1b9ff2) 26%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 7%, var(--theme-surface-2, rgba(17,31,56,.78)));
+    color: var(--theme-page-text, #eaf2ff); font-size: 12px;
+    font-weight: 700; opacity: 1;
 }
 .medical-ai-builder-open { text-decoration: none; white-space: nowrap; }
 .medical-ai-builder-open:hover { color: #fff; text-decoration: none; }
