@@ -6167,18 +6167,19 @@ a.settings-hub-card:active {
     grid-template-columns: minmax(0, 1fr);
     align-content: center;
     align-items: start;
-    gap: 7px;
+    gap: var(--dlms-space-xs, 6px);
 }
 
 .anki-tools-summary .anki-missed-summary-total {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 5px;
+    display: grid;
+    gap: 2px;
     margin: 0;
     color: var(--theme-muted-text, #b8c2cc);
-    font-size: 12px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .7px;
     line-height: 1.25;
+    text-transform: uppercase;
 }
 
 .anki-tools-summary .anki-missed-summary-total strong {
@@ -6189,18 +6190,19 @@ a.settings-hub-card:active {
 }
 
 .anki-tools-summary .anki-missed-summary-metrics {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px 12px;
+    display: grid;
+    gap: 3px;
     margin: 0;
-    padding: 0;
+    padding: var(--dlms-space-xs, 6px) 0 0;
+    border-top: 1px solid var(--theme-border-soft, rgba(98,155,255,.24));
     list-style: none;
 }
 
 .anki-tools-summary .anki-missed-summary-metrics li {
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: minmax(20px, auto) minmax(0, 1fr);
     align-items: baseline;
-    gap: 4px;
+    gap: var(--dlms-space-xs, 6px);
     color: var(--theme-muted-text, #b8c2cc);
     font-size: 12px;
     line-height: 1.3;
@@ -6211,11 +6213,12 @@ a.settings-hub-card:active {
     color: var(--theme-heading, #fff);
     font-size: 13px;
     line-height: inherit;
+    text-align: right;
 }
 
 .anki-tools-summary .anki-missed-summary-note {
     color: var(--theme-muted-text, #b8c2cc);
-    font-size: 11px;
+    font-size: 10px;
     line-height: 1.35;
 }
 

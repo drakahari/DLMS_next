@@ -25199,7 +25199,7 @@ def anki_tools():
                     <li><strong>{{ missed_summary.recovered }}</strong> <span>revisited later</span></li>
                     <li><strong>{{ missed_summary.repeated }}</strong> <span>missed more than once</span></li>
                 </ul>
-                <small class="anki-missed-summary-note" id="ankiMissedOverlapNote">Missed-more-than-once questions are also included in one of the revisit counts.</small>
+                <small class="anki-missed-summary-note" id="ankiMissedOverlapNote">Repeat count overlaps revisit status.</small>
             </div>
             <div class="dashboard-stat-card">
                 <span class="dashboard-stat-label">Law Flashcards</span>

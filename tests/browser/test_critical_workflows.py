@@ -735,6 +735,11 @@ def test_anki_missed_summary_labels_across_themes_and_widths(browser_stack):
                 "itemCount:items.length, associated:items.every(item => "
                 "Boolean(item.querySelector('strong') && item.querySelector('span'))),"
                 "overflow:card.scrollWidth > card.clientWidth,"
+                "cardHeight:card.getBoundingClientRect().height,"
+                "summaryHeights:[...document.querySelectorAll('.anki-tools-summary .dashboard-stat-card')]"
+                ".map(item => item.getBoundingClientRect().height),"
+                "metricDisplay:getComputedStyle(card.querySelector('.anki-missed-summary-metrics')).display,"
+                "metricRows:items.map(item => getComputedStyle(item).gridTemplateColumns),"
                 "totalColor:getComputedStyle(card.querySelector('.anki-missed-summary-total strong')).color,"
                 "metricColors:items.map(item => getComputedStyle(item.querySelector('strong')).color),"
                 "heading:resolve('--theme-heading')}; })()"
@@ -743,10 +748,15 @@ def test_anki_missed_summary_labels_across_themes_and_widths(browser_stack):
             assert "not yet revisited" in summary["text"]
             assert "revisited later" in summary["text"]
             assert "missed more than once" in summary["text"]
-            assert "also included in one of the revisit counts" in summary["text"]
+            assert "Repeat count overlaps revisit status." in summary["text"]
             assert summary["itemCount"] == 3
             assert summary["associated"] is True
             assert summary["overflow"] is False
+            assert summary["cardHeight"] < 190
+            if width == 1280:
+                assert max(summary["summaryHeights"]) - min(summary["summaryHeights"]) < 1
+            assert summary["metricDisplay"] == "grid"
+            assert all(row != "none" for row in summary["metricRows"])
             assert summary["totalColor"] == summary["heading"]
             assert all(color == summary["heading"] for color in summary["metricColors"])
 

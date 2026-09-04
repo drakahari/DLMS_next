@@ -28,7 +28,7 @@ class AnkiMissedSummaryLabelTests(unittest.TestCase):
         self.assertRegex(html, r"<strong>28</strong>\s*<span>not yet revisited</span>")
         self.assertRegex(html, r"<strong>2</strong>\s*<span>revisited later</span>")
         self.assertRegex(html, r"<strong>3</strong>\s*<span>missed more than once</span>")
-        self.assertIn("also included in one of the revisit counts", html)
+        self.assertIn("Repeat count overlaps revisit status.", html)
         self.assertNotRegex(html, r">\s*(?:weak|recovered)\s*<")
 
     def test_summary_metrics_are_semantically_grouped_and_theme_aware(self):
@@ -55,6 +55,17 @@ class AnkiMissedSummaryLabelTests(unittest.TestCase):
             rule = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
             self.assertIsNotNone(rule, f"Missing style rule for {selector}")
             self.assertTrue(all(token in rule.group(1) for token in tokens))
+
+        metrics = re.search(
+            re.escape(".anki-tools-summary .anki-missed-summary-metrics") + r"\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIn("display: grid", metrics.group(1))
+        metric_row = re.search(
+            re.escape(".anki-tools-summary .anki-missed-summary-metrics li") + r"\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIn("grid-template-columns", metric_row.group(1))
 
 
 if __name__ == "__main__":
