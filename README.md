@@ -230,18 +230,50 @@ Browser launch and network binding are separate choices:
 
 * With no browser flag, DLMS opens a browser in an interactive Windows, macOS, or
   Linux graphical desktop session. It skips automatic launch for SSH/headless
-  sessions.
+  sessions. Headless/server detection controls automatic browser launch only; it
+  does not change the network bind address.
 * `python app.py --browser` forces a launch attempt even when a desktop session is
   not detected.
 * `python app.py --no-browser` always suppresses automatic launch.
 * `DLMS_NO_BROWSER=1` also suppresses launch. The values `true`, `yes`, and `on`
   are accepted case-insensitively. This setting and `--no-browser` take precedence
   over `--browser`.
-* DLMS binds to `127.0.0.1` by default. `--host HOST` (or `--host=HOST`) changes
-  only the bind address. Binding to `0.0.0.0` makes the service reachable through
-  an appropriate local network address; it does not make `0.0.0.0` a browser URL.
+* DLMS always defaults to `127.0.0.1:9001`, including in headless and SSH sessions.
+  `--host HOST` (or `--host=HOST`) changes only the bind address.
 
-DLMS has no user authentication. Use a non-loopback bind only on a trusted LAN and
+This separation is intentional. Do not change or rely on headless detection to
+make DLMS LAN-accessible; request a non-loopback bind explicitly when that is the
+intended deployment.
+
+#### Intentional LAN or server access
+
+To accept connections through the host's network interfaces, start DLMS
+explicitly with `--host 0.0.0.0`:
+
+```bash
+python app.py --host 0.0.0.0
+```
+
+For a packaged Linux executable installed as `/usr/local/bin/DLMS`, a systemd
+service should use the equivalent explicit argument:
+
+```ini
+[Service]
+ExecStart=/usr/local/bin/DLMS --host 0.0.0.0
+```
+
+After starting the service, verify the listening address and port with:
+
+```bash
+ss -ltnp | grep ':9001'
+```
+
+Use the server's actual LAN address, such as `http://192.168.1.25:9001`, from
+another device. `0.0.0.0` is a bind address, not a browser destination.
+
+**Security:** Binding to `0.0.0.0` exposes DLMS to devices that can reach the host
+and port. DLMS has no user authentication, so use a non-loopback bind only on a
+trusted LAN, restrict access with host/network firewall rules as appropriate, and
 do not expose it directly to the public internet.
 
 ---
