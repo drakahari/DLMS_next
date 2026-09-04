@@ -42,12 +42,21 @@ class AnkiMissedSummaryLabelTests(unittest.TestCase):
         self.assertIn('role="group" aria-labelledby="ankiMissedSummaryTitle" aria-describedby="ankiMissedOverlapNote"', html)
         self.assertIn('<ul class="anki-missed-summary-metrics" aria-label="Missed-question details">', html)
         self.assertIn('id="ankiMissedOverlapNote"', html)
+        self.assertEqual(html.count("dashboard-stat-card anki-summary-card"), 3)
+        self.assertIn('role="group" aria-labelledby="ankiQuizSummaryTitle"', html)
+        self.assertIn('role="group" aria-labelledby="ankiLawSummaryTitle"', html)
+        self.assertRegex(html, r"<span>Quizzes</span>\s*<strong>0</strong>")
+        self.assertIn('<span class="anki-summary-support">Available to export</span>', html)
+        self.assertIn("<span>Law Flashcards</span>", html)
+        self.assertIn("<strong>{{ total_law_cards }}</strong>", self._anki_route_source())
+        self.assertIn('<span class="anki-summary-support">Recognized cards</span>', html)
 
         with open(dlms.resource_path("static/style.css"), "r", encoding="utf-8") as handle:
             css = handle.read()
         for selector, tokens in {
-            ".anki-tools-summary .anki-missed-summary-total": ("--theme-muted-text",),
-            ".anki-tools-summary .anki-missed-summary-total strong": ("--theme-heading",),
+            ".anki-tools-summary .anki-summary-primary": ("--theme-muted-text",),
+            ".anki-tools-summary .anki-summary-primary strong": ("--theme-heading",),
+            ".anki-tools-summary .anki-summary-support": ("--theme-muted-text", "--theme-border-soft"),
             ".anki-tools-summary .anki-missed-summary-metrics li": ("--theme-muted-text",),
             ".anki-tools-summary .anki-missed-summary-metrics strong": ("--theme-heading",),
             ".anki-tools-summary .anki-missed-summary-note": ("--theme-muted-text",),
@@ -66,6 +75,14 @@ class AnkiMissedSummaryLabelTests(unittest.TestCase):
             css,
         )
         self.assertIn("grid-template-columns", metric_row.group(1))
+
+    @staticmethod
+    def _anki_route_source():
+        with open(dlms.__file__, "r", encoding="utf-8") as handle:
+            source = handle.read()
+        start = source.index('@app.route("/anki")')
+        end = source.index('@app.route("/anki/custom"', start)
+        return source[start:end]
 
 
 if __name__ == "__main__":

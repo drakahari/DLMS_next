@@ -6163,14 +6163,14 @@ a.settings-hub-card:active {
     color: #f4f8ff;
 }
 
-.anki-tools-summary .anki-missed-summary-card {
+.anki-tools-summary .anki-summary-card {
     grid-template-columns: minmax(0, 1fr);
-    align-content: center;
+    align-content: start;
     align-items: start;
     gap: var(--dlms-space-xs, 6px);
 }
 
-.anki-tools-summary .anki-missed-summary-total {
+.anki-tools-summary .anki-summary-primary {
     display: grid;
     gap: 2px;
     margin: 0;
@@ -6182,11 +6182,23 @@ a.settings-hub-card:active {
     text-transform: uppercase;
 }
 
-.anki-tools-summary .anki-missed-summary-total strong {
+.anki-tools-summary .anki-summary-primary strong {
     margin: 0;
     color: var(--theme-heading, #fff);
     font-size: 28px;
     line-height: 1;
+}
+
+.anki-tools-summary .anki-summary-support {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding-top: var(--dlms-space-xs, 6px);
+    border-top: 1px solid var(--theme-border-soft, rgba(98,155,255,.24));
+    color: var(--theme-muted-text, #b8c2cc);
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: break-word;
 }
 
 .anki-tools-summary .anki-missed-summary-metrics {

@@ -708,7 +708,7 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
             assert shell["titleColor"] == shell["shellText"]
 
 
-def test_anki_missed_summary_labels_across_themes_and_widths(browser_stack):
+def test_anki_summary_cards_across_themes_and_widths(browser_stack):
     browser = browser_stack.browser
 
     for theme in ("dark", "light", "purple-gold", "maroon-gold"):
@@ -727,6 +727,7 @@ def test_anki_missed_summary_labels_across_themes_and_widths(browser_stack):
             summary = browser.evaluate(
                 "(() => {"
                 "const card = document.querySelector('.anki-missed-summary-card');"
+                "const cards = [...document.querySelectorAll('.anki-tools-summary .anki-summary-card')];"
                 "const items = [...card.querySelectorAll('.anki-missed-summary-metrics li')];"
                 "const resolve = name => { const probe = document.createElement('span');"
                 "probe.style.color = `var(${name})`; document.body.appendChild(probe);"
@@ -736,8 +737,14 @@ def test_anki_missed_summary_labels_across_themes_and_widths(browser_stack):
                 "Boolean(item.querySelector('strong') && item.querySelector('span'))),"
                 "overflow:card.scrollWidth > card.clientWidth,"
                 "cardHeight:card.getBoundingClientRect().height,"
-                "summaryHeights:[...document.querySelectorAll('.anki-tools-summary .dashboard-stat-card')]"
-                ".map(item => item.getBoundingClientRect().height),"
+                "summaryHeights:cards.map(item => item.getBoundingClientRect().height),"
+                "cardOverflows:cards.map(item => item.scrollWidth > item.clientWidth),"
+                "primaryDisplays:cards.map(item => getComputedStyle(item.querySelector('.anki-summary-primary')).display),"
+                "labels:cards.map(item => item.querySelector('.anki-summary-primary span').textContent.trim()),"
+                "labelTransforms:cards.map(item => getComputedStyle(item.querySelector('.anki-summary-primary')).textTransform),"
+                "supportSingleLines:cards.filter(item => item.querySelector('.anki-summary-support')).every(item => {"
+                "const range=document.createRange(); range.selectNodeContents(item.querySelector('.anki-summary-support'));"
+                "return range.getClientRects().length === 1; }),"
                 "metricDisplay:getComputedStyle(card.querySelector('.anki-missed-summary-metrics')).display,"
                 "metricRows:items.map(item => getComputedStyle(item).gridTemplateColumns),"
                 "totalColor:getComputedStyle(card.querySelector('.anki-missed-summary-total strong')).color,"
@@ -750,8 +757,13 @@ def test_anki_missed_summary_labels_across_themes_and_widths(browser_stack):
             assert "missed more than once" in summary["text"]
             assert "Repeat count overlaps revisit status." in summary["text"]
             assert summary["itemCount"] == 3
+            assert summary["labels"] == ["Quizzes", "Questions Ever Missed:", "Law Flashcards"]
             assert summary["associated"] is True
             assert summary["overflow"] is False
+            assert not any(summary["cardOverflows"])
+            assert all(display == "grid" for display in summary["primaryDisplays"])
+            assert all(transform == "uppercase" for transform in summary["labelTransforms"])
+            assert summary["supportSingleLines"] is True
             assert summary["cardHeight"] < 190
             if width == 1280:
                 assert max(summary["summaryHeights"]) - min(summary["summaryHeights"]) < 1

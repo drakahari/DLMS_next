@@ -25184,13 +25184,15 @@ def anki_tools():
         </header>
 
         <section class="anki-tools-summary" aria-label="Anki Tools summary">
-            <div class="dashboard-stat-card">
-                <span class="dashboard-stat-label">Quizzes</span>
-                <strong>{{ quizzes|length }}</strong>
-                <span class="dashboard-stat-note">available to export</span>
+            <div class="dashboard-stat-card anki-summary-card" role="group" aria-labelledby="ankiQuizSummaryTitle">
+                <p class="anki-summary-primary" id="ankiQuizSummaryTitle">
+                    <span>Quizzes</span>
+                    <strong>{{ quizzes|length }}</strong>
+                </p>
+                <span class="anki-summary-support">Available to export</span>
             </div>
-            <div class="dashboard-stat-card anki-missed-summary-card" role="group" aria-labelledby="ankiMissedSummaryTitle" aria-describedby="ankiMissedOverlapNote">
-                <p class="anki-missed-summary-total" id="ankiMissedSummaryTitle">
+            <div class="dashboard-stat-card anki-summary-card anki-missed-summary-card" role="group" aria-labelledby="ankiMissedSummaryTitle" aria-describedby="ankiMissedOverlapNote">
+                <p class="anki-summary-primary anki-missed-summary-total" id="ankiMissedSummaryTitle">
                     <span>Questions Ever Missed:</span>
                     <strong>{{ total_missed_cards }}</strong>
                 </p>
@@ -25201,10 +25203,12 @@ def anki_tools():
                 </ul>
                 <small class="anki-missed-summary-note" id="ankiMissedOverlapNote">Repeat count overlaps revisit status.</small>
             </div>
-            <div class="dashboard-stat-card">
-                <span class="dashboard-stat-label">Law Flashcards</span>
-                <strong>{{ total_law_cards }}</strong>
-                <span class="dashboard-stat-note">recognized cards</span>
+            <div class="dashboard-stat-card anki-summary-card" role="group" aria-labelledby="ankiLawSummaryTitle">
+                <p class="anki-summary-primary" id="ankiLawSummaryTitle">
+                    <span>Law Flashcards</span>
+                    <strong>{{ total_law_cards }}</strong>
+                </p>
+                <span class="anki-summary-support">Recognized cards</span>
             </div>
         </section>
 
