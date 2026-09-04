@@ -11909,7 +11909,8 @@ body[data-theme="light"] .pdf-import-page .pdf-bank-open,
     opacity: .58;
     transform: none;
 }
-.anki-custom-quiz-group[hidden] {
+.anki-custom-quiz-group[hidden],
+.anki-custom-law-group[hidden] {
     display: none;
 }
 .anki-custom-selection-toolbar {

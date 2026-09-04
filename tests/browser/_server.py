@@ -51,6 +51,77 @@ def seed_browser_data():
         exam_minutes=5,
     )
 
+    connection = dlms.get_db()
+    question_rows = connection.execute(
+        "SELECT id, question_number, question_text FROM questions WHERE quiz_id = ? ORDER BY question_number",
+        (critical_id,),
+    ).fetchall()
+    connection.execute(
+        """
+        INSERT INTO attempts (
+            id, quiz_id, user_name, started_at, completed_at,
+            score, total, percent, time_remaining, mode
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "browser-anki-missed-attempt", critical_id, "Browser Tester",
+            "2026-09-04T10:00:00", "2026-09-04T10:05:00",
+            0, len(question_rows), 0, 0, "Exam",
+        ),
+    )
+    for question in question_rows:
+        connection.execute(
+            """
+            INSERT INTO missed_questions (
+                attempt_id, question_id, correct_letters, question_text,
+                choices_text, selected_letters, selected_text, correct_text,
+                attempt_question_number, question_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "browser-anki-missed-attempt", question["id"], "A",
+                question["question_text"], "A. Correct\nB. Incorrect",
+                "B", "B. Incorrect", "A. Correct", question["question_number"], "choice",
+            ),
+        )
+    connection.commit()
+    connection.close()
+
+    law_cases = [
+        (
+            "browser-law-negligence", "Palsgraf Browser Review", "Torts",
+            "Q: What limits negligence duty?\nA: Foreseeability.\n\n"
+            "Q: What defines proximate cause?\nA: Scope of liability.",
+        ),
+        (
+            "browser-law-contracts", "Hadley Browser Review", "Contracts",
+            "Q: What limits consequential damages?\nA: Foreseeability at formation.",
+        ),
+    ]
+    registry = dlms.load_law_registry()
+    for case_id, title, course, flashcards in law_cases:
+        case_file = f"{case_id}.json"
+        case_payload = {
+            "id": case_id,
+            "type": "law_case_review",
+            "title": title,
+            "course": course,
+            "sections": {"rule_flashcards": flashcards},
+        }
+        dlms._atomic_write_json(
+            str(Path(dlms.LAW_CASES_FOLDER, case_file)),
+            case_payload,
+            expected_type=dict,
+        )
+        registry["cases"].append({
+            "id": case_id,
+            "title": title,
+            "course": course,
+            "file": case_file,
+            "hidden": False,
+        })
+    dlms.save_law_registry(registry)
+
     registry = dlms.load_registry()
     for quiz in registry:
         quiz["folder"] = "Browser Regression"

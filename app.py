@@ -25447,6 +25447,8 @@ def anki_custom_deck():
     selected_missed = request.form.getlist("missed_cards")
     selected_law = request.form.getlist("law_cards")
     selected_quiz_tokens = set(selected_quiz)
+    selected_missed_tokens = set(selected_missed)
+    selected_law_tokens = set(selected_law)
     quiz_groups = []
     for quiz in sources["quiz_groups"]:
         quiz_view = dict(quiz)
@@ -25455,6 +25457,24 @@ def anki_custom_deck():
             for card in quiz.get("cards", [])
         )
         quiz_groups.append(quiz_view)
+
+    missed_cards = sources["missed_cards"]
+    selected_missed_count = sum(
+        (
+            f"missed:{card.get('quiz_id')}:"
+            f"{card.get('question_id') if card.get('question_id') is not None else card.get('question_number')}"
+        ) in selected_missed_tokens
+        for card in missed_cards
+    )
+
+    law_groups = []
+    for case in sources["law_groups"]:
+        case_view = dict(case)
+        case_view["selected_count"] = sum(
+            f"law:{case.get('id')}:{index}" in selected_law_tokens
+            for index, _card in enumerate(case.get("cards", []), start=1)
+        )
+        law_groups.append(case_view)
 
     preview_requested = request.method == "POST"
     preview_rows = []
@@ -25594,18 +25614,21 @@ def anki_custom_deck():
                     </div>
                     <div id="ankiQuizGroups">
                     {% for quiz in quiz_groups %}
-                    <details class="anki-custom-selection-group anki-custom-quiz-group" id="ankiQuizGroup{{ loop.index }}" style="margin:10px 0;border-radius:11px;">
+                    <details class="anki-custom-selection-group anki-custom-bulk-group anki-custom-quiz-group"
+                             data-anki-selection-name="quiz_cards"
+                             id="ankiQuizGroup{{ loop.index }}"
+                             style="margin:10px 0;border-radius:11px;">
                         <summary class="anki-custom-selection-summary" style="cursor:pointer;padding:12px 14px;font-weight:700;">
                             <span class="anki-custom-quiz-title">{{ quiz.title }}</span>
                             <span class="anki-custom-quiz-summary-meta">
                                 <span>{{ quiz.cards|length }} question{% if quiz.cards|length != 1 %}s{% endif %}</span>
-                                <span class="anki-custom-quiz-selection-count" data-anki-quiz-selection-count>{{ quiz.selected_count }} of {{ quiz.cards|length }} selected</span>
+                                <span class="anki-custom-quiz-selection-count" data-anki-group-selection-count data-anki-quiz-selection-count>{{ quiz.selected_count }} of {{ quiz.cards|length }} selected</span>
                             </span>
                         </summary>
                         <div class="anki-custom-quiz-content" id="ankiQuizQuestions{{ loop.index }}" style="padding:0 14px 12px;">
                             <div class="anki-custom-quiz-bulk-actions" aria-label="Question selection controls for {{ quiz.title }}">
-                                <button type="button" class="anki-custom-quiz-control" data-anki-quiz-select-all aria-controls="ankiQuizQuestions{{ loop.index }}">Select All Questions</button>
-                                <button type="button" class="anki-custom-quiz-control" data-anki-quiz-clear aria-controls="ankiQuizQuestions{{ loop.index }}" {% if quiz.selected_count == 0 %}disabled{% endif %}>Clear Quiz Selection</button>
+                                <button type="button" class="anki-custom-quiz-control" data-anki-group-select-all data-anki-quiz-select-all aria-controls="ankiQuizQuestions{{ loop.index }}">Select All Questions</button>
+                                <button type="button" class="anki-custom-quiz-control" data-anki-group-clear data-anki-quiz-clear aria-controls="ankiQuizQuestions{{ loop.index }}" {% if quiz.selected_count == 0 %}disabled{% endif %}>Clear Quiz Selection</button>
                             </div>
                             {% for card in quiz.cards %}
                             {% set token = "quiz:" ~ quiz.id ~ ":" ~ card.question_id %}
@@ -25634,11 +25657,22 @@ def anki_custom_deck():
                 </div>
 
                 {% if missed_cards %}
-                <details open class="anki-custom-selection-group" style="margin:10px 0;border-radius:11px;">
+                <details open class="anki-custom-selection-group anki-custom-bulk-group anki-custom-performance-group"
+                         data-anki-selection-name="missed_cards"
+                         id="ankiPerformanceGroup"
+                         style="margin:10px 0;border-radius:11px;">
                     <summary class="anki-custom-selection-summary" style="cursor:pointer;padding:12px 14px;font-weight:700;">
-                        Performance History · {{ missed_cards|length }} unique missed questions
+                        <span>Performance History</span>
+                        <span class="anki-custom-quiz-summary-meta">
+                            <span>{{ missed_cards|length }} unique missed question{% if missed_cards|length != 1 %}s{% endif %}</span>
+                            <span class="anki-custom-quiz-selection-count" id="ankiPerformanceSelectionCount" data-anki-group-selection-count>{{ selected_missed_count }} of {{ missed_cards|length }} selected</span>
+                        </span>
                     </summary>
-                    <div style="padding:0 14px 12px;max-height:420px;overflow:auto;">
+                    <div class="anki-custom-quiz-content" id="ankiPerformanceQuestions" style="padding:0 14px 12px;max-height:420px;overflow:auto;">
+                        <div class="anki-custom-quiz-bulk-actions" aria-label="Performance History question selection controls">
+                            <button type="button" class="anki-custom-quiz-control" data-anki-group-select-all aria-controls="ankiPerformanceQuestions">Select All Questions</button>
+                            <button type="button" class="anki-custom-quiz-control" data-anki-group-clear aria-controls="ankiPerformanceQuestions" {% if selected_missed_count == 0 %}disabled{% endif %}>Clear Performance Selection</button>
+                        </div>
                         {% for card in missed_cards %}
                         {% set stable_id = card.question_id if card.question_id is not none else card.question_number %}
                         {% set token = "missed:" ~ card.quiz_id ~ ":" ~ stable_id %}
@@ -25672,12 +25706,39 @@ def anki_custom_deck():
                 </div>
 
                 {% if law_groups %}
+                    <div class="anki-custom-quiz-toolbar">
+                        <label class="anki-custom-quiz-filter" for="ankiLawFilter">
+                            <span>Filter cases</span>
+                            <input type="search"
+                                   id="ankiLawFilter"
+                                   placeholder="Search by case or course"
+                                   autocomplete="off"
+                                   aria-describedby="ankiLawFilterStatus">
+                        </label>
+                        <div class="anki-custom-quiz-toolbar-actions" aria-label="Law Study case accordion controls">
+                            <button type="button" class="anki-custom-quiz-control" id="ankiExpandAllLawCases" aria-controls="ankiLawGroups">Expand All</button>
+                            <button type="button" class="anki-custom-quiz-control" id="ankiCollapseAllLawCases" aria-controls="ankiLawGroups">Collapse All</button>
+                        </div>
+                        <span class="anki-custom-quiz-filter-status" id="ankiLawFilterStatus" aria-live="polite">{{ law_groups|length }} case{% if law_groups|length != 1 %}s{% endif %} shown</span>
+                    </div>
+                    <div id="ankiLawGroups">
                     {% for case in law_groups %}
-                    <details class="anki-custom-selection-group" style="margin:10px 0;border-radius:11px;">
+                    <details class="anki-custom-selection-group anki-custom-bulk-group anki-custom-law-group"
+                             data-anki-selection-name="law_cards"
+                             id="ankiLawGroup{{ loop.index }}"
+                             style="margin:10px 0;border-radius:11px;">
                         <summary class="anki-custom-selection-summary" style="cursor:pointer;padding:12px 14px;font-weight:700;">
-                            {{ case.course }} · {{ case.title }} · {{ case.cards|length }} cards
+                            <span class="anki-custom-law-title">{{ case.course }} · {{ case.title }}</span>
+                            <span class="anki-custom-quiz-summary-meta">
+                                <span>{{ case.cards|length }} card{% if case.cards|length != 1 %}s{% endif %}</span>
+                                <span class="anki-custom-quiz-selection-count" id="ankiLawSelectionCount{{ loop.index }}" data-anki-group-selection-count>{{ case.selected_count }} of {{ case.cards|length }} selected</span>
+                            </span>
                         </summary>
-                        <div style="padding:0 14px 12px;">
+                        <div class="anki-custom-quiz-content" id="ankiLawCards{{ loop.index }}" style="padding:0 14px 12px;">
+                            <div class="anki-custom-quiz-bulk-actions" aria-label="Card selection controls for {{ case.course }} · {{ case.title }}">
+                                <button type="button" class="anki-custom-quiz-control" data-anki-group-select-all aria-controls="ankiLawCards{{ loop.index }}">Select All Cards</button>
+                                <button type="button" class="anki-custom-quiz-control" data-anki-group-clear aria-controls="ankiLawCards{{ loop.index }}" {% if case.selected_count == 0 %}disabled{% endif %}>Clear Case Selection</button>
+                            </div>
                             {% for card in case.cards %}
                             {% set token = "law:" ~ case.id ~ ":" ~ loop.index %}
                             <label class="anki-custom-selection-row" style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;">
@@ -25688,6 +25749,7 @@ def anki_custom_deck():
                         </div>
                     </details>
                     {% endfor %}
+                    </div>
                 {% else %}
                     <div class="anki-empty-message">No recognized Law Study flashcards are currently available.</div>
                 {% endif %}
@@ -25795,38 +25857,50 @@ const ankiQuizFilter = document.getElementById("ankiQuizFilter");
 const ankiQuizFilterStatus = document.getElementById("ankiQuizFilterStatus");
 const ankiExpandAllQuizzes = document.getElementById("ankiExpandAllQuizzes");
 const ankiCollapseAllQuizzes = document.getElementById("ankiCollapseAllQuizzes");
+const ankiLawFilter = document.getElementById("ankiLawFilter");
+const ankiLawFilterStatus = document.getElementById("ankiLawFilterStatus");
+const ankiExpandAllLawCases = document.getElementById("ankiExpandAllLawCases");
+const ankiCollapseAllLawCases = document.getElementById("ankiCollapseAllLawCases");
 const customAnkiCardSelections = customAnkiForm
     ? Array.from(customAnkiForm.querySelectorAll('input[type="checkbox"][name$="_cards"]'))
+    : [];
+const customAnkiSelectionGroups = customAnkiForm
+    ? Array.from(customAnkiForm.querySelectorAll(".anki-custom-bulk-group"))
     : [];
 const customAnkiQuizGroups = customAnkiForm
     ? Array.from(customAnkiForm.querySelectorAll(".anki-custom-quiz-group"))
     : [];
+const customAnkiLawGroups = customAnkiForm
+    ? Array.from(customAnkiForm.querySelectorAll(".anki-custom-law-group"))
+    : [];
 
-function getCustomAnkiQuizSelections(quizGroup) {
-    return Array.from(quizGroup.querySelectorAll('input[type="checkbox"][name="quiz_cards"]'));
+function getCustomAnkiGroupSelections(selectionGroup) {
+    const selectionName = selectionGroup.dataset.ankiSelectionName;
+    return Array.from(selectionGroup.querySelectorAll('input[type="checkbox"]'))
+        .filter(checkbox => checkbox.name === selectionName);
 }
 
-function updateCustomAnkiQuizSelectionCount(quizGroup) {
-    const quizSelections = getCustomAnkiQuizSelections(quizGroup);
-    const selectedCount = quizSelections.filter(checkbox => checkbox.checked).length;
-    const selectionCount = quizGroup.querySelector("[data-anki-quiz-selection-count]");
-    const selectAll = quizGroup.querySelector("[data-anki-quiz-select-all]");
-    const clearSelection = quizGroup.querySelector("[data-anki-quiz-clear]");
+function updateCustomAnkiGroupSelectionCount(selectionGroup) {
+    const groupSelections = getCustomAnkiGroupSelections(selectionGroup);
+    const selectedCount = groupSelections.filter(checkbox => checkbox.checked).length;
+    const selectionCount = selectionGroup.querySelector("[data-anki-group-selection-count]");
+    const selectAll = selectionGroup.querySelector("[data-anki-group-select-all]");
+    const clearSelection = selectionGroup.querySelector("[data-anki-group-clear]");
     if (selectionCount) {
-        selectionCount.textContent = `${selectedCount} of ${quizSelections.length} selected`;
+        selectionCount.textContent = `${selectedCount} of ${groupSelections.length} selected`;
     }
-    if (selectAll) selectAll.disabled = quizSelections.length === 0 || selectedCount === quizSelections.length;
+    if (selectAll) selectAll.disabled = groupSelections.length === 0 || selectedCount === groupSelections.length;
     if (clearSelection) clearSelection.disabled = selectedCount === 0;
 }
 
-function updateCustomAnkiSelectionCount(changedQuizGroup = null) {
+function updateCustomAnkiSelectionCount(changedSelectionGroup = null) {
     const selectedCount = customAnkiCardSelections.filter(checkbox => checkbox.checked).length;
     if (ankiSelectedCount) {
         ankiSelectedCount.textContent = `${selectedCount} card${selectedCount === 1 ? "" : "s"} selected`;
     }
     if (ankiClearSelection) ankiClearSelection.disabled = selectedCount === 0;
-    if (changedQuizGroup) updateCustomAnkiQuizSelectionCount(changedQuizGroup);
-    else customAnkiQuizGroups.forEach(updateCustomAnkiQuizSelectionCount);
+    if (changedSelectionGroup) updateCustomAnkiGroupSelectionCount(changedSelectionGroup);
+    else customAnkiSelectionGroups.forEach(updateCustomAnkiGroupSelectionCount);
 }
 
 function visibleCustomAnkiQuizGroups() {
@@ -25855,19 +25929,19 @@ function updateCustomAnkiQuizFilter() {
 
 customAnkiCardSelections.forEach(checkbox => {
     checkbox.addEventListener("change", () => {
-        updateCustomAnkiSelectionCount(checkbox.closest(".anki-custom-quiz-group"));
+        updateCustomAnkiSelectionCount(checkbox.closest(".anki-custom-bulk-group"));
     });
 });
 
-customAnkiQuizGroups.forEach(quizGroup => {
-    const quizSelections = getCustomAnkiQuizSelections(quizGroup);
-    quizGroup.querySelector("[data-anki-quiz-select-all]")?.addEventListener("click", () => {
-        quizSelections.forEach(checkbox => { checkbox.checked = true; });
-        updateCustomAnkiSelectionCount(quizGroup);
+customAnkiSelectionGroups.forEach(selectionGroup => {
+    const groupSelections = getCustomAnkiGroupSelections(selectionGroup);
+    selectionGroup.querySelector("[data-anki-group-select-all]")?.addEventListener("click", () => {
+        groupSelections.forEach(checkbox => { checkbox.checked = true; });
+        updateCustomAnkiSelectionCount(selectionGroup);
     });
-    quizGroup.querySelector("[data-anki-quiz-clear]")?.addEventListener("click", () => {
-        quizSelections.forEach(checkbox => { checkbox.checked = false; });
-        updateCustomAnkiSelectionCount(quizGroup);
+    selectionGroup.querySelector("[data-anki-group-clear]")?.addEventListener("click", () => {
+        groupSelections.forEach(checkbox => { checkbox.checked = false; });
+        updateCustomAnkiSelectionCount(selectionGroup);
     });
 });
 
@@ -25879,6 +25953,38 @@ ankiCollapseAllQuizzes?.addEventListener("click", () => {
     visibleCustomAnkiQuizGroups().forEach(quizGroup => { quizGroup.open = false; });
 });
 
+function visibleCustomAnkiLawGroups() {
+    return customAnkiLawGroups.filter(lawGroup => !lawGroup.hidden);
+}
+
+function updateCustomAnkiLawFilter() {
+    const query = (ankiLawFilter?.value || "").trim().toLocaleLowerCase();
+    let visibleCount = 0;
+    customAnkiLawGroups.forEach(lawGroup => {
+        const title = lawGroup.querySelector(".anki-custom-law-title")?.textContent || "";
+        const matches = !query || title.toLocaleLowerCase().includes(query);
+        lawGroup.hidden = !matches;
+        if (matches) visibleCount += 1;
+    });
+    if (ankiLawFilterStatus) {
+        const total = customAnkiLawGroups.length;
+        ankiLawFilterStatus.textContent = query
+            ? `${visibleCount} of ${total} cases shown`
+            : `${total} case${total === 1 ? "" : "s"} shown`;
+    }
+    const noVisibleCases = visibleCount === 0;
+    if (ankiExpandAllLawCases) ankiExpandAllLawCases.disabled = noVisibleCases;
+    if (ankiCollapseAllLawCases) ankiCollapseAllLawCases.disabled = noVisibleCases;
+}
+
+ankiLawFilter?.addEventListener("input", updateCustomAnkiLawFilter);
+ankiExpandAllLawCases?.addEventListener("click", () => {
+    visibleCustomAnkiLawGroups().forEach(lawGroup => { lawGroup.open = true; });
+});
+ankiCollapseAllLawCases?.addEventListener("click", () => {
+    visibleCustomAnkiLawGroups().forEach(lawGroup => { lawGroup.open = false; });
+});
+
 if (ankiClearSelection) {
     ankiClearSelection.addEventListener("click", () => {
         customAnkiCardSelections.forEach(checkbox => { checkbox.checked = false; });
@@ -25888,6 +25994,7 @@ if (ankiClearSelection) {
 
 updateCustomAnkiSelectionCount();
 updateCustomAnkiQuizFilter();
+updateCustomAnkiLawFilter();
 
 if (window.location.hash === "#ankiPreview" || {{ "true" if preview_requested else "false" }}) {
     const preview = document.getElementById("ankiPreview");
@@ -25904,8 +26011,9 @@ if (window.location.hash === "#ankiPreview" || {{ "true" if preview_requested el
         preview_requested=preview_requested,
         preview_rows=preview_rows,
         quiz_groups=quiz_groups,
-        missed_cards=sources["missed_cards"],
-        law_groups=sources["law_groups"],
+        missed_cards=missed_cards,
+        selected_missed_count=selected_missed_count,
+        law_groups=law_groups,
         selected_quiz=selected_quiz,
         selected_missed=selected_missed,
         selected_law=selected_law,

@@ -460,8 +460,119 @@ def test_custom_anki_quiz_filter_bulk_and_accordion_state(browser_stack):
     }
 
 
+def test_custom_anki_non_quiz_bulk_selection_and_law_filter_state(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/anki/custom")
+    browser.wait_for(
+        "document.querySelectorAll('#ankiPerformanceGroup [name=missed_cards]').length === 2 && "
+        "document.querySelectorAll('.anki-custom-law-group').length === 2"
+    )
+    law_group = (
+        "title => [...document.querySelectorAll('.anki-custom-law-group')]"
+        ".find(item => item.querySelector('.anki-custom-law-title').textContent.includes(title))"
+    )
+
+    assert browser.evaluate(
+        "(() => { const performance = document.getElementById('ankiPerformanceGroup');"
+        "const control = performance.querySelector('[data-anki-group-select-all]');"
+        "control.focus(); const accessible = control.tagName === 'BUTTON' && "
+        "control.type === 'button' && document.activeElement === control;"
+        "control.click(); return accessible; })()"
+    ) is True
+    assert browser.evaluate(
+        "(() => { const performance = document.getElementById('ankiPerformanceGroup'); return {"
+        "missed: performance.querySelectorAll('[name=missed_cards]:checked').length,"
+        "quiz: document.querySelectorAll('[name=quiz_cards]:checked').length,"
+        "law: document.querySelectorAll('[name=law_cards]:checked').length,"
+        "count: document.getElementById('ankiPerformanceSelectionCount').textContent.trim(),"
+        "globalCount: document.getElementById('ankiSelectedCount').textContent.trim()}; })()"
+    ) == {
+        "missed": 2,
+        "quiz": 0,
+        "law": 0,
+        "count": "2 of 2 selected",
+        "globalCount": "2 cards selected",
+    }
+    assert browser.evaluate(
+        "(() => { const performance = document.getElementById('ankiPerformanceGroup');"
+        "performance.querySelector('summary').click(); return !performance.open && "
+        "performance.querySelectorAll('[name=missed_cards]:checked').length === 2; })()"
+    ) is True
+
+    browser.evaluate(
+        "(() => { const filter = document.getElementById('ankiLawFilter');"
+        "filter.value = 'Palsgraf'; filter.dispatchEvent(new Event('input', {bubbles:true}));"
+        "return true; })()"
+    )
+    assert browser.evaluate(
+        f"(() => {{ const palsgraf = ({law_group})('Palsgraf');"
+        f"const hadley = ({law_group})('Hadley'); return {{"
+        "palsgrafHidden: palsgraf.hidden, palsgrafOpen: palsgraf.open,"
+        "hadleyHidden: hadley.hidden, hadleyOpen: hadley.open,"
+        "status: document.getElementById('ankiLawFilterStatus').textContent.trim()}; })()"
+    ) == {
+        "palsgrafHidden": False,
+        "palsgrafOpen": False,
+        "hadleyHidden": True,
+        "hadleyOpen": False,
+        "status": "1 of 2 cases shown",
+    }
+    browser.click("#ankiExpandAllLawCases")
+    assert browser.evaluate(
+        f"({law_group})('Palsgraf').open && !({law_group})('Hadley').open"
+    ) is True
+    assert browser.evaluate(
+        f"(() => {{ const group = ({law_group})('Palsgraf');"
+        "group.querySelector('[data-anki-group-select-all]').click();"
+        "return group.querySelectorAll('[name=law_cards]:checked').length; })()"
+    ) == 2
+
+    browser.evaluate(
+        "(() => { const filter = document.getElementById('ankiLawFilter');"
+        "filter.value = ''; filter.dispatchEvent(new Event('input', {bubbles:true})); return true; })()"
+    )
+    assert browser.evaluate(
+        f"(() => {{ const hadley = ({law_group})('Hadley'); hadley.open = true;"
+        "hadley.querySelector('[data-anki-group-select-all]').click();"
+        f"const palsgraf = ({law_group})('Palsgraf');"
+        "palsgraf.querySelector('[data-anki-group-clear]').click(); return {"
+        "palsgraf: palsgraf.querySelectorAll('[name=law_cards]:checked').length,"
+        "hadley: hadley.querySelectorAll('[name=law_cards]:checked').length,"
+        "missed: document.querySelectorAll('[name=missed_cards]:checked').length,"
+        "quiz: document.querySelectorAll('[name=quiz_cards]:checked').length,"
+        "palsgrafCount: palsgraf.querySelector('[data-anki-group-selection-count]').textContent.trim(),"
+        "hadleyCount: hadley.querySelector('[data-anki-group-selection-count]').textContent.trim(),"
+        "globalCount: document.getElementById('ankiSelectedCount').textContent.trim()}; })()"
+    ) == {
+        "palsgraf": 0,
+        "hadley": 1,
+        "missed": 2,
+        "quiz": 0,
+        "palsgrafCount": "0 of 2 selected",
+        "hadleyCount": "1 of 1 selected",
+        "globalCount": "3 cards selected",
+    }
+
+    browser.evaluate(
+        "document.querySelector('#ankiPerformanceGroup [data-anki-group-clear]').click(); true"
+    )
+    browser.click("#ankiCollapseAllLawCases")
+    assert browser.evaluate(
+        f"(() => {{ const hadley = ({law_group})('Hadley'); return !hadley.open && "
+        "hadley.querySelectorAll('[name=law_cards]:checked').length === 1 && "
+        "document.querySelectorAll('[name=missed_cards]:checked').length === 0 && "
+        "document.getElementById('ankiPerformanceSelectionCount').textContent.trim() === "
+        "'0 of 2 selected' && "
+        "document.getElementById('ankiSelectedCount').textContent.trim() === '1 card selected'; })()"
+    ) is True
+
+
 def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser = browser_stack.browser
+    attempts_before = _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM attempts",
+    )
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
@@ -492,7 +603,7 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     _wait_for_database_value(
         browser_stack.data_root / "results.db",
         "SELECT COUNT(*) FROM attempts",
-        1,
+        attempts_before + 1,
     )
 
     browser.click("#result button[onclick*='/history']")
