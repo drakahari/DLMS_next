@@ -2202,13 +2202,33 @@ a.settings-hub-card {
     transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease;
 }
 
-a.settings-hub-card:hover {
-    color: var(--page-text);
+a.settings-hub-card:hover,
+a.settings-hub-card:focus-visible {
+    color: var(--theme-page-text, #eaf2ff);
     text-decoration: none;
     transform: translateY(-3px);
-    border-color: rgba(72, 164, 255, 0.55);
-    background: linear-gradient(180deg, rgba(8,25,54,0.94), rgba(7,21,44,0.84));
-    box-shadow: 0 14px 34px rgba(0,0,0,0.42), 0 0 22px rgba(27,159,242,0.09);
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 58%, var(--theme-border, rgba(86,158,255,.35)));
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-1, rgba(6,20,45,.82))),
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-2, rgba(5,17,38,.74)))
+    );
+    box-shadow:
+        0 14px 34px var(--theme-shadow, rgba(0,0,0,.42)),
+        0 0 22px color-mix(in srgb, var(--theme-accent, #1b9ff2) 10%, transparent);
+}
+
+a.settings-hub-card:active {
+    color: var(--theme-page-text, #eaf2ff);
+    text-decoration: none;
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 68%, var(--theme-border, rgba(86,158,255,.35)));
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 13%, var(--theme-panel-1, rgba(6,20,45,.82))),
+        color-mix(in srgb, var(--theme-accent, #1b9ff2) 13%, var(--theme-panel-2, rgba(5,17,38,.74)))
+    );
+    box-shadow: 0 8px 20px var(--theme-shadow, rgba(0,0,0,.42));
 }
 
 .settings-hub-card.is-coming {
@@ -2230,6 +2250,18 @@ a.settings-hub-card:hover {
     background: rgba(25, 60, 100, .42);
 }
 
+.settings-hub-icon {
+    transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+
+a.settings-hub-card:hover .settings-hub-icon,
+a.settings-hub-card:focus-visible .settings-hub-icon,
+a.settings-hub-card:active .settings-hub-icon {
+    color: var(--theme-accent-text, #78bfff);
+    border-color: color-mix(in srgb, var(--theme-accent, #1b9ff2) 38%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 12%, var(--theme-surface, rgba(5,18,39,.58)));
+}
+
 .settings-hub-copy h2 {
     margin: 3px 0 7px;
     font-size: 21px;
@@ -2237,13 +2269,13 @@ a.settings-hub-card:hover {
 
 .settings-hub-copy p {
     margin: 0;
-    color: #bdc9d9;
+    color: var(--theme-muted-text, #b8c2cc);
     line-height: 1.45;
     font-size: 14px;
 }
 
 .settings-card-kicker {
-    color: #64baff;
+    color: var(--theme-accent-text, #78bfff);
     font-size: 10px;
     font-weight: 800;
     letter-spacing: 1.1px;
@@ -2254,7 +2286,7 @@ a.settings-hub-card:hover {
 }
 
 .settings-hub-arrow {
-    color: #8fcfff;
+    color: var(--theme-accent-text, #78bfff);
     font-size: 32px;
     line-height: 1;
 }

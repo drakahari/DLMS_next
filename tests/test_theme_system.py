@@ -637,6 +637,92 @@ class ThemeSystemTests(unittest.TestCase):
                 ratio = self._contrast(variables["theme-accent-text"], panel)
                 self.assertGreaterEqual(ratio, 4.5, f"{theme} focus ring is only {ratio:.2f}:1")
 
+    def test_settings_hub_interaction_states_use_semantic_theme_tokens(self):
+        css = self._style_css()
+        expected = {
+            "a.settings-hub-card:hover": (
+                "--theme-page-text", "--theme-accent", "--theme-border",
+                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "8%",
+            ),
+            "a.settings-hub-card:focus-visible": (
+                "--theme-page-text", "--theme-accent", "--theme-border",
+                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "8%",
+            ),
+            "a.settings-hub-card:active": (
+                "--theme-page-text", "--theme-accent", "--theme-border",
+                "--theme-panel-1", "--theme-panel-2", "--theme-shadow", "13%",
+            ),
+            "a.settings-hub-card:hover .settings-hub-icon": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface",
+                "--theme-border-soft", "12%",
+            ),
+            "a.settings-hub-card:focus-visible .settings-hub-icon": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface",
+                "--theme-border-soft", "12%",
+            ),
+            "a.settings-hub-card:active .settings-hub-icon": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface",
+                "--theme-border-soft", "12%",
+            ),
+            ".settings-hub-copy p": ("--theme-muted-text",),
+            ".settings-card-kicker": ("--theme-accent-text",),
+            ".settings-hub-arrow": ("--theme-accent-text",),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing Settings state rule for {selector}")
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must resolve through semantic theme tokens {tokens}",
+                )
+
+        hover = self._rule_blocks(css, "a.settings-hub-card:hover")
+        self.assertFalse(any("rgba(8,25,54" in block for block in hover))
+        self.assertFalse(any("rgba(7,21,44" in block for block in hover))
+
+    def test_settings_hub_state_contrast_across_all_four_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                accent = self._rgba(variables["theme-accent"])[:3]
+                surface = self._composite(variables["theme-surface"], panel)
+                icon_background = tuple(
+                    accent[index] * .12 + surface[index] * .88
+                    for index in range(3)
+                )
+                icon_ratio = self._contrast(
+                    variables["theme-accent-text"], icon_background,
+                )
+                self.assertGreaterEqual(
+                    icon_ratio, 4.5,
+                    f"{theme} Settings interaction icon is only {icon_ratio:.2f}:1",
+                )
+
+                for state, accent_share in (("hover/focus", .08), ("active", .13)):
+                    state_background = tuple(
+                        accent[index] * accent_share + panel[index] * (1 - accent_share)
+                        for index in range(3)
+                    )
+                    for role, token in (
+                        ("text", "theme-page-text"),
+                        ("description", "theme-muted-text"),
+                        ("heading", "theme-heading"),
+                        ("status/chevron", "theme-accent-text"),
+                    ):
+                        ratio = self._contrast(variables[token], state_background)
+                        self.assertGreaterEqual(
+                            ratio, 4.5,
+                            f"{theme} Settings {state} {role} is only {ratio:.2f}:1",
+                        )
+
     def test_learning_controls_and_secondary_text_use_semantic_theme_tokens(self):
         css = self._style_css()
         expected = {

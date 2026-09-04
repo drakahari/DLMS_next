@@ -431,3 +431,91 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     assert browser.evaluate("document.title") == original_title
     assert browser.evaluate("quiz[0].question") == original_question
+
+
+def test_settings_hub_interaction_states_follow_each_theme(browser_stack):
+    browser = browser_stack.browser
+    selector = ".settings-hub-card[href='/settings/ai']"
+    encoded_selector = json.dumps(selector)
+
+    def move_pointer(x, y, button_down=False):
+        actions = [{
+            "type": "pointerMove", "x": round(x), "y": round(y),
+            "duration": 0, "origin": "viewport",
+        }]
+        if button_down:
+            actions.append({"type": "pointerDown", "button": 0})
+        browser.command("input.performActions", {
+            "context": browser.context,
+            "actions": [{
+                "type": "pointer", "id": "settings-hover-mouse",
+                "parameters": {"pointerType": "mouse"}, "actions": actions,
+            }],
+        })
+
+    def snapshot():
+        return browser.evaluate(
+            "(() => {"
+            f"const card = document.querySelector({encoded_selector});"
+            "const resolve = name => { const probe = document.createElement('span');"
+            "probe.style.color = `var(${name})`; document.body.appendChild(probe);"
+            "const result = getComputedStyle(probe).color; probe.remove(); return result; };"
+            "const style = getComputedStyle(card);"
+            "return {"
+            "background: style.backgroundImage, color: style.color,"
+            "heading: getComputedStyle(card.querySelector('h2')).color,"
+            "description: getComputedStyle(card.querySelector('p')).color,"
+            "kicker: getComputedStyle(card.querySelector('.settings-card-kicker')).color,"
+            "icon: getComputedStyle(card.querySelector('.settings-hub-icon')).color,"
+            "arrow: getComputedStyle(card.querySelector('.settings-hub-arrow')).color,"
+            "transform: style.transform,"
+            "pageText: resolve('--theme-page-text'), muted: resolve('--theme-muted-text'),"
+            "headingToken: resolve('--theme-heading'), accentText: resolve('--theme-accent-text'),"
+            "}; })()"
+        )
+
+    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken && document.getElementById('dlmsQuickTheme')")
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+        browser.navigate(f"{browser_stack.base_url}/settings?theme={theme}")
+        browser.wait_for(f"document.querySelector({encoded_selector}) !== null")
+        browser.set_viewport(1280, 900)
+        move_pointer(1, 1)
+        normal = snapshot()
+
+        coordinates = json.loads(browser.evaluate(
+            f"(() => {{ const rect = document.querySelector({encoded_selector}).getBoundingClientRect();"
+            "return JSON.stringify({x:rect.left+rect.width/2,y:rect.top+rect.height/2}); })()"
+        ))
+        move_pointer(coordinates["x"], coordinates["y"])
+        browser.wait_for(f"document.querySelector({encoded_selector}).matches(':hover')")
+        browser.wait_for(
+            f"getComputedStyle(document.querySelector({encoded_selector} + ' .settings-hub-icon')).color === "
+            f"getComputedStyle(document.querySelector({encoded_selector} + ' .settings-hub-arrow')).color"
+        )
+        hovered = snapshot()
+        assert hovered["background"] != normal["background"]
+        assert "rgb(8, 25, 54)" not in hovered["background"]
+        assert hovered["color"] == hovered["pageText"]
+        assert hovered["heading"] == hovered["headingToken"]
+        assert hovered["description"] == hovered["muted"]
+        assert hovered["kicker"] == hovered["accentText"]
+        assert hovered["icon"] == hovered["accentText"]
+        assert hovered["arrow"] == hovered["accentText"]
+        assert hovered["transform"] != "none"
+
+        move_pointer(coordinates["x"], coordinates["y"], button_down=True)
+        browser.wait_for(f"document.querySelector({encoded_selector}).matches(':active')")
+        pressed = snapshot()
+        try:
+            assert pressed["background"] != hovered["background"]
+            assert pressed["color"] == pressed["pageText"]
+            assert pressed["description"] == pressed["muted"]
+            assert pressed["icon"] == pressed["accentText"]
+        finally:
+            browser.command("input.releaseActions", {"context": browser.context})
