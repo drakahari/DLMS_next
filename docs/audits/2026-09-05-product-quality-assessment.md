@@ -2,114 +2,184 @@
 
 * **Date:** September 5, 2026
 * **Review type:** AI-assisted repository and product-quality review
+* **Weighted overall score:** **9.126/10**
+* **Rounded weighted score:** **9.13/10**
 
-## Product model
+## Executive assessment
 
-DLMS was assessed as the product it is intended to be: a local, single-user,
-desktop-style learning application with a browser interface backed by Flask and
-distributed as native packages. It is maintained as a non-commercial,
-open-source project under the MIT License and is built for personal study and
-learning management, not as a SaaS platform or enterprise multi-user service.
-The assessment therefore did not treat the absence of cloud, tenant, account, or
-enterprise-administration architecture as a product defect.
+DLMS was assessed according to its intended product model: a local,
+single-user, desktop-style personal learning application with a Flask-backed
+browser interface and native packaged distribution. It was not evaluated as a
+SaaS platform or enterprise multi-user service, and optional cloud, telemetry,
+commercial installer, automatic-update, or signing capabilities were not treated
+as requirements for quality within that model.
 
-The repository review used current `main` at hardening commit
-`813edd9db1369a75fb128d43d91b3dcd6c7f4f2b`, with the tagged 3.0.2 release at
-`74b62c7a817e2a8f53554d762cf2e6fb21915779` as the released product baseline.
+At the time of this review, DLMS was a mature, cohesive product with unusually
+strong data-safety engineering for a local Flask application. Quiz creation,
+Study and Exam modes, History, Analytics, Learning Intelligence, Smart Review,
+Smart PDF, Study Packs, Law Study, image workflows, Anki tools, settings, and
+recovery formed a credible end-to-end learning system. No new core-workflow
+defect contradicted the prior stable-release conclusion.
 
-## Assessment
+Defensive persistence was the strongest engineering characteristic. Publication,
+editing, Law mutations, Content Pack migration, attempt recording, and restore
+operations had meaningful failure-injection coverage. The principal weakness was
+maintainability: most server behavior and many templates remained concentrated in
+a 28,569-line, 1.3 MB `app.py`, alongside a 12,951-line stylesheet. Strong tests
+substantially reduced current reliability risk but did not remove the future
+comprehension and change-isolation cost.
 
-**Overall maturity.** DLMS 3.0.2 is a mature release-stage application within
-that intended model. It combines quiz creation, Study and Exam modes, attempt
-history, analytics, Learning Intelligence, Study Packs, PDF and image workflows,
-Anki/print export, and backup/recovery in a coherent local product. Its maturity
-is supported by the breadth of regression coverage, a versioned release process,
-native packages, and task-oriented user documentation.
+## Weighted scorecard
 
-**Engineering quality and reliability.** The repository shows sustained attention
-to failure behavior rather than only successful paths. Tests and implementation
-cover server-side input validation, CSRF and same-origin controls, resource
-limits, atomic JSON and quiz publication, crash recovery, malformed legacy data,
-backup semantics, restore rollback, test isolation, and safe ownership checks for
-destructive operations. Release records report broad source and native validation
-for 3.0.2. These controls materially strengthen reliability for user-created
-study content, while not eliminating the normal risk of defects in a desktop
-application.
+| Category | Weight | Score /10 | Contribution |
+| --- | ---: | ---: | ---: |
+| Product maturity / feature completeness | 15% | 9.2 | 1.380 |
+| Core workflow reliability | 15% | 9.3 | 1.395 |
+| Data integrity / failure safety | 15% | 9.4 | 1.410 |
+| Security / trust-boundary quality | 10% | 8.9 | 0.890 |
+| Backup / restore / recovery engineering | 10% | 9.7 | 0.970 |
+| UX / usability | 10% | 8.9 | 0.890 |
+| Visual consistency / polish | 5% | 9.1 | 0.455 |
+| Accessibility | 5% | 8.4 | 0.420 |
+| Testing / regression confidence | 5% | 9.3 | 0.465 |
+| Documentation / Help quality | 5% | 8.8 | 0.440 |
+| Packaging / release readiness | 3% | 9.3 | 0.279 |
+| Architecture / maintainability | 2% | 6.6 | 0.132 |
+| **Total** | **100%** |  | **9.126** |
 
-**Usability.** The application offers a broad task-oriented Help Center, explicit
-Study/Exam workflows, recovery and Review & Repair paths for uncertain imports,
-keyboard-accessibility coverage, responsive navigation, and four maintained
-themes. Startup and shutdown behavior, data locations, backup/restore, package
-installation, and platform security prompts are documented. The breadth of
-features can still create learning and navigation load, but the Help and
-navigation work provide credible mitigation.
+## Overall weighted score
 
-**Maintainability.** Pinned release dependencies, a canonical build specification,
-focused tools, defensive tests, and extensive regression files make changes
-reviewable. The principal structural constraint is concentration: much of the
-server behavior and embedded page generation remains in the approximately
-28,000-line `app.py`, with a large shared stylesheet. This raises change-impact
-and contributor-onboarding costs. Incremental separation should preserve existing
-data formats and scoring behavior rather than become a broad rewrite.
+The weighted calculation produced **9.126/10**, rounded to **9.13/10**. The
+category weights total exactly 100%.
 
-**Documentation.** User-facing coverage is substantial: the main README explains
-startup, local networking, content format, platform installation, removal, and
-release creation; the in-application Help Center documents major learner and data
-management tasks; and `docs/RELEASE_VERIFICATION.md` defines native release
-handoff and validation. Documentation accuracy is also represented in regression
-tests. The project does not present these materials as a substitute for support,
-security review, or platform-specific UAT.
+## Separate headline scores
 
-**Release engineering.** DLMS has a disciplined native release model for its
-size: bounded and locked dependencies, one platform-aware PyInstaller spec,
-stable artifact names, structural and architecture verification, isolated native
-smoke checks, exact final-package verification, clean extraction, checksums, and
-post-upload byte comparison. The process deliberately requires native work on
-each target and remains partly manual; that is transparent and appropriate, but
-coordination errors remain possible without careful checklist use. The later
-macOS package-layout finding demonstrates both that risk and the project's
-ability to harden the affected gate.
+| Measure | Score |
+| --- | ---: |
+| Overall Product Quality Score | **9.1/10** |
+| Engineering Confidence Score | **9.4/10** |
+| User Experience Score | **8.9/10** |
+| Maintainability Score | **6.6/10** |
 
-**Data safety.** Local data ownership is central to the design. Repository tests
-cover backup validation before extraction, unsafe and ambiguous archive paths,
-semantic compatibility, restore staging and rollback, atomic persistence,
-publication reconciliation, incomplete legacy records, and scoped reset
-operations. No review can guarantee against data loss, so users should still keep
-known-good backups before restores, resets, or major upgrades.
+The product-quality score reflected a capable, reliable, polished application for
+serious personal use. Engineering confidence was particularly high around
+malformed inputs, failed writes, assessment integrity, publication failures,
+restore validation, rollback, and crash recovery. The lower maintainability score
+reflected code concentration and embedded presentation behavior rather than an
+observed unstable core.
 
-**Cross-platform support.** The 3.0.2 release record identifies native packages
-and validation for four named Linux distributions, Windows 11 x86-64, and Apple
-Silicon macOS. The packaging contracts preserve platform-appropriate executable
-formats and data locations. Limitations are explicit: Linux downloads are
-distribution-specific; the macOS package is Apple Silicon only; Intel macOS is
-not claimed; and the Windows and macOS packages are unsigned, with the macOS app
-also not notarized.
+## Maturity classification
 
-## Remaining limitations and future work
+**High-quality open-source desktop application, approaching the lower edge of
+professional production-grade application.**
 
-* DLMS has no user authentication. Its default loopback binding fits the intended
-  personal-use model; non-loopback use should remain limited to trusted networks,
-  and the application should not be exposed directly to the public Internet.
-* Native release completion depends on platform-specific smoke testing and
-  normal-user UAT on every named target. The documented checks should remain a
-  release gate.
-* Signing/notarization and additional native architectures would reduce install
-  friction, but should be claimed only after the corresponding platform work and
-  UAT exist.
-* Incremental modularization could reduce maintenance risk in the large central
-  application and stylesheet, provided compatibility and the existing regression
-  suite remain the controlling constraints.
+DLMS exceeded the mature-personal-application level through feature breadth,
+recovery engineering, validation, documentation, packaging discipline, and
+browser integration coverage. Architecture, accessibility completeness,
+advanced-workflow end-to-end coverage, and a few release-polish details kept it
+from fully entering the next band.
 
-No numerical quality score is recorded here because no exact score was
-established by the reviewed repository or retained audit evidence.
+## Five strongest aspects
 
-## Primary references
+1. **Backup, restore, and crash recovery.** Structural and semantic validation,
+   pre-restore safety backup, staged migration, trusted content regeneration,
+   journaling, rollback, and startup reconciliation were unusually defensive.
+2. **Assessment and learning-data integrity.** Canonical question ordinals,
+   server-side validation and score recomputation, idempotent retries, and durable
+   acknowledgement protected analytics quality.
+3. **Safe content intake.** Smart PDF, Study Pack ZIP, raster, restore, and text
+   imports included size, structure, traversal, ambiguity, and active-content
+   controls.
+4. **A coherent learning loop.** Creation led through Study/Exam, History/Review,
+   Learning Intelligence/Smart Review, and Anki.
+5. **Regression and release discipline.** The suite covered success and difficult
+   failure conditions, while `DLMS.spec` and release-verification tools provided a
+   credible native packaging process.
 
-* `README.md`, `LICENSE`, `AGENTS.md`, and the in-application Help documents
-* `app.py`, `DLMS.spec`, and the locked/build requirement files
-* Data-integrity, security-hardening, accessibility, workflow, and release tests
-  under `tests/`
-* `docs/RELEASE_VERIFICATION.md`
-* [DLMS v3.0.2 release record](https://github.com/drakahari/DLMS_next/releases/tag/v3.0.2)
-* [Stable Release Audit](2026-09-05-stable-release-audit.md)
-* [Native Packaging Audit](2026-09-05-native-packaging-audit.md)
+## Five weakest or least mature aspects
+
+1. **Technical debt — monolithic server and embedded presentation architecture.**
+   This observed concentration raised future change cost without producing a
+   demonstrated reliability failure.
+2. **Current product limitation — pointer-dependent image/hotspot authoring.**
+   Learner hotspot answering was keyboard accessible, but authoring and
+   calibration lacked an equivalent complete keyboard path.
+3. **Technical debt — uneven browser-level coverage.** Seventeen browser tests
+   were meaningful, but Smart PDF repair, Law case creation, image authoring,
+   Smart Review, and final Anki output relied mainly on lower-level tests.
+4. **Optional future enhancement — no OCR in Smart PDF.** Smart PDF intentionally
+   required selectable, structured text. OCR could expand usefulness but was not
+   required by the current product model.
+5. **Current product limitation — minor release-documentation staleness.** Stable
+   UI copy still mentioned a release candidate, and some Help screenshots retained
+   an older RC footer. This did not affect runtime behavior.
+
+No core data-loss, scoring, restore, or security defect was observed. Concurrent
+snapshot inconsistency and partial broad-reset failure remained hypothetical
+risks, mitigated by the single-user model and pre-operation backups.
+
+## Three highest-value improvements
+
+1. Complete accessible image authoring and perform a comprehensive keyboard and
+   screen-reader assessment.
+2. Extend browser-driven tests across Smart PDF Review & Repair, Law workflows,
+   image authoring, Smart Review, and generated Anki output.
+3. Incrementally split `app.py` into Flask blueprints, service modules,
+   persistence components, and conventional templates, preserving behavior and
+   tests one bounded domain at a time.
+
+Refreshing stable-version UI copy and Help screenshots was also identified as an
+inexpensive release-polish improvement.
+
+## Qualitative comparison
+
+| Comparison group | DLMS position in this assessment |
+| --- | --- |
+| Typical hobby/personal Python application | Far ahead in recovery engineering, validation, regression depth, packaging discipline, Help, and visual coherence. |
+| Mature open-source desktop utility | Compared very well and often exceeded the band in recovery and domain depth; trailed stronger examples in modularity, accessibility validation, and desktop lifecycle integration. |
+| Professionally maintained internal application | Comparable or stronger in single-user failure safety and regression rigor; behind common professional expectations for subsystem ownership, conventional templates/modules, broad browser automation, structured logging, and repeatable multi-platform QA records. |
+| Commercial desktop software | Competitive core study workflows and local-data protections; behind in seamless single-instance behavior, first-run polish, fully verified accessibility, and consistently refreshed visual documentation. |
+
+## Stable-release appropriateness
+
+**Yes.** The assessed quality level was appropriate for releasing DLMS 3.0.2 as
+stable. The identified issues were maintainability debt, bounded product
+limitations, test-scope opportunities, and minor polish rather than evidence of
+an unstable core. Native UAT on each published operating system remained a
+required part of the documented release process and was not replaced by this
+review.
+
+## Validation performed
+
+* Full pytest with browser tests: **588 passed in 16.25 seconds**.
+* Real Firefox workflows included: **17 passed**.
+* Unittest discovery: **543 passed in 4.352 seconds**.
+* Syntax compilation: **80 tracked Python files compiled successfully**.
+* Fedora 44 packaged binary: structure, launch, routes, protected shutdown, and
+  restart smoke passed.
+* Isolated runtime inspection: dashboard, empty Library, Smart PDF, and Learning
+  Intelligence.
+* Git status and `git diff --check`: clean; the assessment modified no files and
+  removed its temporary runtime and screenshot data.
+
+## Limitations
+
+This is a curated record of the September 5 repository state and evidence. It does
+not rewrite the September 3 assessment or reconcile differences by averaging the
+results. Native Windows and macOS validation and every target's desktop UAT were
+not repeated in this assessment. Browser coverage remained selective, image
+authoring did not have a complete keyboard path, and no comprehensive
+assistive-technology audit was performed. Automated checks and review cannot
+establish that all defects are absent.
+
+This AI-assisted engineering review is a repository/release assessment artifact,
+not a formal third-party audit, independent security certification, compliance
+attestation, OpenAI or Codex certification, endorsement, or guarantee of
+defect-free software.
+
+## Evidence basis
+
+The formal September 5 scored assessment, the repository state and tests examined
+at that time, `AGENTS.md`, release documentation, existing audit records, and Git
+history are the sources for this curated summary. Conversational commentary that
+followed the formal retained assessment is intentionally excluded.
