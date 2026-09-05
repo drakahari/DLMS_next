@@ -134,6 +134,13 @@ class BackupValidationTests(unittest.TestCase):
                 archive.writestr("DLMS_DATA/config/./item.json", "{}")
         self._assert_rejected_before_testzip(path, "duplicate path")
 
+    def test_case_colliding_data_roots_are_rejected_before_extraction(self):
+        path = self._write_backup([
+            ("DLMS_DATA/config/portal.json", b"{}"),
+            ("DLMS_DATA/CONFIG/law.json", b"{}"),
+        ])
+        self._assert_rejected_before_testzip(path, "case-colliding top-level roots")
+
     def test_corrupted_crc_is_rejected_after_metadata_validation(self):
         path = self._write_backup(
             [("DLMS_DATA/config/portal.json", b"unique-crc-payload")],

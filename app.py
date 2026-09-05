@@ -3891,13 +3891,16 @@ def _backup_summary():
         summary["quizzes"] = len(load_registry())
     except Exception:
         pass
+    conn = None
     try:
         conn = sqlite3.connect(DB_PATH)
         row = conn.execute("SELECT COUNT(*) FROM attempts").fetchone()
         summary["attempts"] = int(row[0] or 0) if row else 0
-        conn.close()
     except Exception:
         pass
+    finally:
+        if conn is not None:
+            conn.close()
     try:
         summary["content_packs"] = sum(1 for name in os.listdir(CONTENT_PACK_FOLDER) if os.path.isdir(os.path.join(CONTENT_PACK_FOLDER, name)))
     except Exception:
@@ -3999,6 +4002,7 @@ def _validate_dlms_backup(zip_path):
     file_count = 0
     seen = set()
     data_members = []
+    data_roots = {}
 
     with zipfile.ZipFile(zip_path, "r") as archive:
         manifest_member = None
@@ -4019,6 +4023,17 @@ def _validate_dlms_backup(zip_path):
                 raise ValueError(f"Backup contains a symbolic link: {normalized}")
             if unix_type not in {0, 0o040000, 0o100000}:
                 raise ValueError(f"Backup contains an unsupported special file: {normalized}")
+            if normalized.startswith(DLMS_BACKUP_DATA_PREFIX):
+                rel = normalized[len(DLMS_BACKUP_DATA_PREFIX):]
+                if rel:
+                    root = rel.split("/", 1)[0]
+                    root_key = root.casefold()
+                    previous = data_roots.setdefault(root_key, root)
+                    if previous != root:
+                        raise ValueError(
+                            "Backup contains case-colliding top-level roots: "
+                            f"{previous} and {root}"
+                        )
             if info.is_dir():
                 continue
 

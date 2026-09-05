@@ -148,12 +148,21 @@ class BackupSemanticValidationTests(unittest.TestCase):
             )
 
     def test_case_colliding_staged_roots_are_rejected(self):
-        (self.root / "config").mkdir()
-        (self.root / "CONFIG").mkdir()
-        with self.assertRaisesRegex(ValueError, "case-colliding top-level roots"):
-            dlms._validate_backup_manifest_semantics(
-                self._manifest(included_roots=["config"]), self.root
-            )
+        with mock.patch.object(dlms.os, "listdir", return_value=["config", "CONFIG"]):
+            with self.assertRaisesRegex(ValueError, "case-colliding top-level roots"):
+                dlms._validate_backup_manifest_semantics(
+                    self._manifest(included_roots=["config"]), self.root
+                )
+
+    def test_backup_summary_closes_database_when_summary_query_fails(self):
+        connection = mock.MagicMock()
+        connection.execute.side_effect = sqlite3.OperationalError("missing attempts table")
+
+        with mock.patch.object(dlms.sqlite3, "connect", return_value=connection):
+            summary = dlms._backup_summary()
+
+        self.assertEqual(0, summary["attempts"])
+        connection.close.assert_called_once_with()
 
     def test_complete_staged_backup_passes_and_requires_results_database(self):
         config = self.root / "config"
