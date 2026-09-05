@@ -4,9 +4,10 @@
 
 👉 Download packaged releases from the [Releases page](../../releases).
 
-DLMS is a self-hosted quiz and learning application designed for study, practice,
-and exam preparation. It supports both **Study Mode** and **Exam Mode**, detailed
-attempt history, confidence analysis, and Anki export for long-term retention.
+DLMS is a local-first learning, quiz, study, analytics, and content-import
+application designed for study, practice, and exam preparation. It supports both
+**Study Mode** and **Exam Mode**, detailed attempt history, confidence analysis,
+and Anki export for long-term retention.
 
 ## Why DLMS Exists
 
@@ -22,7 +23,7 @@ system as a local web application, DLMS prioritizes privacy, reliability, and
 portability.
 
 For users who prefer deeper system integration, DLMS can also be enabled as a
-systemd service (this is what I do).
+systemd service.
 
 The project emphasizes learning effectiveness, not just assessment. Features like
 Study Mode, confidence analysis, Learning Intelligence, attempt history, and Anki
@@ -73,7 +74,9 @@ the next time you want to use it.
 * Attempt History, Analytics, and Learning Intelligence review planning
 * Confidence analysis (optional)
 * Anki export and printable physical flashcards
-* Backups, restore validation, and configurable themes/navigation
+* Backups, restore validation, and configurable navigation
+* Purple & Gold, Light, Dark, and Maroon & Gold themes; Purple & Gold is the
+  default for new installations
 
 ---
 
@@ -111,10 +114,21 @@ for long-term retention.
 
 ## 🖥️ Running DLMS
 
-### From a packaged release (recommended)
+### From the packaged releases (recommended)
 
-On Windows or Linux, download and extract the matching release package, run the
-DLMS executable inside it, and allow it to open the browser. You can also open
+Each release package contains the platform-specific application, `README.txt`,
+and `sample_quiz.txt`. Supported builds are:
+
+* Fedora 44 x86-64
+* Ubuntu 24.04 x86-64
+* Ubuntu 26.04 x86-64
+* Windows 11 x86-64
+* macOS Apple Silicon (`arm64`)
+* Omarchy Quattro x86-64
+
+Linux packages are distribution-specific; download the build matching the named
+distribution. On Windows or Linux, extract the package, run the DLMS executable
+inside it, and allow it to open the browser. You can also open
 **[http://127.0.0.1:9001/](http://127.0.0.1:9001/)** yourself after DLMS starts.
 
 #### macOS on Apple Silicon
