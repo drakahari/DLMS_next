@@ -16,6 +16,7 @@ import platform
 import plistlib
 import re
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -183,6 +184,19 @@ def _linux_machine(path: Path) -> int | None:
     return struct.unpack(f"{byte_order}H", header[18:20])[0] if byte_order else None
 
 
+def _host_posix_executable(
+    path: Path,
+    *,
+    host_system: str | None = None,
+) -> bool | None:
+    """Return the POSIX execute-bit state, or None on a non-POSIX host."""
+    system = platform.system() if host_system is None else host_system
+    if system not in {"Linux", "Darwin"}:
+        return None
+    execute_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    return bool(path.stat().st_mode & execute_bits)
+
+
 def _macos_cpu_types(binary: bytes) -> set[int]:
     if len(binary) < 8:
         return set()
@@ -274,7 +288,7 @@ def verify_artifact(artifact: Path, target: str, version: str) -> list[str]:
     elif target == "linux-x86_64":
         if _linux_machine(artifact) != 62:
             errors.append("Linux artifact is not an x86_64 ELF executable")
-        elif not os.access(artifact, os.X_OK):
+        elif _host_posix_executable(artifact) is False:
             errors.append("Linux artifact is not marked executable")
     else:
         errors.extend(_verify_macos_zip(artifact, target, version))
@@ -418,7 +432,7 @@ def _extract_macos_bundle_for_smoke(artifact: Path, extraction_root: Path) -> Pa
         suffix = f": {detail[-1200:]}" if detail else ""
         raise RuntimeError(f"macOS ditto extraction failed (exit code {result.returncode}){suffix}")
     executable = extraction_root / "DLMS.app" / "Contents" / "MacOS" / "DLMS"
-    if not executable.is_file() or not os.access(executable, os.X_OK):
+    if not executable.is_file() or _host_posix_executable(executable) is False:
         raise RuntimeError("macOS ditto extraction did not produce an executable DLMS.app bundle")
     return executable
 

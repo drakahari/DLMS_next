@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import os
 import plistlib
+import stat
 import struct
 import subprocess
 import sys
@@ -203,18 +204,10 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         for name in ("PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE", "__PYVENV_LAUNCHER__", "VIRTUAL_ENV"):
             self.assertNotIn(name, environment)
 
-    def test_linux_environment_names_require_executable_x86_64_elf(self):
+    def test_linux_environment_names_are_portably_verified_as_x86_64_elf(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-fedora44-x86_64"
-            _write_elf(artifact)
-            artifact.chmod(0o644)
-
-            blocked = self._run("linux-x86_64", str(artifact), "--source-root", str(root))
-            self.assertEqual(blocked.returncode, 1)
-            self.assertIn("not marked executable", blocked.stderr)
-
             for suffix in (
                 "fedora44-x86_64",
                 "ubuntu24.04-x86_64",
@@ -227,6 +220,102 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
                     artifact.chmod(0o755)
                     passed = self._run("linux-x86_64", str(artifact), "--source-root", str(root))
                     self.assertEqual(passed.returncode, 0, passed.stderr)
+
+    def test_posix_execute_bit_contract_is_host_specific(self):
+        non_executable = mock.Mock()
+        non_executable.stat.return_value.st_mode = stat.S_IFREG | 0o644
+        executable = mock.Mock()
+        executable.stat.return_value.st_mode = stat.S_IFREG | 0o755
+
+        self.assertFalse(
+            VERIFIER._host_posix_executable(
+                non_executable, host_system="Linux"
+            )
+        )
+        self.assertTrue(
+            VERIFIER._host_posix_executable(
+                executable, host_system="Linux"
+            )
+        )
+        self.assertIsNone(
+            VERIFIER._host_posix_executable(
+                non_executable, host_system="Windows"
+            )
+        )
+        self.assertFalse(
+            VERIFIER._host_posix_executable(
+                non_executable, host_system="Darwin"
+            )
+        )
+        self.assertTrue(
+            VERIFIER._host_posix_executable(
+                executable, host_system="Darwin"
+            )
+        )
+        self.assertIsNone(
+            VERIFIER._host_posix_executable(
+                non_executable, host_system="Windows"
+            )
+        )
+
+    def test_linux_native_permission_failure_is_enforced_but_windows_cross_check_is_portable(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            artifact = root / "DLMS-3.0.2-fedora44-x86_64"
+            _write_elf(artifact)
+
+            with mock.patch.object(VERIFIER, "_host_posix_executable", return_value=False):
+                native_errors = VERIFIER.verify_artifact(artifact, "linux-x86_64", VERSION)
+            self.assertIn("Linux artifact is not marked executable", native_errors)
+
+            with mock.patch.object(VERIFIER.platform, "system", return_value="Windows"):
+                cross_host_errors = VERIFIER.verify_artifact(artifact, "linux-x86_64", VERSION)
+            self.assertEqual(cross_host_errors, [])
+
+    def test_linux_non_executable_fixture_follows_current_host_permission_contract(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            artifact = root / "DLMS-3.0.2-fedora44-x86_64"
+            _write_elf(artifact)
+            artifact.chmod(0o644)
+
+            result = self._run(
+                "linux-x86_64", str(artifact), "--source-root", str(root)
+            )
+
+            if VERIFIER.platform.system() in {"Linux", "Darwin"}:
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("not marked executable", result.stderr)
+            else:
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_macos_native_smoke_rejects_non_executable_extracted_bundle(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            artifact = root / "DLMS-3.0.2-macos-arm64.zip"
+            artifact.write_bytes(b"test archive")
+            extraction_root = root / "extracted"
+            executable = extraction_root / "DLMS.app" / "Contents" / "MacOS" / "DLMS"
+            ditto = root / "ditto"
+            ditto.write_text("test ditto", encoding="utf-8")
+
+            def emulate_ditto(command, **_kwargs):
+                executable.parent.mkdir(parents=True)
+                executable.write_bytes(b"native app executable")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with mock.patch.object(VERIFIER, "MACOS_DITTO", ditto), mock.patch.object(
+                VERIFIER.subprocess, "run", side_effect=emulate_ditto
+            ), mock.patch.object(
+                VERIFIER, "_host_posix_executable", return_value=False
+            ) as permission:
+                with self.assertRaisesRegex(RuntimeError, "executable DLMS.app bundle"):
+                    VERIFIER._extract_macos_bundle_for_smoke(
+                        artifact, extraction_root
+                    )
+
+            permission.assert_called_once_with(executable)
 
     def test_expected_data_directory_can_be_reported_without_an_artifact_or_app_import(self):
         result = self._run("macos-arm64", "--print-expected-data-dir")

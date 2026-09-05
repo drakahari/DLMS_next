@@ -15,6 +15,16 @@ session and CSRF cookies, then sends the session-bound CSRF token with matching
 same-origin request headers for **Shutdown DLMS**; it does not bypass the
 application security boundary.
 
+Filename, checksum, PE/ELF/Mach-O architecture, macOS bundle-structure, and
+bundle-metadata checks are portable and run consistently on every host. POSIX
+execute permission is checked from explicit mode bits when the verifier runs on
+Linux or macOS. A Windows filesystem cannot faithfully represent those bits, so
+cross-host Windows verification still performs the portable structural checks
+and leaves executable-permission enforcement to the required native Linux or
+macOS verification run. The extracted macOS executable is checked during its
+native smoke test. `--smoke` remains restricted to the matching target operating
+system and architecture.
+
 ## Before every target build
 
 1. Create a clean environment from `requirements-lock.txt`, then install
