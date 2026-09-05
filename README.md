@@ -1,6 +1,6 @@
 # DLMS – Digital Learning & Management System
 
-**Current release: DLMS 3.0.2 RC4**
+**Current release: DLMS 3.0.2**
 
 👉 Download packaged releases from the [Releases page](../../releases).
 
@@ -119,7 +119,7 @@ executable, and allow it to open the browser. You can also open
 
 #### macOS on Apple Silicon
 
-1. Download and extract `DLMS-3.0.2-RC4-macos-arm64.zip` from **Releases**.
+1. Download and extract `DLMS-3.0.2-macos-arm64.zip` from **Releases**.
 2. Drag `DLMS.app` into `/Applications`.
 3. Open DLMS from Finder or Applications. DLMS starts locally and normally opens
    its browser interface automatically.
@@ -153,7 +153,7 @@ python app.py
 
 On Windows, activate the environment with `.venv\Scripts\activate`.
 
-`requirements-lock.txt` records the dependency set used for the verified 3.0.2 RC4
+`requirements-lock.txt` records the dependency set used for the verified 3.0.2
 environment. Contributors who intentionally need compatible dependency updates can
 instead install the supported ranges in `requirements.txt`, run the full test suite,
 and then deliberately refresh the lock file.
@@ -179,9 +179,9 @@ perform the release smoke tests before distribution.
 Build natively for each target architecture; PyInstaller does not produce
 cross-platform binaries. Stage the final artifacts with these names:
 
-* Windows: `DLMS-3.0.2-RC4-windows-x86_64.exe`
-* Linux: `DLMS-3.0.2-RC4-linux-x86_64`
-* macOS Apple Silicon: `DLMS-3.0.2-RC4-macos-arm64.zip`
+* Windows: `DLMS-3.0.2-windows-x86_64.exe`
+* Linux: `DLMS-3.0.2-linux-x86_64`
+* macOS Apple Silicon: `DLMS-3.0.2-macos-arm64.zip`
 
 For the Apple Silicon build, use a native `arm64` Python environment on an Apple
 Silicon Mac, verify its architecture, build the canonical spec, and archive only
@@ -193,7 +193,7 @@ python -m pip install -r requirements-build.txt
 python -m PyInstaller --clean --noconfirm DLMS.spec
 test -d dist/DLMS.app
 mkdir -p releases
-ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.0.2-RC4-macos-arm64.zip
+ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.0.2-macos-arm64.zip
 ```
 
 The ZIP should expose one top-level `DLMS.app`. The bundle contains
@@ -201,17 +201,17 @@ The ZIP should expose one top-level `DLMS.app`. The bundle contains
 frameworks. Do not include the `build/` directory, runtime data, or an additional
 raw DLMS executable in the release ZIP. If an Intel build is intentionally
 produced and tested from an `x86_64` Python environment, use the distinct name
-`DLMS-3.0.2-RC4-macos-x86_64.zip`.
+`DLMS-3.0.2-macos-x86_64.zip`.
 
 After staging the final binaries/packages in `releases/`, generate the shared
 checksum manifest from the same checkout:
 
 ```bash
-python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-RC4-*
+python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-*
 ```
 
-The user-facing release name is `DLMS 3.0.2 RC4`; the matching Git tag convention
-is `v3.0.2-rc.4`.
+The user-facing release name is `DLMS 3.0.2`; the matching Git tag convention
+is `v3.0.2`.
 
 ### Native artifact verification
 
@@ -463,10 +463,10 @@ files once removed.
    executable. Do not imply Intel macOS support without a native Intel build and
    UAT.
 5. Review `git status` and package source from tracked files, for example with
-   `git archive --format=zip --output releases/DLMS-3.0.2-RC4-source.zip HEAD`. Inspect
+   `git archive --format=zip --output releases/DLMS-3.0.2-source.zip HEAD`. Inspect
    the archive to confirm it contains required application assets and excludes
    `.git`, virtual environments, caches, databases, logs, and local build output.
 6. Generate `releases/SHA256SUMS.txt` from the final staged binaries/packages with
-   `python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-RC4-*`.
+   `python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-*`.
    Re-run the artifact verifier with `--checksums releases/SHA256SUMS.txt` for
    every staged native artifact before upload.

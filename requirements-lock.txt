@@ -1,4 +1,4 @@
-# Reproducible DLMS 3.0.2 RC4 runtime environment.
+# Reproducible DLMS 3.0.2 runtime environment.
 #
 # These direct and transitive versions are the dependency set exercised by the
 # release-readiness suite on Python 3.14.7. Update intentionally: install the

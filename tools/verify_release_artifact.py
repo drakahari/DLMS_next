@@ -186,9 +186,19 @@ def _contains_runtime_data(member_names: list[str]) -> list[str]:
     return offending
 
 
-def _verify_macos_zip(path: Path, target: str) -> list[str]:
+def _macos_bundle_versions(release_version: str) -> tuple[str, str] | None:
+    match = re.fullmatch(r"(\d+\.\d+\.\d+)(?: RC(\d+))?", release_version)
+    if match is None:
+        return None
+    short_version, candidate = match.groups()
+    build_version = short_version if candidate is None else f"{short_version}fc{candidate}"
+    return short_version, build_version
+
+
+def _verify_macos_zip(path: Path, target: str, version: str) -> list[str]:
     errors: list[str] = []
     expected_cpu = 0x0100000C if target == "macos-arm64" else 0x01000007
+    bundle_versions = _macos_bundle_versions(version)
     try:
         with zipfile.ZipFile(path) as archive:
             names = [entry.filename.rstrip("/") for entry in archive.infolist() if entry.filename.rstrip("/")]
@@ -204,8 +214,16 @@ def _verify_macos_zip(path: Path, target: str) -> list[str]:
                 errors.append("macOS ZIP includes runtime/user data: " + ", ".join(offending[:5]))
             if "DLMS.app/Contents/Info.plist" in names:
                 metadata = plistlib.loads(archive.read("DLMS.app/Contents/Info.plist"))
-                if not str(metadata.get("CFBundleGetInfoString") or "").startswith("DLMS "):
-                    errors.append("macOS Info.plist does not identify DLMS")
+                if metadata.get("CFBundleGetInfoString") != f"DLMS {version}":
+                    errors.append("macOS Info.plist release version does not match APP_VERSION")
+                if bundle_versions is None:
+                    errors.append("APP_VERSION is not compatible with macOS bundle metadata")
+                else:
+                    short_version, build_version = bundle_versions
+                    if metadata.get("CFBundleShortVersionString") != short_version:
+                        errors.append("macOS CFBundleShortVersionString does not match APP_VERSION")
+                    if metadata.get("CFBundleVersion") != build_version:
+                        errors.append("macOS CFBundleVersion does not match APP_VERSION")
             executable = "DLMS.app/Contents/MacOS/DLMS"
             if executable in names and expected_cpu not in _macos_cpu_types(archive.read(executable)):
                 expected_label = "arm64" if target == "macos-arm64" else "x86_64"
@@ -232,7 +250,7 @@ def verify_artifact(artifact: Path, target: str, version: str) -> list[str]:
         elif not os.access(artifact, os.X_OK):
             errors.append("Linux artifact is not marked executable")
     else:
-        errors.extend(_verify_macos_zip(artifact, target))
+        errors.extend(_verify_macos_zip(artifact, target, version))
     return errors
 
 

@@ -16,7 +16,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools" / "verify_release_artifact.py"
-VERSION = "3.0.2 RC4"
+VERSION = "3.0.2"
 SPEC = importlib.util.spec_from_file_location("release_artifact_verifier", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 VERIFIER = importlib.util.module_from_spec(SPEC)
@@ -36,9 +36,18 @@ def _write_pe(path: Path) -> None:
     path.write_bytes(contents)
 
 
-def _write_macos_zip(path: Path, *, runtime_member: str | None = None) -> None:
+def _write_macos_zip(
+    path: Path,
+    *,
+    runtime_member: str | None = None,
+    bundle_version: str = VERSION,
+) -> None:
     executable = b"\xcf\xfa\xed\xfe" + struct.pack("<I", 0x0100000C) + (b"\0" * 24)
-    metadata = plistlib.dumps({"CFBundleGetInfoString": "DLMS 3.0.2 RC4"})
+    metadata = plistlib.dumps({
+        "CFBundleGetInfoString": f"DLMS {bundle_version}",
+        "CFBundleShortVersionString": bundle_version,
+        "CFBundleVersion": bundle_version,
+    })
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("DLMS.app/Contents/Info.plist", metadata)
         archive.writestr("DLMS.app/Contents/MacOS/DLMS", executable)
@@ -60,7 +69,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-RC4-windows-x86_64.exe"
+            artifact = root / "DLMS-3.0.2-windows-x86_64.exe"
             _write_pe(artifact)
             manifest = root / "SHA256SUMS.txt"
             manifest.write_text(
@@ -74,7 +83,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Verified DLMS-3.0.2-RC4-windows-x86_64.exe", result.stdout)
+            self.assertIn("Verified DLMS-3.0.2-windows-x86_64.exe", result.stdout)
 
     def test_verifier_rejects_bad_name_or_checksum(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
@@ -98,11 +107,16 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-RC4-macos-arm64.zip"
+            artifact = root / "DLMS-3.0.2-macos-arm64.zip"
             _write_macos_zip(artifact)
 
             good = self._run("macos-arm64", str(artifact), "--source-root", str(root))
             self.assertEqual(good.returncode, 0, good.stderr)
+
+            _write_macos_zip(artifact, bundle_version="9.9.9")
+            wrong_version = self._run("macos-arm64", str(artifact), "--source-root", str(root))
+            self.assertEqual(wrong_version.returncode, 1)
+            self.assertIn("does not match APP_VERSION", wrong_version.stderr)
 
             _write_macos_zip(artifact, runtime_member="DLMS.app/Contents/Resources/results.db")
             bad = self._run("macos-arm64", str(artifact), "--source-root", str(root))
@@ -112,7 +126,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
     def test_macos_smoke_uses_ditto_to_preserve_the_bundled_app_structure(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
-            artifact = root / "DLMS-3.0.2-RC4-macos-arm64.zip"
+            artifact = root / "DLMS-3.0.2-macos-arm64.zip"
             _write_macos_zip(artifact)
             work_root = root / "smoke"
             executable = work_root / "macos-artifact" / "DLMS.app" / "Contents" / "MacOS" / "DLMS"
@@ -165,7 +179,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-RC4-linux-x86_64"
+            artifact = root / "DLMS-3.0.2-linux-x86_64"
             contents = bytearray(64)
             contents[:4] = b"\x7fELF"
             contents[4] = 2

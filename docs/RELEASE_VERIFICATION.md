@@ -31,8 +31,8 @@ application security boundary.
 Build with native 64-bit Windows Python. Stage:
 
 ```powershell
-Copy-Item dist\DLMS.exe releases\DLMS-3.0.2-RC4-windows-x86_64.exe
-python tools\verify_release_artifact.py windows-x86_64 releases\DLMS-3.0.2-RC4-windows-x86_64.exe --smoke
+Copy-Item dist\DLMS.exe releases\DLMS-3.0.2-windows-x86_64.exe
+python tools\verify_release_artifact.py windows-x86_64 releases\DLMS-3.0.2-windows-x86_64.exe --smoke
 ```
 
 The command validates the PE architecture, final name, controlled data-root
@@ -58,9 +58,9 @@ Build with native x86_64 Linux Python. Stage and make the final executable
 executable:
 
 ```bash
-cp dist/DLMS releases/DLMS-3.0.2-RC4-linux-x86_64
-chmod +x releases/DLMS-3.0.2-RC4-linux-x86_64
-python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-RC4-linux-x86_64 --smoke
+cp dist/DLMS releases/DLMS-3.0.2-linux-x86_64
+chmod +x releases/DLMS-3.0.2-linux-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-linux-x86_64 --smoke
 ```
 
 Native UAT still required: launch the staged file from the intended desktop
@@ -79,8 +79,8 @@ application bundle ZIP:
 python -c "import platform; assert platform.machine() == 'arm64', platform.machine()"
 python -m PyInstaller --clean --noconfirm DLMS.spec
 mkdir -p releases
-ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.0.2-RC4-macos-arm64.zip
-python tools/verify_release_artifact.py macos-arm64 releases/DLMS-3.0.2-RC4-macos-arm64.zip --smoke
+ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.0.2-macos-arm64.zip
+python tools/verify_release_artifact.py macos-arm64 releases/DLMS-3.0.2-macos-arm64.zip --smoke
 ```
 
 The verifier requires exactly one top-level `DLMS.app`, validates
@@ -104,7 +104,7 @@ overridden.
 ## Intel macOS
 
 Intel macOS is not a default release target. Only publish
-`DLMS-3.0.2-RC4-macos-x86_64.zip` after building with native `x86_64` macOS
+`DLMS-3.0.2-macos-x86_64.zip` after building with native `x86_64` macOS
 Python and completing the same command/UAT flow with `macos-x86_64`. Do not
 label the Apple Silicon archive as Intel-compatible.
 
@@ -114,7 +114,7 @@ After each supported target passes its native smoke test and UAT, generate one
 manifest from the exact staged files:
 
 ```bash
-python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-RC4-*
+python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-*
 ```
 
 Re-run structural/checksum verification against the final manifest before
@@ -122,9 +122,9 @@ uploading. The commands are portable Python; use the platform path syntax from
 the sections above:
 
 ```bash
-python tools/verify_release_artifact.py windows-x86_64 releases/DLMS-3.0.2-RC4-windows-x86_64.exe --checksums releases/SHA256SUMS.txt
-python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-RC4-linux-x86_64 --checksums releases/SHA256SUMS.txt
-python tools/verify_release_artifact.py macos-arm64 releases/DLMS-3.0.2-RC4-macos-arm64.zip --checksums releases/SHA256SUMS.txt
+python tools/verify_release_artifact.py windows-x86_64 releases/DLMS-3.0.2-windows-x86_64.exe --checksums releases/SHA256SUMS.txt
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-linux-x86_64 --checksums releases/SHA256SUMS.txt
+python tools/verify_release_artifact.py macos-arm64 releases/DLMS-3.0.2-macos-arm64.zip --checksums releases/SHA256SUMS.txt
 ```
 
 For the target platform's expected normal data location without starting DLMS:

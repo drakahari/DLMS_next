@@ -45,7 +45,7 @@ class HelpDocumentationTests(unittest.TestCase):
         finally:
             response.close()
         self.assertIn(f"DLMS {dlms.APP_VERSION} DOCUMENTATION", index)
-        self.assertNotRegex(index, r"DLMS 3\.0\.2(?! RC4)")
+        self.assertNotRegex(index, r"(?i)\brc[._ -]?4\b")
         self.assertIn("Learning Intelligence", index)
         self.assertIn("Anki &amp; Printable Cards", index)
         self.assertIn("System Tools &amp; Data Management", index)
@@ -64,7 +64,7 @@ class HelpDocumentationTests(unittest.TestCase):
         about = self._static("about.html")
         self.assertIn(f"DLMS {dlms.APP_VERSION} is a local training", about)
         self.assertIn(version_text, about)
-        self.assertNotRegex(about, r"DLMS 3\.0\.2(?! RC4)")
+        self.assertNotRegex(about, r"(?i)\brc[._ -]?4\b")
 
     def test_help_pages_use_current_version_and_shared_toc_script(self):
         help_files = glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html"))

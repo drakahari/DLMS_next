@@ -1,4 +1,4 @@
-# Canonical DLMS 3.0.2 RC4 build tools. Install this after the locked runtime
+# Canonical DLMS 3.0.2 build tools. Install this after the locked runtime
 # environment; it intentionally does not replace requirements-lock.txt.
 -r requirements-lock.txt
 PyInstaller==6.22.2
