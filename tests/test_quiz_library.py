@@ -33,7 +33,10 @@ class QuizLibraryTests(unittest.TestCase):
             )
             self.assertNotIn("cdnjs.cloudflare.com/ajax/libs/Sortable", html)
             self.assertIn("Sortable.create(folderList", html)
-            self.assertIn('draggable: ".library-folder"', html)
+            self.assertIn(
+                'draggable: ".library-folder:not(.library-view-search-only)"',
+                html,
+            )
             self.assertIn('handle: ".library-folder-header"', html)
             self.assertIn("document.querySelectorAll(\".library-folder-body\")", html)
             self.assertIn('draggable: ".quiz-card"', html)
@@ -236,7 +239,7 @@ class QuizLibraryTests(unittest.TestCase):
                 self.assertNotIn("<h2>Course Review</h2>", deleted_folder_html)
                 self.assertNotIn('<option value="Course Review"', deleted_folder_html)
 
-    def test_deleting_last_quiz_keeps_its_explicit_folder_visible(self):
+    def test_deleting_last_quiz_keeps_its_explicit_hidden_folder_persistent(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-delete-last-") as directory:
             config_dir = os.path.join(directory, "config")
             portal_config = os.path.join(config_dir, "portal.json")
@@ -265,7 +268,9 @@ class QuizLibraryTests(unittest.TestCase):
                 )
                 connection.commit()
                 connection.close()
-                dlms.save_quiz_folders(["Uncategorized", "CISM"])
+                dlms.save_quiz_folder_state(
+                    ["Uncategorized", "CISM"], ["CISM"]
+                )
                 dlms.save_registry([{
                     "id": 7,
                     "title": "Only Quiz",
@@ -278,15 +283,17 @@ class QuizLibraryTests(unittest.TestCase):
                     "/delete_quiz/7",
                     headers=csrf_headers(client, "/library"),
                 )
-                library_html = client.get("/library").get_data(as_text=True)
+                library_html = client.get("/library?view=hidden").get_data(as_text=True)
 
             self.assertEqual(302, response.status_code)
-            self.assertIn("<h2>CISM</h2>", library_html)
+            self.assertIn("<h2>CISM ", library_html)
             self.assertIn("No quizzes in this view.", library_html)
             with open(quiz_registry, encoding="utf-8") as handle:
                 self.assertEqual([], json.load(handle))
             with open(portal_config, encoding="utf-8") as handle:
-                self.assertIn("CISM", json.load(handle)["quiz_folders"])
+                portal = json.load(handle)
+                self.assertIn("CISM", portal["quiz_folders"])
+                self.assertEqual(["CISM"], portal["hidden_quiz_folders"])
 
     def test_persistent_folders_render_in_each_view_and_delete_moves_hidden_quizzes(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-filtered-folders-") as directory:
@@ -402,7 +409,8 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn("container.dataset.reorderPending", html)
             self.assertIn("function saveLibraryFolderOrder", html)
             self.assertIn("function saveLibraryQuizOrder", html)
-            self.assertIn('postLibraryReorder("/save_folder_order", {folders})', html)
+            self.assertIn('postLibraryReorder("/save_folder_order", {', html)
+            self.assertIn('view: folderList.dataset.view || "visible"', html)
             self.assertIn('postLibraryReorder("/save_quiz_order_in_folder", {folder, order})', html)
             self.assertIn('libraryDirectItems(body, ".library-quiz-card")', html)
             self.assertIn("librarySearchIsActive()", html)
@@ -450,6 +458,381 @@ class QuizLibraryTests(unittest.TestCase):
             )
             self.assertEqual(["Security", "Networking", "Uncategorized"], saved_folders)
 
+    def test_folder_visibility_view_matrix_search_markup_and_effective_counts(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-folder-visibility-matrix-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "quiz_folders": [
+                        "Uncategorized", "Visible Course", "Hidden Course",
+                        "Empty Visible", "Empty Hidden",
+                    ],
+                    "hidden_quiz_folders": ["hidden course", "EMPTY HIDDEN"],
+                }, handle)
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([
+                    {"id": 1, "title": "Visible Quiz", "html": "visible.html", "folder": "Visible Course"},
+                    {"id": 2, "title": "Individually Hidden", "html": "individual.html", "folder": "Visible Course", "hidden": True},
+                    {"id": 3, "title": "Searchable Archived Quiz", "html": "archived.html", "folder": "Hidden Course"},
+                    {"id": 4, "title": "Doubly Hidden", "html": "double.html", "folder": "Hidden Course", "hidden": True},
+                ], handle)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                client = dlms.app.test_client()
+                visible = client.get("/library?view=visible").get_data(as_text=True)
+                hidden = client.get("/library?view=hidden").get_data(as_text=True)
+                all_quizzes = client.get("/library?view=all").get_data(as_text=True)
+
+            self.assertIn(
+                'class="library-folder library-folder-is-hidden library-view-search-only" '
+                'data-folder-name="Hidden Course"',
+                visible,
+            )
+            self.assertIn("Searchable Archived Quiz", visible)
+            self.assertIn("Folder hidden", visible)
+            self.assertNotIn("Individually Hidden", visible)
+            self.assertIn("<h2>Empty Visible</h2>", visible)
+            self.assertNotIn("<h2>Empty Hidden", visible)
+            self.assertIn(
+                '<span>Visible</span><strong>1</strong><small>available quizzes</small>',
+                visible,
+            )
+            self.assertIn(
+                '<span>Hidden</span><strong>3</strong><small>hidden quizzes</small>',
+                visible,
+            )
+            self.assertIn(
+                '<span>This View</span><strong>1</strong><small>Visible items</small>',
+                visible,
+            )
+            for script_fragment in (
+                "library-view-search-only",
+                "library-search-revealed",
+                "folder.dataset.librarySearchWasCollapsed",
+                'document.getElementById("libraryEmptyState")',
+            ):
+                self.assertIn(script_fragment, visible)
+
+            self.assertIn("Searchable Archived Quiz", hidden)
+            self.assertIn("Doubly Hidden", hidden)
+            self.assertIn("Individually Hidden", hidden)
+            self.assertNotIn("<h3>Visible Quiz</h3>", hidden)
+            self.assertIn("<h2>Empty Hidden", hidden)
+            self.assertIn("<h2>Empty Visible</h2>", hidden)
+            self.assertIn(
+                '<span>This View</span><strong>3</strong><small>Hidden items</small>',
+                hidden,
+            )
+
+            for title in (
+                "Visible Quiz", "Individually Hidden",
+                "Searchable Archived Quiz", "Doubly Hidden",
+            ):
+                self.assertIn(title, all_quizzes)
+            self.assertIn("<h2>Empty Hidden", all_quizzes)
+
+    def test_folder_hide_move_unhide_rename_and_delete_preserve_quiz_flags(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-folder-visibility-lifecycle-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            original_registry = [
+                {"id": 1, "title": "Visible Member", "html": "visible.html", "folder": "CISM"},
+                {"id": 2, "title": "Hidden Member", "html": "hidden.html", "folder": "CISM", "hidden": True},
+            ]
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "CISM", "Destination"]}, handle)
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump(original_registry, handle)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                client = dlms.app.test_client()
+                hide = client.post(
+                    "/set_quiz_folder_hidden",
+                    data={"folder": "cism", "hidden": "1", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                self.assertEqual(302, hide.status_code)
+                self.assertEqual(["CISM"], dlms.get_hidden_quiz_folders())
+                self.assertEqual(original_registry, dlms.load_registry())
+
+                hidden_page = client.get("/library?view=hidden").get_data(as_text=True)
+                self.assertIn("Visible Member", hidden_page)
+                self.assertIn("Hidden Member", hidden_page)
+                self.assertIn("Hidden folder", hidden_page)
+                self.assertIn('<option value="CISM" selected>CISM (hidden)</option>', hidden_page)
+
+                move_out = client.post(
+                    "/move_quiz_folder",
+                    data={"id": "1", "folder": "Destination", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                self.assertEqual(302, move_out.status_code)
+                moved = dlms.load_registry()
+                self.assertNotIn("hidden", moved[0])
+                self.assertTrue(moved[1]["hidden"])
+                self.assertIn("Visible Member", client.get("/library").get_data(as_text=True))
+
+                move_back = client.post(
+                    "/move_quiz_folder",
+                    data={"id": "1", "folder": "CISM", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                self.assertEqual(302, move_back.status_code)
+                self.assertNotIn("hidden", dlms.load_registry()[0])
+
+                unhide = client.post(
+                    "/set_quiz_folder_hidden",
+                    data={"folder": "CISM", "hidden": "0", "view": "hidden"},
+                    headers=csrf_headers(client, "/library?view=hidden"),
+                )
+                self.assertEqual(302, unhide.status_code)
+                visible_page = client.get("/library").get_data(as_text=True)
+                self.assertIn("Visible Member", visible_page)
+                self.assertNotIn("Hidden Member", visible_page)
+                self.assertTrue(dlms.load_registry()[1]["hidden"])
+
+                client.post(
+                    "/set_quiz_folder_hidden",
+                    data={"folder": "CISM", "hidden": "1", "view": "all"},
+                    headers=csrf_headers(client, "/library?view=all"),
+                )
+                rename = client.post(
+                    "/rename_quiz_folder",
+                    data={"old_folder": "CISM", "new_folder": "Archived CISM", "view": "all"},
+                    headers=csrf_headers(client, "/library?view=all"),
+                )
+                self.assertEqual(302, rename.status_code)
+                self.assertEqual(["Archived CISM"], dlms.get_hidden_quiz_folders())
+                self.assertTrue(all(q["folder"] == "Archived CISM" for q in dlms.load_registry()))
+
+                delete = client.post(
+                    "/delete_quiz_folder",
+                    data={"folder": "Archived CISM", "view": "hidden"},
+                    headers=csrf_headers(client, "/library?view=hidden"),
+                )
+                self.assertEqual(302, delete.status_code)
+                self.assertEqual([], dlms.get_hidden_quiz_folders())
+                deleted_registry = dlms.load_registry()
+                self.assertTrue(all(q["folder"] == "Uncategorized" for q in deleted_registry))
+                self.assertNotIn("hidden", deleted_registry[0])
+                self.assertTrue(deleted_registry[1]["hidden"])
+
+    def test_empty_hidden_folder_and_hidden_last_quiz_move_remain_persistent(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-hidden-empty-folder-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "quiz_folders": [
+                        "Uncategorized", "Empty Archive", "Archive", "Destination"
+                    ]
+                }, handle)
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([{"id": 1, "title": "Only Quiz", "html": "only.html", "folder": "Archive"}], handle)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                client = dlms.app.test_client()
+                client.post(
+                    "/set_quiz_folder_hidden",
+                    data={"folder": "Empty Archive", "hidden": "1", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                self.assertNotIn(
+                    "<h2>Empty Archive",
+                    client.get("/library?view=visible").get_data(as_text=True),
+                )
+                self.assertIn(
+                    "<h2>Empty Archive",
+                    client.get("/library?view=hidden").get_data(as_text=True),
+                )
+                client.post(
+                    "/set_quiz_folder_hidden",
+                    data={"folder": "Empty Archive", "hidden": "0", "view": "hidden"},
+                    headers=csrf_headers(client, "/library?view=hidden"),
+                )
+                self.assertIn(
+                    "<h2>Empty Archive</h2>",
+                    client.get("/library?view=visible").get_data(as_text=True),
+                )
+
+                client.post(
+                    "/set_quiz_folder_hidden",
+                    data={"folder": "Archive", "hidden": "1", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                client.post(
+                    "/move_quiz_folder",
+                    data={"id": "1", "folder": "Destination", "view": "hidden"},
+                    headers=csrf_headers(client, "/library?view=hidden"),
+                )
+                hidden_page = client.get("/library?view=hidden").get_data(as_text=True)
+                all_page = client.get("/library?view=all").get_data(as_text=True)
+                visible_page = client.get("/library?view=visible").get_data(as_text=True)
+                self.assertIn("<h2>Archive", hidden_page)
+                self.assertIn("No quizzes in this view.", hidden_page)
+                self.assertIn("<h2>Archive", all_page)
+                self.assertNotIn("<h2>Archive", visible_page)
+                self.assertEqual(["Archive"], dlms.get_hidden_quiz_folders())
+
+                client.post(
+                    "/set_quiz_folder_hidden",
+                    data={"folder": "Archive", "hidden": "0", "view": "hidden"},
+                    headers=csrf_headers(client, "/library?view=hidden"),
+                )
+                self.assertIn("<h2>Archive</h2>", client.get("/library").get_data(as_text=True))
+
+    def test_uncategorized_is_not_hideable_and_legacy_hide_promotes_only_that_folder(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-hidden-legacy-folder-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized"]}, handle)
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([{"id": 1, "title": "Legacy Quiz", "html": "legacy.html", "folder": "Legacy Course"}], handle)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                client = dlms.app.test_client()
+                for protected_name in ("Uncategorized", "uNcAtEgOrIzEd"):
+                    response = client.post(
+                        "/set_quiz_folder_hidden",
+                        data={"folder": protected_name, "hidden": "1", "view": "visible"},
+                        headers=csrf_headers(client, "/library"),
+                    )
+                    self.assertEqual(302, response.status_code)
+                self.assertEqual([], dlms.get_hidden_quiz_folders())
+                client.get("/library")
+                self.assertEqual(["Uncategorized"], dlms.get_quiz_folders())
+
+                response = client.post(
+                    "/set_quiz_folder_hidden",
+                    data={"folder": "legacy course", "hidden": "1", "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+                self.assertEqual(302, response.status_code)
+                self.assertEqual(
+                    ["Uncategorized", "Legacy Course"], dlms.get_quiz_folders()
+                )
+                self.assertEqual(["Legacy Course"], dlms.get_hidden_quiz_folders())
+
+    def test_visible_folder_reorder_preserves_omitted_hidden_folder_slot(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-hidden-folder-order-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "quiz_folders": ["Uncategorized", "First", "Hidden Anchor", "Second", "Third"],
+                    "hidden_quiz_folders": ["Hidden Anchor"],
+                }, handle)
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([], handle)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry):
+                client = dlms.app.test_client()
+                response = client.post(
+                    "/save_folder_order",
+                    json={"folders": ["Third", "First", "Second"], "view": "visible"},
+                    headers=csrf_headers(client, "/library"),
+                )
+
+                self.assertEqual(200, response.status_code)
+                self.assertEqual(
+                    ["Uncategorized", "Third", "Hidden Anchor", "First", "Second"],
+                    dlms.get_quiz_folders(),
+                )
+                self.assertEqual(["Hidden Anchor"], dlms.get_hidden_quiz_folders())
+
+    def test_quiz_library_reset_preserves_folder_hidden_state(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-hidden-folder-reset-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            db_path = os.path.join(directory, "results.db")
+            quiz_folder = os.path.join(directory, "quizzes")
+            data_folder = os.path.join(directory, "data")
+            asset_folder = os.path.join(directory, "quiz_assets")
+            logo_folder = os.path.join(directory, "logos")
+            for path in (config_dir, quiz_folder, data_folder, asset_folder, logo_folder):
+                os.makedirs(path, exist_ok=True)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "DB_PATH", db_path), \
+                    mock.patch.object(dlms, "QUIZ_FOLDER", quiz_folder), \
+                    mock.patch.object(dlms, "DATA_FOLDER", data_folder), \
+                    mock.patch.object(dlms, "QUIZ_ASSET_FOLDER", asset_folder), \
+                    mock.patch.object(dlms, "LOGO_FOLDER", logo_folder), \
+                    mock.patch.object(dlms, "_ensure_runtime_data_dirs"):
+                dlms.bootstrap_database(db_path, require_owned_root=False)
+                dlms.save_quiz_folder_state(
+                    ["Uncategorized", "Hidden Archive"], ["Hidden Archive"]
+                )
+                dlms.save_registry([{
+                    "id": 1,
+                    "title": "Reset Quiz",
+                    "html": "reset.html",
+                    "folder": "Hidden Archive",
+                }])
+
+                dlms._reset_quiz_library_core()
+
+                self.assertEqual([], dlms.load_registry())
+                self.assertEqual(
+                    ["Uncategorized", "Hidden Archive"], dlms.get_quiz_folders()
+                )
+                self.assertEqual(
+                    ["Hidden Archive"], dlms.get_hidden_quiz_folders()
+                )
+
+    def test_settings_reset_clears_folder_configuration_without_changing_quizzes(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-hidden-folder-settings-reset-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            background_folder = os.path.join(directory, "backgrounds")
+            os.makedirs(config_dir, exist_ok=True)
+            os.makedirs(background_folder, exist_ok=True)
+            quiz = {
+                "id": 1,
+                "title": "Preserved Quiz",
+                "html": "preserved.html",
+                "folder": "Hidden Archive",
+                "hidden": True,
+            }
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "BACKGROUND_FOLDER", background_folder):
+                dlms.save_quiz_folder_state(
+                    ["Uncategorized", "Hidden Archive"], ["Hidden Archive"]
+                )
+                dlms.save_registry([quiz])
+
+                dlms._reset_app_settings_core()
+
+                self.assertEqual(["Uncategorized"], dlms.get_quiz_folders())
+                self.assertEqual([], dlms.get_hidden_quiz_folders())
+                self.assertEqual([quiz], dlms.load_registry())
+
     def test_fresh_configuration_enables_confidence_and_ai_helpers(self):
         with tempfile.TemporaryDirectory(prefix="dlms-fresh-config-") as directory:
             portal_config = os.path.join(directory, "config", "portal.json")
@@ -460,12 +843,14 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertTrue(config["show_confidence"])
             self.assertTrue(config["ai_helper_enabled"])
             self.assertEqual(config["quiz_folders"], ["Uncategorized"])
+            self.assertEqual(config["hidden_quiz_folders"], [])
 
             with open(portal_config, "r", encoding="utf-8") as file:
                 persisted = json.load(file)
             self.assertTrue(persisted["show_confidence"])
             self.assertTrue(persisted["ai_helper_enabled"])
             self.assertEqual(persisted["quiz_folders"], ["Uncategorized"])
+            self.assertEqual(persisted["hidden_quiz_folders"], [])
 
     def test_persisted_false_settings_and_existing_folders_take_precedence(self):
         with tempfile.TemporaryDirectory(prefix="dlms-existing-config-") as directory:

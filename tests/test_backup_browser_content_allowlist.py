@@ -213,7 +213,13 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
         self.client = dlms.app.test_client()
         self.archive_number = 0
 
-    def _archive(self, *, ai_custom_url="https://example.com/assistant", active_data=None):
+    def _archive(
+        self,
+        *,
+        ai_custom_url="https://example.com/assistant",
+        active_data=None,
+        include_hidden_folders=True,
+    ):
         self.archive_number += 1
         payload = self.root / f"payload-{self.archive_number}"
         (payload / "config").mkdir(parents=True)
@@ -252,14 +258,17 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
             }]),
             encoding="utf-8",
         )
+        restored_portal = {
+            "title": "Restored Portal",
+            "theme": "dark",
+            "ai_provider": "local",
+            "ai_custom_url": ai_custom_url,
+            "quiz_folders": ["Uncategorized", "Restored Empty Folder"],
+        }
+        if include_hidden_folders:
+            restored_portal["hidden_quiz_folders"] = ["Restored Empty Folder"]
         (payload / "config" / "portal.json").write_text(
-            json.dumps({
-                "title": "Restored Portal",
-                "theme": "dark",
-                "ai_provider": "local",
-                "ai_custom_url": ai_custom_url,
-                "quiz_folders": ["Uncategorized", "Restored Empty Folder"],
-            }),
+            json.dumps(restored_portal),
             encoding="utf-8",
         )
         (payload / "data" / "restored_quiz.json").write_text("[]", encoding="utf-8")
@@ -378,9 +387,31 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
             ["Uncategorized", "Restored Empty Folder"],
             restored_portal["quiz_folders"],
         )
+        self.assertEqual(
+            ["Restored Empty Folder"],
+            restored_portal["hidden_quiz_folders"],
+        )
+        restored_library = self.client.get("/library?view=hidden").get_data(as_text=True)
+        self.assertIn("<h2>Restored Empty Folder ", restored_library)
+        self.assertIn("Hidden folder", restored_library)
+        self.assertIn("No quizzes in this view.", restored_library)
+
+    def test_older_backup_without_hidden_folder_field_restores_with_none_hidden(self):
+        stage_response = self._stage(self._archive(include_hidden_folders=False))
+        self.assertEqual(200, stage_response.status_code)
+        confirm_response = self.client.post(
+            f"/settings/backup/restore/confirm/{self._restore_token(stage_response)}",
+            headers=csrf_headers(self.client, "/settings/backup"),
+        )
+        self.assertEqual(200, confirm_response.status_code)
+
+        restored_portal = json.loads(
+            Path(dlms.PORTAL_CONFIG).read_text(encoding="utf-8")
+        )
+        self.assertNotIn("hidden_quiz_folders", restored_portal)
+        self.assertEqual([], dlms.get_hidden_quiz_folders())
         restored_library = self.client.get("/library").get_data(as_text=True)
         self.assertIn("<h2>Restored Empty Folder</h2>", restored_library)
-        self.assertIn("No quizzes in this view.", restored_library)
 
     def test_valid_absolute_http_and_https_urls_survive_complete_restore(self):
         for url in ("https://example.com/assistant", "http://localhost:11434/"):

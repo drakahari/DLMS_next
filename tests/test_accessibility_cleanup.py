@@ -67,11 +67,15 @@ def test_library_folder_collapse_and_icon_actions_have_accessible_semantics():
     assert 'icon.setAttribute("aria-expanded", String(!collapsed))' in APP_SOURCE
     assert 'aria-label="Rename {{ folder_name }}"' in APP_SOURCE
     assert 'aria-label="Delete {{ folder_name }} folder"' in APP_SOURCE
+    assert 'class="library-folder-hidden-badge">Hidden folder</span>' in APP_SOURCE
+    assert 'aria-label="{{ \'Unhide\' if folder_is_hidden else \'Hide\' }} {{ folder_name }} folder"' in APP_SOURCE
+    assert 'action="/set_quiz_folder_hidden"' in APP_SOURCE
     assert "renameButton.focus()" in APP_SOURCE
     assert "newFolderButton.focus()" in APP_SOURCE
     assert "moveButton.focus()" in APP_SOURCE
     assert '<p class="library-folder-empty">No quizzes in this view.</p>' in APP_SOURCE
     assert "color: var(--theme-muted-text, #8297b4);" in STYLE
+    assert "color: var(--theme-accent-text, #78bfff);" in STYLE
 
 
 def test_help_screenshot_dialog_contains_tab_focus_and_restores_previous_focus():

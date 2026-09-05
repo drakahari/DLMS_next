@@ -5919,6 +5919,59 @@ def add_quiz_folder():
 
     return redirect(f"/library?view={view}")
 
+
+@app.route("/set_quiz_folder_hidden", methods=["POST"])
+def set_quiz_folder_hidden():
+    requested_folder = str(request.form.get("folder") or "").strip()
+    requested_state = request.form.get("hidden")
+    view = request.form.get("view") or "visible"
+
+    if (
+        not requested_folder
+        or requested_folder.lower() == "uncategorized"
+        or requested_state not in {"0", "1"}
+    ):
+        return redirect(f"/library?view={view}")
+    hide_folder = requested_state == "1"
+
+    folders = get_quiz_folders()
+    configured_name = next(
+        (folder for folder in folders if folder.lower() == requested_folder.lower()),
+        None,
+    )
+
+    # A legacy assignment-only folder becomes explicitly persistent only when
+    # the user chooses to hide it. Page loads never promote legacy folders.
+    if configured_name is None and hide_folder:
+        registry = normalize_quiz_folders(load_registry())
+        configured_name = next(
+            (
+                str(quiz.get("folder") or "Uncategorized").strip()
+                for quiz in registry
+                if str(quiz.get("folder") or "Uncategorized").strip().lower()
+                == requested_folder.lower()
+            ),
+            None,
+        )
+        if configured_name:
+            folders.append(configured_name)
+
+    if configured_name is None:
+        return redirect(f"/library?view={view}")
+
+    hidden_folders = get_hidden_quiz_folders(folders)
+    hidden_folders = [
+        folder
+        for folder in hidden_folders
+        if folder.lower() != configured_name.lower()
+    ]
+    if hide_folder:
+        hidden_folders.append(configured_name)
+
+    save_quiz_folder_state(folders, hidden_folders)
+    return redirect(f"/library?view={view}")
+
+
 @app.route("/rename_quiz_folder", methods=["POST"])
 def rename_quiz_folder():
     old_folder = str(request.form.get("old_folder") or "").strip()
@@ -5933,6 +5986,7 @@ def rename_quiz_folder():
         return redirect(f"/library?view={view}")
 
     folders = get_quiz_folders()
+    hidden_folders = get_hidden_quiz_folders(folders)
 
     # Do not rename into an existing folder name
     existing = {f.lower() for f in folders if f.lower() != old_folder.lower()}
@@ -5946,7 +6000,11 @@ def rename_quiz_folder():
         else:
             renamed_folders.append(folder)
 
-    save_quiz_folders(renamed_folders)
+    renamed_hidden_folders = [
+        new_folder if folder.lower() == old_folder.lower() else folder
+        for folder in hidden_folders
+    ]
+    save_quiz_folder_state(renamed_folders, renamed_hidden_folders)
 
     # Update existing quizzes that were assigned to the old folder
     with registry_lock:
@@ -5977,11 +6035,17 @@ def delete_quiz_folder():
 
     # Remove folder from saved folder list
     folders = get_quiz_folders()
+    hidden_folders = get_hidden_quiz_folders(folders)
     folders = [
         f for f in folders
         if f.lower() != folder.lower()
     ]
-    save_quiz_folders(folders)
+    hidden_folders = [
+        hidden_folder
+        for hidden_folder in hidden_folders
+        if hidden_folder.lower() != folder.lower()
+    ]
+    save_quiz_folder_state(folders, hidden_folders)
 
     # Move quizzes from deleted folder back to Uncategorized
     with registry_lock:
@@ -6002,6 +6066,7 @@ def delete_quiz_folder():
 def save_folder_order():
     data = request.get_json() or {}
     ordered_folders = data.get("folders", [])
+    view = str(data.get("view") or "").strip().lower()
 
     if not isinstance(ordered_folders, list):
         return jsonify(status="error", error="Invalid folder order"), 400
@@ -6026,10 +6091,40 @@ def save_folder_order():
         cleaned_order.append(name)
         seen.add(key)
 
-    # Preserve any folders that were not included in the request
-    for folder in current_folders:
-        if folder.lower() not in seen:
-            cleaned_order.append(folder)
+    hidden_keys = {
+        folder.lower()
+        for folder in get_hidden_quiz_folders(current_folders)
+    }
+
+    if view == "visible" and hidden_keys:
+        # Visible omits hidden folders. Reorder only submitted folder slots so
+        # every omitted hidden folder retains its position in the saved order.
+        current_keys = {folder.lower() for folder in current_folders}
+        submitted = [
+            folder
+            for folder in cleaned_order
+            if folder.lower() in current_keys
+            and folder.lower() not in hidden_keys
+        ]
+        submitted_keys = {folder.lower() for folder in submitted}
+        submitted_iter = iter(submitted)
+        merged_order = [
+            next(submitted_iter) if folder.lower() in submitted_keys else folder
+            for folder in current_folders
+        ]
+        merged_keys = {folder.lower() for folder in merged_order}
+        merged_order.extend(
+            folder
+            for folder in cleaned_order
+            if folder.lower() not in merged_keys
+        )
+        cleaned_order = merged_order
+    else:
+        # Preserve the established behavior when the page submits its complete
+        # normal folder ordering.
+        for folder in current_folders:
+            if folder.lower() not in seen:
+                cleaned_order.append(folder)
 
     save_quiz_folders(cleaned_order)
 
@@ -6296,6 +6391,7 @@ def load_portal_config():
         "background_image": None,
         "theme": "dark",
         "quiz_folders": ["Uncategorized"],
+        "hidden_quiz_folders": [],
         "study_area_visibility": {
             "it": True,
             "law": True,
@@ -6369,11 +6465,25 @@ def load_portal_config():
     malformed_quiz_folders = (
         "quiz_folders" in data and not isinstance(data["quiz_folders"], list)
     )
+    malformed_hidden_quiz_folders = (
+        "hidden_quiz_folders" in data
+        and (
+            not isinstance(data["hidden_quiz_folders"], list)
+            or any(
+                not isinstance(folder, str)
+                for folder in data["hidden_quiz_folders"]
+            )
+        )
+    )
     malformed_study_area_visibility = (
         "study_area_visibility" in data
         and not isinstance(data["study_area_visibility"], dict)
     )
-    if malformed_quiz_folders or malformed_study_area_visibility:
+    if (
+        malformed_quiz_folders
+        or malformed_hidden_quiz_folders
+        or malformed_study_area_visibility
+    ):
         _preserve_malformed_json(PORTAL_CONFIG)
 
     # Preserve the original malformed document first, then ensure a structured
@@ -6383,6 +6493,9 @@ def load_portal_config():
     if malformed_quiz_folders:
         data = data.copy()
         data["quiz_folders"] = list(default["quiz_folders"])
+    if malformed_hidden_quiz_folders:
+        data = data.copy()
+        data["hidden_quiz_folders"] = []
 
     # Merge defaults with stored values
     cfg = default.copy()
@@ -6472,8 +6585,6 @@ def get_quiz_folders():
 
 
 def save_quiz_folders(folders):
-    cfg = load_portal_config()
-
     cleaned = []
     seen = set()
 
@@ -6494,8 +6605,74 @@ def save_quiz_folders(folders):
     if "uncategorized" not in seen:
         cleaned.insert(0, "Uncategorized")
 
+    cfg = load_portal_config()
     cfg["quiz_folders"] = cleaned
+    cfg["hidden_quiz_folders"] = _clean_hidden_quiz_folders(
+        cfg.get("hidden_quiz_folders"), cleaned
+    )
 
+    _atomic_write_json(PORTAL_CONFIG, cfg, expected_type=dict)
+
+
+def _clean_hidden_quiz_folders(hidden_folders, configured_folders):
+    """Return safe hidden-folder names using configured display spelling."""
+    if not isinstance(hidden_folders, list):
+        return []
+
+    configured_by_key = {
+        folder.lower(): folder
+        for folder in configured_folders
+        if folder.lower() != "uncategorized"
+    }
+    cleaned = []
+    seen = set()
+
+    for folder in hidden_folders:
+        if not isinstance(folder, str):
+            continue
+        key = folder.strip().lower()
+        if not key or key == "uncategorized" or key in seen:
+            continue
+        configured_name = configured_by_key.get(key)
+        if configured_name is None:
+            continue
+        cleaned.append(configured_name)
+        seen.add(key)
+
+    return cleaned
+
+
+def get_hidden_quiz_folders(configured_folders=None):
+    folders = configured_folders or get_quiz_folders()
+    cfg = load_portal_config()
+    return _clean_hidden_quiz_folders(
+        cfg.get("hidden_quiz_folders"), folders
+    )
+
+
+def save_quiz_folder_state(folders, hidden_folders):
+    """Persist folder order and hidden state together in portal.json."""
+    cleaned_folders = []
+    seen = set()
+
+    for folder in folders:
+        name = str(folder or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        cleaned_folders.append(name)
+        seen.add(key)
+
+    if "uncategorized" not in seen:
+        cleaned_folders.insert(0, "Uncategorized")
+
+    cfg = load_portal_config()
+    cfg["quiz_folders"] = cleaned_folders
+    cfg["hidden_quiz_folders"] = _clean_hidden_quiz_folders(
+        hidden_folders, cleaned_folders
+    )
     _atomic_write_json(PORTAL_CONFIG, cfg, expected_type=dict)
 
 
@@ -14584,8 +14761,8 @@ def export_single_quiz_txt(quiz_id):
 # The original embedded Quiz Library implementation was preserved at:
 # archive/legacy_library_ui_2026-08-21.txt
 #
-# Backend routes and quiz/folder behaviors remain unchanged. This block
-# modernizes presentation while preserving existing forms and APIs.
+# This block owns the current Quiz Library presentation and its existing
+# folder-management forms and APIs.
 # =====================================================================
 @app.route("/library")
 def quiz_library():
@@ -14623,29 +14800,9 @@ def quiz_library():
     if not view and request.args.get("show_hidden") == "1":
         view = "all"
 
-    if view == "hidden":
-        filtered = [q for q in registry if q.get("hidden", False)]
-    elif view == "all":
-        filtered = registry
-    else:
-        view = "visible"
-        filtered = [q for q in registry if not q.get("hidden", False)]
-
-    quizzes = [
-        {**q, "logo": resolve_logo_filename(q.get("logo"))}
-        for q in filtered
-    ]
-
     folder_names = get_quiz_folders()
-    configured_folder_names = set(folder_names)
-    grouped_quizzes = {folder: [] for folder in folder_names}
-
-    for q in quizzes:
-        folder = str(q.get("folder") or "Uncategorized").strip() or "Uncategorized"
-        if folder not in grouped_quizzes:
-            grouped_quizzes[folder] = []
-        grouped_quizzes[folder].append(q)
-
+    configured_folders = list(folder_names)
+    configured_folder_names = set(configured_folders)
     registry_folder_names = sorted({
         str(q.get("folder") or "Uncategorized").strip() or "Uncategorized"
         for q in registry
@@ -14654,23 +14811,90 @@ def quiz_library():
     for folder in registry_folder_names:
         if folder not in folder_names:
             folder_names.append(folder)
+
+    hidden_folder_names = get_hidden_quiz_folders(configured_folders)
+    hidden_folder_keys = {folder.lower() for folder in hidden_folder_names}
+
+    def quiz_folder_name(quiz):
+        return str(quiz.get("folder") or "Uncategorized").strip() or "Uncategorized"
+
+    def quiz_folder_is_hidden(quiz):
+        return quiz_folder_name(quiz).lower() in hidden_folder_keys
+
+    if view == "hidden":
+        filtered = [
+            q for q in registry
+            if q.get("hidden", False) or quiz_folder_is_hidden(q)
+        ]
+    elif view == "all":
+        filtered = registry
+    else:
+        view = "visible"
+        filtered = [
+            q for q in registry
+            if not q.get("hidden", False) and not quiz_folder_is_hidden(q)
+        ]
+
+    normal_filtered = filtered
+    render_filtered = filtered
+    if view == "visible":
+        # Hidden folders stay absent during normal browsing, but their quizzes
+        # are present as search-only markup so client-side search can reveal a
+        # matching result without changing quiz-level hidden state.
+        render_filtered = [
+            q for q in registry
+            if not q.get("hidden", False) or quiz_folder_is_hidden(q)
+        ]
+
+    quizzes = [
+        {**q, "logo": resolve_logo_filename(q.get("logo"))}
+        for q in render_filtered
+    ]
+    normal_grouped_quizzes = {folder: [] for folder in folder_names}
+    for q in normal_filtered:
+        folder = quiz_folder_name(q)
+        if folder not in normal_grouped_quizzes:
+            normal_grouped_quizzes[folder] = []
+        normal_grouped_quizzes[folder].append(q)
+
+    grouped_quizzes = {folder: [] for folder in folder_names}
+    for q in quizzes:
+        folder = quiz_folder_name(q)
+        if folder not in grouped_quizzes:
             grouped_quizzes[folder] = []
+        grouped_quizzes[folder].append(q)
 
     # Explicitly saved custom folders remain visible even when the selected
     # view has no quizzes in them. Keep the protected default Uncategorized
     # folder out of a pristine empty library unless it contains a visible quiz.
     # Assignment-only legacy folders retain their existing discovery behavior.
+    normal_display_folder_names = [
+        folder for folder in folder_names
+        if not (view == "visible" and folder.lower() in hidden_folder_keys)
+        and (
+            normal_grouped_quizzes.get(folder)
+            or (
+                folder in configured_folder_names
+                and folder.lower() != "uncategorized"
+            )
+        )
+    ]
     display_folder_names = [
         folder for folder in folder_names
-        if grouped_quizzes.get(folder)
+        if folder in normal_display_folder_names
         or (
-            folder in configured_folder_names
-            and folder.lower() != "uncategorized"
+            view == "visible"
+            and folder.lower() in hidden_folder_keys
+            and grouped_quizzes.get(folder)
         )
     ]
 
-    visible_count = sum(1 for q in registry if not q.get("hidden", False))
-    hidden_count = sum(1 for q in registry if q.get("hidden", False))
+    visible_count = sum(
+        1 for q in registry
+        if not q.get("hidden", False) and not quiz_folder_is_hidden(q)
+    )
+    hidden_count = len(registry) - visible_count
+    view_quiz_count = len(normal_filtered)
 
     return render_template_string("""
 <!DOCTYPE html>
@@ -14762,8 +14986,8 @@ def quiz_library():
         <section class="library-summary-grid" aria-label="Library summary">
             <div class="library-stat-card"><span>Visible</span><strong>{{ visible_count }}</strong><small>available quizzes</small></div>
             <div class="library-stat-card"><span>Hidden</span><strong>{{ hidden_count }}</strong><small>hidden quizzes</small></div>
-            <div class="library-stat-card"><span>Folders</span><strong>{{ display_folder_names|length }}</strong><small>folders in this view</small></div>
-            <div class="library-stat-card"><span>This View</span><strong>{{ quizzes|length }}</strong><small>{{ view|capitalize }} items</small></div>
+            <div class="library-stat-card"><span>Folders</span><strong>{{ normal_display_folder_names|length }}</strong><small>folders in this view</small></div>
+            <div class="library-stat-card"><span>This View</span><strong>{{ view_quiz_count }}</strong><small>{{ view|capitalize }} items</small></div>
         </section>
 
         <section class="library-toolbar dashboard-panel">
@@ -14806,10 +15030,12 @@ def quiz_library():
         <div id="libraryReorderStatus" class="library-reorder-status" aria-live="polite" aria-atomic="true"></div>
 
         {% if display_folder_names %}
-        <section id="quizList" class="library-folder-list">
+        <section id="quizList" class="library-folder-list" data-view="{{ view }}">
             {% for folder_name in display_folder_names %}
             {% set folder_quizzes = grouped_quizzes.get(folder_name, []) %}
-            <article class="library-folder" data-folder-name="{{ folder_name }}" data-folder-draggable="true">
+            {% set folder_is_hidden = folder_name|lower in hidden_folder_keys %}
+            {% set folder_is_search_only = view == 'visible' and folder_is_hidden %}
+            <article class="library-folder{% if folder_is_hidden %} library-folder-is-hidden{% endif %}{% if folder_is_search_only %} library-view-search-only{% endif %}" data-folder-name="{{ folder_name }}" data-folder-hidden="{{ 'true' if folder_is_hidden else 'false' }}" data-folder-draggable="true">
                 <div class="library-folder-header" onclick="toggleLibraryFolder(event, this)">
                     <div class="library-folder-title-group">
                         <button type="button" class="folder-toggle-icon library-folder-toggle-button" aria-label="Collapse {{ folder_name }}" aria-expanded="true" aria-controls="library-folder-body-{{ loop.index }}" onclick="toggleLibraryFolder(event, this)">▼</button>
@@ -14817,19 +15043,25 @@ def quiz_library():
                             <path d="M3.5 7.25A2.25 2.25 0 0 1 5.75 5h4.1l2 2h6.4a2.25 2.25 0 0 1 2.25 2.25v7A2.25 2.25 0 0 1 18.25 18.5H5.75A2.25 2.25 0 0 1 3.5 16.25z"/>
                         </svg>
                         <div>
-                            <h2>{{ folder_name }}</h2>
+                            <h2>{{ folder_name }}{% if folder_is_hidden %} <span class="library-folder-hidden-badge">Hidden folder</span>{% endif %}</h2>
                             <span class="library-folder-subtitle">{{ folder_quizzes|length }} quiz{% if folder_quizzes|length != 1 %}zes{% endif %}</span>
                         </div>
                     </div>
 
                     <div class="library-folder-actions">
-                        {% if display_folder_names|length > 1 %}
+                        {% if normal_display_folder_names|length > 1 and not folder_is_search_only %}
                         <div class="library-reorder-controls" role="group" aria-label="Reorder {{ folder_name }}">
                             <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="folder" data-library-reorder-direction="-1" onclick="moveLibraryFolder(event, this, -1)" aria-label="Move {{ folder_name }} up" title="Move folder up" {% if loop.first %}disabled{% endif %}>↑</button>
                             <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="folder" data-library-reorder-direction="1" onclick="moveLibraryFolder(event, this, 1)" aria-label="Move {{ folder_name }} down" title="Move folder down" {% if loop.last %}disabled{% endif %}>↓</button>
                         </div>
                         {% endif %}
                     {% if folder_name|lower != "uncategorized" %}
+                        <form method="POST" action="/set_quiz_folder_hidden" class="library-action-form">
+                            <input type="hidden" name="folder" value="{{ folder_name }}">
+                            <input type="hidden" name="hidden" value="{{ '0' if folder_is_hidden else '1' }}">
+                            <input type="hidden" name="view" value="{{ view }}">
+                            <button type="submit" class="library-secondary-action compact library-folder-visibility-action" aria-label="{{ 'Unhide' if folder_is_hidden else 'Hide' }} {{ folder_name }} folder">{% if folder_is_hidden %}👁 Unhide{% else %}◌ Hide{% endif %}</button>
+                        </form>
                         <div class="folder-actions">
                             <button type="button" class="library-icon-button" onclick="showRenameFolderForm(event, this)" title="Rename folder" aria-label="Rename {{ folder_name }}">✎</button>
                             <form method="POST" action="/rename_quiz_folder" class="rename-folder-form library-inline-form" style="display:none;">
@@ -14869,6 +15101,7 @@ def quiz_library():
                                         <span>•</span>
                                         <span>{{ folder_name }}</span>
                                         {% if q.get('hidden') %}<span class="library-hidden-badge">Hidden</span>{% endif %}
+                                        {% if folder_is_hidden %}<span class="library-folder-hidden-badge">Folder hidden</span>{% endif %}
                                     </div>
                                 </div>
                             </div>
@@ -14898,7 +15131,7 @@ def quiz_library():
                                         <input type="hidden" name="view" value="{{ view }}">
                                         <select name="folder">
                                             {% for folder in folder_names %}
-                                            <option value="{{ folder }}" {% if q.get('folder', 'Uncategorized') == folder %}selected{% endif %}>{{ folder }}</option>
+                                            <option value="{{ folder }}" {% if q.get('folder', 'Uncategorized') == folder %}selected{% endif %}>{{ folder }}{% if folder|lower in hidden_folder_keys %} (hidden){% endif %}</option>
                                             {% endfor %}
                                         </select>
                                         <button type="submit">Save</button>
@@ -14925,8 +15158,9 @@ def quiz_library():
             </article>
             {% endfor %}
         </section>
-        {% else %}
-        <section class="library-empty dashboard-panel">
+        {% endif %}
+        {% if not normal_display_folder_names %}
+        <section id="libraryEmptyState" class="library-empty dashboard-panel">
             <div class="library-empty-icon">▤</div>
             <h2>No quizzes found</h2>
             <p>There are no quizzes in the selected {{ view }} view.</p>
@@ -15067,7 +15301,9 @@ function updateLibraryReorderControls() {
     document.querySelectorAll('[data-library-reorder="folder"]').forEach(button => {
         const folder = button.closest(".library-folder");
         const list = folder && folder.parentElement;
-        const folders = list ? libraryDirectItems(list, ".library-folder") : [];
+        const folders = list ? libraryDirectItems(
+            list, ".library-folder:not(.library-view-search-only)"
+        ) : [];
         const position = folders.indexOf(folder);
         const direction = Number(button.dataset.libraryReorderDirection);
         button.disabled = searchIsActive || list?.dataset.reorderPending === "true" ||
@@ -15095,10 +15331,15 @@ async function postLibraryReorder(url, payload) {
 }
 
 function saveLibraryFolderOrder(folderList) {
-    const folders = libraryDirectItems(folderList, ".library-folder")
+    const folders = libraryDirectItems(
+        folderList, ".library-folder:not(.library-view-search-only)"
+    )
         .map(folder => folder.getAttribute("data-folder-name"))
         .filter(Boolean);
-    return postLibraryReorder("/save_folder_order", {folders});
+    return postLibraryReorder("/save_folder_order", {
+        folders,
+        view: folderList.dataset.view || "visible"
+    });
 }
 
 function saveLibraryQuizOrder(body) {
@@ -15139,7 +15380,9 @@ function moveLibraryFolder(event, button, direction) {
     event.preventDefault();
     event.stopPropagation();
     const folder = button.closest(".library-folder");
-    void moveLibraryItem(folder, folder?.parentElement, ".library-folder", direction,
+    void moveLibraryItem(
+        folder, folder?.parentElement,
+        ".library-folder:not(.library-view-search-only)", direction,
         saveLibraryFolderOrder, folder?.getAttribute("data-folder-name") || "Folder");
 }
 
@@ -15163,6 +15406,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (search) {
         search.addEventListener("input", function() {
             const term = search.value.trim().toLowerCase();
+            let totalMatches = 0;
             document.querySelectorAll(".library-folder").forEach(folder => {
                 let visibleCards = 0;
                 folder.querySelectorAll(".library-quiz-card").forEach(card => {
@@ -15171,11 +15415,28 @@ document.addEventListener("DOMContentLoaded", function() {
                     card.style.display = matches ? "" : "none";
                     if (matches) visibleCards += 1;
                 });
+                totalMatches += term ? visibleCards : 0;
+                const hasSearchResult = Boolean(term) && visibleCards > 0;
+                folder.classList.toggle(
+                    "library-search-revealed",
+                    folder.classList.contains("library-view-search-only") && hasSearchResult
+                );
                 folder.classList.toggle(
                     "library-search-empty",
                     Boolean(term) && visibleCards === 0
                 );
+                if (hasSearchResult && folder.classList.contains("collapsed")) {
+                    folder.dataset.librarySearchWasCollapsed = "true";
+                    setLibraryFolderCollapsed(folder, false);
+                } else if (!term && folder.dataset.librarySearchWasCollapsed === "true") {
+                    setLibraryFolderCollapsed(folder, true);
+                    delete folder.dataset.librarySearchWasCollapsed;
+                }
             });
+            const emptyState = document.getElementById("libraryEmptyState");
+            if (emptyState) {
+                emptyState.style.display = term && totalMatches > 0 ? "none" : "";
+            }
             updateLibraryReorderControls();
         });
     }
@@ -15184,7 +15445,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (folderList && window.Sortable) {
         Sortable.create(folderList, {
             animation: 150,
-            draggable: ".library-folder",
+            draggable: ".library-folder:not(.library-view-search-only)",
             handle: ".library-folder-header",
             filter: "form, input, button, select, textarea, a",
             preventOnFilter: false,
@@ -15246,9 +15507,11 @@ if (menuButton && sidebar) {
 </body>
 </html>
 """, quizzes=quizzes, grouped_quizzes=grouped_quizzes, folder_names=folder_names,
-       display_folder_names=display_folder_names, portal_title=portal_title,
+       display_folder_names=display_folder_names,
+       normal_display_folder_names=normal_display_folder_names,
+       hidden_folder_keys=hidden_folder_keys, portal_title=portal_title,
        visible_count=visible_count, hidden_count=hidden_count,
-       view=view, app_version=APP_VERSION)
+       view_quiz_count=view_quiz_count, view=view, app_version=APP_VERSION)
 
 
 

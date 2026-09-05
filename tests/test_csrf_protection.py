@@ -29,6 +29,13 @@ class CsrfProtectionTests(unittest.TestCase):
     def test_tokenless_and_invalid_posts_are_rejected(self):
         self.assertEqual(self.client.post("/api/theme", json={"theme": "dark"}).status_code, 400)
         self.assertEqual(
+            self.client.post(
+                "/set_quiz_folder_hidden",
+                data={"folder": "CISM", "hidden": "1"},
+            ).status_code,
+            400,
+        )
+        self.assertEqual(
             self.client.post("/api/theme", json={"theme": "dark"}, headers={"X-CSRFToken": "invalid"}).status_code,
             400,
         )

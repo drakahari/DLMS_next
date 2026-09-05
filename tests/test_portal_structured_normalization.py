@@ -59,6 +59,72 @@ class PortalStructuredNormalizationTests(unittest.TestCase):
         self.assertEqual(valid, json.loads(self.portal_path.read_text(encoding="utf-8")))
         self.assertFalse(Path(str(self.portal_path) + ".corrupt").exists())
 
+    def test_missing_hidden_quiz_folders_defaults_empty_without_rewriting(self):
+        existing = {
+            "title": "Older DLMS",
+            "quiz_folders": ["Uncategorized", "CISM"],
+        }
+        original = json.dumps(existing, indent=2)
+        self.portal_path.write_text(original, encoding="utf-8")
+
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)):
+            config = dlms.load_portal_config()
+            hidden_folders = dlms.get_hidden_quiz_folders()
+
+        self.assertEqual([], config["hidden_quiz_folders"])
+        self.assertEqual([], hidden_folders)
+        self.assertEqual(original, self.portal_path.read_text(encoding="utf-8"))
+
+    def test_hidden_quiz_folders_are_canonicalized_without_rewriting_on_read(self):
+        existing = {
+            "quiz_folders": ["Uncategorized", "CISM", "Cloud"],
+            "hidden_quiz_folders": [
+                " cism ", "CISM", "Uncategorized", "", "Stale Folder", "CLOUD"
+            ],
+        }
+        original = json.dumps(existing, indent=2)
+        self.portal_path.write_text(original, encoding="utf-8")
+
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)):
+            hidden_folders = dlms.get_hidden_quiz_folders()
+
+        self.assertEqual(["CISM", "Cloud"], hidden_folders)
+        self.assertEqual(original, self.portal_path.read_text(encoding="utf-8"))
+        self.assertFalse(Path(str(self.portal_path) + ".corrupt").exists())
+
+    def test_malformed_hidden_quiz_folders_fail_open_and_are_preserved(self):
+        malformed = b'{"quiz_folders":["Uncategorized","CISM"],"hidden_quiz_folders":"CISM"}'
+        self.portal_path.write_bytes(malformed)
+
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)):
+            config = dlms.load_portal_config()
+            hidden_folders = dlms.get_hidden_quiz_folders()
+
+        self.assertEqual([], config["hidden_quiz_folders"])
+        self.assertEqual([], hidden_folders)
+        self.assertEqual(
+            malformed,
+            Path(str(self.portal_path) + ".corrupt").read_bytes(),
+        )
+
+    def test_hidden_quiz_folders_with_non_string_entries_fail_open(self):
+        malformed = (
+            b'{"quiz_folders":["Uncategorized","CISM"],'
+            b'"hidden_quiz_folders":["CISM",{"bad":true}]}'
+        )
+        self.portal_path.write_bytes(malformed)
+
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)):
+            config = dlms.load_portal_config()
+            hidden_folders = dlms.get_hidden_quiz_folders()
+
+        self.assertEqual([], config["hidden_quiz_folders"])
+        self.assertEqual([], hidden_folders)
+        self.assertEqual(
+            malformed,
+            Path(str(self.portal_path) + ".corrupt").read_bytes(),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

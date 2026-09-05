@@ -3046,6 +3046,18 @@ a.settings-hub-card:active {
     display: none;
 }
 
+.library-page .library-folder.library-view-search-only {
+    display: none;
+}
+
+.library-page .library-folder.library-view-search-only.library-search-revealed {
+    display: block;
+}
+
+.library-page .library-folder.library-folder-is-hidden {
+    border-style: dashed;
+}
+
 .library-page .library-folder-header {
     display: flex;
     align-items: center;
@@ -3219,6 +3231,27 @@ a.settings-hub-card:active {
     border-radius: 999px;
     background: rgba(170, 111, 22, .13);
     color: #f1c77b;
+}
+
+.library-page .library-folder-hidden-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 3px;
+    padding: 2px 7px;
+    border: 1px solid color-mix(in srgb, var(--theme-accent, #1b9ff2) 38%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 12%, transparent);
+    color: var(--theme-accent-text, #78bfff);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .03em;
+    line-height: 1.35;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+.library-page .library-folder-visibility-action {
+    white-space: nowrap;
 }
 
 .library-page .library-quiz-logo-frame {

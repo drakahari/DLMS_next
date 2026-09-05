@@ -321,6 +321,198 @@ def test_library_empty_folder_lifecycle_persists_in_real_browser(browser_stack):
     browser.wait_for(f"!({folder_lookup})")
 
 
+def test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    critical_html = browser_stack.metadata["critical_html"]
+    folder_name = "Browser Hidden Folder"
+    renamed_folder = "Browser Archived Folder"
+    tail_folder = "Browser Tail Folder"
+
+    def folder_lookup(name):
+        return (
+            "[...document.querySelectorAll('.library-folder')]"
+            f".find(folder => folder.dataset.folderName === {json.dumps(name)})"
+        )
+
+    browser.navigate(f"{base_url}/library")
+    browser.click(".library-add-folder > button")
+    assert browser.evaluate(
+        f"(() => {{ const input = document.querySelector('.add-folder-form [name=folder]'); "
+        f"input.value = {json.dumps(folder_name)}; return input.value; }})()"
+    ) == folder_name
+    browser.click(".add-folder-form button[type=submit]")
+    browser.wait_for(f"Boolean({folder_lookup(folder_name)})")
+
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(folder_name)}; "
+        "folder.querySelector(\"form[action='/set_quiz_folder_hidden']\").requestSubmit(); "
+        "return true; })()"
+    ) is True
+    browser.wait_for(f"!({folder_lookup(folder_name)})")
+
+    browser.navigate(f"{base_url}/library?view=hidden")
+    browser.wait_for(
+        f"({folder_lookup(folder_name)})?.querySelector('.library-folder-hidden-badge')"
+        "?.textContent.trim() === 'Hidden folder'"
+    )
+    browser.wait_for(
+        f"({folder_lookup(folder_name)})?.querySelector('.library-folder-empty')"
+        "?.textContent.trim() === 'No quizzes in this view.'"
+    )
+    browser.navigate(f"{base_url}/library?view=all")
+    browser.wait_for(f"({folder_lookup(folder_name)})?.dataset.folderHidden === 'true'")
+
+    browser.navigate(f"{base_url}/library")
+    assert browser.evaluate(
+        f"(() => {{ const card = [...document.querySelectorAll('.library-quiz-card')]"
+        f".find(card => card.dataset.id === {json.dumps(critical_html)}); "
+        "const form = card.querySelector('.move-quiz-form'); "
+        f"form.querySelector('[name=folder]').value = {json.dumps(folder_name)}; "
+        "form.requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(
+        f"getComputedStyle({folder_lookup(folder_name)}).display === 'none'"
+    )
+
+    assert browser.evaluate(
+        "(() => { const search = document.getElementById('librarySearch'); "
+        "search.value = 'Browser Critical Workflow'; "
+        "search.dispatchEvent(new Event('input', {bubbles:true})); return true; })()"
+    ) is True
+    browser.wait_for(
+        f"getComputedStyle({folder_lookup(folder_name)}).display !== 'none' && "
+        f"({folder_lookup(folder_name)})?.classList.contains('library-search-revealed')"
+    )
+    browser.wait_for(
+        f"({folder_lookup(folder_name)})?.querySelector('[data-id={json.dumps(critical_html)}]')"
+        "?.querySelector('.library-folder-hidden-badge')?.textContent.trim() === 'Folder hidden'"
+    )
+    assert browser.evaluate(
+        "(() => { const search = document.getElementById('librarySearch'); "
+        "search.value = ''; search.dispatchEvent(new Event('input', {bubbles:true})); "
+        "return true; })()"
+    ) is True
+    browser.wait_for(
+        f"getComputedStyle({folder_lookup(folder_name)}).display === 'none'"
+    )
+
+    browser.navigate(f"{base_url}/library?view=hidden")
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(folder_name)}; "
+        f"const card = folder.querySelector('[data-id={json.dumps(critical_html)}]'); "
+        "card.querySelector(\"form[action='/toggle_hidden']\").requestSubmit(); "
+        "return true; })()"
+    ) is True
+    browser.wait_for(
+        f"({folder_lookup(folder_name)})?.querySelector('[data-id={json.dumps(critical_html)}]')"
+        "?.querySelector('.library-hidden-badge')?.textContent.trim() === 'Hidden'"
+    )
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(folder_name)}; "
+        "const form = folder.querySelector(\"form[action='/set_quiz_folder_hidden']\"); "
+        "form.requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(
+        f"({folder_lookup(folder_name)})?.dataset.folderHidden === 'false'"
+    )
+
+    browser.navigate(f"{base_url}/library")
+    browser.wait_for(
+        f"({folder_lookup(folder_name)})?.querySelector('.library-folder-empty')"
+        "?.textContent.trim() === 'No quizzes in this view.'"
+    )
+    assert browser.evaluate(
+        f"!({folder_lookup(folder_name)})?.querySelector('[data-id={json.dumps(critical_html)}]')"
+    ) is True
+
+    browser.navigate(f"{base_url}/library?view=hidden")
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(folder_name)}; "
+        "const form = folder.querySelector('.rename-folder-form'); "
+        f"form.querySelector('[name=new_folder]').value = {json.dumps(renamed_folder)}; "
+        "form.requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(f"Boolean({folder_lookup(renamed_folder)})")
+
+    browser.navigate(f"{base_url}/library")
+    browser.click(".library-add-folder > button")
+    assert browser.evaluate(
+        f"(() => {{ const input = document.querySelector('.add-folder-form [name=folder]'); "
+        f"input.value = {json.dumps(tail_folder)}; return input.value; }})()"
+    ) == tail_folder
+    browser.click(".add-folder-form button[type=submit]")
+    browser.wait_for(f"Boolean({folder_lookup(tail_folder)})")
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(renamed_folder)}; "
+        "folder.querySelector(\"form[action='/set_quiz_folder_hidden']\").requestSubmit(); "
+        "return true; })()"
+    ) is True
+    browser.wait_for(
+        f"getComputedStyle({folder_lookup(renamed_folder)}).display === 'none'"
+    )
+
+    portal_path = browser_stack.data_root / "config" / "portal.json"
+    before_order = json.loads(portal_path.read_text(encoding="utf-8"))["quiz_folders"]
+    hidden_position = before_order.index(renamed_folder)
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(tail_folder)}; "
+        "folder.querySelector('[data-library-reorder=folder][data-library-reorder-direction=\"-1\"]').click(); "
+        "return true; })()"
+    ) is True
+    browser.wait_for("document.getElementById('libraryReorderStatus').textContent.includes('moved up')")
+    browser.navigate(f"{base_url}/library")
+    after_order = json.loads(portal_path.read_text(encoding="utf-8"))["quiz_folders"]
+    assert after_order.index(renamed_folder) == hidden_position
+    assert after_order.index(tail_folder) < after_order.index(renamed_folder)
+
+    browser.navigate(f"{base_url}/library?view=hidden")
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(renamed_folder)}; window.confirm = () => true; "
+        "folder.querySelector(\"form[action='/delete_quiz_folder']\").requestSubmit(); "
+        "return true; })()"
+    ) is True
+    browser.wait_for(f"!({folder_lookup(renamed_folder)})")
+    browser.wait_for(
+        f"[...document.querySelectorAll('.library-quiz-card')]"
+        f".find(card => card.dataset.id === {json.dumps(critical_html)})"
+        "?.querySelector('.library-hidden-badge')?.textContent.trim() === 'Hidden'"
+    )
+
+    # Restore the shared browser fixture state for the remaining workflows.
+    assert browser.evaluate(
+        f"(() => {{ const card = [...document.querySelectorAll('.library-quiz-card')]"
+        f".find(card => card.dataset.id === {json.dumps(critical_html)}); "
+        "const move = card.querySelector('.move-quiz-form'); "
+        "move.querySelector('[name=folder]').value = 'Browser Regression'; "
+        "move.requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(
+        f"[...document.querySelectorAll('.library-quiz-card')]"
+        f".some(card => card.dataset.id === {json.dumps(critical_html)})"
+    )
+    assert browser.evaluate(
+        f"(() => {{ const card = [...document.querySelectorAll('.library-quiz-card')]"
+        f".find(card => card.dataset.id === {json.dumps(critical_html)}); "
+        "card.querySelector(\"form[action='/toggle_hidden']\").requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(
+        f"![...document.querySelectorAll('.library-quiz-card')]"
+        f".some(card => card.dataset.id === {json.dumps(critical_html)})"
+    )
+    browser.navigate(f"{base_url}/library")
+    browser.wait_for(
+        f"[...document.querySelectorAll('.library-quiz-card')]"
+        f".some(card => card.dataset.id === {json.dumps(critical_html)})"
+    )
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(tail_folder)}; window.confirm = () => true; "
+        "folder.querySelector(\"form[action='/delete_quiz_folder']\").requestSubmit(); "
+        "return true; })()"
+    ) is True
+    browser.wait_for(f"!({folder_lookup(tail_folder)})")
+
+
 def test_navigation_visibility_persists_through_settings_and_page_reload(browser_stack):
     browser = browser_stack.browser
     keys = ("it", "law", "medical", "other")

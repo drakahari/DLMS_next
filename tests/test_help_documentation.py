@@ -204,13 +204,19 @@ class HelpDocumentationTests(unittest.TestCase):
             "remains available after refresh or restart",
             "Uncategorized",
             "stays hidden when empty",
-            "cannot be renamed or deleted",
+            "cannot be hidden, renamed, or deleted",
+            "without changing the individual visibility of any quiz",
+            "shows every quiz inside a hidden folder",
+            "Hidden folder",
+            "Unhiding a folder restores only the quizzes that are not individually hidden",
             "choose <strong>Move</strong>",
             "select the destination folder, and choose <strong>Save</strong>",
+            "Hidden folders remain available as destinations",
             "Drag a folder header to reorder",
             "Drag a quiz card to reorder it inside its current folder",
             "does not transfer quizzes between folders",
-            "clearing the search restores saved empty folders",
+            "Search can reveal a matching quiz from a hidden folder",
+            "clearing the search restores normal folder visibility and saved empty folders",
         ):
             with self.subTest(wording=wording):
                 self.assertIn(wording, quizzes)
