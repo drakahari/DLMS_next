@@ -1,4 +1,6 @@
 import hashlib
+import json
+import os
 import re
 import subprocess
 import sys
@@ -30,7 +32,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertRegex(readme, r"instead of starting another\s+server copy")
         self.assertIn("use **Shutdown DLMS**", readme)
         self.assertIn("requirements-lock.txt", readme)
-        self.assertIn("git archive", readme)
+        self.assertIn("GitHub's automatic source archives", readme)
 
     def test_release_metadata_and_help_use_the_final_display_version(self):
         version = "3.0.2"
@@ -51,6 +53,8 @@ class ReleaseDocumentationTests(unittest.TestCase):
             ROOT / "docs" / "RELEASE_VERIFICATION.md",
             ROOT / "requirements-build.txt",
             ROOT / "requirements-lock.txt",
+            ROOT / "release_assets" / "README.txt",
+            ROOT / "release_assets" / "sample_quiz.txt",
             *(ROOT / "static").glob("*.html"),
         ]
         for path in paths:
@@ -73,12 +77,12 @@ class ReleaseDocumentationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-checksums-") as directory:
             root = Path(directory)
             artifacts = [
-                root / "DLMS-3.0.2-fedora44-x86_64",
-                root / "DLMS-3.0.2-ubuntu24.04-x86_64",
-                root / "DLMS-3.0.2-ubuntu26.04-x86_64",
-                root / "DLMS-3.0.2-windows11-x86_64.exe",
+                root / "DLMS-3.0.2-fedora44-x86_64.tar.gz",
+                root / "DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz",
+                root / "DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz",
+                root / "DLMS-3.0.2-windows11-x86_64.zip",
                 root / "DLMS-3.0.2-macos-arm64.zip",
-                root / "DLMS-3.0.2-omarchy-quattro-x86_64",
+                root / "DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz",
             ]
             manifest = root / "SHA256SUMS.txt"
             for artifact in artifacts:
@@ -128,11 +132,74 @@ class ReleaseDocumentationTests(unittest.TestCase):
                 self.assertIn(artifact_name, procedure)
         self.assertNotIn("DLMS-3.0.2-linux-x86_64", readme + procedure)
         self.assertNotIn("DLMS-3.0.2-windows-x86_64.exe", readme + procedure)
-        self.assertIn("--checksums releases/SHA256SUMS.txt", procedure)
+        self.assertIn("verify_release_package.py --complete-set", procedure)
+        self.assertIn('--checksums "$PACKAGE_DIR/SHA256SUMS.txt"', procedure)
         self.assertIn("--smoke", procedure)
         self.assertIn("QUIZAPP_DATA_DIR", verifier)
         self.assertIn("Shutdown DLMS", procedure)
         self.assertIn("not sign, notarize, publish, upload, or create installers", procedure)
+
+    def test_final_release_packages_and_authoritative_documents_are_documented(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        procedure = (ROOT / "docs" / "RELEASE_VERIFICATION.md").read_text(encoding="utf-8")
+        package_readme = (ROOT / "release_assets" / "README.txt").read_text(
+            encoding="utf-8"
+        )
+        package_verifier = ROOT / "tools" / "verify_release_package.py"
+        packager = ROOT / "tools" / "package_release.py"
+        final_packages = (
+            "DLMS-3.0.2-fedora44-x86_64.tar.gz",
+            "DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz",
+            "DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz",
+            "DLMS-3.0.2-windows11-x86_64.zip",
+            "DLMS-3.0.2-macos-arm64.zip",
+            "DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz",
+        )
+
+        self.assertTrue(package_verifier.is_file())
+        self.assertTrue(packager.is_file())
+        for name in final_packages:
+            with self.subTest(name=name):
+                self.assertIn(name, readme)
+                self.assertIn(name, procedure)
+                self.assertIn(name, package_readme)
+        self.assertIn("README.txt", procedure)
+        self.assertIn("sample_quiz.txt", procedure)
+        self.assertIn("--complete-set", procedure)
+        self.assertIn("--checksums", procedure)
+        self.assertIn("GitHub automatically supplies repository source", procedure)
+        self.assertIn("Do not\ncreate or upload `DLMS-3.0.2-source.zip`", procedure)
+        self.assertNotRegex(
+            package_readme, re.compile(r"(?i)(?:\brc[._ -]?4\b|\bfc4\b)")
+        )
+        self.assertNotIn("git clone", package_readme)
+        self.assertNotIn("PyInstaller", package_readme)
+
+    def test_distributed_sample_quiz_uses_the_current_parser(self):
+        sample = ROOT / "release_assets" / "sample_quiz.txt"
+        with tempfile.TemporaryDirectory(prefix="dlms-sample-quiz-") as directory:
+            environment = os.environ.copy()
+            environment["QUIZAPP_DATA_DIR"] = directory
+            environment["DLMS_NO_BROWSER"] = "1"
+            code = (
+                "import json, pathlib, app; "
+                "questions = app.parse_questions("
+                f"pathlib.Path({str(sample)!r}).read_text(encoding='utf-8')); "
+                "print(json.dumps(questions))"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", code],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        questions = json.loads(result.stdout.splitlines()[-1])
+        self.assertEqual(len(questions), 10)
+        self.assertTrue(all(len(question["correct"]) == 1 for question in questions))
 
     def test_macos_release_is_a_native_app_zip_with_first_run_guidance(self):
         spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")

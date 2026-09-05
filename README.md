@@ -113,8 +113,8 @@ for long-term retention.
 
 ### From a packaged release (recommended)
 
-On Windows or Linux, download the matching release artifact, run the DLMS
-executable, and allow it to open the browser. You can also open
+On Windows or Linux, download and extract the matching release package, run the
+DLMS executable inside it, and allow it to open the browser. You can also open
 **[http://127.0.0.1:9001/](http://127.0.0.1:9001/)** yourself after DLMS starts.
 
 #### macOS on Apple Silicon
@@ -177,7 +177,7 @@ runtime data are not build inputs. Inspect the resulting `dist/` artifact and
 perform the release smoke tests before distribution.
 
 Build natively for each target architecture; PyInstaller does not produce
-cross-platform binaries. Stage the final artifacts with these names:
+cross-platform binaries. Stage the verified native inputs with these names:
 
 * Fedora 44: `DLMS-3.0.2-fedora44-x86_64`
 * Ubuntu 24.04: `DLMS-3.0.2-ubuntu24.04-x86_64`
@@ -206,11 +206,30 @@ raw DLMS executable in the release ZIP. If an Intel build is intentionally
 produced and tested from an `x86_64` Python environment, use the distinct name
 `DLMS-3.0.2-macos-x86_64.zip`.
 
-After staging the final binaries/packages in `releases/`, generate the shared
-checksum manifest from the same checkout:
+After native verification and UAT, use the repository-maintained
+`release_assets/README.txt` and `release_assets/sample_quiz.txt` to create these
+six final download packages:
+
+* Fedora 44: `DLMS-3.0.2-fedora44-x86_64.tar.gz`
+* Ubuntu 24.04: `DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz`
+* Ubuntu 26.04: `DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz`
+* Windows 11: `DLMS-3.0.2-windows11-x86_64.zip`
+* macOS Apple Silicon: `DLMS-3.0.2-macos-arm64.zip`
+* Omarchy Quattro: `DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz`
+
+Generate the shared checksum manifest from exactly those final archives. GitHub
+provides the repository source archives automatically; do not create or upload
+a separate DLMS source ZIP. The complete packaging and verification commands
+are in [Native Release Verification](docs/RELEASE_VERIFICATION.md).
 
 ```bash
-python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-*
+python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt \
+  releases/DLMS-3.0.2-fedora44-x86_64.tar.gz \
+  releases/DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz \
+  releases/DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz \
+  releases/DLMS-3.0.2-windows11-x86_64.zip \
+  releases/DLMS-3.0.2-macos-arm64.zip \
+  releases/DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz
 ```
 
 The user-facing release name is `DLMS 3.0.2`; the matching Git tag convention
@@ -465,11 +484,13 @@ files once removed.
    ZIP that bundle with `ditto`, and confirm the archive has no separate raw
    executable. Do not imply Intel macOS support without a native Intel build and
    UAT.
-5. Review `git status` and package source from tracked files, for example with
-   `git archive --format=zip --output releases/DLMS-3.0.2-source.zip HEAD`. Inspect
-   the archive to confirm it contains required application assets and excludes
-   `.git`, virtual environments, caches, databases, logs, and local build output.
-6. Generate `releases/SHA256SUMS.txt` from the final staged binaries/packages with
-   `python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt releases/DLMS-3.0.2-*`.
-   Re-run the artifact verifier with `--checksums releases/SHA256SUMS.txt` for
-   every staged native artifact before upload.
+5. Review `git status`, then package the already-verified native artifacts with
+   the tracked `release_assets/README.txt` and `release_assets/sample_quiz.txt`.
+   Run `tools/verify_release_package.py` against all six final archives to reject
+   missing documents, wrong binaries, damaged platform metadata, or development
+   and runtime junk. GitHub's automatic source archives are sufficient; do not
+   prepare a separate source ZIP.
+6. Generate `releases/SHA256SUMS.txt` from exactly the six final platform
+   archives. Re-run the package verifier with `--complete-set` and `--checksums`,
+   then independently check the manifest before uploading the seven release
+   assets.

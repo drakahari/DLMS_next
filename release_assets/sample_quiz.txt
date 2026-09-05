@@ -1,0 +1,78 @@
+1. Which protocol operates at Layer 3 of the OSI model?
+A. Ethernet
+B. IP
+C. TCP
+D. HTTP
+Correct Answer: B
+
+
+2. Which command is commonly used in Linux to display the current IP configuration?
+A. ipconfig
+B. ip addr
+C. route
+D. traceroute
+Correct Answer: B
+
+
+3. What is the primary purpose of DNS?
+A. Encrypt network traffic
+B. Assign IP addresses automatically
+C. Resolve domain names to IP addresses
+D. Filter network packets
+Correct Answer: C
+
+
+4. Which device operates primarily at Layer 2 of the OSI model?
+A. Router
+B. Firewall
+C. Switch
+D. Load balancer
+Correct Answer: C
+
+
+5. Which type of malware is designed to replicate itself without user interaction?
+A. Trojan
+B. Spyware
+C. Worm
+D. Rootkit
+Correct Answer: C
+
+
+6. Which port number is used by HTTPS by default?
+A. 21
+B. 22
+C. 80
+D. 443
+Correct Answer: D
+
+
+7. What does RAID 1 provide?
+A. Increased storage capacity only
+B. Disk striping without redundancy
+C. Disk mirroring for redundancy
+D. Improved read/write speed with no fault tolerance
+Correct Answer: C
+
+
+8. Which command is used to test connectivity between two network hosts?
+A. nslookup
+B. ping
+C. netstat
+D. arp
+Correct Answer: B
+
+
+9. Which authentication factor is something you ARE?
+A. Password
+B. Smart card
+C. Fingerprint
+D. Security token
+Correct Answer: C
+
+
+10. What is the main function of a firewall?
+A. Store encryption keys
+B. Monitor system performance
+C. Filter network traffic based on rules
+D. Assign MAC addresses
+Suggested Answer: C
