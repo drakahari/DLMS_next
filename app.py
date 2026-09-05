@@ -20331,7 +20331,7 @@ def preview_paste():
                               
 </head>
 
-<body>
+<body class="paste-preview-page">
 
   <script>
     fetch("/config/portal.json")
@@ -20356,7 +20356,7 @@ def preview_paste():
         <p><b>{{quiz_title}}</b></p>
 
         <!-- STEP 7: PRE-PROCESS SUMMARY PANEL -->
-<div style="background:#1a1a1a; padding:12px; border-radius:8px; margin-bottom:18px;">
+<div class="paste-preview-summary">
     <h2>🧪 Pre-Processing Summary</h2>
 
     <!-- =============================
@@ -20440,19 +20440,19 @@ def preview_paste():
 
 
                        <!-- SMART SUGGESTIONS -->
-                    <h3>💡 Smart Suggestions</h3>
+                    <h3 class="paste-preview-suggestions-heading">💡 Smart Suggestions</h3>
 
                     {% if smart_suggestions and smart_suggestions|length > 0 %}
-                    <ul>
+                    <ul class="paste-preview-suggestions">
                     {% for s in smart_suggestions %}
-                    <li style="margin-bottom:10px;">
-                        <b>{{s.title}}</b><br>
-                        <span style="opacity:.85">{{s.detail}}</span><br>
-                        <span style="opacity:.7">Recommendation: {{s.recommend}}</span>
+                    <li class="paste-preview-suggestion">
+                        <b class="paste-preview-suggestion-title">{{s.title}}</b><br>
+                        <span class="paste-preview-suggestion-detail">{{s.detail}}</span><br>
+                        <span class="paste-preview-suggestion-recommendation">Recommendation: {{s.recommend}}</span>
 
                         {% if s.suggest_rule %}
                         <br>
-                        <code style="background:#222;padding:4px 6px;border-radius:6px;">
+                        <code class="paste-preview-suggestion-rule">
                             {{s.suggest_rule}}
                         </code>
                         {% endif %}
@@ -20503,17 +20503,17 @@ def preview_paste():
         <!-- END SUMMARY -->
 
         <h2>Original Text</h2>
-        <pre id="origBox" style="background:black;padding:10px;border-radius:8px;white-space:pre-wrap;">{{original}}</pre>
+        <pre id="origBox" class="paste-preview-source">{{original}}</pre>
 
         <h2>Text To Be Parsed: (passed to quiz)</h2>
-        <pre id="cleanBox" style="background:#102020;padding:10px;border-radius:8px;white-space:pre-wrap;">{{cleaned}}</pre>
+        <pre id="cleanBox" class="paste-preview-source paste-preview-source-clean">{{cleaned}}</pre>
 
         <br>
         <button onclick="toggleInvisible()" style="margin-top:5px;">
             👁 Show / Hide Invisible Characters
         </button>
 
-        <p style="opacity:.7">
+        <p class="paste-preview-helper">
             This helps detect BOM, zero-width, Unicode junk, and newline issues.
         </p>
 
@@ -20521,10 +20521,10 @@ def preview_paste():
             <h2>🔍 Visualized Text</h2>
 
             <h3>Original Input</h3>
-            <pre id="visualOrig" style="background:#222;padding:10px;border-radius:8px;white-space:pre-wrap;"></pre>
+            <pre id="visualOrig" class="paste-preview-source"></pre>
 
             <h3>Parsed (Cleaned) Version</h3>
-            <pre id="visualClean" style="background:#333;padding:10px;border-radius:8px;white-space:pre-wrap;"></pre>
+            <pre id="visualClean" class="paste-preview-source paste-preview-source-clean"></pre>
         </div>
 
         <script>
@@ -20564,10 +20564,9 @@ def preview_paste():
             <h2>⚖️ Text Differences</h2>
 
             <h3>Original vs Cleaned Comparison</h3>
-            <pre id="diffView"
-                 style="background:#252525;padding:10px;border-radius:8px;white-space:pre-wrap;"></pre>
+            <pre id="diffView" class="paste-preview-source"></pre>
 
-            <p style="opacity:.7">
+            <p class="paste-preview-helper">
                 <span style="color:#4cff4c;font-weight:bold;">Green</span> = added ·
                 <span style="color:#ff4c4c;font-weight:bold;">Red</span> = removed
             </p>
@@ -20634,26 +20633,26 @@ function runDiff() {
 
 
         {% if conf_details %}
-        <h2>🧠 Confidence Analysis</h2>
-        <p>
+        <h2 class="paste-preview-confidence">🧠 Confidence Analysis</h2>
+        <p class="paste-preview-confidence-summary">
             <b>Total blocks:</b> {{conf_summary.total}}<br>
             ✅ High: {{conf_summary.high}} &nbsp;
             ⚠ Medium: {{conf_summary.medium}} &nbsp;
             ❌ Low: {{conf_summary.low}}
         </p>
 
-        <ul>
+        <ul class="paste-preview-confidence-list">
             {% for item in conf_details %}
-            <li style="margin-bottom:8px;">
+            <li class="paste-preview-suggestion">
                 <b>Block {{item.index}} ({{item.confidence|capitalize}})</b><br>
-                <span style="opacity:.85">{{item.title}}</span><br>
-                <span style="opacity:.6; font-size:12px;">{{item.reason}}</span>
+                <span class="paste-preview-confidence-title">{{item.title}}</span><br>
+                <span class="paste-preview-confidence-reason">{{item.reason}}</span>
             </li>
             {% endfor %}
         </ul>
         {% endif %}
 
-        <p style="opacity:.7">
+        <p class="paste-preview-helper">
             If this looks correct, continue. Otherwise, go back and adjust rules.
         </p>
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -1279,6 +1280,120 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     assert browser.evaluate("document.title") == original_title
     assert browser.evaluate("quiz[0].question") == original_question
+
+
+def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_path):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    browser.set_viewport(1400, 1500)
+
+    def capture(name):
+        result = browser.command(
+            "browsingContext.captureScreenshot",
+            {"context": browser.context, "origin": "viewport"},
+        )
+        path = tmp_path / name
+        path.write_bytes(base64.b64decode(result["data"]))
+        assert path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken && document.getElementById('dlmsQuickTheme')")
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+
+        browser.navigate(f"{base_url}/paste?theme={theme}")
+        browser.wait_for("document.querySelectorAll('.build-step-number').length === 3")
+        paste_styles = browser.evaluate(
+            "(() => {"
+            "const resolve = name => { const probe = document.createElement('span');"
+            "probe.style.color = `var(${name})`; document.body.appendChild(probe);"
+            "const value = getComputedStyle(probe).color; probe.remove(); return value; };"
+            "const steps = [...document.querySelectorAll('.build-step-number')];"
+            "const note = document.querySelector('.build-format-note');"
+            "const noteStyle = getComputedStyle(note);"
+            "return {stepCount:steps.length,"
+            "stepColors:steps.map(step => getComputedStyle(step).color),"
+            "stepBackground:getComputedStyle(steps[0]).backgroundColor,"
+            "stepBackgroundImage:getComputedStyle(steps[0]).backgroundImage,"
+            "primaryBackgroundImage:getComputedStyle(document.querySelector('.build-primary-button')).backgroundImage,"
+            "noteColor:noteStyle.color,noteBackground:noteStyle.backgroundColor,"
+            "noteHeading:getComputedStyle(note.querySelector('strong')).color,"
+            "codeColors:[...note.querySelectorAll('code')].map(code => getComputedStyle(code).color),"
+            "inputBackground:getComputedStyle(document.querySelector('.build-source-textarea')).backgroundColor,"
+            "pageText:resolve('--theme-page-text'),heading:resolve('--theme-heading'),"
+            "accentText:resolve('--theme-accent-text'),muted:resolve('--theme-muted-text')}; })()"
+        )
+        assert paste_styles["stepCount"] == 3
+        assert all(color == paste_styles["accentText"] for color in paste_styles["stepColors"])
+        assert paste_styles["stepBackgroundImage"] == "none"
+        assert paste_styles["primaryBackgroundImage"] != "none"
+        assert paste_styles["noteColor"] == paste_styles["pageText"]
+        assert paste_styles["noteHeading"] == paste_styles["heading"]
+        assert all(color == paste_styles["accentText"] for color in paste_styles["codeColors"])
+        assert paste_styles["noteBackground"] != paste_styles["inputBackground"]
+
+        if theme == "light":
+            capture("paste-questions-light.png")
+
+        assert browser.evaluate(
+            "(() => { const form = document.querySelector('.build-workspace');"
+            "form.querySelector('[name=quiz_title]').value = 'Browser Theme Preview';"
+            "form.querySelector('[name=quiz_text]').value = "
+            + json.dumps(
+                "Which value is correct?\nA. One\nB. Two\nSuggested Answer: B"
+            )
+            + "; form.requestSubmit(); return true; })()"
+        ) is True
+        browser.wait_for(
+            "document.querySelector('.hero-title')?.textContent.includes('Preview Quiz Before Building')"
+        )
+        preview_styles = browser.evaluate(
+            "(() => {"
+            "const resolve = name => { const probe = document.createElement('span');"
+            "probe.style.color = `var(${name})`; document.body.appendChild(probe);"
+            "const value = getComputedStyle(probe).color; probe.remove(); return value; };"
+            "const summary = document.querySelector('.paste-preview-summary');"
+            "const hero = document.querySelector('.hero-title');"
+            "const source = document.querySelector('#origBox');"
+            "const helper = document.querySelector('.paste-preview-helper');"
+            "const reason = document.querySelector('.paste-preview-confidence-reason');"
+            "const detail = document.querySelector('.paste-preview-suggestion-detail');"
+            "const recommendation = document.querySelector('.paste-preview-suggestion-recommendation');"
+            "return {heroColor:getComputedStyle(hero).color,"
+            "summaryColor:getComputedStyle(summary).color,"
+            "summaryBackground:getComputedStyle(summary).backgroundColor,"
+            "summaryHeading:getComputedStyle(summary.querySelector('h2')).color,"
+            "sourceColor:getComputedStyle(source).color,sourceBackground:getComputedStyle(source).backgroundColor,"
+            "helperColor:getComputedStyle(helper).color,helperOpacity:getComputedStyle(helper).opacity,"
+            "reasonColor:getComputedStyle(reason).color,reasonOpacity:getComputedStyle(reason).opacity,"
+            "detailColor:getComputedStyle(detail).color,detailOpacity:getComputedStyle(detail).opacity,"
+            "recommendationColor:getComputedStyle(recommendation).color,"
+            "recommendationOpacity:getComputedStyle(recommendation).opacity,"
+            "pageText:resolve('--theme-page-text'),heading:resolve('--theme-heading'),"
+            "accentText:resolve('--theme-accent-text'),muted:resolve('--theme-muted-text')}; })()"
+        )
+        assert preview_styles["heroColor"] == preview_styles["heading"]
+        assert preview_styles["summaryColor"] == preview_styles["pageText"]
+        assert preview_styles["summaryHeading"] == preview_styles["heading"]
+        assert preview_styles["sourceColor"] == preview_styles["pageText"]
+        assert preview_styles["sourceBackground"] != paste_styles["inputBackground"]
+        assert preview_styles["summaryBackground"] != preview_styles["sourceBackground"]
+        for role in ("helper", "reason", "detail", "recommendation"):
+            assert preview_styles[f"{role}Color"] == preview_styles["muted"]
+            assert preview_styles[f"{role}Opacity"] == "1"
+
+        if theme == "light":
+            browser.evaluate("window.scrollTo(0, 0); true")
+            capture("paste-preview-light.png")
+            browser.evaluate(
+                "document.querySelector('.paste-preview-confidence')"
+                ".scrollIntoView({block:'center'}); true"
+            )
+            capture("paste-preview-confidence-light.png")
 
 
 def test_settings_hub_interaction_states_follow_each_theme(browser_stack):

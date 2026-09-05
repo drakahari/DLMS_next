@@ -388,6 +388,122 @@ class ThemeSystemTests(unittest.TestCase):
                     f"{theme} AI Builder assurance-chip contrast is only {ratio:.2f}:1",
                 )
 
+    def test_paste_quiz_and_preview_surfaces_use_semantic_theme_tokens(self):
+        css = self._style_css()
+        expected = {
+            ".paste-preview-page > .container > .hero-title": (
+                "--theme-heading", "--theme-panel-1", "--theme-panel-2",
+                "--theme-border", "--theme-shadow",
+            ),
+            ".build-step-number": (
+                "--theme-accent-text", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft", "12%", "42%",
+            ),
+            ".build-format-note": (
+                "--theme-page-text", "--theme-accent", "--theme-surface",
+                "--theme-border-soft", "6%",
+            ),
+            ".build-format-note strong": ("--theme-heading",),
+            ".build-format-note code": (
+                "--theme-accent-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".paste-preview-summary": (
+                "--theme-page-text", "--theme-accent", "--theme-surface",
+                "--theme-border-soft", "6%",
+            ),
+            ".paste-preview-page .paste-preview-source": (
+                "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".paste-preview-page .paste-preview-helper": ("--theme-muted-text", "opacity: 1"),
+            ".paste-preview-page .paste-preview-confidence-title": ("--theme-page-text",),
+            ".paste-preview-page .paste-preview-confidence-reason": ("--theme-muted-text", "opacity: 1"),
+            ".paste-preview-page .paste-preview-suggestion-detail": ("--theme-muted-text", "opacity: 1"),
+            ".paste-preview-page .paste-preview-suggestion-recommendation": (
+                "--theme-muted-text", "opacity: 1",
+            ),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing Paste workflow CSS rule for {selector}")
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must resolve through semantic theme tokens {tokens}",
+                )
+
+        client = dlms.app.test_client()
+        paste = client.get("/paste").get_data(as_text=True)
+        self.assertEqual(3, paste.count('class="build-step-number"'))
+        self.assertIn('class="build-format-note"', paste)
+
+        preview = client.post(
+            "/preview_paste",
+            data={
+                "quiz_title": "Theme Preview",
+                "quiz_text": (
+                    "Which value is correct?\nA. One\nB. Two\n"
+                    "Suggested Answer: B"
+                ),
+            },
+            headers=csrf_headers(client, "/paste"),
+        ).get_data(as_text=True)
+        for class_name in (
+            "paste-preview-page", "paste-preview-summary", "paste-preview-source",
+            "paste-preview-helper", "paste-preview-suggestions",
+            "paste-preview-confidence", "paste-preview-confidence-reason",
+        ):
+            with self.subTest(class_name=class_name):
+                self.assertIn(class_name, preview)
+        for legacy_style in (
+            "background:#1a1a1a", "background:black", "background:#102020",
+            "background:#222", "background:#333", "background:#252525",
+            "opacity:.85", "opacity:.7", "opacity:.6",
+        ):
+            with self.subTest(legacy_style=legacy_style):
+                self.assertNotIn(legacy_style, preview)
+
+    def test_paste_quiz_and_preview_text_contrast_across_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    dynamic_css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(dynamic_css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                surface = self._composite(variables["theme-surface"], panel)
+                surface_2 = self._composite(variables["theme-surface-2"], panel)
+                accent = self._rgba(variables["theme-accent"])[:3]
+                information = tuple(
+                    accent[index] * .06 + surface[index] * .94
+                    for index in range(3)
+                )
+                step = tuple(
+                    accent[index] * .12 + surface_2[index] * .88
+                    for index in range(3)
+                )
+                combinations = {
+                    "step numeral": (variables["theme-accent-text"], step),
+                    "format guidance": (variables["theme-page-text"], information),
+                    "format heading": (variables["theme-heading"], information),
+                    "format examples": (variables["theme-accent-text"], surface_2),
+                    "preview heading": (variables["theme-heading"], panel),
+                    "preview summary": (variables["theme-page-text"], information),
+                    "preview summary heading": (variables["theme-heading"], information),
+                    "preview source text": (variables["theme-page-text"], surface_2),
+                    "preview helper text": (variables["theme-muted-text"], panel),
+                    "confidence diagnostics": (variables["theme-muted-text"], panel),
+                    "suggestion detail": (variables["theme-muted-text"], panel),
+                }
+                for role, (foreground, background) in combinations.items():
+                    ratio = self._contrast(foreground, background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"{theme} Paste workflow {role} is only {ratio:.2f}:1",
+                    )
+
     def test_study_icon_tiles_use_theme_aware_contrast_across_palettes(self):
         css = self._style_css()
         expected = {
