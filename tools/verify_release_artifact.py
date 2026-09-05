@@ -49,12 +49,37 @@ RUNTIME_DATA_NAMES = {
     "uploads",
 }
 TARGETS = {
-    "windows-x86_64": {"label": "Windows", "suffix": "windows-x86_64.exe", "system": "Windows", "machine": "x86_64"},
-    "linux-x86_64": {"label": "Linux", "suffix": "linux-x86_64", "system": "Linux", "machine": "x86_64"},
-    "macos-arm64": {"label": "macOS Apple Silicon", "suffix": "macos-arm64.zip", "system": "Darwin", "machine": "arm64"},
+    "windows-x86_64": {
+        "label": "Windows",
+        "suffixes": ("windows11-x86_64.exe",),
+        "system": "Windows",
+        "machine": "x86_64",
+    },
+    "linux-x86_64": {
+        "label": "Linux",
+        "suffixes": (
+            "fedora44-x86_64",
+            "ubuntu24.04-x86_64",
+            "ubuntu26.04-x86_64",
+            "omarchy-quattro-x86_64",
+        ),
+        "system": "Linux",
+        "machine": "x86_64",
+    },
+    "macos-arm64": {
+        "label": "macOS Apple Silicon",
+        "suffixes": ("macos-arm64.zip",),
+        "system": "Darwin",
+        "machine": "arm64",
+    },
     # This is intentionally optional: use only after a native Intel macOS build
     # and native UAT.  Its presence here does not claim it is a release target.
-    "macos-x86_64": {"label": "macOS Intel (optional)", "suffix": "macos-x86_64.zip", "system": "Darwin", "machine": "x86_64"},
+    "macos-x86_64": {
+        "label": "macOS Intel (optional)",
+        "suffixes": ("macos-x86_64.zip",),
+        "system": "Darwin",
+        "machine": "x86_64",
+    },
 }
 
 
@@ -75,8 +100,9 @@ def release_version(source_root: Path) -> str:
     return match.group(1)
 
 
-def expected_artifact_name(target: str, version: str) -> str:
-    return f"DLMS-{version.replace(' ', '-')}-{TARGETS[target]['suffix']}"
+def expected_artifact_names(target: str, version: str) -> tuple[str, ...]:
+    prefix = f"DLMS-{version.replace(' ', '-')}-"
+    return tuple(prefix + suffix for suffix in TARGETS[target]["suffixes"])
 
 
 def expected_default_data_dir(target: str, environ: dict[str, str] | None = None) -> str:
@@ -236,11 +262,12 @@ def _verify_macos_zip(path: Path, target: str, version: str) -> list[str]:
 def verify_artifact(artifact: Path, target: str, version: str) -> list[str]:
     """Return structural/name/architecture errors for one staged artifact."""
     errors: list[str] = []
-    expected_name = expected_artifact_name(target, version)
+    expected_names = expected_artifact_names(target, version)
     if not artifact.is_file():
         return [f"Artifact is not a file: {artifact}"]
-    if artifact.name != expected_name:
-        errors.append(f"Expected artifact name {expected_name}, got {artifact.name}")
+    if artifact.name not in expected_names:
+        expected = ", ".join(expected_names)
+        errors.append(f"Expected artifact name to be one of: {expected}; got {artifact.name}")
     if target == "windows-x86_64":
         if _windows_machine(artifact) != 0x8664:
             errors.append("Windows artifact is not an x86_64 PE executable")

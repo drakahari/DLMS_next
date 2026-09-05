@@ -36,6 +36,15 @@ def _write_pe(path: Path) -> None:
     path.write_bytes(contents)
 
 
+def _write_elf(path: Path) -> None:
+    contents = bytearray(64)
+    contents[:4] = b"\x7fELF"
+    contents[4] = 2
+    contents[5] = 1
+    contents[18:20] = struct.pack("<H", 62)
+    path.write_bytes(contents)
+
+
 def _write_macos_zip(
     path: Path,
     *,
@@ -69,7 +78,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-windows-x86_64.exe"
+            artifact = root / "DLMS-3.0.2-windows11-x86_64.exe"
             _write_pe(artifact)
             manifest = root / "SHA256SUMS.txt"
             manifest.write_text(
@@ -83,7 +92,26 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Verified DLMS-3.0.2-windows-x86_64.exe", result.stdout)
+            self.assertIn("Verified DLMS-3.0.2-windows11-x86_64.exe", result.stdout)
+
+    def test_verifier_rejects_obsolete_generic_final_artifact_names(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            windows = root / "DLMS-3.0.2-windows-x86_64.exe"
+            linux = root / "DLMS-3.0.2-linux-x86_64"
+            _write_pe(windows)
+            _write_elf(linux)
+            linux.chmod(0o755)
+
+            for target, artifact in (
+                ("windows-x86_64", windows),
+                ("linux-x86_64", linux),
+            ):
+                with self.subTest(target=target):
+                    result = self._run(target, str(artifact), "--source-root", str(root))
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn("Expected artifact name", result.stderr)
 
     def test_verifier_rejects_bad_name_or_checksum(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
@@ -175,26 +203,30 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         for name in ("PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE", "__PYVENV_LAUNCHER__", "VIRTUAL_ENV"):
             self.assertNotIn(name, environment)
 
-    def test_linux_artifact_must_be_executable_x86_64_elf(self):
+    def test_linux_environment_names_require_executable_x86_64_elf(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-linux-x86_64"
-            contents = bytearray(64)
-            contents[:4] = b"\x7fELF"
-            contents[4] = 2
-            contents[5] = 1
-            contents[18:20] = struct.pack("<H", 62)
-            artifact.write_bytes(contents)
+            artifact = root / "DLMS-3.0.2-fedora44-x86_64"
+            _write_elf(artifact)
             artifact.chmod(0o644)
 
             blocked = self._run("linux-x86_64", str(artifact), "--source-root", str(root))
             self.assertEqual(blocked.returncode, 1)
             self.assertIn("not marked executable", blocked.stderr)
 
-            artifact.chmod(0o755)
-            passed = self._run("linux-x86_64", str(artifact), "--source-root", str(root))
-            self.assertEqual(passed.returncode, 0, passed.stderr)
+            for suffix in (
+                "fedora44-x86_64",
+                "ubuntu24.04-x86_64",
+                "ubuntu26.04-x86_64",
+                "omarchy-quattro-x86_64",
+            ):
+                with self.subTest(suffix=suffix):
+                    artifact = root / f"DLMS-3.0.2-{suffix}"
+                    _write_elf(artifact)
+                    artifact.chmod(0o755)
+                    passed = self._run("linux-x86_64", str(artifact), "--source-root", str(root))
+                    self.assertEqual(passed.returncode, 0, passed.stderr)
 
     def test_expected_data_directory_can_be_reported_without_an_artifact_or_app_import(self):
         result = self._run("macos-arm64", "--print-expected-data-dir")

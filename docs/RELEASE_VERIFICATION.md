@@ -26,13 +26,13 @@ application security boundary.
 4. Stage only the final artifact in `releases/`, using the name below. Do not
    stage `build/`, `dist/`, user data, logs, databases, or virtual environments.
 
-## Windows x86_64
+## Windows 11 x86_64
 
 Build with native 64-bit Windows Python. Stage:
 
 ```powershell
-Copy-Item dist\DLMS.exe releases\DLMS-3.0.2-windows-x86_64.exe
-python tools\verify_release_artifact.py windows-x86_64 releases\DLMS-3.0.2-windows-x86_64.exe --smoke
+Copy-Item dist\DLMS.exe releases\DLMS-3.0.2-windows11-x86_64.exe
+python tools\verify_release_artifact.py windows-x86_64 releases\DLMS-3.0.2-windows11-x86_64.exe --smoke
 ```
 
 The command validates the PE architecture, final name, controlled data-root
@@ -54,13 +54,26 @@ in Study and Exam mode, then use **Shutdown DLMS**.
 
 ## Linux x86_64
 
-Build with native x86_64 Linux Python. Stage and make the final executable
-executable:
+Build each Linux artifact with native x86_64 Python on the operating system
+named in its filename. Stage each build under its exact final name, make it
+executable, and run the same internal `linux-x86_64` verification target:
 
 ```bash
-cp dist/DLMS releases/DLMS-3.0.2-linux-x86_64
-chmod +x releases/DLMS-3.0.2-linux-x86_64
-python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-linux-x86_64 --smoke
+cp dist/DLMS releases/DLMS-3.0.2-fedora44-x86_64
+chmod +x releases/DLMS-3.0.2-fedora44-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-fedora44-x86_64 --smoke
+
+cp dist/DLMS releases/DLMS-3.0.2-ubuntu24.04-x86_64
+chmod +x releases/DLMS-3.0.2-ubuntu24.04-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-ubuntu24.04-x86_64 --smoke
+
+cp dist/DLMS releases/DLMS-3.0.2-ubuntu26.04-x86_64
+chmod +x releases/DLMS-3.0.2-ubuntu26.04-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-ubuntu26.04-x86_64 --smoke
+
+cp dist/DLMS releases/DLMS-3.0.2-omarchy-quattro-x86_64
+chmod +x releases/DLMS-3.0.2-omarchy-quattro-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-omarchy-quattro-x86_64 --smoke
 ```
 
 Native UAT still required: launch the staged file from the intended desktop
@@ -122,9 +135,12 @@ uploading. The commands are portable Python; use the platform path syntax from
 the sections above:
 
 ```bash
-python tools/verify_release_artifact.py windows-x86_64 releases/DLMS-3.0.2-windows-x86_64.exe --checksums releases/SHA256SUMS.txt
-python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-linux-x86_64 --checksums releases/SHA256SUMS.txt
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-fedora44-x86_64 --checksums releases/SHA256SUMS.txt
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-ubuntu24.04-x86_64 --checksums releases/SHA256SUMS.txt
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-ubuntu26.04-x86_64 --checksums releases/SHA256SUMS.txt
+python tools/verify_release_artifact.py windows-x86_64 releases/DLMS-3.0.2-windows11-x86_64.exe --checksums releases/SHA256SUMS.txt
 python tools/verify_release_artifact.py macos-arm64 releases/DLMS-3.0.2-macos-arm64.zip --checksums releases/SHA256SUMS.txt
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-omarchy-quattro-x86_64 --checksums releases/SHA256SUMS.txt
 ```
 
 For the target platform's expected normal data location without starting DLMS:

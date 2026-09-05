@@ -179,9 +179,12 @@ perform the release smoke tests before distribution.
 Build natively for each target architecture; PyInstaller does not produce
 cross-platform binaries. Stage the final artifacts with these names:
 
-* Windows: `DLMS-3.0.2-windows-x86_64.exe`
-* Linux: `DLMS-3.0.2-linux-x86_64`
+* Fedora 44: `DLMS-3.0.2-fedora44-x86_64`
+* Ubuntu 24.04: `DLMS-3.0.2-ubuntu24.04-x86_64`
+* Ubuntu 26.04: `DLMS-3.0.2-ubuntu26.04-x86_64`
+* Windows 11: `DLMS-3.0.2-windows11-x86_64.exe`
 * macOS Apple Silicon: `DLMS-3.0.2-macos-arm64.zip`
+* Omarchy Quattro: `DLMS-3.0.2-omarchy-quattro-x86_64`
 
 For the Apple Silicon build, use a native `arm64` Python environment on an Apple
 Silicon Mac, verify its architecture, build the canonical spec, and archive only

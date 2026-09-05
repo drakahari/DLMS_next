@@ -72,13 +72,17 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertTrue(script.is_file())
         with tempfile.TemporaryDirectory(prefix="dlms-checksums-") as directory:
             root = Path(directory)
-            windows = root / "DLMS-3.0.2-windows-x86_64.exe"
-            linux = root / "DLMS-3.0.2-linux-x86_64"
-            macos = root / "DLMS-3.0.2-macos-arm64.zip"
+            artifacts = [
+                root / "DLMS-3.0.2-fedora44-x86_64",
+                root / "DLMS-3.0.2-ubuntu24.04-x86_64",
+                root / "DLMS-3.0.2-ubuntu26.04-x86_64",
+                root / "DLMS-3.0.2-windows11-x86_64.exe",
+                root / "DLMS-3.0.2-macos-arm64.zip",
+                root / "DLMS-3.0.2-omarchy-quattro-x86_64",
+            ]
             manifest = root / "SHA256SUMS.txt"
-            windows.write_bytes(b"windows release artifact")
-            linux.write_bytes(b"linux release artifact")
-            macos.write_bytes(b"macOS DLMS.app ZIP artifact")
+            for artifact in artifacts:
+                artifact.write_bytes(f"release artifact: {artifact.name}".encode())
 
             result = subprocess.run(
                 [
@@ -86,9 +90,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
                     str(script),
                     "--output",
                     str(manifest),
-                    str(windows),
-                    str(linux),
-                    str(macos),
+                    *(str(artifact) for artifact in artifacts),
                 ],
                 capture_output=True,
                 text=True,
@@ -98,12 +100,10 @@ class ReleaseDocumentationTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 manifest.read_text(encoding="utf-8"),
-                "\n".join((
-                    f"{hashlib.sha256(linux.read_bytes()).hexdigest()}  {linux.name}",
-                    f"{hashlib.sha256(macos.read_bytes()).hexdigest()}  {macos.name}",
-                    f"{hashlib.sha256(windows.read_bytes()).hexdigest()}  {windows.name}",
-                    "",
-                )),
+                "".join(
+                    f"{hashlib.sha256(artifact.read_bytes()).hexdigest()}  {artifact.name}\n"
+                    for artifact in sorted(artifacts, key=lambda path: path.name)
+                ),
             )
 
     def test_native_artifact_verification_is_a_documented_release_gate(self):
@@ -115,6 +115,19 @@ class ReleaseDocumentationTests(unittest.TestCase):
         for target in ("windows-x86_64", "linux-x86_64", "macos-arm64"):
             with self.subTest(target=target):
                 self.assertIn(f"verify_release_artifact.py {target}", procedure)
+        for artifact_name in (
+            "DLMS-3.0.2-fedora44-x86_64",
+            "DLMS-3.0.2-ubuntu24.04-x86_64",
+            "DLMS-3.0.2-ubuntu26.04-x86_64",
+            "DLMS-3.0.2-windows11-x86_64.exe",
+            "DLMS-3.0.2-macos-arm64.zip",
+            "DLMS-3.0.2-omarchy-quattro-x86_64",
+        ):
+            with self.subTest(artifact_name=artifact_name):
+                self.assertIn(artifact_name, readme)
+                self.assertIn(artifact_name, procedure)
+        self.assertNotIn("DLMS-3.0.2-linux-x86_64", readme + procedure)
+        self.assertNotIn("DLMS-3.0.2-windows-x86_64.exe", readme + procedure)
         self.assertIn("--checksums releases/SHA256SUMS.txt", procedure)
         self.assertIn("--smoke", procedure)
         self.assertIn("QUIZAPP_DATA_DIR", verifier)
