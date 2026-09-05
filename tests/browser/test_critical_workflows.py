@@ -256,6 +256,71 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
     assert browser.wait_for(f"{order_expression} === {json.dumps(expected_order)}") is True
 
 
+def test_library_empty_folder_lifecycle_persists_in_real_browser(browser_stack):
+    browser = browser_stack.browser
+    folder_name = "Browser Empty Folder"
+    folder_lookup = (
+        "[...document.querySelectorAll('.library-folder')]"
+        f".find(folder => folder.dataset.folderName === {json.dumps(folder_name)})"
+    )
+    critical_html = browser_stack.metadata["critical_html"]
+
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.click(".library-add-folder > button")
+    assert browser.evaluate(
+        f"(() => {{ const input = document.querySelector('.add-folder-form [name=folder]'); "
+        f"input.value = {json.dumps(folder_name)}; return input.value; }})()"
+    ) == folder_name
+    browser.click(".add-folder-form button[type=submit]")
+    browser.wait_for(
+        f"({folder_lookup})?.querySelector('.library-folder-empty')?.textContent.trim() === "
+        "'No quizzes in this view.'"
+    )
+
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for(f"Boolean({folder_lookup})")
+
+    assert browser.evaluate(
+        "(() => { const search = document.getElementById('librarySearch'); "
+        "search.value = 'no browser quiz matches this'; "
+        "search.dispatchEvent(new Event('input', {bubbles:true})); return true; })()"
+    ) is True
+    browser.wait_for(f"({folder_lookup})?.classList.contains('library-search-empty')")
+    assert browser.evaluate(
+        "(() => { const search = document.getElementById('librarySearch'); "
+        "search.value = ''; search.dispatchEvent(new Event('input', {bubbles:true})); "
+        "return true; })()"
+    ) is True
+    browser.wait_for(f"!({folder_lookup})?.classList.contains('library-search-empty')")
+
+    assert browser.evaluate(
+        f"(() => {{ const card = [...document.querySelectorAll('.library-quiz-card')]"
+        f".find(card => card.dataset.id === {json.dumps(critical_html)}); "
+        "const form = card.querySelector('.move-quiz-form'); "
+        f"form.querySelector('[name=folder]').value = {json.dumps(folder_name)}; "
+        "form.requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(f"({folder_lookup})?.querySelectorAll('.library-quiz-card').length === 1")
+
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup}; "
+        "const form = folder.querySelector('.move-quiz-form'); "
+        "form.querySelector('[name=folder]').value = 'Browser Regression'; "
+        "form.requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(
+        f"({folder_lookup})?.querySelector('.library-folder-empty')?.textContent.trim() === "
+        "'No quizzes in this view.'"
+    )
+
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup}; window.confirm = () => true; "
+        "folder.querySelector(\"form[action='/delete_quiz_folder']\").requestSubmit(); "
+        "return true; })()"
+    ) is True
+    browser.wait_for(f"!({folder_lookup})")
+
+
 def test_navigation_visibility_persists_through_settings_and_page_reload(browser_stack):
     browser = browser_stack.browser
     keys = ("it", "law", "medical", "other")

@@ -198,16 +198,19 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn('id="library-folders"', quizzes)
         for wording in (
             "New Folder",
-            "folder sections only when they contain at least one quiz in the selected",
-            "may not appear as a folder section yet",
-            "If the last quiz leaves a folder",
+            "saves and displays custom folders immediately",
+            "remains visible in the <strong>Visible</strong>, <strong>Hidden</strong>, and <strong>All</strong> views",
+            "No quizzes in this view.",
+            "remains available after refresh or restart",
             "Uncategorized",
+            "stays hidden when empty",
             "cannot be renamed or deleted",
             "choose <strong>Move</strong>",
             "select the destination folder, and choose <strong>Save</strong>",
             "Drag a folder header to reorder",
             "Drag a quiz card to reorder it inside its current folder",
             "does not transfer quizzes between folders",
+            "clearing the search restores saved empty folders",
         ):
             with self.subTest(wording=wording):
                 self.assertIn(wording, quizzes)

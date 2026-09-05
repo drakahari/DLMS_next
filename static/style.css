@@ -3156,6 +3156,14 @@ a.settings-hub-card:active {
     padding: 12px;
 }
 
+.library-page .library-folder-empty {
+    margin: 0;
+    padding: 12px;
+    color: var(--theme-muted-text, #8297b4);
+    font-size: 13px;
+    text-align: center;
+}
+
 .library-page .library-quiz-card {
     display: flex;
     align-items: stretch;

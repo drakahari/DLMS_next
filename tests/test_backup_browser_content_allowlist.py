@@ -258,6 +258,7 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
                 "theme": "dark",
                 "ai_provider": "local",
                 "ai_custom_url": ai_custom_url,
+                "quiz_folders": ["Uncategorized", "Restored Empty Folder"],
             }),
             encoding="utf-8",
         )
@@ -371,7 +372,15 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
         self.assertEqual(200, restored_quiz.status_code)
         self.assertNotIn(self.ATTACK_MARKER.encode(), restored_quiz.data)
         self.assertEqual(404, unregistered_quiz.status_code)
-        self.assertEqual("", self.client.get("/config/portal.json").get_json()["ai_custom_url"])
+        restored_portal = self.client.get("/config/portal.json").get_json()
+        self.assertEqual("", restored_portal["ai_custom_url"])
+        self.assertEqual(
+            ["Uncategorized", "Restored Empty Folder"],
+            restored_portal["quiz_folders"],
+        )
+        restored_library = self.client.get("/library").get_data(as_text=True)
+        self.assertIn("<h2>Restored Empty Folder</h2>", restored_library)
+        self.assertIn("No quizzes in this view.", restored_library)
 
     def test_valid_absolute_http_and_https_urls_survive_complete_restore(self):
         for url in ("https://example.com/assistant", "http://localhost:11434/"):

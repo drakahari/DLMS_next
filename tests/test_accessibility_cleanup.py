@@ -70,6 +70,8 @@ def test_library_folder_collapse_and_icon_actions_have_accessible_semantics():
     assert "renameButton.focus()" in APP_SOURCE
     assert "newFolderButton.focus()" in APP_SOURCE
     assert "moveButton.focus()" in APP_SOURCE
+    assert '<p class="library-folder-empty">No quizzes in this view.</p>' in APP_SOURCE
+    assert "color: var(--theme-muted-text, #8297b4);" in STYLE
 
 
 def test_help_screenshot_dialog_contains_tab_focus_and_restores_previous_focus():

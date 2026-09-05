@@ -14637,6 +14637,7 @@ def quiz_library():
     ]
 
     folder_names = get_quiz_folders()
+    configured_folder_names = set(folder_names)
     grouped_quizzes = {folder: [] for folder in folder_names}
 
     for q in quizzes:
@@ -14655,12 +14656,17 @@ def quiz_library():
             folder_names.append(folder)
             grouped_quizzes[folder] = []
 
-    # Only render folders that contain quizzes in the selected view.
-    # Keep folder_names complete so Create/Move/Rename logic still has access
-    # to every configured folder, including currently empty folders.
+    # Explicitly saved custom folders remain visible even when the selected
+    # view has no quizzes in them. Keep the protected default Uncategorized
+    # folder out of a pristine empty library unless it contains a visible quiz.
+    # Assignment-only legacy folders retain their existing discovery behavior.
     display_folder_names = [
         folder for folder in folder_names
         if grouped_quizzes.get(folder)
+        or (
+            folder in configured_folder_names
+            and folder.lower() != "uncategorized"
+        )
     ]
 
     visible_count = sum(1 for q in registry if not q.get("hidden", False))
@@ -14799,7 +14805,7 @@ def quiz_library():
         <div class="library-tip">Drag folder headers to reorder folders. Drag quiz cards to reorder quizzes inside a folder. Use the Up and Down buttons for keyboard reordering.</div>
         <div id="libraryReorderStatus" class="library-reorder-status" aria-live="polite" aria-atomic="true"></div>
 
-        {% if quizzes %}
+        {% if display_folder_names %}
         <section id="quizList" class="library-folder-list">
             {% for folder_name in display_folder_names %}
             {% set folder_quizzes = grouped_quizzes.get(folder_name, []) %}
@@ -14844,6 +14850,9 @@ def quiz_library():
                 </div>
 
                 <div class="library-folder-body" id="library-folder-body-{{ loop.index }}" data-folder-name="{{ folder_name }}">
+                    {% if not folder_quizzes %}
+                    <p class="library-folder-empty">No quizzes in this view.</p>
+                    {% endif %}
                     {% for q in folder_quizzes %}
                     <article class="quiz-card library-quiz-card" data-id="{{ q['html'] }}" data-title="{{ q['title']|lower }}" data-search="{{ (q['title'] ~ ' ' ~ folder_name)|lower }}">
                         <div class="library-quiz-main">
@@ -15162,7 +15171,10 @@ document.addEventListener("DOMContentLoaded", function() {
                     card.style.display = matches ? "" : "none";
                     if (matches) visibleCards += 1;
                 });
-                folder.classList.toggle("library-search-empty", visibleCards === 0);
+                folder.classList.toggle(
+                    "library-search-empty",
+                    Boolean(term) && visibleCards === 0
+                );
             });
             updateLibraryReorderControls();
         });
