@@ -19,8 +19,9 @@ system. Do not assume that one Linux build is universal across distributions.
 
 PACKAGE CONTENTS
 
-Each package contains the DLMS application for its named platform, this
-README.txt, and sample_quiz.txt.
+Linux and Windows packages contain the DLMS application for their named
+platform, this README.txt, and sample_quiz.txt. The macOS download is an
+app-only ZIP containing DLMS.app directly at the archive root.
 
 STARTING DLMS
 
@@ -50,7 +51,8 @@ DLMS release before choosing More info and Run anyway.
 macOS Apple Silicon
 
 1. Extract the ZIP package.
-2. Drag DLMS.app to Applications.
+2. Confirm DLMS.app appears directly in the extraction location, then drag it
+   to Applications.
 3. Control-click DLMS.app, choose Open, and then choose Open again.
 
 DLMS 3.0.2 is not notarized, so macOS may require approval in System Settings >

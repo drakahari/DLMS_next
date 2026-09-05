@@ -54,13 +54,18 @@ def _write_macos_zip(
 ) -> None:
     executable = b"\xcf\xfa\xed\xfe" + struct.pack("<I", 0x0100000C) + (b"\0" * 24)
     metadata = plistlib.dumps({
+        "CFBundleExecutable": "DLMS",
+        "CFBundleIdentifier": "io.github.drakahari.DLMS",
         "CFBundleGetInfoString": f"DLMS {bundle_version}",
         "CFBundleShortVersionString": bundle_version,
         "CFBundleVersion": bundle_version,
     })
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("DLMS.app/Contents/Info.plist", metadata)
-        archive.writestr("DLMS.app/Contents/MacOS/DLMS", executable)
+        executable_info = zipfile.ZipInfo("DLMS.app/Contents/MacOS/DLMS")
+        executable_info.create_system = 3
+        executable_info.external_attr = (stat.S_IFREG | 0o755) << 16
+        archive.writestr(executable_info, executable)
         archive.writestr("DLMS.app/Contents/Resources/static/style.css", "body {}")
         if runtime_member:
             archive.writestr(runtime_member, "must not ship")

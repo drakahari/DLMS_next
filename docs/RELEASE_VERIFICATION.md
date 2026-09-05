@@ -1,10 +1,10 @@
 # Native Release Verification
 
-This is the canonical native-artifact verification procedure for a DLMS
-release. Run it from the same clean checkout used to build and stage the final
-artifacts. It is deliberately small: it verifies the files being published and
-requires real native UAT where desktop behavior cannot be established from
-another operating system.
+This is the canonical native-artifact and final-distributable verification
+procedure for a DLMS release. Run it from the same clean checkout used to build
+and stage the release. It is deliberately small: it verifies the exact archives
+being published and requires real native UAT where desktop behavior cannot be
+established from another operating system.
 
 `tools/verify_release_artifact.py` never imports `app.py`. Structural and
 checksum checks are therefore safe to run from a development checkout without
@@ -33,7 +33,7 @@ system and architecture.
    suites, compilation, and `git diff --check`.
 3. Build natively with `python -m PyInstaller --clean --noconfirm DLMS.spec`.
    PyInstaller does not cross-build Windows, Linux, or macOS artifacts.
-4. Stage only the final artifact in `releases/`, using the name below. Do not
+4. Stage only the verified native input in `releases/`, using the name below. Do not
    stage `build/`, `dist/`, user data, logs, databases, or virtual environments.
 
 ## Windows 11 x86_64
@@ -45,7 +45,10 @@ Copy-Item dist\DLMS.exe releases\DLMS-3.0.2-windows11-x86_64.exe
 python tools\verify_release_artifact.py windows-x86_64 releases\DLMS-3.0.2-windows11-x86_64.exe --smoke
 ```
 
-The command validates the PE architecture, final name, controlled data-root
+The generic PyInstaller output name `dist\DLMS.exe` is an intermediate build
+name only. Copying it to the stable native-input name is required; the final ZIP
+later contains exactly `DLMS-3.0.2-windows11-x86_64.exe` inside the matching
+versioned wrapper. The command validates the PE architecture, native-input name, controlled data-root
 initialization, server availability, root/static/Help/Settings/Library routes,
 clean Shutdown DLMS, and a successful restart.
 
@@ -145,11 +148,12 @@ python tools/package_release.py \
 
 The helper validates all six native inputs before writing anything. It refuses
 to use the staging directory as its output or overwrite an existing final
-package. It assembles and validates all output in a temporary directory before
-publishing the six archives to the requested output directory. It does not
-build or modify an executable.
+package. It assembles and structurally validates all output in a temporary
+directory before publishing the six archives to the requested output directory.
+It does not build or modify an executable. These outputs are the one canonical
+final distributable set; do not create a second upload archive by hand.
 
-The final archives and their exact payload layouts are:
+The final archives and their exact payload layouts are platform-specific:
 
 ```text
 DLMS-3.0.2-fedora44-x86_64.tar.gz
@@ -177,10 +181,7 @@ DLMS-3.0.2-windows11-x86_64.zip
     └── sample_quiz.txt
 
 DLMS-3.0.2-macos-arm64.zip
-└── DLMS-3.0.2-macos-arm64/
-    ├── DLMS.app/
-    ├── README.txt
-    └── sample_quiz.txt
+└── DLMS.app/
 
 DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz
 └── DLMS-3.0.2-omarchy-quattro-x86_64/
@@ -193,28 +194,101 @@ Linux executables are written to the tar archives with mode `0755`; release
 documents use `0644`. The package verifier requires at least one execute bit on
 each archived Linux executable, independent of the verifier host filesystem.
 
-The staged macOS input is already a native `ditto` ZIP containing one
-`DLMS.app`. On the Framework Desktop, the packaging helper copies its ZIP
-entries directly into the package wrapper without extracting the bundle. It
-preserves each entry's bytes, Unix mode, symbolic-link representation,
-timestamps, compression choice, and ZIP extra fields; AppleDouble/resource-fork
-entries are moved under the matching wrapper when present. The helper does not
-alter `DLMS.app`. The package verifier then rechecks the wrapper, arm64 Mach-O,
-bundle version metadata, executable mode, required documents, and content
-exclusions. This archive-to-archive method avoids restoring a POSIX app bundle
-through a Linux filesystem or Python extraction.
+The staged macOS input is already the final native `ditto` ZIP containing one
+root-level `DLMS.app`. The packaging helper promotes that ZIP byte-for-byte; it
+does not rewrite members or add a versioned wrapper, `README.txt`, or
+`sample_quiz.txt`. Exact-byte promotion preserves Unix modes, symbolic links,
+resource-fork/AppleDouble metadata, timestamps, compression, and ZIP extra
+fields without materializing the bundle on a non-macOS filesystem. The final
+package verifier requires the app-only root layout and rechecks arm64 Mach-O,
+bundle identifier/version metadata, executable mode, resources, safe unique
+paths, and content exclusions.
 
-`tools/verify_release_package.py` requires the package documents to match the
-tracked sources byte-for-byte. Linux and Windows packages may contain only the
-three listed files. The macOS package may contain only the two documents and
-the `DLMS.app` bundle (plus associated `__MACOSX` metadata when present). It
-rejects unsafe paths and common development/runtime content such as `build/`,
-`dist/`, virtual environments, `__pycache__/`, databases, logs, backups, and
-uploads.
+`tools/verify_release_package.py` requires Linux and Windows package documents
+to match the tracked sources byte-for-byte. Those packages may contain only the
+three listed files in their versioned wrapper. The macOS package may contain
+only root-level `DLMS.app` (plus associated `__MACOSX` metadata when present).
+It rejects unsafe, duplicate, and case-colliding paths and common
+development/runtime content such as `build/`, `dist/`, virtual environments,
+`__pycache__/`, databases, logs, backups, and uploads.
+
+## Clean-extract and smoke the exact final distributables
+
+Portable member inspection is necessary but is not the final gate. Return each
+archive from `DLMS-3.0.2-packages` to its named native build host and run
+`verify_release_package.py --smoke` against that exact file. The command first
+checks the archive contract, extracts into a new temporary directory, rechecks
+the resulting filesystem layout and executable, and only then runs the existing
+isolated start/routes/shutdown/restart smoke against the extracted executable.
+Set `PACKAGE_DIR` to that final-package directory on each host before running
+the commands below.
+
+Run the four Linux packages on their individually named systems:
+
+```bash
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-fedora44-x86_64.tar.gz" --smoke
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz" --smoke
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz" --smoke
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz" --smoke
+```
+
+Each Linux run uses the exact final `.tar.gz`, requires the matching versioned
+wrapper, executable, `README.txt`, and `sample_quiz.txt`, preserves an execute
+bit, reconfirms x86-64 ELF after extraction, and launches that extracted file.
+
+Run the Windows package on native 64-bit Windows:
+
+```powershell
+python tools\verify_release_package.py "$env:PACKAGE_DIR\DLMS-3.0.2-windows11-x86_64.zip" --smoke
+```
+
+The Windows flow uses PowerShell `Expand-Archive`, requires the exact versioned
+wrapper and stable-named `DLMS-3.0.2-windows11-x86_64.exe`, requires the two
+release documents, reconfirms x86-64 PE after extraction, and launches the
+extracted `.exe`. A stray `DLMS.exe`, obsolete platform name, second executable,
+or incorrect wrapper is a failure. SmartScreen or Smart App Control warnings
+remain expected normal-user UAT for this unsigned independent application; they
+are not structural validation failures.
+
+Run the macOS package on Apple Silicon macOS:
+
+```bash
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-macos-arm64.zip" --smoke
+```
+
+The macOS flow uses `ditto -x -k`, requires `<temp>/DLMS.app` with no versioned
+wrapper, reconfirms the executable bit, arm64 Mach-O, bundle identifier and
+version metadata, resources, and archived bundle symlinks, then launches
+`<temp>/DLMS.app/Contents/MacOS/DLMS`. `README.txt` and `sample_quiz.txt` are not
+part of the macOS archive contract.
+
+The final archive that passes this gate is the artifact that must be checksummed
+and uploaded. Native inputs remain clearly separated in `DLMS-3.0.2`; final
+distributables remain in `DLMS-3.0.2-packages`. Never substitute a smoke-tested
+native input for a later repackaged upload, or repackage a passing final archive.
+
+The canonical release handoff is therefore:
+
+1. Build the native artifact on the named platform.
+2. Verify that native input structurally and with its isolated native smoke.
+3. Create the one canonical final release archive in the package directory.
+4. Clean-extract that exact final archive.
+5. Verify its platform-specific top-level layout and names.
+6. Smoke-test the executable or app from that clean extraction.
+7. After all six native confirmations, compute SHA-256 from those exact final
+   package-directory files.
+8. Upload those unchanged archives and `SHA256SUMS.txt`.
+9. Download each published asset once.
+10. Compare its SHA-256 to the pre-upload validated value.
+11. When the bytes match exactly, do not repeat the native smoke merely because
+    GitHub hosted the file.
 
 ## Final checksums and upload set
 
-Generate the checksum manifest only after all six final archives exist:
+Generate the checksum manifest only after all six exact final archives have
+passed their native clean-extraction smoke. The checksum helper derives the
+canonical six filenames from the repository release version, requires exactly
+that set, structurally validates each file again, and hashes those same bytes:
 
 ```bash
 PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.0.2-packages
@@ -228,7 +302,8 @@ python tools/generate_sha256sums.py --output "$PACKAGE_DIR/SHA256SUMS.txt" \
 ```
 
 The helper sorts entries by basename and writes conventional
-`<sha256>  <filename>` lines. It must not receive raw binaries, GitHub source
+`<sha256>  <filename>` lines. It rejects missing, obsolete RC, stale generic, or
+unexpected package names and must not receive raw binaries, GitHub source
 archives, or `SHA256SUMS.txt` itself. Verify package contents, the exact six-file
 set, and every checksum:
 
@@ -258,6 +333,23 @@ Upload exactly these seven manually prepared assets:
 GitHub automatically supplies repository source ZIP and tarball links. Do not
 create or upload `DLMS-3.0.2-source.zip` or another manual source archive.
 
+## Post-upload byte verification and normal-user UAT
+
+Download each published platform asset and the published `SHA256SUMS.txt` once
+into a clean directory. Recompute each download's SHA-256 and compare it with
+the corresponding pre-upload value. This establishes that GitHub is serving the
+exact final archive that passed structural, clean-extraction, and native smoke
+validation. If the bytes match, do not repeat the full native smoke solely
+because the file was downloaded from GitHub.
+
+On Windows, additionally use Explorer to extract the published ZIP, confirm the
+versioned package folder and exact stable-named executable, and exercise the
+documented SmartScreen or Smart App Control first-run path. On macOS, use Finder
+to extract the published ZIP, confirm `DLMS.app` appears directly at the
+extraction root, drag or move it to `/Applications`, and exercise the documented
+Gatekeeper first-launch path. These are normal-user UAT checks separate from the
+automated structural and server smoke tests.
+
 For the target platform's expected normal data location without starting DLMS:
 
 ```bash
@@ -267,7 +359,9 @@ python tools/verify_release_artifact.py macos-arm64 --print-expected-data-dir
 The verifier complements, but cannot replace, native UAT. It deliberately does
 not sign, notarize, publish, upload, or create installers; those are outside the
 current DLMS packaging model. macOS ZIP contents can be directly enumerated for
-runtime-data exclusions. Windows and Linux are intentionally one-file PyInstaller
-artifacts, so their embedded payload is not treated as a generic archive: their
-release guard is the canonical-spec hygiene test, final artifact inspection,
-native-header/checksum checks, and the isolated native smoke test.
+runtime-data exclusions. Windows and Linux are intentionally one-file
+PyInstaller executables inside their final packages, so their embedded
+PyInstaller payload is not treated as a generic archive. Their release guard is
+the canonical-spec hygiene test, native-input validation, final-package
+inspection, clean extraction, native-header/checksum checks, and isolated native
+smoke from the extracted final distributable.

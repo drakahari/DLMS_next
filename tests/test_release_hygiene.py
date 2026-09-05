@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import re
@@ -71,19 +70,12 @@ class ReleaseDocumentationTests(unittest.TestCase):
             3,
         )
 
-    def test_checksum_helper_writes_standard_manifest_for_staged_artifacts(self):
+    def test_checksum_helper_rejects_noncanonical_or_incomplete_final_set(self):
         script = ROOT / "tools" / "generate_sha256sums.py"
         self.assertTrue(script.is_file())
         with tempfile.TemporaryDirectory(prefix="dlms-checksums-") as directory:
             root = Path(directory)
-            artifacts = [
-                root / "DLMS-3.0.2-fedora44-x86_64.tar.gz",
-                root / "DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz",
-                root / "DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz",
-                root / "DLMS-3.0.2-windows11-x86_64.zip",
-                root / "DLMS-3.0.2-macos-arm64.zip",
-                root / "DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz",
-            ]
+            artifacts = [root / "DLMS-3.0.2-RC4-windows-x86_64.zip"]
             manifest = root / "SHA256SUMS.txt"
             for artifact in artifacts:
                 artifact.write_bytes(f"release artifact: {artifact.name}".encode())
@@ -101,14 +93,9 @@ class ReleaseDocumentationTests(unittest.TestCase):
                 check=False,
             )
 
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(
-                manifest.read_text(encoding="utf-8"),
-                "".join(
-                    f"{hashlib.sha256(artifact.read_bytes()).hexdigest()}  {artifact.name}\n"
-                    for artifact in sorted(artifacts, key=lambda path: path.name)
-                ),
-            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("exact canonical final package set", result.stderr)
+            self.assertFalse(manifest.exists())
 
     def test_native_artifact_verification_is_a_documented_release_gate(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -167,6 +154,22 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("sample_quiz.txt", procedure)
         self.assertIn("--complete-set", procedure)
         self.assertIn("--checksums", procedure)
+        self.assertIn("verify_release_package.py --smoke", procedure)
+        self.assertIn("Expand-Archive", procedure)
+        self.assertIn("promotes that ZIP byte-for-byte", procedure)
+        self.assertIn("only root-level `DLMS.app`", procedure)
+        self.assertNotIn(
+            "DLMS-3.0.2-macos-arm64.zip\n└── DLMS-3.0.2-macos-arm64/",
+            procedure,
+        )
+        self.assertIn(
+            "The macOS ZIP is app-only and exposes\n`DLMS.app` directly",
+            readme,
+        )
+        self.assertIn(
+            "The macOS download is an\napp-only ZIP containing DLMS.app directly",
+            package_readme,
+        )
         self.assertIn("GitHub automatically supplies repository source", procedure)
         self.assertIn("Do not\ncreate or upload `DLMS-3.0.2-source.zip`", procedure)
         self.assertNotRegex(

@@ -25,7 +25,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 SERVER_URL = "http://127.0.0.1:9001"
@@ -241,7 +241,39 @@ def _verify_macos_zip(path: Path, target: str, version: str) -> list[str]:
     bundle_versions = _macos_bundle_versions(version)
     try:
         with zipfile.ZipFile(path) as archive:
-            names = [entry.filename.rstrip("/") for entry in archive.infolist() if entry.filename.rstrip("/")]
+            names: list[str] = []
+            seen: dict[str, str] = {}
+            for entry in archive.infolist():
+                raw_name = entry.filename
+                if (
+                    not raw_name
+                    or "\\" in raw_name
+                    or raw_name.startswith("/")
+                ):
+                    errors.append(f"unsafe macOS ZIP member path: {raw_name!r}")
+                    continue
+                name = raw_name.rstrip("/")
+                parts = PurePosixPath(name).parts
+                if not parts or any(part in {"", ".", ".."} for part in parts):
+                    errors.append(f"unsafe macOS ZIP member path: {raw_name!r}")
+                    continue
+                folded = name.casefold()
+                if folded in seen:
+                    errors.append(
+                        "case-colliding or duplicate macOS ZIP members: "
+                        f"{seen[folded]} and {name}"
+                    )
+                else:
+                    seen[folded] = name
+                if name == "__MACOSX" or name.startswith("__MACOSX/"):
+                    if (
+                        name not in {"__MACOSX", "__MACOSX/DLMS.app"}
+                        and name != "__MACOSX/._DLMS.app"
+                        and not name.startswith("__MACOSX/DLMS.app/")
+                    ):
+                        errors.append(f"unexpected macOS metadata path: {name}")
+                    continue
+                names.append(name)
             prefixes = {name.split("/", 1)[0] for name in names}
             if prefixes != {"DLMS.app"}:
                 errors.append("macOS ZIP must contain exactly one top-level DLMS.app bundle")
@@ -252,6 +284,10 @@ def _verify_macos_zip(path: Path, target: str, version: str) -> list[str]:
             offending = _contains_runtime_data(names)
             if offending:
                 errors.append("macOS ZIP includes runtime/user data: " + ", ".join(offending[:5]))
+            if not any(
+                name.startswith("DLMS.app/Contents/Resources/") for name in names
+            ):
+                errors.append("macOS ZIP is missing bundled Resources content")
             if "DLMS.app/Contents/Info.plist" in names:
                 metadata = plistlib.loads(archive.read("DLMS.app/Contents/Info.plist"))
                 if metadata.get("CFBundleGetInfoString") != f"DLMS {version}":
@@ -264,10 +300,25 @@ def _verify_macos_zip(path: Path, target: str, version: str) -> list[str]:
                         errors.append("macOS CFBundleShortVersionString does not match APP_VERSION")
                     if metadata.get("CFBundleVersion") != build_version:
                         errors.append("macOS CFBundleVersion does not match APP_VERSION")
+                if metadata.get("CFBundleExecutable") != "DLMS":
+                    errors.append("macOS CFBundleExecutable is not DLMS")
+                if metadata.get("CFBundleIdentifier") != "io.github.drakahari.DLMS":
+                    errors.append(
+                        "macOS CFBundleIdentifier is not io.github.drakahari.DLMS"
+                    )
             executable = "DLMS.app/Contents/MacOS/DLMS"
-            if executable in names and expected_cpu not in _macos_cpu_types(archive.read(executable)):
-                expected_label = "arm64" if target == "macos-arm64" else "x86_64"
-                errors.append(f"macOS bundle executable is not a {expected_label} Mach-O binary")
+            if executable in names:
+                info = archive.getinfo(executable)
+                mode = info.external_attr >> 16
+                if info.create_system == 3 and not mode & (
+                    stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                ):
+                    errors.append(
+                        "macOS bundle executable does not retain an execute permission bit"
+                    )
+                if expected_cpu not in _macos_cpu_types(archive.read(executable)):
+                    expected_label = "arm64" if target == "macos-arm64" else "x86_64"
+                    errors.append(f"macOS bundle executable is not a {expected_label} Mach-O binary")
     except (OSError, zipfile.BadZipFile, plistlib.InvalidFileException) as exc:
         errors.append(f"Could not inspect macOS ZIP: {exc}")
     return errors
@@ -466,48 +517,65 @@ def _smoke_environment(data_root: Path, target: str, source: dict[str, str] | No
     return environment
 
 
+def _run_smoke_command(command: list[str], target: str, work_root: Path) -> None:
+    """Exercise one already-resolved native command in an isolated data root."""
+    data_root = work_root / "data-root"
+    environment = _smoke_environment(data_root, target)
+    for run_number in (1, 2):
+        with (work_root / f"run-{run_number}.log").open("wb") as log:
+            process = subprocess.Popen(
+                command,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                env=environment,
+                cwd=str(work_root),
+            )
+            client = SmokeHttpClient()
+            try:
+                _wait_for_server(process, client)
+                _assert_smoke_routes(client)
+                _shutdown_cleanly(process, client, target)
+            except Exception as exc:
+                if process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=5)
+                log.flush()
+                diagnostics = _launch_log_tail(Path(log.name))
+                if diagnostics:
+                    raise RuntimeError(
+                        f"{exc}\nPackaged launch diagnostics (last 8000 bytes):\n{diagnostics}"
+                    ) from exc
+                raise
+    if not (data_root / ".dlms-data-root").is_file():
+        raise RuntimeError("Packaged DLMS did not initialize the isolated smoke-test data root")
+
+
+def smoke_test_executable(executable: Path, target: str) -> None:
+    """Smoke-test an executable already extracted from the final distributable."""
+    _assert_smoke_host(target)
+    _assert_port_available()
+    if not executable.is_file():
+        raise RuntimeError(f"extracted DLMS executable does not exist: {executable}")
+    with tempfile.TemporaryDirectory(prefix="dlms-final-package-smoke-") as temporary:
+        _run_smoke_command(
+            [str(executable), "--no-browser"], target, Path(temporary)
+        )
+
+
 def smoke_test(artifact: Path, target: str) -> None:
-    """Launch, probe, cleanly shut down, and restart a native packaged artifact."""
+    """Launch, probe, cleanly shut down, and restart a staged native artifact."""
     _assert_smoke_host(target)
     _assert_port_available()
     with tempfile.TemporaryDirectory(prefix="dlms-native-artifact-smoke-") as temporary:
         work_root = Path(temporary)
-        data_root = work_root / "data-root"
         command = _smoke_command(artifact, target, work_root)
-        environment = _smoke_environment(data_root, target)
-        for run_number in (1, 2):
-            with (work_root / f"run-{run_number}.log").open("wb") as log:
-                process = subprocess.Popen(
-                    command,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    env=environment,
-                    cwd=str(work_root),
-                )
-                client = SmokeHttpClient()
-                try:
-                    _wait_for_server(process, client)
-                    _assert_smoke_routes(client)
-                    _shutdown_cleanly(process, client, target)
-                except Exception as exc:
-                    if process.poll() is None:
-                        process.terminate()
-                        process.wait(timeout=5)
-                    log.flush()
-                    diagnostics = _launch_log_tail(Path(log.name))
-                    if diagnostics:
-                        raise RuntimeError(
-                            f"{exc}\nPackaged launch diagnostics (last 8000 bytes):\n{diagnostics}"
-                        ) from exc
-                    raise
-        if not (data_root / ".dlms-data-root").is_file():
-            raise RuntimeError("Packaged DLMS did not initialize the isolated smoke-test data root")
+        _run_smoke_command(command, target, work_root)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify a staged DLMS native release artifact.")
     parser.add_argument("target", choices=sorted(TARGETS), help="artifact target to verify")
-    parser.add_argument("artifact", nargs="?", type=Path, help="staged final artifact")
+    parser.add_argument("artifact", nargs="?", type=Path, help="staged native input")
     parser.add_argument("--checksums", type=Path, help="SHA256SUMS.txt to verify against")
     parser.add_argument("--smoke", action="store_true", help="run native start/HTTP/shutdown/restart smoke test")
     parser.add_argument("--source-root", type=Path, default=Path(__file__).resolve().parents[1], help="repository root used only to read APP_VERSION")

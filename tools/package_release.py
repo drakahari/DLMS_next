@@ -8,15 +8,15 @@ six packages pass validation. This tool never builds or modifies native files.
 from __future__ import annotations
 
 import argparse
-import copy
 import os
+import shutil
 import stat
 import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
 
-from verify_release_artifact import release_version, verify_artifact
+from verify_release_artifact import release_version, sha256_file, verify_artifact
 from verify_release_package import expected_packages, verify_release_package
 
 
@@ -79,44 +79,17 @@ def _package_windows(
             _write_zip_file(archive, assets_dir / name, f"{wrapper}/{name}", 0o644)
 
 
-def _wrapped_macos_name(name: str, wrapper: str) -> str:
-    if name == "DLMS.app" or name.startswith("DLMS.app/"):
-        return f"{wrapper}/{name}"
-    if name == "__MACOSX":
-        return name
-    if name == "__MACOSX/DLMS.app":
-        return f"__MACOSX/{wrapper}/DLMS.app"
-    if name == "__MACOSX/._DLMS.app":
-        return f"__MACOSX/{wrapper}/._DLMS.app"
-    if name.startswith("__MACOSX/DLMS.app/"):
-        return f"__MACOSX/{wrapper}/{name.removeprefix('__MACOSX/')}"
-    raise ValueError(f"unexpected member in app-only macOS ZIP: {name}")
+def _package_macos(source: Path, destination: Path) -> None:
+    """Promote the verified app-only ZIP without changing a single archive byte.
 
-
-def _package_macos(source: Path, destination: Path, wrapper: str, assets_dir: Path) -> None:
-    """Wrap an app-only ZIP without materializing its POSIX bundle on Linux.
-
-    Copying ZipInfo preserves the bundle's Unix modes, symlink representation,
-    timestamps, compression choice, and extra fields. AppleDouble/resource-fork
-    entries, when present, are moved under the corresponding package wrapper.
+    The native ``ditto --keepParent`` ZIP is already the final macOS
+    distributable. Copying it byte-for-byte avoids both a second archive layout
+    and any opportunity to alter bundle metadata, permissions, resource forks,
+    or symbolic-link records on a non-macOS packaging host.
     """
-    with zipfile.ZipFile(source) as original, zipfile.ZipFile(
-        destination, "w", allowZip64=True
-    ) as packaged:
-        packaged.comment = original.comment
-        for original_info in original.infolist():
-            name = original_info.filename.rstrip("/")
-            if not name:
-                continue
-            packaged_name = _wrapped_macos_name(name, wrapper)
-            if original_info.is_dir():
-                packaged_name += "/"
-            packaged_info = copy.copy(original_info)
-            packaged_info.filename = packaged_name
-            packaged_info.orig_filename = packaged_name
-            packaged.writestr(packaged_info, original.read(original_info))
-        for name in ("README.txt", "sample_quiz.txt"):
-            _write_zip_file(packaged, assets_dir / name, f"{wrapper}/{name}", 0o644)
+    shutil.copyfile(source, destination)
+    if sha256_file(source) != sha256_file(destination):
+        raise OSError("macOS final distributable differs from its verified native ZIP")
 
 
 def _input_artifacts(staging_dir: Path, version: str) -> list[tuple[str, Path, str]]:
@@ -179,7 +152,7 @@ def package_release(staging_dir: Path, output_dir: Path, source_root: Path) -> l
             elif target == "windows-x86_64":
                 _package_windows(source, destination, spec.wrapper, assets_dir)
             else:
-                _package_macos(source, destination, spec.wrapper, assets_dir)
+                _package_macos(source, destination)
             errors = verify_release_package(destination, source_root)
             if errors:
                 raise ValueError(f"invalid generated package {output_name}: {'; '.join(errors)}")
@@ -215,7 +188,8 @@ def main() -> int:
     except (OSError, ValueError, zipfile.BadZipFile, tarfile.TarError) as exc:
         parser.exit(1, f"ERROR: {exc}\n")
     for package in packages:
-        print(f"Created and verified: {package}")
+        print(f"Created and structurally verified final package: {package}")
+    print("Native clean-extraction smoke is still required for every final package.")
     return 0
 
 

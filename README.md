@@ -116,8 +116,9 @@ for long-term retention.
 
 ### From the packaged releases (recommended)
 
-Each release package contains the platform-specific application, `README.txt`,
-and `sample_quiz.txt`. Supported builds are:
+Linux and Windows release packages contain the platform-specific application,
+`README.txt`, and `sample_quiz.txt`. The macOS ZIP is app-only and exposes
+`DLMS.app` directly at its archive root. Supported builds are:
 
 * Fedora 44 x86-64
 * Ubuntu 24.04 x86-64
@@ -134,7 +135,8 @@ inside it, and allow it to open the browser. You can also open
 #### macOS on Apple Silicon
 
 1. Download and extract `DLMS-3.0.2-macos-arm64.zip` from **Releases**.
-2. Drag `DLMS.app` into `/Applications`.
+2. Confirm `DLMS.app` appears directly in the extraction location, then drag it
+   into `/Applications`.
 3. Open DLMS from Finder or Applications. DLMS starts locally and normally opens
    its browser interface automatically.
 4. Because this release is not signed with an Apple Developer ID and is not
@@ -220,9 +222,10 @@ raw DLMS executable in the release ZIP. If an Intel build is intentionally
 produced and tested from an `x86_64` Python environment, use the distinct name
 `DLMS-3.0.2-macos-x86_64.zip`.
 
-After native verification and UAT, use the repository-maintained
-`release_assets/README.txt` and `release_assets/sample_quiz.txt` to create these
-six final download packages:
+After native verification and UAT, create these six final download packages.
+The repository-maintained `release_assets/README.txt` and
+`release_assets/sample_quiz.txt` are added to Linux and Windows packages only;
+the verified app-only macOS ZIP is promoted unchanged:
 
 * Fedora 44: `DLMS-3.0.2-fedora44-x86_64.tar.gz`
 * Ubuntu 24.04: `DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz`
@@ -231,19 +234,22 @@ six final download packages:
 * macOS Apple Silicon: `DLMS-3.0.2-macos-arm64.zip`
 * Omarchy Quattro: `DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz`
 
-Generate the shared checksum manifest from exactly those final archives. GitHub
-provides the repository source archives automatically; do not create or upload
-a separate DLMS source ZIP. The complete packaging and verification commands
-are in [Native Release Verification](docs/RELEASE_VERIFICATION.md).
+Clean-extract and smoke-test each exact final archive on its named native
+platform before generating the shared checksum manifest from those same six
+files. GitHub's automatic source archives provide the repository source; do not
+create or upload a separate DLMS source ZIP. The complete packaging,
+final-distributable verification, checksum, and post-upload commands are in
+[Native Release Verification](docs/RELEASE_VERIFICATION.md).
 
 ```bash
-python tools/generate_sha256sums.py --output releases/SHA256SUMS.txt \
-  releases/DLMS-3.0.2-fedora44-x86_64.tar.gz \
-  releases/DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz \
-  releases/DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz \
-  releases/DLMS-3.0.2-windows11-x86_64.zip \
-  releases/DLMS-3.0.2-macos-arm64.zip \
-  releases/DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz
+PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.0.2-packages
+python tools/generate_sha256sums.py --output "$PACKAGE_DIR/SHA256SUMS.txt" \
+  "$PACKAGE_DIR/DLMS-3.0.2-fedora44-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.0.2-windows11-x86_64.zip" \
+  "$PACKAGE_DIR/DLMS-3.0.2-macos-arm64.zip" \
+  "$PACKAGE_DIR/DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz"
 ```
 
 The user-facing release name is `DLMS 3.0.2`; the matching Git tag convention
@@ -498,13 +504,16 @@ files once removed.
    ZIP that bundle with `ditto`, and confirm the archive has no separate raw
    executable. Do not imply Intel macOS support without a native Intel build and
    UAT.
-5. Review `git status`, then package the already-verified native artifacts with
-   the tracked `release_assets/README.txt` and `release_assets/sample_quiz.txt`.
-   Run `tools/verify_release_package.py` against all six final archives to reject
-   missing documents, wrong binaries, damaged platform metadata, or development
-   and runtime junk. GitHub's automatic source archives are sufficient; do not
-   prepare a separate source ZIP.
-6. Generate `releases/SHA256SUMS.txt` from exactly the six final platform
-   archives. Re-run the package verifier with `--complete-set` and `--checksums`,
-   then independently check the manifest before uploading the seven release
-   assets.
+5. Review `git status`, then package the already-verified native artifacts. Add
+   the tracked `release_assets/README.txt` and `release_assets/sample_quiz.txt`
+   to Linux and Windows packages; promote the app-only macOS ZIP byte-for-byte.
+   Run `tools/verify_release_package.py --smoke` against each exact final archive
+   on its named native platform. This clean-extracts the archive and launches
+   the executable from the extracted user-facing layout. GitHub's automatic
+   source archives are sufficient; do not prepare a separate source ZIP.
+6. Only after all six exact final archives pass, generate
+   `SHA256SUMS.txt` from those same files. Re-run the package verifier with
+   `--complete-set` and `--checksums`, independently check the manifest, and
+   upload those unchanged files. Download each published asset once and confirm
+   its SHA-256 matches the pre-upload value; matching bytes do not require a
+   redundant second native smoke test.
