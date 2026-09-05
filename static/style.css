@@ -4522,14 +4522,29 @@ a.settings-hub-card:active {
 
 .build-help-link {
     padding: 7px 10px;
-    border: 1px solid rgba(88,162,246,.32);
+    color: var(--theme-link, #86c8ff);
+    border: 1px solid color-mix(in srgb,
+        var(--theme-accent, #1b9ff2) 34%,
+        var(--theme-border-soft, rgba(88,162,246,.32)));
     border-radius: 8px;
-    background: rgba(15,54,101,.32);
+    background: color-mix(in srgb,
+        var(--theme-accent, #1b9ff2) 8%,
+        var(--theme-surface-2, rgba(15,54,101,.32)));
     font-size: 12px;
     font-weight: 700;
 }
 
-.build-help-link:hover,
+.build-help-link:hover {
+    color: var(--theme-link-hover, #c7e7ff);
+    background: color-mix(in srgb,
+        var(--theme-accent, #1b9ff2) 12%,
+        var(--theme-surface-2, rgba(15,54,101,.32)));
+    border-color: color-mix(in srgb,
+        var(--theme-accent, #1b9ff2) 48%,
+        var(--theme-border-soft, rgba(88,162,246,.32)));
+    text-decoration: none;
+}
+
 .build-secondary-link:hover {
     color: #c7e7ff;
     text-decoration: none;
@@ -4547,15 +4562,20 @@ a.settings-hub-card:active {
     gap: 10px;
     align-items: start;
     padding: 11px 12px;
-    border: 1px solid rgba(83,139,205,.20);
+    border: 1px solid var(--theme-border-soft, rgba(83,139,205,.20));
     border-radius: 9px;
-    background: rgba(3,14,31,.38);
+    background: color-mix(in srgb,
+        var(--theme-accent, #1b9ff2) 4%,
+        var(--theme-surface, rgba(3,14,31,.38)));
     cursor: pointer;
 }
 
 .build-preset-list input { margin-top: 3px; }
 .build-preset-list span { display: grid; gap: 2px; }
-.build-preset-list strong { color: #dceaff; font-size: 13px; }
+.build-preset-list strong {
+    color: var(--theme-page-text, #dceaff);
+    font-size: 13px;
+}
 
 .build-submit-row {
     display: flex;

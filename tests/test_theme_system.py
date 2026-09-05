@@ -407,6 +407,17 @@ class ThemeSystemTests(unittest.TestCase):
             ".build-format-note code": (
                 "--theme-accent-text", "--theme-surface-2", "--theme-border-soft",
             ),
+            ".build-help-link": (
+                "--theme-link", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft", "8%",
+            ),
+            ".build-help-link:hover": (
+                "--theme-link-hover", "--theme-accent", "--theme-surface-2",
+            ),
+            ".build-preset-list > label": (
+                "--theme-accent", "--theme-surface", "--theme-border-soft", "4%",
+            ),
+            ".build-preset-list strong": ("--theme-page-text",),
             ".paste-preview-summary": (
                 "--theme-page-text", "--theme-accent", "--theme-surface",
                 "--theme-border-soft", "6%",
@@ -432,9 +443,22 @@ class ThemeSystemTests(unittest.TestCase):
                 )
 
         client = dlms.app.test_client()
-        paste = client.get("/paste").get_data(as_text=True)
+        with mock.patch.object(dlms, "load_portal_config", return_value={
+            "title": "DLMS", "theme": "dark", "background_image": None,
+            "enable_regex_replace": True,
+        }):
+            paste = client.get("/paste").get_data(as_text=True)
         self.assertEqual(3, paste.count('class="build-step-number"'))
         self.assertIn('class="build-format-note"', paste)
+        self.assertIn('class="build-help-link"', paste)
+        self.assertEqual(1, paste.count('<div class="build-preset-list">'))
+        self.assertEqual(3, paste.count('name="preset_'))
+        for option in (
+            "Remove numbered prefixes", "Fix PDF / Microsoft wrapping",
+            "Remove page headers / footers",
+        ):
+            with self.subTest(option=option):
+                self.assertIn(option, paste)
 
         preview = client.post(
             "/preview_paste",
@@ -480,6 +504,14 @@ class ThemeSystemTests(unittest.TestCase):
                     accent[index] * .06 + surface[index] * .94
                     for index in range(3)
                 )
+                helper_control = tuple(
+                    accent[index] * .08 + surface_2[index] * .92
+                    for index in range(3)
+                )
+                preset = tuple(
+                    accent[index] * .04 + surface[index] * .96
+                    for index in range(3)
+                )
                 step = tuple(
                     accent[index] * .12 + surface_2[index] * .88
                     for index in range(3)
@@ -489,6 +521,9 @@ class ThemeSystemTests(unittest.TestCase):
                     "format guidance": (variables["theme-page-text"], information),
                     "format heading": (variables["theme-heading"], information),
                     "format examples": (variables["theme-accent-text"], surface_2),
+                    "regex help": (variables["theme-link"], helper_control),
+                    "parsing option label": (variables["theme-page-text"], preset),
+                    "parsing option detail": (variables["theme-muted-text"], preset),
                     "preview heading": (variables["theme-heading"], panel),
                     "preview summary": (variables["theme-page-text"], information),
                     "preview summary heading": (variables["theme-heading"], information),

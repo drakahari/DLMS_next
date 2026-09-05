@@ -1287,6 +1287,11 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
     base_url = browser_stack.base_url
     browser.set_viewport(1400, 1500)
 
+    portal_path = browser_stack.data_root / "config" / "portal.json"
+    portal_config = json.loads(portal_path.read_text(encoding="utf-8"))
+    portal_config["enable_regex_replace"] = True
+    portal_path.write_text(json.dumps(portal_config, indent=2), encoding="utf-8")
+
     def capture(name):
         result = browser.command(
             "browsingContext.captureScreenshot",
@@ -1306,7 +1311,10 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
         assert status == 200
 
         browser.navigate(f"{base_url}/paste?theme={theme}")
-        browser.wait_for("document.querySelectorAll('.build-step-number').length === 3")
+        browser.wait_for(
+            "document.querySelectorAll('.build-step-number').length === 3 && "
+            "document.querySelectorAll('.build-preset-list > label').length === 3"
+        )
         paste_styles = browser.evaluate(
             "(() => {"
             "const resolve = name => { const probe = document.createElement('span');"
@@ -1315,6 +1323,8 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
             "const steps = [...document.querySelectorAll('.build-step-number')];"
             "const note = document.querySelector('.build-format-note');"
             "const noteStyle = getComputedStyle(note);"
+            "const help = document.querySelector('.build-help-link');"
+            "const presets = [...document.querySelectorAll('.build-preset-list > label')];"
             "return {stepCount:steps.length,"
             "stepColors:steps.map(step => getComputedStyle(step).color),"
             "stepBackground:getComputedStyle(steps[0]).backgroundColor,"
@@ -1323,9 +1333,19 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
             "noteColor:noteStyle.color,noteBackground:noteStyle.backgroundColor,"
             "noteHeading:getComputedStyle(note.querySelector('strong')).color,"
             "codeColors:[...note.querySelectorAll('code')].map(code => getComputedStyle(code).color),"
+            "helpColor:getComputedStyle(help).color,helpBackground:getComputedStyle(help).backgroundColor,"
+            "helpBackgroundImage:getComputedStyle(help).backgroundImage,"
+            "helpBorder:getComputedStyle(help).borderTopColor,"
+            "presetCount:presets.length,"
+            "presetBackgrounds:presets.map(row => getComputedStyle(row).backgroundColor),"
+            "presetBorders:presets.map(row => getComputedStyle(row).borderTopColor),"
+            "presetLabels:presets.map(row => getComputedStyle(row.querySelector('strong')).color),"
+            "presetDetails:presets.map(row => getComputedStyle(row.querySelector('small')).color),"
+            "presetDetailOpacities:presets.map(row => getComputedStyle(row.querySelector('small')).opacity),"
             "inputBackground:getComputedStyle(document.querySelector('.build-source-textarea')).backgroundColor,"
             "pageText:resolve('--theme-page-text'),heading:resolve('--theme-heading'),"
-            "accentText:resolve('--theme-accent-text'),muted:resolve('--theme-muted-text')}; })()"
+            "accentText:resolve('--theme-accent-text'),muted:resolve('--theme-muted-text'),"
+            "link:resolve('--theme-link')}; })()"
         )
         assert paste_styles["stepCount"] == 3
         assert all(color == paste_styles["accentText"] for color in paste_styles["stepColors"])
@@ -1335,9 +1355,24 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
         assert paste_styles["noteHeading"] == paste_styles["heading"]
         assert all(color == paste_styles["accentText"] for color in paste_styles["codeColors"])
         assert paste_styles["noteBackground"] != paste_styles["inputBackground"]
+        assert paste_styles["helpColor"] == paste_styles["link"]
+        assert paste_styles["helpBackgroundImage"] == "none"
+        assert paste_styles["helpBackground"] != "rgba(0, 0, 0, 0)"
+        assert paste_styles["helpBorder"] != "rgba(0, 0, 0, 0)"
+        assert paste_styles["presetCount"] == 3
+        assert len(set(paste_styles["presetBackgrounds"])) == 1
+        assert all(color != "rgba(0, 0, 0, 0)" for color in paste_styles["presetBorders"])
+        assert all(color == paste_styles["pageText"] for color in paste_styles["presetLabels"])
+        assert all(color == paste_styles["muted"] for color in paste_styles["presetDetails"])
+        assert all(opacity == "1" for opacity in paste_styles["presetDetailOpacities"])
 
         if theme == "light":
             capture("paste-questions-light.png")
+            browser.evaluate(
+                "document.querySelector('.build-advanced-block')"
+                ".scrollIntoView({block:'center'}); true"
+            )
+            capture("paste-advanced-parsing-light.png")
 
         assert browser.evaluate(
             "(() => { const form = document.querySelector('.build-workspace');"
