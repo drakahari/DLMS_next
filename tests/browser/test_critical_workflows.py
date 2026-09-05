@@ -214,6 +214,68 @@ def _database_value(path, query, parameters=()):
     return row[0] if row else None
 
 
+def test_fresh_profile_defaults_to_purple_gold_and_theme_selection_persists(browser_stack, tmp_path):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    portal_path = browser_stack.data_root / "config" / "portal.json"
+    browser.set_viewport(1400, 1500)
+
+    assert json.loads(portal_path.read_text(encoding="utf-8"))["theme"] == "purple-gold"
+
+    browser.navigate(f"{base_url}/")
+    browser.wait_for(
+        "document.getElementById('dlmsQuickTheme') && "
+        "!document.querySelector('.dashboard-theme-quick').hidden"
+    )
+    initial = browser.evaluate(
+        "(() => { const root = getComputedStyle(document.documentElement);"
+        "const select = document.getElementById('dlmsQuickTheme');"
+        "return {selection:select.value,accent:root.getPropertyValue('--theme-accent').trim(),"
+        "scheme:root.getPropertyValue('--theme-color-scheme').trim()}; })()"
+    )
+    assert initial == {"selection": "purple-gold", "accent": "#f2c230", "scheme": "dark"}
+
+    screenshot = browser.command(
+        "browsingContext.captureScreenshot",
+        {"context": browser.context, "origin": "viewport"},
+    )
+    screenshot_path = tmp_path / "fresh-default-purple-gold.png"
+    screenshot_path.write_bytes(base64.b64decode(screenshot["data"]))
+    assert screenshot_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+    assert browser.evaluate(
+        "(() => { const select = document.getElementById('dlmsQuickTheme');"
+        "select.value = 'light'; select.dispatchEvent(new Event('change', {bubbles:true}));"
+        "return true; })()"
+    ) is True
+    browser.wait_for(
+        "document.getElementById('dlmsQuickTheme')?.value === 'light' && "
+        "!document.getElementById('dlmsQuickTheme').disabled && "
+        "!document.querySelector('.dashboard-theme-quick').hidden"
+    )
+    assert json.loads(portal_path.read_text(encoding="utf-8"))["theme"] == "light"
+
+    browser.navigate(f"{base_url}/library")
+    browser.wait_for(
+        "document.getElementById('dlmsQuickTheme')?.value === 'light' && "
+        "!document.querySelector('.dashboard-theme-quick').hidden"
+    )
+    assert browser.evaluate(
+        "getComputedStyle(document.documentElement).getPropertyValue('--theme-color-scheme').trim()"
+    ) == "light"
+
+    assert browser.evaluate(
+        "(() => { const select = document.getElementById('dlmsQuickTheme');"
+        "select.value = 'purple-gold'; select.dispatchEvent(new Event('change', {bubbles:true}));"
+        "return true; })()"
+    ) is True
+    browser.wait_for(
+        "document.getElementById('dlmsQuickTheme')?.value === 'purple-gold' && "
+        "!document.getElementById('dlmsQuickTheme').disabled && "
+        "!document.querySelector('.dashboard-theme-quick').hidden"
+    )
+
+
 def test_library_reorder_control_persists_after_refresh(browser_stack):
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/library")

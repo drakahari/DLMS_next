@@ -67,12 +67,50 @@ class ThemeSystemTests(unittest.TestCase):
         first, second = cls._luminance(fg_rgb), cls._luminance(background_rgb)
         return (max(first, second) + 0.05) / (min(first, second) + 0.05)
 
-    def test_portal_config_default_theme_is_dark(self):
+    def test_portal_config_default_theme_is_purple_gold(self):
         with tempfile.TemporaryDirectory() as td:
             portal = os.path.join(td, "config", "portal.json")
             with mock.patch.object(dlms, "PORTAL_CONFIG", portal):
                 cfg = dlms.load_portal_config()
-            self.assertEqual(cfg["theme"], "dark")
+            self.assertEqual(cfg["theme"], "purple-gold")
+            with open(portal, "r", encoding="utf-8") as config_file:
+                self.assertEqual(json.load(config_file)["theme"], "purple-gold")
+
+    def test_missing_theme_uses_default_without_rewriting_legacy_config(self):
+        with tempfile.TemporaryDirectory() as td:
+            portal = os.path.join(td, "portal.json")
+            with open(portal, "w", encoding="utf-8") as config_file:
+                json.dump({"title": "Legacy installation"}, config_file)
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal):
+                cfg = dlms.load_portal_config()
+
+            self.assertEqual(cfg["theme"], "purple-gold")
+            with open(portal, "r", encoding="utf-8") as config_file:
+                self.assertNotIn("theme", json.load(config_file))
+
+    def test_each_explicitly_saved_theme_remains_selected(self):
+        client = dlms.app.test_client()
+        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme), tempfile.TemporaryDirectory() as td:
+                portal = os.path.join(td, "portal.json")
+                with open(portal, "w", encoding="utf-8") as config_file:
+                    json.dump({"title": "Saved preference", "theme": theme}, config_file)
+
+                with mock.patch.object(dlms, "PORTAL_CONFIG", portal):
+                    first_load = dlms.load_portal_config()
+                    second_load = dlms.load_portal_config()
+                    with mock.patch.object(dlms, "load_portal_config", return_value=second_load):
+                        appearance = client.get("/settings/appearance").get_data(as_text=True)
+
+                self.assertEqual(first_load["theme"], theme)
+                self.assertEqual(second_load["theme"], theme)
+                self.assertRegex(
+                    appearance,
+                    rf'name="theme" value="{re.escape(theme)}" checked',
+                )
+                with open(portal, "r", encoding="utf-8") as config_file:
+                    self.assertEqual(json.load(config_file)["theme"], theme)
 
     def test_dynamic_css_contains_theme_variables(self):
         client = dlms.app.test_client()

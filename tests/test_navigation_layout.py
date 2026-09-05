@@ -195,6 +195,21 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("cacheStudyAreaVisibility(visibility)", configuration_sync)
         self.assertNotIn("mountNavigation(", configuration_sync)
 
+    def test_quick_theme_selector_waits_for_persisted_theme_before_display(self):
+        source = self._static("nav-normalize.js")
+        theme_initialization = source[
+            source.index("const themeQuick = document.createElement('div')"):
+            source.index("themeSelect.addEventListener('change'")
+        ]
+
+        self.assertIn('<option value="purple-gold" selected>', theme_initialization)
+        self.assertIn("themeQuick.hidden = true", theme_initialization)
+        self.assertIn("themeQuick.hidden = false", theme_initialization)
+        self.assertLess(
+            theme_initialization.index("if (cfg?.theme) themeSelect.value = cfg.theme"),
+            theme_initialization.index("themeQuick.hidden = false"),
+        )
+
     def test_image_editor_context_link_uses_system_tools(self):
         self.assertIn("← System Tools", dlms.HOTSPOT_EDITOR_TEMPLATE)
         self.assertNotIn("← Back to Maintenance", dlms.HOTSPOT_EDITOR_TEMPLATE)

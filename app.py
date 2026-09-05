@@ -3395,6 +3395,7 @@ def inject_content_pack_state():
 
 
 PORTAL_CONFIG = os.path.join(CONFIG_FOLDER, "portal.json")
+DEFAULT_THEME = "purple-gold"
 QUIZ_REGISTRY = os.path.join(CONFIG_FOLDER, "quizzes.json")
 DB_PATH = os.path.join(APP_DATA_DIR, "results.db")
 
@@ -5721,7 +5722,7 @@ def dynamic_css():
         else:
             css_bg = "none"
 
-    theme = str(cfg.get("theme") or "dark").strip().lower()
+    theme = str(cfg.get("theme") or DEFAULT_THEME).strip().lower()
     palettes = {
         "dark": {
             "scheme": "dark", "page": "#eaf2ff", "muted": "#b8c2cc", "heading": "#ffffff",
@@ -5772,7 +5773,7 @@ def dynamic_css():
             "link": "#ffde7a", "link_hover": "#fff0b8", "shadow": "rgba(0,0,0,.56)"
         }
     }
-    p = palettes.get(theme, palettes["dark"])
+    p = palettes.get(theme, palettes[DEFAULT_THEME])
     vars_css = "\n".join([
         f"  --portal-bg: {css_bg};",
         f"  --theme-color-scheme: {p['scheme']};",
@@ -6389,7 +6390,7 @@ def load_portal_config():
         "show_confidence": True,
         "enable_regex_replace": False,
         "background_image": None,
-        "theme": "dark",
+        "theme": DEFAULT_THEME,
         "quiz_folders": ["Uncategorized"],
         "hidden_quiz_folders": [],
         "study_area_visibility": {
@@ -6513,8 +6514,8 @@ def load_portal_config():
     cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
 
     valid_themes = {"dark", "light", "purple-gold", "maroon-gold"}
-    theme = str(cfg.get("theme") or "dark").strip().lower()
-    cfg["theme"] = theme if theme in valid_themes else "dark"
+    theme = str(cfg.get("theme") or DEFAULT_THEME).strip().lower()
+    cfg["theme"] = theme if theme in valid_themes else DEFAULT_THEME
 
     cfg["ai_helper_enabled"] = bool(cfg.get("ai_helper_enabled", False))
     cfg["ai_auto_copy_prompt"] = bool(cfg.get("ai_auto_copy_prompt", True))
@@ -21301,7 +21302,7 @@ def settings_appearance_page():
                 <div class="settings-section-icon icon-purple">◐</div>
                 <div>
                     <h2>DLMS Theme</h2>
-                    <p>Choose the global color system used throughout DLMS. Dark remains the default.</p>
+                    <p>Choose the global color system used throughout DLMS. Purple &amp; Gold is the default for new installations.</p>
                 </div>
             </div>
             <div class="settings-theme-grid">
@@ -21401,8 +21402,8 @@ def save_appearance_settings():
     """
     cfg = load_portal_config()
 
-    requested_theme = str(request.form.get("theme") or cfg.get("theme") or "dark").strip().lower()
-    cfg["theme"] = requested_theme if requested_theme in {"dark", "light", "purple-gold", "maroon-gold"} else "dark"
+    requested_theme = str(request.form.get("theme") or cfg.get("theme") or DEFAULT_THEME).strip().lower()
+    cfg["theme"] = requested_theme if requested_theme in {"dark", "light", "purple-gold", "maroon-gold"} else DEFAULT_THEME
 
     title = request.form.get("portal_title", "").strip()
     if title:

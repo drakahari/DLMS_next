@@ -220,7 +220,8 @@
   // place to manage appearance; this compact control is only a convenience.
   const themeQuick = document.createElement('div');
   themeQuick.className = 'dashboard-theme-quick';
-  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme"><option value="dark">Dark</option><option value="light">Light</option><option value="purple-gold">Purple & Gold</option><option value="maroon-gold">Maroon & Gold</option></select>`;
+  themeQuick.hidden = true;
+  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme"><option value="dark">Dark</option><option value="light">Light</option><option value="purple-gold" selected>Purple & Gold</option><option value="maroon-gold">Maroon & Gold</option></select>`;
   const themeAnchor = sidebar.querySelector('.dashboard-sidebar-version');
   if (themeAnchor) themeAnchor.before(themeQuick); else sidebar.appendChild(themeQuick);
   const navigationCustomize = document.createElement('a');
@@ -234,7 +235,7 @@
     const visibility = normalizeStudyAreaVisibility(cfg?.study_area_visibility);
     applyStudyAreaVisibility(visibility);
     cacheStudyAreaVisibility(visibility);
-  }).catch(()=>{});
+  }).catch(()=>{}).finally(() => { themeQuick.hidden = false; });
   document.querySelector('form[action="/settings/navigation/save"]')?.addEventListener('submit', event => {
     const form = event.currentTarget;
     cacheStudyAreaVisibility({
