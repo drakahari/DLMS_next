@@ -320,6 +320,19 @@ do not expose it directly to the public internet.
 
 ---
 
+## Engineering Audits
+
+DLMS undergoes periodic AI-assisted engineering and release reviews covering
+release readiness, product quality, native packaging, data integrity, and
+cross-platform validation. Curated summaries are available in
+[docs/audits/](docs/audits/).
+
+These reports are engineering review artifacts, not independent security
+certifications, third-party attestations, endorsements, or guarantees. Raw agent
+transcripts are intentionally not published.
+
+---
+
 ## 📂 Data & Configuration
 
 On first run, DLMS creates its data directory in your user profile and initializes
