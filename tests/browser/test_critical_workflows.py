@@ -344,6 +344,13 @@ def test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browse
     browser.click(".add-folder-form button[type=submit]")
     browser.wait_for(f"Boolean({folder_lookup(folder_name)})")
 
+    browser.navigate(f"{base_url}/library?view=hidden")
+    browser.wait_for(f"!({folder_lookup(folder_name)})")
+    browser.navigate(f"{base_url}/library?view=all")
+    browser.wait_for(f"({folder_lookup(folder_name)})?.dataset.folderHidden === 'false'")
+    browser.navigate(f"{base_url}/library")
+    browser.wait_for(f"Boolean({folder_lookup(folder_name)})")
+
     assert browser.evaluate(
         f"(() => {{ const folder = {folder_lookup(folder_name)}; "
         "folder.querySelector(\"form[action='/set_quiz_folder_hidden']\").requestSubmit(); "

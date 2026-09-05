@@ -14864,10 +14864,9 @@ def quiz_library():
             grouped_quizzes[folder] = []
         grouped_quizzes[folder].append(q)
 
-    # Explicitly saved custom folders remain visible even when the selected
-    # view has no quizzes in them. Keep the protected default Uncategorized
-    # folder out of a pristine empty library unless it contains a visible quiz.
-    # Assignment-only legacy folders retain their existing discovery behavior.
+    # Persistent custom folders remain visible when empty in Visible and All.
+    # Hidden shows only hidden folders or folders containing filtered hidden
+    # quizzes. Assignment-only legacy folders retain their discovery behavior.
     normal_display_folder_names = [
         folder for folder in folder_names
         if not (view == "visible" and folder.lower() in hidden_folder_keys)
@@ -14876,6 +14875,10 @@ def quiz_library():
             or (
                 folder in configured_folder_names
                 and folder.lower() != "uncategorized"
+                and (
+                    view != "hidden"
+                    or folder.lower() in hidden_folder_keys
+                )
             )
         )
     ]

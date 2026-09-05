@@ -295,7 +295,7 @@ class QuizLibraryTests(unittest.TestCase):
                 self.assertIn("CISM", portal["quiz_folders"])
                 self.assertEqual(["CISM"], portal["hidden_quiz_folders"])
 
-    def test_persistent_folders_render_in_each_view_and_delete_moves_hidden_quizzes(self):
+    def test_persistent_empty_folders_render_in_visible_and_all_but_not_hidden(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-filtered-folders-") as directory:
             config_dir = os.path.join(directory, "config")
             portal_config = os.path.join(config_dir, "portal.json")
@@ -330,10 +330,14 @@ class QuizLibraryTests(unittest.TestCase):
                 saved_quizzes = dlms.load_registry()
                 saved_folders = dlms.get_quiz_folders()
 
-            for view, html in pages.items():
+            for view in ("visible", "all"):
+                html = pages[view]
                 with self.subTest(view=view):
                     self.assertIn("<h2>Persistent Empty</h2>", html)
                     self.assertIn("No quizzes in this view.", html)
+            self.assertNotIn("<h2>Persistent Empty</h2>", pages["hidden"])
+            for view, html in pages.items():
+                with self.subTest(hidden_quiz_folder_view=view):
                     self.assertIn("<h2>Hidden Course</h2>", html)
             self.assertEqual(302, delete_response.status_code)
             self.assertEqual("Uncategorized", saved_quizzes[0]["folder"])
@@ -468,7 +472,7 @@ class QuizLibraryTests(unittest.TestCase):
                 json.dump({
                     "quiz_folders": [
                         "Uncategorized", "Visible Course", "Hidden Course",
-                        "Empty Visible", "Empty Hidden",
+                        "Visible Only Course", "Empty Visible", "Empty Hidden",
                     ],
                     "hidden_quiz_folders": ["hidden course", "EMPTY HIDDEN"],
                 }, handle)
@@ -478,6 +482,7 @@ class QuizLibraryTests(unittest.TestCase):
                     {"id": 2, "title": "Individually Hidden", "html": "individual.html", "folder": "Visible Course", "hidden": True},
                     {"id": 3, "title": "Searchable Archived Quiz", "html": "archived.html", "folder": "Hidden Course"},
                     {"id": 4, "title": "Doubly Hidden", "html": "double.html", "folder": "Hidden Course", "hidden": True},
+                    {"id": 5, "title": "Visible Only Quiz", "html": "visible-only.html", "folder": "Visible Only Course"},
                 ], handle)
 
             with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
@@ -496,10 +501,12 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn("Searchable Archived Quiz", visible)
             self.assertIn("Folder hidden", visible)
             self.assertNotIn("Individually Hidden", visible)
+            self.assertIn("<h2>Visible Only Course</h2>", visible)
+            self.assertIn("Visible Only Quiz", visible)
             self.assertIn("<h2>Empty Visible</h2>", visible)
             self.assertNotIn("<h2>Empty Hidden", visible)
             self.assertIn(
-                '<span>Visible</span><strong>1</strong><small>available quizzes</small>',
+                '<span>Visible</span><strong>2</strong><small>available quizzes</small>',
                 visible,
             )
             self.assertIn(
@@ -507,7 +514,7 @@ class QuizLibraryTests(unittest.TestCase):
                 visible,
             )
             self.assertIn(
-                '<span>This View</span><strong>1</strong><small>Visible items</small>',
+                '<span>This View</span><strong>2</strong><small>Visible items</small>',
                 visible,
             )
             for script_fragment in (
@@ -522,8 +529,10 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn("Doubly Hidden", hidden)
             self.assertIn("Individually Hidden", hidden)
             self.assertNotIn("<h3>Visible Quiz</h3>", hidden)
+            self.assertNotIn("<h2>Visible Only Course", hidden)
+            self.assertNotIn("Visible Only Quiz", hidden)
             self.assertIn("<h2>Empty Hidden", hidden)
-            self.assertIn("<h2>Empty Visible</h2>", hidden)
+            self.assertNotIn("<h2>Empty Visible</h2>", hidden)
             self.assertIn(
                 '<span>This View</span><strong>3</strong><small>Hidden items</small>',
                 hidden,
@@ -531,9 +540,10 @@ class QuizLibraryTests(unittest.TestCase):
 
             for title in (
                 "Visible Quiz", "Individually Hidden",
-                "Searchable Archived Quiz", "Doubly Hidden",
+                "Searchable Archived Quiz", "Doubly Hidden", "Visible Only Quiz",
             ):
                 self.assertIn(title, all_quizzes)
+            self.assertIn("<h2>Empty Visible</h2>", all_quizzes)
             self.assertIn("<h2>Empty Hidden", all_quizzes)
 
     def test_folder_hide_move_unhide_rename_and_delete_preserve_quiz_flags(self):

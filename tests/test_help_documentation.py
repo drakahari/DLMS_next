@@ -199,7 +199,9 @@ class HelpDocumentationTests(unittest.TestCase):
         for wording in (
             "New Folder",
             "saves and displays custom folders immediately",
-            "remains visible in the <strong>Visible</strong>, <strong>Hidden</strong>, and <strong>All</strong> views",
+            "remains visible in the <strong>Visible</strong> and <strong>All</strong> views",
+            "Hidden</strong> view shows a visible folder only when it contains an individually hidden quiz",
+            "a hidden folder remains available there even when empty",
             "No quizzes in this view.",
             "remains available after refresh or restart",
             "Uncategorized",
