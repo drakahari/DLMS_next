@@ -34,6 +34,7 @@ from dlms.persistence import json_files as _json_files
 from dlms.persistence import portal as _portal_repository
 from dlms.persistence import registries as _registry_repository
 from dlms.persistence import database as _database
+from dlms.persistence import pdf_banks as _pdf_bank_repository
 from dlms.parsing import quiz_text as _quiz_text_parser
 from dlms.parsing import smart_pdf as _smart_pdf_parser
 
@@ -14574,67 +14575,52 @@ document.getElementById('addQuestionBtn').onclick=addQuestion;document.getElemen
 # PERSISTENT PDF QUESTION BANKS
 # =========================================================
 def _pdf_bank_safe_id(value):
-    value = re.sub(r"[^A-Za-z0-9_-]+", "", str(value or ""))
-    return value[:80]
+    return _pdf_bank_repository._pdf_bank_safe_id(value)
 
 def _pdf_bank_path(bank_id):
-    bank_id = _pdf_bank_safe_id(bank_id)
-    if not bank_id:
-        raise ValueError("Invalid PDF question-bank id")
-    return _safe_pack_child(PDF_QUESTION_BANK_FOLDER, f"{bank_id}.json")
+    return _pdf_bank_repository._pdf_bank_path(
+        PDF_QUESTION_BANK_FOLDER,
+        bank_id,
+        safe_id=_pdf_bank_safe_id,
+        safe_child=_safe_pack_child,
+    )
 
 def _save_pdf_question_bank(bank):
-    bank_id = _pdf_bank_safe_id(bank.get("id"))
-    if not bank_id:
-        raise ValueError("Question bank is missing an id")
-    os.makedirs(PDF_QUESTION_BANK_FOLDER, exist_ok=True)
-    bank["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    _atomic_write_json(
-        _pdf_bank_path(bank_id), bank, ensure_ascii=False, expected_type=dict
+    return _pdf_bank_repository._save_pdf_question_bank(
+        PDF_QUESTION_BANK_FOLDER,
+        bank,
+        safe_id=_pdf_bank_safe_id,
+        path_for_id=_pdf_bank_path,
+        timestamp_now=lambda: datetime.now().isoformat(timespec="seconds"),
+        atomic_write_json=_atomic_write_json,
+        os_module=os,
     )
 
 def _load_pdf_question_bank(bank_id):
-    path = _pdf_bank_path(bank_id)
-    if not os.path.isfile(path):
-        raise FileNotFoundError("PDF question bank not found")
-    with open(path, "r", encoding="utf-8") as f:
-        bank = json.load(f) or {}
-    if not isinstance(bank.get("questions"), list):
-        raise ValueError("PDF question bank is malformed")
-    return bank
+    return _pdf_bank_repository._load_pdf_question_bank(
+        PDF_QUESTION_BANK_FOLDER,
+        bank_id,
+        path_for_id=_pdf_bank_path,
+        os_module=os,
+        json_module=json,
+    )
 
 def _list_pdf_question_banks():
-    os.makedirs(PDF_QUESTION_BANK_FOLDER, exist_ok=True)
-    banks = []
-    for name in sorted(os.listdir(PDF_QUESTION_BANK_FOLDER)):
-        if not name.endswith(".json"):
-            continue
-        try:
-            with open(os.path.join(PDF_QUESTION_BANK_FOLDER, name), "r", encoding="utf-8") as f:
-                bank = json.load(f) or {}
-            questions = bank.get("questions") or []
-            active = [q for q in questions if isinstance(q, dict) and q.get("active", True)]
-            banks.append({
-                "id": bank.get("id") or os.path.splitext(name)[0],
-                "title": bank.get("title") or "PDF Question Bank",
-                "source_name": bank.get("source_name") or "",
-                "question_count": len(questions),
-                "active_count": len(active),
-                "used_count": len(set(bank.get("used_question_numbers") or [])),
-                "generated_count": len(bank.get("generated_quizzes") or []),
-                "created_at": bank.get("created_at") or "",
-                "updated_at": bank.get("updated_at") or "",
-            })
-        except Exception as exc:
-            print(f"[PDF BANKS] Skipping invalid bank {name!r}: {exc}")
-    return banks
+    return _pdf_bank_repository._list_pdf_question_banks(
+        PDF_QUESTION_BANK_FOLDER,
+        os_module=os,
+        json_module=json,
+        print_message=print,
+    )
 
 def _delete_pdf_question_bank(bank_id):
-    bank = _load_pdf_question_bank(bank_id)
-    path = _pdf_bank_path(bank_id)
-    title = str(bank.get("title") or "PDF Question Bank").strip()
-    os.remove(path)
-    return title
+    return _pdf_bank_repository._delete_pdf_question_bank(
+        PDF_QUESTION_BANK_FOLDER,
+        bank_id,
+        load_bank=_load_pdf_question_bank,
+        path_for_id=_pdf_bank_path,
+        os_module=os,
+    )
 
 
 def _pdf_bank_active_questions(bank):
@@ -14744,68 +14730,52 @@ def _pdf_bank_question_to_quiz(question, number, bank):
 # Kept separate from question-bank storage for backward compatibility.
 # =========================================================
 def _pdf_term_bank_safe_id(value):
-    value = re.sub(r"[^A-Za-z0-9_-]+", "", str(value or ""))
-    return value[:80]
+    return _pdf_bank_repository._pdf_term_bank_safe_id(value)
 
 def _pdf_term_bank_path(bank_id):
-    bank_id = _pdf_term_bank_safe_id(bank_id)
-    if not bank_id:
-        raise ValueError("Invalid PDF terminology-bank id")
-    return _safe_pack_child(PDF_TERMINOLOGY_BANK_FOLDER, f"{bank_id}.json")
+    return _pdf_bank_repository._pdf_term_bank_path(
+        PDF_TERMINOLOGY_BANK_FOLDER,
+        bank_id,
+        safe_id=_pdf_term_bank_safe_id,
+        safe_child=_safe_pack_child,
+    )
 
 def _save_pdf_terminology_bank(bank):
-    bank_id = _pdf_term_bank_safe_id(bank.get("id"))
-    if not bank_id:
-        raise ValueError("Terminology bank is missing an id")
-    os.makedirs(PDF_TERMINOLOGY_BANK_FOLDER, exist_ok=True)
-    bank["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    _atomic_write_json(
-        _pdf_term_bank_path(bank_id), bank, ensure_ascii=False, expected_type=dict
+    return _pdf_bank_repository._save_pdf_terminology_bank(
+        PDF_TERMINOLOGY_BANK_FOLDER,
+        bank,
+        safe_id=_pdf_term_bank_safe_id,
+        path_for_id=_pdf_term_bank_path,
+        timestamp_now=lambda: datetime.now().isoformat(timespec="seconds"),
+        atomic_write_json=_atomic_write_json,
+        os_module=os,
     )
 
 def _load_pdf_terminology_bank(bank_id):
-    path = _pdf_term_bank_path(bank_id)
-    if not os.path.isfile(path):
-        raise FileNotFoundError("PDF terminology bank not found")
-    with open(path, "r", encoding="utf-8") as f:
-        bank = json.load(f) or {}
-    if not isinstance(bank.get("terms"), list):
-        raise ValueError("PDF terminology bank is malformed")
-    return bank
+    return _pdf_bank_repository._load_pdf_terminology_bank(
+        PDF_TERMINOLOGY_BANK_FOLDER,
+        bank_id,
+        path_for_id=_pdf_term_bank_path,
+        os_module=os,
+        json_module=json,
+    )
 
 def _list_pdf_terminology_banks():
-    os.makedirs(PDF_TERMINOLOGY_BANK_FOLDER, exist_ok=True)
-    banks = []
-    for name in sorted(os.listdir(PDF_TERMINOLOGY_BANK_FOLDER)):
-        if not name.endswith(".json"):
-            continue
-        try:
-            with open(os.path.join(PDF_TERMINOLOGY_BANK_FOLDER, name), "r", encoding="utf-8") as f:
-                bank = json.load(f) or {}
-            terms = bank.get("terms") or []
-            active = [t for t in terms if isinstance(t, dict) and t.get("active", True)]
-            banks.append({
-                "id": bank.get("id") or os.path.splitext(name)[0],
-                "kind": "terminology",
-                "title": bank.get("title") or "PDF Terminology Bank",
-                "source_name": bank.get("source_name") or "",
-                "term_count": len(terms),
-                "active_count": len(active),
-                "used_count": len(set(bank.get("used_term_numbers") or [])),
-                "generated_count": len(bank.get("generated_quizzes") or []),
-                "created_at": bank.get("created_at") or "",
-                "updated_at": bank.get("updated_at") or "",
-            })
-        except Exception as exc:
-            print(f"[PDF TERMS] Skipping invalid bank {name!r}: {exc}")
-    return banks
+    return _pdf_bank_repository._list_pdf_terminology_banks(
+        PDF_TERMINOLOGY_BANK_FOLDER,
+        os_module=os,
+        json_module=json,
+        print_message=print,
+    )
 
 def _delete_pdf_terminology_bank(bank_id):
-    bank = _load_pdf_terminology_bank(bank_id)
-    path = _pdf_term_bank_path(bank_id)
-    title = str(bank.get("title") or "PDF Terminology Bank").strip()
-    os.remove(path)
-    return title
+    return _pdf_bank_repository._delete_pdf_terminology_bank(
+        PDF_TERMINOLOGY_BANK_FOLDER,
+        bank_id,
+        load_bank=_load_pdf_terminology_bank,
+        path_for_id=_pdf_term_bank_path,
+        os_module=os,
+    )
 
 
 def _pdf_term_bank_active_terms(bank):
@@ -14955,29 +14925,34 @@ PDF_IMPORT_MAX_PAGE_TEXT_BYTES = _smart_pdf_parser.PDF_IMPORT_MAX_PAGE_TEXT_BYTE
 PDFResourceLimitError = _smart_pdf_parser.PDFResourceLimitError
 
 def _pdf_import_safe_id(value):
-    value = re.sub(r"[^A-Za-z0-9_-]+", "", str(value or ""))
-    return value[:80]
+    return _pdf_bank_repository._pdf_import_safe_id(value)
 
 def _pdf_import_draft_path(draft_id):
-    draft_id = _pdf_import_safe_id(draft_id)
-    if not draft_id:
-        raise ValueError("Invalid PDF import draft id")
-    return _safe_pack_child(PDF_IMPORT_DRAFT_FOLDER, f"{draft_id}.json")
+    return _pdf_bank_repository._pdf_import_draft_path(
+        PDF_IMPORT_DRAFT_FOLDER,
+        draft_id,
+        safe_id=_pdf_import_safe_id,
+        safe_child=_safe_pack_child,
+    )
 
 def _save_pdf_import_draft(draft):
-    draft_id = _pdf_import_safe_id(draft.get("id"))
-    if not draft_id:
-        raise ValueError("PDF import draft is missing an id")
-    os.makedirs(PDF_IMPORT_DRAFT_FOLDER, exist_ok=True)
-    with open(_pdf_import_draft_path(draft_id), "w", encoding="utf-8") as f:
-        json.dump(draft, f, indent=2, ensure_ascii=False)
+    return _pdf_bank_repository._save_pdf_import_draft(
+        PDF_IMPORT_DRAFT_FOLDER,
+        draft,
+        safe_id=_pdf_import_safe_id,
+        path_for_id=_pdf_import_draft_path,
+        os_module=os,
+        json_module=json,
+    )
 
 def _load_pdf_import_draft(draft_id):
-    path = _pdf_import_draft_path(draft_id)
-    if not os.path.isfile(path):
-        raise FileNotFoundError("PDF import draft not found")
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f) or {}
+    return _pdf_bank_repository._load_pdf_import_draft(
+        PDF_IMPORT_DRAFT_FOLDER,
+        draft_id,
+        path_for_id=_pdf_import_draft_path,
+        os_module=os,
+        json_module=json,
+    )
 
 def _pdf_clean_line(line):
     return _smart_pdf_parser._pdf_clean_line(line)
