@@ -34,6 +34,7 @@ from dlms.persistence import json_files as _json_files
 from dlms.persistence import portal as _portal_repository
 from dlms.persistence import registries as _registry_repository
 from dlms.persistence import database as _database
+from dlms.parsing import quiz_text as _quiz_text_parser
 
 # =========================
 # PYINSTALLER PATH HELPER
@@ -26299,157 +26300,11 @@ def dbg(*msg):
 
 
 def parse_questions(source):
-    import re, os
-
-    global PARSE_LOG
-    PARSE_LOG.clear()
-    dbg("=== NEW PARSE SESSION STARTED ===")
-
-    # Allow BOTH: file paths OR already-loaded quiz text
-    if isinstance(source, str) and os.path.isfile(source):
-        dbg("Input detected as FILE path → reading file")
-        with open(source, "r", encoding="utf-8", errors="ignore") as f:
-            raw = f.read()
-    else:
-        dbg("Input detected as RAW TEXT → using directly")
-        raw = source
-
-    # Normalize newlines
-    text = raw.replace("\r\n", "\n").replace("\r", "\n")
-
-    # Remove UTF-8 BOM if present
-    text = text.lstrip("\ufeff")
-    dbg("BOM stripped (if present)")
-
-    # Split into question blocks
-    blocks = re.split(
-        r"(?=^\s*(?:Question\s*#?\s*\d+|\d+\s*[.) ]))",
-        text,
-        flags=re.IGNORECASE | re.MULTILINE
+    return _quiz_text_parser.parse_questions(
+        source,
+        parse_log=PARSE_LOG,
+        debug_log=dbg,
     )
-
-    dbg("Total detected blocks:", len(blocks))
-
-    questions = []
-    fallback_number = 1
-
-    for block in blocks:
-        original_block = block
-        block = block.strip()
-        if not block:
-            dbg("Skipped: empty block")
-            continue
-
-        lines = [l.strip() for l in block.split("\n") if l.strip()]
-        if len(lines) < 2:
-            dbg("Skipped: too few lines:", repr(lines))
-            continue
-
-        qnum_match = re.match(
-            r'^\s*(?:Question\s*#?\s*(\d+)|(\d+)\s*[.)])',
-            lines[0],
-            re.IGNORECASE
-        )
-
-        source_number = None
-        if qnum_match:
-            source_number = int(qnum_match.group(1) or qnum_match.group(2))
-
-        q_number = source_number if source_number is not None else fallback_number
-
-        dbg(f"\n--- Parsing Question Candidate #{q_number} ---")
-        dbg(lines[0])
-
-        q_lines = []
-        raw_choices = []
-        correct_letters = []
-        choices_started = False
-
-        for line in lines:
-            lower = line.lower()
-
-            # -------- Detect Choices --------
-            mchoice = re.match(r"^\s*([A-Za-z])[\.\)]\s+(.*)", line)
-            if mchoice:
-                label = mchoice.group(1).upper()
-                text_choice = mchoice.group(2).strip()
-                dbg(f"Choice detected: {label} → {text_choice}")
-                choices_started = True
-
-                raw_choices.append({
-                    "label": label,
-                    "text": text_choice
-                })
-                continue
-
-            # -------- Detect Correct Answer --------
-            if "correct answer" in lower or "suggested answer" in lower:
-                dbg("Found answer line:", line)
-
-                m = re.search(r"[:\-]\s*([A-Za-z]+)", line)
-                if m:
-                    ans = re.sub(r"[^A-Za-z]", "", m.group(1)).upper()
-                    if ans:
-                        correct_letters = list(dict.fromkeys(list(ans)))
-                        dbg("Parsed correct letters:", correct_letters)
-                continue
-
-            # -------- Question Text --------
-            if not choices_started:
-                if not (
-                    lower.startswith("correct answer")
-                    or lower.startswith("suggested answer")
-                ):
-                    q_lines.append(line)
-
-        # ================================
-        # VALIDATION
-        # ================================
-        if not correct_letters:
-            dbg("!! Skipped: NO correct answer found")
-            dbg(original_block[:200])
-            continue
-
-        if len(raw_choices) < 2:
-            dbg("!! Skipped: Not enough choices:", raw_choices)
-            continue
-
-        # Build question text
-        question_text = " ".join(q_lines)
-        question_text = re.sub(
-            r'^(?:Question\s*#?\s*\d+[\).\s-]*|\d+[\).\s-]*)\s*',
-            '',
-            question_text,
-            flags=re.IGNORECASE
-        ).strip()
-
-        # ================================
-        # FINALIZE CHOICES (ADD is_correct)
-        # ================================
-        choices = []
-        for c in raw_choices:
-            choices.append({
-                "label": c["label"],
-                "text": c["text"],
-                "is_correct": c["label"] in correct_letters
-            })
-
-        dbg("Final Question Built:", question_text[:150])
-
-        questions.append({
-            "number": q_number,
-            "question": question_text,
-            "choices": choices,
-            "correct": correct_letters
-        })
-
-        dbg("✓ Question Accepted\n")
-        fallback_number += 1
-
-    dbg("\n==== PARSE COMPLETE ====")
-    dbg("Total questions parsed:", len(questions))
-
-    return questions
 
 
 
@@ -26462,93 +26317,7 @@ def parse_questions(source):
 # CONFIDENCE ANALYZER (for preview only)
 # =========================
 def analyze_confidence(clean_text):
-    """
-    Heuristic pre-check of the raw text BEFORE parsing.
-    Used only for preview so the user can see if their input
-    looks parse-friendly.
-    """
-    import re
-
-    blocks = re.split(
-        r"(?=^\s*(?:Question\s*#?\s*\d+|\d+\s*[.) ]))",
-        clean_text,
-        flags=re.IGNORECASE | re.MULTILINE
-    )
-
-    details = []
-    high = med = low = 0
-    idx = 0
-
-    for raw in blocks:
-        block = raw.strip()
-        if not block:
-            continue
-
-        idx += 1
-        lines = [l.strip() for l in block.split("\n") if l.strip()]
-        txt = " ".join(lines)
-
-        # Basic signals
-        # Detect ANY lettered choices A–Z
-        has_choice = any(re.match(r"^[A-Za-z][\.\)]\s+", l) for l in lines)
-
-        has_answer_line = any(
-            ("correct answer" in l.lower()) or ("suggested answer" in l.lower())
-            for l in lines
-        )
-        num_choices = sum(
-            1 for l in lines if re.match(r"^[A-Za-z][\.\)]\s+", l)
-
-        )
-
-        score = 0
-        reason = []
-
-        if has_choice:
-            score += 1
-            reason.append("Found A–Z answer choices")
-        else:
-            reason.append("No A–Z answer choices found")
-
-        if has_answer_line:
-            score += 1
-            reason.append("Found 'Correct/Suggested Answer' line")
-        else:
-            reason.append("No explicit correct-answer line found")
-
-        if num_choices >= 2:
-
-            score += 1
-            reason.append(f"{num_choices} choices detected")
-        else:
-            reason.append(f"{num_choices} choices detected (unusual count)")
-
-        if score == 3:
-            conf = "high"
-            high += 1
-        elif score == 2:
-            conf = "medium"
-            med += 1
-        else:
-            conf = "low"
-            low += 1
-
-        title = lines[0][:80] if lines else "[empty]"
-
-        details.append({
-            "index": idx,
-            "title": title,
-            "confidence": conf,
-            "reason": "; ".join(reason),
-        })
-
-    summary = {
-        "high": high,
-        "medium": med,
-        "low": low,
-        "total": len(details),
-    }
-    return summary, details
+    return _quiz_text_parser.analyze_confidence(clean_text)
 
 
 # =========================
