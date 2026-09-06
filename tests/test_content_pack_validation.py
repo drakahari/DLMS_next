@@ -2,7 +2,7 @@
 Run from the project root with: python -m unittest tests.test_content_pack_validation
 The suite uses an isolated temporary APP_DATA_DIR and never touches real DLMS data.
 """
-import io, json, os, tempfile, unittest, zipfile
+import io, json, os, stat, tempfile, unittest, zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -73,6 +73,13 @@ class ContentPackValidationTests(unittest.TestCase):
         root = self.make_pack()
         report = dlms._validate_staged_content_pack(str(root))
         self.assertTrue(report["valid"], report["errors"])
+        self.assertEqual(
+            {"valid", "errors", "warnings", "checks", "manifest", "pack_id", "pack_name", "dataset_count"},
+            set(report),
+        )
+        self.assertEqual("study_test", report["pack_id"])
+        self.assertEqual("Study Test", report["pack_name"])
+        self.assertEqual(1, report["dataset_count"])
 
     def test_mixed_choice_questions_are_normalized_and_preserve_tags_compatibility(self):
         root = self.make_mixed_choice_pack("DLMS_Study_choice_valid", [{
@@ -484,6 +491,102 @@ class ContentPackValidationTests(unittest.TestCase):
             zf.writestr("../evil.txt","no")
         with self.assertRaises(ValueError):
             dlms._inspect_content_pack_zip(str(zpath))
+
+    def test_zip_absolute_symlink_and_duplicate_paths_keep_exact_failures(self):
+        cases = []
+        for name, member, expected in (
+            ("absolute", "/DLMS_Study_pack/manifest.json", "archive contains an absolute path"),
+            ("drive", "C:/DLMS_Study_pack/manifest.json", "archive contains an absolute path"),
+        ):
+            path = Path(_TEMP.name) / f"{name}.zip"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr(member, "{}")
+            cases.append((path, expected))
+
+        duplicate = Path(_TEMP.name) / "duplicate-pack-path.zip"
+        with zipfile.ZipFile(duplicate, "w") as archive:
+            archive.writestr("DLMS_Study_pack/data/items.json", "{}")
+            archive.writestr("dlms_study_pack/DATA/items.json", "{}")
+        cases.append((duplicate, "ZIP contains duplicate path: dlms_study_pack/DATA/items.json"))
+
+        symlink = Path(_TEMP.name) / "symlink-pack-path.zip"
+        link = zipfile.ZipInfo("DLMS_Study_pack/data/link.json")
+        link.create_system = 3
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        with zipfile.ZipFile(symlink, "w") as archive:
+            archive.writestr(link, "target.json")
+        cases.append((symlink, "ZIP contains a symbolic link: DLMS_Study_pack/data/link.json"))
+
+        for path, expected in cases:
+            with self.subTest(path=path.name):
+                with self.assertRaisesRegex(ValueError, expected):
+                    dlms._inspect_content_pack_zip(str(path))
+
+    def test_zip_limits_resolve_through_live_app_constants(self):
+        path = Path(_TEMP.name) / "limited-pack.zip"
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("DLMS_Study_pack/one.json", "12")
+            archive.writestr("DLMS_Study_pack/two.json", "34")
+
+        with mock.patch.object(dlms, "CONTENT_PACK_IMPORT_MAX_FILES", 1):
+            with self.assertRaisesRegex(ValueError, "ZIP contains more than 1 files"):
+                dlms._inspect_content_pack_zip(str(path))
+        with mock.patch.object(dlms, "CONTENT_PACK_IMPORT_MAX_SINGLE_FILE", 1):
+            with self.assertRaisesRegex(ValueError, "ZIP member is too large: DLMS_Study_pack/one.json"):
+                dlms._inspect_content_pack_zip(str(path))
+        with mock.patch.object(dlms, "CONTENT_PACK_IMPORT_MAX_UNCOMPRESSED", 3):
+            with self.assertRaisesRegex(ValueError, "ZIP expands beyond the permitted size limit"):
+                dlms._inspect_content_pack_zip(str(path))
+
+    def test_catalog_order_and_summary_use_live_app_discovery(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-pack-catalog-") as directory:
+            root = Path(directory)
+            for folder, pack_id, name in (
+                ("B_pack", "pack_b", "Pack B"),
+                ("a_pack", "pack_a", "Pack A"),
+            ):
+                pack_root = root / folder
+                pack_root.mkdir()
+                (pack_root / "manifest.json").write_text(json.dumps({
+                    "schema_version": 1,
+                    "id": pack_id,
+                    "name": name,
+                    "version": "1.0",
+                    "description": f"{name} description",
+                    "modules": ["study"],
+                    "datasets": [],
+                    "image_datasets": [],
+                    "quiz_datasets": [],
+                }), encoding="utf-8")
+
+            with mock.patch.object(dlms, "CONTENT_PACK_FOLDER", str(root)):
+                discovered = dlms.discover_content_packs()
+            self.assertEqual(["pack_b", "pack_a"], list(discovered))
+
+            with mock.patch.object(dlms, "discover_content_packs", return_value=discovered) as discovery:
+                summary = dlms.content_pack_summary()
+            discovery.assert_called_once_with()
+            self.assertEqual(["pack_b", "pack_a"], [item["id"] for item in summary])
+            self.assertEqual({
+                "id": "pack_b", "name": "Pack B", "version": "1.0",
+                "description": "Pack B description", "modules": ["study"],
+                "dataset_count": 0,
+            }, summary[0])
+
+    def test_validation_uses_patchable_app_file_and_path_helpers(self):
+        root = self.make_pack("DLMS_Study_patchable_helpers")
+        read_json = dlms._read_json_file
+        safe_child = dlms._safe_pack_child
+        with mock.patch.object(
+            dlms, "_read_json_file", wraps=read_json
+        ) as read_json_spy, mock.patch.object(
+            dlms, "_safe_pack_child", wraps=safe_child
+        ) as safe_child_spy:
+            report = dlms._validate_staged_content_pack(str(root))
+
+        self.assertTrue(report["valid"], report["errors"])
+        self.assertGreaterEqual(read_json_spy.call_count, 2)
+        safe_child_spy.assert_any_call(str(root.resolve()), "data/terms.json")
 
 
 class GuidedAIStudyPackImportTests(unittest.TestCase):
