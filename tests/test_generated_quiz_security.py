@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
+from unittest import mock
 
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
@@ -69,6 +70,53 @@ class GeneratedQuizSecurityTests(unittest.TestCase):
         self.assertIsNotNone(assignment)
         self.assertEqual(json.loads(assignment.group(1)), f"/data/{jsonfile}")
         self.assertNotIn("</script>.json", generated)
+
+    def test_generated_markup_helpers_preserve_exact_escaping_contract(self):
+        text = 'Café & <tag> > "double" \'single\''
+        self.assertEqual(
+            'Café &amp; &lt;tag&gt; &gt; "double" \'single\'',
+            dlms._html_text(text),
+        )
+        self.assertEqual(
+            "Café &amp; &lt;tag&gt; &gt; &quot;double&quot; &#x27;single&#x27;",
+            dlms._html_attribute(text),
+        )
+        self.assertEqual("", dlms._html_text(None))
+        self.assertEqual("", dlms._html_attribute(0))
+
+        inline_value = '</script><!-- comment --> & Café\u2028line\u2029end'
+        serialized = dlms._json_for_inline_script(inline_value)
+        self.assertEqual(json.loads(serialized), inline_value)
+        self.assertIn("\\u003c/script\\u003e", serialized)
+        self.assertIn("\\u003c!-- comment --\\u003e", serialized)
+        self.assertIn("\\u0026", serialized)
+        self.assertIn("\\u2028", serialized)
+        self.assertIn("\\u2029", serialized)
+        self.assertIn("Café", serialized)
+        self.assertNotIn("</script", serialized)
+
+    def test_app_helper_exports_remain_patchable_for_quiz_builder(self):
+        temp_dir = tempfile.TemporaryDirectory(prefix="dlms-generated-patch-")
+        self.addCleanup(temp_dir.cleanup)
+        output = Path(temp_dir.name) / "quiz.html"
+
+        with mock.patch.object(dlms, "_html_text", return_value="safe-text") as text_mock, \
+             mock.patch.object(dlms, "_html_attribute", return_value="safe-attribute") as attribute_mock, \
+             mock.patch.object(dlms, "_json_for_inline_script", return_value='"safe-json"') as json_mock:
+            dlms.build_quiz_html(
+                "quiz.html", "quiz.json", str(output), "Portal", "Quiz",
+                "logo.png", 17, 90,
+            )
+
+        self.assertEqual(
+            [mock.call("Portal"), mock.call("Quiz")],
+            text_mock.call_args_list,
+        )
+        attribute_mock.assert_called_once_with("/user-static/logos/logo.png")
+        self.assertEqual(
+            [mock.call("Quiz"), mock.call("/data/quiz.json"), mock.call(17)],
+            json_mock.call_args_list,
+        )
 
     def test_choice_content_is_created_as_text_nodes(self):
         script = Path(dlms.STATIC_ROOT, "script.js").read_text(encoding="utf-8")

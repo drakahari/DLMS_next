@@ -7,6 +7,12 @@ from urllib.parse import urlsplit
 from PIL import Image, ImageSequence, UnidentifiedImageError
 from werkzeug.utils import secure_filename
 
+from dlms.rendering.safety import (
+    _html_attribute,
+    _html_text,
+    _json_for_inline_script,
+)
+
 # =========================
 # PYINSTALLER PATH HELPER
 # =========================
@@ -27789,28 +27795,6 @@ def analyze_confidence(clean_text):
 # =========================
 # QUIZ HTML BUILDER
 # =========================
-
-def _html_text(value):
-    """Encode plain text for insertion into generated HTML text content."""
-    return html.escape(str(value or ""), quote=False)
-
-
-def _html_attribute(value):
-    """Encode a value for a quoted generated-HTML attribute."""
-    return html.escape(str(value or ""), quote=True)
-
-
-def _json_for_inline_script(value):
-    """Serialize data without allowing it to terminate an inline script element."""
-    serialized = json.dumps(value, ensure_ascii=False)
-    return (
-        serialized
-        .replace("&", "\\u0026")
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-        .replace("\u2028", "\\u2028")
-        .replace("\u2029", "\\u2029")
-    )
 
 def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_filename, quiz_id, exam_minutes=90):
     exam_minutes = normalize_exam_minutes(exam_minutes)
