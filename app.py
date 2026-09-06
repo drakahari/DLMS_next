@@ -30,6 +30,7 @@ from dlms.runtime import (
     _dlms_url_host,
     _dlms_validate_server_host,
 )
+from dlms.persistence import json_files as _json_files
 
 # =========================
 # PYINSTALLER PATH HELPER
@@ -6266,88 +6267,33 @@ cleanup_temp_logos()
 # =========================
 def _fsync_json_directory(path):
     """Best-effort directory durability after replacing a durable JSON file."""
-    descriptor = None
-    try:
-        descriptor = os.open(path, os.O_RDONLY)
-        os.fsync(descriptor)
-    except OSError:
-        # Directory handles/fsync are unavailable on some supported platforms.
-        pass
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
+    return _json_files._fsync_json_directory(path, os_module=os)
 
 
 def _preserve_malformed_json(path):
     """Keep one recoverable copy of malformed JSON without backup-file churn."""
-    with open(path, "rb") as source:
-        malformed_bytes = source.read()
-
-    backup_path = path + ".corrupt"
-    try:
-        with open(backup_path, "rb") as existing_backup:
-            if existing_backup.read() == malformed_bytes:
-                return backup_path
-    except FileNotFoundError:
-        pass
-
-    directory = os.path.dirname(os.path.abspath(path))
-    os.makedirs(directory, exist_ok=True)
-    descriptor, temp_path = tempfile.mkstemp(
-        prefix=f".{os.path.basename(path)}.corrupt-", suffix=".tmp", dir=directory
+    return _json_files._preserve_malformed_json(
+        path,
+        os_module=os,
+        tempfile_module=tempfile,
+        fsync_directory=_fsync_json_directory,
     )
-    try:
-        with os.fdopen(descriptor, "wb") as temporary:
-            descriptor = None
-            temporary.write(malformed_bytes)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.replace(temp_path, backup_path)
-        _fsync_json_directory(directory)
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-    return backup_path
 
 
 def _atomic_write_json(path, payload, *, indent=2, ensure_ascii=True, expected_type=None):
     """Durably replace one user-owned JSON file while retaining malformed input."""
-    directory = os.path.dirname(os.path.abspath(path))
-    os.makedirs(directory, exist_ok=True)
-
-    if os.path.isfile(path):
-        malformed = False
-        try:
-            with open(path, "r", encoding="utf-8") as current:
-                current_payload = json.load(current)
-            malformed = expected_type is not None and not isinstance(current_payload, expected_type)
-        except (json.JSONDecodeError, UnicodeError):
-            malformed = True
-        if malformed:
-            _preserve_malformed_json(path)
-
-    descriptor, temp_path = tempfile.mkstemp(
-        prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=directory
+    return _json_files._atomic_write_json(
+        path,
+        payload,
+        indent=indent,
+        ensure_ascii=ensure_ascii,
+        expected_type=expected_type,
+        os_module=os,
+        tempfile_module=tempfile,
+        json_module=json,
+        preserve_malformed=_preserve_malformed_json,
+        fsync_directory=_fsync_json_directory,
     )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as temporary:
-            descriptor = None
-            json.dump(payload, temporary, indent=indent, ensure_ascii=ensure_ascii)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        with open(temp_path, "r", encoding="utf-8") as temporary:
-            validated = json.load(temporary)
-        if expected_type is not None and not isinstance(validated, expected_type):
-            raise ValueError(f"JSON payload must contain {expected_type.__name__}")
-        os.replace(temp_path, path)
-        _fsync_json_directory(directory)
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
 
 
 def load_portal_config():
