@@ -32,6 +32,7 @@ from dlms.runtime import (
 )
 from dlms.persistence import json_files as _json_files
 from dlms.persistence import portal as _portal_repository
+from dlms.persistence import registries as _registry_repository
 
 # =========================
 # PYINSTALLER PATH HELPER
@@ -6378,94 +6379,19 @@ def get_confidence_setting():
 # LAW STUDY REGISTRY
 # =========================
 def load_law_registry():
-    default = {
-        "version": "1",
-        "cases": [],
-        "folders": [
-            "Torts",
-            "Contracts",
-            "Civil Procedure",
-            "Criminal Law",
-            "Property",
-            "Constitutional Law",
-            "Legal Writing"
-        ]
-    }
-
-    os.makedirs(os.path.dirname(LAW_REGISTRY), exist_ok=True)
-
-    if not os.path.exists(LAW_REGISTRY):
-        try:
-            _atomic_write_json(LAW_REGISTRY, default, expected_type=dict)
-            return default.copy()
-        except Exception as e:
-            print(f"[LAW REGISTRY ERROR] create failed: {e}")
-            return default.copy()
-
-    try:
-        with open(LAW_REGISTRY, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, UnicodeError) as e:
-        try:
-            _preserve_malformed_json(LAW_REGISTRY)
-        except Exception as preserve_error:
-            raise RuntimeError(
-                "Malformed law.json could not be preserved safely"
-            ) from preserve_error
-        print(f"[LAW REGISTRY ERROR] load failed: {e}")
-        return default.copy()
-    except Exception as e:
-        print(f"[LAW REGISTRY ERROR] load failed: {e}")
-        return default.copy()
-
-    if not isinstance(data, dict):
-        try:
-            _preserve_malformed_json(LAW_REGISTRY)
-        except Exception as preserve_error:
-            raise RuntimeError(
-                "Malformed law.json could not be preserved safely"
-            ) from preserve_error
-        print("[LAW REGISTRY ERROR] law.json must contain a JSON object")
-        return default.copy()
-
-    if (
-        ("cases" in data and not isinstance(data["cases"], list))
-        or ("folders" in data and not isinstance(data["folders"], list))
-    ):
-        _preserve_malformed_json(LAW_REGISTRY)
-
-    cfg = default.copy()
-    cfg.update(data)
-
-    if not isinstance(cfg.get("cases"), list):
-        cfg["cases"] = []
-
-    if not isinstance(cfg.get("folders"), list):
-        cfg["folders"] = default["folders"]
-
-    return cfg
+    return _registry_repository.load_law_registry(
+        LAW_REGISTRY,
+        atomic_write_json=_atomic_write_json,
+        preserve_malformed_json=_preserve_malformed_json,
+    )
 
 
 def save_law_registry(registry):
-    try:
-        os.makedirs(os.path.dirname(LAW_REGISTRY), exist_ok=True)
-
-        if not isinstance(registry, dict):
-            registry = {
-                "version": "1",
-                "cases": [],
-                "folders": []
-            }
-
-        registry.setdefault("version", "1")
-        registry.setdefault("cases", [])
-        registry.setdefault("folders", [])
-
-        _atomic_write_json(LAW_REGISTRY, registry, expected_type=dict)
-
-    except Exception as e:
-        print(f"[LAW REGISTRY ERROR] save failed: {e}")
-        raise
+    return _registry_repository.save_law_registry(
+        LAW_REGISTRY,
+        registry,
+        atomic_write_json=_atomic_write_json,
+    )
 
 
 def _law_registry_case_for_mutation(registry, case_id):
@@ -6539,82 +6465,26 @@ def _delete_law_case_and_registry(case_path, registry, case_id):
 registry_lock = threading.RLock()
 
 def load_registry():
-    with registry_lock:
-        if not os.path.exists(QUIZ_REGISTRY):
-            return []
-
-        try:
-            with open(QUIZ_REGISTRY, "r", encoding="utf-8") as f:
-                registry = json.load(f)
-
-            if registry is None:
-                return []
-
-            if not isinstance(registry, list):
-                raise ValueError("Quiz registry must contain a JSON list")
-
-            return registry
-
-        except Exception as e:
-            print(f"[REGISTRY ERROR] load_registry failed: {e}")
-            raise RuntimeError(
-                f"Quiz registry could not be loaded safely: {e}"
-            ) from e
+    return _registry_repository.load_registry(
+        QUIZ_REGISTRY,
+        registry_lock=registry_lock,
+    )
 
 def save_registry(registry):
-    temp_file = QUIZ_REGISTRY + ".tmp"
-
-    try:
-        os.makedirs(os.path.dirname(QUIZ_REGISTRY), exist_ok=True)
-
-        with registry_lock:
-            with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(registry, f, indent=4)
-                f.flush()
-                os.fsync(f.fileno())
-
-            # Validate the temporary file before replacing the live registry
-            with open(temp_file, "r", encoding="utf-8") as f:
-                validated = json.load(f)
-
-            if not isinstance(validated, list):
-                raise ValueError("Quiz registry must contain a JSON list")
-
-            os.replace(temp_file, QUIZ_REGISTRY)
-
-    except Exception as e:
-        print(f"[REGISTRY ERROR] save_registry failed: {e}")
-
-        try:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-        except Exception:
-            pass
-        raise
+    return _registry_repository.save_registry(
+        QUIZ_REGISTRY,
+        registry,
+        registry_lock=registry_lock,
+        atomic_write_json=_atomic_write_json,
+    )
 
 
 def normalize_quiz_folders(registry):
-    """
-    Backward-compatible folder support for the Quiz Library.
-
-    Existing quizzes may not have a folder field yet.
-    This guarantees every quiz has one without changing quiz files,
-    quiz IDs, history, results, or generated HTML/JSON.
-    """
-    with registry_lock:
-        changed = False
-
-        for q in registry:
-            folder = str(q.get("folder") or "").strip()
-
-            if not folder:
-                q["folder"] = "Uncategorized"
-                changed = True
-
-        if changed:
-            save_registry(registry)
-
-        return registry
+    return _registry_repository.normalize_quiz_folders(
+        registry,
+        registry_lock=registry_lock,
+        save_registry=save_registry,
+    )
 
 def normalize_exam_minutes(value, default=90):
     """
