@@ -267,6 +267,82 @@ class AttemptValidationTests(unittest.TestCase):
             [(row["event_type"], row["was_correct"]) for row in events],
         )
 
+    def test_attempt_mid_write_failure_rolls_back_all_rows(self):
+        payload = self._payload("attempt-rollback")
+        original_record_learning_event = dlms._record_learning_event
+        calls = 0
+
+        def fail_after_first_event(cur, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("simulated event write failure")
+            return original_record_learning_event(cur, **kwargs)
+
+        with mock.patch.object(
+            dlms, "_record_learning_event", side_effect=fail_after_first_event
+        ):
+            response = self._post_attempt(payload)
+
+        self.assertEqual(500, response.status_code, response.get_data(as_text=True))
+        self.assertEqual(
+            {"attempts": 0, "learning_events": 0, "missed_questions": 0},
+            self._attempt_write_counts(payload["attemptId"]),
+        )
+
+    def test_attempt_commit_failure_rolls_back_and_closes_connection(self):
+        payload = self._payload("attempt-commit-failure")
+        real_connection = dlms.get_db()
+
+        class CommitFailingConnection:
+            def __init__(self, connection):
+                self.connection = connection
+                self.rollback_called = False
+                self.close_called = False
+
+            def cursor(self):
+                return self.connection.cursor()
+
+            def commit(self):
+                raise OSError("simulated commit failure")
+
+            def rollback(self):
+                self.rollback_called = True
+                return self.connection.rollback()
+
+            def close(self):
+                self.close_called = True
+                return self.connection.close()
+
+        connection = CommitFailingConnection(real_connection)
+        with mock.patch.object(dlms, "get_db", return_value=connection):
+            response = self._post_attempt(payload)
+
+        self.assertEqual(500, response.status_code, response.get_data(as_text=True))
+        self.assertTrue(connection.rollback_called)
+        self.assertTrue(connection.close_called)
+        self.assertEqual(
+            {"attempts": 0, "learning_events": 0, "missed_questions": 0},
+            self._attempt_write_counts(payload["attemptId"]),
+        )
+
+    def test_attempt_route_uses_app_level_validation_hook(self):
+        payload = self._payload("patched-validation")
+        with mock.patch.object(
+            dlms,
+            "_validate_attempt_payload",
+            side_effect=dlms.LearningPayloadError("patched validation failure"),
+        ) as validate:
+            response = self._post_attempt(payload)
+
+        self.assertEqual(400, response.status_code, response.get_data(as_text=True))
+        self.assertEqual({"error": "patched validation failure"}, response.get_json())
+        validate.assert_called_once()
+        self.assertEqual(
+            {"attempts": 0, "learning_events": 0, "missed_questions": 0},
+            self._attempt_write_counts(payload["attemptId"]),
+        )
+
     def test_valid_missed_snapshot_uses_canonical_matching_answers(self):
         payload = self._payload("valid-missed")
         payload["missedDetails"] = [{
