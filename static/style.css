@@ -29,6 +29,19 @@
     --danger-hover-1: #dc2626;
     --danger-hover-2: #b91c1c;
 
+    /* Dashboard semantic states. The dark branches preserve the established
+       Dark, Purple & Gold, and Maroon & Gold component treatments. */
+    --dashboard-destructive-text: light-dark(#8f2435, #ff6262);
+    --dashboard-destructive-surface-1: light-dark(#f8e7ea, rgba(86,15,22,.32));
+    --dashboard-destructive-surface-2: light-dark(#f4dde1, rgba(50,10,16,.24));
+    --dashboard-destructive-border: light-dark(#d6959e, rgba(255,65,65,.68));
+    --dashboard-success-text: light-dark(#105f3d, #4ed98a);
+    --dashboard-success-emphasis: light-dark(#12613f, #5af08d);
+    --dashboard-success-heading: light-dark(#16784f, #55e48f);
+    --dashboard-success-surface: light-dark(#d3eadf, rgba(15,98,55,.22));
+    --dashboard-success-badge-surface: light-dark(#d5eadf, rgba(18,112,56,.20));
+    --dashboard-success-border: light-dark(#78aa91, rgba(52,196,112,.36));
+
     /* Shared content-spacing scale used by modern DLMS pages. */
     --dlms-space-xs: 6px;
     --dlms-space-sm: 10px;
@@ -1553,18 +1566,40 @@ body.dashboard-home {
     gap: 14px;
     padding: 0 17px;
     border-radius: 12px;
-    color: #ff6262;
-    background: linear-gradient(90deg, rgba(86,15,22,.32), rgba(50,10,16,.24));
-    border: 1px solid rgba(255,65,65,.68);
-    box-shadow: none;
+    color: var(--dashboard-destructive-text);
+    background: linear-gradient(90deg, var(--dashboard-destructive-surface-1), var(--dashboard-destructive-surface-2));
+    border: 1px solid var(--dashboard-destructive-border);
+    box-shadow: 0 1px 2px light-dark(rgba(89,30,43,.10), transparent);
     font-size: 16px;
 }
 
-.dashboard-shutdown:hover {
+.dashboard-shutdown:hover:not(:disabled) {
     transform: none;
-    color: #fff;
-    background: linear-gradient(90deg, rgba(172,28,39,.68), rgba(104,17,26,.62));
-    border-color: rgba(255,91,91,.95);
+    color: light-dark(#761b2c, #fff);
+    background: linear-gradient(90deg, light-dark(#f1d2d8, rgba(172,28,39,.68)), light-dark(#ecc7ce, rgba(104,17,26,.62)));
+    border-color: light-dark(#bd6674, rgba(255,91,91,.95));
+    box-shadow: 0 4px 12px light-dark(rgba(99,28,43,.14), transparent);
+}
+
+.dashboard-shutdown:active:not(:disabled) {
+    transform: none;
+    color: light-dark(#681523, #fff);
+    background: linear-gradient(90deg, light-dark(#e7bcc4, rgba(172,28,39,.68)), light-dark(#e1afb8, rgba(104,17,26,.62)));
+    border-color: light-dark(#ad4c5c, rgba(255,91,91,.95));
+    box-shadow: inset 0 2px 6px light-dark(rgba(104,21,38,.18), rgba(0,0,0,.4));
+}
+
+.dashboard-shutdown:focus-visible {
+    outline-color: light-dark(#a52e40, var(--theme-accent-text, #78bfff)) !important;
+}
+
+.dashboard-shutdown:disabled {
+    cursor: not-allowed;
+    color: light-dark(#76636a, #bca0a5);
+    background: linear-gradient(90deg, light-dark(#ece7e8, rgba(64,27,34,.42)), light-dark(#e8e1e3, rgba(42,22,29,.36)));
+    border-color: light-dark(#c8babe, rgba(180,100,110,.35));
+    box-shadow: none;
+    transform: none;
 }
 
 .dashboard-shutdown-icon {
@@ -1820,6 +1855,10 @@ body.dashboard-home {
     font-size: 21px;
 }
 
+.dashboard-activity-panel .dashboard-heading-icon {
+    color: var(--dashboard-success-heading);
+}
+
 .dashboard-activity-list {
     overflow: hidden;
     border: 1px solid rgba(94,148,219,.24);
@@ -1856,10 +1895,11 @@ body.dashboard-home {
     display: grid;
     place-items: center;
     border-radius: 50%;
-    color: #4ed98a;
-    background: rgba(15,98,55,.22);
-    border: 1px solid rgba(52,196,112,.36);
+    color: var(--dashboard-success-text);
+    background: var(--dashboard-success-surface);
+    border: 1px solid var(--dashboard-success-border);
     font-size: 15px;
+    font-weight: 800;
 }
 
 .dashboard-activity-copy {
@@ -1891,8 +1931,9 @@ body.dashboard-home {
 }
 
 .dashboard-score.score-good {
-    color: #5af08d;
-    background: rgba(18,112,56,.20);
+    color: var(--dashboard-success-emphasis);
+    background: var(--dashboard-success-badge-surface);
+    box-shadow: inset 0 0 0 1px light-dark(#83b39a, transparent);
 }
 
 .dashboard-score.score-warn {

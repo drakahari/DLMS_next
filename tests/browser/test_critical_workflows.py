@@ -276,6 +276,143 @@ def test_fresh_profile_defaults_to_purple_gold_and_theme_selection_persists(brow
     )
 
 
+def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_stack):
+    browser = browser_stack.browser
+    browser.set_viewport(1400, 1000)
+    expected = {
+        "light": {
+            "normal": "rgb(143, 36, 53)",
+            "normal_background": "rgb(248, 231, 234)",
+            "hover": "rgb(118, 27, 44)",
+            "hover_background": "rgb(241, 210, 216)",
+            "active": "rgb(104, 21, 35)",
+            "active_background": "rgb(231, 188, 196)",
+            "disabled": "rgb(118, 99, 106)",
+            "disabled_background": "rgb(236, 231, 232)",
+            "heading": "rgb(22, 120, 79)",
+            "status": "rgb(16, 95, 61)",
+            "status_background": "rgb(211, 234, 223)",
+            "score": "rgb(18, 97, 63)",
+            "score_background": "rgb(213, 234, 223)",
+        },
+        "dark": {
+            "normal": "rgb(255, 98, 98)",
+            "normal_background": "rgba(86, 15, 22, 0.32)",
+            "hover": "rgb(255, 255, 255)",
+            "hover_background": "rgba(172, 28, 39, 0.68)",
+            "active": "rgb(255, 255, 255)",
+            "active_background": "rgba(172, 28, 39, 0.68)",
+            "disabled": "rgb(188, 160, 165)",
+            "disabled_background": "rgba(64, 27, 34, 0.42)",
+            "heading": "rgb(85, 228, 143)",
+            "status": "rgb(78, 217, 138)",
+            "status_background": "rgba(15, 98, 55, 0.22)",
+            "score": "rgb(90, 240, 141)",
+            "score_background": "rgba(18, 112, 56, 0.2)",
+        },
+        "purple-gold": {},
+        "maroon-gold": {},
+    }
+
+    def set_theme(theme):
+        browser.navigate(f"{browser_stack.base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken")
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+        browser.navigate(f"{browser_stack.base_url}/")
+        browser.wait_for("document.querySelector('.dashboard-shutdown') !== null")
+        assert browser.evaluate(
+            "(() => {"
+            "const source = document.querySelector('.dashboard-shutdown');"
+            "const probe = source.cloneNode(true); probe.id = 'shutdownStyleProbe';"
+            "probe.style.cssText = 'position:fixed;left:20px;top:20px;width:260px;z-index:9999';"
+            "document.body.appendChild(probe);"
+            "const states = document.createElement('div'); states.id = 'activityStyleProbe';"
+            "states.innerHTML = "
+            "'<span id=\"activityHeadingProbe\" class=\"dashboard-heading-icon\">⌁</span>' +"
+            "'<div id=\"activityStatusProbe\" class=\"dashboard-activity-status\">✓</div>' +"
+            "'<span id=\"activityScoreProbe\" class=\"dashboard-score score-good\">90%</span>';"
+            "document.querySelector('.dashboard-activity-panel').appendChild(states);"
+            "return true; })()"
+        ) is True
+
+    def snapshot():
+        return browser.evaluate(
+            "(() => {"
+            "const probe = document.getElementById('shutdownStyleProbe');"
+            "const button = getComputedStyle(probe);"
+            "const heading = getComputedStyle(document.getElementById('activityHeadingProbe'));"
+            "const status = getComputedStyle(document.getElementById('activityStatusProbe'));"
+            "const score = getComputedStyle(document.getElementById('activityScoreProbe'));"
+            "return {buttonColor:button.color,buttonBackground:button.backgroundImage,"
+            "headingColor:heading.color,"
+            "statusColor:status.color,statusBackground:status.backgroundColor,"
+            "scoreColor:score.color,scoreBackground:score.backgroundColor}; })()"
+        )
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        set_theme(theme)
+        palette = expected[theme] if theme in {"light", "dark"} else {
+            **expected["dark"], **expected[theme],
+        }
+
+        normal = snapshot()
+        assert normal["buttonColor"] == palette["normal"]
+        assert palette["normal_background"] in normal["buttonBackground"]
+        assert normal["headingColor"] == palette["heading"]
+        assert normal["statusColor"] == palette["status"]
+        assert normal["statusBackground"] == palette["status_background"]
+        assert normal["scoreColor"] == palette["score"]
+        assert normal["scoreBackground"] == palette["score_background"]
+
+        coordinates = json.loads(browser.evaluate(
+            "(() => { const rect = document.getElementById('shutdownStyleProbe').getBoundingClientRect();"
+            "return JSON.stringify({x:rect.left + rect.width / 2,y:rect.top + rect.height / 2}); })()"
+        ))
+        pointer = {
+            "type": "pointer", "id": "dashboard-state-mouse",
+            "parameters": {"pointerType": "mouse"},
+        }
+        browser.command("input.performActions", {
+            "context": browser.context,
+            "actions": [{**pointer, "actions": [{
+                "type": "pointerMove", "x": round(coordinates["x"]),
+                "y": round(coordinates["y"]), "duration": 0, "origin": "viewport",
+            }]}],
+        })
+        browser.wait_for(
+            f"getComputedStyle(document.getElementById('shutdownStyleProbe')).color === "
+            f"{json.dumps(palette['hover'])}"
+        )
+        hovered = snapshot()
+        assert palette["hover_background"] in hovered["buttonBackground"]
+
+        browser.command("input.performActions", {
+            "context": browser.context,
+            "actions": [{**pointer, "actions": [{"type": "pointerDown", "button": 0}]}],
+        })
+        browser.wait_for(
+            f"getComputedStyle(document.getElementById('shutdownStyleProbe')).color === "
+            f"{json.dumps(palette['active'])}"
+        )
+        pressed = snapshot()
+        assert palette["active_background"] in pressed["buttonBackground"]
+        browser.command("input.releaseActions", {"context": browser.context})
+
+        assert browser.evaluate(
+            "(() => { const probe = document.getElementById('shutdownStyleProbe');"
+            "probe.disabled = true; return probe.disabled; })()"
+        ) is True
+        disabled = snapshot()
+        assert disabled["buttonColor"] == palette["disabled"]
+        assert palette["disabled_background"] in disabled["buttonBackground"]
+
+    set_theme("purple-gold")
+
+
 def test_library_reorder_control_persists_after_refresh(browser_stack):
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/library")

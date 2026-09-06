@@ -290,6 +290,110 @@ class ThemeSystemTests(unittest.TestCase):
                     css = client.get("/dynamic.css").get_data(as_text=True)
                 self.assertIn(f"--theme-color-scheme: {scheme}", css)
 
+    def test_dashboard_destructive_and_success_states_are_light_dark_aware(self):
+        css = self._style_css()
+        variables = self._css_variables(css)
+        expected_tokens = {
+            "dashboard-destructive-text": "light-dark(#8f2435, #ff6262)",
+            "dashboard-destructive-surface-1": "light-dark(#f8e7ea, rgba(86,15,22,.32))",
+            "dashboard-destructive-surface-2": "light-dark(#f4dde1, rgba(50,10,16,.24))",
+            "dashboard-destructive-border": "light-dark(#d6959e, rgba(255,65,65,.68))",
+            "dashboard-success-text": "light-dark(#105f3d, #4ed98a)",
+            "dashboard-success-emphasis": "light-dark(#12613f, #5af08d)",
+            "dashboard-success-heading": "light-dark(#16784f, #55e48f)",
+            "dashboard-success-surface": "light-dark(#d3eadf, rgba(15,98,55,.22))",
+            "dashboard-success-badge-surface": "light-dark(#d5eadf, rgba(18,112,56,.20))",
+            "dashboard-success-border": "light-dark(#78aa91, rgba(52,196,112,.36))",
+        }
+        for name, value in expected_tokens.items():
+            with self.subTest(token=name):
+                self.assertEqual(variables.get(name), value)
+
+        shutdown_rules = {
+            ".dashboard-shutdown": (
+                "var(--dashboard-destructive-text)",
+                "var(--dashboard-destructive-surface-1)",
+                "var(--dashboard-destructive-surface-2)",
+                "var(--dashboard-destructive-border)",
+            ),
+            ".dashboard-shutdown:hover:not(:disabled)": (
+                "light-dark(#761b2c, #fff)",
+                "light-dark(#f1d2d8, rgba(172,28,39,.68))",
+                "light-dark(#ecc7ce, rgba(104,17,26,.62))",
+                "light-dark(#bd6674, rgba(255,91,91,.95))",
+            ),
+            ".dashboard-shutdown:active:not(:disabled)": (
+                "light-dark(#681523, #fff)",
+                "light-dark(#e7bcc4, rgba(172,28,39,.68))",
+                "light-dark(#e1afb8, rgba(104,17,26,.62))",
+                "light-dark(#ad4c5c, rgba(255,91,91,.95))",
+                "light-dark(rgba(104,21,38,.18), rgba(0,0,0,.4))",
+            ),
+            ".dashboard-shutdown:focus-visible": (
+                "light-dark(#a52e40, var(--theme-accent-text, #78bfff))",
+            ),
+            ".dashboard-shutdown:disabled": (
+                "cursor: not-allowed",
+                "light-dark(#76636a, #bca0a5)",
+                "light-dark(#ece7e8, rgba(64,27,34,.42))",
+                "light-dark(#e8e1e3, rgba(42,22,29,.36))",
+                "light-dark(#c8babe, rgba(180,100,110,.35))",
+                "transform: none",
+            ),
+        }
+        for selector, declarations in shutdown_rules.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing CSS rule for {selector}")
+                self.assertTrue(any(
+                    all(declaration in block for declaration in declarations)
+                    for block in blocks
+                ))
+
+        success_rules = {
+            ".dashboard-activity-panel .dashboard-heading-icon": (
+                "var(--dashboard-success-heading)",
+            ),
+            ".dashboard-activity-status": (
+                "var(--dashboard-success-text)",
+                "var(--dashboard-success-surface)",
+                "var(--dashboard-success-border)",
+                "font-weight: 800",
+            ),
+            ".dashboard-score.score-good": (
+                "var(--dashboard-success-emphasis)",
+                "var(--dashboard-success-badge-surface)",
+                "light-dark(#83b39a, transparent)",
+            ),
+        }
+        for selector, declarations in success_rules.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing CSS rule for {selector}")
+                self.assertTrue(any(
+                    all(declaration in block for declaration in declarations)
+                    for block in blocks
+                ))
+
+        light_contrast_pairs = (
+            ("Shutdown normal", "#8f2435", "#f8e7ea"),
+            ("Shutdown normal gradient end", "#8f2435", "#f4dde1"),
+            ("Shutdown hover", "#761b2c", "#f1d2d8"),
+            ("Shutdown hover gradient end", "#761b2c", "#ecc7ce"),
+            ("Shutdown pressed", "#681523", "#e7bcc4"),
+            ("Shutdown pressed gradient end", "#681523", "#e1afb8"),
+            ("Shutdown disabled", "#76636a", "#ece7e8"),
+            ("Recent Activity check", "#105f3d", "#d3eadf"),
+            ("Recent Activity score", "#12613f", "#d5eadf"),
+            ("Recent Activity heading", "#16784f", "#ffffff"),
+        )
+        for role, foreground, background in light_contrast_pairs:
+            with self.subTest(role=role):
+                ratio = self._contrast(foreground, self._rgba(background)[:3])
+                self.assertGreaterEqual(
+                    ratio, 4.5, f"{role} contrast is only {ratio:.2f}:1",
+                )
+
     def test_light_readability_colors_preserve_dark_component_colors(self):
         css = self._style_css()
         expected_rules = {
