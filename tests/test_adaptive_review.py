@@ -87,6 +87,28 @@ class AdaptiveReviewTests(unittest.TestCase):
         self.assertGreater(overdue["decay_points"], 0.0)
         self.assertLess(overdue["retained_mastery"], 82.0)
 
+    def test_exact_due_time_is_due_without_decay(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        schedule = dlms._retention_schedule_for_topic({
+            "evidence": 8,
+            "mastery": 70,
+            "last_activity": (now - timedelta(days=3)).isoformat(),
+        }, now=now)
+
+        self.assertEqual(schedule, {
+            "review_state": "due",
+            "review_state_label": "Due now",
+            "review_interval_days": 3,
+            "next_review": now.isoformat(),
+            "days_until_review": 0,
+            "days_overdue": 0,
+            "is_due": True,
+            "is_due_soon": False,
+            "retained_mastery": 70.0,
+            "decay_points": 0.0,
+            "decay_rate_per_day": 0.8,
+        })
+
     def test_review_schedule_api_shape(self):
         client = dlms.app.test_client()
         response = client.get("/api/review-schedule")

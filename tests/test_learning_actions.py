@@ -1,4 +1,5 @@
 import os, tempfile, unittest, uuid
+from unittest import mock
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-learning-actions-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
@@ -67,6 +68,88 @@ class LearningActionsTests(unittest.TestCase):
         self.assertIn("status_counts", payload)
         self.assertIn("activity", payload)
         self.assertIn("recommendation", payload)
+
+    def test_app_learning_composition_uses_patchable_helper_names(self):
+        topic = {"concept_id": 7, "name": "Patched", "evidence": 3}
+        retention = {"review_state": "due", "retained_mastery": 42.0}
+        marker = object()
+        with mock.patch.object(
+            dlms, "_learning_intelligence_topics", return_value=[topic.copy()]
+        ) as topics_helper, mock.patch.object(
+            dlms, "_retention_schedule_for_topic", return_value=retention
+        ) as retention_helper:
+            result = dlms._learning_topics_with_retention(marker, now="frozen-now")
+
+        self.assertEqual(result, [{**topic, **retention}])
+        topics_helper.assert_called_once_with(marker, now="frozen-now")
+        retention_helper.assert_called_once_with(
+            {**topic, **retention}, now="frozen-now"
+        )
+
+    def test_concept_normalization_preserves_order_case_and_limits(self):
+        concepts = dlms._normalize_concept_names(
+            "  Civil   Procedure ; Evidence\nCIVIL PROCEDURE, Crimé "
+        )
+        self.assertEqual(concepts, ["Civil Procedure", "Evidence", "Crimé"])
+
+    def test_smart_review_generation_hands_prepared_quiz_to_app_publisher(self):
+        weak = [{
+            "concept_id": 1, "name": "Contracts", "mastery": 35.0,
+            "accuracy": 20.0, "evidence": 5,
+        }]
+        candidate = {"question_id": 17, "topics": weak}
+        question = {
+            "number": 99, "type": "choice", "question": "Offer?",
+            "choices": [{"label": "A", "text": "Yes", "is_correct": True}],
+            "correct": ["A"], "concepts": ["Contracts"],
+        }
+        with dlms.app.test_request_context(
+            "/smart-review/generate", method="POST", data={"question_count": "5"}
+        ), mock.patch.object(
+            dlms, "_smart_review_candidates", return_value=([candidate], weak)
+        ), mock.patch.object(
+            dlms, "_smart_review_select_candidates", return_value=[candidate]
+        ), mock.patch.object(
+            dlms, "_question_payload_from_db", return_value=question.copy()
+        ), mock.patch.object(
+            dlms, "_publish_quiz", return_value=(23, "smart-review.html")
+        ) as publisher:
+            response = dlms.smart_review_generate()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, "/quizzes/smart-review.html")
+        publisher.assert_called_once_with(
+            "Smart Review — Contracts",
+            [{**question, "number": 1}],
+            filename_prefix="smart_review",
+            exam_minutes=90,
+            snapshot_existing_assets=True,
+        )
+
+    def test_smart_review_publication_failure_still_propagates(self):
+        weak = [{
+            "concept_id": 1, "name": "Contracts", "mastery": 35.0,
+            "accuracy": 20.0, "evidence": 5,
+        }]
+        candidate = {"question_id": 17, "topics": weak}
+        question = {
+            "number": 1, "type": "choice", "question": "Offer?",
+            "choices": [{"label": "A", "text": "Yes", "is_correct": True}],
+            "correct": ["A"], "concepts": ["Contracts"],
+        }
+        with dlms.app.test_request_context(
+            "/smart-review/generate", method="POST", data={"question_count": "5"}
+        ), mock.patch.object(
+            dlms, "_smart_review_candidates", return_value=([candidate], weak)
+        ), mock.patch.object(
+            dlms, "_smart_review_select_candidates", return_value=[candidate]
+        ), mock.patch.object(
+            dlms, "_question_payload_from_db", return_value=question
+        ), mock.patch.object(
+            dlms, "_publish_quiz", side_effect=RuntimeError("publication failed")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "publication failed"):
+                dlms.smart_review_generate()
 
 
 if __name__ == "__main__":
