@@ -160,6 +160,79 @@ class DatabaseBootstrapTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_get_db_returns_fresh_row_connections_with_foreign_keys_enabled(self):
+        dlms.bootstrap_database(str(self.db_path), require_owned_root=False)
+
+        with mock.patch.object(dlms, "DB_PATH", str(self.db_path)):
+            first = dlms.get_db()
+            second = dlms.get_db()
+
+        try:
+            self.assertIsNot(first, second)
+            self.assertIs(first.row_factory, sqlite3.Row)
+            self.assertIs(second.row_factory, sqlite3.Row)
+            self.assertEqual(1, first.execute("PRAGMA foreign_keys").fetchone()[0])
+            self.assertEqual(1, second.execute("PRAGMA foreign_keys").fetchone()[0])
+        finally:
+            first.close()
+            second.close()
+
+    def test_fresh_bootstrap_resolves_init_sql_through_app_resource_path(self):
+        init_sql_path = dlms.resource_path("init.sql")
+
+        with mock.patch.object(
+            dlms, "resource_path", return_value=init_sql_path
+        ) as resource_path:
+            result = dlms.bootstrap_database(
+                str(self.db_path), require_owned_root=False
+            )
+
+        self.assertEqual("created", result["status"])
+        resource_path.assert_called_once_with("init.sql")
+
+    def test_missing_init_sql_failure_propagates_and_rolls_back_fresh_schema(self):
+        missing = self.root / "missing-init.sql"
+
+        with mock.patch.object(dlms, "resource_path", return_value=str(missing)):
+            with self.assertRaises(FileNotFoundError):
+                dlms.bootstrap_database(str(self.db_path), require_owned_root=False)
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(set(), self._tables(conn))
+        finally:
+            conn.close()
+
+    def test_incomplete_database_is_rejected_without_schema_changes(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT)")
+        conn.commit()
+        conn.close()
+
+        with self.assertRaisesRegex(
+            RuntimeError, "Unsupported incomplete DLMS database"
+        ):
+            dlms.bootstrap_database(str(self.db_path), require_owned_root=False)
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual({"quizzes"}, self._tables(conn))
+            self.assertEqual({"id", "title"}, set(self._columns(conn, "quizzes")))
+        finally:
+            conn.close()
+
+    def test_ensure_db_initialized_uses_live_app_db_path(self):
+        rebound = str(self.root / "rebound.db")
+        expected = {"status": "current", "version": dlms.DLMS_SCHEMA_VERSION}
+
+        with mock.patch.object(dlms, "DB_PATH", rebound), mock.patch.object(
+            dlms, "bootstrap_database", return_value=expected
+        ) as bootstrap:
+            result = dlms.ensure_db_initialized()
+
+        self.assertEqual(expected, result)
+        bootstrap.assert_called_once_with(rebound)
+
     def test_version_one_migration_repairs_all_legacy_shapes_and_preserves_data(self):
         self._legacy_database()
         calls = []

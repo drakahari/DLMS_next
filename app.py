@@ -33,6 +33,7 @@ from dlms.runtime import (
 from dlms.persistence import json_files as _json_files
 from dlms.persistence import portal as _portal_repository
 from dlms.persistence import registries as _registry_repository
+from dlms.persistence import database as _database
 
 # =========================
 # PYINSTALLER PATH HELPER
@@ -3429,280 +3430,62 @@ DB_PATH = os.path.join(APP_DATA_DIR, "results.db")
 
 
 
-DLMS_SCHEMA_VERSION = 2
-DLMS_LEGACY_SCHEMA_VERSION = 1
-
-DLMS_SCHEMA_COLUMNS = {
-    "quizzes": {"id", "title", "source_file", "registry_id", "created_at"},
-    "questions": {
-        "id", "quiz_id", "question_number", "question_text", "question_type",
-        "matching_round_size", "matching_direction", "source_organization",
-        "source_dataset", "source_version", "source_url", "source_license",
-        "explanation", "media_json", "correct_letters", "correct_text",
-    },
-    "choices": {"id", "question_id", "label", "text", "is_correct"},
-    "matching_pairs": {
-        "id", "question_id", "pair_order", "left_text", "right_text",
-        "category", "explanation", "verification_json",
-    },
-    "attempts": {
-        "id", "quiz_id", "user_name", "started_at", "completed_at", "score",
-        "total", "percent", "time_remaining", "mode",
-    },
-    "attempt_answers": {"id", "attempt_id", "question_id", "selected_labels", "was_correct"},
-    "missed_questions": {
-        "id", "attempt_id", "question_id", "correct_letters", "question_text",
-        "choices_text", "selected_letters", "selected_text", "correct_text",
-        "attempt_question_number", "question_type", "response_json",
-    },
-    "concepts": {"id", "name", "created_at"},
-    "question_concepts": {"question_id", "concept_id"},
-    "learning_events": {
-        "id", "event_type", "quiz_id", "question_id", "attempt_id", "session_id",
-        "mode", "was_correct", "response_json", "occurred_at",
-    },
-    "schema_meta": {"id", "version", "created_at"},
-}
-
-DLMS_SCHEMA_INDEXES = {
-    "idx_questions_quiz",
-    "idx_choices_question",
-    "idx_matching_pairs_question",
-    "idx_attempts_quiz",
-    "idx_attempts_completed_id",
-    "idx_missed_questions_attempt_number",
-    "idx_answers_attempt",
-    "idx_answers_question",
-    "idx_question_concepts_question",
-    "idx_question_concepts_concept",
-    "idx_learning_events_quiz",
-    "idx_learning_events_question",
-    "idx_learning_events_attempt",
-    "idx_learning_events_session",
-    "idx_learning_events_occurred",
-}
-
-DLMS_LEGACY_CORE_TABLES = {
-    "quizzes", "questions", "choices", "attempts", "attempt_answers", "missed_questions",
-}
-
-
-class UnsupportedDatabaseSchemaVersionError(RuntimeError):
-    """Raised when a database belongs to a newer DLMS schema generation."""
+DLMS_SCHEMA_VERSION = _database.DLMS_SCHEMA_VERSION
+DLMS_LEGACY_SCHEMA_VERSION = _database.DLMS_LEGACY_SCHEMA_VERSION
+DLMS_SCHEMA_COLUMNS = _database.DLMS_SCHEMA_COLUMNS
+DLMS_SCHEMA_INDEXES = _database.DLMS_SCHEMA_INDEXES
+DLMS_LEGACY_CORE_TABLES = _database.DLMS_LEGACY_CORE_TABLES
+UnsupportedDatabaseSchemaVersionError = _database.UnsupportedDatabaseSchemaVersionError
 
 
 def _database_table_names(conn):
-    return {
-        row[0]
-        for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-        ).fetchall()
-    }
+    return _database._database_table_names(conn)
 
 
 def _database_column_info(conn, table):
-    return {row[1]: row for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()}
+    return _database._database_column_info(conn, table)
 
 
 def _create_current_database_schema(conn):
     init_sql_path = resource_path("init.sql")
-    dprint(f"[DB] init.sql path = {init_sql_path}")
-    with open(init_sql_path, "r", encoding="utf-8") as handle:
-        sql = handle.read()
-    # executescript commits any pending transaction before it starts. Prefixing
-    # the script with BEGIN leaves this single fresh-schema transaction open so
-    # bootstrap validation can run before the caller commits it.
-    conn.executescript("BEGIN IMMEDIATE;\n" + sql)
+    return _database._create_current_database_schema(
+        conn,
+        init_sql_path,
+        debug_print=dprint,
+    )
 
 
 def _rebuild_legacy_missed_questions(conn, columns):
-    def source(name):
-        return f'"{name}"' if name in columns else f"NULL AS \"{name}\""
-
-    conn.execute("ALTER TABLE missed_questions RENAME TO missed_questions_legacy_v1")
-    conn.execute("""
-        CREATE TABLE missed_questions (
-            id INTEGER PRIMARY KEY,
-            attempt_id TEXT NOT NULL,
-            question_id INTEGER,
-            correct_letters TEXT,
-            question_text TEXT,
-            choices_text TEXT,
-            selected_letters TEXT,
-            selected_text TEXT,
-            correct_text TEXT,
-            attempt_question_number INTEGER,
-            question_type TEXT DEFAULT 'choice',
-            response_json TEXT
-        )
-    """)
-    names = [
-        "id", "attempt_id", "question_id", "correct_letters", "question_text",
-        "choices_text", "selected_letters", "selected_text", "correct_text",
-        "attempt_question_number", "question_type", "response_json",
-    ]
-    conn.execute(
-        "INSERT INTO missed_questions (" + ", ".join(f'\"{name}\"' for name in names) + ") "
-        "SELECT " + ", ".join(source(name) for name in names) + " FROM missed_questions_legacy_v1"
-    )
-    conn.execute("DROP TABLE missed_questions_legacy_v1")
+    return _database._rebuild_legacy_missed_questions(conn, columns)
 
 
 def _migrate_schema_to_v2(conn):
-    """Apply the historical repairs formerly run by every get_db() call."""
-    missed_columns = _database_column_info(conn, "missed_questions")
-    question_id = missed_columns.get("question_id")
-    if question_id is not None and question_id[3] == 1:
-        _rebuild_legacy_missed_questions(conn, missed_columns)
-        missed_columns = _database_column_info(conn, "missed_questions")
-
-    missed_additions = {
-        "question_id": "INTEGER",
-        "question_text": "TEXT",
-        "choices_text": "TEXT",
-        "correct_letters": "TEXT",
-        "selected_letters": "TEXT",
-        "selected_text": "TEXT",
-        "correct_text": "TEXT",
-        "attempt_question_number": "INTEGER",
-        "question_type": "TEXT DEFAULT 'choice'",
-        "response_json": "TEXT",
-    }
-    for name, definition in missed_additions.items():
-        if name not in missed_columns:
-            conn.execute(f'ALTER TABLE missed_questions ADD COLUMN "{name}" {definition}')
-
-    quiz_columns = _database_column_info(conn, "quizzes")
-    if "registry_id" not in quiz_columns:
-        conn.execute("ALTER TABLE quizzes ADD COLUMN registry_id INTEGER")
-
-    question_columns = _database_column_info(conn, "questions")
-    question_additions = {
-        "question_type": "TEXT NOT NULL DEFAULT 'choice'",
-        "matching_round_size": "INTEGER",
-        "matching_direction": "TEXT NOT NULL DEFAULT 'term_to_definition'",
-        "source_organization": "TEXT",
-        "source_dataset": "TEXT",
-        "source_version": "TEXT",
-        "source_url": "TEXT",
-        "source_license": "TEXT",
-        "explanation": "TEXT",
-        "media_json": "TEXT",
-    }
-    for name, definition in question_additions.items():
-        if name not in question_columns:
-            conn.execute(f'ALTER TABLE questions ADD COLUMN "{name}" {definition}')
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS matching_pairs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            question_id INTEGER NOT NULL,
-            pair_order INTEGER NOT NULL,
-            left_text TEXT NOT NULL,
-            right_text TEXT NOT NULL,
-            category TEXT,
-            explanation TEXT,
-            verification_json TEXT,
-            FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
-        )
-    """)
-    matching_columns = _database_column_info(conn, "matching_pairs")
-    for name, definition in {
-        "category": "TEXT", "explanation": "TEXT", "verification_json": "TEXT",
-    }.items():
-        if name not in matching_columns:
-            conn.execute(f'ALTER TABLE matching_pairs ADD COLUMN "{name}" {definition}')
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS concepts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS question_concepts (
-            question_id INTEGER NOT NULL,
-            concept_id INTEGER NOT NULL,
-            PRIMARY KEY (question_id, concept_id),
-            FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
-            FOREIGN KEY (concept_id) REFERENCES concepts(id) ON DELETE CASCADE
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS learning_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT NOT NULL,
-            quiz_id INTEGER,
-            question_id INTEGER,
-            attempt_id TEXT,
-            session_id TEXT,
-            mode TEXT,
-            was_correct INTEGER,
-            response_json TEXT,
-            occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
-            FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
-        )
-    """)
-
-    index_statements = [
-        "CREATE INDEX IF NOT EXISTS idx_questions_quiz ON questions(quiz_id)",
-        "CREATE INDEX IF NOT EXISTS idx_choices_question ON choices(question_id)",
-        "CREATE INDEX IF NOT EXISTS idx_matching_pairs_question ON matching_pairs(question_id)",
-        "CREATE INDEX IF NOT EXISTS idx_attempts_quiz ON attempts(quiz_id)",
-        "CREATE INDEX IF NOT EXISTS idx_attempts_completed_id ON attempts(completed_at DESC, id DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_missed_questions_attempt_number ON missed_questions(attempt_id, attempt_question_number)",
-        "CREATE INDEX IF NOT EXISTS idx_answers_attempt ON attempt_answers(attempt_id)",
-        "CREATE INDEX IF NOT EXISTS idx_answers_question ON attempt_answers(question_id)",
-        "CREATE INDEX IF NOT EXISTS idx_question_concepts_question ON question_concepts(question_id)",
-        "CREATE INDEX IF NOT EXISTS idx_question_concepts_concept ON question_concepts(concept_id)",
-        "CREATE INDEX IF NOT EXISTS idx_learning_events_quiz ON learning_events(quiz_id)",
-        "CREATE INDEX IF NOT EXISTS idx_learning_events_question ON learning_events(question_id)",
-        "CREATE INDEX IF NOT EXISTS idx_learning_events_attempt ON learning_events(attempt_id)",
-        "CREATE INDEX IF NOT EXISTS idx_learning_events_session ON learning_events(session_id)",
-        "CREATE INDEX IF NOT EXISTS idx_learning_events_occurred ON learning_events(occurred_at)",
-    ]
-    for statement in index_statements:
-        conn.execute(statement)
+    return _database._migrate_schema_to_v2(
+        conn,
+        database_column_info=_database_column_info,
+        rebuild_legacy_missed_questions=_rebuild_legacy_missed_questions,
+    )
 
 
 DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2}
 
 
 def _read_database_schema_version(conn, tables):
-    if "schema_meta" not in tables:
-        return None
-    columns = _database_column_info(conn, "schema_meta")
-    if not {"id", "version"}.issubset(columns):
-        raise RuntimeError("DLMS schema_meta table is malformed")
-    row = conn.execute("SELECT version FROM schema_meta WHERE id = 1").fetchone()
-    if row is None:
-        return None
-    version = row[0]
-    if isinstance(version, bool) or not isinstance(version, int):
-        raise RuntimeError("DLMS schema version is invalid")
-    if version < 1:
-        raise RuntimeError(f"Unsupported DLMS schema version: {version}")
-    return version
+    return _database._read_database_schema_version(
+        conn,
+        tables,
+        database_column_info=_database_column_info,
+    )
 
 
 def _validate_current_database_schema(conn):
-    tables = _database_table_names(conn)
-    missing_tables = sorted(set(DLMS_SCHEMA_COLUMNS) - tables)
-    if missing_tables:
-        raise RuntimeError("DLMS database is missing required tables: " + ", ".join(missing_tables))
-    for table, expected in DLMS_SCHEMA_COLUMNS.items():
-        actual = set(_database_column_info(conn, table))
-        missing = sorted(expected - actual)
-        if missing:
-            raise RuntimeError(f"DLMS table {table} is missing required columns: {', '.join(missing)}")
-    indexes = {
-        row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'").fetchall()
-    }
-    missing_indexes = sorted(DLMS_SCHEMA_INDEXES - indexes)
-    if missing_indexes:
-        raise RuntimeError("DLMS database is missing required indexes: " + ", ".join(missing_indexes))
+    return _database._validate_current_database_schema(
+        conn,
+        schema_columns=DLMS_SCHEMA_COLUMNS,
+        schema_indexes=DLMS_SCHEMA_INDEXES,
+        database_table_names=_database_table_names,
+        database_column_info=_database_column_info,
+    )
 
 
 def _validate_bootstrap_target(db_path, require_owned_root):
@@ -3720,70 +3503,21 @@ def _validate_bootstrap_target(db_path, require_owned_root):
 def bootstrap_database(db_path=None, *, require_owned_root=True):
     """Create or migrate one DLMS database before normal connections are used."""
     target = _validate_bootstrap_target(db_path or DB_PATH, require_owned_root)
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    conn = sqlite3.connect(target)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        tables = _database_table_names(conn)
-        if not tables:
-            _create_current_database_schema(conn)
-            _validate_current_database_schema(conn)
-            version = _read_database_schema_version(conn, _database_table_names(conn))
-            if version != DLMS_SCHEMA_VERSION:
-                raise RuntimeError(
-                    f"Fresh DLMS schema version {version!r} does not match {DLMS_SCHEMA_VERSION}"
-                )
-            conn.commit()
-            print("[DB] Database schema initialized")
-            return {"status": "created", "version": DLMS_SCHEMA_VERSION}
+    return _database.bootstrap_database(
+        target,
+        schema_version=DLMS_SCHEMA_VERSION,
+        legacy_schema_version=DLMS_LEGACY_SCHEMA_VERSION,
+        legacy_core_tables=DLMS_LEGACY_CORE_TABLES,
+        migrations=DLMS_SCHEMA_MIGRATIONS,
+        create_current_schema=_create_current_database_schema,
+        database_table_names=_database_table_names,
+        read_schema_version=_read_database_schema_version,
+        validate_current_schema=_validate_current_database_schema,
+        sqlite_module=sqlite3,
+    )
 
-        if not DLMS_LEGACY_CORE_TABLES.issubset(tables):
-            missing = sorted(DLMS_LEGACY_CORE_TABLES - tables)
-            raise RuntimeError("Unsupported incomplete DLMS database; missing: " + ", ".join(missing))
 
-        version = _read_database_schema_version(conn, tables)
-        if version is not None and version > DLMS_SCHEMA_VERSION:
-            raise UnsupportedDatabaseSchemaVersionError(
-                f"Database schema version {version} is newer than this DLMS build "
-                f"(supports {DLMS_SCHEMA_VERSION})"
-            )
-        if version == DLMS_SCHEMA_VERSION:
-            _validate_current_database_schema(conn)
-            return {"status": "current", "version": version}
 
-        conn.execute("BEGIN IMMEDIATE")
-        if "schema_meta" not in tables:
-            conn.execute("""
-                CREATE TABLE schema_meta (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    version INTEGER NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-        if version is None:
-            version = DLMS_LEGACY_SCHEMA_VERSION
-            conn.execute(
-                "INSERT OR REPLACE INTO schema_meta (id, version) VALUES (1, ?)", (version,)
-            )
-
-        start_version = version
-        for target_version in range(version + 1, DLMS_SCHEMA_VERSION + 1):
-            migration = DLMS_SCHEMA_MIGRATIONS.get(target_version)
-            if migration is None:
-                raise RuntimeError(f"No DLMS migration is available for schema version {target_version}")
-            migration(conn)
-
-        _validate_current_database_schema(conn)
-        conn.execute("UPDATE schema_meta SET version = ? WHERE id = 1", (DLMS_SCHEMA_VERSION,))
-        conn.commit()
-        print(f"[DB] Database schema migrated from {start_version} to {DLMS_SCHEMA_VERSION}")
-        return {"status": "migrated", "version": DLMS_SCHEMA_VERSION, "from_version": start_version}
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 
@@ -27104,10 +26838,7 @@ def get_or_create_question(conn, quiz_id, q):
 # =========================
 def get_db():
     dprint(f"[DB] get_db using DB_PATH = {DB_PATH}")
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return _database.get_db(DB_PATH, sqlite_module=sqlite3)
 
 
 
