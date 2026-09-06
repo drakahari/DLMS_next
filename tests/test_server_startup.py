@@ -46,6 +46,26 @@ class ServerStartupTests(unittest.TestCase):
         self.assertTrue(browser["open_browser"])
         self.assertFalse(no_browser["open_browser"])
 
+    def test_browser_disable_sources_take_precedence_over_force_browser(self):
+        cases = (
+            (["--browser", "--no-browser"], {}, True),
+            (["--no-browser", "--browser"], {}, True),
+            (["--browser"], {"DLMS_NO_BROWSER": " YES "}, False),
+            ([], {"DLMS_NO_BROWSER": "0"}, True),
+        )
+        for argv, environ, desktop_available in cases:
+            with self.subTest(argv=argv, environ=environ):
+                options = dlms._dlms_parse_startup_options(
+                    argv, environ=environ, desktop_available=desktop_available
+                )
+                expected_disabled = (
+                    "--no-browser" in argv
+                    or str(environ.get("DLMS_NO_BROWSER") or "").strip().lower()
+                    in {"1", "true", "yes", "on"}
+                )
+                self.assertEqual(expected_disabled, options["disable_browser"])
+                self.assertEqual(not expected_disabled, options["open_browser"])
+
     def test_headless_and_environment_no_browser_are_independent_of_host(self):
         headless = dlms._dlms_parse_startup_options(
             ["--host=192.168.1.40"], environ={}, desktop_available=False
@@ -73,6 +93,94 @@ class ServerStartupTests(unittest.TestCase):
             dlms._dlms_parse_startup_options(
                 ["--host"], environ={}, desktop_available=False
             )
+
+    def test_host_validation_and_formatting_cover_ipv4_ipv6_and_names(self):
+        for value, expected in (
+            (" 127.0.0.1 ", "127.0.0.1"),
+            ("::1", "::1"),
+            ("study-host.local", "study-host.local"),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(expected, dlms._dlms_validate_server_host(value))
+
+        for host, expected in (
+            ("localhost", True),
+            ("LOCALHOST", True),
+            ("127.0.0.2", True),
+            ("::1", True),
+            ("0.0.0.0", False),
+            ("study-host.local", False),
+        ):
+            with self.subTest(host=host):
+                self.assertEqual(expected, dlms._dlms_is_loopback_host(host))
+
+        self.assertEqual("127.0.0.1", dlms._dlms_url_host("127.0.0.1"))
+        self.assertEqual("[::1]", dlms._dlms_url_host("::1"))
+        self.assertEqual("[::1]", dlms._dlms_url_host("[::1]"))
+        self.assertEqual("127.0.0.1", dlms._dlms_browser_host("0.0.0.0"))
+        self.assertEqual("127.0.0.1", dlms._dlms_browser_host("::"))
+        self.assertEqual("::1", dlms._dlms_browser_host("::1"))
+
+    def test_unknown_arguments_remain_ignored_and_last_host_wins(self):
+        options = dlms._dlms_parse_startup_options(
+            ["--unknown", "--host=127.0.0.2", "--host", "::1"],
+            environ={},
+            desktop_available=False,
+        )
+        self.assertEqual("::1", options["host"])
+        self.assertFalse(options["open_browser"])
+
+    def test_desktop_detection_preserves_platform_display_and_ssh_rules(self):
+        with mock.patch.dict(dlms.os.environ, {}, clear=True), mock.patch.object(
+            dlms.sys, "platform", "linux"
+        ):
+            self.assertFalse(dlms._dlms_desktop_browser_available())
+            dlms.os.environ["DISPLAY"] = ":0"
+            self.assertTrue(dlms._dlms_desktop_browser_available())
+            dlms.os.environ["SSH_CONNECTION"] = "remote"
+            self.assertFalse(dlms._dlms_desktop_browser_available())
+
+        for platform in ("win32", "darwin"):
+            with self.subTest(platform=platform), mock.patch.dict(
+                dlms.os.environ, {}, clear=True
+            ), mock.patch.object(dlms.sys, "platform", platform):
+                self.assertTrue(dlms._dlms_desktop_browser_available())
+
+    def test_access_output_preserves_loopback_ipv6_and_lan_messages(self):
+        cases = (
+            (
+                "localhost",
+                None,
+                "[DLMS] Local access:   http://127.0.0.1:9001\n",
+            ),
+            (
+                "::1",
+                None,
+                "[DLMS] Local access:   http://[::1]:9001\n",
+            ),
+            (
+                "0.0.0.0",
+                None,
+                "[DLMS] Local access:   http://127.0.0.1:9001\n"
+                "[DLMS] Network bind:   0.0.0.0:9001 (all interfaces)\n"
+                "[DLMS] WARNING: DLMS is bound to a non-loopback interface.\n"
+                "[DLMS] WARNING: Authentication is not yet provided; expose DLMS only on a trusted network.\n",
+            ),
+            (
+                "2001:db8::4",
+                None,
+                "[DLMS] Network access: http://[2001:db8::4]:9001\n"
+                "[DLMS] WARNING: DLMS is bound to a non-loopback interface.\n"
+                "[DLMS] WARNING: Authentication is not yet provided; expose DLMS only on a trusted network.\n",
+            ),
+        )
+        for host, lan_ip, expected in cases:
+            with self.subTest(host=host):
+                output = io.StringIO()
+                with mock.patch.object(dlms, "_dlms_detect_lan_ip", return_value=lan_ip):
+                    with redirect_stdout(output):
+                        dlms._dlms_print_access_urls(host, 9001)
+                self.assertEqual(expected, output.getvalue())
 
 
 if __name__ == "__main__":
