@@ -31,6 +31,7 @@ from dlms.runtime import (
     _dlms_validate_server_host,
 )
 from dlms.persistence import json_files as _json_files
+from dlms.persistence import portal as _portal_repository
 
 # =========================
 # PYINSTALLER PATH HELPER
@@ -6297,293 +6298,80 @@ def _atomic_write_json(path, payload, *, indent=2, ensure_ascii=True, expected_t
 
 
 def load_portal_config():
-    default = {
-        "title": "Training & Practice Center",
-        "show_confidence": True,
-        "enable_regex_replace": False,
-        "background_image": None,
-        "theme": DEFAULT_THEME,
-        "quiz_folders": ["Uncategorized"],
-        "hidden_quiz_folders": [],
-        "study_area_visibility": {
-            "it": True,
-            "law": True,
-            "medical": True,
-            "other": True,
-        },
-
-        # AI Explanation Helper
-        "ai_helper_enabled": True,
-        "ai_provider": "chatgpt",
-        "ai_custom_url": "",
-        "ai_auto_copy_prompt": True,
-        "ai_prompt_template": DEFAULT_AI_FEEDBACK_PROMPT,
-        "law_ai_prompt_template": DEFAULT_LAW_AI_PROMPT,
-        "study_pack_ai_prompt_template": DEFAULT_STUDY_CONTENT_PACK_PROMPT,
-        "medical_study_pack_ai_addendum": DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
-    }
-
-    # Ensure config directory exists
-    os.makedirs(os.path.dirname(PORTAL_CONFIG), exist_ok=True)
-
-    # First run: create portal.json
-    if not os.path.exists(PORTAL_CONFIG):
-        try:
-            _atomic_write_json(PORTAL_CONFIG, default, expected_type=dict)
-            print("[PORTAL CONFIG] Created default portal.json")
-        except Exception as e:
-            print("[PORTAL CONFIG][ERROR] Failed to create portal.json:", e)
-
-        return default.copy()
-
-    # Normal load (MERGE, do not FILTER)
-    try:
-        with open(PORTAL_CONFIG, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, UnicodeError) as e:
-        try:
-            _preserve_malformed_json(PORTAL_CONFIG)
-        except Exception as preserve_error:
-            raise RuntimeError(
-                "Malformed portal.json could not be preserved safely"
-            ) from preserve_error
-        print("[PORTAL CONFIG][ERROR] Failed to load portal.json:", e)
-        return default.copy()
-    except Exception as e:
-        print("[PORTAL CONFIG][ERROR] Failed to load portal.json:", e)
-        return default.copy()
-
-    if not isinstance(data, dict):
-        try:
-            _preserve_malformed_json(PORTAL_CONFIG)
-        except Exception as preserve_error:
-            raise RuntimeError(
-                "Malformed portal.json could not be preserved safely"
-            ) from preserve_error
-        print("[PORTAL CONFIG][ERROR] portal.json must contain a JSON object")
-        return default.copy()
-
-    malformed_quiz_folders = (
-        "quiz_folders" in data and not isinstance(data["quiz_folders"], list)
+    return _portal_repository.load_portal_config(
+        PORTAL_CONFIG,
+        default_theme=DEFAULT_THEME,
+        default_ai_feedback_prompt=DEFAULT_AI_FEEDBACK_PROMPT,
+        default_law_ai_prompt=DEFAULT_LAW_AI_PROMPT,
+        default_study_content_pack_prompt=DEFAULT_STUDY_CONTENT_PACK_PROMPT,
+        default_medical_study_pack_ai_addendum=DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
+        validate_custom_ai_url=_validate_custom_ai_url,
+        atomic_write_json=_atomic_write_json,
+        preserve_malformed_json=_preserve_malformed_json,
     )
-    malformed_hidden_quiz_folders = (
-        "hidden_quiz_folders" in data
-        and (
-            not isinstance(data["hidden_quiz_folders"], list)
-            or any(
-                not isinstance(folder, str)
-                for folder in data["hidden_quiz_folders"]
-            )
-        )
-    )
-    malformed_study_area_visibility = (
-        "study_area_visibility" in data
-        and not isinstance(data["study_area_visibility"], dict)
-    )
-    if (
-        malformed_quiz_folders
-        or malformed_hidden_quiz_folders
-        or malformed_study_area_visibility
-    ):
-        _preserve_malformed_json(PORTAL_CONFIG)
-
-    # Preserve the original malformed document first, then ensure a structured
-    # field cannot be merged into active configuration in the wrong shape.
-    # study_area_visibility is normalized below before use; quiz_folders needs
-    # the same boundary because get_quiz_folders() iterates its value directly.
-    if malformed_quiz_folders:
-        data = data.copy()
-        data["quiz_folders"] = list(default["quiz_folders"])
-    if malformed_hidden_quiz_folders:
-        data = data.copy()
-        data["hidden_quiz_folders"] = []
-
-    # Merge defaults with stored values
-    cfg = default.copy()
-    cfg.update(data)
-
-    # Normalize booleans (checkbox safety)
-    cfg["show_confidence"] = bool(cfg.get("show_confidence", False))
-    cfg["enable_regex_replace"] = bool(cfg.get("enable_regex_replace", False))
-
-    # Normalize title
-    cfg["title"] = str(cfg.get("title") or default["title"]).strip()
-
-    # Normalize background
-    bg = cfg.get("background_image")
-    cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
-
-    valid_themes = {"dark", "light", "purple-gold", "maroon-gold"}
-    theme = str(cfg.get("theme") or DEFAULT_THEME).strip().lower()
-    cfg["theme"] = theme if theme in valid_themes else DEFAULT_THEME
-
-    cfg["ai_helper_enabled"] = bool(cfg.get("ai_helper_enabled", False))
-    cfg["ai_auto_copy_prompt"] = bool(cfg.get("ai_auto_copy_prompt", True))
-
-    valid_ai_providers = {"chatgpt", "claude", "gemini", "local"}
-    provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
-    cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
-
-    try:
-        cfg["ai_custom_url"] = _validate_custom_ai_url(cfg.get("ai_custom_url"))
-    except ValueError:
-        # Legacy or manually edited settings remain loadable, but an unsafe
-        # target is never exposed to browser-side launch helpers.
-        cfg["ai_custom_url"] = ""
-
-    raw_study_area_visibility = cfg.get("study_area_visibility")
-    if not isinstance(raw_study_area_visibility, dict):
-        raw_study_area_visibility = {}
-    cfg["study_area_visibility"] = {
-        key: raw_study_area_visibility.get(key)
-        if isinstance(raw_study_area_visibility.get(key), bool)
-        else True
-        for key in ("it", "law", "medical", "other")
-    }
-
-    return cfg
 
 
 def save_portal_config(title, show_confidence=False, enable_regex_replace=False, background_image=None):
-    cfg = load_portal_config()
-
-    cfg["title"] = title
-    cfg["show_confidence"] = bool(show_confidence)
-    cfg["enable_regex_replace"] = bool(enable_regex_replace)
-
-    if background_image is not None:
-        cfg["background_image"] = background_image
-
-    _atomic_write_json(PORTAL_CONFIG, cfg, expected_type=dict)
+    return _portal_repository.save_portal_config(
+        PORTAL_CONFIG,
+        title,
+        show_confidence,
+        enable_regex_replace,
+        background_image,
+        load_config=load_portal_config,
+        atomic_write_json=_atomic_write_json,
+    )
 
 
 def get_quiz_folders():
-    cfg = load_portal_config()
-
-    folders = cfg.get("quiz_folders") or []
-
-    cleaned = []
-    seen = set()
-
-    for folder in folders:
-        name = str(folder or "").strip()
-
-        if not name:
-            continue
-
-        key = name.lower()
-
-        if key in seen:
-            continue
-
-        cleaned.append(name)
-        seen.add(key)
-
-    if "uncategorized" not in seen:
-        cleaned.insert(0, "Uncategorized")
-
-    return cleaned
+    return _portal_repository.get_quiz_folders(load_config=load_portal_config)
 
 
 def save_quiz_folders(folders):
-    cleaned = []
-    seen = set()
-
-    for folder in folders:
-        name = str(folder or "").strip()
-
-        if not name:
-            continue
-
-        key = name.lower()
-
-        if key in seen:
-            continue
-
-        cleaned.append(name)
-        seen.add(key)
-
-    if "uncategorized" not in seen:
-        cleaned.insert(0, "Uncategorized")
-
-    cfg = load_portal_config()
-    cfg["quiz_folders"] = cleaned
-    cfg["hidden_quiz_folders"] = _clean_hidden_quiz_folders(
-        cfg.get("hidden_quiz_folders"), cleaned
+    return _portal_repository.save_quiz_folders(
+        PORTAL_CONFIG,
+        folders,
+        load_config=load_portal_config,
+        atomic_write_json=_atomic_write_json,
+        clean_hidden_quiz_folders=_clean_hidden_quiz_folders,
     )
-
-    _atomic_write_json(PORTAL_CONFIG, cfg, expected_type=dict)
 
 
 def _clean_hidden_quiz_folders(hidden_folders, configured_folders):
     """Return safe hidden-folder names using configured display spelling."""
-    if not isinstance(hidden_folders, list):
-        return []
-
-    configured_by_key = {
-        folder.lower(): folder
-        for folder in configured_folders
-        if folder.lower() != "uncategorized"
-    }
-    cleaned = []
-    seen = set()
-
-    for folder in hidden_folders:
-        if not isinstance(folder, str):
-            continue
-        key = folder.strip().lower()
-        if not key or key == "uncategorized" or key in seen:
-            continue
-        configured_name = configured_by_key.get(key)
-        if configured_name is None:
-            continue
-        cleaned.append(configured_name)
-        seen.add(key)
-
-    return cleaned
+    return _portal_repository._clean_hidden_quiz_folders(
+        hidden_folders, configured_folders
+    )
 
 
 def get_hidden_quiz_folders(configured_folders=None):
-    folders = configured_folders or get_quiz_folders()
-    cfg = load_portal_config()
-    return _clean_hidden_quiz_folders(
-        cfg.get("hidden_quiz_folders"), folders
+    return _portal_repository.get_hidden_quiz_folders(
+        configured_folders,
+        get_folders=get_quiz_folders,
+        load_config=load_portal_config,
+        clean_hidden_quiz_folders=_clean_hidden_quiz_folders,
     )
 
 
 def save_quiz_folder_state(folders, hidden_folders):
     """Persist folder order and hidden state together in portal.json."""
-    cleaned_folders = []
-    seen = set()
-
-    for folder in folders:
-        name = str(folder or "").strip()
-        if not name:
-            continue
-        key = name.lower()
-        if key in seen:
-            continue
-        cleaned_folders.append(name)
-        seen.add(key)
-
-    if "uncategorized" not in seen:
-        cleaned_folders.insert(0, "Uncategorized")
-
-    cfg = load_portal_config()
-    cfg["quiz_folders"] = cleaned_folders
-    cfg["hidden_quiz_folders"] = _clean_hidden_quiz_folders(
-        hidden_folders, cleaned_folders
+    return _portal_repository.save_quiz_folder_state(
+        PORTAL_CONFIG,
+        folders,
+        hidden_folders,
+        load_config=load_portal_config,
+        atomic_write_json=_atomic_write_json,
+        clean_hidden_quiz_folders=_clean_hidden_quiz_folders,
     )
-    _atomic_write_json(PORTAL_CONFIG, cfg, expected_type=dict)
 
 
 
 def get_portal_title():
-    return load_portal_config().get("title", "Training & Practice Center")
+    return _portal_repository.get_portal_title(load_config=load_portal_config)
 
 
 def get_confidence_setting():
-    return load_portal_config().get("show_confidence", False)
+    return _portal_repository.get_confidence_setting(load_config=load_portal_config)
 
 
 # =========================

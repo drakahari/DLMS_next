@@ -125,6 +125,65 @@ class PortalStructuredNormalizationTests(unittest.TestCase):
             Path(str(self.portal_path) + ".corrupt").read_bytes(),
         )
 
+    def test_unknown_keys_are_preserved_when_portal_settings_are_saved(self):
+        existing = {
+            "title": "Existing DLMS",
+            "future_setting": {"enabled": True, "mode": "custom"},
+        }
+        self.portal_path.write_text(json.dumps(existing), encoding="utf-8")
+
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)):
+            dlms.save_portal_config("Updated DLMS", show_confidence=True)
+
+        persisted = json.loads(self.portal_path.read_text(encoding="utf-8"))
+        self.assertEqual("Updated DLMS", persisted["title"])
+        self.assertEqual(existing["future_setting"], persisted["future_setting"])
+
+    def test_app_atomic_write_patch_still_intercepts_portal_saves(self):
+        existing = {"title": "Existing DLMS", "unknown": "preserve me"}
+        self.portal_path.write_text(json.dumps(existing), encoding="utf-8")
+
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)), \
+                mock.patch.object(dlms, "_atomic_write_json") as atomic_write:
+            dlms.save_portal_config("Intercepted")
+
+        atomic_write.assert_called_once()
+        args, kwargs = atomic_write.call_args
+        self.assertEqual(str(self.portal_path), args[0])
+        self.assertEqual("Intercepted", args[1]["title"])
+        self.assertEqual("preserve me", args[1]["unknown"])
+        self.assertEqual({"expected_type": dict}, kwargs)
+
+    def test_app_prompt_constant_patch_still_supplies_portal_default(self):
+        patched_prompt = "Patched feedback prompt {{questions}}"
+
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)), \
+                mock.patch.object(dlms, "DEFAULT_AI_FEEDBACK_PROMPT", patched_prompt):
+            config = dlms.load_portal_config()
+
+        self.assertEqual(patched_prompt, config["ai_prompt_template"])
+        persisted = json.loads(self.portal_path.read_text(encoding="utf-8"))
+        self.assertEqual(patched_prompt, persisted["ai_prompt_template"])
+
+    def test_custom_ai_url_is_normalized_during_portal_load(self):
+        cases = (
+            ("https://example.com/assistant", "https://example.com/assistant"),
+            ("javascript:alert(1)", ""),
+            ("   ", ""),
+        )
+
+        for value, expected in cases:
+            with self.subTest(value=value):
+                saved = {"title": "Existing DLMS", "ai_custom_url": value}
+                original = json.dumps(saved, indent=2)
+                self.portal_path.write_text(original, encoding="utf-8")
+
+                with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)):
+                    config = dlms.load_portal_config()
+
+                self.assertEqual(expected, config["ai_custom_url"])
+                self.assertEqual(original, self.portal_path.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
