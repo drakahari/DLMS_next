@@ -1,6 +1,7 @@
 import io
 import os
 import struct
+import sys
 import tempfile
 import unittest
 import zlib
@@ -150,6 +151,33 @@ class PdfResourceLimitTests(unittest.TestCase):
         pages = self._extract_with_reader(FakeReader([FakePage("Question 1\nA. One"), FakePage("Correct Answer: A")]))
         self.assertEqual(len(pages), 2)
         self.assertEqual(pages[0]["lines"], ["Question 1", "A. One"])
+
+    def test_page_records_preserve_styled_metadata_when_available(self):
+        pages = self._extract_with_reader(FakeReader([FakePage("Café Control")]))
+
+        self.assertEqual(1, pages[0]["page"])
+        self.assertEqual(["Café Control"], pages[0]["lines"])
+        self.assertEqual("Café Control", pages[0]["styled_lines"][0]["text"])
+        self.assertEqual(False, pages[0]["styled_lines"][0]["fragments"][0]["bold"])
+
+    def test_styled_metadata_failure_retries_plain_extraction(self):
+        page = mock.Mock()
+        page.extract_text.side_effect = [TypeError("visitor unsupported"), "Question 1\nA. One"]
+
+        pages = self._extract_with_reader(FakeReader([page]))
+
+        self.assertEqual({"page": 1, "lines": ["Question 1", "A. One"]}, pages[0])
+        self.assertEqual([mock.call(visitor_text=mock.ANY), mock.call()], page.extract_text.call_args_list)
+
+    def test_missing_optional_pdf_dependency_preserves_runtime_error(self):
+        with mock.patch.dict(sys.modules, {"pypdf": None}):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Smart PDF Import requires the 'pypdf' package",
+            ) as raised:
+                dlms._pdf_extract_pages("unused.pdf")
+
+        self.assertIsInstance(raised.exception.__cause__, ImportError)
 
     def test_encrypted_and_malformed_pdfs_fail_cleanly(self):
         with self.assertRaisesRegex(ValueError, "Encrypted PDFs are not supported"):

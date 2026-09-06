@@ -1,5 +1,6 @@
 import json, os, tempfile, unittest
 from pathlib import Path
+from unittest import mock
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-pdf-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
@@ -9,6 +10,150 @@ import app as dlms
 from tests.csrf_test_utils import csrf_token
 
 class PDFImportParserTests(unittest.TestCase):
+    def test_empty_pages_preserve_exact_parser_and_detection_shapes(self):
+        pages = [{"page": 1, "lines": []}, {"page": 2, "lines": []}]
+
+        self.assertEqual(
+            {
+                "type": "multiple_choice_question_bank",
+                "questions": [],
+                "summary": {"detected": 0, "complete": 0, "review": 0, "incomplete": 0},
+            },
+            dlms._pdf_parse_question_bank(pages),
+        )
+        self.assertEqual(
+            {"terms": [], "summary": {"detected": 0, "complete": 0, "review": 0, "incomplete": 0}},
+            dlms._pdf_parse_glossary(pages),
+        )
+        self.assertEqual(
+            (
+                "unknown",
+                {
+                    "question_markers": 0,
+                    "answer_markers": 0,
+                    "question_records": 0,
+                    "glossary_records": 0,
+                },
+            ),
+            dlms._pdf_detect_document_type(pages),
+        )
+
+    def test_styled_glossary_metadata_preserves_exact_records_and_pages(self):
+        terms = [
+            ("Access Control", "Restricts access to authorized subjects."),
+            ("Audit Trail", "Records system activities and events."),
+            ("Encryption", "Transforms readable data into ciphertext."),
+            ("Risk Appetite", "Describes the amount of risk accepted."),
+        ]
+        styled_lines = []
+        for index, (term, definition) in enumerate(terms):
+            styled_lines.append({
+                "text": f"{term} {definition}",
+                "y": 700 - index * 20,
+                "fragments": [
+                    {"text": term, "bold": True},
+                    {"text": definition, "bold": False},
+                ],
+            })
+        pages = [{"page": 3, "lines": [], "styled_lines": styled_lines}]
+
+        result = dlms._pdf_parse_glossary(pages)
+
+        self.assertEqual("style-aware", result["parser_mode"])
+        self.assertEqual(
+            {"detected": 4, "complete": 4, "review": 0, "incomplete": 0},
+            result["summary"],
+        )
+        self.assertEqual(
+            [
+                {
+                    "number": index,
+                    "term": term,
+                    "definition": definition,
+                    "pages": [3],
+                    "status": "complete",
+                    "issues": [],
+                }
+                for index, (term, definition) in enumerate(terms, 1)
+            ],
+            result["terms"],
+        )
+
+    def test_repeated_margin_only_pages_become_empty_without_losing_page_numbers(self):
+        pages = [
+            {"page": 4, "lines": ["Course Header"]},
+            {"page": 9, "lines": ["Course Header"]},
+        ]
+
+        cleaned, removed = dlms._pdf_suppress_repeated_margins(pages)
+
+        self.assertEqual(["Course Header"], removed)
+        self.assertEqual(
+            [{"page": 4, "lines": []}, {"page": 9, "lines": []}],
+            cleaned,
+        )
+        self.assertEqual([], dlms._pdf_question_recovery_result(cleaned)["questions"])
+        self.assertEqual([], dlms._pdf_glossary_recovery_result(cleaned)["terms"])
+
+    def test_document_detection_resolves_app_level_parser_helpers_at_call_time(self):
+        pages = [{"page": 1, "lines": []}]
+        question_result = {
+            "questions": [],
+            "summary": {"detected": 0, "complete": 0, "review": 0, "incomplete": 0},
+        }
+        glossary_result = {
+            "terms": [],
+            "summary": {"detected": 0, "complete": 0, "review": 0, "incomplete": 0},
+        }
+
+        with mock.patch.object(
+            dlms, "_pdf_parse_question_bank", return_value=question_result
+        ) as parse_questions, mock.patch.object(
+            dlms, "_pdf_parse_glossary", return_value=glossary_result
+        ) as parse_glossary:
+            kind, detection = dlms._pdf_detect_document_type(pages)
+
+        self.assertEqual("unknown", kind)
+        self.assertEqual(0, detection["question_records"])
+        parse_questions.assert_called_once_with(pages)
+        parse_glossary.assert_called_once_with(pages)
+
+    def test_question_bank_resolves_app_level_chunk_parser_at_call_time(self):
+        pages = [{"page": 1, "lines": ["Question #8", "Question text"]}]
+        parsed = {
+            "number": 8,
+            "question": "patched",
+            "choices": [],
+            "correct": "",
+            "declared_answer_text": "",
+            "explanation": "",
+            "choice_feedback": {},
+            "pages": [1],
+            "status": "incomplete",
+            "issues": [],
+            "keep": True,
+        }
+
+        with mock.patch.object(dlms, "_pdf_parse_question_chunk", return_value=parsed) as parser:
+            result = dlms._pdf_parse_question_bank(pages)
+
+        self.assertEqual([parsed], result["questions"])
+        parser.assert_called_once()
+
+    def test_glossary_parser_resolves_app_level_styled_parser_at_call_time(self):
+        pages = [{"page": 1, "lines": []}]
+        styled = {
+            "terms": [{"number": 1, "term": "Patched", "definition": "Result"}],
+            "summary": {"detected": 1, "complete": 1, "review": 0, "incomplete": 0},
+            "parser_mode": "style-aware",
+        }
+
+        with mock.patch.object(dlms, "_pdf_parse_glossary_styled", return_value=styled) as parser:
+            result = dlms._pdf_parse_glossary(pages)
+
+        self.assertIs(styled, result)
+        parser.assert_called_once_with(pages)
+
     def test_question_answer_explanation_and_cross_page_feedback(self):
         pages = [
             {"page": 1, "lines": [
