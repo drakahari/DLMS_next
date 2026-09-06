@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -71,7 +72,26 @@ class HistoryApiPaginationTests(unittest.TestCase):
         self.assertFalse(first["has_previous"])
         self.assertEqual(len(first["attempts"]), 50)
         self.assertNotIn("missedQuestions", first["attempts"][0])
-        self.assertTrue({"id", "attempt_pk", "attempt_id", "quiz_id", "quiz_title", "origin_key", "score", "percent", "completed_at", "mode"}.issubset(first["attempts"][0]))
+        self.assertEqual(
+            set(first),
+            {
+                "attempts", "total", "page", "page_size", "total_pages",
+                "has_next", "has_previous", "summary",
+            },
+        )
+        self.assertEqual(
+            set(first["summary"]),
+            {"total_attempts", "average_percent", "best_percent"},
+        )
+        self.assertEqual(
+            set(first["attempts"][0]),
+            {
+                "id", "attempt_pk", "attempt_id", "quiz_id", "quiz_title",
+                "score", "total", "percent", "started_at", "completed_at",
+                "time_remaining", "mode", "origin_key", "origin",
+                "source_pack_id", "source_dataset_id",
+            },
+        )
 
         middle = self.client.get("/api/attempts?page=2&page_size=50").get_json()
         last = self.client.get("/api/attempts?page=3&page_size=50").get_json()
@@ -120,6 +140,125 @@ class HistoryApiPaginationTests(unittest.TestCase):
         tied = self.client.get("/api/attempts?page_size=100").get_json()["attempts"]
         pks = [row["attempt_pk"] for row in tied]
         self.assertEqual(pks, sorted(pks, reverse=True))
+
+    def test_manifest_origins_preserve_medical_it_and_study_pack_labels(self):
+        quizzes = [
+            (self._quiz("Medical Pack Quiz"), "medical-pack"),
+            (self._quiz("IT Pack Quiz"), "it-pack"),
+            (self._quiz("General Pack Quiz"), "general-pack"),
+        ]
+        dlms.save_registry([
+            {"id": quiz_id, "title": title, "source_pack_id": pack_id}
+            for (quiz_id, pack_id), title in zip(
+                quizzes,
+                ("Medical Pack Quiz", "IT Pack Quiz", "General Pack Quiz"),
+            )
+        ])
+        for index, (quiz_id, _pack_id) in enumerate(quizzes):
+            self._attempts(quiz_id, 1, f"pack-{index}")
+
+        packs = {
+            "medical-pack": {"content_domain": "medical"},
+            "it-pack": {"content_domain": "information technology"},
+            "general-pack": {"content_domain": "general"},
+        }
+        with mock.patch.object(dlms, "discover_content_packs", return_value=packs):
+            attempts = self.client.get(
+                "/api/attempts?page_size=100"
+            ).get_json()["attempts"]
+
+        origins = {
+            row["source_pack_id"]: (row["origin_key"], row["origin"])
+            for row in attempts
+        }
+        self.assertEqual(origins["medical-pack"], ("medical", "Medical"))
+        self.assertEqual(origins["it-pack"], ("it", "IT"))
+        self.assertEqual(
+            origins["general-pack"], ("study-pack", "Study Pack")
+        )
+
+    def test_orphaned_quiz_attempt_preserves_deleted_source_fallback_shape(self):
+        conn = dlms.get_db()
+        try:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute(
+                """
+                INSERT INTO attempts (
+                    id, attempt_id, quiz_id, score, total, percent,
+                    started_at, completed_at, time_remaining, mode
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "orphan-pk", "orphan-public", 999999, 1, 2, 50,
+                    "2026-01-01T12:00:00", "2026-01-01T12:01:00", 0, "Exam",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        response = self.client.get("/api/attempts/orphan-public")
+        self.assertEqual(response.status_code, 200)
+        attempt = response.get_json()
+        self.assertEqual(
+            set(attempt),
+            {
+                "id", "attempt_pk", "attempt_id", "quiz_id", "quiz_title",
+                "score", "total", "percent", "started_at", "completed_at",
+                "time_remaining", "mode", "origin_key", "origin",
+                "source_pack_id", "source_dataset_id",
+            },
+        )
+        self.assertEqual(attempt["quiz_title"], "Unknown Quiz")
+        self.assertEqual((attempt["origin_key"], attempt["origin"]), ("quiz", "Quiz"))
+        self.assertIsNone(attempt["source_pack_id"])
+        self.assertIsNone(attempt["source_dataset_id"])
+
+    def test_legacy_attempt_schema_without_public_id_keeps_pk_fallback(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT)")
+            conn.execute(
+                """
+                CREATE TABLE attempts (
+                    id TEXT PRIMARY KEY, quiz_id INTEGER, score INTEGER,
+                    total INTEGER, percent INTEGER, started_at TEXT,
+                    completed_at TEXT, time_remaining INTEGER, mode TEXT
+                )
+                """
+            )
+            conn.execute("INSERT INTO quizzes(id, title) VALUES (7, 'Legacy Quiz')")
+            conn.execute(
+                """
+                INSERT INTO attempts VALUES (
+                    'legacy-pk', 7, 2, 3, 67,
+                    '2025-01-01T10:00:00', '2025-01-01T10:05:00', 30, 'Study'
+                )
+                """
+            )
+            row = dlms._resolve_attempt_row(conn.cursor(), "legacy-pk", False)
+            summary = dlms._attempt_summary_from_row(row, {}, {})
+        finally:
+            conn.close()
+
+        self.assertEqual(summary["id"], "legacy-pk")
+        self.assertEqual(summary["attempt_pk"], "legacy-pk")
+        self.assertIsNone(summary["attempt_id"])
+        self.assertEqual(summary["quiz_title"], "Legacy Quiz")
+        self.assertEqual((summary["origin_key"], summary["origin"]), ("quiz", "Quiz"))
+
+    def test_attempt_list_uses_app_level_summary_helper(self):
+        quiz_id = self._quiz("Patched Summary Quiz")
+        self._attempts(quiz_id, 1, "patched-summary")
+        with mock.patch.object(
+            dlms, "_attempt_summary_from_row", return_value={"patched": True}
+        ) as summarize:
+            response = self.client.get("/api/attempts?page_size=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["attempts"], [{"patched": True}])
+        summarize.assert_called_once()
 
     def test_list_uses_no_missed_question_queries_and_indexes_are_used(self):
         quiz_id = self._quiz("Fixed Query Quiz")
@@ -176,10 +315,37 @@ class HistoryApiPaginationTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/missed_questions?attempt=nope").status_code, 404)
 
         overview = self.client.get("/api/attempts/overview").get_json()
+        self.assertEqual(
+            set(overview),
+            {
+                "total_attempts", "average_percent", "best_percent",
+                "latest_attempt", "recent_attempts",
+            },
+        )
         self.assertEqual(overview["total_attempts"], 2)
         self.assertEqual(len(overview["recent_attempts"]), 2)
         self.assertEqual(overview["latest_attempt"]["id"], "public-review-1")
         analytics = self.client.get("/api/attempts/analytics").get_json()
+        self.assertEqual(set(analytics), {"summary", "quizzes"})
+        self.assertEqual(
+            set(analytics["summary"]),
+            {
+                "total_attempts", "average_percent", "best_percent",
+                "pass_count", "pass_rate", "quiz_count",
+            },
+        )
+        self.assertEqual(
+            set(analytics["quizzes"][0]),
+            {
+                "quiz_id", "quiz_title", "attempts", "average_percent",
+                "best_percent", "pass_count", "pass_rate", "latest_attempt",
+                "previous_attempt",
+            },
+        )
+        self.assertEqual(
+            set(analytics["quizzes"][0]["previous_attempt"]),
+            {"id", "attempt_pk", "attempt_id", "percent", "completed_at"},
+        )
         self.assertEqual(analytics["summary"]["total_attempts"], 2)
         self.assertEqual(analytics["summary"]["quiz_count"], 1)
         self.assertEqual(analytics["quizzes"][0]["latest_attempt"]["id"], "public-review-1")
@@ -191,6 +357,19 @@ class HistoryApiPaginationTests(unittest.TestCase):
         self.assertEqual(overview["total_attempts"], 0)
         self.assertIsNone(overview["latest_attempt"])
         self.assertEqual(self.client.get("/api/attempts").get_json()["attempts"], [])
+        analytics = self.client.get("/api/attempts/analytics").get_json()
+        self.assertEqual(analytics["quizzes"], [])
+        self.assertEqual(
+            analytics["summary"],
+            {
+                "total_attempts": 0,
+                "average_percent": None,
+                "best_percent": None,
+                "pass_count": 0,
+                "pass_rate": 0,
+                "quiz_count": 0,
+            },
+        )
         root = os.path.dirname(os.path.dirname(__file__))
         with open(os.path.join(root, "static", "history.html"), encoding="utf-8") as f:
             self.assertIn("/api/attempts?${query}", f.read())
