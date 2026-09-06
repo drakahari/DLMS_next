@@ -272,6 +272,21 @@ class ContentPackLegacyMigrationAtomicityTests(unittest.TestCase):
         self.assertEqual(migrated_bytes, self.quiz_path.read_bytes())
         self.assertTrue(self._runtime_asset().is_file())
 
+    def test_protected_pack_is_not_migrated_or_deleted(self):
+        manifest_path = self.pack_root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["protected"] = True
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        with mock.patch.object(dlms, "_snapshot_existing_pack_dependencies") as snapshot:
+            response = self._delete_pack()
+
+        self.assertEqual(302, response.status_code)
+        self.assertIn("error", self._flash_categories())
+        self.assertTrue(self.pack_root.is_dir())
+        self.assertEqual(self.original_bytes, self.quiz_path.read_bytes())
+        snapshot.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

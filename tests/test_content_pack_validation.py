@@ -863,5 +863,131 @@ class GuidedAIStudyPackImportTests(unittest.TestCase):
             self.assertFalse((Path(dlms.CONTENT_PACK_FOLDER) / "DLMS_Study_study_guided").exists())
             self.assertTrue((Path(dlms.CONTENT_PACK_STAGING_FOLDER) / token).exists())
 
+    def test_staging_boundary_failures_remove_the_new_stage(self):
+        failure_points = (
+            ("upload", "_bounded_save_upload"),
+            ("inspection", "_inspect_content_pack_zip"),
+            ("extraction", "_extract_content_pack_zip"),
+            ("validation", "_validate_staged_content_pack"),
+        )
+        for label, helper_name in failure_points:
+            with self.subTest(failure=label):
+                directory, root, patches = self._isolated_paths()
+                with directory, patches[0], patches[1]:
+                    os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+                    os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+                    archive = self._zip_pack(root, pack_id=f"study_{label}")
+                    client = dlms.app.test_client()
+                    with mock.patch.object(
+                        dlms, helper_name, side_effect=RuntimeError(f"{label} failed")
+                    ):
+                        response = self._post_guided_zip(client, archive)
+
+                    self.assertEqual(302, response.status_code)
+                    self.assertEqual("/study-packs/ai-builder", response.headers["Location"])
+                    self.assertEqual([], list(Path(dlms.CONTENT_PACK_STAGING_FOLDER).iterdir()))
+                    self.assertEqual([], list(Path(dlms.CONTENT_PACK_FOLDER).iterdir()))
+
+    def test_stage_metadata_write_failure_removes_the_new_stage(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            archive = self._zip_pack(root, pack_id="study_metadata_failure")
+            client = dlms.app.test_client()
+            with mock.patch.object(
+                dlms.json, "dump", side_effect=OSError("metadata write failed")
+            ):
+                response = self._post_guided_zip(client, archive)
+
+            self.assertEqual(302, response.status_code)
+            self.assertEqual("/study-packs/ai-builder", response.headers["Location"])
+            self.assertEqual([], list(Path(dlms.CONTENT_PACK_STAGING_FOLDER).iterdir()))
+            self.assertEqual([], list(Path(dlms.CONTENT_PACK_FOLDER).iterdir()))
+
+    def test_answer_position_mutation_failure_removes_the_new_stage(self):
+        questions = [
+            {
+                "type": "choice",
+                "question": f"Question {number}",
+                "choices": [
+                    {"text": "Correct", "is_correct": True},
+                    {"text": "Distractor", "is_correct": False},
+                ],
+            }
+            for number in range(1, 5)
+        ]
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            archive = self._zip_pack(
+                root, pack_id="study_answer_failure", questions=questions
+            )
+            client = dlms.app.test_client()
+            with mock.patch.object(
+                dlms,
+                "_randomize_staged_ai_answer_positions",
+                side_effect=RuntimeError("answer mutation failed"),
+            ):
+                response = self._post_guided_zip(client, archive)
+
+            self.assertEqual(302, response.status_code)
+            self.assertEqual("/study-packs/ai-builder", response.headers["Location"])
+            self.assertEqual([], list(Path(dlms.CONTENT_PACK_STAGING_FOLDER).iterdir()))
+            self.assertEqual([], list(Path(dlms.CONTENT_PACK_FOLDER).iterdir()))
+
+    def test_install_move_failure_preserves_the_reviewable_stage(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            client = dlms.app.test_client()
+            response = self._post_guided_zip(client, self._zip_pack(root))
+            token = response.headers["Location"].rsplit("/", 1)[-1]
+
+            with mock.patch.object(
+                dlms.shutil, "move", side_effect=OSError("promotion failed")
+            ):
+                failed = client.post(
+                    f"/content-packs/import/{token}/install",
+                    data={
+                        "csrf_token": csrf_token(client, response.headers["Location"]),
+                        "confirm_install": "yes",
+                    },
+                    follow_redirects=False,
+                )
+
+            self.assertEqual(response.headers["Location"], failed.headers["Location"])
+            self.assertTrue((Path(dlms.CONTENT_PACK_STAGING_FOLDER) / token).is_dir())
+            self.assertEqual([], list(Path(dlms.CONTENT_PACK_FOLDER).iterdir()))
+
+    def test_export_preserves_top_level_folder_and_relative_member_names(self):
+        directory, root, patches = self._isolated_paths()
+        with directory, patches[0], patches[1]:
+            os.makedirs(dlms.CONTENT_PACK_FOLDER, exist_ok=True)
+            os.makedirs(dlms.CONTENT_PACK_STAGING_FOLDER, exist_ok=True)
+            archive = self._zip_pack(root, pack_id="study_export")
+            with zipfile.ZipFile(archive, "r") as source:
+                source.extractall(dlms.CONTENT_PACK_FOLDER)
+
+            client = dlms.app.test_client()
+            response = client.get("/content-packs/export/DLMS_Study_study_export")
+
+            self.assertEqual(200, response.status_code)
+            self.assertEqual("application/zip", response.mimetype)
+            self.assertEqual(
+                'attachment; filename="DLMS_Study_study_export.zip"',
+                response.headers["Content-Disposition"],
+            )
+            with zipfile.ZipFile(io.BytesIO(response.data), "r") as exported:
+                self.assertEqual(
+                    [
+                        "DLMS_Study_study_export/data/terms.json",
+                        "DLMS_Study_study_export/manifest.json",
+                    ],
+                    sorted(exported.namelist()),
+                )
+
 if __name__ == "__main__":
     unittest.main()

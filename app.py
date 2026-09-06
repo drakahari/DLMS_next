@@ -40,6 +40,7 @@ from dlms.parsing import smart_pdf as _smart_pdf_parser
 from dlms.services import anki as _anki_service
 from dlms.services import attempts as _attempt_service
 from dlms.services import content_packs as _content_pack_service
+from dlms.services import content_pack_mutations as _content_pack_mutation_service
 from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
 
@@ -1857,113 +1858,51 @@ def _quiz_asset_url(bucket, relative_path):
 def _snapshot_one_pack_asset(
     pack_id, asset_url, bucket, *, destination_root=None, created_assets=None
 ):
-    """Copy one content-pack asset into quiz-owned storage and return its stable runtime URL."""
-    asset_url = str(asset_url or "")
-    prefix = f"/content-packs/{pack_id}/assets/"
-    if not asset_url.startswith(prefix):
-        return asset_url, False
-
-    pack = get_content_pack(pack_id)
-    if not pack:
-        raise FileNotFoundError(f"Content pack {pack_id!r} is not installed")
-
-    rel = asset_url[len(prefix):].lstrip("/")
-    src = _safe_pack_child(pack["_root"], rel)
-    if not os.path.isfile(src):
-        raise FileNotFoundError(f"Content-pack asset not found: {rel}")
-
-    ext = os.path.splitext(src)[1].lower()
-    if ext not in PASSIVE_PACK_IMAGE_EXTENSIONS:
-        raise ValueError(f"Unsupported quiz asset type: {ext}")
-    _decode_raster_image(src, PASSIVE_PACK_IMAGE_EXTENSIONS)
-
-    dest_root = destination_root or os.path.join(QUIZ_ASSET_FOLDER, bucket)
-    dest = _safe_pack_child(dest_root, rel)
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    if not os.path.isfile(dest):
-        descriptor, temporary_path = tempfile.mkstemp(
-            prefix=f".{os.path.basename(dest)}.", suffix=ext,
-            dir=os.path.dirname(dest),
-        )
-        os.close(descriptor)
-        try:
-            shutil.copy2(src, temporary_path)
-            _decode_raster_image(temporary_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
-            os.replace(temporary_path, dest)
-            if created_assets is not None:
-                created_assets.add(dest)
-        finally:
-            try:
-                os.remove(temporary_path)
-            except FileNotFoundError:
-                pass
-    return _quiz_asset_url(bucket, rel), True
+    return _content_pack_mutation_service._snapshot_one_pack_asset(
+        pack_id,
+        asset_url,
+        bucket,
+        destination_root=destination_root,
+        created_assets=created_assets,
+        get_content_pack=get_content_pack,
+        safe_pack_child=_safe_pack_child,
+        decode_raster_image=_decode_raster_image,
+        passive_pack_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
+        quiz_asset_folder=QUIZ_ASSET_FOLDER,
+        quiz_asset_url=_quiz_asset_url,
+        copy_file=shutil.copy2,
+        replace_file=os.replace,
+    )
 
 
 def _snapshot_pack_refs_recursive(
     pack_id, value, bucket, *, destination_root=None, created_assets=None
 ):
-    """Recursively rewrite any runtime content-pack asset URLs to quiz-owned copies."""
-    changed = 0
-    if isinstance(value, dict):
-        out = {}
-        for key, item in value.items():
-            new_item, n = _snapshot_pack_refs_recursive(
-                pack_id, item, bucket, destination_root=destination_root,
-                created_assets=created_assets,
-            )
-            out[key] = new_item
-            changed += n
-        return out, changed
-    if isinstance(value, list):
-        out = []
-        for item in value:
-            new_item, n = _snapshot_pack_refs_recursive(
-                pack_id, item, bucket, destination_root=destination_root,
-                created_assets=created_assets,
-            )
-            out.append(new_item)
-            changed += n
-        return out, changed
-    if isinstance(value, str):
-        new_value, did_change = _snapshot_one_pack_asset(
-            pack_id, value, bucket, destination_root=destination_root,
-            created_assets=created_assets,
-        )
-        return new_value, int(did_change)
-    return value, 0
+    return _content_pack_mutation_service._snapshot_pack_refs_recursive(
+        pack_id,
+        value,
+        bucket,
+        destination_root=destination_root,
+        created_assets=created_assets,
+        snapshot_one_pack_asset=_snapshot_one_pack_asset,
+    )
 
 
 def _cleanup_new_pack_migration_assets(created_assets):
-    """Best-effort rollback limited to files created by one migration step."""
-    asset_root = os.path.realpath(QUIZ_ASSET_FOLDER)
-    for path in sorted(created_assets, key=lambda item: item.count(os.sep), reverse=True):
-        candidate = os.path.realpath(path)
-        if not candidate.startswith(asset_root + os.sep):
-            continue
-        try:
-            if os.path.isfile(candidate) and not os.path.islink(candidate):
-                os.remove(candidate)
-            parent = os.path.dirname(candidate)
-            while parent != asset_root and parent.startswith(asset_root + os.sep):
-                try:
-                    os.rmdir(parent)
-                except OSError:
-                    break
-                parent = os.path.dirname(parent)
-        except OSError as exc:
-            print(f"[CONTENT PACK MIGRATION CLEANUP ERROR] {candidate}: {exc}")
+    return _content_pack_mutation_service._cleanup_new_pack_migration_assets(
+        created_assets, quiz_asset_folder=QUIZ_ASSET_FOLDER
+    )
 
 
 def _snapshot_runtime_questions(pack_id, runtime_questions, db_questions, bucket, *, destination_root=None):
-    """Make generated image quizzes independent of the source content pack."""
-    runtime_copy, runtime_count = _snapshot_pack_refs_recursive(
-        pack_id, runtime_questions, bucket, destination_root=destination_root
+    return _content_pack_mutation_service._snapshot_runtime_questions(
+        pack_id,
+        runtime_questions,
+        db_questions,
+        bucket,
+        destination_root=destination_root,
+        snapshot_pack_refs_recursive=_snapshot_pack_refs_recursive,
     )
-    db_copy, db_count = _snapshot_pack_refs_recursive(
-        pack_id, db_questions, bucket, destination_root=destination_root
-    )
-    return runtime_copy, db_copy, runtime_count + db_count
 
 
 @app.route("/quiz-assets/<asset_bucket>/<path:asset_path>")
@@ -1996,109 +1935,15 @@ def quiz_asset(asset_bucket, asset_path):
 
 
 def _snapshot_existing_pack_dependencies(pack_id):
-    """
-    Before deleting a pack, migrate legacy runtime/DB/history JSON references
-    from /content-packs/<id>/assets/... to quiz-owned snapshots.
-    """
-    migrated_files = 0
-    migrated_refs = 0
-
-    # Runtime quiz JSON files.
-    if os.path.isdir(DATA_FOLDER):
-        for name in os.listdir(DATA_FOLDER):
-            if not name.lower().endswith(".json"):
-                continue
-            path = os.path.join(DATA_FOLDER, name)
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    payload = json.load(f)
-            except Exception:
-                continue
-            bucket = "legacy_" + re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.splitext(name)[0])[:110]
-            created_assets = set()
-            try:
-                new_payload, count = _snapshot_pack_refs_recursive(
-                    pack_id, payload, bucket, created_assets=created_assets
-                )
-                if count:
-                    _atomic_write_json(
-                        path, new_payload, indent=4, ensure_ascii=False,
-                        expected_type=type(payload),
-                    )
-                    migrated_files += 1
-                    migrated_refs += count
-            except Exception:
-                _cleanup_new_pack_migration_assets(created_assets)
-                raise
-
-    # DB question media, so later quiz rebuilds stay independent.
-    conn = get_db()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    created_assets = set()
-    try:
-        columns = {
-            r["name"] for r in cur.execute("PRAGMA table_info(questions)").fetchall()
-        }
-        if "media_json" in columns:
-            rows = cur.execute("""
-                SELECT q.id AS question_id, q.quiz_id, q.media_json
-                FROM questions q
-                WHERE q.media_json IS NOT NULL AND q.media_json != ''
-            """).fetchall()
-            for row in rows:
-                try:
-                    payload = json.loads(row["media_json"])
-                except Exception:
-                    continue
-                bucket = f"legacy_quiz_{row['quiz_id']}"
-                new_payload, count = _snapshot_pack_refs_recursive(
-                    pack_id, payload, bucket, created_assets=created_assets
-                )
-                if count:
-                    cur.execute(
-                        "UPDATE questions SET media_json = ? WHERE id = ?",
-                        (json.dumps(new_payload, ensure_ascii=False), row["question_id"]),
-                    )
-                    migrated_refs += count
-
-        # Saved hotspot-attempt response JSON, if this schema version has it.
-        answer_columns = {
-            r["name"]
-            for r in cur.execute("PRAGMA table_info(attempt_answers)").fetchall()
-        }
-        if "response_json" in answer_columns:
-            rows = cur.execute("""
-                SELECT id, attempt_id, response_json
-                FROM attempt_answers
-                WHERE response_json IS NOT NULL AND response_json != ''
-            """).fetchall()
-            for row in rows:
-                try:
-                    payload = json.loads(row["response_json"])
-                except Exception:
-                    continue
-                bucket = "legacy_attempt_" + re.sub(
-                    r"[^A-Za-z0-9_.-]+", "_", str(row["attempt_id"])
-                )[:100]
-                new_payload, count = _snapshot_pack_refs_recursive(
-                    pack_id, payload, bucket, created_assets=created_assets
-                )
-                if count:
-                    cur.execute(
-                        "UPDATE attempt_answers SET response_json = ? WHERE id = ?",
-                        (json.dumps(new_payload, ensure_ascii=False), row["id"]),
-                    )
-                    migrated_refs += count
-
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        _cleanup_new_pack_migration_assets(created_assets)
-        raise
-    finally:
-        conn.close()
-    return {"files": migrated_files, "references": migrated_refs}
+    return _content_pack_mutation_service._snapshot_existing_pack_dependencies(
+        pack_id,
+        data_folder=DATA_FOLDER,
+        snapshot_pack_refs_recursive=_snapshot_pack_refs_recursive,
+        atomic_write_json=_atomic_write_json,
+        get_db=get_db,
+        cleanup_new_pack_migration_assets=_cleanup_new_pack_migration_assets,
+        row_factory=sqlite3.Row,
+    )
 
 
 def _content_pack_tracked_quiz_count(pack_id):
@@ -2194,79 +2039,14 @@ def _content_pack_answer_position_concentration(questions):
 
 
 def _randomize_staged_ai_answer_positions(pack_root, manifest):
-    """Repair pathological AI MCQ position distributions in staged JSON files.
-
-    Whole choice objects are moved so correctness flags and any choice metadata
-    stay together. Question-level explanations, concepts, sources, and other
-    metadata are not modified.
-    """
-    corrections = []
-    rng = random.SystemRandom()
-    for descriptor in manifest.get("quiz_datasets") or []:
-        if not isinstance(descriptor, dict):
-            continue
-        rel_path = str(descriptor.get("path") or "").strip()
-        if not rel_path:
-            continue
-        dataset_path = _safe_pack_child(pack_root, rel_path)
-        with open(dataset_path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        questions = data.get("questions") if isinstance(data, dict) else None
-        skew = _content_pack_answer_position_concentration(questions)
-        if not skew:
-            continue
-
-        position_counts = {}
-        randomized = 0
-        for question in questions:
-            if not isinstance(question, dict):
-                continue
-            if str(question.get("type") or "choice").strip().lower() != "choice":
-                continue
-            choices = question.get("choices")
-            if not isinstance(choices, list) or len(choices) < 2:
-                continue
-            correct_choices = [
-                choice for choice in choices
-                if isinstance(choice, dict) and choice.get("is_correct") is True
-            ]
-            if len(correct_choices) != 1:
-                continue
-
-            shuffled = list(choices)
-            rng.shuffle(shuffled)
-            least_used = min(position_counts.get(index, 0) for index in range(len(shuffled)))
-            candidates = [
-                index for index in range(len(shuffled))
-                if position_counts.get(index, 0) == least_used
-            ]
-            target = rng.choice(candidates)
-            current = next(
-                index for index, choice in enumerate(shuffled)
-                if isinstance(choice, dict) and choice.get("is_correct") is True
-            )
-            shuffled[current], shuffled[target] = shuffled[target], shuffled[current]
-            question["choices"] = shuffled
-            position_counts[target] = position_counts.get(target, 0) + 1
-            randomized += 1
-
-        if not randomized:
-            continue
-        temporary_path = dataset_path + ".answer-position.tmp"
-        try:
-            with open(temporary_path, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=2, ensure_ascii=False)
-                handle.write("\n")
-            os.replace(temporary_path, dataset_path)
-        finally:
-            if os.path.exists(temporary_path):
-                os.remove(temporary_path)
-        corrections.append(
-            f"{rel_path}: DLMS detected {skew['count']} of {skew['total']} correct answers "
-            f"in position {skew['label']} ({skew['percentage']}%) and safely randomized "
-            f"the choices for {randomized} single-select questions."
-        )
-    return corrections
+    return _content_pack_mutation_service._randomize_staged_ai_answer_positions(
+        pack_root,
+        manifest,
+        safe_pack_child=_safe_pack_child,
+        answer_position_concentration=_content_pack_answer_position_concentration,
+        rng_factory=random.SystemRandom,
+        replace_file=os.replace,
+    )
 
 
 def _safe_zip_member_name(name):
@@ -2284,21 +2064,9 @@ def _inspect_content_pack_zip(zip_path):
 
 
 def _extract_content_pack_zip(zip_path, stage_root):
-    """Safely extract a previously inspected Study Pack ZIP."""
-    os.makedirs(stage_root, exist_ok=False)
-    real_stage = os.path.realpath(stage_root)
-    with zipfile.ZipFile(zip_path, "r") as archive:
-        for info in archive.infolist():
-            normalized = _safe_zip_member_name(info.filename)
-            target = os.path.realpath(os.path.join(stage_root, normalized))
-            if target != real_stage and not target.startswith(real_stage + os.sep):
-                raise ValueError("ZIP path escapes staging directory")
-            if info.is_dir():
-                os.makedirs(target, exist_ok=True)
-                continue
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with archive.open(info, "r") as src, open(target, "wb") as dst:
-                shutil.copyfileobj(src, dst)
+    return _content_pack_mutation_service._extract_content_pack_zip(
+        zip_path, stage_root, safe_zip_member_name=_safe_zip_member_name
+    )
 
 
 def _read_json_file(path, label, errors):
@@ -2339,30 +2107,27 @@ def _validate_staged_content_pack(
 
 
 def _content_pack_stage_path(token):
-    if not CONTENT_PACK_IMPORT_TOKEN_RE.fullmatch(str(token or "")):
-        raise ValueError("Invalid import token")
-    return os.path.join(CONTENT_PACK_STAGING_FOLDER, token)
+    return _content_pack_mutation_service._content_pack_stage_path(
+        token,
+        token_pattern=CONTENT_PACK_IMPORT_TOKEN_RE,
+        staging_folder=CONTENT_PACK_STAGING_FOLDER,
+    )
 
 
 def _load_staged_content_pack(token):
-    stage_dir = _content_pack_stage_path(token)
-    metadata_path = os.path.join(stage_dir, "stage.json")
-    if not os.path.isfile(metadata_path):
-        raise FileNotFoundError("Staged Content Pack was not found or has expired")
-    with open(metadata_path, "r", encoding="utf-8") as f:
-        metadata = json.load(f)
-    pack_root = _safe_pack_child(stage_dir, metadata["root_name"])
-    if not os.path.isdir(pack_root):
-        raise FileNotFoundError("Staged Content Pack root folder is missing")
-    return stage_dir, pack_root, metadata
+    return _content_pack_mutation_service._load_staged_content_pack(
+        token,
+        content_pack_stage_path=_content_pack_stage_path,
+        safe_pack_child=_safe_pack_child,
+    )
 
 
 def _remove_content_pack_stage(token):
-    try:
-        stage_dir = _content_pack_stage_path(token)
-    except Exception:
-        return
-    shutil.rmtree(stage_dir, ignore_errors=True)
+    return _content_pack_mutation_service._remove_content_pack_stage(
+        token,
+        content_pack_stage_path=_content_pack_stage_path,
+        remove_tree=shutil.rmtree,
+    )
 
 
 def content_pack_management_summary():
@@ -5373,71 +5138,47 @@ def _content_pack_workflow_return_url(metadata):
 
 
 def _stage_content_pack_upload(upload, *, workflow=None):
-    """Stage and independently validate a Study Pack ZIP before installation.
+    return _content_pack_mutation_service.stage_content_pack_upload(
+        upload,
+        workflow=workflow,
+        allowed_workflow=CONTENT_PACK_AI_WORKFLOW,
+        content_length=request.content_length,
+        upload_max_bytes=CONTENT_PACK_UPLOAD_MAX_BYTES,
+        multipart_overhead_bytes=CONTENT_PACK_MULTIPART_OVERHEAD_BYTES,
+        upload_too_large_error=UploadTooLargeError,
+        token_hex=secrets.token_hex,
+        content_pack_stage_path=_content_pack_stage_path,
+        bounded_save_upload=_bounded_save_upload,
+        inspect_content_pack_zip=_inspect_content_pack_zip,
+        extract_content_pack_zip=_extract_content_pack_zip,
+        safe_pack_child=_safe_pack_child,
+        validate_staged_content_pack=_validate_staged_content_pack,
+        randomize_staged_ai_answer_positions=_randomize_staged_ai_answer_positions,
+        secure_filename=secure_filename,
+        now=datetime.now,
+    )
 
-    Both manual Content Pack imports and the guided AI Builder return path use
-    this exact intake boundary.  ``workflow`` is an internal display/redirect
-    context only; it never changes archive, validation, or install behavior.
-    """
-    if workflow not in {None, CONTENT_PACK_AI_WORKFLOW}:
-        raise ValueError("Unsupported Study Pack workflow")
-    if not upload or not upload.filename:
-        raise ValueError("Choose a DLMS Study Pack ZIP to validate")
-    if not str(upload.filename).lower().endswith(".zip"):
-        raise ValueError("Content Packs must be uploaded as ZIP files")
-    if request.content_length and request.content_length > CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES:
-        raise UploadTooLargeError("Study Pack ZIP is too large. Maximum upload size is 256 MB.")
 
-    token = secrets.token_hex(16)
-    stage_dir = _content_pack_stage_path(token)
-    os.makedirs(stage_dir, exist_ok=False)
-    zip_path = os.path.join(stage_dir, "upload.zip")
+def _install_staged_content_pack(token):
+    return _content_pack_mutation_service.install_staged_content_pack(
+        token,
+        load_staged_content_pack=_load_staged_content_pack,
+        validate_staged_content_pack=_validate_staged_content_pack,
+        workflow_for_metadata=_content_pack_workflow,
+        ai_workflow=CONTENT_PACK_AI_WORKFLOW,
+        discover_content_packs=discover_content_packs,
+        content_pack_folder=CONTENT_PACK_FOLDER,
+        remove_content_pack_stage=_remove_content_pack_stage,
+        move=shutil.move,
+    )
 
-    try:
-        _bounded_save_upload(upload, zip_path, CONTENT_PACK_UPLOAD_MAX_BYTES, "Study Pack ZIP")
-        if not zipfile.is_zipfile(zip_path):
-            raise ValueError("uploaded file is not a valid ZIP archive")
-        inspection = _inspect_content_pack_zip(zip_path)
-        extract_root = os.path.join(stage_dir, "extracted")
-        _extract_content_pack_zip(zip_path, extract_root)
-        pack_root = _safe_pack_child(extract_root, inspection["root_name"])
-        report = _validate_staged_content_pack(
-            pack_root,
-            normalize_images=True,
-            require_single_select=(workflow == CONTENT_PACK_AI_WORKFLOW),
-        )
-        answer_position_corrections = []
-        if workflow == CONTENT_PACK_AI_WORKFLOW and report["valid"]:
-            answer_position_corrections = _randomize_staged_ai_answer_positions(
-                pack_root, report["manifest"]
-            )
-            if answer_position_corrections:
-                report = _validate_staged_content_pack(
-                    pack_root, require_single_select=True
-                )
-                report["warnings"].extend(answer_position_corrections)
 
-        metadata = {
-            "token": token,
-            # Store only a relative pack-root path; never trust client paths.
-            "root_name": f"extracted/{inspection['root_name']}",
-            "extract_root": "extracted",
-            "uploaded_name": secure_filename(upload.filename) or "study_pack.zip",
-            "file_count": inspection["file_count"],
-            "uncompressed_bytes": inspection["uncompressed_bytes"],
-            "report": report,
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-        }
-        if answer_position_corrections:
-            metadata["answer_position_corrections"] = answer_position_corrections
-        if workflow:
-            metadata["workflow"] = workflow
-        with open(os.path.join(stage_dir, "stage.json"), "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-        return token
-    except Exception:
-        shutil.rmtree(stage_dir, ignore_errors=True)
-        raise
+def _cancel_staged_content_pack(token):
+    return _content_pack_mutation_service.cancel_staged_content_pack(
+        token,
+        load_staged_content_pack=_load_staged_content_pack,
+        remove_content_pack_stage=_remove_content_pack_stage,
+    )
 
 @app.route("/content-packs/import", methods=["POST"])
 def content_pack_import():
@@ -5578,57 +5319,27 @@ def content_pack_import_install(token):
         flash("Study Pack installation was not confirmed.", "error")
         return redirect(url_for("content_pack_import_review", token=token))
 
-    destination = None
-    pack_root = None
     metadata = {}
     try:
-        stage_dir, pack_root, metadata = _load_staged_content_pack(token)
-        report = _validate_staged_content_pack(
-            pack_root,
-            require_single_select=(
-                _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW
-            ),
-        )
-        if not report["valid"]:
+        result = _install_staged_content_pack(token)
+        metadata = result["metadata"]
+        if result["status"] == "invalid":
             flash("Study Pack is no longer valid; installation was blocked.", "error")
             return redirect(url_for("content_pack_import_review", token=token))
-
-        manifest = report["manifest"]
-        pack_id = str(manifest.get("id") or "").strip().lower()
-        current = discover_content_packs()
-        if pack_id in current:
-            raise ValueError(f"a Study Pack with id '{pack_id}' is already installed")
-
-        folder_name = os.path.basename(pack_root)
-        destination = os.path.realpath(os.path.join(CONTENT_PACK_FOLDER, folder_name))
-        if os.path.dirname(destination) != os.path.realpath(CONTENT_PACK_FOLDER):
-            raise ValueError("Study Pack destination is unsafe")
-        if os.path.exists(destination):
-            raise ValueError(f"destination folder '{folder_name}' already exists")
-
-        # Move only after all pre-install checks succeed.
-        shutil.move(pack_root, destination)
-
-        # Verify through normal runtime discovery. Roll back on failure.
-        installed = discover_content_packs().get(pack_id)
-        if not installed:
-            raise ValueError("DLMS could not discover the pack after installation")
-
-        _remove_content_pack_stage(token)
+        pack_id = result["pack_id"]
+        installed = result["installed"]
         flash(f"Installed Study Pack '{installed.get('name') or pack_id}' successfully.", "success")
         if _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW:
             return redirect(url_for("study_packs_home", installed=pack_id))
         return redirect("/content-packs")
-    except Exception as exc:
-        # If the move occurred but runtime validation failed, restore the staged
-        # pack when possible so the review session remains usable.
-        try:
-            if destination and os.path.isdir(destination) and pack_root:
-                os.makedirs(os.path.dirname(pack_root), exist_ok=True)
-                if not os.path.exists(pack_root):
-                    shutil.move(destination, pack_root)
-        except Exception as rollback_exc:
-            print(f"[CONTENT PACKS] Import rollback failed: {rollback_exc}")
+    except Exception as install_error:
+        if isinstance(
+            install_error, _content_pack_mutation_service.ContentPackInstallError
+        ):
+            exc = install_error.original
+            metadata = install_error.metadata
+        else:
+            exc = install_error
         print(f"[CONTENT PACK INSTALL ERROR] {type(exc).__name__}: {exc}")
         flash("The Study Pack was not installed. Existing installed content was left unchanged.", "error")
         try:
@@ -5640,12 +5351,7 @@ def content_pack_import_install(token):
 
 @app.route("/content-packs/import/<token>/cancel", methods=["POST"])
 def content_pack_import_cancel(token):
-    metadata = {}
-    try:
-        _, _, metadata = _load_staged_content_pack(token)
-    except Exception:
-        pass
-    _remove_content_pack_stage(token)
+    metadata = _cancel_staged_content_pack(token)
     flash("Study Pack import cancelled; staging files were removed.", "success")
     return redirect(_content_pack_workflow_return_url(metadata))
 
@@ -5697,27 +5403,18 @@ def content_pack_details(folder):
 """, report=report, manifest=manifest, matching=matching, image=image, mixed=mixed, medical_pack_installed=True)
 
 
+def _build_content_pack_export(folder):
+    return _content_pack_mutation_service.build_content_pack_export(
+        folder, content_pack_folder_report=_content_pack_folder_report
+    )
+
+
 @app.route("/content-packs/export/<folder>")
 def export_content_pack(folder):
     try:
-        report = _content_pack_folder_report(folder)
-        if not report.get("valid"):
-            raise ValueError("invalid Study Packs cannot be exported until validation errors are corrected")
-        pack_root = report["root"]
-        archive = io.BytesIO()
-        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
-            for walk_root, dirs, files in os.walk(pack_root):
-                dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(walk_root, d))]
-                for name in files:
-                    source = os.path.join(walk_root, name)
-                    if os.path.islink(source) or not os.path.isfile(source):
-                        continue
-                    relative = os.path.relpath(source, pack_root).replace(os.sep, "/")
-                    zf.write(source, arcname=f"{folder}/{relative}")
-        archive.seek(0)
-        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", folder).strip("._") or "DLMS_Study_Pack"
+        archive_bytes, safe_name = _build_content_pack_export(folder)
         return Response(
-            archive.getvalue(),
+            archive_bytes,
             mimetype="application/zip",
             headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'}
         )
@@ -5950,47 +5647,36 @@ document.getElementById("deletePackDialog")?.addEventListener("click",(event)=>{
     """, packs=packs, pack_folder=CONTENT_PACK_FOLDER, medical_pack_installed=True)
 
 
+def _delete_content_pack_folder(folder):
+    return _content_pack_mutation_service.delete_content_pack_folder(
+        folder,
+        content_pack_folder=CONTENT_PACK_FOLDER,
+        get_content_pack=get_content_pack,
+        snapshot_existing_pack_dependencies=_snapshot_existing_pack_dependencies,
+        remove_tree=shutil.rmtree,
+    )
+
+
 @app.route("/content-packs/delete", methods=["POST"])
 def delete_content_pack():
-    folder = str(request.form.get("folder") or "").strip()
     confirmed = request.form.get("confirm_delete") == "yes"
     if not confirmed:
         flash("Study Pack deletion was not confirmed.", "error")
         return redirect("/content-packs")
-    if not folder or folder in {".", ".."} or os.path.basename(folder) != folder:
-        flash("Invalid Content Pack folder.", "error")
-        return redirect("/content-packs")
-
-    pack_root = os.path.realpath(os.path.join(CONTENT_PACK_FOLDER, folder))
-    content_root = os.path.realpath(CONTENT_PACK_FOLDER)
-    if os.path.dirname(pack_root) != content_root or not os.path.isdir(pack_root):
-        flash("Content Pack folder was not found.", "error")
-        return redirect("/content-packs")
-
-    manifest_path = os.path.join(pack_root, "manifest.json")
-    pack_id = ""
-    protected = False
+    folder = str(request.form.get("folder") or "").strip()
     try:
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            manifest = json.load(f) or {}
-        pack_id = str(manifest.get("id") or "").strip().lower()
-        protected = bool(manifest.get("protected"))
-    except Exception:
-        manifest = {}
-
-    if protected:
-        flash("This Content Pack declares itself protected and cannot be deleted here.", "error")
-        return redirect("/content-packs")
-
-    try:
-        migration = {"files": 0, "references": 0}
-        if pack_id and get_content_pack(pack_id):
-            migration = _snapshot_existing_pack_dependencies(pack_id)
-        shutil.rmtree(pack_root)
+        result = _delete_content_pack_folder(folder)
+        migration = result["migration"]
         message = f"Deleted Study Pack folder '{folder}'. Existing quizzes and history were kept."
         if migration["references"]:
             message += f" Preserved {migration['references']} legacy image reference(s) in quiz-owned storage."
         flash(message, "success")
+    except _content_pack_mutation_service.InvalidContentPackFolderError:
+        flash("Invalid Content Pack folder.", "error")
+    except _content_pack_mutation_service.ContentPackFolderNotFoundError:
+        flash("Content Pack folder was not found.", "error")
+    except _content_pack_mutation_service.ProtectedContentPackError:
+        flash("This Content Pack declares itself protected and cannot be deleted here.", "error")
     except Exception as exc:
         print(f"[CONTENT PACK DELETE ERROR] {type(exc).__name__}: {exc}")
         flash(
@@ -11968,26 +11654,20 @@ def _reset_learning_intelligence_core():
         conn.close()
 
 
+def _remove_unprotected_content_packs():
+    return _content_pack_mutation_service.remove_unprotected_content_packs(
+        content_pack_folder=CONTENT_PACK_FOLDER,
+        get_content_pack=get_content_pack,
+        snapshot_existing_pack_dependencies=_snapshot_existing_pack_dependencies,
+        remove_tree=shutil.rmtree,
+    )
+
+
 def _reset_source_content_core():
     # Use the same dependency-preservation path as normal Content Pack deletion
     # before removing non-protected installed packs. This keeps legacy generated
     # image quizzes independent of their source pack.
-    for folder_name in list(os.listdir(CONTENT_PACK_FOLDER)) if os.path.isdir(CONTENT_PACK_FOLDER) else []:
-        pack_root = os.path.join(CONTENT_PACK_FOLDER, folder_name)
-        if not os.path.isdir(pack_root):
-            continue
-        manifest = {}
-        try:
-            with open(os.path.join(pack_root, "manifest.json"), "r", encoding="utf-8") as f:
-                manifest = json.load(f) or {}
-        except Exception:
-            manifest = {}
-        if bool(manifest.get("protected")):
-            continue
-        pack_id = str(manifest.get("id") or "").strip().lower()
-        if pack_id and get_content_pack(pack_id):
-            _snapshot_existing_pack_dependencies(pack_id)
-        shutil.rmtree(pack_root)
+    _remove_unprotected_content_packs()
 
     for folder in [
         PDF_QUESTION_BANK_FOLDER, PDF_TERMINOLOGY_BANK_FOLDER, PDF_IMPORT_DRAFT_FOLDER,
@@ -13435,120 +13115,58 @@ def image_quiz_builder_save():
     if not images_payload or not questions_payload:
         return "At least one image and one question are required.", 400
 
-    artifact_identity = _generated_quiz_artifact_identity()
-    title_slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_")[:60] or "Image_Study"
-    pack_id = f"user_{title_slug.lower()}_{artifact_identity}"
-    pack_root = os.path.join(CONTENT_PACK_FOLDER, f"DLMS_Study_{title_slug}_{artifact_identity}")
-    images_root = os.path.join(pack_root, "images")
-    data_root = os.path.join(pack_root, "data")
-    os.makedirs(images_root, exist_ok=False)
-    os.makedirs(data_root, exist_ok=True)
-
     try:
-        image_records, image_map = [], {}
-        for n, raw in enumerate(images_payload, 1):
-            image_id = str(raw.get("id") or f"image_{n}").strip()
-            filename = secure_filename(str(raw.get("filename") or ""))
-            src = _safe_pack_child(draft_root, filename)
-            if not filename or not os.path.isfile(src):
-                raise FileNotFoundError(f"Draft image missing: {filename}")
-            shutil.copy2(src, os.path.join(images_root, filename))
-            rec = {
-                "id": image_id, "file": f"images/{filename}",
-                "alt_text": str(raw.get("alt_text") or raw.get("original_name") or title).strip(),
-                "edits": [], "hotspots": [],
-                "source": {
-                    "organization": "User supplied",
-                    "work": str(raw.get("original_name") or filename),
-                    "attribution": source_note or "User-supplied image for personal study",
-                    "license": "User-supplied; redistribution rights not asserted by DLMS",
-                    "redistribution_status": "not-cleared-for-redistribution",
-                },
-            }
-            image_records.append(rec)
-            image_map[image_id] = rec
-
-        cleaned, qnum = [], 1
-        for raw in questions_payload:
-            if not isinstance(raw, dict): continue
-            qtype = str(raw.get("type") or "choice").strip().lower()
-            question = str(raw.get("question") or "").strip()
-            image_id = str(raw.get("image_id") or "").strip()
-            explanation = str(raw.get("explanation") or "").strip()
-            if qtype not in {"choice", "matching", "hotspot"} or not question or image_id not in image_map:
-                continue
-
-            if qtype == "matching":
-                pairs = []
-                for pair in raw.get("pairs") or []:
-                    left = str((pair or {}).get("left") or "").strip()
-                    right = str((pair or {}).get("right") or "").strip()
-                    if left and right: pairs.append({"left": left, "right": right})
-                if len(pairs) < 2:
-                    raise ValueError(f"Question {qnum} needs at least two complete matching pairs")
-                cleaned.append({"id": f"q{qnum}", "type": "matching", "question": question, "image_id": image_id, "pairs": pairs, "direction": "term_to_definition", "explanation": explanation})
-            elif qtype == "hotspot":
-                shape = _validate_hotspot_shape(raw.get("shape"))
-                label = str(raw.get("target_label") or "").strip()
-                if not label:
-                    raise ValueError(f"Question {qnum} needs a hotspot target label")
-                hotspot_id = f"hotspot_{qnum}"
-                image_map[image_id]["hotspots"].append({
-                    "id": hotspot_id, "label": label, "prompt": question,
-                    "shape": shape, "explanation": explanation,
-                    "calibration": {"tool": "DLMS Build from Images", "updated_at": datetime.now().isoformat(timespec="seconds")},
-                })
-                cleaned.append({"id": f"q{qnum}", "type": "hotspot", "question": question, "image_id": image_id, "hotspot_id": hotspot_id, "target_label": label, "explanation": explanation})
-            else:
-                choices = []
-                for choice in raw.get("choices") or []:
-                    text = str((choice or {}).get("text") or "").strip()
-                    if text:
-                        choices.append({"label": chr(65 + len(choices)), "text": text, "is_correct": bool((choice or {}).get("is_correct"))})
-                if len(choices) < 2 or not any(c["is_correct"] for c in choices):
-                    raise ValueError(f"Question {qnum} needs at least two choices and one correct answer")
-                cleaned.append({"id": f"q{qnum}", "type": "choice", "question": question, "image_id": image_id, "choices": choices, "explanation": explanation})
-            qnum += 1
-
-        if not cleaned:
-            raise ValueError("No usable questions were submitted")
-
-        dataset_id = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")[:64] or "image_questions"
-        dataset = {
-            "schema_version": 1, "id": dataset_id, "title": title, "type": "quiz",
-            "category": subject or "General",
-            "description": description or f"User-created image-supported question set for {title}.",
-            "source": {"organization": "User supplied", "dataset": title, "license": "User-supplied study material", "notes": source_note},
-            "images": image_records, "questions": cleaned,
-        }
-        dataset_rel = f"data/{dataset_id}.json"
-        with open(os.path.join(pack_root, dataset_rel), "w", encoding="utf-8") as f:
-            json.dump(dataset, f, indent=2, ensure_ascii=False); f.write("\n")
-        manifest = {
-            "schema_version": 1, "id": pack_id, "name": title, "version": "1.0.0",
-            "publisher": "DLMS user", "content_domain": subject or "General",
-            "description": dataset["description"], "datasets": [], "image_datasets": [],
-            "quiz_datasets": [{"id": dataset_id, "title": title, "type": "quiz", "path": dataset_rel, "description": dataset["description"]}],
-            "user_supplied_assets": True, "redistribution_status": "not-cleared-for-redistribution",
-        }
-        with open(os.path.join(pack_root, "manifest.json"), "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=2, ensure_ascii=False); f.write("\n")
-
-        data = load_content_pack_quiz_dataset(pack_id, dataset_id)
-        runtime, db_questions = _quiz_dataset_runtime(pack_id, data)
-        _, html_name = _create_quiz_from_runtime(
-            f"{title} — Practice", runtime, db_questions,
-            filename_prefix=f"user_image_{dataset_id}",
+        result = _create_image_study_pack(
+            draft_root=draft_root,
+            title=title,
+            subject=subject,
+            description=description,
+            source_note=source_note,
+            images_payload=images_payload,
+            questions_payload=questions_payload,
+            artifact_identity=_generated_quiz_artifact_identity(),
             exam_minutes=request.form.get("exam_minutes"),
-            source_pack_id=pack_id, source_dataset_id=dataset_id
         )
-        shutil.rmtree(draft_root, ignore_errors=True)
         flash("Image study pack and quiz created successfully.", "success")
-        return redirect(f"/quizzes/{html_name}")
+        return redirect(f"/quizzes/{result['html_name']}")
     except Exception as exc:
-        shutil.rmtree(pack_root, ignore_errors=True)
         print(f"[IMAGE BUILDER CREATE ERROR] {type(exc).__name__}: {exc}")
         return "Unable to create the image Study Pack. Check the local DLMS log for details.", 400
+
+
+def _create_image_study_pack(
+    *,
+    draft_root,
+    title,
+    subject,
+    description,
+    source_note,
+    images_payload,
+    questions_payload,
+    artifact_identity,
+    exam_minutes,
+):
+    return _content_pack_mutation_service.create_image_study_pack(
+        draft_root=draft_root,
+        title=title,
+        subject=subject,
+        description=description,
+        source_note=source_note,
+        images_payload=images_payload,
+        questions_payload=questions_payload,
+        artifact_identity=artifact_identity,
+        exam_minutes=exam_minutes,
+        content_pack_folder=CONTENT_PACK_FOLDER,
+        safe_pack_child=_safe_pack_child,
+        secure_filename=secure_filename,
+        validate_hotspot_shape=_validate_hotspot_shape,
+        now=datetime.now,
+        load_content_pack_quiz_dataset=load_content_pack_quiz_dataset,
+        quiz_dataset_runtime=_quiz_dataset_runtime,
+        publish_quiz=_create_quiz_from_runtime,
+        copy_file=shutil.copy2,
+        remove_tree=shutil.rmtree,
+    )
 
 
 IMAGE_QUIZ_BUILDER_TEMPLATE = r"""

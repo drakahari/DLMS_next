@@ -403,6 +403,46 @@ class AtomicQuizPublicationTests(unittest.TestCase):
         self.assertEqual([], list(Path(dlms.CONTENT_PACK_FOLDER).iterdir()))
         self._assert_clean_failure()
 
+    def test_build_from_images_cleans_pack_when_directory_setup_fails(self):
+        draft_id = "draft_setup_failure_123"
+        draft = Path(dlms.IMAGE_BUILDER_DRAFT_FOLDER) / draft_id
+        draft.mkdir(parents=True)
+        Image.new("RGB", (8, 8), (30, 90, 150)).save(draft / "diagram.png")
+        payload = {
+            "images": [{
+                "id": "image_1", "filename": "diagram.png",
+                "original_name": "diagram.png",
+            }],
+            "questions": [{
+                "type": "choice", "question": "Which?", "image_id": "image_1",
+                "choices": [
+                    {"text": "One", "is_correct": True},
+                    {"text": "Two", "is_correct": False},
+                ],
+            }],
+        }
+        real_makedirs = dlms.os.makedirs
+
+        def fail_data_directory(path, *args, **kwargs):
+            if os.path.basename(path) == "data" and "DLMS_Study_" in path:
+                raise OSError("simulated data-directory failure")
+            return real_makedirs(path, *args, **kwargs)
+
+        client = dlms.app.test_client()
+        with mock.patch.object(dlms.os, "makedirs", side_effect=fail_data_directory):
+            response = client.post("/study-packs/image-builder/save", data={
+                "csrf_token": csrf_token(client, "/study-packs/image-builder"),
+                "draft_id": draft_id,
+                "pack_title": "Setup Failure",
+                "subject": "General",
+                "rights_ok": "on",
+                "builder_payload": json.dumps(payload),
+            })
+
+        self.assertEqual(400, response.status_code)
+        self.assertEqual([], list(Path(dlms.CONTENT_PACK_FOLDER).iterdir()))
+        self._assert_clean_failure()
+
 
 if __name__ == "__main__":
     unittest.main()
