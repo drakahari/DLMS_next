@@ -15,6 +15,7 @@ import app as dlms
 ROOT = Path(dlms.__file__).resolve().parent
 APP_PATH = ROOT / "app.py"
 TEMPLATE_ROOT = ROOT / "templates"
+ROUTE_ROOT = ROOT / "dlms" / "routes"
 
 
 class Dlms062TemplateClosureTests(unittest.TestCase):
@@ -50,15 +51,22 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app_source = APP_PATH.read_text(encoding="utf-8")
-        cls.app_tree = ast.parse(cls.app_source)
+        cls.source_trees = {
+            APP_PATH: ast.parse(cls.app_source),
+            **{
+                path: ast.parse(path.read_text(encoding="utf-8"))
+                for path in sorted(ROUTE_ROOT.rglob("*.py"))
+            },
+        }
 
     def test_fixed_inventory_one_through_twenty_six_is_external_and_present(self):
         self.assertEqual(list(range(1, 27)), sorted(self.FIXED_INVENTORY))
-        functions = {
-            node.name: node
-            for node in ast.walk(self.app_tree)
+        functions = [
+            (path, node)
+            for path, tree in self.source_trees.items()
+            for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef)
-        }
+        ]
 
         for item, (function_name, template_name) in self.FIXED_INVENTORY.items():
             with self.subTest(item=item, template=template_name):
@@ -67,16 +75,17 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
                 self.assertTrue(template_path.is_file())
                 if function_name is None:
                     continue
-                function = functions[function_name]
                 matching_calls = [
-                    node
-                    for node in ast.walk(function)
-                    if isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id == "render_template"
-                    and node.args
-                    and isinstance(node.args[0], ast.Constant)
-                    and node.args[0].value == template_name
+                    (path, call)
+                    for path, function in functions
+                    if function.name == function_name
+                    for call in ast.walk(function)
+                    if isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Name)
+                    and call.func.id == "render_template"
+                    and call.args
+                    and isinstance(call.args[0], ast.Constant)
+                    and call.args[0].value == template_name
                 ]
                 self.assertEqual(1, len(matching_calls))
 
@@ -95,28 +104,7 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
                     consumer.read_text(encoding="utf-8"),
                 )
 
-    def test_app_has_no_string_template_renderer_or_embedded_page_payload(self):
-        flask_imports = [
-            alias.name
-            for node in self.app_tree.body
-            if isinstance(node, ast.ImportFrom) and node.module == "flask"
-            for alias in node.names
-        ]
-        self.assertNotIn("render_template_string", flask_imports)
-
-        string_renderer_calls = [
-            node.lineno
-            for node in ast.walk(self.app_tree)
-            if isinstance(node, ast.Call)
-            and (
-                isinstance(node.func, ast.Name)
-                and node.func.id == "render_template_string"
-                or isinstance(node.func, ast.Attribute)
-                and node.func.attr == "render_template_string"
-            )
-        ]
-        self.assertEqual([], string_renderer_calls)
-
+    def test_active_route_sources_have_no_string_renderer_or_embedded_page_payload(self):
         html_fragment = re.compile(
             r"<!doctype\s+html|<(?:html|head|body|title|main|aside|nav|section|form|script|style)\b",
             re.IGNORECASE,
@@ -125,16 +113,39 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
             r"{%-?\s*(?:extends|include|import|from|block|macro|if|for|set|call|filter|with)\b"
         )
         jinja_expression = re.compile(r"{{-?\s*[A-Za-z_]", re.MULTILINE)
-        payloads = []
-        for node in ast.walk(self.app_tree):
-            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
-                continue
-            value = node.value
-            looks_like_page = html_fragment.search(value) or jinja_statement.search(value)
-            looks_like_multiline_jinja = "\n" in value and jinja_expression.search(value)
-            if looks_like_page or looks_like_multiline_jinja:
-                payloads.append((node.lineno, value[:80]))
-        self.assertEqual([], payloads)
+        for path, tree in self.source_trees.items():
+            with self.subTest(route_source=path.relative_to(ROOT)):
+                flask_imports = [
+                    alias.name
+                    for node in tree.body
+                    if isinstance(node, ast.ImportFrom) and node.module == "flask"
+                    for alias in node.names
+                ]
+                self.assertNotIn("render_template_string", flask_imports)
+
+                string_renderer_calls = [
+                    node.lineno
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Call)
+                    and (
+                        isinstance(node.func, ast.Name)
+                        and node.func.id == "render_template_string"
+                        or isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "render_template_string"
+                    )
+                ]
+                self.assertEqual([], string_renderer_calls)
+
+                payloads = []
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                        continue
+                    value = node.value
+                    looks_like_page = html_fragment.search(value) or jinja_statement.search(value)
+                    looks_like_multiline_jinja = "\n" in value and jinja_expression.search(value)
+                    if looks_like_page or looks_like_multiline_jinja:
+                        payloads.append((node.lineno, value[:80]))
+                self.assertEqual([], payloads)
 
     def test_template_root_dashboard_static_pages_and_inventory_are_normalized(self):
         self.assertEqual(TEMPLATE_ROOT.resolve(), Path(dlms.TEMPLATE_ROOT).resolve())

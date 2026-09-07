@@ -7,6 +7,7 @@ from unittest import mock
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import it as it_routes
 
 
 class NavigationLayoutTests(unittest.TestCase):
@@ -295,7 +296,7 @@ class NavigationLayoutTests(unittest.TestCase):
 
     def test_it_summary_supporting_text_uses_full_card_width_and_normal_words(self):
         pack = {"name": "IT Study", "version": "1"}
-        with mock.patch.object(dlms, "_it_pack_page_data", return_value=(pack, [], [], [])):
+        with mock.patch.object(it_routes, "_it_pack_page_data", return_value=(pack, [], [], [])):
             page = self.client.get("/it").get_data(as_text=True)
         css = self._static("style.css")
 

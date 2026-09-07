@@ -11,6 +11,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import it as it_routes
 
 
 class ITTemplateTests(unittest.TestCase):
@@ -75,7 +76,7 @@ class ITTemplateTests(unittest.TestCase):
 
     def _get(self, path, pack, matching=None, images=None, quizzes=None, discovered=None):
         with mock.patch.object(
-            dlms,
+            it_routes,
             "_it_pack_page_data",
             return_value=(pack, matching or [], images or [], quizzes or []),
         ), mock.patch.object(
@@ -87,7 +88,7 @@ class ITTemplateTests(unittest.TestCase):
 
     def test_no_pack_state_is_shared_by_all_routes_with_home_navigation(self):
         with mock.patch.object(
-            dlms, "_it_pack_page_data", return_value=(None, [], [], [])
+            it_routes, "_it_pack_page_data", return_value=(None, [], [], [])
         ), mock.patch.object(dlms, "discover_content_packs", return_value={}):
             pages = {
                 path: self.client.get(path).get_data(as_text=True)
@@ -271,15 +272,17 @@ class ITTemplateTests(unittest.TestCase):
         }
 
         with mock.patch.object(
-            dlms,
+            it_routes,
             "_it_pack_page_data",
             return_value=(pack, matching, images, quizzes),
         ), mock.patch.object(
             dlms, "discover_content_packs", return_value=discovered
         ), mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            it_routes, "render_template", return_value="rendered"
         ) as renderer:
-            self.assertEqual("rendered", dlms.it_study_home())
+            self.assertEqual(
+                "rendered", dlms.app.view_functions["it.it_study_home"]()
+            )
             renderer.assert_called_once_with(
                 "it/index.html",
                 pack=pack,
@@ -295,13 +298,13 @@ class ITTemplateTests(unittest.TestCase):
             )
 
         with mock.patch.object(
-            dlms,
+            it_routes,
             "_it_pack_page_data",
             return_value=(pack, matching, images, quizzes),
         ), mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            it_routes, "render_template", return_value="rendered"
         ) as renderer:
-            self.assertEqual("rendered", dlms.it_matching())
+            self.assertEqual("rendered", dlms.app.view_functions["it.it_matching"]())
             renderer.assert_called_once_with(
                 "it/matching.html",
                 pack=pack,
@@ -311,7 +314,7 @@ class ITTemplateTests(unittest.TestCase):
             )
 
             renderer.reset_mock()
-            self.assertEqual("rendered", dlms.it_images())
+            self.assertEqual("rendered", dlms.app.view_functions["it.it_images"]())
             renderer.assert_called_once_with(
                 "it/images.html",
                 pack=pack,
@@ -322,9 +325,9 @@ class ITTemplateTests(unittest.TestCase):
             )
 
         with mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            it_routes, "render_template", return_value="rendered"
         ) as renderer:
-            self.assertEqual("rendered", dlms._it_empty_page())
+            self.assertEqual("rendered", it_routes._it_empty_page())
             renderer.assert_called_once_with(
                 "it/empty.html",
                 pack={"name": "IT Study", "version": "No packs installed"},

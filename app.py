@@ -50,6 +50,7 @@ from dlms.services import quiz_publication as _quiz_publication_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
+from dlms.routes.it import ITStudyDependencies, create_it_blueprint
 
 # =========================
 # PYINSTALLER PATH HELPER
@@ -4287,157 +4288,13 @@ def medical_generate_quiz():
 # =========================
 # IT STUDY - FILTERED STUDY PACK VIEW
 # =========================
-def _it_pack_page_data():
-    """Aggregate validated datasets from installed IT / Cybersecurity Study Packs."""
-    packs = discover_content_packs()
-    it_packs = [
-        (pack_id, candidate)
-        for pack_id, candidate in packs.items()
-        if _is_it_pack_manifest(pack_id, candidate)
-    ]
-    it_packs.sort(key=lambda item: str(item[1].get("name") or item[0]).casefold())
-
-    if not it_packs:
-        return None, [], [], []
-
-    if len(it_packs) == 1:
-        pack = dict(it_packs[0][1])
-    else:
-        pack = {
-            "id": "it_collection",
-            "name": "DLMS IT Study",
-            "version": f"{len(it_packs)} installed packs",
-            "description": "Aggregated IT and cybersecurity study content from installed Study Packs.",
-        }
-
-    datasets, image_datasets, quiz_datasets = [], [], []
-    for pack_id, source_pack in it_packs:
-        for descriptor in source_pack.get("datasets") or []:
-            if not isinstance(descriptor, dict):
-                continue
-            dataset_id = str(descriptor.get("id") or "").strip()
-            try:
-                data = load_content_pack_dataset(pack_id, dataset_id)
-                datasets.append({
-                    "pack_id": pack_id,
-                    "pack_name": source_pack.get("name") or pack_id,
-                    "id": dataset_id,
-                    "title": descriptor.get("title") or data.get("title") or dataset_id,
-                    "description": descriptor.get("description") or data.get("description") or "",
-                    "type": descriptor.get("type") or data.get("type") or "matching",
-                    "term_count": len(data.get("terms") or []),
-                    "category": data.get("category") or "IT / Cybersecurity",
-                })
-            except Exception as exc:
-                print(f"[IT STUDY] Dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
-
-        for descriptor in source_pack.get("image_datasets") or []:
-            if not isinstance(descriptor, dict):
-                continue
-            dataset_id = str(descriptor.get("id") or "").strip()
-            try:
-                data = load_content_pack_image_dataset(pack_id, dataset_id)
-                images = data.get("images") or []
-                image_datasets.append({
-                    "pack_id": pack_id,
-                    "pack_name": source_pack.get("name") or pack_id,
-                    "id": dataset_id,
-                    "title": descriptor.get("title") or data.get("title") or dataset_id,
-                    "description": descriptor.get("description") or data.get("description") or "",
-                    "image_count": len(images),
-                    "hotspot_count": sum(len(im.get("hotspots") or []) for im in images if isinstance(im, dict)),
-                    "category": data.get("category") or "Diagrams & Images",
-                })
-            except Exception as exc:
-                print(f"[IT STUDY] Image dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
-
-        for descriptor in source_pack.get("quiz_datasets") or []:
-            if not isinstance(descriptor, dict):
-                continue
-            dataset_id = str(descriptor.get("id") or "").strip()
-            try:
-                data = load_content_pack_quiz_dataset(pack_id, dataset_id)
-                quiz_datasets.append({
-                    "pack_id": pack_id,
-                    "pack_name": source_pack.get("name") or pack_id,
-                    "id": dataset_id,
-                    "title": descriptor.get("title") or data.get("title") or dataset_id,
-                    "description": descriptor.get("description") or data.get("description") or "",
-                    "question_count": len(data.get("questions") or []),
-                    "image_count": len(data.get("images") or []),
-                    "category": data.get("category") or "Question Set",
-                })
-            except Exception as exc:
-                print(f"[IT STUDY] Question dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
-
-    return pack, datasets, image_datasets, quiz_datasets
-
-
-
-
-def _it_empty_page():
-    pack = {"name": "IT Study", "version": "No packs installed"}
-    return render_template(
-        "it/empty.html",
-        pack=pack,
-        it_section="home",
-    )
-
-
-@app.route("/it")
-def it_study_home():
-    pack, datasets, image_datasets, quiz_datasets = _it_pack_page_data()
-    if not pack:
-        return _it_empty_page()
-    total_terms = sum(d["term_count"] for d in datasets)
-    total_images = sum(d["image_count"] for d in image_datasets)
-    total_hotspots = sum(d["hotspot_count"] for d in image_datasets)
-    total_questions = sum(d["question_count"] for d in quiz_datasets)
-    return render_template(
-        "it/index.html",
-        pack=pack,
-        datasets=datasets,
-        image_datasets=image_datasets,
-        quiz_datasets=quiz_datasets,
-        total_terms=total_terms,
-        total_images=total_images,
-        total_hotspots=total_hotspots,
-        total_questions=total_questions,
-        pack_count=len([1 for pid,p in discover_content_packs().items() if _is_it_pack_manifest(pid,p)]),
-        it_section="home",
-    )
-
-
-@app.route("/it/matching")
-def it_matching():
-    pack, datasets, image_datasets, quiz_datasets = _it_pack_page_data()
-    if not pack:
-        return _it_empty_page()
-    total_terms = sum(d["term_count"] for d in datasets)
-    return render_template(
-        "it/matching.html",
-        pack=pack,
-        datasets=datasets,
-        total_terms=total_terms,
-        it_section="matching",
-    )
-
-
-@app.route("/it/images")
-def it_images():
-    pack, datasets, image_datasets, quiz_datasets = _it_pack_page_data()
-    if not pack:
-        return _it_empty_page()
-    total_images = sum(d["image_count"] for d in image_datasets)
-    total_hotspots = sum(d["hotspot_count"] for d in image_datasets)
-    return render_template(
-        "it/images.html",
-        pack=pack,
-        image_datasets=image_datasets,
-        total_images=total_images,
-        total_hotspots=total_hotspots,
-        it_section="images",
-    )
+app.register_blueprint(create_it_blueprint(ITStudyDependencies(
+    discover_content_packs=lambda: discover_content_packs(),
+    load_content_pack_dataset=lambda pack_id, dataset_id: load_content_pack_dataset(pack_id, dataset_id),
+    load_content_pack_image_dataset=lambda pack_id, dataset_id: load_content_pack_image_dataset(pack_id, dataset_id),
+    load_content_pack_quiz_dataset=lambda pack_id, dataset_id: load_content_pack_quiz_dataset(pack_id, dataset_id),
+    is_it_pack_manifest=lambda pack_id, pack: _is_it_pack_manifest(pack_id, pack),
+)))
 
 
 # =========================
