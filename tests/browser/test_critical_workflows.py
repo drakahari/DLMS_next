@@ -3115,3 +3115,99 @@ def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_
         "itPresent": False,
         "medicalPresent": False,
     }
+
+
+def test_law_landing_counts_links_navigation_controls_and_metadata_boundaries(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    registry_path = browser_stack.data_root / "config" / "law.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    hostile = 'Law </script><img id="lawLandingInjected"> & Safe'
+    registry["cases"].append({
+        "id": "law-landing-hostile",
+        "title": hostile,
+        "course": '<b id="lawLandingCourseInjected">Torts</b>',
+        "file": "law-landing-hostile.json",
+        "status": "draft-hostile-status",
+    })
+    registry["folders"].append('<svg id="lawLandingFolderInjected">Evidence</svg>')
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    browser.set_viewport(760, 1100)
+    browser.navigate(f"{base_url}/law")
+    browser.wait_for(
+        "document.querySelector('[data-nav-key=law][aria-current=page]') && "
+        "document.querySelector('.law-hub-summary')"
+    )
+    landing = browser.evaluate(
+        "(() => {const stats=Array.from(document.querySelectorAll('.law-hub-stat'));"
+        "const cards=Array.from(document.querySelectorAll('.law-hub-card'));"
+        "const menu=document.getElementById('menuButton');const shutdown=document.getElementById('shutdownBtn');"
+        "return {heading:document.querySelector('.law-hub-header h1').textContent,"
+        "cases:stats[0].querySelector('strong').textContent,courses:stats[1].querySelector('strong').textContent,"
+        "workflow:stats[2].querySelector('strong').textContent,summaryLabel:document.querySelector('.law-hub-summary').getAttribute('aria-label'),"
+        "toolsLabel:document.querySelector('.law-hub-grid').getAttribute('aria-label'),"
+        "links:cards.map(card=>card.getAttribute('href')),"
+        "headings:cards.map(card=>card.querySelector('h2').textContent),"
+        "primaryNav:document.querySelector('nav.dashboard-nav').getAttribute('aria-label'),"
+        "systemNav:document.querySelector('nav.dashboard-nav-system').getAttribute('aria-label'),"
+        "navCurrent:document.querySelector('[data-nav-key=law]').getAttribute('aria-current'),"
+        "menuLabel:menu.getAttribute('aria-label'),menuControls:menu.getAttribute('aria-controls'),"
+        "menuExpanded:menu.getAttribute('aria-expanded'),shutdownType:shutdown.type,shutdownText:shutdown.textContent.trim(),"
+        "injected:!!document.getElementById('lawLandingInjected')||!!document.getElementById('lawLandingCourseInjected')||"
+        "!!document.getElementById('lawLandingFolderInjected'),"
+        "metadataVisible:document.body.textContent.includes('draft-hostile-status')||"
+        "document.body.textContent.includes('law-landing-hostile.json')||"
+        f"document.body.textContent.includes({json.dumps(hostile)})}};}})()"
+    )
+    assert landing == {
+        "heading": "Casework & Review",
+        "cases": str(len(registry["cases"])),
+        "courses": str(len(registry["folders"])),
+        "workflow": "AI Ready",
+        "summaryLabel": "Law Study summary",
+        "toolsLabel": "Law Study tools",
+        "links": ["/law/create", "/law/import", "/law/cases", "/law/imports"],
+        "headings": [
+            "Create Case Review",
+            "Import Case Packet",
+            "My Case Reviews",
+            "Saved Imports",
+        ],
+        "primaryNav": "Primary navigation",
+        "systemNav": "System navigation",
+        "navCurrent": "page",
+        "menuLabel": "Toggle navigation",
+        "menuControls": "dashboardSidebar",
+        "menuExpanded": "false",
+        "shutdownType": "button",
+        "shutdownText": "⏻Shutdown DLMS",
+        "injected": False,
+        "metadataVisible": False,
+    }
+
+    browser.click("#menuButton")
+    browser.wait_for("document.getElementById('dashboardSidebar').classList.contains('open')")
+    assert browser.evaluate(
+        "document.getElementById('menuButton').getAttribute('aria-expanded')"
+    ) == "true"
+    browser.click(".law-hub-header h1")
+    browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open')")
+    assert browser.evaluate(
+        "document.getElementById('menuButton').getAttribute('aria-expanded')"
+    ) == "false"
+
+    shutdown = browser.evaluate(
+        "(() => {window.__lawShutdownConfirm='';window.__lawShutdownRequest=null;"
+        "window.confirm=message=>{window.__lawShutdownConfirm=message;return true};"
+        "window.fetch=(url,options)=>{window.__lawShutdownRequest={url,method:options.method};"
+        "return new Promise(()=>{})};document.getElementById('shutdownBtn').click();"
+        "return {confirm:window.__lawShutdownConfirm,request:window.__lawShutdownRequest};})()"
+    )
+    assert shutdown == {
+        "confirm": (
+            "SHUTDOWN DLMS\n\nThis will stop the application.\n\n"
+            "You will need to restart it manually.\n\nContinue?"
+        ),
+        "request": {"url": "/api/shutdown", "method": "POST"},
+    }
