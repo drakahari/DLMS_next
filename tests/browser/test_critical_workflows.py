@@ -1772,3 +1772,190 @@ def test_ai_settings_reset_buttons_restore_defaults_and_focus_fields(browser_sta
             "value": initial_defaults[default_name],
             "focused": True,
         }
+
+
+def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    browser.navigate(f"{base_url}/settings/reset-remove")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector('[data-nav-key=settings][aria-current=page]')"
+    )
+
+    accessibility = browser.evaluate(
+        "(() => ({"
+        "menuControls:document.querySelector('[data-settings-menu]').getAttribute('aria-controls'),"
+        "menuExpanded:document.querySelector('[data-settings-menu]').getAttribute('aria-expanded'),"
+        "clearLive:document.getElementById('clearDBStatus').getAttribute('aria-live'),"
+        "resetLive:document.getElementById('resetStatus').getAttribute('aria-live'),"
+        "removeLabel:document.querySelector('label[for=removeDlmsConfirmation]')?.textContent.trim(),"
+        "clearType:document.getElementById('clearDBBtn').type,"
+        "removeType:document.getElementById('removeAllDlmsDataBtn').type,"
+        "removeDisabled:document.getElementById('removeAllDlmsDataBtn').disabled"
+        "}))()"
+    )
+    assert accessibility == {
+        "menuControls": "dashboardSidebar",
+        "menuExpanded": "false",
+        "clearLive": "polite",
+        "resetLive": "polite",
+        "removeLabel": "Type REMOVE DLMS DATA to enable permanent removal",
+        "clearType": "button",
+        "removeType": "button",
+        "removeDisabled": True,
+    }
+
+    phrase_states = browser.evaluate(
+        "(() => { const input=document.getElementById('removeDlmsConfirmation');"
+        "const button=document.getElementById('removeAllDlmsDataBtn'); const states=[];"
+        "for (const value of ['remove dlms data','REMOVE DLMS DATA',' REMOVE DLMS DATA ']) {"
+        "input.value=value; input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "states.push(button.disabled); } return states; })()"
+    )
+    assert phrase_states == [True, False, False]
+
+    assert browser.evaluate(
+        "(() => { window.__resetCalls=[]; window.__resetConfirms=[];"
+        "window.confirm=message=>{window.__resetConfirms.push(message);return true};"
+        "window.fetch=(input,init={})=>{window.__resetCalls.push({url:String(input),method:init.method});"
+        "return new Promise(resolve=>{window.__resolveResetFetch=resolve})}; return true; })()"
+    ) is True
+    browser.click("#clearDBBtn")
+    browser.wait_for(
+        "document.getElementById('clearDBBtn').disabled && "
+        "document.getElementById('clearDBStatus').textContent === 'Clearing saved history...'"
+    )
+    browser.evaluate(
+        "window.__resolveResetFetch(new Response(JSON.stringify({status:'ok'}),"
+        "{status:200,headers:{'Content-Type':'application/json'}})); true"
+    )
+    browser.wait_for(
+        "!document.getElementById('clearDBBtn').disabled && "
+        "document.getElementById('clearDBStatus').textContent.includes('history cleared')"
+    )
+    clear_contract = browser.evaluate(
+        "({calls:window.__resetCalls,confirms:window.__resetConfirms,"
+        "status:document.getElementById('clearDBStatus').textContent})"
+    )
+    assert clear_contract == {
+        "calls": [{"url": "/api/clear_db_history", "method": "POST"}],
+        "confirms": [
+            "Clear all saved quiz attempts and missed-question history?\n\n"
+            "Your quizzes will remain available.\n\n"
+            "Create a backup first if you may need this history later."
+        ],
+        "status": "✅ Saved attempt and missed-question history cleared.",
+    }
+
+    assert browser.evaluate(
+        "(() => { sessionStorage.removeItem('dlms-reset-alert'); window.__resetCalls=[];"
+        "window.confirm=()=>true;"
+        "window.alert=message=>sessionStorage.setItem('dlms-reset-alert',message);"
+        "window.fetch=(input,init={})=>{window.__resetCalls.push({url:String(input),method:init.method});"
+        "return new Promise(resolve=>{window.__resolveResetFetch=resolve})}; return true; })()"
+    ) is True
+    browser.click(".resetAction[data-endpoint='/api/reset_quiz_library']")
+    browser.wait_for(
+        "Array.from(document.querySelectorAll('.resetAction')).every(button=>button.disabled) && "
+        "document.getElementById('resetStatus').textContent === "
+        "'Creating safety backup and resetting Quiz Library & Results...'"
+    )
+    browser.evaluate(
+        "window.__resolveResetFetch(new Response(JSON.stringify({status:'ok',backup:'browser-safety.zip'}),"
+        "{status:200,headers:{'Content-Type':'application/json'}})); true"
+    )
+    browser.wait_for(
+        "document.readyState === 'complete' && "
+        "sessionStorage.getItem('dlms-reset-alert') !== null && "
+        "typeof window.__resolveResetFetch === 'undefined'"
+    )
+    assert browser.evaluate("sessionStorage.getItem('dlms-reset-alert')") == (
+        "Quiz Library & Results reset completed.\n\n"
+        "Safety backup: browser-safety.zip"
+    )
+    assert browser.evaluate("location.pathname") == "/settings/reset-remove"
+
+    browser.wait_for("window.dlmsCsrfToken && document.getElementById('resetStatus')")
+    protected_fetch_setup = (
+        "(() => { const protectedFetch=window.fetch.bind(window); window.__resetCalls=[];"
+        "window.__resetConfirms=[]; window.confirm=message=>{window.__resetConfirms.push(message);return true};"
+        "window.fetch=(input,init={})=>{const headers=Object.fromEntries(new Headers(init.headers||{}));"
+        "window.__resetCalls.push({url:String(input),method:init.method||'GET',headers,body:init.body||null});"
+        "return protectedFetch(input,init)}; return true; })()"
+    )
+    marker = browser_stack.data_root / ".dlms-data-root"
+    disabled_marker = browser_stack.data_root / ".dlms-data-root.browser-disabled"
+    backup_count = len(list((browser_stack.data_root / "backups").glob("*.zip")))
+    marker.rename(disabled_marker)
+    try:
+        assert browser.evaluate(protected_fetch_setup) is True
+        browser.click(".resetAction[data-endpoint='/api/reset_all_data']")
+        browser.wait_for(
+            "document.getElementById('resetStatus').textContent.startsWith('❌ Reset failed:') && "
+            "Array.from(document.querySelectorAll('.resetAction')).every(button=>!button.disabled)"
+        )
+        reset_failure = browser.evaluate(
+            "({calls:window.__resetCalls,confirms:window.__resetConfirms,"
+            "status:document.getElementById('resetStatus').textContent})"
+        )
+        assert reset_failure["calls"] == [
+            {"url": "/api/reset_all_data", "method": "POST", "headers": {}, "body": None}
+        ]
+        assert reset_failure["confirms"] == [
+            "⚠ DLMS to Fresh State ⚠\n\n"
+            "DLMS will create a safety backup first, then perform this reset.\n\n"
+            "Continue?"
+        ]
+        assert "not verified" in reset_failure["status"]
+        assert len(list((browser_stack.data_root / "backups").glob("*.zip"))) == backup_count
+
+        cancel_result = browser.evaluate(
+            "(() => { const input=document.getElementById('removeDlmsConfirmation');"
+            "input.value='REMOVE DLMS DATA';input.dispatchEvent(new Event('input',{bubbles:true}));"
+            "window.__resetCalls=[];window.__resetConfirms=[];"
+            "window.confirm=message=>{window.__resetConfirms.push(message);return false};"
+            "document.getElementById('removeAllDlmsDataBtn').click();"
+            "return {calls:window.__resetCalls,confirms:window.__resetConfirms,"
+            "disabled:document.getElementById('removeAllDlmsDataBtn').disabled}; })()"
+        )
+        removal_confirmation = (
+            "☠ PERMANENT DLMS DATA REMOVAL ☠\n\n"
+            "This will delete the entire DLMS application-data directory INCLUDING ALL BACKUPS, then shut DLMS down.\n\n"
+            "The executable/source installation will remain.\n\n"
+            "This cannot be undone unless you copied a backup somewhere outside DLMS.\n\n"
+            "Continue?"
+        )
+        assert cancel_result == {
+            "calls": [],
+            "confirms": [removal_confirmation],
+            "disabled": False,
+        }
+
+        assert browser.evaluate(
+            "(() => {window.__resetCalls=[];window.__resetConfirms=[];"
+            "window.confirm=message=>{window.__resetConfirms.push(message);return true};return true})()"
+        ) is True
+        browser.click("#removeAllDlmsDataBtn")
+        browser.wait_for(
+            "document.getElementById('resetStatus').textContent.startsWith('❌ Permanent removal failed:') && "
+            "!document.getElementById('removeAllDlmsDataBtn').disabled && "
+            "!document.getElementById('removeDlmsConfirmation').disabled"
+        )
+        removal_failure = browser.evaluate(
+            "({calls:window.__resetCalls,confirms:window.__resetConfirms,"
+            "status:document.getElementById('resetStatus').textContent})"
+        )
+        assert removal_failure["calls"] == [{
+            "url": "/api/remove_all_dlms_data",
+            "method": "POST",
+            "headers": {"content-type": "application/json"},
+            "body": '{"confirmation":"REMOVE DLMS DATA"}',
+        }]
+        assert removal_failure["confirms"] == [removal_confirmation]
+        assert "not verified" in removal_failure["status"]
+        assert browser_stack.data_root.is_dir()
+        assert disabled_marker.is_file()
+    finally:
+        if disabled_marker.exists():
+            disabled_marker.rename(marker)

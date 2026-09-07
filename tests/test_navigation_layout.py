@@ -79,6 +79,11 @@ class NavigationLayoutTests(unittest.TestCase):
             ),
             ("/settings/backup", "settings/backup.html", ("recent_backups",)),
             ("/settings/parsing", "settings/parsing.html", ("cfg",)),
+            (
+                "/settings/reset-remove",
+                "settings/reset-remove.html",
+                ("app_data_dir",),
+            ),
         )
         for route, template_name, context_names in cases:
             with self.subTest(route=route), mock.patch.object(
