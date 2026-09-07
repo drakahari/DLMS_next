@@ -196,9 +196,14 @@ class CoreHelpBlueprintTests(unittest.TestCase):
         }
         self.assertTrue(self.OLD_ENDPOINTS.isdisjoint(app_route_functions))
 
+        route_trees = [app_tree] + [
+            ast.parse(path.read_text(encoding="utf-8"))
+            for path in (ROOT / "dlms" / "routes").rglob("*.py")
+        ]
         endpoint_strings = [
             node.value
-            for node in ast.walk(app_tree)
+            for tree in route_trees
+            for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
         ]
         self.assertNotIn("content_pack_asset", endpoint_strings)

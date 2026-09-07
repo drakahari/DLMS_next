@@ -11,6 +11,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import content_packs as content_pack_routes
 
 
 class ContentPackCatalogTemplateTests(unittest.TestCase):
@@ -108,7 +109,9 @@ class ContentPackCatalogTemplateTests(unittest.TestCase):
         ), mock.patch.object(
             dlms, "discover_content_packs", return_value={}
         ), mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            content_pack_routes,
+            "render_template",
+            wraps=content_pack_routes.render_template,
         ) as render_template:
             catalog = self.client.get("/content-packs")
 
@@ -129,7 +132,9 @@ class ContentPackCatalogTemplateTests(unittest.TestCase):
         ), mock.patch.object(
             dlms, "discover_content_packs", return_value={}
         ), mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            content_pack_routes,
+            "render_template",
+            wraps=content_pack_routes.render_template,
         ) as render_template:
             detail = self.client.get("/content-packs/details/DLMS_Study_sample")
 

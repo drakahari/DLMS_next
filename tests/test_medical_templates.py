@@ -11,6 +11,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import medical as medical_routes
 
 
 class MedicalTemplateTests(unittest.TestCase):
@@ -60,7 +61,7 @@ class MedicalTemplateTests(unittest.TestCase):
 
     def _get(self, path, pack, matching=None, images=None):
         with mock.patch.object(
-            dlms,
+            medical_routes,
             "_medical_pack_page_data",
             return_value=(pack, matching or [], images or []),
         ):
@@ -112,11 +113,11 @@ class MedicalTemplateTests(unittest.TestCase):
 
         for path, template, context in cases:
             with self.subTest(path=path), mock.patch.object(
-                dlms,
+                medical_routes,
                 "_medical_pack_page_data",
                 return_value=(pack, matching, images),
             ), mock.patch.object(
-                dlms, "render_template", wraps=dlms.render_template
+                medical_routes, "render_template", wraps=medical_routes.render_template
             ) as render_template:
                 response = self.client.get(path)
 
@@ -125,11 +126,11 @@ class MedicalTemplateTests(unittest.TestCase):
             self.assertTrue((Path(dlms.TEMPLATE_ROOT) / template).is_file())
 
         with mock.patch.object(
-            dlms, "_medical_pack_page_data", return_value=(None, [], [])
+            medical_routes, "_medical_pack_page_data", return_value=(None, [], [])
         ), mock.patch.object(
             dlms, "discover_content_packs", return_value={}
         ), mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            medical_routes, "render_template", wraps=medical_routes.render_template
         ) as render_template:
             response = self.client.get("/medical")
 
@@ -150,7 +151,7 @@ class MedicalTemplateTests(unittest.TestCase):
     def test_no_pack_state_is_shared_by_all_three_routes_and_escapes_path(self):
         pack_folder = '/packs/<img id="pathInjected"> & medical'
         with mock.patch.object(
-            dlms, "_medical_pack_page_data", return_value=(None, [], [])
+            medical_routes, "_medical_pack_page_data", return_value=(None, [], [])
         ), mock.patch.object(
             dlms, "discover_content_packs", return_value={}
         ), mock.patch.object(dlms, "CONTENT_PACK_FOLDER", pack_folder):

@@ -53,11 +53,24 @@ from dlms.services import law as _law_service
 from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
 from dlms.routes.it import ITStudyDependencies, create_it_blueprint
+from dlms.routes.admin_images import (
+    AdminImageRouteDependencies,
+    create_admin_images_blueprint,
+)
+from dlms.routes.content_packs import (
+    ContentPackRouteDependencies,
+    create_content_packs_blueprint,
+)
+from dlms.routes.medical import MedicalRouteDependencies, create_medical_blueprint
 from dlms.routes.quiz import (
     QuizAuthoringDependencies,
     QuizEditorDependencies,
     QuizLibraryDependencies,
     create_quiz_blueprint,
+)
+from dlms.routes.study_packs import (
+    StudyPackRouteDependencies,
+    create_study_packs_blueprint,
 )
 
 # =========================
@@ -2481,32 +2494,6 @@ def admin_maintenance():
 # =========================
 # HOTSPOT CALIBRATION EDITOR
 # =========================
-def _hotspot_editor_catalog():
-    catalog = []
-    for pack_id, pack in discover_content_packs().items():
-        for kind, key in (("hotspot", "image_datasets"), ("quiz", "quiz_datasets")):
-            for descriptor in (pack.get(key) or []):
-                dataset_id = str(descriptor.get("id") or "").strip()
-                if not dataset_id:
-                    continue
-                try:
-                    data = load_content_pack_image_dataset(pack_id, dataset_id) if kind == "hotspot" else load_content_pack_quiz_dataset(pack_id, dataset_id)
-                except Exception as exc:
-                    print(f"[IMAGE EDITOR] Unable to load {pack_id}/{kind}/{dataset_id}: {exc}")
-                    continue
-                images = data.get("images") or []
-                if not images:
-                    continue
-                catalog.append({
-                    "pack_id": pack_id,
-                    "pack_name": pack.get("name") or pack_id,
-                    "dataset_id": dataset_id,
-                    "dataset_kind": kind,
-                    "title": descriptor.get("title") or data.get("title") or dataset_id,
-                    "images": len(images),
-                    "hotspots": sum(len(im.get("hotspots") or []) for im in images if isinstance(im, dict)),
-                })
-    return catalog
 
 
 def _validate_hotspot_shape(shape):
@@ -2534,150 +2521,10 @@ def _validate_hotspot_shape(shape):
     raise ValueError("Shape type must be circle or polygon")
 
 
-@app.route("/admin/image-editor")
-@app.route("/admin/hotspots")
-def admin_hotspot_editor():
-    catalog = _hotspot_editor_catalog()
-    selected_pack = request.args.get("pack", "").strip()
-    selected_dataset = request.args.get("dataset", "").strip()
-    selected_kind = request.args.get("kind", "").strip().lower()
-    if selected_kind not in {"hotspot", "quiz"}:
-        selected_kind = ""
-    if (not selected_pack or not selected_dataset) and catalog:
-        selected_pack = catalog[0]["pack_id"]
-        selected_dataset = catalog[0]["dataset_id"]
-        selected_kind = catalog[0]["dataset_kind"]
-    if not selected_kind and selected_pack and selected_dataset:
-        match = next((c for c in catalog if c["pack_id"] == selected_pack and c["dataset_id"] == selected_dataset), None)
-        selected_kind = (match or {}).get("dataset_kind") or "hotspot"
-
-    editor_data = None
-    load_error = None
-    if selected_pack and selected_dataset:
-        try:
-            data = load_content_pack_quiz_dataset(selected_pack, selected_dataset) if selected_kind == "quiz" else load_content_pack_image_dataset(selected_pack, selected_dataset)
-            images = []
-            for image in data.get("images") or []:
-                images.append({
-                    "id": image.get("id") or image.get("file"),
-                    "file": image.get("file") or "",
-                    "url": url_for("core.content_pack_asset", pack_id=selected_pack, asset_path=image.get("file")),
-                    "alt_text": image.get("alt_text") or data.get("title") or "Study image",
-                    "hotspots": image.get("hotspots") or [],
-                    "edits": image.get("edits") or [],
-                })
-            editor_data = {
-                "pack_id": selected_pack, "dataset_id": selected_dataset,
-                "dataset_kind": selected_kind, "title": data.get("title") or selected_dataset,
-                "images": images,
-            }
-        except Exception as exc:
-            print(f"[IMAGE EDITOR LOAD ERROR] {type(exc).__name__}: {exc}")
-            load_error = "The selected image dataset could not be loaded. Check the local DLMS log for details."
-    return render_template(
-        "admin/image-editor.html",
-        catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset,
-        selected_kind=selected_kind, editor_data=editor_data, load_error=load_error,
-        medical_pack_installed=True,
-    )
 
 
-@app.route("/admin/image-editor/hotspot/save", methods=["POST"])
-@app.route("/admin/hotspots/save", methods=["POST"])
-def admin_hotspot_save():
-    payload=request.get_json(force=True) or {}
-    pack_id=str(payload.get("pack_id") or "").strip().lower()
-    dataset_id=str(payload.get("dataset_id") or "").strip()
-    image_id=str(payload.get("image_id") or "").strip()
-    hotspot_id=str(payload.get("hotspot_id") or "").strip()
-    try:
-        shape=_validate_hotspot_shape(payload.get("shape"))
-        pack=get_content_pack(pack_id)
-        if not pack: raise FileNotFoundError("Content pack is not installed")
-        dataset_kind=str(payload.get("dataset_kind") or "hotspot").strip().lower()
-        descriptor_key="quiz_datasets" if dataset_kind=="quiz" else "image_datasets"
-        descriptor=next((d for d in (pack.get(descriptor_key) or []) if isinstance(d,dict) and str(d.get("id") or "").strip()==dataset_id),None)
-        if not descriptor: raise KeyError("Image-capable dataset is not declared by this pack")
-        dataset_path=_safe_pack_child(pack["_root"],str(descriptor.get("path") or "").strip())
-        with open(dataset_path,"r",encoding="utf-8") as f: data=json.load(f)
-        target_image=next((im for im in (data.get("images") or []) if str(im.get("id") or im.get("file") or "")==image_id),None)
-        if not target_image: raise KeyError("Image record not found")
-        target_hotspot=next((h for h in (target_image.get("hotspots") or []) if str(h.get("id") or "")==hotspot_id),None)
-        if not target_hotspot: raise KeyError("Hotspot record not found")
-        backup_path=dataset_path+".pre_editor.bak"
-        backup_created=False
-        if not os.path.exists(backup_path): shutil.copy2(dataset_path,backup_path); backup_created=True
-        target_hotspot["shape"]=shape
-        target_hotspot["calibration"]={"tool":"DLMS Image Study Editor","updated_at":datetime.now().isoformat(timespec="seconds")}
-        tmp_path=dataset_path+".tmp"
-        with open(tmp_path,"w",encoding="utf-8") as f:
-            json.dump(data,f,indent=2,ensure_ascii=False); f.write("\n")
-        os.replace(tmp_path,dataset_path)
-        return jsonify({"ok":True,"shape":shape,"backup_created":backup_created})
-    except Exception as exc:
-        print(f"[IMAGE EDITOR HOTSPOT SAVE ERROR] {type(exc).__name__}: {exc}")
-        return jsonify({"error": "The hotspot could not be saved. Verify the selected dataset and geometry."}), 400
 
 
-@app.route("/admin/image-editor/edits/save", methods=["POST"])
-def admin_image_edits_save():
-    """Persist non-destructive study-image masks and text labels in the image dataset JSON."""
-    payload = request.get_json(force=True) or {}
-    pack_id = str(payload.get("pack_id") or "").strip().lower()
-    dataset_id = str(payload.get("dataset_id") or "").strip()
-    image_id = str(payload.get("image_id") or "").strip()
-    edits = payload.get("edits") or []
-    try:
-        if not isinstance(edits, list) or len(edits) > 200:
-            raise ValueError("Image edits must be a list of at most 200 items")
-        cleaned = []
-        for raw in edits:
-            if not isinstance(raw, dict):
-                continue
-            kind = str(raw.get("type") or "").strip().lower()
-            if kind == "mask":
-                x=float(raw.get("x")); y=float(raw.get("y")); w=float(raw.get("w")); h=float(raw.get("h"))
-                style=str(raw.get("style") or "blur").strip().lower()
-                if style not in {"blur","white","black"}: style="blur"
-                if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1 and x+w <= 1.001 and y+h <= 1.001):
-                    raise ValueError("Mask rectangle must use normalized coordinates inside the image")
-                cleaned.append({"type":"mask","x":round(x,6),"y":round(y,6),"w":round(w,6),"h":round(h,6),"style":style})
-            elif kind == "text":
-                x=float(raw.get("x")); y=float(raw.get("y")); text=str(raw.get("text") or "").strip()
-                size=int(raw.get("size") or 18)
-                tone=str(raw.get("tone") or "light").strip().lower()
-                if tone not in {"light","dark"}: tone="light"
-                if not text: raise ValueError("Text label cannot be empty")
-                if len(text) > 180: raise ValueError("Text label is too long")
-                if not (0 <= x <= 1 and 0 <= y <= 1): raise ValueError("Text position must be normalized")
-                size=max(10,min(size,48))
-                cleaned.append({"type":"text","x":round(x,6),"y":round(y,6),"text":text,"size":size,"tone":tone})
-            else:
-                raise ValueError("Unsupported image edit type")
-
-        pack=get_content_pack(pack_id)
-        if not pack: raise FileNotFoundError("Content pack is not installed")
-        dataset_kind=str(payload.get("dataset_kind") or "hotspot").strip().lower()
-        descriptor_key="quiz_datasets" if dataset_kind=="quiz" else "image_datasets"
-        descriptor=next((d for d in (pack.get(descriptor_key) or []) if isinstance(d,dict) and str(d.get("id") or "").strip()==dataset_id),None)
-        if not descriptor: raise KeyError("Image-capable dataset is not declared by this pack")
-        dataset_path=_safe_pack_child(pack["_root"],str(descriptor.get("path") or "").strip())
-        with open(dataset_path,"r",encoding="utf-8") as f: data=json.load(f)
-        target_image=next((im for im in (data.get("images") or []) if isinstance(im,dict) and str(im.get("id") or im.get("file") or "")==image_id),None)
-        if not target_image: raise KeyError("Image record not found")
-        backup_path=dataset_path+".pre_editor.bak"
-        backup_created=False
-        if not os.path.exists(backup_path): shutil.copy2(dataset_path,backup_path); backup_created=True
-        target_image["edits"] = cleaned
-        target_image["edit_metadata"] = {"tool":"DLMS Image Study Editor","updated_at":datetime.now().isoformat(timespec="seconds"),"non_destructive":True}
-        tmp_path=dataset_path+".tmp"
-        with open(tmp_path,"w",encoding="utf-8") as f:
-            json.dump(data,f,indent=2,ensure_ascii=False); f.write("\n")
-        os.replace(tmp_path,dataset_path)
-        return jsonify({"ok":True,"edits":cleaned,"backup_created":backup_created})
-    except Exception as exc:
-        print(f"[IMAGE EDITOR PREP SAVE ERROR] {type(exc).__name__}: {exc}")
-        return jsonify({"error": "The image preparation changes could not be saved. Verify the submitted edits."}), 400
 
 
 
@@ -3092,7 +2939,7 @@ def _content_pack_workflow(metadata):
 
 def _content_pack_workflow_return_url(metadata):
     if _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW:
-        return url_for("study_pack_ai_builder")
+        return url_for("study_packs.study_pack_ai_builder")
     return "/content-packs"
 
 
@@ -3139,139 +2986,16 @@ def _cancel_staged_content_pack(token):
         remove_content_pack_stage=_remove_content_pack_stage,
     )
 
-@app.route("/content-packs/import", methods=["POST"])
-def content_pack_import():
-    upload = request.files.get("pack_zip")
-    if not upload or not upload.filename:
-        flash("Choose a DLMS Study Pack ZIP to validate.", "error")
-        return redirect("/content-packs")
-    if not str(upload.filename).lower().endswith(".zip"):
-        flash("Content Packs must be uploaded as ZIP files.", "error")
-        return redirect("/content-packs")
-    if request.content_length and request.content_length > CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES:
-        flash("Study Pack ZIP is too large. Maximum upload size is 256 MB.", "error")
-        return redirect("/content-packs")
-    try:
-        token = _stage_content_pack_upload(upload)
-        return redirect(url_for("content_pack_import_review", token=token))
-    except Exception as exc:
-        print(f"[CONTENT PACK IMPORT ERROR] {type(exc).__name__}: {exc}")
-        flash("Study Pack ZIP could not be validated. Check the local DLMS log for details.", "error")
-        return redirect("/content-packs")
 
 
-@app.route("/study-packs/ai-builder/import", methods=["POST"])
-def study_pack_ai_builder_import():
-    """Return a completed AI-generated ZIP to the standard import pipeline."""
-    try:
-        token = _stage_content_pack_upload(
-            request.files.get("pack_zip"), workflow=CONTENT_PACK_AI_WORKFLOW
-        )
-        return redirect(url_for("content_pack_import_review", token=token))
-    except Exception as exc:
-        print(f"[AI STUDY PACK IMPORT ERROR] {type(exc).__name__}: {exc}")
-        flash("Study Pack ZIP could not be validated. Check the local DLMS log for details.", "error")
-        return redirect(url_for("study_pack_ai_builder"))
 
 
-@app.route("/content-packs/import/<token>")
-def content_pack_import_review(token):
-    try:
-        stage_dir, pack_root, metadata = _load_staged_content_pack(token)
-        # Revalidate on every review instead of trusting the saved report.
-        report = _validate_staged_content_pack(
-            pack_root,
-            require_single_select=(
-                _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW
-            ),
-        )
-        report["warnings"].extend(metadata.get("answer_position_corrections") or [])
-        metadata["report"] = report
-    except Exception as exc:
-        print(f"[CONTENT PACK REVIEW ERROR] {type(exc).__name__}: {exc}")
-        flash("The Study Pack validation session is unavailable or expired.", "error")
-        return redirect("/content-packs")
-
-    ai_workflow = _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW
-    return_url = _content_pack_workflow_return_url(metadata)
-    return_label = "AI Study Pack Builder" if ai_workflow else "Content Packs"
-
-    return render_template(
-        "content_packs/import-review.html",
-        token=token,
-        metadata=metadata,
-        report=report,
-        ai_workflow=ai_workflow,
-        return_url=return_url,
-        return_label=return_label,
-        medical_pack_installed=True,
-    )
 
 
-@app.route("/content-packs/import/<token>/install", methods=["POST"])
-def content_pack_import_install(token):
-    if request.form.get("confirm_install") != "yes":
-        flash("Study Pack installation was not confirmed.", "error")
-        return redirect(url_for("content_pack_import_review", token=token))
-
-    metadata = {}
-    try:
-        result = _install_staged_content_pack(token)
-        metadata = result["metadata"]
-        if result["status"] == "invalid":
-            flash("Study Pack is no longer valid; installation was blocked.", "error")
-            return redirect(url_for("content_pack_import_review", token=token))
-        pack_id = result["pack_id"]
-        installed = result["installed"]
-        flash(f"Installed Study Pack '{installed.get('name') or pack_id}' successfully.", "success")
-        if _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW:
-            return redirect(url_for("study_packs_home", installed=pack_id))
-        return redirect("/content-packs")
-    except Exception as install_error:
-        if isinstance(
-            install_error, _content_pack_mutation_service.ContentPackInstallError
-        ):
-            exc = install_error.original
-            metadata = install_error.metadata
-        else:
-            exc = install_error
-        print(f"[CONTENT PACK INSTALL ERROR] {type(exc).__name__}: {exc}")
-        flash("The Study Pack was not installed. Existing installed content was left unchanged.", "error")
-        try:
-            _load_staged_content_pack(token)
-            return redirect(url_for("content_pack_import_review", token=token))
-        except Exception:
-            return redirect(_content_pack_workflow_return_url(metadata))
 
 
-@app.route("/content-packs/import/<token>/cancel", methods=["POST"])
-def content_pack_import_cancel(token):
-    metadata = _cancel_staged_content_pack(token)
-    flash("Study Pack import cancelled; staging files were removed.", "success")
-    return redirect(_content_pack_workflow_return_url(metadata))
 
 
-@app.route("/content-packs/details/<folder>")
-def content_pack_details(folder):
-    try:
-        report = _content_pack_folder_report(folder)
-    except Exception as exc:
-        print(f"[CONTENT PACK DETAILS ERROR] {type(exc).__name__}: {exc}")
-        flash("Content Pack details are unavailable. Check the local DLMS log for details.", "error")
-        return redirect("/content-packs")
-    manifest = report.get("manifest") or {}
-    matching = len(manifest.get("datasets") or []) if isinstance(manifest.get("datasets") or [], list) else 0
-    image = len(manifest.get("image_datasets") or []) if isinstance(manifest.get("image_datasets") or [], list) else 0
-    mixed = len(manifest.get("quiz_datasets") or []) if isinstance(manifest.get("quiz_datasets") or [], list) else 0
-    return render_template(
-        "content_packs/detail.html",
-        report=report,
-        manifest=manifest,
-        matching=matching,
-        image=image,
-        mixed=mixed,
-        medical_pack_installed=True,
-    )
 
 
 def _build_content_pack_export(folder):
@@ -3280,30 +3004,8 @@ def _build_content_pack_export(folder):
     )
 
 
-@app.route("/content-packs/export/<folder>")
-def export_content_pack(folder):
-    try:
-        archive_bytes, safe_name = _build_content_pack_export(folder)
-        return Response(
-            archive_bytes,
-            mimetype="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'}
-        )
-    except Exception as exc:
-        print(f"[CONTENT PACK EXPORT ERROR] {type(exc).__name__}: {exc}")
-        flash("Study Pack export failed. Check the local DLMS log for details.", "error")
-        return redirect("/content-packs")
 
 
-@app.route("/content-packs")
-def content_packs_page():
-    packs = content_pack_management_summary()
-    return render_template(
-        "content_packs/index.html",
-        packs=packs,
-        pack_folder=CONTENT_PACK_FOLDER,
-        medical_pack_installed=True,
-    )
 
 
 def _delete_content_pack_folder(folder):
@@ -3316,35 +3018,6 @@ def _delete_content_pack_folder(folder):
     )
 
 
-@app.route("/content-packs/delete", methods=["POST"])
-def delete_content_pack():
-    confirmed = request.form.get("confirm_delete") == "yes"
-    if not confirmed:
-        flash("Study Pack deletion was not confirmed.", "error")
-        return redirect("/content-packs")
-    folder = str(request.form.get("folder") or "").strip()
-    try:
-        result = _delete_content_pack_folder(folder)
-        migration = result["migration"]
-        message = f"Deleted Study Pack folder '{folder}'. Existing quizzes and history were kept."
-        if migration["references"]:
-            message += f" Preserved {migration['references']} legacy image reference(s) in quiz-owned storage."
-        flash(message, "success")
-    except _content_pack_mutation_service.InvalidContentPackFolderError:
-        flash("Invalid Content Pack folder.", "error")
-    except _content_pack_mutation_service.ContentPackFolderNotFoundError:
-        flash("Content Pack folder was not found.", "error")
-    except _content_pack_mutation_service.ProtectedContentPackError:
-        flash("This Content Pack declares itself protected and cannot be deleted here.", "error")
-    except Exception as exc:
-        print(f"[CONTENT PACK DELETE ERROR] {type(exc).__name__}: {exc}")
-        flash(
-            "The Study Pack could not be deleted. Any completed legacy-asset "
-            "preservation remains safe and can be reused when deletion is retried.",
-            "error",
-        )
-
-    return redirect("/content-packs")
 
 
 # =========================
@@ -3355,354 +3028,24 @@ def _is_medical_content_pack(pack_id, pack):
     return _is_medical_pack_manifest(pack_id, pack)
 
 
-def _medical_pack_page_data():
-    """Aggregate validated datasets from every installed medical-domain Study Pack."""
-    packs = discover_content_packs()
-    medical_packs = [
-        (pack_id, candidate)
-        for pack_id, candidate in packs.items()
-        if _is_medical_content_pack(pack_id, candidate)
-    ]
-    if not medical_packs:
-        return None, [], []
-
-    # Keep the historical base pack first when installed, but never require it.
-    medical_packs.sort(key=lambda item: (item[0] != "medical", str(item[1].get("name") or item[0]).casefold()))
-
-    if len(medical_packs) == 1:
-        pack = dict(medical_packs[0][1])
-    else:
-        pack = {
-            "id": "medical_collection",
-            "name": "DLMS Medical Study",
-            "version": f"{len(medical_packs)} installed packs",
-            "description": "Aggregated medical study content from installed Medical-domain Study Packs.",
-        }
-
-    datasets = []
-    image_datasets = []
-
-    for pack_id, source_pack in medical_packs:
-        for descriptor in source_pack.get("datasets", []):
-            if not isinstance(descriptor, dict):
-                print(f"[MEDICAL PACK] Skipping invalid dataset descriptor in {pack_id!r}: {descriptor!r}")
-                continue
-            dataset_id = str(descriptor.get("id") or "").strip()
-            try:
-                data = load_content_pack_dataset(pack_id, dataset_id)
-                datasets.append({
-                    "pack_id": pack_id,
-                    "pack_name": source_pack.get("name") or pack_id,
-                    "id": dataset_id,
-                    "title": descriptor.get("title") or data.get("title") or dataset_id,
-                    "description": descriptor.get("description") or data.get("description") or "",
-                    "type": descriptor.get("type") or data.get("type") or "matching",
-                    "term_count": len(data.get("terms") or []),
-                    "category": data.get("category") or "",
-                })
-            except Exception as exc:
-                print(f"[MEDICAL PACK] Dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
-
-        for descriptor in source_pack.get("image_datasets", []):
-            if not isinstance(descriptor, dict):
-                print(f"[MEDICAL PACK] Skipping invalid image dataset descriptor in {pack_id!r}: {descriptor!r}")
-                continue
-            dataset_id = str(descriptor.get("id") or "").strip()
-            try:
-                data = load_content_pack_image_dataset(pack_id, dataset_id)
-                image_count = len(data.get("images") or [])
-                hotspot_count = sum(len(img.get("hotspots") or []) for img in (data.get("images") or []))
-                image_datasets.append({
-                    "pack_id": pack_id,
-                    "pack_name": source_pack.get("name") or pack_id,
-                    "id": dataset_id,
-                    "title": descriptor.get("title") or data.get("title") or dataset_id,
-                    "description": descriptor.get("description") or data.get("description") or "",
-                    "image_count": image_count,
-                    "hotspot_count": hotspot_count,
-                    "category": data.get("category") or "Anatomy",
-                })
-            except Exception as exc:
-                print(f"[MEDICAL PACK] Image dataset {pack_id}/{dataset_id!r} unavailable: {exc}")
-
-    return pack, datasets, image_datasets
-
-
-def _medical_not_installed():
-    """Render Medical Study as an available feature even when no content is installed."""
-    empty_pack = {
-        "name": "Medical Study",
-        "version": "No packs installed",
-    }
-    return render_template(
-        "medical/empty.html",
-        pack=empty_pack,
-        pack_folder=CONTENT_PACK_FOLDER,
-        medical_section="home",
-    )
 
 
 
 
-@app.route("/medical")
-def medical_study_home():
-    pack, datasets, image_datasets = _medical_pack_page_data()
-    if not pack:
-        return _medical_not_installed()
-
-    total_terms = sum(d["term_count"] for d in datasets)
-    total_images = sum(d["image_count"] for d in image_datasets)
-    total_hotspots = sum(d["hotspot_count"] for d in image_datasets)
-
-    return render_template(
-        "medical/index.html",
-        pack=pack,
-        datasets=datasets,
-        image_datasets=image_datasets,
-        total_terms=total_terms,
-        total_images=total_images,
-        total_hotspots=total_hotspots,
-        medical_section="home",
-    )
 
 
 
-@app.route("/medical/ai-builder", methods=["GET", "POST"])
-def medical_ai_content_builder():
-    """Compatibility entry point: use the unified Study Pack AI Builder."""
-    query = {"domain": "Medical", "from": "medical"}
-    topic = str(request.values.get("topic") or "").strip()
-    if topic:
-        query["topic"] = topic
-    return redirect(url_for("study_pack_ai_builder", **query))
-
-
-@app.route("/medical/matching")
-def medical_matching():
-    pack, datasets, image_datasets = _medical_pack_page_data()
-    if not pack:
-        return _medical_not_installed()
-
-    total_terms = sum(d["term_count"] for d in datasets)
-
-    return render_template(
-        "medical/matching.html",
-        pack=pack,
-        datasets=datasets,
-        total_terms=total_terms,
-        medical_section="matching",
-    )
-
-
-@app.route("/medical/anatomy")
-def medical_anatomy():
-    pack, datasets, image_datasets = _medical_pack_page_data()
-    if not pack:
-        return _medical_not_installed()
-
-    total_images = sum(d["image_count"] for d in image_datasets)
-    total_hotspots = sum(d["hotspot_count"] for d in image_datasets)
-    image_framework = pack.get("image_framework") or {}
-
-    return render_template(
-        "medical/anatomy.html",
-        pack=pack,
-        image_datasets=image_datasets,
-        total_images=total_images,
-        total_hotspots=total_hotspots,
-        image_framework=image_framework,
-        medical_section="anatomy",
-    )
 
 
 
-@app.route("/medical/anatomy/generate", methods=["POST"])
-def medical_generate_anatomy_quiz():
-    pack_id = request.form.get("pack_id", "medical").strip().lower() or "medical"
-    pack = get_content_pack(pack_id)
-    if not pack or not _is_medical_content_pack(pack_id, pack):
-        flash("Requested Medical Study content pack is not installed.", "error")
-        return redirect("/content-packs")
-
-    dataset_id = request.form.get("dataset_id", "").strip()
-    try:
-        data = load_content_pack_image_dataset(pack_id, dataset_id)
-    except Exception as exc:
-        print(f"[MEDICAL ANATOMY LOAD ERROR] {type(exc).__name__}: {exc}")
-        flash("Unable to load the selected anatomy dataset.", "error")
-        return redirect("/medical/anatomy")
-
-    runtime_questions = []
-    db_questions = []
-    qnum = 1
-
-    for image in data.get("images", []):
-        image_url = url_for(
-            "core.content_pack_asset",
-            pack_id=pack_id,
-            asset_path=image.get("file")
-        )
-        source = image.get("source") or data.get("source") or {}
-
-        hotspots = list(image.get("hotspots") or [])
-        random.shuffle(hotspots)
-
-        for hotspot in hotspots:
-            label = str(hotspot.get("label") or "").strip()
-            if not label:
-                continue
-            prompt = str(hotspot.get("prompt") or f"Identify the {label}.").strip()
-            concepts = _hotspot_concepts(
-                hotspot,
-                image,
-                hotspot,
-                data,
-                context=f"medical anatomy hotspot {hotspot.get('id') or label!r}",
-            )
-
-            runtime_questions.append({
-                "number": qnum,
-                "type": "hotspot",
-                "question": prompt,
-                "image_url": image_url,
-                "image_alt": image.get("alt_text") or data.get("title") or "Study image",
-                "image_edits": image.get("edits") or [],
-                "target": hotspot.get("shape") or {},
-                "target_label": label,
-                "explanation": hotspot.get("explanation") or "",
-                "concepts": concepts,
-                "verification": hotspot.get("verification") or {},
-                "image_source": {
-                    "organization": source.get("organization") or "",
-                    "work": source.get("work") or "",
-                    "url": source.get("url") or image.get("source_url") or "",
-                    "license": source.get("license") or image.get("license") or "",
-                    "attribution": source.get("attribution") or image.get("attribution") or "",
-                }
-            })
-
-            # Database/history surrogate. Runtime scoring still uses hotspot geometry.
-            db_questions.append({
-                "number": qnum,
-                "type": "choice",
-                "question": prompt + " [Image hotspot]",
-                "choices": [
-                    {"label": "A", "text": label, "is_correct": True}
-                ],
-                "concepts": concepts,
-                "source": {
-                    "organization": source.get("organization") or "",
-                    "dataset": data.get("title") or dataset_id,
-                    "version": pack.get("version") or "",
-                    "url": source.get("url") or image.get("source_url") or "",
-                    "license": source.get("license") or image.get("license") or "",
-                }
-            })
-            qnum += 1
-
-    if not runtime_questions:
-        flash("This anatomy dataset contains no usable hotspots.", "error")
-        return redirect("/medical/anatomy")
-
-    title = str(data.get("title") or data["_descriptor"].get("title") or "Medical Anatomy").strip()
-    quiz_title = f"{title} — Hotspot Practice"
-
-    safe_pack = re.sub(r"[^a-z0-9]+", "_", pack_id.lower()).strip("_") or "medical"
-    safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "anatomy"
-    quiz_id, html_name = _publish_quiz(
-        quiz_title,
-        runtime_questions,
-        db_questions,
-        filename_prefix=f"medical_anatomy_{safe_pack}_{safe_id}",
-        exam_minutes=90,
-        source_pack_id=pack_id,
-        source_dataset_id=dataset_id,
-    )
-
-    return redirect(f"/quizzes/{html_name}")
 
 
-@app.route("/medical/generate", methods=["POST"])
-def medical_generate_quiz():
-    pack_id = request.form.get("pack_id", "medical").strip().lower() or "medical"
-    pack = get_content_pack(pack_id)
-    if not pack or not _is_medical_content_pack(pack_id, pack):
-        flash("Requested Medical Study content pack is not installed.", "error")
-        return redirect("/content-packs")
 
-    dataset_id = request.form.get("dataset_id", "").strip()
-    direction = request.form.get("direction", "random").strip()
-    if direction not in {"term_to_definition", "definition_to_term", "random"}:
-        direction = "random"
 
-    try:
-        data = load_content_pack_dataset(pack_id, dataset_id)
-    except Exception as exc:
-        print(f"[MEDICAL DATASET LOAD ERROR] {type(exc).__name__}: {exc}")
-        flash("Unable to load the selected medical dataset.", "error")
-        return redirect("/medical/matching")
 
-    terms = data.get("terms") or []
-    if len(terms) < 2:
-        flash("This medical dataset does not contain enough terms.", "error")
-        return redirect("/medical/matching")
 
-    try:
-        round_size = int(request.form.get("round_size", "10"))
-    except (TypeError, ValueError):
-        round_size = 10
-    round_size = max(2, min(round_size, min(100, len(terms))))
 
-    title = str(data.get("title") or data["_descriptor"].get("title") or "Medical Practice").strip()
-    quiz_title = f"{title} — {round_size}-Pair Practice"
-    source = data.get("source") or {}
 
-    pairs = [
-        {
-            "left": item["term"],
-            "right": item["definition"],
-            "category": item.get("category", ""),
-            "explanation": (
-                item.get("explanation")
-                or item.get("study_explanation")
-                or ""
-            ),
-            "verification": item.get("verification") or data.get("verification") or {},
-            "source": item.get("source") or source or {},
-        }
-        for item in terms
-    ]
-    quiz_data = [{
-        "number": 1,
-        "type": "matching",
-        "question": str(data.get("question_text") or "Match each medical term with its correct definition.").strip(),
-        "pairs": pairs,
-        "round_size": round_size,
-        "direction": direction,
-        "concepts": _standalone_matching_concepts(
-            data, context=f"matching dataset {dataset_id!r}"
-        ),
-        "source": {
-            "organization": source.get("organization") or pack.get("publisher") or "",
-            "dataset": source.get("dataset") or title,
-            "version": source.get("version") or pack.get("version") or "",
-            "url": source.get("url") or "",
-            "license": source.get("license") or "",
-        },
-    }]
-
-    safe_pack = re.sub(r"[^a-z0-9]+", "_", pack_id.lower()).strip("_") or "medical"
-    safe_id = re.sub(r"[^a-z0-9]+", "_", dataset_id.lower()).strip("_") or "medical"
-    quiz_id, html_name = _publish_quiz(
-        quiz_title,
-        quiz_data,
-        filename_prefix=f"medical_{safe_pack}_{safe_id}",
-        exam_minutes=90,
-        source_pack_id=pack_id,
-        source_dataset_id=dataset_id,
-    )
-
-    return redirect(f"/quizzes/{html_name}")
 
 
 
@@ -3722,293 +3065,18 @@ app.register_blueprint(create_it_blueprint(ITStudyDependencies(
 # GENERIC STUDY PACK PLATFORM
 # =========================
 
-def _study_pack_catalog():
-    result = []
-    for pack_id, pack in discover_content_packs().items():
-        datasets, image_datasets, quiz_datasets = [], [], []
-        for d in pack.get("datasets") or []:
-            if not isinstance(d, dict): continue
-            did = str(d.get("id") or "").strip()
-            if not did: continue
-            try:
-                data = load_content_pack_dataset(pack_id, did)
-                datasets.append({"id": did, "title": d.get("title") or data.get("title") or did, "description": d.get("description") or data.get("description") or "", "term_count": len(data.get("terms") or []), "category": data.get("category") or ""})
-            except Exception as exc:
-                print(f"[STUDY PACKS] Skipping {pack_id}/{did}: {exc}")
-        for d in pack.get("image_datasets") or []:
-            if not isinstance(d, dict): continue
-            did = str(d.get("id") or "").strip()
-            if not did: continue
-            try:
-                data = load_content_pack_image_dataset(pack_id, did)
-                images = data.get("images") or []
-                image_datasets.append({"id": did, "title": d.get("title") or data.get("title") or did, "description": d.get("description") or data.get("description") or "", "image_count": len(images), "hotspot_count": sum(len(i.get("hotspots") or []) for i in images), "category": data.get("category") or "Image Study"})
-            except Exception as exc:
-                print(f"[STUDY PACKS] Skipping image {pack_id}/{did}: {exc}")
-        for d in pack.get("quiz_datasets") or []:
-            if not isinstance(d, dict): continue
-            did = str(d.get("id") or "").strip()
-            if not did: continue
-            try:
-                data = load_content_pack_quiz_dataset(pack_id, did)
-                qs, images = data.get("questions") or [], data.get("images") or []
-                quiz_datasets.append({"id": did, "title": d.get("title") or data.get("title") or did, "description": d.get("description") or data.get("description") or "", "question_count": len(qs), "image_count": len(images), "hotspot_count": sum(1 for q in qs if str(q.get("type") or "") == "hotspot"), "category": data.get("category") or "Question Set"})
-            except Exception as exc:
-                print(f"[STUDY PACKS] Skipping questions {pack_id}/{did}: {exc}")
-        if datasets or image_datasets or quiz_datasets:
-            result.append({"id": pack_id, "name": pack.get("name") or pack_id, "version": pack.get("version") or "", "description": pack.get("description") or "", "domain": pack.get("content_domain") or ("medical" if pack_id == "medical" else "general"), "datasets": datasets, "image_datasets": image_datasets, "quiz_datasets": quiz_datasets})
-    return sorted(result, key=lambda p: p["name"].casefold())
-
-
-@app.route("/study-packs")
-def study_packs_home():
-    packs = _study_pack_catalog()
-    domain_group = str(request.args.get("domain_group") or "").strip().lower()
-    requested_installed_id = str(request.args.get("installed") or "").strip().lower()
-    other_mode = domain_group == "other"
-    if other_mode:
-        def _is_other_pack(pack):
-            raw = str(pack.get("domain") or "").strip().lower()
-            normalized = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
-            return normalized not in {"medical", "it", "it_cybersecurity", "cybersecurity", "law", "legal"}
-        packs = [pack for pack in packs if _is_other_pack(pack)]
-    installed_pack_id = next(
-        (pack["id"] for pack in packs if pack["id"] == requested_installed_id), ""
-    )
-    return render_template(
-        "study_packs/catalog.html",
-        packs=packs,
-        medical_pack_installed=True,
-        other_mode=other_mode,
-        installed_pack_id=installed_pack_id,
-    )
 
 
 
 
-@app.route("/study-packs/quiz/generate", methods=["POST"])
-def study_pack_generate_quiz_dataset():
-    pack_id = str(request.form.get("pack_id") or "").strip().lower()
-    dataset_id = str(request.form.get("dataset_id") or "").strip()
-    pack = get_content_pack(pack_id)
-    if not pack:
-        flash("Study pack is not installed.", "error")
-        return redirect("/study-packs")
-    try:
-        data = load_content_pack_quiz_dataset(pack_id, dataset_id)
-        runtime_questions, db_questions = _quiz_dataset_runtime(pack_id, data)
-        title = str(data.get("title") or data["_descriptor"].get("title") or "Study Questions").strip()
-        _, html_name = _create_quiz_from_runtime(
-            f"{title} — Practice", runtime_questions, db_questions,
-            filename_prefix=f"study_questions_{pack_id}_{dataset_id}", exam_minutes=90,
-            source_pack_id=pack_id, source_dataset_id=dataset_id
-        )
-        return redirect(f"/quizzes/{html_name}")
-    except Exception as exc:
-        print(f"[STUDY PACK QUIZ BUILD ERROR] {type(exc).__name__}: {exc}")
-        flash("Unable to build the selected Study Pack quiz.", "error")
-        return redirect("/study-packs")
 
 
-@app.route("/study-packs/generate", methods=["POST"])
-def study_pack_generate_matching():
-    pack_id=str(request.form.get("pack_id") or "").strip().lower(); dataset_id=str(request.form.get("dataset_id") or "").strip(); direction=str(request.form.get("direction") or "random").strip()
-    if direction not in {"term_to_definition","definition_to_term","random"}: direction="random"
-    pack=get_content_pack(pack_id)
-    if not pack: flash("Study pack is not installed.","error"); return redirect("/study-packs")
-    try: data=load_content_pack_dataset(pack_id,dataset_id)
-    except Exception as exc:
-        print(f"[STUDY PACK DATASET LOAD ERROR] {type(exc).__name__}: {exc}")
-        flash("Unable to load the selected study dataset.", "error")
-        return redirect("/study-packs")
-    terms=data.get("terms") or []
-    if len(terms)<2: flash("This dataset does not contain enough items.","error"); return redirect("/study-packs")
-    try: round_size=int(request.form.get("round_size","10"))
-    except (TypeError,ValueError): round_size=10
-    round_size=max(2,min(round_size,min(100,len(terms))))
-    title=str(data.get("title") or data["_descriptor"].get("title") or "Study Practice").strip(); source=data.get("source") or {}
-    pairs=[{"left":i["term"],"right":i["definition"],"category":i.get("category","") ,"explanation":i.get("explanation") or i.get("study_explanation") or "","verification":i.get("verification") or data.get("verification") or {},"source":i.get("source") or source or {}} for i in terms]
-    quiz_data=[{"number":1,"type":"matching","question":str(data.get("question_text") or "Match each item with its best answer.").strip(),"pairs":pairs,"round_size":round_size,"direction":direction,"concepts":_standalone_matching_concepts(data, context=f"matching dataset {dataset_id!r}"),"source":{"organization":source.get("organization") or pack.get("publisher") or "","dataset":source.get("dataset") or title,"version":source.get("version") or pack.get("version") or "","url":source.get("url") or "","license":source.get("license") or ""}}]
-    safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "dataset"; quiz_title=f"{title} — {round_size}-Pair Practice"
-    quiz_id,html_name=_publish_quiz(quiz_title,quiz_data,filename_prefix=f"study_{safe_pack}_{safe_id}",exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id)
-    return redirect(f"/quizzes/{html_name}")
 
 
-@app.route("/study-packs/image/generate", methods=["POST"])
-def study_pack_generate_image():
-    pack_id=str(request.form.get("pack_id") or "").strip().lower(); dataset_id=str(request.form.get("dataset_id") or "").strip(); pack=get_content_pack(pack_id)
-    if not pack: flash("Study pack is not installed.","error"); return redirect("/study-packs")
-    try: data=load_content_pack_image_dataset(pack_id,dataset_id)
-    except Exception as exc:
-        print(f"[STUDY PACK IMAGE LOAD ERROR] {type(exc).__name__}: {exc}")
-        flash("Unable to load the selected image dataset.", "error")
-        return redirect("/study-packs")
-    runtime_questions=[]; db_questions=[]; qnum=1
-    for image in data.get("images") or []:
-        image_url=url_for("core.content_pack_asset",pack_id=pack_id,asset_path=image.get("file")); source=image.get("source") or data.get("source") or {}; hotspots=list(image.get("hotspots") or []); random.shuffle(hotspots)
-        for hotspot in hotspots:
-            label=str(hotspot.get("label") or "").strip()
-            if not label: continue
-            prompt=str(hotspot.get("prompt") or f"Identify {label}.").strip()
-            runtime_questions.append({"number":qnum,"type":"hotspot","question":prompt,"image_url":image_url,"image_alt":image.get("alt_text") or data.get("title") or "Study image","image_edits":image.get("edits") or [],"target":hotspot.get("shape") or {},"target_label":label,"explanation":hotspot.get("explanation") or "","verification":hotspot.get("verification") or {},"image_source":{"organization":source.get("organization") or "","work":source.get("work") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or "","attribution":source.get("attribution") or image.get("attribution") or ""}})
-            concepts=_hotspot_concepts(hotspot, image, hotspot, data, context=f"image dataset hotspot {hotspot.get('id') or label!r}")
-            runtime_questions[-1]["concepts"]=concepts
-            db_questions.append({"number":qnum,"type":"choice","question":prompt+" [Image hotspot]","choices":[{"label":"A","text":label,"is_correct":True}],"concepts":concepts,"source":{"organization":source.get("organization") or "","dataset":data.get("title") or dataset_id,"version":pack.get("version") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or ""}}); qnum+=1
-    if not runtime_questions: flash("This image dataset contains no usable targets.","error"); return redirect("/study-packs")
-    title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"
-    quiz_id,html_name=_publish_quiz(quiz_title,runtime_questions,db_questions,filename_prefix=f"study_image_{safe_pack}_{safe_id}",exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id)
-    return redirect(f"/quizzes/{html_name}")
 
 
-@app.route("/study-packs/ai-builder", methods=["GET","POST"])
-def study_pack_ai_builder():
-    cfg = load_portal_config()
 
-    allowed_domains = ["IT / Cybersecurity", "General", "Science", "Medical", "History", "Language", "Other"]
-    requested_domain = str(request.args.get("domain") or "").strip()
-    domain = requested_domain if requested_domain in allowed_domains else "IT / Cybersecurity"
-    from_section = str(request.args.get("from") or "").strip().lower()
 
-    topic = str(request.args.get("topic") or "").strip()
-    difficulty = "Foundational" if domain == "Medical" else "Intermediate"
-    size = "Standard"
-    image_count = "2–3"
-    image_style = "Mixed"
-    include_matching = True
-    include_images = True
-    include_multiple_choice = False
-    generated_prompt = ""
-
-    ai_provider = str(cfg.get("ai_provider") or "chatgpt").strip().lower()
-    if ai_provider not in {"chatgpt","claude","gemini","local"}:
-        ai_provider = "chatgpt"
-
-    if request.method == "POST":
-        topic = str(request.form.get("topic") or "").strip()
-        domain = str(request.form.get("domain") or "General").strip()
-        if domain not in allowed_domains:
-            domain = "General"
-        difficulty = str(request.form.get("difficulty") or "Intermediate").strip()
-        size = str(request.form.get("size") or "Standard").strip()
-        image_count = str(request.form.get("image_count") or "2–3").strip()
-        image_style = str(request.form.get("image_style") or "Mixed").strip()
-        ai_provider = str(request.form.get("ai_provider") or ai_provider).strip().lower()
-        from_section = str(request.form.get("from_section") or "").strip().lower()
-
-        include_matching = "include_matching" in request.form
-        include_images = "include_images" in request.form
-        include_multiple_choice = "include_multiple_choice" in request.form
-
-        if difficulty not in {"Foundational","Intermediate","Comprehensive"}:
-            difficulty = "Intermediate"
-        if size not in {"Compact","Standard","Large"}:
-            size = "Standard"
-        if image_count not in {"None","1","2–3","4–6"}:
-            image_count = "2–3"
-        if image_style not in {"Real / photographic","Diagram / schematic","Drawn educational illustration","Mixed"}:
-            image_style = "Mixed"
-        if ai_provider not in {"chatgpt","claude","gemini","local"}:
-            ai_provider = "chatgpt"
-
-        requested = []
-        if include_matching:
-            requested.append(
-                "Create one or more high-quality matching datasets with unique terms, unique record IDs where IDs are used, "
-                "one-to-one term/answer mappings, meaningfully distinct answers, no duplicate or near-duplicate pairs, "
-                "and enough semantic distinction to remain unambiguous when shuffled. Repair all collisions before delivery, "
-                "and include source-supported Study Mode explanations."
-            )
-        if include_multiple_choice:
-            mcq_counts = {
-                "Compact": "about 10–15",
-                "Standard": "about 20–30",
-                "Large": "about 40–60",
-            }
-            requested.append(
-                f"Create {mcq_counts[size]} source-supported single-select multiple-choice questions. "
-                "Use the DLMS choice-question JSON contract: 2–26 distinct choices, exactly one true "
-                "JSON is_correct value, a concise explanation, and question-level source support. "
-                "Vary the supplied correct-choice position naturally across the question set; do not put "
-                "every correct answer in the same position and do not force perfect equality. "
-                "Do not guess: omit any question whose correct answer cannot be supported reliably."
-            )
-        if include_images:
-            requested.append("Create image/diagram hotspot datasets when they genuinely improve learning, following the image count and style request below.")
-        if not requested:
-            requested.append("Choose the most appropriate DLMS study content types for this topic.")
-        requested.append(
-            "For every generated question, include the exact question-level field \"concepts\" with 1–3 "
-            "specific reusable concepts. Reuse spelling for the same skill; avoid broad metadata labels."
-        )
-
-        size_map = {
-            "Compact": "Keep the pack focused: about 20–40 high-value matching items per dataset.",
-            "Standard": "Aim for useful depth: about 40–80 distinct matching items per dataset when supported.",
-            "Large": "Build broad coverage without padding; split large subjects into multiple focused datasets."
-        }
-
-        if include_images and image_count != "None":
-            image_guidance = (
-                f"Request {image_count} useful image(s) when possible. Preferred style: {image_style}. "
-                "Bundle exact legally reusable images and create separate hotspot lists for each image. "
-                "If multiple images cover different subtopics, create separate image datasets."
-            )
-        else:
-            image_guidance = "Do not create image datasets for this request."
-
-        domain_slug = re.sub(r"[^a-z0-9]+","_",domain.lower()).strip("_") or "general"
-
-        if topic:
-            study_pack_template = str(cfg.get("study_pack_ai_prompt_template") or DEFAULT_STUDY_CONTENT_PACK_PROMPT)
-            medical_addendum = str(cfg.get("medical_study_pack_ai_addendum") or DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM)
-            generated_prompt = (
-                study_pack_template
-                .replace("{{domain}}", domain)
-                .replace("{{domain_slug}}", domain_slug)
-                .replace("{{topic}}", topic)
-                .replace("{{content_request}}", "\n".join(f"- {x}" for x in requested))
-                .replace("{{difficulty}}", difficulty)
-                .replace("{{size_guidance}}", size_map.get(size, size_map["Standard"]))
-                .replace("{{image_guidance}}", image_guidance)
-            )
-            if domain == "Medical":
-                generated_prompt += "\n\n" + medical_addendum.strip()
-        else:
-            generated_prompt = "Enter a study topic before generating the prompt."
-
-    providers = {
-        "chatgpt":"https://chatgpt.com/",
-        "claude":"https://claude.ai/",
-        "gemini":"https://gemini.google.com/",
-        "local":str(cfg.get("ai_custom_url") or "").strip()
-    }
-    ai_url = providers.get(ai_provider,"")
-    if from_section == "medical" or domain == "Medical":
-        back_url, back_label = "/medical", "Medical Study"
-    elif from_section == "other":
-        back_url, back_label = "/study-packs?domain_group=other", "Other Studies"
-    else:
-        back_url, back_label = "/study-packs", "Study Packs"
-
-    return render_template("study_packs/ai-builder.html",
-        topic=topic,
-        domain=domain,
-        domains=allowed_domains,
-        difficulty=difficulty,
-        size=size,
-        image_count=image_count,
-        image_style=image_style,
-        ai_provider=ai_provider,
-        include_matching=include_matching,
-        include_images=include_images,
-        include_multiple_choice=include_multiple_choice,
-        generated_prompt=generated_prompt,
-        ai_url=ai_url,
-        from_section=from_section,
-        back_url=back_url,
-        back_label=back_label,
-        medical_pack_installed=True,
-    )
 
 
 
@@ -5483,120 +4551,10 @@ def _safe_image_builder_draft(draft_id):
     return path
 
 
-@app.route("/image-builder/drafts/<draft_id>/<path:filename>")
-def image_builder_draft_asset(draft_id, filename):
-    try:
-        draft_root = _safe_image_builder_draft(draft_id)
-        file_path = _safe_pack_child(draft_root, filename)
-    except Exception:
-        return "Draft image not found", 404
-    if not os.path.isfile(file_path):
-        return "Draft image not found", 404
-    if os.path.splitext(file_path)[1].lower() not in PASSIVE_PACK_IMAGE_EXTENSIONS:
-        return "Unsupported image", 415
-    try:
-        _decode_raster_image(file_path, PASSIVE_PACK_IMAGE_EXTENSIONS)
-    except ValueError:
-        return "Invalid draft image", 415
-    return send_from_directory(draft_root, os.path.relpath(file_path, draft_root))
 
 
-@app.route("/study-packs/image-builder", methods=["GET", "POST"])
-def image_quiz_builder():
-    draft = None
-    if request.method == "POST":
-        files = [f for f in request.files.getlist("study_images") if f and f.filename]
-        if not files:
-            flash("Choose at least one image.", "error")
-            return redirect("/study-packs/image-builder")
-        if len(files) > 12:
-            flash("Upload at most 12 images at one time.", "error")
-            return redirect("/study-packs/image-builder")
-
-        draft_id = f"{int(time.time())}_{secrets.token_hex(5)}"
-        draft_root = os.path.join(IMAGE_BUILDER_DRAFT_FOLDER, draft_id)
-        os.makedirs(draft_root, exist_ok=False)
-        images, used = [], set()
-        remaining_upload_bytes = IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES
-        for n, uploaded in enumerate(files, 1):
-            original = secure_filename(uploaded.filename or "")
-            ext = os.path.splitext(original)[1].lower()
-            if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
-                shutil.rmtree(draft_root, ignore_errors=True)
-                flash("Images must be PNG, JPG/JPEG, or WEBP.", "error")
-                return redirect("/study-packs/image-builder")
-            base = re.sub(r"[^A-Za-z0-9_-]+", "_", os.path.splitext(original)[0]).strip("_") or f"image_{n}"
-            filename = f"{base}{ext}"
-            counter = 2
-            while filename.casefold() in used:
-                filename = f"{base}_{counter}{ext}"
-                counter += 1
-            used.add(filename.casefold())
-            try:
-                _store_raster_upload(
-                    uploaded, draft_root, filename, PASSIVE_PACK_IMAGE_EXTENSIONS,
-                    min(RASTER_UPLOAD_MAX_BYTES, remaining_upload_bytes),
-                )
-                remaining_upload_bytes -= int(getattr(uploaded, "_dlms_consumed_bytes", 0))
-            except ValueError as exc:
-                shutil.rmtree(draft_root, ignore_errors=True)
-                flash(f"Image {uploaded.filename!r} was rejected: {exc}", "error")
-                return redirect("/study-packs/image-builder")
-            images.append({
-                "id": f"image_{n}", "filename": filename,
-                "original_name": uploaded.filename,
-                "url": url_for("image_builder_draft_asset", draft_id=draft_id, filename=filename),
-            })
-        draft = {"id": draft_id, "images": images}
-
-    return render_template(
-        "study_packs/image-builder.html", draft=draft,
-        medical_pack_installed=True
-    )
 
 
-@app.route("/study-packs/image-builder/save", methods=["POST"])
-def image_quiz_builder_save():
-    draft_id = str(request.form.get("draft_id") or "").strip()
-    title = str(request.form.get("pack_title") or "").strip()
-    subject = str(request.form.get("subject") or "General").strip()
-    description = str(request.form.get("description") or "").strip()
-    source_note = str(request.form.get("source_note") or "").strip()
-    rights_ok = bool(request.form.get("rights_ok"))
-    if not title:
-        return "Study pack title is required", 400
-    if not rights_ok:
-        return "Confirm permission to use the uploaded images.", 400
-
-    try:
-        draft_root = _safe_image_builder_draft(draft_id)
-        payload = json.loads(str(request.form.get("builder_payload") or ""))
-    except Exception as exc:
-        print(f"[IMAGE BUILDER INPUT ERROR] {type(exc).__name__}: {exc}")
-        return "Invalid image-builder data. Restart the image workflow and try again.", 400
-
-    images_payload = payload.get("images") or []
-    questions_payload = payload.get("questions") or []
-    if not images_payload or not questions_payload:
-        return "At least one image and one question are required.", 400
-
-    try:
-        result = _create_image_study_pack(
-            draft_root=draft_root,
-            title=title,
-            subject=subject,
-            description=description,
-            source_note=source_note,
-            images_payload=images_payload,
-            questions_payload=questions_payload,
-            artifact_identity=_generated_quiz_artifact_identity(),
-            exam_minutes=request.form.get("exam_minutes"),
-        )
-        flash("Image study pack and quiz created successfully.", "success")
-        return redirect(f"/quizzes/{result['html_name']}")
-    except Exception as exc:
-        print(f"[IMAGE BUILDER CREATE ERROR] {type(exc).__name__}: {exc}")
-        return "Unable to create the image Study Pack. Check the local DLMS log for details.", 400
 
 
 def _create_image_study_pack(
@@ -9220,6 +8178,78 @@ def resolve_logo_filename(logo_filename):
         return None
 
     return logo_filename
+
+
+app.register_blueprint(create_content_packs_blueprint(ContentPackRouteDependencies(
+    content_pack_ai_workflow=lambda: CONTENT_PACK_AI_WORKFLOW,
+    content_pack_upload_max_bytes=lambda: CONTENT_PACK_UPLOAD_MAX_BYTES,
+    content_pack_multipart_overhead_bytes=lambda: CONTENT_PACK_MULTIPART_OVERHEAD_BYTES,
+    content_pack_folder=lambda: CONTENT_PACK_FOLDER,
+    stage_content_pack_upload=lambda *args, **kwargs: _stage_content_pack_upload(*args, **kwargs),
+    content_pack_workflow=lambda metadata: _content_pack_workflow(metadata),
+    content_pack_workflow_return_url=lambda metadata: _content_pack_workflow_return_url(metadata),
+    load_staged_content_pack=lambda token: _load_staged_content_pack(token),
+    validate_staged_content_pack=lambda *args, **kwargs: _validate_staged_content_pack(*args, **kwargs),
+    install_staged_content_pack=lambda token: _install_staged_content_pack(token),
+    cancel_staged_content_pack=lambda token: _cancel_staged_content_pack(token),
+    content_pack_folder_report=lambda folder: _content_pack_folder_report(folder),
+    build_content_pack_export=lambda folder: _build_content_pack_export(folder),
+    content_pack_management_summary=lambda: content_pack_management_summary(),
+    delete_content_pack_folder=lambda folder: _delete_content_pack_folder(folder),
+    content_pack_install_error=lambda: _content_pack_mutation_service.ContentPackInstallError,
+    invalid_content_pack_folder_error=lambda: _content_pack_mutation_service.InvalidContentPackFolderError,
+    content_pack_folder_not_found_error=lambda: _content_pack_mutation_service.ContentPackFolderNotFoundError,
+    protected_content_pack_error=lambda: _content_pack_mutation_service.ProtectedContentPackError,
+)))
+
+app.register_blueprint(create_study_packs_blueprint(StudyPackRouteDependencies(
+    content_pack_ai_workflow=lambda: CONTENT_PACK_AI_WORKFLOW,
+    stage_content_pack_upload=lambda *args, **kwargs: _stage_content_pack_upload(*args, **kwargs),
+    discover_content_packs=lambda: discover_content_packs(),
+    load_content_pack_dataset=lambda pack_id, dataset_id: load_content_pack_dataset(pack_id, dataset_id),
+    load_content_pack_image_dataset=lambda pack_id, dataset_id: load_content_pack_image_dataset(pack_id, dataset_id),
+    load_content_pack_quiz_dataset=lambda pack_id, dataset_id: load_content_pack_quiz_dataset(pack_id, dataset_id),
+    get_content_pack=lambda pack_id: get_content_pack(pack_id),
+    quiz_dataset_runtime=lambda pack_id, data: _quiz_dataset_runtime(pack_id, data),
+    create_quiz_from_runtime=lambda *args, **kwargs: _create_quiz_from_runtime(*args, **kwargs),
+    publish_quiz=lambda *args, **kwargs: _publish_quiz(*args, **kwargs),
+    standalone_matching_concepts=lambda *args, **kwargs: _standalone_matching_concepts(*args, **kwargs),
+    hotspot_concepts=lambda *args, **kwargs: _hotspot_concepts(*args, **kwargs),
+    load_portal_config=lambda: load_portal_config(),
+    default_study_content_pack_prompt=lambda: DEFAULT_STUDY_CONTENT_PACK_PROMPT,
+    default_medical_study_pack_ai_addendum=lambda: DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
+    safe_image_builder_draft=lambda draft_id: _safe_image_builder_draft(draft_id),
+    safe_pack_child=lambda root, path: _safe_pack_child(root, path),
+    passive_pack_image_extensions=lambda: PASSIVE_PACK_IMAGE_EXTENSIONS,
+    decode_raster_image=lambda *args, **kwargs: _decode_raster_image(*args, **kwargs),
+    image_builder_draft_folder=lambda: IMAGE_BUILDER_DRAFT_FOLDER,
+    image_builder_total_upload_max_bytes=lambda: IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES,
+    raster_upload_max_bytes=lambda: RASTER_UPLOAD_MAX_BYTES,
+    store_raster_upload=lambda *args, **kwargs: _store_raster_upload(*args, **kwargs),
+    create_image_study_pack=lambda *args, **kwargs: _create_image_study_pack(*args, **kwargs),
+    generated_quiz_artifact_identity=lambda: _generated_quiz_artifact_identity(),
+)))
+
+app.register_blueprint(create_medical_blueprint(MedicalRouteDependencies(
+    discover_content_packs=lambda: discover_content_packs(),
+    is_medical_content_pack=lambda pack_id, pack: _is_medical_content_pack(pack_id, pack),
+    load_content_pack_dataset=lambda pack_id, dataset_id: load_content_pack_dataset(pack_id, dataset_id),
+    load_content_pack_image_dataset=lambda pack_id, dataset_id: load_content_pack_image_dataset(pack_id, dataset_id),
+    content_pack_folder=lambda: CONTENT_PACK_FOLDER,
+    get_content_pack=lambda pack_id: get_content_pack(pack_id),
+    hotspot_concepts=lambda *args, **kwargs: _hotspot_concepts(*args, **kwargs),
+    standalone_matching_concepts=lambda *args, **kwargs: _standalone_matching_concepts(*args, **kwargs),
+    publish_quiz=lambda *args, **kwargs: _publish_quiz(*args, **kwargs),
+)))
+
+app.register_blueprint(create_admin_images_blueprint(AdminImageRouteDependencies(
+    discover_content_packs=lambda: discover_content_packs(),
+    load_content_pack_image_dataset=lambda pack_id, dataset_id: load_content_pack_image_dataset(pack_id, dataset_id),
+    load_content_pack_quiz_dataset=lambda pack_id, dataset_id: load_content_pack_quiz_dataset(pack_id, dataset_id),
+    validate_hotspot_shape=lambda shape: _validate_hotspot_shape(shape),
+    get_content_pack=lambda pack_id: get_content_pack(pack_id),
+    safe_pack_child=lambda root, path: _safe_pack_child(root, path),
+)))
 
 
 app.register_blueprint(create_quiz_blueprint(

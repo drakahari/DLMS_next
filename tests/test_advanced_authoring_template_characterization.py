@@ -8,6 +8,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import admin_images as admin_image_routes
 from tests.csrf_test_utils import csrf_token
 
 
@@ -23,14 +24,25 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
             "pdf_question_bank_page": "pdf_import/question-bank.html",
             "pdf_terminology_bank_page": "pdf_import/terminology-bank.html",
         }
-        source = Path(dlms.__file__).read_text(encoding="utf-8")
-        tree = ast.parse(source)
+        source_paths = [
+            Path(dlms.__file__),
+            *sorted((Path(dlms.__file__).parent / "dlms" / "routes").rglob("*.py")),
+        ]
+        sources = {
+            path: path.read_text(encoding="utf-8") for path in source_paths
+        }
+        functions = [
+            node
+            for source in sources.values()
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.FunctionDef)
+        ]
         for function_name, template_name in expected.items():
             with self.subTest(function=function_name):
                 owner = next(
                     node
-                    for node in ast.walk(tree)
-                    if isinstance(node, ast.FunctionDef) and node.name == function_name
+                    for node in functions
+                    if node.name == function_name
                 )
                 calls = [
                     node
@@ -45,8 +57,9 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
                 self.assertEqual(1, len(calls))
                 self.assertTrue((Path(dlms.TEMPLATE_ROOT) / template_name).is_file())
 
-        self.assertNotIn("HOTSPOT_EDITOR_TEMPLATE", source)
-        self.assertNotIn("IMAGE_QUIZ_BUILDER_TEMPLATE", source)
+        combined_source = "\n".join(sources.values())
+        self.assertNotIn("HOTSPOT_EDITOR_TEMPLATE", combined_source)
+        self.assertNotIn("IMAGE_QUIZ_BUILDER_TEMPLATE", combined_source)
 
     def test_pdf_landing_preserves_upload_contract_catalog_states_and_escaping(self):
         marker = '</strong><script id="pdf-catalog-injection">bad()</script>&'
@@ -291,7 +304,7 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
                 "edits": [{"type": "text", "x": .2, "y": .2, "text": marker, "size": 18, "tone": "light"}],
             }],
         }
-        with mock.patch.object(dlms, "_hotspot_editor_catalog", return_value=catalog), mock.patch.object(
+        with mock.patch.object(admin_image_routes, "_hotspot_editor_catalog", return_value=catalog), mock.patch.object(
             dlms, "load_content_pack_image_dataset", return_value=dataset
         ):
             response = dlms.app.test_client().get(

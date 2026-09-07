@@ -8,6 +8,7 @@ from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
 from dlms.routes import it as it_routes
+from dlms.routes import medical as medical_routes
 
 
 class NavigationLayoutTests(unittest.TestCase):
@@ -282,7 +283,7 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertNotIn("← Back to Maintenance", image_editor_template)
 
     def test_medical_empty_state_uses_dedicated_semantic_spacing_rules(self):
-        with mock.patch.object(dlms, "_medical_pack_page_data", return_value=(None, [], [])):
+        with mock.patch.object(medical_routes, "_medical_pack_page_data", return_value=(None, [], [])):
             page = self.client.get("/medical").get_data(as_text=True)
         css = self._static("style.css")
 

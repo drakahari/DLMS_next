@@ -12,6 +12,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import content_packs as content_pack_routes
 from tests.csrf_test_utils import csrf_token
 
 
@@ -69,7 +70,9 @@ class ContentPackImportReviewTemplateTests(unittest.TestCase):
         ), mock.patch.object(
             dlms, "_validate_staged_content_pack", return_value=report
         ), mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            content_pack_routes,
+            "render_template",
+            wraps=content_pack_routes.render_template,
         ) as render_template:
             response = self.client.get("/content-packs/import/review-token")
 

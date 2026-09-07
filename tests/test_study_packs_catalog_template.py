@@ -11,6 +11,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import study_packs as study_pack_routes
 
 
 class StudyPacksCatalogTemplateTests(unittest.TestCase):
@@ -33,7 +34,7 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
         return pack
 
     def _get(self, packs, query=""):
-        with mock.patch.object(dlms, "_study_pack_catalog", return_value=packs):
+        with mock.patch.object(study_pack_routes, "_study_pack_catalog", return_value=packs):
             response = self.client.get(f"/study-packs{query}")
         self.assertEqual(200, response.status_code)
         return response.get_data(as_text=True)
@@ -218,9 +219,9 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
             self._pack(id="medical", domain="Medical"),
         ]
         with mock.patch.object(
-            dlms, "_study_pack_catalog", return_value=packs
+            study_pack_routes, "_study_pack_catalog", return_value=packs
         ), mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            study_pack_routes, "render_template", return_value="rendered"
         ) as renderer:
             response = self.client.get(
                 "/study-packs?domain_group=other&installed=science"
