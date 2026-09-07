@@ -1,0 +1,33 @@
+
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand">
+        <div class="dashboard-brand-mark">⌘</div>
+        <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+    </div>
+    <nav class="dashboard-nav">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+        <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        <a class="dashboard-nav-item active" href="/it" {% if it_section == "home" %}aria-current="page"{% endif %}><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a>
+        <div class="dashboard-nav-subitems medical-nav-subitems">
+            <a class="dashboard-nav-subitem {% if it_section == 'matching' %}active{% endif %}" href="/it/matching" {% if it_section == "matching" %}aria-current="page"{% endif %}><span class="dashboard-nav-subicon">↔</span><span>Concepts &amp; Matching</span></a>
+            <a class="dashboard-nav-subitem {% if it_section == 'images' %}active{% endif %}" href="/it/images" {% if it_section == "images" %}aria-current="page"{% endif %}><span class="dashboard-nav-subicon">◎</span><span>Diagrams &amp; Images</span></a>
+            <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&amp;from=it"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
+        </div>
+        <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        <div class="dashboard-nav-group"><a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a></div>
+    </nav>
+    <div class="dashboard-nav-section-label"><span>System</span></div>
+    <nav class="dashboard-nav dashboard-nav-system">
+        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">{{ pack.name }} · {{ pack.version }}</div>
+</aside>

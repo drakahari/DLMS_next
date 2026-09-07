@@ -2631,3 +2631,269 @@ def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(brow
         "document.querySelector('.medical-dataset-toggle').getAttribute('aria-expanded')==='false' && "
         "document.querySelector('.medical-dataset-detail-row').hidden"
     ) is True
+
+
+def test_it_read_only_views_empty_populated_controls_csrf_and_escaping(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    browser.navigate(f"{base_url}/it")
+    browser.wait_for(
+        "document.querySelector('[data-nav-key=it][aria-current=page]') && "
+        "document.querySelector('.medical-summary-grid')"
+    )
+    empty = browser.evaluate(
+        "(() => {const cards=Array.from(document.querySelectorAll('.medical-summary-grid .dashboard-stat-card'));"
+        "return {heading:document.querySelector('.medical-header h1').textContent,"
+        "packs:cards[0].querySelector('strong').textContent,"
+        "banks:cards[1].querySelector('strong').textContent,"
+        "images:cards[2].querySelector('strong').textContent,"
+        "builderHref:document.querySelector(\"a[href^='/study-packs/ai-builder?domain=IT']\").getAttribute('href'),"
+        "packsHref:document.querySelector(\".medical-section-launch-card[href='/content-packs']\").getAttribute('href'),"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label'),"
+        "menuControls:document.getElementById('menuButton').getAttribute('aria-controls')}})()"
+    )
+    assert empty == {
+        "heading": "DLMS IT Study",
+        "packs": "0",
+        "banks": "0",
+        "images": "0",
+        "builderHref": "/study-packs/ai-builder?domain=IT%20/%20Cybersecurity&from=it",
+        "packsHref": "/content-packs",
+        "menuLabel": "Toggle navigation",
+        "menuControls": "dashboardSidebar",
+    }
+
+    folder = "DLMS_Study_browser_it_views"
+    pack_root = browser_stack.data_root / "content_packs" / folder
+    data_root = pack_root / "data"
+    assets_root = pack_root / "assets"
+    data_root.mkdir(parents=True)
+    assets_root.mkdir()
+    pack_name = 'IT </script><img id="itPackInjected"> & Safe'
+    matching_title = 'Concepts </script><svg id="itMatchingInjected"> & Safe'
+    matching_description = 'Matching <b id="itMatchingDescriptionInjected"> details & safe'
+    image_title = 'Diagrams </script><svg id="itImageInjected"> & Safe'
+    image_description = 'Images <b id="itImageDescriptionInjected"> details & safe'
+    quiz_title = 'Questions </script><svg id="itQuizInjected"> & Safe'
+    (pack_root / "manifest.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "browser_it_views",
+            "name": pack_name,
+            "version": "1.0 <safe>",
+            "description": "Browser IT views.",
+            "content_domain": "IT / Cybersecurity",
+            "datasets": [{
+                "id": "concepts",
+                "title": matching_title,
+                "description": matching_description,
+                "type": "matching",
+                "path": "data/concepts.json",
+            }],
+            "image_datasets": [{
+                "id": "diagrams",
+                "title": image_title,
+                "description": image_description,
+                "type": "image",
+                "path": "data/diagrams.json",
+            }],
+            "quiz_datasets": [{
+                "id": "questions",
+                "title": quiz_title,
+                "description": "Mixed browser questions.",
+                "type": "quiz",
+                "path": "data/questions.json",
+            }],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "concepts.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "concepts",
+            "title": matching_title,
+            "category": 'Protocols <category> & "safe"',
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "terms": [
+                {"term": "Layer", "definition": "A level in a model."},
+                {"term": "Frame", "definition": "A data-link unit."},
+                {"term": "Packet", "definition": "A network-layer unit."},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "diagrams.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "diagrams",
+            "title": image_title,
+            "category": 'Network <category> & "safe"',
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "images": [{
+                "id": "network",
+                "file": "assets/network.png",
+                "alt_text": "Browser network image",
+                "source": {"organization": "DLMS Browser", "license": "CC0"},
+                "hotspots": [
+                    {
+                        "id": "router",
+                        "label": "Router",
+                        "prompt": "Identify the router.",
+                        "shape": {"type": "circle", "cx": 0.5, "cy": 0.5, "r": 0.1},
+                    },
+                    {
+                        "id": "switch",
+                        "label": "Switch",
+                        "prompt": "Identify the switch.",
+                        "shape": {"type": "circle", "cx": 0.7, "cy": 0.7, "r": 0.1},
+                    },
+                ],
+            }],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "questions.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "questions",
+            "title": quiz_title,
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "questions": [
+                {
+                    "type": "choice",
+                    "question": "Which device routes packets?",
+                    "choices": [
+                        {"text": "Router", "is_correct": True},
+                        {"text": "Keyboard", "is_correct": False},
+                    ],
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+    (assets_root / "network.png").write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+    )
+
+    browser.navigate(f"{base_url}/it?populated=1")
+    browser.wait_for(
+        "document.querySelector('.dashboard-sidebar-version')?.textContent.includes('IT </script>')"
+    )
+    home = browser.evaluate(
+        "(() => {const cards=Array.from(document.querySelectorAll('.medical-summary-grid .dashboard-stat-card'));"
+        "return {packs:cards[0].querySelector('strong').textContent,"
+        "banks:cards[1].querySelector('strong').textContent,"
+        "terms:cards[1].querySelector('small').textContent,"
+        "imageSets:cards[2].querySelector('strong').textContent,"
+        "targets:cards[2].querySelector('small').textContent,"
+        "questionHeading:document.querySelector('.medical-ai-builder-teaser h2').textContent,"
+        "questionCopy:document.querySelector('.medical-ai-builder-teaser p').textContent,"
+        "matchingHref:document.querySelector(\".medical-section-launch-card[href='/it/matching']\").getAttribute('href'),"
+        "imagesHref:document.querySelector(\".medical-section-launch-card[href='/it/images']\").getAttribute('href'),"
+        "navCurrent:document.querySelector('[data-nav-key=it]').getAttribute('aria-current'),"
+        "injected:!!document.getElementById('itPackInjected')||!!document.getElementById('itQuizInjected')};})()"
+    )
+    assert home == {
+        "packs": "1",
+        "banks": "1",
+        "terms": "3 concepts",
+        "imageSets": "1",
+        "targets": "2 targets across 1 images",
+        "questionHeading": "1 Question Set",
+        "questionCopy": "1 mixed questions are available through the main Study Packs workspace.",
+        "matchingHref": "/it/matching",
+        "imagesHref": "/it/images",
+        "navCurrent": "page",
+        "injected": False,
+    }
+
+    browser.navigate(f"{base_url}/it/matching")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector(\"form[action='/study-packs/generate'] input[name=csrf_token]\")"
+    )
+    matching = browser.evaluate(
+        "(() => {const form=document.querySelector(\"form[action='/study-packs/generate']\");"
+        "const toggle=document.querySelector('.study-dataset-title-button');"
+        "const round=document.querySelector(\"input[name='round_size']\");"
+        "const direction=document.querySelector(\"select[name='direction']\");"
+        "const submit=document.querySelector('.study-table-primary');"
+        "return {title:toggle.textContent,description:document.querySelector('.medical-dataset-detail-content p').textContent,"
+        "method:form.method,action:form.getAttribute('action'),"
+        "packId:document.querySelector(\"input[name='pack_id']\").value,"
+        "datasetId:document.querySelector(\"input[name='dataset_id']\").value,"
+        "roundMin:round.min,roundMax:round.max,roundValue:round.value,roundForm:round.getAttribute('form'),"
+        "direction:direction.value,directionForm:direction.getAttribute('form'),"
+        "submitForm:submit.getAttribute('form'),csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
+        "expanded:toggle.getAttribute('aria-expanded'),detailHidden:document.querySelector('.study-dataset-detail-row').hidden,"
+        "navCurrent:document.querySelector('[data-nav-key=it]').getAttribute('aria-current'),"
+        "injected:!!document.getElementById('itMatchingInjected')||!!document.getElementById('itMatchingDescriptionInjected')};})()"
+    )
+    assert matching == {
+        "title": matching_title,
+        "description": matching_description,
+        "method": "post",
+        "action": "/study-packs/generate",
+        "packId": "browser_it_views",
+        "datasetId": "concepts",
+        "roundMin": "2",
+        "roundMax": "3",
+        "roundValue": "3",
+        "roundForm": "it-match-form-1",
+        "direction": "random",
+        "directionForm": "it-match-form-1",
+        "submitForm": "it-match-form-1",
+        "csrf": True,
+        "expanded": None,
+        "detailHidden": True,
+        "navCurrent": "page",
+        "injected": False,
+    }
+    browser.click(".study-dataset-title-button")
+    browser.wait_for("!document.querySelector('.study-dataset-detail-row').hidden")
+    browser.evaluate(
+        "Array.from(document.querySelectorAll('.medical-compact-panel-actions button'))"
+        ".find(button=>button.textContent==='Collapse All').click()"
+    )
+    browser.wait_for("document.querySelector('.study-dataset-detail-row').hidden")
+    browser.evaluate(
+        "Array.from(document.querySelectorAll('.medical-compact-panel-actions button'))"
+        ".find(button=>button.textContent==='Expand All').click()"
+    )
+    browser.wait_for("!document.querySelector('.study-dataset-detail-row').hidden")
+
+    browser.navigate(f"{base_url}/it/images")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector(\"form[action='/study-packs/image/generate'] input[name=csrf_token]\")"
+    )
+    images = browser.evaluate(
+        "(() => {const form=document.querySelector(\"form[action='/study-packs/image/generate']\");"
+        "const toggle=document.querySelector('.study-dataset-title-button');"
+        "return {title:toggle.textContent,description:document.querySelector('.medical-dataset-detail-content p').textContent,"
+        "method:form.method,action:form.getAttribute('action'),"
+        "packId:form.querySelector(\"input[name='pack_id']\").value,"
+        "datasetId:form.querySelector(\"input[name='dataset_id']\").value,"
+        "csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
+        "expanded:toggle.getAttribute('aria-expanded'),detailHidden:document.querySelector('.study-dataset-detail-row').hidden,"
+        "navCurrent:document.querySelector('[data-nav-key=it]').getAttribute('aria-current'),"
+        "injected:!!document.getElementById('itImageInjected')||!!document.getElementById('itImageDescriptionInjected')};})()"
+    )
+    assert images == {
+        "title": image_title,
+        "description": image_description,
+        "method": "post",
+        "action": "/study-packs/image/generate",
+        "packId": "browser_it_views",
+        "datasetId": "diagrams",
+        "csrf": True,
+        "expanded": None,
+        "detailHidden": True,
+        "navCurrent": "page",
+        "injected": False,
+    }
+    browser.click(".study-dataset-title-button")
+    browser.wait_for("!document.querySelector('.study-dataset-detail-row').hidden")
