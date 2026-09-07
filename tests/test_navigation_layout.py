@@ -65,11 +65,21 @@ class NavigationLayoutTests(unittest.TestCase):
 
     def test_settings_detail_routes_use_external_templates(self):
         cases = (
-            ("/settings/navigation", "settings/navigation.html", "visibility"),
-            ("/settings/appearance", "settings/appearance.html", "cfg"),
-            ("/settings/parsing", "settings/parsing.html", "cfg"),
+            ("/settings/navigation", "settings/navigation.html", ("visibility",)),
+            ("/settings/appearance", "settings/appearance.html", ("cfg",)),
+            (
+                "/settings/ai",
+                "settings/ai.html",
+                (
+                    "cfg",
+                    "law_default_prompt",
+                    "study_pack_default_prompt",
+                    "medical_study_pack_default_addendum",
+                ),
+            ),
+            ("/settings/parsing", "settings/parsing.html", ("cfg",)),
         )
-        for route, template_name, context_name in cases:
+        for route, template_name, context_names in cases:
             with self.subTest(route=route), mock.patch.object(
                 dlms, "render_template", wraps=dlms.render_template,
             ) as render_template:
@@ -79,7 +89,8 @@ class NavigationLayoutTests(unittest.TestCase):
             render_template.assert_called_once()
             args, kwargs = render_template.call_args
             self.assertEqual(args, (template_name,))
-            self.assertIn(context_name, kwargs)
+            for context_name in context_names:
+                self.assertIn(context_name, kwargs)
             self.assertTrue((Path(dlms.TEMPLATE_ROOT) / template_name).is_file())
 
     def test_external_parsing_template_preserves_flags_and_saved_banner(self):

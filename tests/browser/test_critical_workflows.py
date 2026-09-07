@@ -1721,3 +1721,54 @@ def test_settings_hub_interaction_states_follow_each_theme(browser_stack):
             assert pressed["icon"] == normal["icon"]
         finally:
             browser.command("input.releaseActions", {"context": browser.context})
+
+
+def test_ai_settings_reset_buttons_restore_defaults_and_focus_fields(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/settings/ai")
+    browser.wait_for("document.getElementById('resetLawPromptBtn') !== null")
+
+    initial_defaults = browser.evaluate(
+        "(() => ({"
+        "study:document.getElementById('studyPackAIPromptTemplate').value,"
+        "medical:document.getElementById('medicalStudyPackAddendum').value,"
+        "law:document.getElementById('lawAIPromptTemplate').value"
+        "}))()"
+    )
+    reset_results = browser.evaluate(
+        "(() => {"
+        "const contracts=["
+        "['resetAIPromptBtn','aiPromptTemplate'],"
+        "['resetStudyPackPromptBtn','studyPackAIPromptTemplate'],"
+        "['resetMedicalStudyPackPromptBtn','medicalStudyPackAddendum'],"
+        "['resetLawPromptBtn','lawAIPromptTemplate']];"
+        "const results={};"
+        "for (const [buttonId,fieldId] of contracts) {"
+        "const field=document.getElementById(fieldId); field.value='DLMS reset sentinel';"
+        "document.getElementById(buttonId).click();"
+        "results[fieldId]={value:field.value,focused:document.activeElement===field};"
+        "} return results; })()"
+    )
+
+    assert reset_results["aiPromptTemplate"] == {
+        "value": (
+            "You are a technical tutor helping a student learn from mistakes.\n\n"
+            "For each question:\n"
+            "1. Explain why the correct answer is correct\n"
+            "2. Explain why the selected answer is incorrect\n"
+            "3. Give a short memory tip\n"
+            "4. Keep explanations concise but clear\n"
+            "5. Return your answer in clearly separated sections per question.\n\n"
+            "---\n\n{{questions}}"
+        ),
+        "focused": True,
+    }
+    for field_id, default_name in (
+        ("studyPackAIPromptTemplate", "study"),
+        ("medicalStudyPackAddendum", "medical"),
+        ("lawAIPromptTemplate", "law"),
+    ):
+        assert reset_results[field_id] == {
+            "value": initial_defaults[default_name],
+            "focused": True,
+        }

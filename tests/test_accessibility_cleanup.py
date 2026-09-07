@@ -14,6 +14,8 @@ def _ui_sources():
     yield ROOT / "app.py", APP_SOURCE
     for path in sorted((ROOT / "static").glob("*.html")):
         yield path, path.read_text(encoding="utf-8")
+    for path in sorted((ROOT / "templates").rglob("*.html")):
+        yield path, path.read_text(encoding="utf-8")
 
 
 def test_every_sidebar_menu_button_has_native_and_disclosure_semantics():
