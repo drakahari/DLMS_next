@@ -7,6 +7,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import anki as anki_routes
 from dlms.routes import law as law_routes
 from tests.csrf_test_utils import csrf_token
 
@@ -24,16 +25,18 @@ class LawAnkiTemplateCharacterizationTests(unittest.TestCase):
             "anki_law_tools": "anki/law.html",
         }
         app_source = Path(dlms.__file__).read_text(encoding="utf-8")
+        anki_source = Path(anki_routes.__file__).read_text(encoding="utf-8")
         law_source = Path(law_routes.__file__).read_text(encoding="utf-8")
         trees = {
             "law_view_case_review": ast.parse(law_source),
             **{
-                function_name: ast.parse(app_source)
+                function_name: ast.parse(anki_source)
                 for function_name in expected
                 if function_name != "law_view_case_review"
             },
         }
         self.assertNotIn("render_template_string(", app_source)
+        self.assertNotIn("render_template_string(", anki_source)
         self.assertNotIn("render_template_string(", law_source)
 
         for function_name, template_name in expected.items():

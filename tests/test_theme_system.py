@@ -942,7 +942,11 @@ class ThemeSystemTests(unittest.TestCase):
                     )
 
     def test_shared_anki_preview_classes_are_used_by_all_three_workflows(self):
-        with open(dlms.__file__, "r", encoding="utf-8") as f:
+        with open(
+            Path(dlms.__file__).parent / "dlms" / "routes" / "anki.py",
+            "r",
+            encoding="utf-8",
+        ) as f:
             source = f.read()
         template_source = "\n".join(
             Path(dlms.TEMPLATE_ROOT, "anki", name).read_text(encoding="utf-8")
@@ -951,9 +955,9 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertGreaterEqual(template_source.count('class="anki-preview-card"'), 3)
         self.assertGreaterEqual(template_source.count('class="anki-preview-number"'), 3)
         self.assertGreaterEqual(template_source.count('class="anki-card-side"'), 3)
-        self.assertIn('@app.route("/anki")', source)
-        self.assertIn('@app.route("/anki/custom"', source)
-        self.assertIn('@app.route("/anki/law")', source)
+        self.assertIn('("/anki", "anki_tools"', source)
+        self.assertIn('("/anki/custom", "anki_custom_deck"', source)
+        self.assertIn('("/anki/law", "anki_law_tools"', source)
 
     def test_custom_anki_theme_colors_are_class_based_not_inline(self):
         custom = Path(dlms.TEMPLATE_ROOT, "anki", "custom.html").read_text(encoding="utf-8")

@@ -8,6 +8,7 @@ from unittest import mock
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import anki as anki_routes
 from tests.csrf_test_utils import csrf_token
 
 
@@ -77,9 +78,13 @@ class AnkiTemporaryCleanupTests(unittest.TestCase):
                 self.assertFalse(os.path.exists(path))
 
     def test_all_apkg_routes_use_shared_cleanup_helper(self):
-        source = Path(dlms.__file__).read_text(encoding="utf-8")
-        self.assertEqual(source.count("apkg_path = export_quiz_to_apkg"), 6)
-        self.assertEqual(source.count("return _send_temp_anki_package("), 6)
+        source = Path(anki_routes.__file__).read_text(encoding="utf-8")
+        self.assertEqual(
+            source.count("apkg_path = dependencies.export_quiz_to_apkg"), 6
+        )
+        self.assertEqual(
+            source.count("return dependencies.send_temp_anki_package("), 6
+        )
 
     def test_history_review_export_uses_registry_quiz_title_for_deck_and_file(self):
         conn = sqlite3.connect(":memory:")
