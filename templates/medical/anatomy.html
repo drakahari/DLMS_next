@@ -1,0 +1,157 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anatomy & Images - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-study-page">
+<div class="dashboard-shell">
+    {% include "medical/_sidebar.html" %}
+
+
+    <main class="dashboard-main medical-main">
+        <header class="dashboard-header medical-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div>
+                <div class="medical-eyebrow">MEDICAL STUDY · VISUAL PRACTICE</div>
+                <h1>Anatomy &amp; Images</h1>
+                <p>Practice structure identification directly on source-documented images. Hotspots can use calibrated circles or polygons to follow actual anatomy.</p>
+            </div>
+        </header>
+
+        <section class="medical-summary-grid medical-subpage-summary">
+            <article class="dashboard-stat-card"><span>Image Sets</span><strong>{{ image_datasets|length }}</strong><small>available visual datasets</small></article>
+            <article class="dashboard-stat-card"><span>Structures</span><strong>{{ total_hotspots }}</strong><small>across {{ total_images }} image{% if total_images != 1 %}s{% endif %}</small></article>
+            <article class="dashboard-stat-card medical-subpage-back-card">
+                <span>Medical Study</span>
+                <a href="/medical">← Back to Medical Study</a>
+                <small>choose another study area</small>
+            </article>
+        </section>
+
+        {% if image_framework %}
+        <section class="dashboard-panel medical-image-framework-card medical-image-framework-compact">
+            <div class="medical-dataset-heading">
+                <div class="medical-dataset-icon">◎</div>
+                <div>
+                    <span class="medical-eyebrow">IMAGE CONTENT FRAMEWORK</span>
+                    <h2>{{ image_framework.get("name", "Anatomy Image / Hotspot Schema") }}</h2>
+                </div>
+            </div>
+            <p>{{ image_framework.get("description", "") }}</p>
+            <div class="medical-dataset-meta">
+                <span>Schema {{ image_framework.get("schema_version", 1) }}</span>
+                <span>{{ image_framework.get("status", "ready")|capitalize }}</span>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if image_datasets %}
+        <section class="dashboard-panel medical-compact-dataset-panel">
+            <div class="medical-compact-panel-heading">
+                <div>
+                    <span class="medical-eyebrow">INSTALLED VISUAL CONTENT</span>
+                    <h2>Image Study Sets</h2>
+                    <p>Launch image practice directly from the table, or expand a row for dataset details and source pack information.</p>
+                </div>
+                <div class="medical-compact-panel-actions">
+                    <button type="button" class="medical-ai-secondary-button" data-medical-expand="anatomy">Expand All</button>
+                    <button type="button" class="medical-ai-secondary-button" data-medical-collapse="anatomy">Collapse All</button>
+                </div>
+            </div>
+            <div class="study-dataset-table-wrap medical-dataset-table-wrap">
+                <table class="study-dataset-table medical-dataset-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Image Study Set</th>
+                            <th>Images</th>
+                            <th>Structures</th>
+                            <th class="study-dataset-action-col">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for dataset in image_datasets %}
+                        <tr class="medical-dataset-main-row">
+                            <td><span class="study-type-badge image">Image</span></td>
+                            <td>
+                                <button type="button"
+                                        class="study-dataset-title-button medical-dataset-toggle"
+                                        data-medical-detail="anatomy-detail-{{ loop.index }}"
+                                        aria-expanded="false">
+                                    <span class="medical-row-caret">›</span>
+                                    {{ dataset.title }}
+                                </button>
+                                <small>{{ dataset.category or "Visual Practice" }}</small>
+                            </td>
+                            <td><strong>{{ dataset.image_count }}</strong><small>image{% if dataset.image_count != 1 %}s{% endif %}</small></td>
+                            <td><strong>{{ dataset.hotspot_count }}</strong><small>structures</small></td>
+                            <td class="study-dataset-action-col">
+                                <form method="POST" action="/medical/anatomy/generate">
+                                    <input type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
+                                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                                    <button class="medical-primary-button study-table-primary" type="submit">Create Quiz</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <tr id="anatomy-detail-{{ loop.index }}" class="study-dataset-detail-row medical-dataset-detail-row" hidden>
+                            <td colspan="5">
+                                <div class="medical-dataset-detail-content">
+                                    <p>{{ dataset.description }}</p>
+                                    <div class="medical-dataset-detail-meta">
+                                        <span><strong>Category:</strong> {{ dataset.category or "Visual Practice" }}</span>
+                                        <span><strong>Dataset:</strong> {{ dataset.id }}</span>
+                                        <span><strong>Pack:</strong> {{ dataset.pack_name }}</span>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% else %}
+        <section class="dashboard-panel pack-empty-card">
+            <h2>No usable image datasets</h2>
+            <p>No valid Medical image datasets are currently installed.</p>
+        </section>
+        {% endif %}
+    </main>
+</div>
+<script>
+const menuButton=document.getElementById("menuButton");
+const sidebar=document.getElementById("dashboardSidebar");
+if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+
+function setMedicalDetail(toggle, open){
+    const targetId=toggle?.dataset?.medicalDetail;
+    const detail=targetId ? document.getElementById(targetId) : null;
+    if(!detail) return;
+    detail.hidden=!open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.querySelector(".medical-row-caret")?.classList.toggle("open", open);
+}
+document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>{
+    toggle.addEventListener("click",()=>{
+        const detail=document.getElementById(toggle.dataset.medicalDetail);
+        setMedicalDetail(toggle, !!detail?.hidden);
+    });
+});
+document.querySelectorAll("[data-medical-expand]").forEach(button=>{
+    button.addEventListener("click",()=>{
+        document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>setMedicalDetail(toggle,true));
+    });
+});
+document.querySelectorAll("[data-medical-collapse]").forEach(button=>{
+    button.addEventListener("click",()=>{
+        document.querySelectorAll(".medical-dataset-toggle").forEach(toggle=>setMedicalDetail(toggle,false));
+    });
+});
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body></html>

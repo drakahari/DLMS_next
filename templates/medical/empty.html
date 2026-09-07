@@ -1,0 +1,87 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical Study - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-study-page">
+<div class="dashboard-shell">
+    {% include "medical/_sidebar.html" %}
+
+
+    <main class="dashboard-main medical-main">
+        <header class="dashboard-header medical-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div>
+                <div class="medical-eyebrow">MEDICAL STUDY</div>
+                <h1>Medical Study</h1>
+                <p>Medical Study is ready to use. Add a Medical-domain Study Pack when you want terminology, image, or mixed-question medical content.</p>
+            </div>
+        </header>
+
+        <section class="medical-summary-grid">
+            <article class="dashboard-stat-card">
+                <span>Installed Packs</span>
+                <strong>0</strong>
+                <small>medical content is optional</small>
+            </article>
+            <article class="dashboard-stat-card">
+                <span>Study Banks</span>
+                <strong>0</strong>
+                <small>install or create content to begin</small>
+            </article>
+            <article class="dashboard-stat-card">
+                <span>Image Sets</span>
+                <strong>0</strong>
+                <small>no medical images installed</small>
+            </article>
+        </section>
+
+        <section class="medical-section-launch-grid">
+            <a class="dashboard-panel medical-section-launch-card" href="/study-packs/ai-builder?domain=Medical&amp;from=medical">
+                <div class="medical-section-launch-icon">AI</div>
+                <div class="medical-section-launch-copy">
+                    <span class="medical-eyebrow">CREATE</span>
+                    <h2>Create a Medical Study Pack</h2>
+                    <p>Use the unified AI Study Pack Builder with Medical safeguards, source requirements, and image provenance rules automatically enabled.</p>
+                    <span class="medical-section-launch-action">Open AI Study Pack Builder →</span>
+                </div>
+            </a>
+
+            <a class="dashboard-panel medical-section-launch-card" href="/content-packs">
+                <div class="medical-section-launch-icon">⬡</div>
+                <div class="medical-section-launch-copy">
+                    <span class="medical-eyebrow">INSTALL / MANAGE</span>
+                    <h2>Content Packs</h2>
+                    <p>Manage installed Study Packs. Any valid pack declaring a Medical content domain will automatically appear in Medical Study.</p>
+                    <span class="medical-section-launch-action">Open Content Packs →</span>
+                </div>
+            </a>
+        </section>
+
+        <section class="dashboard-panel medical-ai-builder-panel medical-empty-state-panel">
+            <div class="medical-ai-builder-heading">
+                <div>
+                    <span class="medical-eyebrow">OPTIONAL CONTENT</span>
+                    <h2>No Medical Study Packs Installed</h2>
+                    <p>DLMS itself does not require or bundle medical subject matter. You can leave Medical Study empty, create your own pack, or install a Medical Study Pack later.</p>
+                </div>
+                <span class="medical-ai-safety-pill">Medical Study Ready</span>
+            </div>
+            <p class="medical-empty-pack-path"><strong>Study Pack folder:</strong> <code>{{ pack_folder }}</code></p>
+        </section>
+    </main>
+</div>
+
+<script>
+document.getElementById("menuButton")?.addEventListener("click", () => {
+    document.getElementById("dashboardSidebar")?.classList.toggle("open");
+});
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

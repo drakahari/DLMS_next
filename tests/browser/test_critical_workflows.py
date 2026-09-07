@@ -2385,3 +2385,249 @@ def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_sta
     assert browser.evaluate(
         "document.querySelector('.content-pack-flashes .flash.success').textContent"
     ) == "Study Pack import cancelled; staging files were removed."
+
+
+def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    browser.navigate(f"{base_url}/medical")
+    browser.wait_for(
+        "document.querySelector('[data-nav-key=medical][aria-current=page]') && "
+        "document.querySelector('.medical-empty-state-panel')"
+    )
+    empty = browser.evaluate(
+        "(() => ({heading:document.querySelector('.medical-header h1').textContent,"
+        "emptyHeading:document.querySelector('.medical-empty-state-panel h2').textContent,"
+        "builderHref:document.querySelector(\"a[href^='/study-packs/ai-builder?domain=Medical']\").getAttribute('href'),"
+        "packsHref:document.querySelector(\".medical-section-launch-card[href='/content-packs']\").getAttribute('href'),"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label'),"
+        "menuControls:document.getElementById('menuButton').getAttribute('aria-controls')}))()"
+    )
+    assert empty == {
+        "heading": "Medical Study",
+        "emptyHeading": "No Medical Study Packs Installed",
+        "builderHref": "/study-packs/ai-builder?domain=Medical&from=medical",
+        "packsHref": "/content-packs",
+        "menuLabel": "Toggle navigation",
+        "menuControls": "dashboardSidebar",
+    }
+
+    folder = "DLMS_Study_browser_medical_views"
+    pack_root = browser_stack.data_root / "content_packs" / folder
+    data_root = pack_root / "data"
+    assets_root = pack_root / "assets"
+    data_root.mkdir(parents=True)
+    assets_root.mkdir()
+    pack_name = 'Medical </script><img id="medicalPackInjected"> & Safe'
+    matching_title = 'Terms </script><svg id="medicalMatchingInjected"> & Safe'
+    matching_description = 'Matching <b id="medicalDescriptionInjected"> details & safe'
+    anatomy_title = 'Anatomy </script><svg id="medicalAnatomyInjected"> & Safe'
+    anatomy_description = 'Anatomy <b id="medicalAnatomyDescriptionInjected"> details & safe'
+    framework_name = 'Framework <img id="medicalFrameworkInjected"> & Safe'
+    (pack_root / "manifest.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "browser_medical_views",
+            "name": pack_name,
+            "version": "1.0 <safe>",
+            "description": "Browser Medical views.",
+            "content_domain": "Medical",
+            "datasets": [{
+                "id": "terms",
+                "title": matching_title,
+                "description": matching_description,
+                "type": "matching",
+                "path": "data/terms.json",
+            }],
+            "image_datasets": [{
+                "id": "anatomy",
+                "title": anatomy_title,
+                "description": anatomy_description,
+                "type": "image",
+                "path": "data/anatomy.json",
+            }],
+            "quiz_datasets": [],
+            "image_framework": {
+                "name": framework_name,
+                "description": "Circle and polygon hotspot schema.",
+                "schema_version": 1,
+                "status": "ready",
+            },
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "terms.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "terms",
+            "title": matching_title,
+            "category": "Clinical & Core",
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "terms": [
+                {"term": "Anterior", "definition": "Toward the front."},
+                {"term": "Posterior", "definition": "Toward the back."},
+                {"term": "Medial", "definition": "Toward the midline."},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "anatomy.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "anatomy",
+            "title": anatomy_title,
+            "category": "Anatomy & Images",
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "images": [{
+                "id": "body",
+                "file": "assets/body.png",
+                "alt_text": "Browser anatomy image",
+                "source": {"organization": "DLMS Browser", "license": "CC0"},
+                "hotspots": [
+                    {
+                        "id": "one",
+                        "label": "Structure One",
+                        "prompt": "Identify structure one.",
+                        "shape": {"type": "circle", "cx": 0.5, "cy": 0.5, "r": 0.1},
+                    },
+                    {
+                        "id": "two",
+                        "label": "Structure Two",
+                        "prompt": "Identify structure two.",
+                        "shape": {"type": "circle", "cx": 0.7, "cy": 0.7, "r": 0.1},
+                    },
+                ],
+            }],
+        }),
+        encoding="utf-8",
+    )
+    (assets_root / "body.png").write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+    )
+
+    browser.navigate(f"{base_url}/medical?populated=1")
+    browser.wait_for(
+        "document.querySelector('.medical-header h1')?.textContent.includes('Medical </script>')"
+    )
+    home = browser.evaluate(
+        "(() => {const cards=Array.from(document.querySelectorAll('.medical-summary-grid .dashboard-stat-card'));"
+        "return {heading:document.querySelector('.medical-header h1').textContent,"
+        "banks:cards[1].querySelector('strong').textContent,"
+        "terms:cards[1].querySelector('small').textContent,"
+        "imageSets:cards[2].querySelector('strong').textContent,"
+        "structures:cards[2].querySelector('small').textContent,"
+        "matchingHref:document.querySelector(\".medical-section-launch-card[href='/medical/matching']\").getAttribute('href'),"
+        "anatomyHref:document.querySelector(\".medical-section-launch-card[href='/medical/anatomy']\").getAttribute('href'),"
+        "injected:document.getElementById('medicalPackInjected')!==null};})()"
+    )
+    assert home == {
+        "heading": pack_name,
+        "banks": "1",
+        "terms": "3 terminology terms",
+        "imageSets": "1",
+        "structures": "2 visual structures",
+        "matchingHref": "/medical/matching",
+        "anatomyHref": "/medical/anatomy",
+        "injected": False,
+    }
+
+    browser.navigate(f"{base_url}/medical/matching")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector(\"form[action='/medical/generate'] input[name=csrf_token]\")"
+    )
+    matching = browser.evaluate(
+        "(() => {const form=document.querySelector(\"form[action='/medical/generate']\");"
+        "const toggle=document.querySelector('.medical-dataset-toggle');"
+        "return {title:toggle.textContent.trim().replace(/^›\\s*/,''),"
+        "description:document.querySelector('.medical-dataset-detail-content p').textContent,"
+        "method:form.method,action:form.getAttribute('action'),"
+        "packId:form.querySelector('input[name=pack_id]').value,"
+        "datasetId:form.querySelector('input[name=dataset_id]').value,"
+        "roundMin:form.querySelector('input[name=round_size]').min,"
+        "roundMax:form.querySelector('input[name=round_size]').max,"
+        "roundValue:form.querySelector('input[name=round_size]').value,"
+        "direction:form.querySelector('select[name=direction]').value,"
+        "csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
+        "expanded:toggle.getAttribute('aria-expanded'),"
+        "detailHidden:document.getElementById(toggle.dataset.medicalDetail).hidden,"
+        "navCurrent:document.querySelector('[data-nav-key=medical]').getAttribute('aria-current'),"
+        "injected:!!document.getElementById('medicalMatchingInjected')||!!document.getElementById('medicalDescriptionInjected')};})()"
+    )
+    assert matching == {
+        "title": matching_title,
+        "description": matching_description,
+        "method": "post",
+        "action": "/medical/generate",
+        "packId": "browser_medical_views",
+        "datasetId": "terms",
+        "roundMin": "2",
+        "roundMax": "3",
+        "roundValue": "3",
+        "direction": "random",
+        "csrf": True,
+        "expanded": "false",
+        "detailHidden": True,
+        "navCurrent": "page",
+        "injected": False,
+    }
+    browser.click("[data-medical-expand=matching]")
+    assert browser.evaluate(
+        "document.querySelector('.medical-dataset-toggle').getAttribute('aria-expanded')==='true' && "
+        "!document.querySelector('.medical-dataset-detail-row').hidden"
+    ) is True
+    browser.click("[data-medical-collapse=matching]")
+    assert browser.evaluate(
+        "document.querySelector('.medical-dataset-toggle').getAttribute('aria-expanded')==='false' && "
+        "document.querySelector('.medical-dataset-detail-row').hidden"
+    ) is True
+
+    browser.navigate(f"{base_url}/medical/anatomy")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector(\"form[action='/medical/anatomy/generate'] input[name=csrf_token]\")"
+    )
+    anatomy = browser.evaluate(
+        "(() => {const form=document.querySelector(\"form[action='/medical/anatomy/generate']\");"
+        "const toggle=document.querySelector('.medical-dataset-toggle');"
+        "return {framework:document.querySelector('.medical-image-framework-card h2').textContent,"
+        "title:toggle.textContent.trim().replace(/^›\\s*/,''),"
+        "description:document.querySelector('.medical-dataset-detail-content p').textContent,"
+        "method:form.method,action:form.getAttribute('action'),"
+        "packId:form.querySelector('input[name=pack_id]').value,"
+        "datasetId:form.querySelector('input[name=dataset_id]').value,"
+        "csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
+        "expanded:toggle.getAttribute('aria-expanded'),"
+        "detailHidden:document.getElementById(toggle.dataset.medicalDetail).hidden,"
+        "navCurrent:document.querySelector('[data-nav-key=medical]').getAttribute('aria-current'),"
+        "injected:!!document.getElementById('medicalAnatomyInjected')||"
+        "!!document.getElementById('medicalAnatomyDescriptionInjected')||"
+        "!!document.getElementById('medicalFrameworkInjected')};})()"
+    )
+    assert anatomy == {
+        "framework": framework_name,
+        "title": anatomy_title,
+        "description": anatomy_description,
+        "method": "post",
+        "action": "/medical/anatomy/generate",
+        "packId": "browser_medical_views",
+        "datasetId": "anatomy",
+        "csrf": True,
+        "expanded": "false",
+        "detailHidden": True,
+        "navCurrent": "page",
+        "injected": False,
+    }
+    browser.click("[data-medical-expand=anatomy]")
+    assert browser.evaluate(
+        "document.querySelector('.medical-dataset-toggle').getAttribute('aria-expanded')==='true' && "
+        "!document.querySelector('.medical-dataset-detail-row').hidden"
+    ) is True
+    browser.click("[data-medical-collapse=anatomy]")
+    assert browser.evaluate(
+        "document.querySelector('.medical-dataset-toggle').getAttribute('aria-expanded')==='false' && "
+        "document.querySelector('.medical-dataset-detail-row').hidden"
+    ) is True

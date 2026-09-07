@@ -1,0 +1,86 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical Study - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-study-page">
+<div class="dashboard-shell">
+    {% include "medical/_sidebar.html" %}
+
+
+    <main class="dashboard-main medical-main">
+        <header class="dashboard-header medical-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div>
+                <div class="medical-eyebrow">MEDICAL STUDY</div>
+                <h1>{{ pack.name }}</h1>
+                <p>Choose a study area. Terminology practice and visual anatomy are separated so each workspace stays focused as the Medical Pack grows.</p>
+            </div>
+        </header>
+
+        <section class="medical-summary-grid">
+            <article class="dashboard-stat-card"><span>Pack Version</span><strong>{{ pack.version }}</strong><small>independent of DLMS core</small></article>
+            <article class="dashboard-stat-card"><span>Study Banks</span><strong>{{ datasets|length }}</strong><small>{{ total_terms }} terminology terms</small></article>
+            <article class="dashboard-stat-card"><span>Image Sets</span><strong>{{ image_datasets|length }}</strong><small>{{ total_hotspots }} visual structures</small></article>
+        </section>
+
+        <section class="medical-section-launch-grid">
+            <a class="dashboard-panel medical-section-launch-card" href="/medical/matching">
+                <div class="medical-section-launch-icon">↔</div>
+                <div class="medical-section-launch-copy">
+                    <span class="medical-eyebrow">TEXT STUDY</span>
+                    <h2>Terminology &amp; Matching</h2>
+                    <p>Practice foundational medical terminology and system-specific vocabulary with configurable matching rounds.</p>
+                    <div class="medical-dataset-meta">
+                        <span>{{ datasets|length }} study banks</span>
+                        <span>{{ total_terms }} terms</span>
+                    </div>
+                    <span class="medical-section-launch-action">Open Terminology &amp; Matching →</span>
+                </div>
+            </a>
+
+            <a class="dashboard-panel medical-section-launch-card" href="/medical/anatomy">
+                <div class="medical-section-launch-icon">◎</div>
+                <div class="medical-section-launch-copy">
+                    <span class="medical-eyebrow">VISUAL STUDY</span>
+                    <h2>Anatomy &amp; Images</h2>
+                    <p>Identify structures directly on source-documented anatomy images using calibrated circle and polygon hotspots.</p>
+                    <div class="medical-dataset-meta">
+                        <span>{{ image_datasets|length }} image sets</span>
+                        <span>{{ total_images }} images</span>
+                        <span>{{ total_hotspots }} structures</span>
+                    </div>
+                    <span class="medical-section-launch-action">Open Anatomy &amp; Images →</span>
+                </div>
+            </a>
+        </section>
+
+        <section class="dashboard-panel medical-ai-builder-teaser">
+            <div class="medical-ai-builder-teaser-icon">AI</div>
+            <div class="medical-ai-builder-teaser-copy">
+                <span class="medical-eyebrow">CUSTOM CONTENT</span>
+                <h2>AI Study Pack Builder</h2>
+                <p>Describe what you want to study and let DLMS build a controlled research prompt that requires source-verified, legally reusable material in the exact DLMS add-on pack format.</p>
+                <div class="medical-ai-builder-points">
+                    <span>✓ authoritative sources</span>
+                    <span>✓ open-license checks</span>
+                    <span>✓ DLMS-ready schema</span>
+                    <span>✓ no invented content</span>
+                </div>
+            </div>
+            <a class="medical-primary-button medical-ai-builder-open" href="/study-packs/ai-builder?domain=Medical&amp;from=medical">Build Custom Content</a>
+        </section>
+    </main>
+</div>
+<script>
+const menuButton=document.getElementById("menuButton");
+const sidebar=document.getElementById("dashboardSidebar");
+if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body></html>
