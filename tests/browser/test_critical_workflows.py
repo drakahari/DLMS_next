@@ -2241,3 +2241,147 @@ def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stac
         "exportHref": f"/content-packs/export/{folder}",
         "injected": False,
     }
+
+
+def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    def stage_pack(token, folder, pack_id):
+        stage_root = browser_stack.data_root / "content_pack_staging" / token
+        pack_root = stage_root / "extracted" / folder
+        data_root = pack_root / "data"
+        data_root.mkdir(parents=True)
+        pack_name = 'Browser </script><img id="reviewInjected"> & Safe'
+        uploaded_name = 'Browser <Archive> & "Review".zip'
+        (pack_root / "manifest.json").write_text(
+            json.dumps({
+                "schema_version": 1,
+                "id": pack_id,
+                "name": pack_name,
+                "version": "1.0",
+                "description": "Browser review description.",
+                "content_domain": "Other",
+                "datasets": [{
+                    "id": "terms",
+                    "title": "Browser terms",
+                    "type": "matching",
+                    "path": "data/terms.json",
+                }],
+                "image_datasets": [],
+                "quiz_datasets": [],
+            }),
+            encoding="utf-8",
+        )
+        (data_root / "terms.json").write_text(
+            json.dumps({
+                "schema_version": 1,
+                "id": "terms",
+                "title": "Browser terms",
+                "source": {"organization": "DLMS Browser Test", "license": "CC0"},
+                "terms": [
+                    {"term": "Review", "definition": "Inspect before install."},
+                    {"term": "Confirm", "definition": "Authorize installation."},
+                ],
+            }),
+            encoding="utf-8",
+        )
+        (stage_root / "stage.json").write_text(
+            json.dumps({
+                "token": token,
+                "root_name": f"extracted/{folder}",
+                "extract_root": "extracted",
+                "uploaded_name": uploaded_name,
+                "file_count": 2,
+                "uncompressed_bytes": 1048576,
+                "report": {},
+                "created_at": "2026-09-06T12:00:00",
+            }),
+            encoding="utf-8",
+        )
+        return stage_root, pack_name, uploaded_name
+
+    install_token = "1234567890abcdef1234567890abcdef"
+    install_folder = "DLMS_Study_browser_review_install"
+    stage_root, pack_name, uploaded_name = stage_pack(
+        install_token, install_folder, "browser_review_install"
+    )
+    review_url = f"{base_url}/content-packs/import/{install_token}"
+    browser.navigate(review_url)
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector('[data-nav-key=content][aria-current=page]') && "
+        "document.querySelector(\"#packReviewInstallForm input[name=csrf_token]\") && "
+        "document.querySelector(\".pack-review-cancel-form input[name=csrf_token]\")"
+    )
+    review = browser.evaluate(
+        "(() => {const install=document.getElementById('packReviewInstallForm');"
+        "const cancel=document.querySelector('.pack-review-cancel-form');"
+        "const confirm=install.querySelector('input[name=confirm_install]');"
+        "return {heading:document.querySelector('.pack-review-summary h2').textContent,"
+        "metadata:document.querySelector('.pack-review-summary p').textContent,"
+        "status:document.querySelector('.content-pack-status').textContent,"
+        "installMethod:install.method,installAction:install.getAttribute('action'),"
+        "cancelMethod:cancel.method,cancelAction:cancel.getAttribute('action'),"
+        "confirmValue:confirm.value,confirmRequired:confirm.required,"
+        "installCsrf:install.querySelector('input[name=csrf_token]').value.length>0,"
+        "cancelCsrf:cancel.querySelector('input[name=csrf_token]').value.length>0,"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label'),"
+        "menuControls:document.getElementById('menuButton').getAttribute('aria-controls'),"
+        "injected:document.getElementById('reviewInjected')!==null};})()"
+    )
+    assert review == {
+        "heading": pack_name,
+        "metadata": f"{uploaded_name} · 2 files · 1.0 MB expanded",
+        "status": "Valid",
+        "installMethod": "post",
+        "installAction": f"/content-packs/import/{install_token}/install",
+        "cancelMethod": "post",
+        "cancelAction": f"/content-packs/import/{install_token}/cancel",
+        "confirmValue": "yes",
+        "confirmRequired": True,
+        "installCsrf": True,
+        "cancelCsrf": True,
+        "menuLabel": "Toggle navigation",
+        "menuControls": "dashboardSidebar",
+        "injected": False,
+    }
+
+    browser.evaluate(
+        "document.querySelector('#packReviewInstallForm input[name=confirm_install]').checked=true"
+    )
+    browser.click("button[form=packReviewInstallForm]")
+    browser.wait_for(
+        "location.pathname==='/content-packs' && "
+        "Array.from(document.querySelectorAll('.content-pack-name strong'))"
+        ".some(el=>el.textContent.includes('Browser </script>'))"
+    )
+    assert not stage_root.exists()
+    assert (
+        browser_stack.data_root / "content_packs" / install_folder
+    ).is_dir()
+    assert browser.evaluate(
+        "document.querySelector('.content-pack-flashes .flash.success').textContent"
+    ) == f"Installed Study Pack '{pack_name}' successfully."
+    assert browser.evaluate("document.getElementById('reviewInjected')===null") is True
+
+    cancel_token = "abcdef1234567890abcdef1234567890"
+    cancel_stage, _, _ = stage_pack(
+        cancel_token,
+        "DLMS_Study_browser_review_cancel",
+        "browser_review_cancel",
+    )
+    browser.navigate(f"{base_url}/content-packs/import/{cancel_token}")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector(\".pack-review-cancel-form input[name=csrf_token]\")"
+    )
+    browser.click(".pack-review-cancel-form button")
+    browser.wait_for(
+        "location.pathname==='/content-packs' && "
+        "document.querySelector('.content-pack-flashes .flash.success')"
+    )
+    assert not cancel_stage.exists()
+    assert browser.evaluate(
+        "document.querySelector('.content-pack-flashes .flash.success').textContent"
+    ) == "Study Pack import cancelled; staging files were removed."

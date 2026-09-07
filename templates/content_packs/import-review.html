@@ -1,0 +1,72 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Validate Content Pack - DLMS</title>
+<link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home content-packs-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+<div class="dashboard-brand"><div class="dashboard-brand-mark">✓</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<nav class="dashboard-nav">
+<a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+<a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+<a class="dashboard-nav-item active" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+</nav>
+<div class="dashboard-sidebar-version">Pack Validation</div>
+</aside>
+<main class="dashboard-main content-packs-main">
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">{{ 'AI STUDY PACK WORKFLOW' if ai_workflow else 'CONTENT PACK IMPORT' }}</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
+
+{% if ai_workflow %}
+<ol class="study-pack-workflow-steps" aria-label="AI Study Pack workflow">
+<li class="is-complete">Configure</li><li class="is-complete">Generate Prompt</li><li class="is-complete">Bring Back ZIP</li><li class="is-current">Validate</li><li>Install</li><li>Study</li>
+</ol>
+{% endif %}
+
+<section class="dashboard-panel pack-review-summary">
+<div>
+<span class="medical-eyebrow">{{ 'READY TO INSTALL' if report.valid else 'INSTALL BLOCKED' }}</span>
+<h2>{{ report.pack_name or metadata.uploaded_name }}</h2>
+<p>{{ metadata.uploaded_name }} · {{ metadata.file_count }} files · {{ "%.1f"|format(metadata.uncompressed_bytes / 1048576) }} MB expanded</p>
+</div>
+<span class="content-pack-status {{ 'is-valid' if report.valid else 'is-invalid' }}">{{ 'Valid' if report.valid else 'Invalid' }}</span>
+</section>
+
+<section class="dashboard-panel pack-validation-panel">
+<div class="content-pack-manager-heading"><div><span class="medical-eyebrow">DLMS VALIDATION</span><h2>Validation Report</h2></div><span class="pack-count-pill">{{ report.dataset_count }} dataset{{ '' if report.dataset_count == 1 else 's' }}</span></div>
+<div class="pack-validation-summary-grid"><div><span>Passed</span><strong>{{ report.checks|selectattr('status','equalto','PASS')|list|length }}</strong></div><div><span>Warnings</span><strong>{{ report.warnings|length }}</strong></div><div><span>Errors</span><strong>{{ report.errors|length }}</strong></div></div>
+<div class="pack-validation-checks">
+{% for check in report.checks %}
+<div class="pack-validation-check"><span class="pack-validation-state {{ check.status|lower }}">{{ check.status }}</span><strong>{{ check.name }}</strong><span>{{ check.detail }}</span></div>
+{% endfor %}
+</div>
+{% if report.errors %}
+<div class="pack-validation-messages errors"><h3>Blocking problems</h3><ul>{% for item in report.errors %}<li>{{ item }}</li>{% endfor %}</ul></div>
+{% endif %}
+{% if report.warnings %}
+<div class="pack-validation-messages warnings"><h3>Warnings</h3><ul>{% for item in report.warnings %}<li>{{ item }}</li>{% endfor %}</ul></div>
+{% endif %}
+</section>
+
+<section class="dashboard-panel pack-review-actions">
+{% if report.valid %}
+<form class="pack-review-install-form" id="packReviewInstallForm" method="POST" action="/content-packs/import/{{ token }}/install">
+<label class="content-pack-confirm-check"><input type="checkbox" name="confirm_install" value="yes" required><span>Install this validated Study Pack into DLMS.</span></label>
+</form>
+{% else %}
+<p class="pack-review-blocked-copy">Installation is disabled until the blocking validation problems are corrected.</p>
+{% endif %}
+<div class="pack-review-button-row">
+{% if report.valid %}<button class="medical-primary-button" type="submit" form="packReviewInstallForm">Install Study Pack</button>{% endif %}
+<form class="pack-review-cancel-form" method="POST" action="/content-packs/import/{{ token }}/cancel"><button class="medical-ai-secondary-button" type="submit">Cancel &amp; Remove Staging Files</button></form>
+</div>
+<a class="medical-ai-quiet-link pack-review-back-link" href="{{ return_url }}">← Back to {{ return_label }}</a>
+</section>
+</main></div>
+<script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script>
+<script src="/static/nav-normalize.js"></script>
+</body></html>
