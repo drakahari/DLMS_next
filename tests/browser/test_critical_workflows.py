@@ -3424,3 +3424,166 @@ def test_law_import_detail_normalizes_path_escapes_raw_packet_and_protects_form(
     ) == "true"
     browser.click(".law-subpage-header h1")
     browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open')")
+
+
+def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    case_name = 'Browser Guided & <img id="lawGuidedCaseInjected"> Case'
+    raw_packet = (
+        '  Sources Used\nSource & </textarea><script id="lawGuidedRawInjected">bad()</script> '
+        '\u2028line\u2029paragraph\n\n1. Case Brief\nBrowser facts.  '
+    )
+    stripped_packet = raw_packet.strip()
+
+    browser.set_viewport(760, 1100)
+    browser.navigate(f"{base_url}/law/create")
+    browser.wait_for(
+        "document.querySelector('[data-nav-key=law][aria-current=page]') && "
+        "document.querySelector('.law-form input[name=csrf_token]')"
+    )
+    initial = browser.evaluate(
+        "(() => {const form=document.querySelector('.law-form');"
+        "return {heading:document.querySelector('h1').textContent,method:form.method,"
+        "action:form.getAttribute('action'),csrf:!!form.querySelector('input[name=csrf_token][type=hidden]'),"
+        "caseRequired:form.querySelector('[name=case_name]').required,"
+        "placeholder:form.querySelector('[name=case_name]').placeholder,"
+        "course:form.querySelector('[name=course]').value,provider:form.querySelector('[name=ai_provider]').value,"
+        "checked:Array.from(form.querySelectorAll('input[type=checkbox]:checked')).map(node=>node.name),"
+        "current:document.querySelector('[data-nav-key=law]').getAttribute('aria-current'),"
+        "primaryNav:document.querySelector('nav.dashboard-nav').getAttribute('aria-label'),"
+        "systemNav:document.querySelector('nav.dashboard-nav-system').getAttribute('aria-label'),"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label')};})()"
+    )
+    assert initial == {
+        "heading": "Create Case Review",
+        "method": "post",
+        "action": "/law/create",
+        "csrf": True,
+        "caseRequired": True,
+        "placeholder": "Example: Palsgraf v. Long Island Railroad Co.",
+        "course": "Torts",
+        "provider": "chatgpt",
+        "checked": [
+            "include_case_brief",
+            "include_socratic",
+            "include_irac",
+            "include_flashcards",
+        ],
+        "current": "page",
+        "primaryNav": "Primary navigation",
+        "systemNav": "System navigation",
+        "menuLabel": "Toggle navigation",
+    }
+
+    browser.evaluate(
+        "(() => {const form=document.querySelector('.law-form');"
+        f"form.querySelector('[name=case_name]').value={json.dumps(case_name)};"
+        "form.querySelector('[name=ai_provider]').value='chatgpt';"
+        "form.querySelector('[name=include_socratic]').checked=false;"
+        "form.querySelector('[name=include_flashcards]').checked=false;return true;})()"
+    )
+    browser.click("form[action='/law/create'] button[type=submit]")
+    browser.wait_for("document.getElementById('lawPromptBox') !== null")
+    generated = browser.evaluate(
+        "(() => {const form=document.querySelector('.law-form');const prompt=document.getElementById('lawPromptBox');"
+        "const open=Array.from(document.querySelectorAll('.law-generated-panel button')).find(button=>button.textContent.includes('Open AI'));"
+        "return {caseValue:form.querySelector('[name=case_name]').value,course:form.querySelector('[name=course]').value,"
+        "provider:form.querySelector('[name=ai_provider]').value,prompt:prompt.value,rows:prompt.rows,"
+        "openAction:open.getAttribute('onclick'),"
+        "checked:Array.from(form.querySelectorAll('input[type=checkbox]:checked')).map(node=>node.name),"
+        "injected:!!document.getElementById('lawGuidedCaseInjected')};})()"
+    )
+    assert generated["caseValue"] == case_name
+    assert generated["course"] == "Torts"
+    assert generated["provider"] == "chatgpt"
+    assert generated["rows"] == 18
+    assert generated["openAction"] == 'copyPromptAndOpenAi("https://chatgpt.com/")'
+    assert generated["checked"] == ["include_case_brief", "include_irac"]
+    assert generated["injected"] is False
+    assert case_name in generated["prompt"]
+    assert "1. Case Brief" in generated["prompt"]
+    assert "3. IRAC Drill" in generated["prompt"]
+    assert "Five cold-call style questions" not in generated["prompt"]
+    assert "Five active-recall flashcards" not in generated["prompt"]
+
+    registry_path = browser_stack.data_root / "config" / "law.json"
+    pending = json.loads(registry_path.read_text(encoding="utf-8"))["pending_case_workflow"]
+    assert pending["case_name"] == case_name
+    assert pending["course"] == "Torts"
+    assert pending["case_slug"] == "browser_guided_img_id_lawguidedcaseinjected_case"
+
+    browser.navigate(f"{base_url}/law/import")
+    browser.wait_for(
+        "document.querySelector('.law-workflow-banner') && "
+        "document.querySelectorAll('input[name=csrf_token]').length === 2"
+    )
+    active = browser.evaluate(
+        "(() => {const banner=document.querySelector('.law-workflow-banner');"
+        "const form=document.querySelector('form[action=\"/law/import\"]');const cancel=banner.querySelector('form');"
+        "return {name:banner.querySelector('strong').textContent,slug:banner.querySelector('small').textContent,"
+        "hiddenName:form.querySelector('[name=case_name]').value,hiddenSlug:form.querySelector('[name=case_slug]').value,"
+        "method:form.method,action:form.getAttribute('action'),csrf:!!form.querySelector('input[name=csrf_token]'),"
+        "cancelMethod:cancel.method,cancelAction:cancel.getAttribute('action'),"
+        "cancelCsrf:!!cancel.querySelector('input[name=csrf_token]'),cancelConfirm:cancel.getAttribute('onsubmit')};})()"
+    )
+    assert active == {
+        "name": case_name,
+        "slug": "File slug: browser_guided_img_id_lawguidedcaseinjected_case",
+        "hiddenName": case_name,
+        "hiddenSlug": "browser_guided_img_id_lawguidedcaseinjected_case",
+        "method": "post",
+        "action": "/law/import",
+        "csrf": True,
+        "cancelMethod": "post",
+        "cancelAction": "/law/workflow/cancel",
+        "cancelCsrf": True,
+        "cancelConfirm": (
+            "return confirm('Cancel the active Law Study workflow? This will not delete "
+            "saved imports or case reviews.');"
+        ),
+    }
+
+    browser.evaluate(
+        "(() => {const field=document.querySelector('[name=raw_packet]');"
+        f"field.value={json.dumps(raw_packet)};return true;}})()"
+    )
+    browser.click("form[action='/law/import'] button[value=preview]")
+    browser.wait_for("document.querySelector('.law-preview-panel') !== null")
+    preview = browser.evaluate(
+        "(() => {const field=document.querySelector('[name=raw_packet]');"
+        "const metrics=Array.from(document.querySelectorAll('.law-metric-card strong')).map(node=>node.textContent);"
+        "return {raw:field.value,rows:field.rows,placeholder:field.placeholder,metrics,"
+        "injected:!!document.getElementById('lawGuidedRawInjected')};})()"
+    )
+    assert preview == {
+        "raw": stripped_packet,
+        "rows": 22,
+        "placeholder": (
+            "Paste the AI-generated case brief, Socratic review, IRAC drill, and "
+            "flashcards here..."
+        ),
+        "metrics": [
+            str(len(stripped_packet.splitlines())),
+            str(len(stripped_packet) + stripped_packet.count("\n")),
+            "Ready",
+        ],
+        "injected": False,
+    }
+
+    browser.evaluate(
+        "sessionStorage.removeItem('lawCancelConfirm');"
+        "window.confirm=message=>{sessionStorage.setItem('lawCancelConfirm',message);return true};true"
+    )
+    browser.click("form[action='/law/workflow/cancel'] button[type=submit]")
+    browser.wait_for("document.body.textContent.includes('Active case workflow cancelled.')")
+    assert browser.evaluate("sessionStorage.getItem('lawCancelConfirm')") == (
+        "Cancel the active Law Study workflow? This will not delete saved imports or case reviews."
+    )
+    cancelled = json.loads(registry_path.read_text(encoding="utf-8"))
+    assert "pending_case_workflow" not in cancelled
+    assert browser.evaluate(
+        "document.body.textContent.includes('No active case workflow.') && "
+        "document.querySelector('[name=case_name]').value === '' && "
+        "document.querySelector('[name=case_slug]').value === ''"
+    ) is True
