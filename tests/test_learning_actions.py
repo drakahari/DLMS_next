@@ -114,7 +114,9 @@ class LearningActionsTests(unittest.TestCase):
         ), mock.patch.object(
             dlms, "_publish_quiz", return_value=(23, "smart-review.html")
         ) as publisher:
-            response = dlms.smart_review_generate()
+            response = dlms.app.view_functions[
+                "learning.smart_review_generate"
+            ]()
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.location, "/quizzes/smart-review.html")
@@ -149,7 +151,9 @@ class LearningActionsTests(unittest.TestCase):
             dlms, "_publish_quiz", side_effect=RuntimeError("publication failed")
         ):
             with self.assertRaisesRegex(RuntimeError, "publication failed"):
-                dlms.smart_review_generate()
+                dlms.app.view_functions[
+                    "learning.smart_review_generate"
+                ]()
 
 
 if __name__ == "__main__":

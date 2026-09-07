@@ -54,6 +54,8 @@ from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
 from dlms.routes.it import ITStudyDependencies, create_it_blueprint
 from dlms.routes.law import LawRouteDependencies, create_law_blueprint
+from dlms.routes.learning import LearningRouteDependencies, create_learning_blueprint
+from dlms.routes.history import HistoryRouteDependencies, create_history_blueprint
 from dlms.routes.admin_images import (
     AdminImageRouteDependencies,
     create_admin_images_blueprint,
@@ -2557,29 +2559,12 @@ def shutdown_app():
 
 
 
-@app.route("/history")
-def history():
-    return send_from_directory(app.static_folder, "history.html")
-
-
-@app.route("/history.html")
-def history_html_redirect():
-    attempt = request.args.get("attempt")
-    if attempt:
-        return redirect(f"/history?attempt={attempt}", code=301)
-    return redirect("/history", code=301)
-
-@app.route("/review")
-@app.route("/review.html")
-def review():
-    return send_from_directory(app.static_folder, "review.html")
 
 
 
-@app.route("/dashboard")
-@app.route("/dashboard.html")
-def dashboard():
-    return send_from_directory(app.static_folder, "dashboard.html")
+
+
+
 
 
 
@@ -4830,71 +4815,7 @@ def _attempt_retry_matches_existing(cur, validated, attempt_columns):
     )
 
 
-@app.route("/record_attempt", methods=["POST"])
-def record_attempt():
-    data = request.get_json(silent=True)
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    try:
-        acknowledgement = _attempt_service.persist_attempt(
-            conn,
-            cur,
-            data,
-            validate_attempt_payload=_validate_attempt_payload,
-            attempt_retry_matches_existing=_attempt_retry_matches_existing,
-            record_learning_event=_record_learning_event,
-            json_module=json,
-            print_message=print,
-        )
-        return jsonify(acknowledgement), 200
-    except LearningPayloadError as exc:
-        conn.rollback()
-        return jsonify({"error": str(exc)}), 400
-    except Exception as exc:
-        conn.rollback()
-        print(f"DB ERROR in /record_attempt: {exc}")
-        return jsonify({"error": "The quiz attempt could not be recorded."}), 500
-    finally:
-        conn.close()
-
-
-@app.route("/api/learning-events/study-response", methods=["POST"])
-def record_study_learning_event():
-    data = request.get_json(silent=True)
-
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        acknowledgement, status = _attempt_service.persist_study_learning_event(
-            conn,
-            cur,
-            data,
-            learning_integer=_learning_integer,
-            optional_learning_identifier=_optional_learning_identifier,
-            question_response_context_by_ordinal=_question_response_context_by_ordinal,
-            validate_question_response=_validate_question_response,
-            record_learning_event=_record_learning_event,
-            json_module=json,
-        )
-        return jsonify(acknowledgement), status
-    except LearningPayloadError as exc:
-        conn.rollback()
-        return jsonify({"error": str(exc)}), 400
-    except Exception as exc:
-        conn.rollback()
-        print(f"[LEARNING EVENT ERROR] {type(exc).__name__}: {exc}")
-        return jsonify({"error": "The learning event could not be recorded."}), 500
-    finally:
-        conn.close()
-
-
-@app.route("/api/learning-foundation/summary")
-def learning_foundation_summary():
-    """Diagnostics for DLMS-006/007; Phase 2 dashboards build on this data."""
-    conn = get_db()
-    cur = conn.cursor()
+def _learning_foundation_summary(cur):
     concepts = cur.execute("""
         SELECT c.id, c.name, COUNT(DISTINCT qc.question_id) AS question_count
         FROM concepts c
@@ -4913,13 +4834,23 @@ def learning_foundation_summary():
                COUNT(DISTINCT question_id) AS questions
         FROM learning_events
     """).fetchone()
-    out = {
-        "concepts": [dict(r) for r in concepts],
-        "event_counts": {r["event_type"]: r["count"] for r in event_counts},
-        "totals": dict(totals) if totals else {"events": 0, "quizzes": 0, "questions": 0},
+    return {
+        "concepts": [dict(row) for row in concepts],
+        "event_counts": {
+            row["event_type"]: row["count"] for row in event_counts
+        },
+        "totals": (
+            dict(totals)
+            if totals
+            else {"events": 0, "quizzes": 0, "questions": 0}
+        ),
     }
-    conn.close()
-    return jsonify(out)
+
+
+
+
+
+
 
 
 def _learning_intelligence_topics(cur, now=None):
@@ -5039,159 +4970,16 @@ def _review_select_candidates(candidates, topics, requested):
     )
 
 
-@app.route("/api/smart-review/preview")
-def smart_review_preview_api():
-    conn = get_db(); cur = conn.cursor()
-    try:
-        candidates, weak = _smart_review_candidates(cur)
-        return jsonify({
-            "weak_topics": [{"name": t["name"], "mastery": t["mastery"], "accuracy": t["accuracy"], "evidence": t["evidence"]} for t in weak],
-            "candidate_questions": len(candidates),
-            "questions": [{"question_id": c["question_id"], "question": c["question_text"], "topics": c["topic_names"]} for c in candidates[:50]],
-        })
-    finally:
-        conn.close()
 
 
-@app.route("/smart-review/generate", methods=["POST"])
-def smart_review_generate():
-    try:
-        requested = int(request.form.get("question_count", "20"))
-    except (TypeError, ValueError):
-        requested = 20
-    requested = max(3, min(requested, 50))
-
-    conn = get_db(); cur = conn.cursor()
-    try:
-        candidates, weak = _smart_review_candidates(cur)
-        if not weak:
-            flash("No weak areas currently meet the evidence threshold. Keep practicing to build evidence.", "info")
-            return redirect("/learning-intelligence")
-        if not candidates:
-            flash("Weak areas were detected, but no tagged source questions are available for review.", "error")
-            return redirect("/learning-intelligence")
-        selected = _smart_review_select_candidates(candidates, weak, requested)
-        quiz_data = []
-        for number, candidate in enumerate(selected, start=1):
-            item = _question_payload_from_db(cur, candidate["question_id"])
-            if not item:
-                continue
-            item["number"] = number
-            quiz_data.append(item)
-    finally:
-        conn.close()
-
-    if not quiz_data:
-        flash("No usable source questions were available for Smart Review.", "error")
-        return redirect("/learning-intelligence")
-
-    topic_names = [t["name"] for t in weak[:3]]
-    suffix = ", ".join(topic_names)
-    if len(weak) > 3:
-        suffix += f" +{len(weak)-3} more"
-    quiz_title = f"Smart Review — {suffix}"
-    quiz_id, html_name = _publish_quiz(
-        quiz_title,
-        quiz_data,
-        filename_prefix="smart_review",
-        exam_minutes=90,
-        snapshot_existing_assets=True,
-    )
-    return redirect(f"/quizzes/{html_name}")
 
 
-@app.route("/review-schedule")
-def review_schedule_page():
-    return send_from_directory(app.static_folder, "review-schedule.html")
 
 
-@app.route("/api/review-schedule")
-def review_schedule_api():
-    conn = get_db(); cur = conn.cursor()
-    try:
-        return jsonify(_review_schedule_payload(cur))
-    finally:
-        conn.close()
 
 
-@app.route("/api/spaced-review/preview")
-def spaced_review_preview_api():
-    scope = str(request.args.get("scope") or "due").strip().lower()
-    conn = get_db(); cur = conn.cursor()
-    try:
-        schedule = _review_schedule_payload(cur)
-        topics = schedule.get("topics") or []
-        if scope == "upcoming":
-            chosen = [t for t in topics if t.get("review_state") in ("overdue", "due", "due_soon")]
-        elif scope == "all":
-            chosen = topics
-        else:
-            chosen = [t for t in topics if t.get("review_state") in ("overdue", "due")]
-        candidates = _review_candidates_for_topics(cur, chosen)
-        return jsonify({
-            "scope": scope,
-            "topics": [{"name": t["name"], "review_state": t["review_state"], "next_review": t["next_review"], "retained_mastery": t["retained_mastery"]} for t in chosen],
-            "candidate_questions": len(candidates),
-            "questions": [{"question_id": c["question_id"], "question": c["question_text"], "topics": c["topic_names"]} for c in candidates[:50]],
-        })
-    finally:
-        conn.close()
 
 
-@app.route("/spaced-review/generate", methods=["POST"])
-def spaced_review_generate():
-    try:
-        requested = int(request.form.get("question_count", "20"))
-    except (TypeError, ValueError):
-        requested = 20
-    requested = max(1, min(requested, 50))
-    scope = str(request.form.get("scope") or "due").strip().lower()
-
-    conn = get_db(); cur = conn.cursor()
-    try:
-        schedule = _review_schedule_payload(cur)
-        topics = schedule.get("topics") or []
-        if scope == "upcoming":
-            chosen = [t for t in topics if t.get("review_state") in ("overdue", "due", "due_soon")]
-        elif scope == "all":
-            chosen = topics
-        else:
-            chosen = [t for t in topics if t.get("review_state") in ("overdue", "due")]
-        if not chosen:
-            flash("No topics match the selected spaced-review window yet.", "info")
-            return redirect("/review-schedule")
-        candidates = _review_candidates_for_topics(cur, chosen)
-        if not candidates:
-            flash("Review topics are scheduled, but no tagged source questions are available.", "error")
-            return redirect("/review-schedule")
-        selected = _review_select_candidates(candidates, chosen, requested)
-        quiz_data = []
-        for number, candidate in enumerate(selected, start=1):
-            item = _question_payload_from_db(cur, candidate["question_id"])
-            if not item:
-                continue
-            item["number"] = number
-            quiz_data.append(item)
-    finally:
-        conn.close()
-
-    if not quiz_data:
-        flash("No usable source questions were available for Spaced Review.", "error")
-        return redirect("/review-schedule")
-
-    topic_names = [t["name"] for t in chosen[:3]]
-    suffix = ", ".join(topic_names)
-    if len(chosen) > 3:
-        suffix += f" +{len(chosen)-3} more"
-    quiz_title = f"Spaced Review — {suffix}"
-    quiz_id, html_name = _publish_quiz(
-        quiz_title,
-        quiz_data,
-        filename_prefix="spaced_review",
-        exam_minutes=90,
-        snapshot_existing_assets=True,
-    )
-    return redirect(f"/quizzes/{html_name}")
 
 
 
@@ -5208,46 +4996,15 @@ def _question_diagnostics_payload(cur):
     )
 
 
-@app.route('/learning-diagnostics')
-def learning_diagnostics_page():
-    return send_from_directory(STATIC_ROOT, 'learning-diagnostics.html')
 
 
-@app.route('/api/learning-diagnostics')
-def learning_diagnostics_api():
-    conn=get_db(); cur=conn.cursor()
-    try:
-        return jsonify(_question_diagnostics_payload(cur))
-    finally:
-        conn.close()
 
 
-@app.route("/learning-profile")
-def learning_profile_page():
-    return send_from_directory(app.static_folder, "learning-profile.html")
 
 
-@app.route("/api/learning-profile")
-def learning_profile_api():
-    conn = get_db(); cur = conn.cursor()
-    try:
-        return jsonify(_learning_profile_payload(cur))
-    finally:
-        conn.close()
-
-@app.route("/learning-intelligence")
-def learning_intelligence_page():
-    return send_from_directory(app.static_folder, "learning-intelligence.html")
 
 
-@app.route("/api/learning-intelligence/topics")
-def learning_intelligence_topics_api():
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        return jsonify(_learning_intelligence_payload(cur))
-    finally:
-        conn.close()
+
 
 
 def _quiz_history_origin(registry_entry, packs=None):
@@ -5318,76 +5075,23 @@ def _missed_rows_for_attempt(cur, attempt_row):
     return _history_service._missed_rows_for_attempt(cur, attempt_row)
 
 
-@app.route("/api/attempts")
-def api_attempts():
-    try:
-        page, page_size, origin = _parse_attempt_pagination()
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-
+def _clear_persistent_history():
     conn = get_db()
-    try:
-        return jsonify(_history_service.attempt_page(
-            conn.cursor(),
-            page,
-            page_size,
-            origin,
-            attempt_columns=_attempt_columns,
-            attempt_history_context=_attempt_history_context,
-            attempt_origin_where=_attempt_origin_where,
-            attempt_select_sql=_attempt_select_sql,
-            attempt_summary_from_row=_attempt_summary_from_row,
-        ))
-    finally:
-        conn.close()
+    cur = conn.cursor()
+    cur.execute("PRAGMA foreign_keys = ON")
+    cur.execute("DELETE FROM attempt_answers")
+    cur.execute("DELETE FROM missed_questions")
+    cur.execute("DELETE FROM attempts")
+    conn.commit()
+    conn.close()
 
 
-@app.route("/api/attempts/overview")
-def api_attempts_overview():
-    conn = get_db()
-    try:
-        return jsonify(_history_service.attempt_overview(
-            conn.cursor(),
-            attempt_columns=_attempt_columns,
-            attempt_history_context=_attempt_history_context,
-            attempt_select_sql=_attempt_select_sql,
-            attempt_summary_from_row=_attempt_summary_from_row,
-        ))
-    finally:
-        conn.close()
 
 
-@app.route("/api/attempts/analytics")
-def api_attempts_analytics():
-    conn = get_db()
-    try:
-        return jsonify(_history_service.attempt_analytics(
-            conn.cursor(),
-            attempt_columns=_attempt_columns,
-            attempt_history_context=_attempt_history_context,
-            attempt_summary_from_row=_attempt_summary_from_row,
-        ))
-    finally:
-        conn.close()
 
 
-@app.route("/api/attempts/<attempt_reference>")
-def api_attempt_summary(attempt_reference):
-    conn = get_db()
-    try:
-        summary = _history_service.attempt_summary(
-            conn.cursor(),
-            attempt_reference,
-            attempt_columns=_attempt_columns,
-            resolve_attempt_row=_resolve_attempt_row,
-            attempt_history_context=_attempt_history_context,
-            attempt_summary_from_row=_attempt_summary_from_row,
-        )
-        if summary is None:
-            return jsonify({"error": "Attempt not found"}), 404
-        return jsonify(summary)
-    finally:
-        conn.close()
+
+
 
 
 
@@ -6307,27 +6011,6 @@ def export_anki_missed_tsv():
 #     return {"error": "Deprecated endpoint. Use /api/attempts."}, 410
 
 
-@app.route("/api/missed_questions")
-def api_missed_questions():
-    attempt_id = request.args.get("attempt")
-
-    if not attempt_id:
-        return {"error": "Missing attempt id"}, 400
-
-    conn = get_db()
-    try:
-        missed = _history_service.missed_questions(
-            conn.cursor(),
-            attempt_id,
-            resolve_attempt_row=_resolve_attempt_row,
-            missed_rows_for_attempt=_missed_rows_for_attempt,
-            json_module=json,
-        )
-        if missed is None:
-            return jsonify({"error": "Attempt not found"}), 404
-        return jsonify(missed)
-    finally:
-        conn.close()
 
 
 
@@ -6338,36 +6021,6 @@ def api_missed_questions():
 
 
 
-@app.route("/api/clear_db_history", methods=["POST"])
-def clear_db_history():
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-
-        # Ensure FK enforcement
-        cur.execute("PRAGMA foreign_keys = ON")
-
-        # Delete deepest dependencies first
-        cur.execute("DELETE FROM attempt_answers")
-        cur.execute("DELETE FROM missed_questions")
-        cur.execute("DELETE FROM attempts")
-
-        conn.commit()
-        conn.close()
-
-        print("[DB] Persistent exam history fully cleared")
-
-        return {
-            "status": "ok",
-            "message": "Persistent history cleared"
-        }
-
-    except Exception as e:
-        print("DB CLEAR ERROR:", e)
-        return {
-            "status": "error",
-            "error": "Saved history could not be cleared. Check the local DLMS log for details."
-        }, 500
 
 
 
@@ -6710,6 +6363,101 @@ def resolve_logo_filename(logo_filename):
     return logo_filename
 
 
+app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
+    static_folder=lambda: app.static_folder,
+    static_root=lambda: STATIC_ROOT,
+    get_db=lambda: get_db(),
+    learning_payload_error=lambda: LearningPayloadError,
+    persist_attempt=lambda conn, cur, data: _attempt_service.persist_attempt(
+        conn,
+        cur,
+        data,
+        validate_attempt_payload=_validate_attempt_payload,
+        attempt_retry_matches_existing=_attempt_retry_matches_existing,
+        record_learning_event=_record_learning_event,
+        json_module=json,
+        print_message=print,
+    ),
+    persist_study_learning_event=lambda conn, cur, data: _attempt_service.persist_study_learning_event(
+        conn,
+        cur,
+        data,
+        learning_integer=_learning_integer,
+        optional_learning_identifier=_optional_learning_identifier,
+        question_response_context_by_ordinal=_question_response_context_by_ordinal,
+        validate_question_response=_validate_question_response,
+        record_learning_event=_record_learning_event,
+        json_module=json,
+    ),
+    learning_foundation_summary=lambda cur: _learning_foundation_summary(cur),
+    smart_review_candidates=lambda cur: _smart_review_candidates(cur),
+    smart_review_select_candidates=lambda candidates, weak, requested: _smart_review_select_candidates(
+        candidates, weak, requested
+    ),
+    review_candidates_for_topics=lambda cur, topics: _review_candidates_for_topics(
+        cur, topics
+    ),
+    review_select_candidates=lambda candidates, topics, requested: _review_select_candidates(
+        candidates, topics, requested
+    ),
+    question_payload_from_db=lambda cur, question_id: _question_payload_from_db(
+        cur, question_id
+    ),
+    publish_quiz=lambda *args, **kwargs: _publish_quiz(*args, **kwargs),
+    review_schedule_payload=lambda cur: _review_schedule_payload(cur),
+    question_diagnostics_payload=lambda cur: _question_diagnostics_payload(cur),
+    learning_profile_payload=lambda cur: _learning_profile_payload(cur),
+    learning_intelligence_payload=lambda cur: _learning_intelligence_payload(cur),
+)))
+
+
+app.register_blueprint(create_history_blueprint(HistoryRouteDependencies(
+    static_folder=lambda: app.static_folder,
+    get_db=lambda: get_db(),
+    parse_attempt_pagination=lambda: _parse_attempt_pagination(),
+    attempt_page=lambda cur, page, page_size, origin: _history_service.attempt_page(
+        cur,
+        page,
+        page_size,
+        origin,
+        attempt_columns=_attempt_columns,
+        attempt_history_context=_attempt_history_context,
+        attempt_origin_where=_attempt_origin_where,
+        attempt_select_sql=_attempt_select_sql,
+        attempt_summary_from_row=_attempt_summary_from_row,
+    ),
+    attempt_overview=lambda cur: _history_service.attempt_overview(
+        cur,
+        attempt_columns=_attempt_columns,
+        attempt_history_context=_attempt_history_context,
+        attempt_select_sql=_attempt_select_sql,
+        attempt_summary_from_row=_attempt_summary_from_row,
+    ),
+    attempt_analytics=lambda cur: _history_service.attempt_analytics(
+        cur,
+        attempt_columns=_attempt_columns,
+        attempt_history_context=_attempt_history_context,
+        attempt_summary_from_row=_attempt_summary_from_row,
+    ),
+    attempt_summary=lambda cur, attempt_reference: _history_service.attempt_summary(
+        cur,
+        attempt_reference,
+        attempt_columns=_attempt_columns,
+        resolve_attempt_row=_resolve_attempt_row,
+        attempt_history_context=_attempt_history_context,
+        attempt_summary_from_row=_attempt_summary_from_row,
+    ),
+    missed_questions=lambda cur, attempt_id: _history_service.missed_questions(
+        cur,
+        attempt_id,
+        resolve_attempt_row=_resolve_attempt_row,
+        missed_rows_for_attempt=_missed_rows_for_attempt,
+        json_module=json,
+    ),
+    clear_persistent_history=lambda: _clear_persistent_history(),
+)))
+
+
 app.register_blueprint(create_law_blueprint(LawRouteDependencies(
     app_version=lambda: APP_VERSION,
     default_law_ai_prompt=lambda: DEFAULT_LAW_AI_PROMPT,
@@ -6992,14 +6740,6 @@ app.register_blueprint(create_quiz_blueprint(
 
 
 
-@app.route("/history_db")
-def history_db():
-    # No shipped page calls this legacy endpoint.  Retire the unbounded N+1
-    # response rather than leaving a second production scalability trap.
-    return jsonify({
-        "error": "Deprecated endpoint. Use /api/attempts for paged summaries and "
-                 "/api/missed_questions for selected-attempt detail."
-    }), 410
 
 
 # @app.route("/export/anki", methods=["POST"])
