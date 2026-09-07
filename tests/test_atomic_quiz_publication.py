@@ -109,6 +109,15 @@ class AtomicQuizPublicationTests(unittest.TestCase):
     def test_json_staging_failure_leaves_nothing_published(self):
         self._publish_with_failure("_write_staged_quiz_json", RuntimeError("json failure"))
 
+    def test_journal_creation_failure_removes_partial_temporary_journal(self):
+        def fail_after_temporary_write(path, _journal):
+            Path(path + ".tmp").write_text("partial", encoding="utf-8")
+            raise RuntimeError("journal creation failure")
+
+        self._publish_with_failure(
+            "_write_quiz_publication_journal", fail_after_temporary_write
+        )
+
     def test_html_render_failure_rolls_back_uncommitted_db(self):
         self._publish_with_failure("build_quiz_html", RuntimeError("html failure"))
 

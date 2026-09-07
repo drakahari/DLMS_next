@@ -125,6 +125,75 @@ class PublicationReconciliationTests(unittest.TestCase):
                 self._crash_at(boundary)
                 self._assert_rolled_back()
 
+    def test_crash_after_database_commit_before_journal_transition_rolls_back(self):
+        def commit_then_crash(connection):
+            connection.commit()
+            raise SimulatedCrash("after database commit")
+
+        with mock.patch.object(
+            dlms, "_commit_quiz_publication", side_effect=commit_then_crash
+        ):
+            with self.assertRaises(SimulatedCrash):
+                dlms._publish_quiz(
+                    "Committed crash",
+                    self._questions(),
+                    filename_prefix="committed_crash",
+                )
+
+        self.assertEqual(1, len(self._db_quiz_ids()))
+        self.assertEqual(1, len(self._journal_files()))
+        self._assert_rolled_back()
+
+    def test_crash_after_artifact_replace_before_journal_transition_rolls_back(self):
+        original = dlms._promote_quiz_artifact
+
+        def promote_then_crash(staged_path, final_path):
+            original(staged_path, final_path)
+            raise SimulatedCrash("after artifact replace")
+
+        with mock.patch.object(
+            dlms, "_promote_quiz_artifact", side_effect=promote_then_crash
+        ):
+            with self.assertRaises(SimulatedCrash):
+                dlms._publish_quiz(
+                    "Promotion crash",
+                    self._questions(),
+                    filename_prefix="promotion_crash",
+                )
+
+        self.assertEqual(1, len(list(Path(dlms.DATA_FOLDER).iterdir())))
+        self.assertEqual(1, len(self._journal_files()))
+        self._assert_rolled_back()
+
+    def test_registry_publish_before_journal_transition_preserves_valid_quiz(self):
+        original = dlms._update_quiz_publication_journal
+
+        def crash_before_registry_transition(path, journal, *, state=None):
+            if state == "registry_published":
+                raise SimulatedCrash("after registry publication")
+            return original(path, journal, state=state)
+
+        with mock.patch.object(
+            dlms,
+            "_update_quiz_publication_journal",
+            side_effect=crash_before_registry_transition,
+        ):
+            with self.assertRaises(SimulatedCrash):
+                dlms._publish_quiz(
+                    "Registry crash",
+                    self._questions(),
+                    filename_prefix="registry_crash",
+                )
+
+        registry = dlms.load_registry()
+        self.assertEqual(1, len(registry))
+        quiz_id = registry[0]["id"]
+        report = dlms.reconcile_quiz_publications()
+        self.assertEqual(1, report["preserved"])
+        self.assertEqual([quiz_id], self._db_quiz_ids())
+        self.assertEqual(1, len(dlms.load_registry()))
+        self.assertEqual([], self._journal_files())
+
     def test_crash_after_asset_promotion_rolls_back_asset_bucket(self):
         pack_root = Path(dlms.CONTENT_PACK_FOLDER) / "DLMS_Study_recovery_assets"
         (pack_root / "images").mkdir(parents=True)
@@ -263,6 +332,60 @@ class PublicationReconciliationTests(unittest.TestCase):
         else:
             path.write_text(raw, encoding="utf-8")
         return path
+
+    def test_every_publication_journal_state_preserves_its_current_schema_contract(self):
+        self.assertEqual(
+            {
+                "staging",
+                "db_commit_pending",
+                "db_committed",
+                "artifacts_promoted",
+                "registry_published",
+                "complete",
+                "rollback_pending",
+            },
+            dlms.QUIZ_PUBLICATION_STATES,
+        )
+
+        for index, state in enumerate(sorted(dlms.QUIZ_PUBLICATION_STATES), start=1):
+            publication_id = f"{index:032x}"
+            record = self._journal_record(publication_id)
+            record["state"] = state
+            if state in {
+                "db_commit_pending",
+                "db_committed",
+                "artifacts_promoted",
+                "registry_published",
+                "complete",
+            }:
+                record["quiz"]["id"] = 123
+            if state in {"artifacts_promoted", "registry_published", "complete"}:
+                record["artifacts"]["json"].update(attempted=True, promoted=True)
+                record["artifacts"]["html"].update(attempted=True, promoted=True)
+            if state in {"registry_published", "complete"}:
+                record["registry"].update(attempted=True, published=True)
+
+            journal_path = (
+                Path(dlms._quiz_publication_staging_root())
+                / f"publication_{publication_id}.json"
+            )
+            with self.subTest(state=state):
+                paths = dlms._validate_quiz_publication_journal(
+                    record, str(journal_path)
+                )
+                self.assertEqual(
+                    Path(dlms._quiz_publication_staging_root())
+                    / f"publish_{publication_id}",
+                    Path(paths["stage"]),
+                )
+                self.assertEqual(
+                    record["artifacts"]["json"]["name"],
+                    Path(paths["json"]).name,
+                )
+                self.assertEqual(
+                    record["artifacts"]["html"]["name"],
+                    Path(paths["html"]).name,
+                )
 
     def test_malformed_and_unsafe_journals_are_left_for_inspection(self):
         outside = Path(_TEMP.name).parent / "dlms-publication-protected.txt"
