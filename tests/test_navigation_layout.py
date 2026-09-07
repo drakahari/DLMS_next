@@ -63,10 +63,11 @@ class NavigationLayoutTests(unittest.TestCase):
                 self.assertIn('data-settings-menu', page)
                 self.assertIn("/settings", page)
 
-    def test_navigation_and_appearance_use_external_templates(self):
+    def test_settings_detail_routes_use_external_templates(self):
         cases = (
             ("/settings/navigation", "settings/navigation.html", "visibility"),
             ("/settings/appearance", "settings/appearance.html", "cfg"),
+            ("/settings/parsing", "settings/parsing.html", "cfg"),
         )
         for route, template_name, context_name in cases:
             with self.subTest(route=route), mock.patch.object(
@@ -80,6 +81,25 @@ class NavigationLayoutTests(unittest.TestCase):
             self.assertEqual(args, (template_name,))
             self.assertIn(context_name, kwargs)
             self.assertTrue((Path(dlms.TEMPLATE_ROOT) / template_name).is_file())
+
+    def test_external_parsing_template_preserves_flags_and_saved_banner(self):
+        cfg = {
+            "show_confidence": True,
+            "enable_regex_replace": False,
+            "auto_bom_clean": True,
+            "enable_show_invisibles": False,
+        }
+        with mock.patch.object(dlms, "load_portal_config", return_value=cfg):
+            response = self.client.get("/settings/parsing?saved=1")
+        page = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("✓ Parsing settings saved.", page)
+        self.assertIn('action="/settings/parsing/save" method="POST"', page)
+        for name in ("show_confidence", "auto_bom_clean"):
+            self.assertRegex(page, rf'name="{name}"\s+value="1"\s+checked')
+        for name in ("enable_regex_replace", "enable_show_invisibles"):
+            self.assertNotRegex(page, rf'name="{name}"\s+value="1"\s+checked')
 
     def test_settings_data_destinations_and_history_clear_location_match_current_ia(self):
         backup = self.client.get("/settings/backup").get_data(as_text=True)
