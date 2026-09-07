@@ -57,6 +57,11 @@ from dlms.routes.law import LawRouteDependencies, create_law_blueprint
 from dlms.routes.learning import LearningRouteDependencies, create_learning_blueprint
 from dlms.routes.history import HistoryRouteDependencies, create_history_blueprint
 from dlms.routes.anki import AnkiRouteDependencies, create_anki_blueprint
+from dlms.routes.maintenance import (
+    MaintenanceRouteDependencies,
+    create_maintenance_blueprint,
+)
+from dlms.routes.settings import SettingsRouteDependencies, create_settings_blueprint
 from dlms.routes.admin_images import (
     AdminImageRouteDependencies,
     create_admin_images_blueprint,
@@ -2492,9 +2497,6 @@ def save_preview_logo(app, logo_file):
 
 
 
-@app.route("/admin/maintenance")
-def admin_maintenance():
-    return render_template("admin/maintenance.html")
 
 
 
@@ -2668,6 +2670,26 @@ def save_portal_config(title, show_confidence=False, enable_regex_replace=False,
         load_config=load_portal_config,
         atomic_write_json=_atomic_write_json,
     )
+
+
+def _write_settings_portal_config(config):
+    return _atomic_write_json(
+        PORTAL_CONFIG,
+        config,
+        indent=4,
+        expected_type=dict,
+    )
+
+
+def _store_settings_background_upload(upload):
+    filename = secure_filename(upload.filename)
+    _store_raster_upload(
+        upload,
+        BACKGROUND_FOLDER,
+        filename,
+        RASTER_IMAGE_FORMATS,
+    )
+    return filename
 
 
 def get_quiz_folders():
@@ -3539,61 +3561,14 @@ def _run_reset_with_backup(reset_label, reset_callable):
         create_backup=_create_dlms_backup,
     )
 
-@app.route("/api/reset_quiz_library", methods=["POST"])
-def reset_quiz_library():
-    try:
-        backup_name = _run_reset_with_backup("quiz-library", _reset_quiz_library_core)
-        return jsonify(status="ok", backup=backup_name)
-    except Exception as exc:
-        print("[RESET QUIZ LIBRARY ERROR]", exc)
-        message, status = _destructive_operation_error(exc, "Quiz-library reset")
-        return jsonify(status="error", error=message), status
 
 
-@app.route("/api/reset_learning_intelligence", methods=["POST"])
-def reset_learning_intelligence():
-    try:
-        backup_name = _run_reset_with_backup(
-            "learning-intelligence", _reset_learning_intelligence_core
-        )
-        return jsonify(status="ok", backup=backup_name)
-    except Exception as exc:
-        print("[RESET LEARNING INTELLIGENCE ERROR]", exc)
-        message, status = _destructive_operation_error(exc, "Learning Intelligence reset")
-        return jsonify(status="error", error=message), status
 
 
-@app.route("/api/reset_source_content", methods=["POST"])
-def reset_source_content():
-    try:
-        backup_name = _run_reset_with_backup("source-content", _reset_source_content_core)
-        return jsonify(status="ok", backup=backup_name)
-    except Exception as exc:
-        print("[RESET SOURCE CONTENT ERROR]", exc)
-        message, status = _destructive_operation_error(exc, "Source-content reset")
-        return jsonify(status="error", error=message), status
 
 
-@app.route("/api/reset_app_settings", methods=["POST"])
-def reset_app_settings():
-    try:
-        backup_name = _run_reset_with_backup("settings", _reset_app_settings_core)
-        return jsonify(status="ok", backup=backup_name)
-    except Exception as exc:
-        print("[RESET SETTINGS ERROR]", exc)
-        message, status = _destructive_operation_error(exc, "Settings reset")
-        return jsonify(status="error", error=message), status
 
 
-@app.route("/api/reset_all_data", methods=["POST"])
-def reset_all_data():
-    try:
-        backup_name = _run_reset_with_backup("full-data", _full_data_reset_core)
-        return jsonify(status="ok", backup=backup_name)
-    except Exception as exc:
-        print("[RESET ALL DATA ERROR]", exc)
-        message, status = _destructive_operation_error(exc, "Full-data reset")
-        return jsonify(status="error", error=message), status
 
 
 DataRootOwnershipError = _restore_service.DataRootOwnershipError
@@ -3652,37 +3627,10 @@ def _schedule_post_removal_shutdown(removed_path):
     )
 
 
-@app.route("/api/remove_all_dlms_data", methods=["POST"])
-def remove_all_dlms_data():
-    payload = request.get_json(silent=True) or {}
-    confirmation = str(payload.get("confirmation") or "").strip()
-    if confirmation != "REMOVE DLMS DATA":
-        return jsonify(status="error", error="Type REMOVE DLMS DATA exactly to confirm permanent removal."), 400
-
-    try:
-        removed_path = _remove_all_dlms_runtime_data_core()
-    except Exception as exc:
-        print("[REMOVE ALL DLMS DATA ERROR]", exc)
-        message, status = _destructive_operation_error(exc, "Permanent DLMS data removal")
-        return jsonify(status="error", error=message), status
-
-    # The executable/source installation is intentionally left untouched.
-    _schedule_post_removal_shutdown(removed_path)
-
-    return jsonify(status="ok", removed_path=removed_path, executable_removed=False)
 
 
 # Backward-compatible endpoint retained for older UI/bookmarks. Its scope remains
 # the legacy quiz-library/database reset rather than the new full-data reset.
-@app.route("/api/wipe_database", methods=["POST"])
-def wipe_database():
-    try:
-        backup_name = _run_reset_with_backup("legacy-wipe", _reset_quiz_library_core)
-        return jsonify(status="ok", backup=backup_name)
-    except Exception as exc:
-        print("[LEGACY WIPE ERROR]", exc)
-        message, status = _destructive_operation_error(exc, "Database wipe")
-        return jsonify(status="error", error=message), status
 
 
 # =========================
@@ -4346,234 +4294,33 @@ from flask import send_file
 # =====================================================
 # SETTINGS HUB + INCREMENTAL SETTINGS MIGRATION
 # =====================================================
-@app.route("/settings")
-def settings_page():
-    """Settings landing page for the completed category-based settings UI."""
-    return render_template("settings/index.html")
-
-
-@app.route("/settings/navigation")
-def settings_navigation_page():
-    cfg = load_portal_config()
-    visibility = cfg["study_area_visibility"]
-
-    return render_template("settings/navigation.html", visibility=visibility)
-
-
-@app.route("/settings/navigation/save", methods=["POST"])
-def save_navigation_settings():
-    cfg = load_portal_config()
-    cfg["study_area_visibility"] = {
-        "it": "study_area_it" in request.form,
-        "law": "study_area_law" in request.form,
-        "medical": "study_area_medical" in request.form,
-        "other": "study_area_other" in request.form,
-    }
-
-    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
-
-    return redirect("/settings/navigation?saved=1")
-
-
-@app.route("/settings/appearance")
-def settings_appearance_page():
-    cfg = load_portal_config()
-    return render_template("settings/appearance.html", cfg=cfg)
-
-
-@app.route("/settings/appearance/save", methods=["POST"])
-def save_appearance_settings():
-    """Save only Appearance settings.
-
-    Deliberately does not update checkbox-based parsing or AI values so a
-    partial settings form cannot accidentally disable unrelated features.
-    """
-    cfg = load_portal_config()
-
-    requested_theme = str(request.form.get("theme") or cfg.get("theme") or DEFAULT_THEME).strip().lower()
-    cfg["theme"] = requested_theme if requested_theme in {"dark", "light", "purple-gold", "maroon-gold"} else DEFAULT_THEME
-
-    title = request.form.get("portal_title", "").strip()
-    if title:
-        cfg["title"] = title
-
-    file = request.files.get("background_image")
-    if file and file.filename and file.filename.strip():
-        filename = secure_filename(file.filename)
-        try:
-            _store_raster_upload(file, BACKGROUND_FOLDER, filename, RASTER_IMAGE_FORMATS)
-        except ValueError as exc:
-            return f"Invalid background image: {html.escape(str(exc))}", 400
-        cfg["background_image"] = filename
-
-    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
-
-    return redirect("/settings/appearance?saved=1")
-
-
-@app.route("/api/theme", methods=["POST"])
-def api_set_theme():
-    cfg = load_portal_config()
-    payload = request.get_json(silent=True) or request.form
-    requested = str(payload.get("theme") or "").strip().lower()
-    if requested not in {"dark", "light", "purple-gold", "maroon-gold"}:
-        return jsonify({"ok": False, "error": "Unsupported theme"}), 400
-    cfg["theme"] = requested
-    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
-    return jsonify({"ok": True, "theme": requested})
-
-
-@app.route("/settings/ai")
-def settings_ai_page():
-    cfg = load_portal_config()
-
-    cfg.setdefault("ai_helper_enabled", False)
-    cfg.setdefault("ai_provider", "chatgpt")
-    cfg.setdefault("ai_custom_url", "")
-    cfg.setdefault("ai_auto_copy_prompt", True)
-    cfg.setdefault("ai_prompt_template", "")
-    cfg.setdefault("study_pack_ai_prompt_template", DEFAULT_STUDY_CONTENT_PACK_PROMPT)
-    cfg.setdefault("medical_study_pack_ai_addendum", DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM)
-    cfg.setdefault("law_ai_prompt_template", DEFAULT_LAW_AI_PROMPT)
-
-    return render_template(
-        "settings/ai.html",
-        cfg=cfg,
-        law_default_prompt=DEFAULT_LAW_AI_PROMPT,
-        study_pack_default_prompt=DEFAULT_STUDY_CONTENT_PACK_PROMPT,
-        medical_study_pack_default_addendum=DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
-    )
-
-
-@app.route("/settings/ai/save", methods=["POST"])
-def save_ai_settings():
-    """Save only AI Integration settings.
-
-    This deliberately leaves Appearance and Parsing values untouched.
-    """
-    cfg = load_portal_config()
-
-    cfg["ai_helper_enabled"] = ("ai_helper_enabled" in request.form)
-    cfg["ai_auto_copy_prompt"] = ("ai_auto_copy_prompt" in request.form)
-
-    valid_ai_providers = {"chatgpt", "claude", "gemini", "local"}
-    provider = request.form.get("ai_provider", "chatgpt").strip().lower()
-    cfg["ai_provider"] = provider if provider in valid_ai_providers else "chatgpt"
-
-    try:
-        cfg["ai_custom_url"] = _validate_custom_ai_url(
-            request.form.get("ai_custom_url", "")
-        )
-    except ValueError as exc:
-        return str(exc), 400
-    cfg["ai_prompt_template"] = request.form.get("ai_prompt_template", "").strip()
-    cfg["study_pack_ai_prompt_template"] = request.form.get("study_pack_ai_prompt_template", "").strip() or DEFAULT_STUDY_CONTENT_PACK_PROMPT
-    cfg["medical_study_pack_ai_addendum"] = request.form.get("medical_study_pack_ai_addendum", "").strip() or DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM
-    cfg["law_ai_prompt_template"] = request.form.get("law_ai_prompt_template", "").strip() or DEFAULT_LAW_AI_PROMPT
-
-    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
-
-    return redirect("/settings/ai?saved=1")
 
 
 
-@app.route("/settings/parsing")
-def settings_parsing_page():
-    cfg = load_portal_config()
-
-    cfg.setdefault("show_confidence", True)
-    cfg.setdefault("enable_regex_replace", False)
-    cfg.setdefault("auto_bom_clean", False)
-    cfg.setdefault("enable_show_invisibles", True)
-
-    return render_template("settings/parsing.html", cfg=cfg)
 
 
-@app.route("/settings/parsing/save", methods=["POST"])
-def save_parsing_settings():
-    """Save only Parsing settings.
-
-    Checkbox values are intentionally scoped to this dedicated form so
-    Appearance and AI configuration remain untouched.
-    """
-    cfg = load_portal_config()
-
-    cfg["show_confidence"] = ("show_confidence" in request.form)
-    cfg["enable_regex_replace"] = ("enable_regex_replace" in request.form)
-    cfg["auto_bom_clean"] = ("auto_bom_clean" in request.form)
-    cfg["enable_show_invisibles"] = ("enable_show_invisibles" in request.form)
-
-    _atomic_write_json(PORTAL_CONFIG, cfg, indent=4, expected_type=dict)
-
-    return redirect("/settings/parsing?saved=1")
 
 
-@app.route("/settings/data/backup/create", methods=["POST"])
-@app.route("/settings/backup/create", methods=["POST"])
-def settings_create_backup():
-    try:
-        path, _manifest = _create_dlms_backup("manual")
-        return send_from_directory(BACKUP_FOLDER, os.path.basename(path), as_attachment=True)
-    except Exception as exc:
-        print("[BACKUP ERROR]", exc)
-        return render_template("settings/backup-failed.html", error="DLMS could not create the backup. Check the local application log for details."), 500
 
 
-@app.route("/settings/data/restore/stage", methods=["POST"])
-@app.route("/settings/backup/restore/stage", methods=["POST"])
-def settings_stage_restore():
-    upload = request.files.get("backup_file")
-    if not upload or not upload.filename:
-        return redirect("/settings/backup?restore_error=no-file")
-    if not upload.filename.lower().endswith(".zip"):
-        return redirect("/settings/backup?restore_error=not-zip")
-    if request.content_length and request.content_length > BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES:
-        return "Backup exceeds the 298 MB restore upload limit.", 413
-
-    token = secrets.token_hex(16)
-    stage_dir = _restore_staging_dir(token)
-    _backup_service.create_backup_restore_stage(stage_dir)
-    try:
-        report, semantic_result = _stage_dlms_backup(
-            upload, token, stage_dir=stage_dir
-        )
-    except Exception as exc:
-        shutil.rmtree(stage_dir, ignore_errors=True)
-        print(f"[RESTORE VALIDATION ERROR] {type(exc).__name__}: {exc}")
-        return render_template("settings/restore-validation-failed.html", error="The backup failed validation and was not accepted. Check the local DLMS log for details."), 400
-
-    manifest = report["manifest"]
-    summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
-    return render_template("settings/restore-confirm.html", manifest=manifest, report=report, semantic_validation=semantic_result, summary=summary, token=token)
 
 
-@app.route("/settings/data/restore/cancel/<token>", methods=["POST"])
-@app.route("/settings/backup/restore/cancel/<token>", methods=["POST"])
-def settings_cancel_restore(token):
-    with RESTORE_OPERATION_LOCK:
-        try:
-            result = _cancel_validated_restore_stage(token)
-        except ValueError:
-            return "Invalid restore cancellation request", 400
-        except Exception as exc:
-            print(
-                "[RESTORE STAGING CLEANUP ERROR] Could not cancel restore stage: "
-                f"{type(exc).__name__}: {exc}"
-            )
-            return "Could not cancel the staged restore", 500
-
-    if result == "unrecognized":
-        return "Restore staging is not available", 404
-    if result == "recovery":
-        return "Restore recovery is in progress or requires recovery", 409
-    return redirect("/settings/backup?restore_cancelled=1")
 
 
-@app.route("/settings/data/restore/confirm/<token>", methods=["POST"])
-@app.route("/settings/backup/restore/confirm/<token>", methods=["POST"])
-def settings_confirm_restore(token):
-    with RESTORE_OPERATION_LOCK:
-        return _settings_confirm_restore_locked(token)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def _complete_staged_restore(token):
@@ -4601,33 +4348,40 @@ def _complete_staged_restore(token):
     )
 
 
-def _settings_confirm_restore_locked(token):
-    try:
-        result = _complete_staged_restore(token)
-        safety_path = result["safety_path"]
-        cleanup_pending = result["cleanup_pending"]
 
-        return render_template("settings/restore-complete.html", safety_name=os.path.basename(safety_path), cleanup_pending=cleanup_pending)
-    except Exception as exc:
-        print("[RESTORE ERROR]", exc)
-        public_error = (
-            str(exc) if isinstance(exc, (DataRootOwnershipError, RestoreFutureSchemaError))
-            else "DLMS could not complete the restore. Existing data was preserved or rolled back. Check the local application log for details."
+
+def _send_settings_backup_file(path):
+    return send_from_directory(
+        BACKUP_FOLDER,
+        os.path.basename(path),
+        as_attachment=True,
+    )
+
+
+def _discard_restore_stage(stage_dir):
+    return shutil.rmtree(stage_dir, ignore_errors=True)
+
+
+def _settings_restore_error(exc):
+    public_error = (
+        str(exc)
+        if isinstance(exc, (DataRootOwnershipError, RestoreFutureSchemaError))
+        else (
+            "DLMS could not complete the restore. Existing data was preserved or "
+            "rolled back. Check the local application log for details."
         )
-        return render_template("settings/restore-failed.html", error=public_error), (
-            400 if isinstance(exc, ValueError)
-            else 409 if isinstance(exc, DataRootOwnershipError)
-            else 500
-        )
+    )
+    status = (
+        400
+        if isinstance(exc, ValueError)
+        else 409
+        if isinstance(exc, DataRootOwnershipError)
+        else 500
+    )
+    return public_error, status
 
 
-@app.route("/settings/data")
-def settings_data_legacy_redirect():
-    return redirect("/settings/backup")
-
-
-@app.route("/settings/backup")
-def settings_backup_page():
+def _settings_recent_backups():
     recent_backups = []
     try:
         for name in sorted(os.listdir(BACKUP_FOLDER), reverse=True):
@@ -4636,45 +4390,31 @@ def settings_backup_page():
                 recent_backups.append({
                     "name": name,
                     "size": _format_bytes(os.path.getsize(path)),
-                    "modified": datetime.fromtimestamp(os.path.getmtime(path)).strftime("%b %d, %Y %I:%M %p"),
+                    "modified": datetime.fromtimestamp(
+                        os.path.getmtime(path)
+                    ).strftime("%b %d, %Y %I:%M %p"),
                 })
                 if len(recent_backups) >= 5:
                     break
     except Exception:
         recent_backups = []
-
-    return render_template("settings/backup.html", recent_backups=recent_backups)
-
-
-@app.route("/settings/reset")
-def settings_reset_legacy_redirect():
-    return redirect("/settings/reset-remove")
-
-
-@app.route("/settings/reset-remove")
-def settings_reset_remove_page():
-    return render_template(
-        "settings/reset-remove.html",
-        app_data_dir=APP_DATA_DIR,
-    )
-
-
-@app.route("/settings/legacy")
-def settings_legacy_page():
-    """Redirect retired all-in-one Settings bookmarks to Appearance."""
-    return redirect("/settings/appearance", code=302)
+    return recent_backups
 
 
 
 
 
 
-@app.route("/save_settings", methods=["POST"])
-def save_settings():
-    # A cached copy of the retired legacy form can still submit here. Redirect
-    # without parsing or storing its fields/files so it cannot create partial
-    # settings state. The supported Settings pages own their scoped saves.
-    return redirect("/settings/appearance", code=303)
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5513,14 +5253,6 @@ def _format_anki_missed_tsv(rows):
 
 
 
-@app.route("/api/portal_config")
-def api_portal_config():
-    try:
-        cfg = load_portal_config()
-        return jsonify(cfg)
-    except Exception as e:
-        print("portal_config API error:", e)
-        return jsonify({"error": "failed"}), 500
 
 
 
@@ -5848,6 +5580,72 @@ def resolve_logo_filename(logo_filename):
         return None
 
     return logo_filename
+
+
+app.register_blueprint(create_settings_blueprint(SettingsRouteDependencies(
+    default_theme=lambda: DEFAULT_THEME,
+    default_law_ai_prompt=lambda: DEFAULT_LAW_AI_PROMPT,
+    default_study_content_pack_prompt=lambda: DEFAULT_STUDY_CONTENT_PACK_PROMPT,
+    default_medical_study_pack_ai_addendum=lambda: DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
+    load_portal_config=lambda: load_portal_config(),
+    write_portal_config=lambda config: _write_settings_portal_config(config),
+    store_background_upload=lambda upload: _store_settings_background_upload(upload),
+    validate_custom_ai_url=lambda value: _validate_custom_ai_url(value),
+    print_message=lambda *args, **kwargs: print(*args, **kwargs),
+)))
+
+
+app.register_blueprint(create_maintenance_blueprint(MaintenanceRouteDependencies(
+    backup_upload_max_bytes=lambda: BACKUP_UPLOAD_MAX_BYTES,
+    upload_multipart_overhead_bytes=lambda: UPLOAD_MULTIPART_OVERHEAD_BYTES,
+    create_backup=lambda label: _create_dlms_backup(label),
+    send_backup_file=lambda path: _send_settings_backup_file(path),
+    make_restore_token=lambda: secrets.token_hex(16),
+    restore_staging_dir=lambda token: _restore_staging_dir(token),
+    create_backup_restore_stage=lambda stage_dir: _backup_service.create_backup_restore_stage(
+        stage_dir
+    ),
+    stage_backup=lambda upload, token, **kwargs: _stage_dlms_backup(
+        upload,
+        token,
+        **kwargs,
+    ),
+    discard_restore_stage=lambda stage_dir: _discard_restore_stage(stage_dir),
+    restore_operation_lock=RESTORE_OPERATION_LOCK,
+    cancel_validated_restore_stage=lambda token: _cancel_validated_restore_stage(token),
+    complete_staged_restore=lambda token: _complete_staged_restore(token),
+    restore_error=lambda exc: _settings_restore_error(exc),
+    safety_backup_name=lambda path: os.path.basename(path),
+    recent_backups=lambda: _settings_recent_backups(),
+    app_data_dir=lambda: APP_DATA_DIR,
+    run_quiz_library_reset=lambda: _run_reset_with_backup(
+        "quiz-library", _reset_quiz_library_core
+    ),
+    run_learning_intelligence_reset=lambda: _run_reset_with_backup(
+        "learning-intelligence", _reset_learning_intelligence_core
+    ),
+    run_source_content_reset=lambda: _run_reset_with_backup(
+        "source-content", _reset_source_content_core
+    ),
+    run_app_settings_reset=lambda: _run_reset_with_backup(
+        "settings", _reset_app_settings_core
+    ),
+    run_full_data_reset=lambda: _run_reset_with_backup(
+        "full-data", _full_data_reset_core
+    ),
+    run_legacy_wipe=lambda: _run_reset_with_backup(
+        "legacy-wipe", _reset_quiz_library_core
+    ),
+    destructive_operation_error=lambda exc, operation: _destructive_operation_error(
+        exc,
+        operation,
+    ),
+    remove_all_runtime_data=lambda: _remove_all_dlms_runtime_data_core(),
+    schedule_post_removal_shutdown=lambda removed_path: _schedule_post_removal_shutdown(
+        removed_path
+    ),
+    print_message=lambda *args, **kwargs: print(*args, **kwargs),
+)))
 
 
 app.register_blueprint(create_anki_blueprint(AnkiRouteDependencies(

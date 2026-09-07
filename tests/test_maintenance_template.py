@@ -9,6 +9,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import maintenance as maintenance_routes
 from tests.csrf_test_utils import csrf_headers, csrf_token
 
 
@@ -23,7 +24,9 @@ class MaintenanceTemplateTests(unittest.TestCase):
 
     def test_route_uses_external_template_without_context(self):
         with mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            maintenance_routes,
+            "render_template",
+            wraps=maintenance_routes.render_template,
         ) as render_template:
             response = self.client.get("/admin/maintenance")
 

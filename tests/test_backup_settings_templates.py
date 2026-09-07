@@ -15,6 +15,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import maintenance as maintenance_routes
 from tests.csrf_test_utils import csrf_headers
 
 
@@ -81,7 +82,9 @@ class BackupSettingsTemplateTests(unittest.TestCase):
             os.utime(path, (1_700_000_000 + index, 1_700_000_000 + index))
 
         with mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            maintenance_routes,
+            "render_template",
+            wraps=maintenance_routes.render_template,
         ) as render_template:
             response = self.client.get(
                 "/settings/backup?restore_error=not-zip&restore_cancelled=1"
@@ -137,7 +140,9 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         with mock.patch.object(
             dlms, "_create_dlms_backup", side_effect=OSError("private path detail")
         ), mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            maintenance_routes,
+            "render_template",
+            wraps=maintenance_routes.render_template,
         ) as render_template:
             failure = self.client.post(
                 "/settings/backup/create",
@@ -182,7 +187,9 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         )
 
         with mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            maintenance_routes,
+            "render_template",
+            wraps=maintenance_routes.render_template,
         ) as render_template:
             failure = self._post_stage(
                 stage_error=ValueError("private archive detail")
@@ -228,7 +235,9 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         token = "b" * 32
 
         with mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            maintenance_routes,
+            "render_template",
+            wraps=maintenance_routes.render_template,
         ) as render_template:
             response = self._post_stage(stage_result=(report, semantic), token=token)
         page = response.get_data(as_text=True)
@@ -290,7 +299,9 @@ class BackupSettingsTemplateTests(unittest.TestCase):
                 "cleanup_pending": True,
             },
         ), mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            maintenance_routes,
+            "render_template",
+            wraps=maintenance_routes.render_template,
         ) as render_template:
             response = self.client.post(
                 "/settings/backup/restore/confirm/" + "d" * 32,
@@ -333,7 +344,9 @@ class BackupSettingsTemplateTests(unittest.TestCase):
             "_complete_staged_restore",
             side_effect=dlms.RestoreFutureSchemaError(public_error),
         ), mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template
+            maintenance_routes,
+            "render_template",
+            wraps=maintenance_routes.render_template,
         ) as render_template:
             public = self.client.post(
                 "/settings/backup/restore/confirm/" + "f" * 32,

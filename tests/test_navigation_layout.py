@@ -8,7 +8,9 @@ from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
 from dlms.routes import it as it_routes
+from dlms.routes import maintenance as maintenance_routes
 from dlms.routes import medical as medical_routes
+from dlms.routes import settings as settings_routes
 
 
 class NavigationLayoutTests(unittest.TestCase):
@@ -30,7 +32,9 @@ class NavigationLayoutTests(unittest.TestCase):
 
     def test_settings_hub_uses_standard_shell_without_migration_copy(self):
         with mock.patch.object(
-            dlms, "render_template", wraps=dlms.render_template,
+            settings_routes,
+            "render_template",
+            wraps=settings_routes.render_template,
         ) as render_template:
             response = self.client.get("/settings")
         page = response.get_data(as_text=True)
@@ -88,8 +92,15 @@ class NavigationLayoutTests(unittest.TestCase):
             ),
         )
         for route, template_name, context_names in cases:
+            owner = (
+                maintenance_routes
+                if route in {"/settings/backup", "/settings/reset-remove"}
+                else settings_routes
+            )
             with self.subTest(route=route), mock.patch.object(
-                dlms, "render_template", wraps=dlms.render_template,
+                owner,
+                "render_template",
+                wraps=owner.render_template,
             ) as render_template:
                 response = self.client.get(route)
 
