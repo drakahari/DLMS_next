@@ -3211,3 +3211,120 @@ def test_law_landing_counts_links_navigation_controls_and_metadata_boundaries(br
         ),
         "request": {"url": "/api/shutdown", "method": "POST"},
     }
+
+
+def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    data_root = browser_stack.data_root
+
+    import_name = 'browser & <import-id> "quoted" \'single\'.txt'
+    (data_root / "law" / "imports" / import_name).write_text(
+        "Browser catalog packet", encoding="utf-8"
+    )
+
+    registry_path = data_root / "config" / "law.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    case_id = 'browser & <case-id> "quoted" \'single\''
+    case_title = 'Catalog & <img id="lawCatalogInjected"> "Case"'
+    registry["cases"].append({
+        "id": case_id,
+        "title": case_title,
+        "course": '<b id="lawCourseCatalogInjected">Procedure</b>',
+        "created_at": "2099-09-07T12:00:00",
+        "source_import": '<svg id="lawSourceCatalogInjected">source.txt</svg>',
+        "status": "catalog-hidden-status",
+        "description": "catalog-hidden-description",
+        "file": "catalog-hidden-path.json",
+    })
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    browser.set_viewport(760, 1100)
+    browser.navigate(f"{base_url}/law/imports?deleted=1")
+    browser.wait_for(
+        "document.querySelector('[data-nav-key=law][aria-current=page]') && "
+        "document.querySelector('input[name=csrf_token]')"
+    )
+    imports = browser.evaluate(
+        "(() => {const rows=Array.from(document.querySelectorAll('.law-record-row'));"
+        f"const row=rows.find(item=>item.querySelector('h3').textContent==={json.dumps(import_name)});"
+        "const form=row.querySelector('form');const open=row.querySelector('.law-open-action');"
+        "return {heading:document.querySelector('h1').textContent,count:document.querySelector('.law-count-pill').textContent,"
+        "banner:document.querySelector('.law-notice').textContent,filename:row.querySelector('h3').textContent,"
+        "open:open.getAttribute('onclick'),method:form.method,action:form.getAttribute('action'),"
+        "confirm:form.getAttribute('onsubmit'),csrf:!!form.querySelector('input[name=csrf_token][type=hidden]'),"
+        "deleteLabel:form.querySelector('button').getAttribute('aria-label'),"
+        "current:document.querySelector('[data-nav-key=law]').getAttribute('aria-current'),"
+        "menuExpanded:document.getElementById('menuButton').getAttribute('aria-expanded'),"
+        "injected:!!document.getElementById('import-id')};})()"
+    )
+    assert imports == {
+        "heading": "Saved Law Imports",
+        "count": "1 saved",
+        "banner": "Saved import deleted.Structured case reviews were not changed.",
+        "filename": import_name,
+        "open": f"location.href='/law/imports/{import_name}'",
+        "method": "post",
+        "action": f"/law/imports/{import_name}/delete",
+        "confirm": (
+            "return confirm('Delete this saved raw import? This will not delete any "
+            "structured case reviews already created from it.');"
+        ),
+        "csrf": True,
+        "deleteLabel": "Delete import",
+        "current": "page",
+        "menuExpanded": "false",
+        "injected": False,
+    }
+
+    browser.navigate(f"{base_url}/law/cases?deleted=1")
+    browser.wait_for(
+        "document.querySelector('[data-nav-key=law][aria-current=page]') && "
+        "document.querySelector('input[name=csrf_token]')"
+    )
+    cases = browser.evaluate(
+        "(() => {const rows=Array.from(document.querySelectorAll('.law-record-row'));"
+        f"const row=rows.find(item=>item.querySelector('h3').textContent==={json.dumps(case_title)});"
+        "const form=row.querySelector('form');return {heading:document.querySelector('h1').textContent,"
+        "count:document.querySelector('.law-count-pill').textContent,banner:document.querySelector('.law-notice').textContent,"
+        "firstTitle:rows[0].querySelector('h3').textContent,title:row.querySelector('h3').textContent,"
+        "course:row.querySelector('.law-record-meta span').textContent,source:row.querySelector('.law-record-source').textContent,"
+        "open:row.querySelector('.law-open-action').getAttribute('onclick'),method:form.method,"
+        "action:form.getAttribute('action'),confirm:form.getAttribute('onsubmit'),"
+        "csrf:!!form.querySelector('input[name=csrf_token][type=hidden]'),"
+        "deleteLabel:form.querySelector('button').getAttribute('aria-label'),"
+        "injected:!!document.getElementById('lawCatalogInjected')||"
+        "!!document.getElementById('lawCourseCatalogInjected')||"
+        "!!document.getElementById('lawSourceCatalogInjected'),"
+        "hidden:document.body.textContent.includes('catalog-hidden-status')||"
+        "document.body.textContent.includes('catalog-hidden-description')||"
+        "document.body.textContent.includes('catalog-hidden-path.json')};})()"
+    )
+    assert cases == {
+        "heading": "My Case Reviews",
+        "count": f"{len(registry['cases'])} saved",
+        "banner": "Case review deleted.The original raw import was not changed.",
+        "firstTitle": case_title,
+        "title": case_title,
+        "course": '<b id="lawCourseCatalogInjected">Procedure</b>',
+        "source": 'Source: <svg id="lawSourceCatalogInjected">source.txt</svg>',
+        "open": f"location.href='/law/cases/{case_id}'",
+        "method": "post",
+        "action": f"/law/cases/{case_id}/delete",
+        "confirm": (
+            "return confirm('Delete this Law Case Review? This will remove the saved "
+            "case review JSON file, but it will not delete the original raw import.');"
+        ),
+        "csrf": True,
+        "deleteLabel": "Delete case review",
+        "injected": False,
+        "hidden": False,
+    }
+
+    browser.click("#menuButton")
+    browser.wait_for("document.getElementById('dashboardSidebar').classList.contains('open')")
+    assert browser.evaluate(
+        "document.getElementById('menuButton').getAttribute('aria-expanded')"
+    ) == "true"
+    browser.click(".law-subpage-header h1")
+    browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open')")

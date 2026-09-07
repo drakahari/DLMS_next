@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>My Case Reviews - DLMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home law-subpage law-list-page">
+<div class="dashboard-shell">
+
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand">
+        <div class="dashboard-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+                <path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                <path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <div>
+            <div class="dashboard-brand-title">DLMS</div>
+            <div class="dashboard-brand-subtitle">Training Center</div>
+        </div>
+    </div>
+
+    <nav class="dashboard-nav" aria-label="Primary navigation">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        {% endif %}
+        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <div class="dashboard-nav-submenu">
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
+                </div>
+            </div>
+    </nav>
+
+    <div class="dashboard-nav-section-label"><span>System</span></div>
+
+    <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+    </nav>
+
+    <button class="dashboard-shutdown" id="shutdownBtn" type="button">
+        <span class="dashboard-shutdown-icon">⏻</span>
+        <span>Shutdown DLMS</span>
+    </button>
+    <div class="dashboard-sidebar-version">Law Study</div>
+</aside>
+
+<main class="dashboard-main law-subpage-main">
+    <header class="dashboard-header law-subpage-header">
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <div>
+            <div class="law-subpage-eyebrow">LAW STUDY</div>
+            <h1>My Case Reviews</h1>
+            <p>Saved case briefs, Socratic review, and IRAC practice in one place.</p>
+        </div>
+    </header>
+
+    <section class="dashboard-panel law-workspace-panel">
+        <div class="law-panel-heading">
+            <div>
+                <span class="law-subpage-eyebrow">CASE LIBRARY</span>
+                <h2>Saved Case Reviews</h2>
+                <p>Open a structured review or remove one you no longer need.</p>
+            </div>
+            <span class="law-count-pill">{{ cases|length }} saved</span>
+        </div>
+
+        {% if request.args.get('deleted') %}
+        <div class="law-notice success"><strong>Case review deleted.</strong><span>The original raw import was not changed.</span></div>
+        {% endif %}
+
+        {% if cases %}
+        <div class="law-record-list">
+            {% for case in cases %}
+            <article class="law-record-row">
+                <div class="law-record-icon" aria-hidden="true">§</div>
+                <div class="law-record-copy">
+                    <h3>{{ case.title }}</h3>
+                    <div class="law-record-meta">
+                        <span>{{ case.course or "Uncategorized" }}</span>
+                        <span>•</span>
+                        <span>Created {{ case.created_at }}</span>
+                    </div>
+                    <div class="law-record-source">Source: {{ case.source_import }}</div>
+                </div>
+                <div class="law-record-actions">
+                    <button type="button" class="law-open-action" onclick="location.href='/law/cases/{{ case.id }}'">Open</button>
+                    <form method="POST" action="/law/cases/{{ case.id }}/delete"
+                          onsubmit="return confirm('Delete this Law Case Review? This will remove the saved case review JSON file, but it will not delete the original raw import.');">
+                        <button type="submit" class="law-trash-action" aria-label="Delete case review" title="Delete case review">🗑</button>
+                    </form>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="law-empty-state">
+            <h3>No case reviews yet</h3>
+            <p>Create a case review from a saved import to see it here.</p>
+        </div>
+        {% endif %}
+
+        <div class="law-action-row law-footer-actions">
+            <button type="button" class="law-primary-action" onclick="location.href='/law/imports'">Saved Imports</button>
+            <button type="button" class="law-secondary-action" onclick="location.href='/law/import'">Import Case Packet</button>
+            <button type="button" class="law-quiet-action" onclick="location.href='/law'">Back to Law Study</button>
+        </div>
+    </section>
+</main>
+</div>
+
+<script>
+const menuButton = document.getElementById("menuButton");
+const sidebar = document.getElementById("dashboardSidebar");
+
+if (menuButton && sidebar) {
+    menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));
+
+    document.addEventListener("click", event => {
+        if (window.innerWidth > 820 || !sidebar.classList.contains("open")) return;
+        if (sidebar.contains(event.target) || menuButton.contains(event.target)) return;
+        sidebar.classList.remove("open");
+    });
+}
+
+const shutdownBtn = document.getElementById("shutdownBtn");
+if (shutdownBtn) {
+    shutdownBtn.addEventListener("click", async () => {
+        if (!confirm("Shut down DLMS? You will need to restart it manually.")) return;
+        try {
+            const res = await fetch("/api/shutdown", { method: "POST" });
+            const data = await res.json();
+            if (data.status === "ok") alert("DLMS is shutting down.");
+            else throw new Error();
+        } catch (err) {
+            alert("Failed to shut down DLMS.");
+        }
+    });
+}
+</script>
+
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>
