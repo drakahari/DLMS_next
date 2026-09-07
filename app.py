@@ -35,6 +35,7 @@ from dlms.persistence import portal as _portal_repository
 from dlms.persistence import registries as _registry_repository
 from dlms.persistence import database as _database
 from dlms.persistence import pdf_banks as _pdf_bank_repository
+from dlms.parsing import law_packet as _law_packet_parser
 from dlms.parsing import quiz_text as _quiz_text_parser
 from dlms.parsing import smart_pdf as _smart_pdf_parser
 from dlms.services import anki as _anki_service
@@ -43,6 +44,7 @@ from dlms.services import content_packs as _content_pack_service
 from dlms.services import content_pack_mutations as _content_pack_mutation_service
 from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
+from dlms.services import law as _law_service
 
 # =========================
 # PYINSTALLER PATH HELPER
@@ -4916,67 +4918,37 @@ def save_law_registry(registry):
 
 
 def _law_registry_case_for_mutation(registry, case_id):
-    """Return the current mutable case entry or fail before durable changes."""
-    for case in registry.get("cases", []):
-        if str(case.get("id")) == str(case_id):
-            return case
-    raise ValueError("Law case registry entry changed before the operation completed")
+    return _law_service._law_registry_case_for_mutation(registry, case_id)
 
 
 def _commit_law_case_and_registry(
     case_path, case_data, registry, *, previous_case_data=None, new_case=False
 ):
-    """Commit one case file and its registry metadata with narrow rollback."""
-    if new_case and os.path.lexists(case_path):
-        raise FileExistsError("Law case file already exists")
-    if not new_case and not isinstance(previous_case_data, dict):
-        raise ValueError("Existing Law case data is required for rollback")
-
-    _atomic_write_json(case_path, case_data, expected_type=dict)
-    try:
-        save_law_registry(registry)
-    except Exception as registry_error:
-        try:
-            if new_case:
-                if os.path.lexists(case_path):
-                    if not os.path.isfile(case_path):
-                        raise RuntimeError("New Law case path is no longer a regular file")
-                    os.remove(case_path)
-            else:
-                _atomic_write_json(
-                    case_path, previous_case_data, expected_type=dict
-                )
-        except Exception as rollback_error:
-            raise RuntimeError(
-                "Law registry save failed and the case-file rollback also failed"
-            ) from rollback_error
-        raise
+    return _law_service._commit_law_case_and_registry(
+        case_path,
+        case_data,
+        registry,
+        previous_case_data=previous_case_data,
+        new_case=new_case,
+        atomic_write_json=_atomic_write_json,
+        save_law_registry=save_law_registry,
+        lexists=os.path.lexists,
+        isfile=os.path.isfile,
+        remove_file=os.remove,
+    )
 
 
 def _delete_law_case_and_registry(case_path, registry, case_id):
-    """Remove a case without deleting its file before registry durability."""
-    cases = registry.get("cases", [])
-    _law_registry_case_for_mutation(registry, case_id)
-    if os.path.lexists(case_path) and not os.path.isfile(case_path):
-        raise ValueError("Law case path is not a regular file")
-
-    previous_registry = copy.deepcopy(registry)
-    registry["cases"] = [
-        case for case in cases if str(case.get("id")) != str(case_id)
-    ]
-    save_law_registry(registry)
-
-    try:
-        if os.path.isfile(case_path):
-            os.remove(case_path)
-    except Exception as remove_error:
-        try:
-            save_law_registry(previous_registry)
-        except Exception as rollback_error:
-            raise RuntimeError(
-                "Law case removal failed and the registry rollback also failed"
-            ) from rollback_error
-        raise
+    return _law_service._delete_law_case_and_registry(
+        case_path,
+        registry,
+        case_id,
+        registry_case_for_mutation=_law_registry_case_for_mutation,
+        save_law_registry=save_law_registry,
+        lexists=os.path.lexists,
+        isfile=os.path.isfile,
+        remove_file=os.remove,
+    )
 
 
 
@@ -7617,14 +7589,15 @@ def law_create_case_review():
         case_slug = make_law_case_slug(case_name)
 
         if case_name:
-            law_registry["pending_case_workflow"] = {
-                "case_name": case_name,
-                "case_slug": case_slug,
-                "course": course,
-                "created_at": datetime.now().isoformat(timespec="seconds")
-            }
             try:
-                save_law_registry(law_registry)
+                _law_service.start_pending_case_workflow(
+                    law_registry,
+                    case_name=case_name,
+                    case_slug=case_slug,
+                    course=course,
+                    created_at=datetime.now().isoformat(timespec="seconds"),
+                    save_law_registry=save_law_registry,
+                )
             except Exception as e:
                 print(f"[LAW WORKFLOW ERROR] Failed starting case workflow: {e}")
                 return "Failed to start Law case workflow", 500
@@ -7953,42 +7926,14 @@ if (shutdownBtn) {
 # =========================
 
 def make_law_case_slug(case_name):
-    """
-    Create a safe, readable slug from a case name for filenames.
-    Example: Hadley v. Baxendale -> hadley_v_baxendale
-    """
-    slug = str(case_name or "").strip().lower()
-
-    # Normalize common case-name punctuation/spacing
-    slug = slug.replace(" v. ", " v ")
-    slug = slug.replace(" vs. ", " v ")
-    slug = slug.replace(" versus ", " v ")
-
-    # Keep only letters, numbers, and underscores
-    slug = re.sub(r"[^a-z0-9]+", "_", slug)
-    slug = re.sub(r"_+", "_", slug).strip("_")
-
-    return slug[:80] or "untitled_case"
+    return _law_packet_parser.make_law_case_slug(case_name)
 
 
 def extract_law_slug_from_import_filename(filename):
-    """
-    Extract the case slug from a raw Law import filename.
-
-    Example:
-    law_import_20260510_133709_hadley_v_baxendale.txt
-    -> hadley_v_baxendale
-    """
-    name = secure_filename(filename or "")
-    base = os.path.splitext(name)[0]
-
-    match = re.match(r"^law_import_\d{8}_\d{6}_(.+)$", base)
-
-    if match:
-        slug = match.group(1).strip("_")
-        return slug[:80] or ""
-
-    return ""
+    return _law_packet_parser.extract_law_slug_from_import_filename(
+        filename,
+        secure_filename=secure_filename,
+    )
 
 
 
@@ -7996,207 +7941,52 @@ def extract_law_slug_from_import_filename(filename):
 
 
 def safe_law_import_filename(filename):
-    """
-    Restrict Law import filenames to saved .txt files in LAW_IMPORTS_FOLDER.
-    Prevents path traversal.
-    """
-    filename = secure_filename(filename or "")
-
-    if not filename.lower().endswith(".txt"):
-        return ""
-
-    return filename
+    return _law_packet_parser.safe_law_import_filename(
+        filename,
+        secure_filename=secure_filename,
+    )
 
 
 def save_law_raw_packet(raw_packet, case_slug=""):
-    """Save one raw Law packet using the durable import-file convention."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    slug = str(case_slug or "").strip()
-    saved_file = (
-        f"law_import_{timestamp}_{slug}.txt"
-        if slug else f"law_import_{timestamp}.txt"
+    return _law_service.save_law_raw_packet(
+        raw_packet,
+        case_slug,
+        imports_folder=LAW_IMPORTS_FOLDER,
+        safe_law_import_filename=safe_law_import_filename,
+        now=datetime.now,
+        makedirs=os.makedirs,
+        join_path=os.path.join,
+        open_file=open,
     )
-    safe_name = safe_law_import_filename(saved_file)
-
-    if not safe_name:
-        raise ValueError("Could not create a safe Law import filename.")
-
-    os.makedirs(LAW_IMPORTS_FOLDER, exist_ok=True)
-    save_path = os.path.join(LAW_IMPORTS_FOLDER, safe_name)
-
-    with open(save_path, "w", encoding="utf-8") as f:
-        f.write(raw_packet)
-
-    return safe_name
 
 
 
 def parse_law_packet_sections(raw_text):
-    """
-    Lightweight parser for previewing DLMS Law Study import sections.
-    Does not save anything. It only splits recognized headings.
-    """
-    headings = [
-        ("sources_used", "Sources Used"),
-        ("case_brief", "1. Case Brief"),
-        ("socratic_review", "2. Socratic Review"),
-        ("socratic_answer_key", "2A. Socratic Answer Key"),
-        ("irac_drill", "3. IRAC Drill"),
-        ("rule_flashcards", "4. Rule Flashcards"),
-    ]
-
-    found = []
-
-    for key, title in headings:
-        pattern = re.compile(rf"(?im)^\s*{re.escape(title)}\s*$")
-        match = pattern.search(raw_text)
-
-        if match:
-            found.append({
-                "key": key,
-                "title": title,
-                "start": match.start(),
-                "end": match.end()
-            })
-
-    found.sort(key=lambda x: x["start"])
-
-    sections = []
-
-    for idx, item in enumerate(found):
-        content_start = item["end"]
-        content_end = found[idx + 1]["start"] if idx + 1 < len(found) else len(raw_text)
-        content = raw_text[content_start:content_end].strip()
-
-        sections.append({
-            "key": item["key"],
-            "title": item["title"],
-            "content": content,
-            "char_count": len(content),
-            "line_count": len(content.splitlines()) if content else 0
-        })
-
-    return sections
+    return _law_packet_parser.parse_law_packet_sections(raw_text)
 
 
 def extract_law_case_title(raw_text, fallback_filename="Untitled Case Review"):
-    """
-    Best-effort title extraction from a Law Study import packet.
-    """
-    patterns = [
-        r"(?im)^\s*Full case name and citation\s*:\s*(.+)$",
-        r"(?im)^\s*Case\s*:\s*(.+)$",
-        r"(?im)^\s*Case Name\s*:\s*(.+)$",
-        r"(?im)^\s*#\s*(.+)$",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, raw_text)
-        if match:
-            title = match.group(1).strip()
-            if title:
-                return title[:160]
-
-    name = os.path.splitext(fallback_filename)[0]
-    name = name.replace("law_import_", "Case Review ")
-    name = name.replace("_", " ")
-    return name.strip() or "Untitled Case Review"
+    return _law_packet_parser.extract_law_case_title(raw_text, fallback_filename)
 
 
 
 def get_law_case_by_id(case_id):
-    """
-    Look up a Law Study case review by ID from law.json.
-    Returns the registry entry or None.
-    """
-    case_id = str(case_id or "").strip()
+    return _law_service.get_law_case_by_id(
+        case_id,
+        load_law_registry=load_law_registry,
+    )
 
-    if not case_id:
-        return None
 
-    registry = load_law_registry()
-
-    for case in registry.get("cases", []):
-        if str(case.get("id")) == case_id:
-            return case
-
-    return None
+def _load_law_case_data(case_path):
+    return _law_service.load_law_case_data(
+        case_path,
+        open_file=open,
+        json_module=json,
+    )
 
 
 def parse_socratic_questions(socratic_text):
-    """
-    Best-effort parser for Socratic questions.
-    Supports common AI formats:
-    - 1. Question text
-    - 1) Question text
-    - Q1. Question text
-    - Question 1: Question text
-    - 1. **Question text**
-    """
-    questions = []
-
-    if not socratic_text:
-        return questions
-
-    text = socratic_text.strip()
-
-    # Match numbered question blocks.
-    # Captures:
-    # 1. Question text
-    # 1) Question text
-    # Q1. Question text
-    # Q1) Question text
-    # Question 1: Question text
-    pattern = re.compile(
-        r"""(?imsx)
-        ^\s*
-        (?:
-            Question\s+(\d+)\s*[:\.\)]      # Question 1:
-            |
-            Q?(\d+)\s*[\.\)]                # 1. / 1) / Q1.
-        )
-        \s+
-        (.*?)
-        (?=
-            ^\s*(?:Question\s+\d+\s*[:\.\)]|Q?\d+\s*[\.\)])\s+
-            |
-            \Z
-        )
-        """
-    )
-
-    for match in pattern.finditer(text):
-        number = match.group(1) or match.group(2)
-        question_text = match.group(3).strip()
-
-        # Clean common markdown wrapping.
-        question_text = re.sub(r"^\*+", "", question_text).strip()
-        question_text = re.sub(r"\*+$", "", question_text).strip()
-
-        if number and question_text:
-            questions.append({
-                "id": f"q{number}",
-                "number": number,
-                "text": question_text
-            })
-
-    # Fallback: detect bullet questions if no numbered questions were found.
-    # Example:
-    # - What fact mattered most to the court?
-    if not questions:
-        bullet_pattern = re.compile(r"(?im)^\s*[-*]\s+(.+\?)\s*$")
-
-        for idx, match in enumerate(bullet_pattern.finditer(text), start=1):
-            question_text = match.group(1).strip()
-
-            if question_text:
-                questions.append({
-                    "id": f"q{idx}",
-                    "number": str(idx),
-                    "text": question_text
-                })
-
-    return questions
+    return _law_packet_parser.parse_socratic_questions(socratic_text)
 
 
 
@@ -8208,9 +7998,11 @@ def law_cancel_pending_workflow():
     registry = load_law_registry()
 
     if "pending_case_workflow" in registry:
-        registry.pop("pending_case_workflow", None)
         try:
-            save_law_registry(registry)
+            _law_service.cancel_pending_case_workflow(
+                registry,
+                save_law_registry=save_law_registry,
+            )
         except Exception as e:
             print(f"[LAW WORKFLOW ERROR] Failed cancelling case workflow: {e}")
             return "Failed to cancel Law case workflow", 500
@@ -8472,24 +8264,16 @@ def law_saved_imports():
     imports = []
 
     try:
-        os.makedirs(LAW_IMPORTS_FOLDER, exist_ok=True)
-
-        for name in sorted(os.listdir(LAW_IMPORTS_FOLDER), reverse=True):
-            if not name.lower().endswith(".txt"):
-                continue
-
-            path = os.path.join(LAW_IMPORTS_FOLDER, name)
-
-            if not os.path.isfile(path):
-                continue
-
-            stat = os.stat(path)
-
-            imports.append({
-                "filename": name,
-                "size": stat.st_size,
-                "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-            })
+        imports = _law_service.list_law_raw_imports(
+            LAW_IMPORTS_FOLDER,
+            from_timestamp=datetime.fromtimestamp,
+            imports=imports,
+            makedirs=os.makedirs,
+            listdir=os.listdir,
+            join_path=os.path.join,
+            isfile=os.path.isfile,
+            stat_file=os.stat,
+        )
 
     except Exception as e:
         print(f"[LAW IMPORTS ERROR] Failed loading saved imports: {e}")
@@ -8678,8 +8462,7 @@ def law_view_saved_import(filename):
         return "Saved import not found", 404
 
     try:
-        with open(import_path, "r", encoding="utf-8") as f:
-            raw_packet = f.read()
+        raw_packet = _law_service.load_law_raw_packet(import_path, open_file=open)
     except Exception as e:
         print(f"[LAW IMPORT ERROR] Failed reading saved import: {e}")
         return "Failed to read saved import", 500
@@ -8842,8 +8625,12 @@ def law_delete_saved_import(filename):
     import_path = os.path.join(LAW_IMPORTS_FOLDER, safe_name)
 
     try:
-        if os.path.exists(import_path) and os.path.isfile(import_path):
-            os.remove(import_path)
+        _law_service.delete_law_raw_packet(
+            import_path,
+            exists=os.path.exists,
+            isfile=os.path.isfile,
+            remove_file=os.remove,
+        )
 
     except Exception as e:
         print(f"[LAW IMPORT ERROR] Failed deleting saved import: {e}")
@@ -8869,8 +8656,7 @@ def law_create_case_from_import(filename):
         return "Saved import not found", 404
 
     try:
-        with open(import_path, "r", encoding="utf-8") as f:
-            raw_packet = f.read()
+        raw_packet = _law_service.load_law_raw_packet(import_path, open_file=open)
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed reading import: {e}")
         return "Failed to read saved import", 500
@@ -8880,101 +8666,22 @@ def law_create_case_from_import(filename):
     if not parsed_sections:
         return "No recognized Law Study sections were found. Cannot create case review yet.", 400
 
-    registry = load_law_registry()
-
-    # A saved raw packet is the durable input for exactly one structured case.
-    # If a browser retries this POST after a successful submission, open that
-    # existing case rather than creating a duplicate registry/file pair.
-    for existing_case in registry.get("cases", []):
-        if str(existing_case.get("source_import", "")) != safe_name:
-            continue
-
-        existing_id = str(existing_case.get("id", "")).strip()
-        existing_file = secure_filename(str(existing_case.get("file", "")))
-        existing_path = os.path.join(LAW_CASES_FOLDER, existing_file)
-
-        if existing_id and existing_file.lower().endswith(".json") and os.path.isfile(existing_path):
-            return redirect(url_for("law_view_case_review", case_id=existing_id))
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    case_slug = extract_law_slug_from_import_filename(safe_name)
-
-    if case_slug:
-        case_id = f"law_case_{ts}_{case_slug}"
-    else:
-        case_id = f"law_case_{ts}"
-
-    case_file = f"{case_id}.json"
-    case_path = os.path.join(LAW_CASES_FOLDER, case_file)
-
-    section_map = {
-        section["key"]: section["content"]
-        for section in parsed_sections
-    }
-
-    title = extract_law_case_title(raw_packet, safe_name)
-    course = "Uncategorized"
-
-    pending_workflow = registry.get("pending_case_workflow", {}) or {}
-
-    pending_slug = str(pending_workflow.get("case_slug", "")).strip()
-    pending_case_name = str(pending_workflow.get("case_name", "")).strip()
-    pending_course = str(pending_workflow.get("course", "")).strip()
-
-    if case_slug and pending_slug and case_slug == pending_slug:
-        if pending_case_name:
-            title = pending_case_name
-
-        if pending_course:
-            course = pending_course
-
-    case_data = {
-        "id": case_id,
-        "type": "law_case_review",
-        "title": title,
-        "course": course,
-        "source_import": safe_name,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-        "updated_at": datetime.now().isoformat(timespec="seconds"),
-        "verified": False,
-        "sources_used": section_map.get("sources_used", ""),
-        "sections": {
-            "case_brief": section_map.get("case_brief", ""),
-            "socratic_review": section_map.get("socratic_review", ""),
-            "socratic_answer_key": section_map.get("socratic_answer_key", ""),
-            "irac_drill": section_map.get("irac_drill", ""),
-            "rule_flashcards": section_map.get("rule_flashcards", "")
-        },
-        "student_notes": ""
-    }
-
     try:
-        os.makedirs(LAW_CASES_FOLDER, exist_ok=True)
-
-        cases = list(registry.get("cases", []))
-
-        cases.append({
-            "id": case_id,
-            "title": title,
-            "course": course,
-            "file": case_file,
-            "source_import": safe_name,
-            "created_at": case_data["created_at"],
-            "updated_at": case_data["updated_at"],
-            "hidden": False
-        })
-
-        registry["cases"] = cases
-
-        # Clear completed pending workflow so a future unrelated import
-        # does not accidentally reuse the previous case name/slug/course.
-        if "pending_case_workflow" in registry:
-            registry.pop("pending_case_workflow", None)
-
-        _commit_law_case_and_registry(
-            case_path, case_data, registry, new_case=True
+        case_id = _law_service.create_law_case_from_import(
+            safe_name,
+            raw_packet,
+            parsed_sections,
+            cases_folder=LAW_CASES_FOLDER,
+            load_law_registry=load_law_registry,
+            extract_law_slug_from_import_filename=extract_law_slug_from_import_filename,
+            extract_law_case_title=extract_law_case_title,
+            secure_filename=secure_filename,
+            now=datetime.now,
+            commit_law_case_and_registry=_commit_law_case_and_registry,
+            makedirs=os.makedirs,
+            join_path=os.path.join,
+            isfile=os.path.isfile,
         )
-
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed creating case review: {e}")
         return "Failed to create case review", 500
@@ -9189,8 +8896,7 @@ def law_view_case_review(case_id):
         return "Law case file not found", 404
 
     try:
-        with open(case_path, "r", encoding="utf-8") as f:
-            case_data = json.load(f) or {}
+        case_data = _load_law_case_data(case_path)
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed reading case review: {e}")
         return "Failed to read case review", 500
@@ -9776,34 +9482,18 @@ def law_update_case_review_details(case_id):
     new_title = request.form.get("title", "").strip()
     new_course = request.form.get("course", "").strip()
 
-    if not new_title:
-        new_title = case_entry.get("title") or "Untitled Case Review"
-
-    if not new_course:
-        new_course = "Uncategorized"
-
     try:
-        with open(case_path, "r", encoding="utf-8") as f:
-            case_data = json.load(f) or {}
-
-        previous_case_data = copy.deepcopy(case_data)
-        now = datetime.now().isoformat(timespec="seconds")
-
-        case_data["title"] = new_title
-        case_data["course"] = new_course
-        case_data["updated_at"] = now
-
-        registry = load_law_registry()
-        registry_case = _law_registry_case_for_mutation(registry, case_id)
-        registry_case["title"] = new_title
-        registry_case["course"] = new_course
-        registry_case["updated_at"] = now
-
-        _commit_law_case_and_registry(
+        _law_service.update_law_case_details(
             case_path,
-            case_data,
-            registry,
-            previous_case_data=previous_case_data,
+            case_id,
+            case_entry,
+            new_title,
+            new_course,
+            now=datetime.now,
+            load_law_registry=load_law_registry,
+            registry_case_for_mutation=_law_registry_case_for_mutation,
+            commit_law_case_and_registry=_commit_law_case_and_registry,
+            load_case_data=_load_law_case_data,
         )
 
     except Exception as e:
@@ -10320,24 +10010,15 @@ def law_update_case_review_notes(case_id):
     student_notes = request.form.get("student_notes", "").strip()
 
     try:
-        with open(case_path, "r", encoding="utf-8") as f:
-            case_data = json.load(f) or {}
-
-        previous_case_data = copy.deepcopy(case_data)
-        now = datetime.now().isoformat(timespec="seconds")
-
-        case_data["student_notes"] = student_notes
-        case_data["updated_at"] = now
-
-        registry = load_law_registry()
-        registry_case = _law_registry_case_for_mutation(registry, case_id)
-        registry_case["updated_at"] = now
-
-        _commit_law_case_and_registry(
+        _law_service.update_law_case_notes(
             case_path,
-            case_data,
-            registry,
-            previous_case_data=previous_case_data,
+            case_id,
+            student_notes,
+            now=datetime.now,
+            load_law_registry=load_law_registry,
+            registry_case_for_mutation=_law_registry_case_for_mutation,
+            commit_law_case_and_registry=_commit_law_case_and_registry,
+            load_case_data=_load_law_case_data,
         )
 
     except Exception as e:
@@ -10368,36 +10049,16 @@ def law_update_socratic_answers(case_id):
         return "Law case file not found", 404
 
     try:
-        with open(case_path, "r", encoding="utf-8") as f:
-            case_data = json.load(f) or {}
-
-        previous_case_data = copy.deepcopy(case_data)
-        sections = case_data.get("sections", {}) or {}
-        socratic_questions = parse_socratic_questions(sections.get("socratic_review", ""))
-
-        answers = {}
-
-        for question in socratic_questions:
-            qid = question.get("id")
-            if not qid:
-                continue
-
-            answers[qid] = request.form.get(f"answer_{qid}", "").strip()
-
-        now = datetime.now().isoformat(timespec="seconds")
-
-        case_data["socratic_student_answers"] = answers
-        case_data["updated_at"] = now
-
-        registry = load_law_registry()
-        registry_case = _law_registry_case_for_mutation(registry, case_id)
-        registry_case["updated_at"] = now
-
-        _commit_law_case_and_registry(
+        _law_service.update_law_case_socratic_answers(
             case_path,
-            case_data,
-            registry,
-            previous_case_data=previous_case_data,
+            case_id,
+            request.form.to_dict(flat=True),
+            now=datetime.now,
+            parse_socratic_questions=parse_socratic_questions,
+            load_law_registry=load_law_registry,
+            registry_case_for_mutation=_law_registry_case_for_mutation,
+            commit_law_case_and_registry=_commit_law_case_and_registry,
+            load_case_data=_load_law_case_data,
         )
 
     except Exception as e:
@@ -10435,24 +10096,15 @@ def law_update_irac_response(case_id):
     }
 
     try:
-        with open(case_path, "r", encoding="utf-8") as f:
-            case_data = json.load(f) or {}
-
-        previous_case_data = copy.deepcopy(case_data)
-        now = datetime.now().isoformat(timespec="seconds")
-
-        case_data["irac_student_response"] = irac_response
-        case_data["updated_at"] = now
-
-        registry = load_law_registry()
-        registry_case = _law_registry_case_for_mutation(registry, case_id)
-        registry_case["updated_at"] = now
-
-        _commit_law_case_and_registry(
+        _law_service.update_law_case_irac_response(
             case_path,
-            case_data,
-            registry,
-            previous_case_data=previous_case_data,
+            case_id,
+            irac_response,
+            now=datetime.now,
+            load_law_registry=load_law_registry,
+            registry_case_for_mutation=_law_registry_case_for_mutation,
+            commit_law_case_and_registry=_commit_law_case_and_registry,
+            load_case_data=_load_law_case_data,
         )
 
     except Exception as e:
@@ -10484,79 +10136,17 @@ def law_export_case_review_txt(case_id):
         return "Law case file not found", 404
 
     try:
-        with open(case_path, "r", encoding="utf-8") as f:
-            case_data = json.load(f) or {}
+        case_data = _load_law_case_data(case_path)
     except Exception as e:
         print(f"[LAW CASE ERROR] Failed exporting case review: {e}")
         return "Failed to export case review", 500
 
-    sections = case_data.get("sections", {}) or {}
-
-    exported_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    title = case_data.get("title") or "Untitled Case Review"
-    course = case_data.get("course") or "Uncategorized"
-    source_import = case_data.get("source_import") or ""
-    created_at = case_data.get("created_at") or ""
-    updated_at = case_data.get("updated_at") or ""
-
-    lines = []
-
-    lines.append("# DLMS Law Case Review Export")
-    lines.append(f"# Exported from DLMS v{APP_VERSION}")
-    lines.append(f"# Exported on: {exported_on}")
-    lines.append("# Format: DLMS Law Study text")
-    lines.append("")
-
-    lines.append("=" * 60)
-    lines.append(f"CASE REVIEW: {title}")
-    lines.append(f"COURSE: {course}")
-    lines.append(f"SOURCE IMPORT: {source_import}")
-    lines.append(f"CREATED: {created_at}")
-    lines.append(f"UPDATED: {updated_at}")
-    lines.append("=" * 60)
-    lines.append("")
-
-    section_order = [
-        ("1. Case Brief", sections.get("case_brief", "")),
-        ("2. Socratic Review", sections.get("socratic_review", "")),
-        ("2A. Socratic Answer Key", sections.get("socratic_answer_key", "")),
-        ("3. IRAC Drill", sections.get("irac_drill", "")),
-        ("4. Rule Flashcards", sections.get("rule_flashcards", "")),
-    ]
-
-    for heading, content in section_order:
-        if not content:
-            continue
-
-        lines.append(heading)
-        lines.append("-" * len(heading))
-        lines.append(content.strip())
-        lines.append("")
-        lines.append("")
-
-    student_notes = case_data.get("student_notes", "")
-
-    if student_notes:
-        lines.append("Student Notes")
-        lines.append("-------------")
-        lines.append(student_notes.strip())
-        lines.append("")
-        lines.append("")
-
-    lines.append("Verification Reminder")
-    lines.append("---------------------")
-    lines.append("Verify citations, holdings, quotations, and procedural history against the original opinion or an approved legal research source.")
-    lines.append("")
-
-    export_text = "\n".join(lines)
-
-    safe_title = re.sub(r"[^A-Za-z0-9_-]+", "_", title).strip("_")
-
-    if not safe_title:
-        safe_title = case_id
-
-    filename = f"dlms_law_case_{safe_title}.txt"
+    export_text, filename = _law_service.build_law_case_export(
+        case_data,
+        case_id,
+        app_version=APP_VERSION,
+        exported_on=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
 
     return Response(
         export_text,
@@ -19499,8 +19089,7 @@ def load_law_flashcards_for_case(case_id):
         return None, []
 
     try:
-        with open(case_path, "r", encoding="utf-8") as f:
-            case_data = json.load(f) or {}
+        case_data = _load_law_case_data(case_path)
     except Exception:
         return None, []
 

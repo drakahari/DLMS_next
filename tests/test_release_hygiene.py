@@ -47,6 +47,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         prerelease = re.compile(r"(?i)(?:\brc[._ -]?4\b|\bfc4\b)")
         paths = [
             ROOT / "app.py",
+            ROOT / "dlms" / "services" / "law.py",
             ROOT / "README.md",
             ROOT / "DLMS.spec",
             ROOT / "docs" / "RELEASE_VERIFICATION.md",
@@ -62,11 +63,15 @@ class ReleaseDocumentationTests(unittest.TestCase):
                 self.assertNotRegex(contents, prerelease)
 
         app_source = (ROOT / "app.py").read_text(encoding="utf-8")
+        law_source = (ROOT / "dlms" / "services" / "law.py").read_text(
+            encoding="utf-8"
+        )
         dashboard = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
         self.assertEqual(dashboard.count("DLMS v{{ app_version }}"), 2)
         self.assertEqual(app_source.count("DLMS v{{ app_version }}"), 5)
         self.assertEqual(
-            app_source.count('lines.append(f"# Exported from DLMS v{APP_VERSION}")'),
+            app_source.count('lines.append(f"# Exported from DLMS v{APP_VERSION}")')
+            + law_source.count('lines.append(f"# Exported from DLMS v{app_version}")'),
             3,
         )
 
