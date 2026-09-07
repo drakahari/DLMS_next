@@ -1,4 +1,5 @@
 import json
+import io
 import os
 import sqlite3
 import tempfile
@@ -185,6 +186,80 @@ class BackupSemanticValidationTests(unittest.TestCase):
         dlms._extract_validated_backup(backup_path, extracted, report)
         result = dlms._validate_staged_backup_semantics(extracted, report["manifest"])
         self.assertEqual(result["status"], "valid")
+
+    def test_app_backup_wrapper_uses_live_paths_inventory_and_summary_helpers(self):
+        backup_folder = self.root / "live-backups"
+        backup_folder.mkdir()
+        app_data = self.root / "live-data"
+        app_data.mkdir()
+        payload = app_data / "portal.json"
+        payload.write_text('{"title":"Live patched data"}', encoding="utf-8")
+        missing_database = app_data / "missing-results.db"
+        summary = {"quizzes": 7, "attempts": 11}
+
+        with mock.patch.object(dlms, "BACKUP_FOLDER", str(backup_folder)), \
+             mock.patch.object(dlms, "APP_DATA_DIR", str(app_data)), \
+             mock.patch.object(dlms, "DB_PATH", str(missing_database)), \
+             mock.patch.object(dlms, "_ensure_runtime_data_dirs"), \
+             mock.patch.object(
+                 dlms, "_backup_file_inventory",
+                 return_value=[(str(payload), "config/portal.json")],
+             ) as inventory, \
+             mock.patch.object(dlms, "_backup_summary", return_value=summary) as backup_summary:
+            backup_path, manifest = dlms._create_dlms_backup("patched paths")
+
+        inventory.assert_called_once_with()
+        backup_summary.assert_called_once_with()
+        self.assertEqual(summary, manifest["summary"])
+        self.assertEqual(backup_folder, Path(backup_path).parent)
+        with zipfile.ZipFile(backup_path) as archive:
+            self.assertEqual(
+                [dlms.DLMS_BACKUP_MANIFEST, "DLMS_DATA/config/portal.json"],
+                archive.namelist(),
+            )
+
+    def test_stage_route_keeps_app_validation_and_atomic_write_patch_seams(self):
+        staging_root = self.root / "restore-staging"
+        staging_root.mkdir()
+        report = {
+            "manifest": {
+                "schema_version": dlms.DLMS_BACKUP_SCHEMA_VERSION,
+                "kind": "dlms-portable-backup",
+                "file_count": 0,
+                "summary": {},
+            },
+            "file_count": 0,
+            "uncompressed_bytes": 0,
+            "members": [],
+        }
+        semantic = {"status": "valid", "portal_config": {"status": "absent"}}
+        client = dlms.app.test_client()
+
+        with mock.patch.object(dlms, "BACKUP_RESTORE_STAGING_FOLDER", str(staging_root)), \
+             mock.patch.object(dlms, "_validate_dlms_backup", return_value=report) as inspect, \
+             mock.patch.object(dlms, "_extract_validated_backup") as extract, \
+             mock.patch.object(
+                 dlms, "_validate_staged_backup_semantics", return_value=semantic,
+             ) as validate_semantics, \
+             mock.patch.object(dlms, "_atomic_write_json") as atomic_write:
+            response = client.post(
+                "/settings/backup/restore/stage",
+                data={"backup_file": (io.BytesIO(b"PK-test"), "backup.zip")},
+                headers=csrf_headers(client, "/settings/backup"),
+            )
+
+        self.assertEqual(200, response.status_code)
+        stage_dirs = list(staging_root.iterdir())
+        self.assertEqual(1, len(stage_dirs))
+        self.assertEqual(b"PK-test", (stage_dirs[0] / "restore.zip").read_bytes())
+        inspect.assert_called_once_with(str(stage_dirs[0] / "restore.zip"))
+        extract.assert_called_once()
+        validate_semantics.assert_called_once()
+        atomic_write.assert_called_once()
+        self.assertEqual(
+            str(stage_dirs[0] / dlms.RESTORE_STAGING_STATE_FILENAME),
+            atomic_write.call_args.args[0],
+        )
 
     def test_semantic_failure_precedes_backup_and_live_apply(self):
         client = dlms.app.test_client()
