@@ -3879,3 +3879,184 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     assert saved_editor_data["images"][0]["edits"] == [
         {"type": "mask", "x": .1, "y": .1, "w": .2, "h": .2, "style": "blur"}
     ]
+
+
+def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    data_root = browser_stack.data_root
+    hostile = 'Browser </textarea><img id="segment20BrowserInjected"> & \u2028\u2029'
+
+    registry_path = data_root / "config" / "law.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    case_id = "segment20-browser-case"
+    case_file = f"{case_id}.json"
+    case_path = data_root / "law" / "cases" / case_file
+    case_path.write_text(json.dumps({
+        "id": case_id,
+        "type": "law_case_review",
+        "title": hostile,
+        "course": "Browser Procedure",
+        "created_at": "2026-09-07T12:00:00",
+        "source_import": "segment20-browser.txt",
+        "sources_used": hostile,
+        "student_notes": hostile,
+        "socratic_student_answers": {"question_1": hostile},
+        "irac_student_response": {
+            "issue": hostile, "rule": hostile, "analysis": hostile, "conclusion": hostile,
+        },
+        "sections": {
+            "case_brief": hostile,
+            "irac_drill": hostile,
+            "socratic_review": "1. What rule controls?",
+            "socratic_answer_key": hostile,
+            "rule_flashcards": "Q: Browser rule?\nA: Browser answer.",
+        },
+    }), encoding="utf-8")
+    registry.setdefault("folders", []).append("Browser Procedure")
+    registry["cases"].append({
+        "id": case_id,
+        "title": hostile,
+        "course": "Browser Procedure",
+        "file": case_file,
+        "hidden": False,
+    })
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    browser.navigate(
+        f"{base_url}/law/cases/{case_id}?updated=1&notes_updated=1&"
+        "socratic_answers_updated=1&irac_updated=1"
+    )
+    browser.wait_for(
+        "document.querySelectorAll('form input[name=csrf_token]').length === 4 && "
+        "document.querySelector('[data-nav-key=law][aria-current=page]')"
+    )
+    law_state = browser.evaluate(
+        "(() => {const forms=[...document.querySelectorAll('main form')];return {"
+        "title:document.querySelector('h1').textContent,"
+        "actions:forms.map(form=>form.getAttribute('action')),"
+        "methods:forms.map(form=>form.method),"
+        "csrf:forms.every(form=>!!form.querySelector('input[name=csrf_token]')),"
+        "banners:['Case details updated.','Student notes updated.','Socratic answers updated.',"
+        "'IRAC response updated.'].every(text=>document.body.textContent.includes(text)),"
+        "exportAction:[...document.querySelectorAll('button')].find(button=>"
+        "button.textContent.includes('Export Case Review')).getAttribute('onclick'),"
+        "injected:!!document.getElementById('segment20BrowserInjected'),"
+        "current:document.querySelector('[data-nav-key=law]').getAttribute('aria-current'),"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label')};})()"
+    )
+    assert law_state == {
+        "title": hostile,
+        "actions": [
+            f"/law/cases/{case_id}/update_details",
+            f"/law/cases/{case_id}/update_irac_response",
+            f"/law/cases/{case_id}/update_socratic_answers",
+            f"/law/cases/{case_id}/update_notes",
+        ],
+        "methods": ["post", "post", "post", "post"],
+        "csrf": True,
+        "banners": True,
+        "exportAction": f"location.href='/law/cases/{case_id}/export.txt'",
+        "injected": False,
+        "current": "page",
+        "menuLabel": "Toggle navigation",
+    }
+    browser.evaluate("toggleIracDrill();toggleSocraticAnswerKey();true")
+    assert browser.evaluate(
+        "document.getElementById('iracDrillBox').style.display === 'block' && "
+        "document.getElementById('socraticAnswerKey').style.display === 'block'"
+    ) is True
+    browser.evaluate(
+        "(() => {const notes=document.querySelector('[name=student_notes]');"
+        "notes.value='Segment 20 persisted browser notes';notes.form.requestSubmit();return true;})()"
+    )
+    browser.wait_for("location.search === '?notes_updated=1'")
+    assert json.loads(case_path.read_text(encoding="utf-8"))["student_notes"] == (
+        "Segment 20 persisted browser notes"
+    )
+
+    quiz_id = browser_stack.metadata["critical_id"]
+    browser.navigate(f"{base_url}/anki?source=quiz&quiz_id={quiz_id}#ankiPreview")
+    browser.wait_for(
+        "document.querySelector('#ankiPreview .anki-preview-card') && "
+        "document.querySelector('form[action=\"/anki/export/quiz\"] input[name=csrf_token]')"
+    )
+    anki_state = browser.evaluate(
+        "(() => {const exportForm=document.querySelector('form[action=\"/anki/export/quiz\"]');"
+        "return {preview:document.querySelectorAll('#ankiPreview .anki-preview-card').length,"
+        "quiz:document.querySelector('select[name=quiz_id]').value,method:exportForm.method,"
+        "csrf:!!exportForm.querySelector('[name=csrf_token]'),"
+        "current:document.querySelector('[data-nav-key=anki]').getAttribute('aria-current')};})()"
+    )
+    assert anki_state == {
+        "preview": 2,
+        "quiz": str(quiz_id),
+        "method": "post",
+        "csrf": True,
+        "current": "page",
+    }
+
+    browser.navigate(f"{base_url}/anki/custom")
+    browser.wait_for(
+        "document.querySelector('[name=quiz_cards]') && "
+        "document.querySelector('#customAnkiForm input[name=csrf_token]')"
+    )
+    browser.evaluate(
+        f"(() => {{const form=document.getElementById('customAnkiForm');"
+        f"form.deck_name.value={json.dumps(hostile)};"
+        "form.querySelector('[name=quiz_cards]').click();"
+        "form.querySelector('[formaction=\"/anki/custom\"]').click();return true;})()"
+    )
+    browser.wait_for(
+        "document.querySelector('#ankiPreview .anki-preview-card') && "
+        "document.querySelector('[name=quiz_cards]:checked') && "
+        "document.querySelector('#customAnkiForm input[name=csrf_token]') && "
+        "document.getElementById('ankiSelectedCount').textContent.trim() === '1 card selected'"
+    )
+    custom_state = browser.evaluate(
+        "(() => ({deck:document.querySelector('[name=deck_name]').value,"
+        "count:document.getElementById('ankiSelectedCount').textContent.trim(),"
+        "preview:document.querySelectorAll('#ankiPreview .anki-preview-card').length,"
+        "csrf:!!document.querySelector('#customAnkiForm input[name=csrf_token]'),"
+        "injected:!!document.getElementById('segment20BrowserInjected')}))()"
+    )
+    assert custom_state == {
+        "deck": hostile.strip(),
+        "count": "1 card selected",
+        "preview": 1,
+        "csrf": True,
+        "injected": False,
+    }
+    printable = browser.evaluate(
+        "(() => {const form=document.getElementById('customAnkiForm');"
+        "form.querySelector('[name=duplex_flip]').value='short';"
+        "return fetch('/anki/printable',{method:'POST',body:new FormData(form)}).then(async response=>"
+        "({status:response.status,text:await response.text()}));})()"
+    )
+    assert printable["status"] == 200
+    assert "Avery 5388" in printable["text"]
+    assert "short-edge flip" in printable["text"]
+    assert "&lt;/textarea&gt;&lt;img id=&#34;segment20BrowserInjected&#34;&gt;" in printable["text"]
+    assert 'id="segment20BrowserInjected"' not in printable["text"]
+
+    law_anki_case_id = "browser-law-negligence"
+    browser.navigate(
+        f"{base_url}/anki/law?preview=1&law_scope=cases&case_ids={law_anki_case_id}"
+    )
+    browser.wait_for("document.title === 'Law Study Anki - DLMS'")
+    law_anki_state = browser.evaluate(
+        "(() => {const form=document.getElementById('lawAnkiForm');return {"
+        "scope:form.law_scope.value,caseId:[...form.case_ids.selectedOptions][0].value,"
+        "preview:document.querySelectorAll('#ankiPreview .anki-preview-card').length,"
+        "cards:document.querySelector('.anki-count-pill')?.textContent.trim()||'',"
+        "message:document.querySelector('#ankiPreview .anki-empty-message')?.textContent.trim()||'',"
+        "current:document.querySelector('.dashboard-nav-subitem.active').lastElementChild.textContent.trim()};})()"
+    )
+    assert law_anki_state == {
+        "scope": "cases",
+        "caseId": law_anki_case_id,
+        "preview": 2,
+        "cards": "2 cards",
+        "message": "",
+        "current": "Law Study Anki",
+    }

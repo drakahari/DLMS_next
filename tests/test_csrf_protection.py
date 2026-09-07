@@ -440,8 +440,9 @@ class CsrfFrontendStaticTests(unittest.TestCase):
         self.assertIn("init.headers", self.source)
 
     def test_direct_submit_anki_forms_are_explicitly_protected(self):
-        self.assertEqual(self.app_source.count("window.dlmsProtectForm(exportForm);"), 2)
-        self.assertEqual(self.app_source.count("exportForm.submit();"), 2)
+        combined_ui_source = "\n".join(source for _path, source in self.ui_sources)
+        self.assertEqual(combined_ui_source.count("window.dlmsProtectForm(exportForm);"), 2)
+        self.assertEqual(combined_ui_source.count("exportForm.submit();"), 2)
 
     def test_mutation_pages_use_shared_bootstrap(self):
         for marker in (

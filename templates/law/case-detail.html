@@ -1,0 +1,509 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ case_data.title }} - DLMS Law Study</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+
+</head>
+
+<body class="dashboard-home law-subpage law-case-detail-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand">
+        <div class="dashboard-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+                <path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                <path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+    </div>
+    <nav class="dashboard-nav" aria-label="Primary navigation">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}
+        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        {% endif %}
+        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <div class="dashboard-nav-submenu">
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
+                </div>
+            </div>
+    </nav>
+    <div class="dashboard-nav-section-label"><span>System</span></div>
+    <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+    </nav>
+    <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button>
+    <div class="dashboard-sidebar-version">Law Study</div>
+</aside>
+<main class="dashboard-main law-subpage-main law-study-view">
+    <header class="dashboard-header law-subpage-header">
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <div><div class="law-subpage-eyebrow">LAW STUDY · CASE REVIEW</div><h1>{{ case_data.title }}</h1><p>{{ case_data.course or "Uncategorized" }} · Structured case review</p></div>
+    </header>
+
+    <section class="dashboard-panel law-detail-panel law-case-detail-shell">
+
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:16px;
+            flex-wrap:wrap;
+            margin-bottom:20px;
+        ">
+            <div>
+                <h2 style="margin-bottom:6px;">{{ case_data.title }}</h2>
+
+                <p style="opacity:.85; margin-top:0;">
+                    <strong>Course:</strong> {{ case_data.course or "Uncategorized" }}<br>
+                    <strong>Created:</strong> {{ case_data.created_at }}<br>
+                    <strong>Source Import:</strong> {{ case_data.source_import }}
+                </p>
+
+        {% if sources_used %}
+        <div style="
+            margin-top:12px;
+            padding:12px;
+            border-radius:12px;
+            background:rgba(0,120,255,.08);
+            border:1px solid rgba(0,120,255,.25);
+        ">
+            <strong>Sources Used:</strong>
+
+            <pre style="
+                white-space:pre-wrap;
+                word-wrap:break-word;
+                font-family:inherit;
+                line-height:1.45;
+                margin:8px 0 0 0;
+            ">{{ sources_used }}</pre>
+        </div>
+        {% endif %}
+                                                                             
+            </div>
+
+            <span style="
+                display:inline-block;
+                padding:7px 12px;
+                border-radius:999px;
+                background:rgba(0,120,255,.12);
+                border:1px solid rgba(0,120,255,.35);
+                font-size:13px;
+                font-weight:700;
+                white-space:nowrap;
+            ">
+                Structured case review
+            </span>
+        </div>
+
+        {% if request.args.get('updated') %}
+        <div style="
+            margin-bottom:18px;
+            padding:14px;
+            border-radius:12px;
+            background:rgba(0,180,100,.12);
+            border:1px solid rgba(0,180,100,.35);
+        ">
+            <strong>Case details updated.</strong>
+            The title and course were saved successfully.
+        </div>
+        {% endif %}
+
+        {% if request.args.get('notes_updated') %}
+        <div style="
+            margin-bottom:18px;
+            padding:14px;
+            border-radius:12px;
+            background:rgba(0,180,100,.12);
+            border:1px solid rgba(0,180,100,.35);
+        ">
+            <strong>Student notes updated.</strong>
+            Your notes were saved successfully.
+        </div>
+        {% endif %}   
+
+          {% if request.args.get('socratic_answers_updated') %}
+        <div style="
+            margin-bottom:18px;
+            padding:14px;
+            border-radius:12px;
+            background:rgba(0,180,100,.12);
+            border:1px solid rgba(0,180,100,.35);
+        ">
+            <strong>Socratic answers updated.</strong>
+            Your practice answers were saved successfully.
+        </div>
+        {% endif %}                     
+
+        {% if request.args.get('irac_updated') %}
+        <div style="
+            margin-bottom:18px;
+            padding:14px;
+            border-radius:12px;
+            background:rgba(0,180,100,.12);
+            border:1px solid rgba(0,180,100,.35);
+        ">
+            <strong>IRAC response updated.</strong>
+            Your practice response was saved successfully.
+        </div>
+        {% endif %}                       
+
+
+        <div style="
+            margin-bottom:18px;
+            padding:14px;
+            border-radius:12px;
+            background:rgba(255,180,0,.10);
+            border:1px solid rgba(255,180,0,.35);
+        ">
+            <strong>Reminder:</strong>
+            Verify citations, holdings, quotations, and procedural history against the original opinion or an approved legal research source.
+        </div>
+
+        <div class="portal-card law-case-section">
+    <h2 style="margin-top:0;">✏️ Edit Case Details</h2>
+
+    <form method="POST" action="/law/cases/{{ case_data.id }}/update_details">
+        <label><strong>Case Title</strong></label><br>
+        <input type="text"
+               name="title"
+               value="{{ case_data.title }}"
+               style="width:100%; padding:10px; border-radius:8px; box-sizing:border-box;">
+
+        <br><br>
+
+        <label><strong>Course</strong></label><br>
+        <select name="course"
+                style="width:100%; padding:10px; border-radius:8px; box-sizing:border-box;">
+            <option value="Uncategorized" {% if case_data.course == "Uncategorized" %}selected{% endif %}>
+                Uncategorized
+            </option>
+
+            {% for folder in law_folders %}
+            <option value="{{ folder }}" {% if case_data.course == folder %}selected{% endif %}>
+                {{ folder }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <br><br>
+
+        <button type="submit">
+            💾 Save Case Details
+        </button>
+    </form>
+</div>
+                                  
+        {% for section in section_cards %}
+            {% if section.content %}
+            <div class="portal-card law-case-section">
+                <h2 style="margin-top:0;">{{ section.icon }} {{ section.title }}</h2>
+
+                <pre style="
+                    white-space:pre-wrap;
+                    word-wrap:break-word;
+                    font-family:inherit;
+                    line-height:1.45;
+                    margin-bottom:0;
+                ">{{ section.content }}</pre>
+            </div>
+            {% endif %}
+        {% endfor %}
+
+  {% if case_data.sections.irac_drill %}
+    <div class="portal-card law-case-section">
+        <h2 style="margin-top:0;">🧠 IRAC Practice Response</h2>
+
+        <p style="opacity:.8;">
+            Write your own IRAC response before revealing the imported IRAC Drill guidance.
+        </p>
+
+        <form method="POST" action="/law/cases/{{ case_data.id }}/update_irac_response">
+            <label><strong>Issue</strong></label><br>
+            <textarea class="law-detail-textarea" name="irac_issue"
+                    rows="4"
+                    placeholder="State the legal issue..."
+                    style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ irac_student_response.get("issue", "") }}</textarea>
+
+            <br><br>
+
+            <label><strong>Rule</strong></label><br>
+            <textarea class="law-detail-textarea" name="irac_rule"
+                    rows="4"
+                    placeholder="State the governing rule..."
+                    style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ irac_student_response.get("rule", "") }}</textarea>
+
+            <br><br>
+
+            <label><strong>Analysis / Application</strong></label><br>
+            <textarea class="law-detail-textarea" name="irac_analysis"
+                    rows="7"
+                    placeholder="Apply the rule to the facts..."
+                    style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ irac_student_response.get("analysis", "") }}</textarea>
+
+            <br><br>
+
+            <label><strong>Conclusion</strong></label><br>
+            <textarea class="law-detail-textarea" name="irac_conclusion"
+                    rows="4"
+                    placeholder="State the likely result..."
+                    style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ irac_student_response.get("conclusion", "") }}</textarea>
+
+            <br><br>
+
+            <button type="submit">
+                💾 Save IRAC Response
+            </button>
+        </form>
+    </div>
+
+    <div class="portal-card law-case-section">
+        <h2 style="margin-top:0;">🔒 IRAC Drill</h2>
+
+        <p style="opacity:.8;">
+            Hidden by default for active recall. Try writing your own IRAC response first, then reveal the imported drill guidance.
+        </p>
+
+        <button type="button" onclick="toggleIracDrill()">
+            👁 Reveal / Hide IRAC Drill
+        </button>
+
+        <div id="iracDrillBox" style="display:none; margin-top:14px;">
+            <pre style="
+                white-space:pre-wrap;
+                word-wrap:break-word;
+                font-family:inherit;
+                line-height:1.45;
+                margin-bottom:0;
+            ">{{ case_data.sections.irac_drill }}</pre>
+        </div>
+    </div>
+    {% endif %}                                
+
+                                 
+
+                                  
+{% if socratic_questions %}
+<div class="portal-card law-case-section">
+    <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:12px;
+        flex-wrap:wrap;
+    ">
+        <div>
+            <h2 style="margin-top:0;">🎓 Socratic Practice</h2>
+
+            <p style="opacity:.8;">
+                Type your own answer before revealing the answer key. Your answers are saved with this case review.
+            </p>
+        </div>
+
+        <span style="
+            display:inline-block;
+            padding:7px 12px;
+            border-radius:999px;
+            background:rgba(0,120,255,.12);
+            border:1px solid rgba(0,120,255,.35);
+            font-size:13px;
+            font-weight:700;
+            white-space:nowrap;
+        ">
+            {{ socratic_progress_text }}
+        </span>
+    </div>
+
+    <form id="socraticAnswersForm"
+      method="POST"
+      action="/law/cases/{{ case_data.id }}/update_socratic_answers">
+        <div style="display:grid; gap:12px;">
+            {% for question in socratic_questions %}
+            <div style="
+                padding:14px;
+                border-radius:12px;
+                background:rgba(255,255,255,.06);
+                border:1px solid rgba(255,255,255,.16);
+            ">
+                <h3 style="margin-top:0;">Question {{ question.number }}</h3>
+
+                <pre style="
+                    white-space:pre-wrap;
+                    word-wrap:break-word;
+                    font-family:inherit;
+                    line-height:1.45;
+                    margin-bottom:12px;
+                ">{{ question.text }}</pre>
+
+                <label><strong>Your Answer</strong></label><br>
+                <textarea class="law-detail-textarea" name="answer_{{ question.id }}"
+                          rows="5"
+                          placeholder="Type your answer before revealing the guidance..."
+                          style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ socratic_student_answers.get(question.id, "") }}</textarea>
+            </div>
+            {% endfor %}
+        </div>
+
+        <br>
+
+        <button type="submit" form="socraticAnswersForm">
+            💾 Save Socratic Answers
+        </button>
+    </form>
+</div>
+{% endif %}
+
+    
+                                                                    
+        {% if socratic_answer_key %}
+        <div class="portal-card law-case-section">
+            <h2 style="margin-top:0;">🔒 Socratic Answer Key</h2>
+
+            <p style="opacity:.8;">
+                Hidden by default for active recall. Try answering the Socratic questions first, then reveal the guidance.
+            </p>
+
+            <button type="button" onclick="toggleSocraticAnswerKey()">
+                👁 Reveal / Hide Answer Key
+            </button>
+
+            <div id="socraticAnswerKey" style="display:none; margin-top:14px;">
+                <pre style="
+                    white-space:pre-wrap;
+                    word-wrap:break-word;
+                    font-family:inherit;
+                    line-height:1.45;
+                    margin-bottom:0;
+                ">{{ socratic_answer_key }}</pre>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if rule_flashcards_content %}
+        <div class="portal-card law-case-section">
+            <h2 style="margin-top:0;">🃏 Rule Flashcards</h2>
+
+            <pre style="
+                white-space:pre-wrap;
+                word-wrap:break-word;
+                font-family:inherit;
+                line-height:1.45;
+                margin-bottom:0;
+            ">{{ rule_flashcards_content }}</pre>
+        </div>
+        {% endif %}
+                                  
+        <div class="portal-card law-case-section">
+            <h2 style="margin-top:0;">📝 Student Notes</h2>
+
+            <p style="opacity:.8;">
+                Add your own class notes, professor comments, questions, or reminders here.
+            </p>
+
+            <form method="POST" action="/law/cases/{{ case_data.id }}/update_notes">
+                <textarea class="law-detail-textarea" name="student_notes"
+                        rows="10"
+                        placeholder="Add your own notes about this case..."
+                        style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ case_data.student_notes }}</textarea>
+
+                <br><br>
+
+                <button type="submit">
+                    💾 Save Student Notes
+                </button>
+            </form>
+        </div>
+
+        <br>
+
+        <button type="button" onclick="location.href='/law/cases/{{ case_data.id }}/export.txt'">
+            ⬇️ Export Case Review
+        </button>
+
+        <button type="button" onclick="location.href='/law/cases'">
+            ⬅ Back To My Case Reviews
+        </button>
+
+        <button type="button" onclick="location.href='/law/imports'">
+            📁 Saved Imports
+        </button>
+
+        <button type="button" onclick="location.href='/law'">
+            ⚖️ Law Study Hub
+        </button>
+
+    </section>
+</main>
+</div>
+
+<script>
+function toggleIracDrill() {
+    const box = document.getElementById("iracDrillBox");
+
+    if (!box) {
+        return;
+    }
+
+    if (box.style.display === "none" || box.style.display === "") {
+        box.style.display = "block";
+    } else {
+        box.style.display = "none";
+    }
+}
+
+function toggleSocraticAnswerKey() {
+    const box = document.getElementById("socraticAnswerKey");
+
+    if (!box) {
+        return;
+    }
+
+    if (box.style.display === "none" || box.style.display === "") {
+        box.style.display = "block";
+    } else {
+        box.style.display = "none";
+    }
+}
+
+const menuButton = document.getElementById("menuButton");
+const sidebar = document.getElementById("dashboardSidebar");
+if (menuButton && sidebar) {
+    menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));
+    document.addEventListener("click", event => {
+        if (window.innerWidth > 820 || !sidebar.classList.contains("open")) return;
+        if (sidebar.contains(event.target) || menuButton.contains(event.target)) return;
+        sidebar.classList.remove("open");
+    });
+}
+const shutdownBtn = document.getElementById("shutdownBtn");
+if (shutdownBtn) {
+    shutdownBtn.addEventListener("click", async () => {
+        if (!confirm("Shut down DLMS? You will need to restart it manually.")) return;
+        try {
+            const res = await fetch("/api/shutdown", { method: "POST" });
+            const data = await res.json();
+            if (data.status === "ok") alert("DLMS is shutting down.");
+            else throw new Error();
+        } catch (err) { alert("Failed to shut down DLMS."); }
+    });
+}
+</script>
+
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

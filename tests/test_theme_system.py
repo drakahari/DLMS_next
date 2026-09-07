@@ -3,6 +3,7 @@ import os
 import re
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from tests._isolation import ensure_test_data_isolation
@@ -943,17 +944,19 @@ class ThemeSystemTests(unittest.TestCase):
     def test_shared_anki_preview_classes_are_used_by_all_three_workflows(self):
         with open(dlms.__file__, "r", encoding="utf-8") as f:
             source = f.read()
-        self.assertGreaterEqual(source.count('class="anki-preview-card"'), 3)
-        self.assertGreaterEqual(source.count('class="anki-preview-number"'), 3)
-        self.assertGreaterEqual(source.count('class="anki-card-side"'), 3)
+        template_source = "\n".join(
+            Path(dlms.TEMPLATE_ROOT, "anki", name).read_text(encoding="utf-8")
+            for name in ("index.html", "custom.html", "law.html")
+        )
+        self.assertGreaterEqual(template_source.count('class="anki-preview-card"'), 3)
+        self.assertGreaterEqual(template_source.count('class="anki-preview-number"'), 3)
+        self.assertGreaterEqual(template_source.count('class="anki-card-side"'), 3)
         self.assertIn('@app.route("/anki")', source)
         self.assertIn('@app.route("/anki/custom"', source)
         self.assertIn('@app.route("/anki/law")', source)
 
     def test_custom_anki_theme_colors_are_class_based_not_inline(self):
-        with open(dlms.__file__, "r", encoding="utf-8") as f:
-            source = f.read()
-        custom = source[source.index('@app.route("/anki/custom"'):source.index('@app.route("/anki/export/custom"')]
+        custom = Path(dlms.TEMPLATE_ROOT, "anki", "custom.html").read_text(encoding="utf-8")
         for old_color in (
             "color:#eaf3ff", "background:rgba(3,13,30,.78)",
             "border:1px solid rgba(91,146,215,.42)",

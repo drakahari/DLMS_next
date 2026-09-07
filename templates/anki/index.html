@@ -1,0 +1,324 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anki Tools - DLMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home anki-tools-page">
+<div class="dashboard-shell">
+
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                    <path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                    <path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div>
+                <div class="dashboard-brand-title">DLMS</div>
+                <div class="dashboard-brand-subtitle">Training Center</div>
+            </div>
+        </div>
+
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
+            </div>
+            {% endif %}
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item active" href="/anki" aria-current="page"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <div class="dashboard-nav-submenu">
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck &amp; Printable Cards</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        </nav>
+
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button">
+            <span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span>
+        </button>
+        <div class="dashboard-sidebar-version">DLMS v{{ app_version }}</div>
+    </aside>
+
+    <main class="dashboard-main anki-tools-main">
+        <header class="dashboard-header anki-tools-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div>
+                <div class="anki-tools-eyebrow">STUDY EXPORTS</div>
+                <h1>Anki Tools</h1>
+                <p>Build Anki decks from existing quizzes and your DLMS performance history. Law Study exports are available from the Anki Tools submenu.</p>
+            </div>
+        </header>
+
+        <section class="anki-tools-summary" aria-label="Anki Tools summary">
+            <div class="dashboard-stat-card anki-summary-card" role="group" aria-labelledby="ankiQuizSummaryTitle">
+                <p class="anki-summary-primary" id="ankiQuizSummaryTitle">
+                    <span>Quizzes</span>
+                    <strong>{{ quizzes|length }}</strong>
+                </p>
+                <span class="anki-summary-support">Available to export</span>
+            </div>
+            <div class="dashboard-stat-card anki-summary-card anki-missed-summary-card" role="group" aria-labelledby="ankiMissedSummaryTitle" aria-describedby="ankiMissedOverlapNote">
+                <p class="anki-summary-primary anki-missed-summary-total" id="ankiMissedSummaryTitle">
+                    <span>Questions Ever Missed:</span>
+                    <strong>{{ total_missed_cards }}</strong>
+                </p>
+                <ul class="anki-missed-summary-metrics" aria-label="Missed-question details">
+                    <li><strong>{{ missed_summary.currently_weak }}</strong> <span>not yet revisited</span></li>
+                    <li><strong>{{ missed_summary.recovered }}</strong> <span>revisited later</span></li>
+                    <li><strong>{{ missed_summary.repeated }}</strong> <span>missed more than once</span></li>
+                </ul>
+                <small class="anki-missed-summary-note" id="ankiMissedOverlapNote">Repeat count overlaps revisit status.</small>
+            </div>
+            <div class="dashboard-stat-card anki-summary-card" role="group" aria-labelledby="ankiLawSummaryTitle">
+                <p class="anki-summary-primary" id="ankiLawSummaryTitle">
+                    <span>Law Flashcards</span>
+                    <strong>{{ total_law_cards }}</strong>
+                </p>
+                <span class="anki-summary-support">Recognized cards</span>
+            </div>
+        </section>
+
+        <section class="anki-tools-grid">
+
+            <article class="dashboard-panel anki-source-card">
+                <div class="anki-source-heading">
+                    <span class="anki-source-icon">▤</span>
+                    <div>
+                        <span class="anki-source-kicker">EXISTING QUIZ</span>
+                        <h2>Quiz → Anki</h2>
+                        <p>Create one card per quiz question with all choices on the front and the correct answer on the back.</p>
+                    </div>
+                </div>
+
+                {% if quizzes %}
+                <form method="GET" action="/anki" class="anki-source-form">
+                    <input type="hidden" name="source" value="quiz">
+                    <label>
+                        <span>Source Quiz</span>
+                        <select name="quiz_id" required>
+                            <option value="">Choose a quiz...</option>
+                            {% for quiz in quizzes %}
+                            <option value="{{ quiz.id }}" {% if selected_quiz_id|string == quiz.id|string %}selected{% endif %}>
+                                {{ quiz.title }} ({{ quiz.question_count }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button type="submit" class="anki-preview-button">Preview Cards</button>
+                </form>
+
+                <form method="POST" action="/anki/export/quiz" class="anki-export-form">
+                    <label>
+                        <span>Quiz to Export</span>
+                        <select name="quiz_id" required>
+                            <option value="">Choose a quiz...</option>
+                            {% for quiz in quizzes %}
+                            <option value="{{ quiz.id }}" {% if selected_quiz_id|string == quiz.id|string %}selected{% endif %}>
+                                {{ quiz.title }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button type="submit" class="anki-export-button">Export .apkg</button>
+                </form>
+                {% else %}
+                <div class="anki-empty-message">No quizzes are currently available.</div>
+                {% endif %}
+            </article>
+
+            <article class="dashboard-panel anki-source-card">
+                <div class="anki-source-heading">
+                    <span class="anki-source-icon">↶</span>
+                    <div>
+                        <span class="anki-source-kicker">PERFORMANCE DATA</span>
+                        <h2>Missed Questions → Anki</h2>
+                        <p>Build a focused deck from questions DLMS has recorded as missed across your attempt history.</p>
+                    </div>
+                </div>
+
+                <form method="GET" action="/anki" class="anki-source-form" id="missedAnkiForm">
+                    <input type="hidden" name="source" value="missed">
+
+                    <div class="anki-two-field-row">
+                        <label>
+                            <span>Quiz</span>
+                            <select name="missed_quiz_id">
+                                <option value="all" {% if selected_missed_quiz == "all" %}selected{% endif %}>All Quizzes</option>
+                                {% for quiz in quizzes %}
+                                <option value="{{ quiz.id }}" {% if selected_missed_quiz|string == quiz.id|string %}selected{% endif %}>
+                                    {{ quiz.title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </label>
+
+                        <label>
+                            <span>Minimum Times Missed</span>
+                            <input type="number" name="min_misses" value="{{ selected_min_misses }}" min="1" max="100">
+                        </label>
+                    </div>
+
+                    <label>
+                        <span>Focus</span>
+                        <select name="missed_status">
+                            <option value="all" {% if selected_missed_status == "all" %}selected{% endif %}>All Missed Questions</option>
+                            <option value="currently_weak" {% if selected_missed_status == "currently_weak" %}selected{% endif %}>Currently Weak</option>
+                            <option value="repeated" {% if selected_missed_status == "repeated" %}selected{% endif %}>Repeatedly Missed</option>
+                            <option value="recovered" {% if selected_missed_status == "recovered" %}selected{% endif %}>Recovered Later</option>
+                            <option value="once" {% if selected_missed_status == "once" %}selected{% endif %}>Missed Once</option>
+                        </select>
+                    </label>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <button type="submit" class="anki-preview-button">Preview Cards</button>
+                        <button type="button" class="anki-export-button" id="exportMissedAnki">Export .apkg</button>
+                    </div>
+                </form>
+            </article>
+
+
+        </section>
+
+        {% if anki_source %}
+        <section class="dashboard-panel anki-preview-panel" id="ankiPreview">
+            <div class="anki-preview-heading">
+                <div>
+                    <span class="anki-source-kicker">EXPORT PREVIEW</span>
+                    <h2>{{ preview_title or "Preview" }}</h2>
+                </div>
+                <span class="anki-count-pill">{{ preview_rows|length }} card{% if preview_rows|length != 1 %}s{% endif %}</span>
+            </div>
+
+            {% if preview_message %}
+            <div class="anki-empty-message">{{ preview_message }}</div>
+            {% endif %}
+
+            {% if preview_rows %}
+            <div class="anki-preview-list">
+                {% for card in preview_rows[:20] %}
+                <article class="anki-preview-card">
+                    <div class="anki-preview-number">Card {{ loop.index }}</div>
+                    <div class="anki-card-side">
+                        <span>FRONT</span>
+                        <pre>{{ card.front }}</pre>
+                    </div>
+                    <div class="anki-card-side anki-card-back">
+                        <span>BACK</span>
+                        <pre>{{ card.back }}</pre>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            {% if preview_rows|length > 20 %}
+            <div class="anki-preview-more">
+                Previewing the first 20 of {{ preview_rows|length }} cards. The export includes all matching cards.
+            </div>
+            {% endif %}
+            {% endif %}
+        </section>
+        {% endif %}
+
+    </main>
+</div>
+
+<script>
+const menuButton = document.getElementById("menuButton");
+const sidebar = document.getElementById("dashboardSidebar");
+
+if (menuButton && sidebar) {
+    menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));
+
+    document.addEventListener("click", event => {
+        if (window.innerWidth > 820 || !sidebar.classList.contains("open")) return;
+        if (sidebar.contains(event.target) || menuButton.contains(event.target)) return;
+        sidebar.classList.remove("open");
+    });
+}
+
+
+const exportMissedAnki = document.getElementById("exportMissedAnki");
+
+if (exportMissedAnki) {
+    exportMissedAnki.addEventListener("click", () => {
+        const form = document.getElementById("missedAnkiForm");
+        if (!form) return;
+
+        const quizSelect = form.querySelector('[name="missed_quiz_id"]');
+        const minMisses = form.querySelector('[name="min_misses"]');
+        const statusSelect = form.querySelector('[name="missed_status"]');
+
+        const exportForm = document.createElement("form");
+        exportForm.method = "POST";
+        exportForm.action = "/anki/export/missed";
+        exportForm.style.display = "none";
+
+        const fields = {
+            quiz_id: quizSelect ? quizSelect.value : "all",
+            min_misses: minMisses ? minMisses.value : "1",
+            missed_status: statusSelect ? statusSelect.value : "all"
+        };
+
+        Object.entries(fields).forEach(([name, value]) => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value;
+            exportForm.appendChild(input);
+        });
+
+        window.dlmsProtectForm(exportForm);
+        document.body.appendChild(exportForm);
+        exportForm.submit();
+    });
+}
+
+const shutdownBtn = document.getElementById("shutdownBtn");
+if (shutdownBtn) {
+    shutdownBtn.addEventListener("click", async () => {
+        if (!confirm("Shut down DLMS? You will need to restart it manually.")) return;
+        try {
+            const res = await fetch("/api/shutdown", { method: "POST" });
+            const data = await res.json();
+            if (data.status === "ok") alert("DLMS is shutting down.");
+            else throw new Error();
+        } catch (err) {
+            alert("Failed to shut down DLMS.");
+        }
+    });
+}
+
+if (window.location.hash === "#ankiPreview") {
+    const preview = document.getElementById("ankiPreview");
+    if (preview) preview.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+</script>
+
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>
