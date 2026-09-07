@@ -118,6 +118,62 @@ class GeneratedQuizSecurityTests(unittest.TestCase):
             json_mock.call_args_list,
         )
 
+    def test_generated_shell_preserves_exam_logo_and_client_global_contracts(self):
+        temp_dir = tempfile.TemporaryDirectory(prefix="dlms-generated-contract-")
+        self.addCleanup(temp_dir.cleanup)
+        output = Path(temp_dir.name) / "quiz.html"
+
+        with mock.patch.object(
+            dlms, "normalize_exam_minutes", return_value=37
+        ) as normalize:
+            dlms.build_quiz_html(
+                "ignored-name.html",
+                "questions café.json",
+                str(output),
+                "DLMS Portal",
+                "Unicode Café Quiz",
+                "badge & logo.png",
+                "quiz-id-17",
+                "invalid-duration",
+            )
+
+        generated = output.read_text(encoding="utf-8")
+        normalize.assert_called_once_with("invalid-duration")
+        self.assertIn("window.examDurationMinutes = 37;", generated)
+        self.assertIn('const QUIZ_FILE = "/data/questions café.json";', generated)
+        self.assertIn('window.QUIZ_ID = "quiz-id-17";', generated)
+        self.assertIn('<script src="/static/script.js"></script>', generated)
+        self.assertEqual(4, generated.count('class="mode-badge"'))
+        self.assertEqual(
+            4,
+            generated.count(
+                'src="/user-static/logos/badge &amp; logo.png" class="mode-badge"'
+            ),
+        )
+
+    def test_artifact_name_helpers_preserve_identity_and_safe_registry_rules(self):
+        with mock.patch.object(
+            dlms,
+            "_generated_quiz_artifact_identity",
+            return_value="1234567890_deadbeef",
+        ):
+            self.assertEqual(
+                (
+                    "mixed_quiz_1234567890_deadbeef.html",
+                    "mixed_quiz_1234567890_deadbeef.json",
+                ),
+                dlms._generated_quiz_artifact_names(" Mixed Quiz! "),
+            )
+
+        self.assertEqual(
+            ("stored.html", "stored.json"),
+            dlms._quiz_artifact_names({"html": "stored.html"}),
+        )
+        for unsafe in ("", "../stored.html", "folder/stored.html", "stored.json"):
+            with self.subTest(unsafe=unsafe):
+                with self.assertRaisesRegex(ValueError, "unsafe or missing HTML"):
+                    dlms._quiz_artifact_names({"html": unsafe})
+
     def test_choice_content_is_created_as_text_nodes(self):
         script = Path(dlms.STATIC_ROOT, "script.js").read_text(encoding="utf-8")
         render_block = script[

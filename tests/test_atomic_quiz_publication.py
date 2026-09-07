@@ -172,6 +172,156 @@ class AtomicQuizPublicationTests(unittest.TestCase):
         staging = Path(dlms._quiz_publication_staging_root())
         self.assertFalse(staging.exists() and any(staging.iterdir()))
 
+    def test_database_rebuild_preserves_exact_mixed_generated_json_shape(self):
+        questions = [
+            {
+                "number": 1,
+                "type": "choice",
+                "question": "Select every café rule.",
+                "explanation": "Unicode explanation — exact.",
+                "concepts": ["multi-answer"],
+                "choices": [
+                    {"label": "A", "text": "Résumé", "is_correct": True},
+                    {"label": "B", "text": "Naïve", "is_correct": True},
+                    {"label": "C", "text": "Wrong", "is_correct": False},
+                ],
+                "image_url": "/quiz-assets/rebuild/diagram.png",
+                "image_alt": "Café diagram",
+                "image_edits": [{"type": "rotate", "degrees": 90}],
+                "image_source": {"attribution": "Test source"},
+                "source": {
+                    "organization": "DLMS Test",
+                    "dataset": "Mixed dataset",
+                    "version": "1",
+                    "url": "https://example.invalid/source",
+                    "license": "CC0",
+                },
+            },
+            {
+                "number": 2,
+                "type": "matching",
+                "question": "Match terms.",
+                "explanation": "Match exactly.",
+                "concepts": ["matching"],
+                "round_size": 2,
+                "direction": "definition_to_term",
+                "pairs": [
+                    {
+                        "left": "Alpha",
+                        "right": "One",
+                        "category": "Greek",
+                        "explanation": "First pair.",
+                        "verification": {"status": "verified"},
+                    },
+                    {
+                        "left": "Beta",
+                        "right": "Two",
+                        "category": "Greek",
+                        "explanation": "Second pair.",
+                        "verification": {},
+                    },
+                ],
+            },
+            {
+                "number": 3,
+                "type": "choice",
+                "question": "Find the target. [Image hotspot]",
+                "explanation": "Target explanation.",
+                "concepts": ["hotspot"],
+                "choices": [
+                    {"label": "A", "text": "Target", "is_correct": True}
+                ],
+                "media": {
+                    "image_url": "/quiz-assets/rebuild/hotspot.png",
+                    "image_alt": "Hotspot image",
+                    "image_edits": [],
+                    "image_source": {"license": "CC0"},
+                },
+            },
+        ]
+        quiz_id, html_name = dlms._publish_quiz(
+            "Mixed rebuild",
+            questions,
+            filename_prefix="mixed_rebuild",
+            exam_minutes=25,
+        )
+
+        self.assertTrue(dlms.rebuild_quiz_json_from_db(quiz_id))
+        rebuilt = json.loads(
+            (Path(dlms.DATA_FOLDER) / html_name.replace(".html", ".json")).read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            [
+                {
+                    "number": 1,
+                    "type": "choice",
+                    "question": "Select every café rule.",
+                    "explanation": "Unicode explanation — exact.",
+                    "concepts": ["multi-answer"],
+                    "choices": [
+                        {"label": "A", "text": "Résumé", "is_correct": True},
+                        {"label": "B", "text": "Naïve", "is_correct": True},
+                        {"label": "C", "text": "Wrong", "is_correct": False},
+                    ],
+                    "correct": ["A", "B"],
+                    "image_url": "/quiz-assets/rebuild/diagram.png",
+                    "image_alt": "Café diagram",
+                    "image_edits": [{"type": "rotate", "degrees": 90}],
+                    "image_source": {"attribution": "Test source"},
+                    "source": {
+                        "organization": "DLMS Test",
+                        "dataset": "Mixed dataset",
+                        "version": "1",
+                        "url": "https://example.invalid/source",
+                        "license": "CC0",
+                    },
+                },
+                {
+                    "number": 2,
+                    "type": "matching",
+                    "question": "Match terms.",
+                    "pairs": [
+                        {
+                            "left": "Alpha",
+                            "right": "One",
+                            "category": "Greek",
+                            "explanation": "First pair.",
+                            "verification": {"status": "verified"},
+                        },
+                        {
+                            "left": "Beta",
+                            "right": "Two",
+                            "category": "Greek",
+                            "explanation": "Second pair.",
+                            "verification": {},
+                        },
+                    ],
+                    "round_size": 2,
+                    "direction": "definition_to_term",
+                    "explanation": "Match exactly.",
+                    "concepts": ["matching"],
+                },
+                {
+                    "number": 3,
+                    "type": "choice",
+                    "question": "Find the target. [Image hotspot]",
+                    "explanation": "Target explanation.",
+                    "concepts": ["hotspot"],
+                    "choices": [
+                        {"label": "A", "text": "Target", "is_correct": True}
+                    ],
+                    "correct": ["A"],
+                    "image_url": "/quiz-assets/rebuild/hotspot.png",
+                    "image_alt": "Hotspot image",
+                    "image_edits": [],
+                    "image_source": {"license": "CC0"},
+                },
+            ],
+            rebuilt,
+        )
+
     def test_nonsequential_source_numbers_publish_with_canonical_ordinals(self):
         questions = [
             {
