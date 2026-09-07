@@ -373,7 +373,7 @@ class HistoryApiPaginationTests(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(__file__))
         with open(os.path.join(root, "static", "history.html"), encoding="utf-8") as f:
             self.assertIn("/api/attempts?${query}", f.read())
-        with open(os.path.join(root, "static", "index.html"), encoding="utf-8") as f:
+        with open(os.path.join(root, "templates", "dashboard", "index.html"), encoding="utf-8") as f:
             self.assertIn("/api/attempts/overview", f.read())
         with open(os.path.join(root, "static", "dashboard.html"), encoding="utf-8") as f:
             self.assertIn("/api/attempts/analytics", f.read())

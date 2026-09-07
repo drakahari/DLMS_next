@@ -1,0 +1,455 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Short Quiz</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home build-modern-page">
+<div class="dashboard-shell">
+
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                    <path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                    <path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div>
+                <div class="dashboard-brand-title">DLMS</div>
+                <div class="dashboard-brand-subtitle">Training Center</div>
+            </div>
+        </div>
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
+            </div>
+            {% endif %}
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <div class="dashboard-nav-submenu">
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
+                </div>
+            </div>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        </nav>
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button>
+        <div class="dashboard-sidebar-version">Build Quiz</div>
+    </aside>
+    <main class="dashboard-main build-modern-main">
+        <header class="dashboard-header build-page-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div>
+                <div class="build-eyebrow">MANUAL QUIZ BUILDER</div>
+                <h1>Create a Short Quiz</h1>
+                <p>Build a custom quiz question by question. Add or remove questions and choices as needed.</p>
+            </div>
+        </header>
+
+        {% if not builder_ready %}
+        <section class="dashboard-panel build-section build-short-basics">
+            <div class="build-section-heading">
+                <div class="build-step-number">1</div>
+                <div>
+                    <h2>Choose Starting Question Count</h2>
+                    <p>Start with only the number of question blocks you need. You can add or delete questions at any time in the builder.</p>
+                </div>
+            </div>
+
+            <form method="GET" action="/create_short_quiz" class="build-workspace">
+                <label class="build-field" style="max-width:340px;">
+                    <span>How many questions would you like to start with?</span>
+                    <input type="number"
+                           name="count"
+                           min="1"
+                           max="100"
+                           value="10"
+                           inputmode="numeric"
+                           required>
+                    <small>Choose 1–100. The default is 10.</small>
+                </label>
+
+                <div class="build-submit-row" style="margin-top:18px;">
+                    <a class="build-secondary-link" href="/upload">Back to Build Options</a>
+                    <button class="build-primary-button" type="submit">Start Quiz Builder</button>
+                </div>
+            </form>
+        </section>
+        {% else %}
+
+        <form id="create-short-quiz-form" class="build-workspace" method="POST" action="/create_short_quiz" enctype="multipart/form-data">
+            <section class="dashboard-panel build-section build-short-basics">
+                <div class="build-section-heading">
+                    <div class="build-step-number">1</div>
+                    <div><h2>Quiz Basics</h2><p>Give the quiz a title and optional logo.</p></div>
+                </div>
+                <div class="build-two-column-fields">
+                    <label class="build-field">
+                        <span>Quiz Display Title</span>
+                        <input type="text" name="quiz_title" placeholder="Example: Quick Practice Quiz" required>
+                    </label>
+                    <label class="build-field">
+                        <span>Quiz Logo <em>Optional</em></span>
+                        <input type="file" name="quiz_logo" accept="image/*">
+                        <small>PNG, JPG, GIF, or WEBP.</small>
+                    </label>
+                    <label class="build-field">
+                        <span>Exam Mode Timer <em>Optional</em></span>
+                        <input type="number" name="exam_minutes" min="1" max="1440" value="90" inputmode="numeric">
+                        <small>Minutes available in Exam Mode. Leave blank or use 90 for the standard DLMS timer.</small>
+                    </label>
+                </div>
+            </section>
+
+            <section class="build-question-section">
+                <div class="build-section-heading build-question-section-heading">
+                    <div class="build-step-number">2</div>
+                    <div><h2>Questions &amp; Answers</h2><p>Mark every answer that should be accepted as correct.</p></div>
+                </div>
+                <div id="questions-container" class="build-question-list">
+                    {% for q in questions %}
+                    <article class="build-question-card question-block" data-question-number="{{ q.number }}">
+                        <div class="build-question-heading-row">
+                            <h3 class="question-heading">Question {{ q.number }}</h3>
+                            <button type="button" class="build-icon-danger btn-delete" onclick="deleteQuestion(this)" title="Delete question" aria-label="Delete question">×</button>
+                        </div>
+                        <div class="build-two-column-fields">
+                            <label class="build-field">
+                                <span>Question Type</span>
+                                <select class="question-type" name="question_type_{{ q.number }}" onchange="changeQuestionType(this)">
+                                    <option value="choice">Multiple Choice / Multi-Select</option>
+                                    <option value="matching">Matching</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label class="build-field">
+                            <span>Question Text / Instructions</span>
+                            <textarea class="question-text" name="question_{{ q.number }}" placeholder="Enter question text here..."></textarea>
+                        </label>
+                        <div class="choice-editor">
+                            <div class="build-choice-heading"><span>Answer Choices</span><small>Select Correct for every valid answer.</small></div>
+                            <ul class="choices-list build-choice-list">
+                            {% for label in q.choices %}
+                                <li>
+                                    <b class="choice-label">{{ label }}.</b>
+                                    <input type="text" class="choice-text" name="choice_{{ q.number }}_{{ label }}" placeholder="Option {{ label }}">
+                                    <label class="build-correct-toggle"><input type="checkbox" class="choice-correct" name="correct_{{ q.number }}_{{ label }}"><span>Correct</span></label>
+                                    <button type="button" class="build-choice-delete btn-delete" onclick="deleteChoice(this)" title="Delete choice" aria-label="Delete choice">×</button>
+                                </li>
+                            {% endfor %}
+                            </ul>
+                            <button class="build-add-choice" type="button" onclick="addChoice(this)">＋ Add Choice</button>
+                        </div>
+                        <div class="matching-editor" hidden>
+                            <div class="build-choice-heading"><span>Matching Pairs</span><small>Each left item must have one matching right item. Answers are shuffled during play.</small></div>
+                            <div class="build-two-column-fields matching-settings-grid">
+                                <label class="build-field"><span>Pairs Per Round</span><input type="number" class="matching-round-size" min="2" max="100" placeholder="All pairs"><small>Leave blank to show every pair.</small></label>
+                                <label class="build-field"><span>Direction</span><select class="matching-direction"><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option><option value="random">Random Each Attempt</option></select></label>
+                            </div>
+                            <div class="matching-pairs-list">
+                                <div class="build-match-pair"><span class="match-number">1</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">2</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">3</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">4</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                            </div>
+                            <button class="build-add-choice" type="button" onclick="addMatchPair(this)">＋ Add Pair</button>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                <button class="build-add-question" type="button" onclick="addQuestion()">＋ Add New Question</button>
+            </section>
+
+            <section class="dashboard-panel build-finalize-bar">
+                <div><strong>Ready to create?</strong><span>DLMS will validate the questions and save the new quiz to the library.</span></div>
+                <div class="build-submit-row">
+                    <a class="build-secondary-link" href="/upload">Back to Build Options</a>
+                    <button class="build-primary-button" type="submit">Create Quiz</button>
+                </div>
+            </section>
+        </form>
+        {% endif %}
+    </main>
+</div>
+<script>
+
+function getChoiceLabel(index) {
+    return String.fromCharCode(65 + index);
+}
+
+function renumberMatchPairs(question, qNumber) {
+    const pairs = question.querySelectorAll(".build-match-pair");
+    pairs.forEach((pair, pIndex) => {
+        pair.querySelector(".match-number").textContent = pIndex + 1;
+        const left = pair.querySelector(".match-left");
+        const right = pair.querySelector(".match-right");
+        left.name = `match_left_${qNumber}_${pIndex + 1}`;
+        right.name = `match_right_${qNumber}_${pIndex + 1}`;
+    });
+}
+
+function changeQuestionType(select) {
+    const question = select.closest(".question-block");
+    const isMatching = select.value === "matching";
+    question.querySelector(".choice-editor").hidden = isMatching;
+    question.querySelector(".matching-editor").hidden = !isMatching;
+    renumberQuestions();
+}
+
+function addMatchPair(button) {
+    const question = button.closest(".question-block");
+    const list = question.querySelector(".matching-pairs-list");
+    const row = document.createElement("div");
+    row.className = "build-match-pair";
+    row.innerHTML = `<span class="match-number"></span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button>`;
+    list.appendChild(row);
+    renumberQuestions();
+}
+
+function deleteMatchPair(button) {
+    const question = button.closest(".question-block");
+    if (question.querySelectorAll(".build-match-pair").length <= 2) {
+        alert("A matching question needs at least two pairs.");
+        return;
+    }
+    button.closest(".build-match-pair").remove();
+    renumberQuestions();
+}
+
+function renumberQuestions() {
+    const questions = document.querySelectorAll(".question-block");
+
+    questions.forEach((question, qIndex) => {
+        const qNumber = qIndex + 1;
+        question.dataset.questionNumber = qNumber;
+
+        question.querySelector(".question-heading").textContent = `Question ${qNumber}`;
+
+        const questionType = question.querySelector(".question-type");
+        questionType.name = `question_type_${qNumber}`;
+        const roundSize = question.querySelector(".matching-round-size");
+        const direction = question.querySelector(".matching-direction");
+        if (roundSize) roundSize.name = `matching_round_size_${qNumber}`;
+        if (direction) direction.name = `matching_direction_${qNumber}`;
+
+        const questionText = question.querySelector(".question-text");
+        const savedQuestionText = questionText.value;
+        questionText.name = `question_${qNumber}`;
+        questionText.value = savedQuestionText;
+
+        renumberMatchPairs(question, qNumber);
+
+        const choices = question.querySelectorAll(".choices-list li");
+
+        choices.forEach((choice, cIndex) => {
+            const label = getChoiceLabel(cIndex);
+
+            choice.querySelector(".choice-label").textContent = `${label}.`;
+
+            const choiceText = choice.querySelector(".choice-text");
+            const savedChoiceText = choiceText.value;
+            choiceText.name = `choice_${qNumber}_${label}`;
+            choiceText.placeholder = `Option ${label}`;
+            choiceText.value = savedChoiceText;
+
+            const correctBox = choice.querySelector(".choice-correct");
+            const savedChecked = correctBox.checked;
+            correctBox.name = `correct_${qNumber}_${label}`;
+            correctBox.checked = savedChecked;
+        });
+    });
+}
+
+function addQuestion() {
+    const container = document.getElementById("questions-container");
+    const template = document.querySelector(".question-block");
+    const block = template.cloneNode(true);
+
+    block.querySelectorAll("input[type='text'], textarea").forEach(el => el.value = "");
+    block.querySelectorAll("input[type='checkbox']").forEach(el => el.checked = false);
+    const typeSelect = block.querySelector(".question-type");
+    typeSelect.value = "choice";
+    block.querySelector(".choice-editor").hidden = false;
+    block.querySelector(".matching-editor").hidden = true;
+
+    container.appendChild(block);
+    renumberQuestions();
+}
+
+function deleteQuestion(button) {
+    const questions = document.querySelectorAll(".question-block");
+
+    if (questions.length <= 1) {
+        alert("A quiz must have at least one question.");
+        return;
+    }
+
+    if (!confirm("Delete this question?")) return;
+
+    button.closest(".question-block").remove();
+    renumberQuestions();
+}
+
+function addChoice(button) {
+    const question = button.closest(".question-block");
+    const choicesList = question.querySelector(".choices-list");
+    const choiceCount = choicesList.querySelectorAll("li").length;
+
+    if (choiceCount >= 26) {
+        alert("Maximum answer choices reached.");
+        return;
+    }
+
+    const label = getChoiceLabel(choiceCount);
+
+    const li = document.createElement("li");
+    
+    li.innerHTML = `
+        <b class="choice-label">${label}.</b>
+
+        <input type="text"
+               class="choice-text"
+               placeholder="Option ${label}"
+               >
+
+        <input type="checkbox"
+               class="choice-correct">
+        Correct
+
+        <button type="button"
+                class="btn-delete"
+                onclick="deleteChoice(this)"
+                >
+            ❌
+        </button>
+    `;
+
+    choicesList.appendChild(li);
+    renumberQuestions();
+}
+
+function deleteChoice(button) {
+    const question = button.closest(".question-block");
+    const choices = question.querySelectorAll(".choices-list li");
+
+    if (choices.length <= 1) {
+        alert("A question must have at least one answer choice.");
+        return;
+    }
+
+    button.closest("li").remove();
+    renumberQuestions();
+}
+
+const shortQuizForm = document.getElementById("create-short-quiz-form");
+if (shortQuizForm) {
+shortQuizForm.addEventListener("submit", function(e) {
+    renumberQuestions();
+
+    const questions = document.querySelectorAll(".question-block");
+
+    for (let i = 0; i < questions.length; i++) {
+        const questionText = questions[i].querySelector(".question-text").value.trim();
+        const questionType = questions[i].querySelector(".question-type").value;
+
+        if (!questionText) {
+            e.preventDefault();
+            alert(`Question ${i + 1} needs question text.`);
+            questions[i].scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
+        }
+
+        if (questionType === "matching") {
+            const pairRows = Array.from(questions[i].querySelectorAll(".build-match-pair"));
+            const completed = pairRows.filter(row => row.querySelector(".match-left").value.trim() && row.querySelector(".match-right").value.trim());
+            const partial = pairRows.find(row => Boolean(row.querySelector(".match-left").value.trim()) !== Boolean(row.querySelector(".match-right").value.trim()));
+            if (partial || completed.length < 2) {
+                e.preventDefault();
+                alert(`Question ${i + 1} needs at least two complete matching pairs.`);
+                questions[i].scrollIntoView({ behavior: "smooth", block: "center" });
+                return;
+            }
+            continue;
+        }
+
+        const choiceRows = questions[i].querySelectorAll(".choices-list li");
+        const checked = questions[i].querySelectorAll(".choice-correct:checked");
+        let hasChoiceText = false;
+        choiceRows.forEach(row => { if (row.querySelector(".choice-text").value.trim()) hasChoiceText = true; });
+        if (!hasChoiceText) {
+            e.preventDefault();
+            alert(`Question ${i + 1} needs at least one answer choice.`);
+            questions[i].scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
+        }
+        if (checked.length === 0) {
+            e.preventDefault();
+            alert(`Question ${i + 1} must have at least one correct answer selected.`);
+            questions[i].scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
+        }
+        for (const box of checked) {
+            const choiceRow = box.closest("li");
+            if (!choiceRow.querySelector(".choice-text").value.trim()) {
+                e.preventDefault();
+                alert(`Question ${i + 1} has a correct answer selected, but that answer choice is blank.`);
+                choiceRow.scrollIntoView({ behavior: "smooth", block: "center" });
+                return;
+            }
+        }
+    }
+});
+}
+
+</script>
+
+<script>
+const menuButton = document.getElementById("menuButton");
+const sidebar = document.getElementById("dashboardSidebar");
+if (menuButton && sidebar) {
+    menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));
+    document.addEventListener("click", event => {
+        if (window.innerWidth > 820 || !sidebar.classList.contains("open")) return;
+        if (sidebar.contains(event.target) || menuButton.contains(event.target)) return;
+        sidebar.classList.remove("open");
+    });
+}
+const shutdownBtn = document.getElementById("shutdownBtn");
+if (shutdownBtn) {
+    shutdownBtn.addEventListener("click", async () => {
+        if (!confirm("SHUTDOWN DLMS\n\nThis will stop the application.\n\nYou will need to restart it manually.\n\nContinue?")) return;
+        try {
+            await fetch("/api/shutdown", { method: "POST" });
+            document.body.innerHTML = '<div class="shutdown-screen"><div class="shutdown-screen-card"><h1>DLMS has been shut down.</h1><p>You can close this browser tab.</p></div></div>';
+        } catch (err) {
+            alert("DLMS may already be shutting down.");
+        }
+    });
+}
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>
+    

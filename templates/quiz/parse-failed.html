@@ -1,0 +1,51 @@
+
+        <html>
+        <head>
+            <title>Parse Failed</title>
+            <link rel="stylesheet" href="/static/style.css">
+            <link rel="icon" href="/static/favicon.ico">
+        </head>
+        <body>
+        <script>
+        fetch("/config/portal.json")
+        .then(r => r.json())
+        .then(cfg => {
+            if (cfg.background_image) {
+                document.documentElement.style.setProperty(
+                    "--portal-bg",
+                    `url(${cfg.background_image})`
+                );
+            }
+        });
+        </script>
+
+        <div class="container">
+            <h1 class="hero-title">⚠️ Could Not Parse Any Questions</h1>
+
+            <div class="card">
+                <p>No valid questions were parsed. Please check the formatting.</p>
+                <p>You can download the parser log for troubleshooting:</p>
+
+                <button onclick="location.href='/data/{{log_filename}}'">
+                    📥 Download Parse Log
+                </button>
+
+                <br><br>
+
+                <button onclick="location.href='/upload'">
+                    ⬅ Back To Upload Page
+                </button>
+
+                <button onclick="location.href='/paste'">
+                    📋 Try Paste Mode Instead
+                </button>
+
+                <button onclick="location.href='/'">
+                    🏠 Return To Dashboard
+                </button>
+            </div>
+        </div>
+        <script src="/static/nav-normalize.js"></script>
+</body>
+        </html>
+        

@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_SOURCE = (ROOT / "app.py").read_text(encoding="utf-8")
 STYLE = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
 NAVIGATION = (ROOT / "static" / "nav-normalize.js").read_text(encoding="utf-8")
+LIBRARY_SOURCE = (ROOT / "templates" / "quiz" / "library.html").read_text(encoding="utf-8")
 
 
 def _ui_sources():
@@ -43,7 +44,7 @@ def test_sidebar_disclosure_state_keyboard_entry_and_escape_focus_are_managed():
 
 def test_search_controls_have_programmatic_names_not_only_placeholders():
     expected = {
-        "app.py": ('id="librarySearch"', 'aria-label="Search quizzes"'),
+        "library.html": ('id="librarySearch"', 'aria-label="Search quizzes"'),
         "learning-diagnostics.html": (
             'id="dqSearch"',
             'aria-label="Search questions or concepts"',
@@ -63,19 +64,19 @@ def test_search_controls_have_programmatic_names_not_only_placeholders():
 
 
 def test_library_folder_collapse_and_icon_actions_have_accessible_semantics():
-    assert 'class="folder-toggle-icon library-folder-toggle-button"' in APP_SOURCE
-    assert 'aria-expanded="true"' in APP_SOURCE
-    assert 'aria-controls="library-folder-body-{{ loop.index }}"' in APP_SOURCE
-    assert 'icon.setAttribute("aria-expanded", String(!collapsed))' in APP_SOURCE
-    assert 'aria-label="Rename {{ folder_name }}"' in APP_SOURCE
-    assert 'aria-label="Delete {{ folder_name }} folder"' in APP_SOURCE
-    assert 'class="library-folder-hidden-badge">Hidden folder</span>' in APP_SOURCE
-    assert 'aria-label="{{ \'Unhide\' if folder_is_hidden else \'Hide\' }} {{ folder_name }} folder"' in APP_SOURCE
-    assert 'action="/set_quiz_folder_hidden"' in APP_SOURCE
-    assert "renameButton.focus()" in APP_SOURCE
-    assert "newFolderButton.focus()" in APP_SOURCE
-    assert "moveButton.focus()" in APP_SOURCE
-    assert '<p class="library-folder-empty">No quizzes in this view.</p>' in APP_SOURCE
+    assert 'class="folder-toggle-icon library-folder-toggle-button"' in LIBRARY_SOURCE
+    assert 'aria-expanded="true"' in LIBRARY_SOURCE
+    assert 'aria-controls="library-folder-body-{{ loop.index }}"' in LIBRARY_SOURCE
+    assert 'icon.setAttribute("aria-expanded", String(!collapsed))' in LIBRARY_SOURCE
+    assert 'aria-label="Rename {{ folder_name }}"' in LIBRARY_SOURCE
+    assert 'aria-label="Delete {{ folder_name }} folder"' in LIBRARY_SOURCE
+    assert 'class="library-folder-hidden-badge">Hidden folder</span>' in LIBRARY_SOURCE
+    assert 'aria-label="{{ \'Unhide\' if folder_is_hidden else \'Hide\' }} {{ folder_name }} folder"' in LIBRARY_SOURCE
+    assert 'action="/set_quiz_folder_hidden"' in LIBRARY_SOURCE
+    assert "renameButton.focus()" in LIBRARY_SOURCE
+    assert "newFolderButton.focus()" in LIBRARY_SOURCE
+    assert "moveButton.focus()" in LIBRARY_SOURCE
+    assert '<p class="library-folder-empty">No quizzes in this view.</p>' in LIBRARY_SOURCE
     assert "color: var(--theme-muted-text, #8297b4);" in STYLE
     assert "color: var(--theme-accent-text, #78bfff);" in STYLE
 

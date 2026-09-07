@@ -1,0 +1,359 @@
+
+
+<html>
+<head>
+    <title>Preview Before Parsing</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+                              
+</head>
+
+<body class="paste-preview-page">
+
+  <script>
+    fetch("/config/portal.json")
+    .then(r => r.json())
+    .then(cfg => {
+        if (cfg.background_image) {
+            document.documentElement.style.setProperty(
+                "--portal-bg",
+                `url(${cfg.background_image})`
+            );
+        }
+    });
+    </script>
+                             
+
+<div class="container">
+    
+    <h1 class="hero-title">👀 Preview Quiz Before Building</h1>
+
+    <div class="card">
+        <h2>Quiz Title:</h2>
+        <p><b>{{quiz_title}}</b></p>
+
+        <!-- STEP 7: PRE-PROCESS SUMMARY PANEL -->
+<div class="paste-preview-summary">
+    <h2>🧪 Pre-Processing Summary</h2>
+
+    <!-- =============================
+          REGEX STRIP + STRIP RULES
+    ============================== -->
+    {% if regex_mode %}
+    <p><b>Regex Strip Mode:</b> Enabled ✔</p>
+
+        {% if strip_rules %}
+        <h3>Lines Removed By Strip Rules</h3>
+        <ul>
+            {% for r in strip_rules %}
+            <li>{{r}}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    {% endif %}
+
+    <!-- =============================
+          MANUAL REGEX RULES
+    ============================== -->
+    {% if replace_rules %}
+    <h3>Manual Regex Replace Rules</h3>
+    <ul>
+        {% for r in replace_rules %}
+        <li>{{r}}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <!-- =============================
+          PRESETS — ONLY IF ANY USED
+    ============================== -->
+    {% if preset_number_prefix_checked or preset_pdf_spacing_checked or preset_headers_checked %}
+    <h3>✨ Regex Presets</h3>
+    <ul>
+        {% if preset_number_prefix_checked %}
+        <li>Number Prefix Removal Enabled ✔</li>
+        {% endif %}
+
+        {% if preset_pdf_spacing_checked %}
+        <li>PDF Line Wrapping Fix Enabled ✔</li>
+        {% endif %}
+
+        {% if preset_headers_checked %}
+        <li>Header/Footer Cleanup Enabled ✔</li>
+        {% endif %}
+    </ul>
+    {% endif %}
+
+    <!-- =============================
+          RULES THAT ACTUALLY FIRED
+    ============================== -->
+    {% if applied_rules %}
+    <h3>Rules That Actually Changed Text</h3>
+    <ul>
+        {% for r in applied_rules %}
+        <li>✔ {{r}}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <!-- =============================
+          INVISIBLE CLEAN
+    ============================== -->
+    {% if invis_cleanup_enabled %}
+    <h3>Invisible Character Cleanup</h3>
+
+        {% if removed_unicode %}
+        <p>Removed:</p>
+        <ul>
+            {% for u in removed_unicode %}
+            <li>{{u}}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>No hidden Unicode issues found 🎉</p>
+        {% endif %}
+    {% endif %}
+</div>
+
+
+                       <!-- SMART SUGGESTIONS -->
+                    <h3 class="paste-preview-suggestions-heading">💡 Smart Suggestions</h3>
+
+                    {% if smart_suggestions and smart_suggestions|length > 0 %}
+                    <ul class="paste-preview-suggestions">
+                    {% for s in smart_suggestions %}
+                    <li class="paste-preview-suggestion">
+                        <b class="paste-preview-suggestion-title">{{s.title}}</b><br>
+                        <span class="paste-preview-suggestion-detail">{{s.detail}}</span><br>
+                        <span class="paste-preview-suggestion-recommendation">Recommendation: {{s.recommend}}</span>
+
+                        {% if s.suggest_rule %}
+                        <br>
+                        <code class="paste-preview-suggestion-rule">
+                            {{s.suggest_rule}}
+                        </code>
+                        {% endif %}
+
+                        <!-- APPLY BUTTON -->
+                        <form action="/preview_paste" method="POST" style="margin-top:8px;">
+
+                            <!-- always resend original data -->
+                            <input type="hidden" name="quiz_title" value="{{quiz_title}}">
+                            <textarea name="quiz_text" style="display:none;">{{original}}</textarea>
+
+                            <!-- preserve user cleanup fields if they existed -->
+                            <textarea name="strip_text" style="display:none;">
+                    {% for r in strip_rules %}{{r}}
+                    {% endfor %}
+                            </textarea>
+
+                            <textarea name="replace_rules" style="display:none;">
+                    {% for r in replace_rules %}{{r}}
+                    {% endfor %}
+                            </textarea>
+
+                            <!-- turn on correct preset -->
+                            {% if "PDF" in s.title %}
+                                <input type="hidden" name="preset_pdf_spacing" value="1">
+                            {% endif %}
+
+                            {% if "Number" in s.title %}
+                                <input type="hidden" name="preset_number_prefix" value="1">
+                            {% endif %}
+
+                            {% if "Header" in s.title or "Footer" in s.title %}
+                                <input type="hidden" name="preset_headers" value="1">
+                            {% endif %}
+
+                            <button type="submit">⚙ Apply This Fix</button>
+                        </form>
+
+                    </li>
+                    {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p>No suggestions — formatting already looks great 🎯</p>
+                    {% endif %}
+
+
+        </div>
+        <!-- END SUMMARY -->
+
+        <h2>Original Text</h2>
+        <pre id="origBox" class="paste-preview-source">{{original}}</pre>
+
+        <h2>Text To Be Parsed: (passed to quiz)</h2>
+        <pre id="cleanBox" class="paste-preview-source paste-preview-source-clean">{{cleaned}}</pre>
+
+        <br>
+        <button onclick="toggleInvisible()" style="margin-top:5px;">
+            👁 Show / Hide Invisible Characters
+        </button>
+
+        <p class="paste-preview-helper">
+            This helps detect BOM, zero-width, Unicode junk, and newline issues.
+        </p>
+
+        <div id="visualPanel" style="display:none; margin-top:15px;">
+            <h2>🔍 Visualized Text</h2>
+
+            <h3>Original Input</h3>
+            <pre id="visualOrig" class="paste-preview-source"></pre>
+
+            <h3>Parsed (Cleaned) Version</h3>
+            <pre id="visualClean" class="paste-preview-source paste-preview-source-clean"></pre>
+        </div>
+
+        <script>
+        function visualize(text) {
+            return text
+                .replace(/\u200B/g, "[ZWSP]")
+                .replace(/\u200C/g, "[ZWNJ]")
+                .replace(/\u200D/g, "[ZWJ]")
+                .replace(/\u2060/g, "[WJ]")
+                .replace(/\uFEFF/g, "[BOM]")
+                .replace(/ /g, "·")
+                .replace(/\n/g, "\\n\n");
+        }
+
+        function toggleInvisible() {
+            const panel = document.getElementById("visualPanel");
+            const show = panel.style.display === "none";
+
+            if (show) {
+                document.getElementById("visualOrig").innerText =
+                    visualize(document.getElementById("origBox").innerText);
+
+                document.getElementById("visualClean").innerText =
+                    visualize(document.getElementById("cleanBox").innerText);
+            }
+
+            panel.style.display = show ? "block" : "none";
+        }
+        </script>
+
+        <!-- 🔍 DIFF VIEW -->
+        <button onclick="toggleDiff()" style="margin-top:10px;">
+            🔍 Show / Hide Differences
+        </button>
+
+        <div id="diffPanel" style="display:none; margin-top:15px;">
+            <h2>⚖️ Text Differences</h2>
+
+            <h3>Original vs Cleaned Comparison</h3>
+            <pre id="diffView" class="paste-preview-source"></pre>
+
+            <p class="paste-preview-helper">
+                <span style="color:#4cff4c;font-weight:bold;">Green</span> = added ·
+                <span style="color:#ff4c4c;font-weight:bold;">Red</span> = removed
+            </p>
+
+        </div>
+
+        <script>
+function toggleDiff() {
+    const panel = document.getElementById("diffPanel");
+    const show = panel.style.display === "none";
+    if (show) runDiff();
+    panel.style.display = show ? "block" : "none";
+}
+
+function normalizeKey(s) {
+    return (s || "")
+        .replace(/\r/g, "")
+        .replace(/[\u200B\u200C\u200D\u2060]/g, "")
+        .replace(/\uFEFF/g, "")
+        .replace(/\u00A0/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function runDiff() {
+    const origLines = document.getElementById("origBox").innerText
+        .split("\n")
+        .map(normalizeKey)
+        .filter(Boolean);
+
+    const cleanLines = document.getElementById("cleanBox").innerText
+        .split("\n")
+        .map(normalizeKey)
+        .filter(Boolean);
+
+    let out = "";
+
+    // REMOVED
+    for (const line of origLines) {
+        if (!cleanLines.includes(line)) {
+            out += "<span class='diff-removed'>[REMOVED] " + line + "</span><br>";
+
+
+        }
+    }
+
+    // ADDED
+    for (const line of cleanLines) {
+        if (!origLines.includes(line)) {
+            out += "<span class='diff-added'>[ADDED] " + line + "</span><br>";
+
+
+        }
+    }
+
+    if (!out.trim()) {
+        out = "No structural differences detected.";
+    }
+
+    document.getElementById("diffView").innerHTML = out;
+}
+</script>
+
+
+
+        {% if conf_details %}
+        <h2 class="paste-preview-confidence">🧠 Confidence Analysis</h2>
+        <p class="paste-preview-confidence-summary">
+            <b>Total blocks:</b> {{conf_summary.total}}<br>
+            ✅ High: {{conf_summary.high}} &nbsp;
+            ⚠ Medium: {{conf_summary.medium}} &nbsp;
+            ❌ Low: {{conf_summary.low}}
+        </p>
+
+        <ul class="paste-preview-confidence-list">
+            {% for item in conf_details %}
+            <li class="paste-preview-suggestion">
+                <b>Block {{item.index}} ({{item.confidence|capitalize}})</b><br>
+                <span class="paste-preview-confidence-title">{{item.title}}</span><br>
+                <span class="paste-preview-confidence-reason">{{item.reason}}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <p class="paste-preview-helper">
+            If this looks correct, continue. Otherwise, go back and adjust rules.
+        </p>
+
+        <form action="/download_cleaned" method="POST" style="display:inline;">
+            <textarea name="clean_text" style="display:none;">{{cleaned}}</textarea>
+            <button type="submit">📥 Download Cleaned Text</button>
+        </form>
+
+        <!-- IMPORTANT: Send CLEANED text forward -->
+        <form action="/process_paste" method="POST">
+            <input type="hidden" name="quiz_title" value="{{ quiz_title }}">
+            <input type="hidden" name="exam_minutes" value="{{ exam_minutes }}">
+            <input type="hidden" name="temp_logo_name" value="{{ preview_logo_name }}">
+            <textarea name="quiz_text" style="display:none;">{{ cleaned }}</textarea>
+
+            <button type="submit">✅ Yes, Build My Quiz</button>
+        </form>
+
+
+        <br>
+        <button onclick="history.back()">⬅ Go Back & Edit</button>
+        <button onclick="location.href='/'">🏠 Return To Dashboard</button>
+    </div>
+</div>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

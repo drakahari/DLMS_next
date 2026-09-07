@@ -1,0 +1,112 @@
+
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Import Matching Bank - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home build-modern-page">
+<div class="dashboard-shell">
+
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                    <path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                    <path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div>
+                <div class="dashboard-brand-title">DLMS</div>
+                <div class="dashboard-brand-subtitle">Training Center</div>
+            </div>
+        </div>
+
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
+            </div>
+            {% endif %}
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <div class="dashboard-nav-submenu">
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        </nav>
+
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button">
+            <span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span>
+        </button>
+        <div class="dashboard-sidebar-version">Build Quiz</div>
+    </aside>
+
+    <main class="dashboard-main build-modern-main">
+        <header class="dashboard-header build-page-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div>
+                <div class="build-eyebrow">BUILD QUIZ</div>
+                <h1>Import Matching Bank</h1>
+                <p>Import a CSV bank without manually entering each pair.</p>
+            </div>
+        </header>
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endif %}{% endwith %}
+<form class="build-workspace" method="POST" enctype="multipart/form-data"><section class="dashboard-panel build-section"><div class="build-section-heading"><div class="build-step-number">1</div><div><h2>Matching Bank</h2><p>Required CSV headers: <strong>term,definition</strong>. The aliases <strong>left,right</strong> also work.</p></div></div>
+<div class="build-two-column-fields"><label class="build-field"><span>Quiz Title</span><input type="text" name="quiz_title" required placeholder="Medical Terminology — Foundations"></label><label class="build-field"><span>CSV File</span><input type="file" name="csv_file" accept=".csv,text/csv" required></label><label class="build-field"><span>Pairs Per Round</span><input type="number" name="round_size" min="2" max="100" value="10"></label><label class="build-field"><span>Direction</span><select name="direction"><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option><option value="random">Random Each Attempt</option></select></label></div>
+<label class="build-field"><span>Instructions</span><input type="text" name="question_text" value="Match each term with its correct definition."></label></section>
+<details class="dashboard-panel build-section build-optional-source">
+<summary><span class="build-optional-source-title">Optional Source Metadata</span><span class="build-optional-source-hint">For third-party or distributable banks</span></summary>
+<div class="build-optional-source-body">
+<p class="build-optional-source-copy">Most personal CSV imports can leave this section blank. Use it when you want the quiz to retain attribution, version, licensing, or source information.</p>
+<div class="build-two-column-fields"><label class="build-field"><span>Source Organization</span><input type="text" name="source_organization" placeholder="Organization or author"></label><label class="build-field"><span>Dataset / Work</span><input type="text" name="source_dataset" placeholder="Dataset, book, course, or collection"></label><label class="build-field"><span>Version</span><input type="text" name="source_version" placeholder="Version or publication year"></label><label class="build-field"><span>License / Terms</span><input type="text" name="source_license" placeholder="License or reuse terms"></label></div><label class="build-field"><span>Source URL</span><input type="url" name="source_url" placeholder="https://..."></label>
+</div>
+</details>
+<div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Options</a><button class="build-primary-button" type="submit">Import Matching Bank</button></div>
+</form>
+</main>
+</div>
+
+<script>
+const menuButton = document.getElementById("menuButton");
+const sidebar = document.getElementById("dashboardSidebar");
+if (menuButton && sidebar) {
+    menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));
+    document.addEventListener("click", event => {
+        if (window.innerWidth > 820 || !sidebar.classList.contains("open")) return;
+        if (sidebar.contains(event.target) || menuButton.contains(event.target)) return;
+        sidebar.classList.remove("open");
+    });
+}
+
+const shutdownBtn = document.getElementById("shutdownBtn");
+if (shutdownBtn) {
+    shutdownBtn.addEventListener("click", async () => {
+        if (!confirm("SHUTDOWN DLMS\n\nThis will stop the application.\n\nYou will need to restart it manually.\n\nContinue?")) return;
+        try {
+            await fetch("/api/shutdown", { method: "POST" });
+            document.body.innerHTML = '<div class="shutdown-screen"><div class="shutdown-screen-card"><h1>DLMS has been shut down.</h1><p>You can close this browser tab.</p></div></div>';
+        } catch (err) {
+            alert("DLMS may already be shutting down.");
+        }
+    });
+}
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>
+    

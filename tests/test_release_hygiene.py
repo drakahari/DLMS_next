@@ -66,9 +66,13 @@ class ReleaseDocumentationTests(unittest.TestCase):
         law_source = (ROOT / "dlms" / "services" / "law.py").read_text(
             encoding="utf-8"
         )
-        dashboard = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        dashboard = (ROOT / "templates" / "dashboard" / "index.html").read_text(encoding="utf-8")
+        server_template_source = app_source + "\n" + "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((ROOT / "templates").rglob("*.html"))
+        )
         self.assertEqual(dashboard.count("DLMS v{{ app_version }}"), 2)
-        self.assertEqual(app_source.count("DLMS v{{ app_version }}"), 5)
+        self.assertEqual(server_template_source.count("DLMS v{{ app_version }}"), 7)
         self.assertEqual(
             app_source.count('lines.append(f"# Exported from DLMS v{APP_VERSION}")')
             + law_source.count('lines.append(f"# Exported from DLMS v{app_version}")'),
