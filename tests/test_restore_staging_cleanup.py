@@ -254,6 +254,23 @@ class RestoreStagingCleanupTests(unittest.TestCase):
         self.assertEqual(1, report["recovery"])
         self.assertTrue(stage_dir.is_dir())
 
+    def test_stale_cleanup_failure_is_best_effort_and_preserves_stage(self):
+        token, stage_dir = self._stage()
+        old_time = time.time() - dlms.RESTORE_STAGING_STALE_SECONDS - 1
+        os.utime(stage_dir, (old_time, old_time))
+
+        with mock.patch.object(
+            dlms,
+            "_cancel_validated_restore_stage",
+            side_effect=OSError("simulated cleanup failure"),
+        ):
+            report = dlms._cleanup_stale_restore_staging()
+
+        self.assertEqual(1, report["failed"])
+        self.assertEqual(0, report["removed"])
+        self.assertTrue(stage_dir.is_dir())
+        self.assertEqual('{"state":"original"}', self.live_sentinel.read_text(encoding="utf-8"))
+
     def test_successful_restore_still_cleans_its_staging_directory(self):
         token, stage_dir = self._stage()
         transient_upload = Path(dlms.UPLOAD_FOLDER) / "in-progress.txt"

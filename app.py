@@ -48,6 +48,7 @@ from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
 from dlms.services import quiz_publication as _quiz_publication_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
+from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
 
 # =========================
@@ -1916,8 +1917,7 @@ RESTORE_STAGING_STALE_SECONDS = 24 * 60 * 60
 RESTORE_STAGING_MAX_CLEANUP_ENTRIES = 1000
 
 
-class RestoreFutureSchemaError(ValueError):
-    """Stable restore-facing error for a backup created by newer DLMS code."""
+RestoreFutureSchemaError = _restore_service.RestoreFutureSchemaError
 
 
 def _ensure_runtime_data_dirs():
@@ -2081,158 +2081,48 @@ def _validate_staged_backup_semantics(staged_data_root, manifest):
         validate_restored_assets=_validate_restored_assets,
     )
 def _staged_restore_database_path(staged_data_root):
-    """Return the exact staged results.db after enforcing restore-root containment."""
-    root = os.path.abspath(staged_data_root)
-    real_root = os.path.realpath(root)
-    if os.path.islink(root) or not os.path.isdir(real_root):
-        raise ValueError("Backup staging data is missing or unsafe")
-    database = os.path.join(root, "results.db")
-    if os.path.islink(database) or not os.path.isfile(database):
-        raise ValueError("Backup is missing a safe staged DLMS database results.db")
-    real_database = os.path.realpath(database)
-    if not _is_same_path_or_ancestor(real_root, real_database):
-        raise ValueError("Staged results.db escapes the validated restore root")
-    return real_database
+    return _restore_service.staged_restore_database_path(
+        staged_data_root,
+        is_same_path_or_ancestor=_is_same_path_or_ancestor,
+    )
 
 
 def _validate_current_restored_database(database_path):
-    """Read-only post-migration integrity, version, shape, and index validation."""
-    sqlite_report = _validate_restored_sqlite(database_path)
-    try:
-        uri = Path(os.path.abspath(database_path)).as_uri() + "?mode=ro"
-        conn = sqlite3.connect(uri, uri=True)
-        conn.row_factory = sqlite3.Row
-    except sqlite3.Error as exc:
-        raise ValueError("Migrated results.db is not readable") from exc
-    try:
-        tables = _database_table_names(conn)
-        version = _read_database_schema_version(conn, tables)
-        if version != DLMS_SCHEMA_VERSION:
-            raise ValueError(
-                f"Migrated results.db schema version {version!r} is not {DLMS_SCHEMA_VERSION}"
-            )
-        _validate_current_database_schema(conn)
-    except (RuntimeError, sqlite3.DatabaseError) as exc:
-        raise ValueError("Migrated results.db failed current-schema validation") from exc
-    finally:
-        conn.close()
-    return {"version": DLMS_SCHEMA_VERSION, "sqlite": sqlite_report}
+    return _restore_service.validate_current_restored_database(
+        database_path,
+        validate_restored_sqlite=_validate_restored_sqlite,
+        database_table_names=_database_table_names,
+        read_database_schema_version=_read_database_schema_version,
+        validate_current_database_schema=_validate_current_database_schema,
+        schema_version=DLMS_SCHEMA_VERSION,
+        sqlite_module=sqlite3,
+    )
 
 
 def _regenerate_staged_quiz_html(staged_data_root, database_path):
-    """Replace restored quiz HTML with trusted application-generated artifacts."""
-    staged_root = os.path.abspath(staged_data_root)
-    real_root = os.path.realpath(staged_root)
-    if os.path.islink(staged_root) or not os.path.isdir(real_root):
-        raise ValueError("Backup staging data is missing or unsafe")
-
-    registry_path = os.path.join(real_root, "config", "quizzes.json")
-    if os.path.isfile(registry_path) and not os.path.islink(registry_path):
-        registry = _validate_restored_json(registry_path, "config/quizzes.json")
-    elif os.path.lexists(registry_path):
-        raise ValueError("config/quizzes.json is not a safe regular file")
-    else:
-        # Older or incomplete snapshots may not have a quiz registry. They can
-        # still restore their database and history, but no backed-up active HTML
-        # is allowed to survive without a validated registry mapping.
-        registry = []
-
-    portal_title = "Training & Practice Center"
-    portal_path = os.path.join(real_root, "config", "portal.json")
-    if os.path.isfile(portal_path) and not os.path.islink(portal_path):
-        portal = _validate_restored_json(portal_path, "config/portal.json")
-        portal_title = portal.get("title") or portal_title
-    elif os.path.lexists(portal_path):
-        raise ValueError("config/portal.json is not a safe regular file")
-
-    database_real = os.path.realpath(database_path)
-    if not _is_same_path_or_ancestor(real_root, database_real):
-        raise ValueError("Staged results.db escapes the validated restore root")
-    conn = None
-    try:
-        uri = Path(database_real).as_uri() + "?mode=ro"
-        conn = sqlite3.connect(uri, uri=True)
-        canonical_quizzes = {
-            int(row[0]): str(row[1] or "")
-            for row in conn.execute("SELECT id, title FROM quizzes").fetchall()
-        }
-    except sqlite3.Error as exc:
-        raise ValueError("Staged quiz metadata could not be read safely") from exc
-    finally:
-        if conn is not None:
-            conn.close()
-
-    generated_root = tempfile.mkdtemp(prefix=".restore-quiz-html-", dir=real_root)
-    quiz_root = os.path.join(real_root, "quizzes")
-    generated = 0
-    skipped = 0
-    try:
-        for entry in registry:
-            if not entry.get("html"):
-                skipped += 1
-                continue
-            html_name, json_name = _quiz_artifact_names(entry)
-
-            raw_quiz_id = entry.get("id")
-            canonical_quiz_id = None
-            if not isinstance(raw_quiz_id, bool):
-                try:
-                    candidate_id = int(raw_quiz_id)
-                    if candidate_id > 0:
-                        canonical_quiz_id = candidate_id
-                except (TypeError, ValueError):
-                    pass
-
-            canonical_title = canonical_quizzes.get(canonical_quiz_id)
-            quiz_title = canonical_title or entry.get("title") or "Restored Quiz"
-            output_path = os.path.join(generated_root, html_name)
-            build_quiz_html(
-                html_name,
-                json_name,
-                output_path,
-                portal_title,
-                quiz_title,
-                entry.get("logo"),
-                canonical_quiz_id,
-                entry.get("exam_minutes", 90),
-            )
-            if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
-                raise ValueError(f"Generated quiz HTML is empty or missing: {html_name}")
-            generated += 1
-
-        if os.path.lexists(quiz_root):
-            if os.path.islink(quiz_root) or not os.path.isdir(quiz_root):
-                raise ValueError("Restored quizzes path is not a safe directory")
-            shutil.rmtree(quiz_root)
-        os.replace(generated_root, quiz_root)
-        generated_root = None
-    finally:
-        if generated_root and os.path.isdir(generated_root):
-            shutil.rmtree(generated_root, ignore_errors=True)
-
-    return {"generated": generated, "skipped": skipped}
+    return _restore_service.regenerate_staged_quiz_html(
+        staged_data_root,
+        database_path,
+        validate_restored_json=_validate_restored_json,
+        quiz_artifact_names=_quiz_artifact_names,
+        build_quiz_html=build_quiz_html,
+        is_same_path_or_ancestor=_is_same_path_or_ancestor,
+        sqlite_module=sqlite3,
+    )
 
 
 def _prepare_staged_restore_database(staged_data_root):
-    """Migrate, validate, and prepare staged data before live-data mutation."""
-    database_path = _staged_restore_database_path(staged_data_root)
-    try:
-        bootstrap_result = bootstrap_database(database_path)
-        validation = _validate_current_restored_database(database_path)
-        quiz_html = _regenerate_staged_quiz_html(staged_data_root, database_path)
-    except UnsupportedDatabaseSchemaVersionError as exc:
-        print(f"[RESTORE DATABASE VERSION ERROR] {exc}")
-        raise RestoreFutureSchemaError(RESTORE_FUTURE_SCHEMA_PUBLIC_ERROR) from exc
-    except Exception as exc:
-        print(f"[RESTORE DATABASE MIGRATION ERROR] {type(exc).__name__}: {exc}")
-        raise ValueError("The staged backup database could not be migrated and validated safely") from exc
-    return {
-        "path": database_path,
-        "bootstrap": bootstrap_result,
-        "validation": validation,
-        "quiz_html": quiz_html,
-    }
-
+    return _restore_service.prepare_staged_restore_database(
+        staged_data_root,
+        staged_database_path=_staged_restore_database_path,
+        bootstrap_database=bootstrap_database,
+        validate_current_restored_database=_validate_current_restored_database,
+        regenerate_staged_quiz_html=_regenerate_staged_quiz_html,
+        unsupported_schema_error=UnsupportedDatabaseSchemaVersionError,
+        future_schema_error=RestoreFutureSchemaError,
+        future_schema_public_error=RESTORE_FUTURE_SCHEMA_PUBLIC_ERROR,
+        print_message=print,
+    )
 
 def _restore_staging_dir(token):
     return _backup_service.restore_staging_dir(
@@ -2263,251 +2153,109 @@ def _stage_dlms_backup(upload, token, *, stage_dir=None):
 
 
 def _restore_staging_root_for_cleanup():
-    """Return the helper-owned staging root without following a symlink."""
-    configured_root = os.path.abspath(BACKUP_RESTORE_STAGING_FOLDER)
-    if os.path.lexists(configured_root) and os.path.islink(configured_root):
-        raise ValueError("Restore staging root must not be a symlink")
-    real_root = os.path.realpath(configured_root)
-    if not _is_same_path_or_ancestor(
-        _canonical_data_root(APP_DATA_DIR), real_root
-    ):
-        raise ValueError("Restore staging root escapes the application-data directory")
-    return real_root
+    return _restore_service.restore_staging_root_for_cleanup(
+        restore_staging_folder=BACKUP_RESTORE_STAGING_FOLDER,
+        app_data_dir=APP_DATA_DIR,
+        canonical_data_root=_canonical_data_root,
+        is_same_path_or_ancestor=_is_same_path_or_ancestor,
+    )
 
 
 def _restore_stage_has_regular_file(stage_dir, filename):
-    path = os.path.join(stage_dir, filename)
-    return os.path.isfile(path) and not os.path.islink(path)
+    return _restore_service.restore_stage_has_regular_file(stage_dir, filename)
 
 
 def _restore_stage_has_validated_report(stage_dir):
-    """Recognize legacy validated stages without re-reading a large ZIP."""
-    if not (
-        _restore_stage_has_regular_file(stage_dir, "restore.zip")
-        and _restore_stage_has_regular_file(stage_dir, "report.json")
-    ):
-        return False
-    try:
-        with open(os.path.join(stage_dir, "report.json"), "r", encoding="utf-8") as f:
-            report = json.load(f)
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return False
-    manifest = report.get("manifest") if isinstance(report, dict) else None
-    return (
-        isinstance(manifest, dict)
-        and manifest.get("kind") == "dlms-portable-backup"
-        and manifest.get("schema_version") == DLMS_BACKUP_SCHEMA_VERSION
-        and isinstance(report.get("file_count"), int)
-        and not isinstance(report.get("file_count"), bool)
-        and isinstance(report.get("uncompressed_bytes"), int)
-        and not isinstance(report.get("uncompressed_bytes"), bool)
+    return _restore_service.restore_stage_has_validated_report(
+        stage_dir,
+        has_regular_file=_restore_stage_has_regular_file,
+        backup_schema_version=DLMS_BACKUP_SCHEMA_VERSION,
     )
 
 
 def _restore_stage_has_valid_marker(stage_dir, token):
-    if not _restore_stage_has_regular_file(stage_dir, RESTORE_STAGING_STATE_FILENAME):
-        return False
-    try:
-        with open(
-            os.path.join(stage_dir, RESTORE_STAGING_STATE_FILENAME),
-            "r", encoding="utf-8",
-        ) as f:
-            state = json.load(f)
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return False
-    return (
-        isinstance(state, dict)
-        and state.get("marker") == RESTORE_STAGING_MARKER
-        and state.get("schema_version") == RESTORE_STAGING_VERSION
-        and state.get("token") == token
-        and isinstance(state.get("created_at"), str)
-        and bool(state["created_at"])
-        and _restore_stage_has_validated_report(stage_dir)
+    return _restore_service.restore_stage_has_valid_marker(
+        stage_dir,
+        token,
+        has_regular_file=_restore_stage_has_regular_file,
+        state_filename=RESTORE_STAGING_STATE_FILENAME,
+        marker=RESTORE_STAGING_MARKER,
+        staging_version=RESTORE_STAGING_VERSION,
+        has_validated_report=_restore_stage_has_validated_report,
     )
 
 
 def _is_owned_validated_restore_stage(stage_dir, token):
-    """Accept only a direct token directory containing validated DLMS state."""
-    root = _restore_staging_root_for_cleanup()
-    expected = os.path.join(root, token)
-    if os.path.normcase(os.path.abspath(stage_dir)) != os.path.normcase(expected):
-        return False
-    if not os.path.isdir(stage_dir) or os.path.islink(stage_dir):
-        return False
-    # New stages carry an explicit marker. The strict report shape preserves
-    # cancellation and eventual cleanup for validated stages from older builds.
-    return (
-        _restore_stage_has_valid_marker(stage_dir, token)
-        or _restore_stage_has_validated_report(stage_dir)
+    return _restore_service.is_owned_validated_restore_stage(
+        stage_dir,
+        token,
+        staging_root_for_cleanup=_restore_staging_root_for_cleanup,
+        has_valid_marker=_restore_stage_has_valid_marker,
+        has_validated_report=_restore_stage_has_validated_report,
     )
 
 
 def _restore_operation_state_exists():
-    """Conservatively retain staging while any restore recovery state exists."""
-    root = _restore_operation_root()
-    if not os.path.lexists(root):
-        return False
-    if os.path.islink(root) or not os.path.isdir(root):
-        return True
-    try:
-        return bool(os.listdir(root))
-    except OSError:
-        return True
+    return _restore_service.restore_operation_state_exists(
+        operation_root=_restore_operation_root,
+    )
 
 
 def _cancel_validated_restore_stage(token):
-    """Remove one known-valid, non-recovery restore stage; missing is harmless."""
-    stage_dir = _restore_staging_dir(token)
-    root = _restore_staging_root_for_cleanup()
-    stage_dir = os.path.join(root, token)
-    if not os.path.lexists(stage_dir):
-        return "missing"
-    if _restore_operation_state_exists():
-        return "recovery"
-    if not _is_owned_validated_restore_stage(stage_dir, token):
-        return "unrecognized"
-    shutil.rmtree(stage_dir)
-    return "removed"
+    return _restore_service.cancel_validated_restore_stage(
+        token,
+        restore_staging_dir=_restore_staging_dir,
+        staging_root_for_cleanup=_restore_staging_root_for_cleanup,
+        operation_state_exists=_restore_operation_state_exists,
+        is_owned_stage=_is_owned_validated_restore_stage,
+    )
 
 
 def _cleanup_stale_restore_staging(*, now=None):
-    """Bounded startup cleanup for old validated stages without recovery state."""
-    report = {"removed": 0, "preserved": 0, "recovery": 0, "failed": 0}
-    try:
-        root = _restore_staging_root_for_cleanup()
-        if not os.path.lexists(root):
-            return report
-        if not os.path.isdir(root):
-            raise ValueError("Restore staging root is not a directory")
-        if _restore_operation_state_exists():
-            report["recovery"] = 1
-            return report
-        cutoff = (time.time() if now is None else float(now)) - RESTORE_STAGING_STALE_SECONDS
-        names = sorted(os.listdir(root))[:RESTORE_STAGING_MAX_CLEANUP_ENTRIES]
-    except Exception as exc:
-        print(
-            "[RESTORE STAGING CLEANUP ERROR] Could not inspect restore staging: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        report["failed"] += 1
-        return report
-
-    for name in names:
-        if not DLMS_BACKUP_TOKEN_RE.fullmatch(name):
-            report["preserved"] += 1
-            continue
-        stage_dir = os.path.join(root, name)
-        try:
-            if not _is_owned_validated_restore_stage(stage_dir, name):
-                report["preserved"] += 1
-                continue
-            if os.path.getmtime(stage_dir) >= cutoff:
-                report["preserved"] += 1
-                continue
-            if _cancel_validated_restore_stage(name) == "removed":
-                report["removed"] += 1
-            else:
-                report["preserved"] += 1
-        except Exception as exc:
-            print(
-                "[RESTORE STAGING CLEANUP ERROR] "
-                f"{name}: {type(exc).__name__}: {exc}"
-            )
-            report["failed"] += 1
-    return report
-
+    return _restore_service.cleanup_stale_restore_staging(
+        now=now,
+        staging_root_for_cleanup=_restore_staging_root_for_cleanup,
+        operation_state_exists=_restore_operation_state_exists,
+        is_owned_stage=_is_owned_validated_restore_stage,
+        cancel_stage=_cancel_validated_restore_stage,
+        token_pattern=DLMS_BACKUP_TOKEN_RE,
+        stale_seconds=RESTORE_STAGING_STALE_SECONDS,
+        max_cleanup_entries=RESTORE_STAGING_MAX_CLEANUP_ENTRIES,
+        print_message=print,
+    )
 
 def _validated_staged_restore_roots(staged_data_root):
-    """Return safe staged top-level roots keyed case-insensitively."""
-    staged_root = os.path.abspath(staged_data_root)
-    real_staged_root = os.path.realpath(staged_root)
-    if os.path.islink(staged_root) or not os.path.isdir(real_staged_root):
-        raise ValueError("Backup staging data is missing or unsafe")
-
-    roots = {}
-    for root_name in sorted(os.listdir(real_staged_root), key=str.casefold):
-        safe_name = _restore_operation_safe_name(root_name, label="restored root")
-        if safe_name.casefold() in {
-            DLMS_DATA_ROOT_MARKER.casefold(), ".secret_key"
-        }:
-            raise ValueError(f"Restore contains protected root: {safe_name}")
-        if safe_name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
-            raise ValueError(f"Restore contains protected root: {safe_name}")
-        key = safe_name.casefold()
-        if key in roots:
-            raise ValueError("Restore contains case-colliding top-level roots")
-        source = os.path.join(real_staged_root, safe_name)
-        if os.path.islink(source) or not (
-            os.path.isfile(source) or os.path.isdir(source)
-        ):
-            raise ValueError(f"Restored root is not a safe file or directory: {safe_name}")
-        roots[key] = safe_name
-    return real_staged_root, roots
+    return _restore_service.validated_staged_restore_roots(
+        staged_data_root,
+        safe_name=_restore_operation_safe_name,
+        data_root_marker=DLMS_DATA_ROOT_MARKER,
+        excluded_top_level=DLMS_BACKUP_EXCLUDED_TOP_LEVEL,
+    )
 
 
 def _remove_live_restore_root(root_name):
-    """Remove one direct, backup-eligible live root without following links."""
-    safe_name = _restore_operation_safe_name(root_name, label="live restore root")
-    if safe_name.casefold() in {
-        DLMS_DATA_ROOT_MARKER.casefold(), ".secret_key"
-    }:
-        raise ValueError(f"Live restore root is protected: {safe_name}")
-    if safe_name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
-        raise ValueError(f"Live restore root is protected: {safe_name}")
-    target = os.path.join(os.path.abspath(APP_DATA_DIR), safe_name)
-    if os.path.isdir(target) and not os.path.islink(target):
-        shutil.rmtree(target)
-    elif os.path.lexists(target):
-        os.remove(target)
+    return _restore_service.remove_live_restore_root(
+        root_name,
+        safe_name=_restore_operation_safe_name,
+        data_root_marker=DLMS_DATA_ROOT_MARKER,
+        excluded_top_level=DLMS_BACKUP_EXCLUDED_TOP_LEVEL,
+        app_data_dir=APP_DATA_DIR,
+    )
 
 
 def _apply_restored_data(staged_data_root):
-    """Replace the complete backup-eligible live snapshot with staged data."""
-    _require_owned_app_data_root("restore DLMS backup data")
-    real_staged_root, staged_roots = _validated_staged_restore_roots(
-        staged_data_root
+    return _restore_service.apply_restored_data(
+        staged_data_root,
+        require_owned_root=_require_owned_app_data_root,
+        validated_roots=_validated_staged_restore_roots,
+        canonical_data_root=_canonical_data_root,
+        app_data_dir=APP_DATA_DIR,
+        db_path=DB_PATH,
+        rel_is_excluded=_backup_rel_is_excluded,
+        remove_live_root=_remove_live_restore_root,
+        ensure_runtime_data_dirs=_ensure_runtime_data_dirs,
+        ensure_db_initialized=ensure_db_initialized,
     )
-    live_root = _canonical_data_root(APP_DATA_DIR)
-    staged_relative = os.path.relpath(real_staged_root, live_root)
-    staged_container = None
-    if staged_relative != os.pardir and not staged_relative.startswith(os.pardir + os.sep):
-        staged_container = staged_relative.split(os.sep, 1)[0].casefold()
-
-    # Old SQLite sidecars must never be allowed to accompany the replacement
-    # database. Treat an inability to remove one as an apply failure before any
-    # persistent live root is replaced or removed.
-    if "results.db" in staged_roots:
-        for sidecar in (DB_PATH + "-wal", DB_PATH + "-shm", DB_PATH + "-journal"):
-            if os.path.lexists(sidecar):
-                os.remove(sidecar)
-
-    # A portable backup is a snapshot, not a merge. Remove every current root
-    # that the backup inventory would have captured but which the snapshot does
-    # not contain. Protected/runtime roots such as backups, uploads, the data
-    # ownership marker, and the local secret remain outside restore semantics.
-    for live_name in sorted(os.listdir(APP_DATA_DIR), key=str.casefold):
-        if (
-            _backup_rel_is_excluded(live_name)
-            or live_name.casefold() == staged_container
-        ):
-            continue
-        staged_name = staged_roots.get(live_name.casefold())
-        if staged_name != live_name:
-            _remove_live_restore_root(live_name)
-
-    for root_name in staged_roots.values():
-        src = os.path.join(real_staged_root, root_name)
-        dst = os.path.join(APP_DATA_DIR, root_name)
-        _remove_live_restore_root(root_name)
-        if os.path.isdir(src):
-            shutil.copytree(src, dst)
-        else:
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
-
-    _ensure_runtime_data_dirs()
-    ensure_db_initialized()
-
 
 RESTORE_OPERATION_JOURNAL_MARKER = "dlms-restore-operation"
 RESTORE_OPERATION_JOURNAL_VERSION = 1
@@ -2531,139 +2279,76 @@ RESTORE_OPERATION_LOCK = threading.RLock()
 
 
 def _restore_operation_root():
-    return os.path.join(APP_DATA_DIR, ".restore_operations")
+    return _restore_service.restore_operation_root(APP_DATA_DIR)
 
 
 def _restore_operation_checkpoint(_stage, _journal):
-    """No-op durable-boundary hook used by crash-simulation tests."""
-    return None
+    return _restore_service.restore_operation_checkpoint(_stage, _journal)
 
 
 def _write_restore_operation_journal(path, journal):
-    """Atomically and durably replace one helper-owned restore journal."""
-    temp_path = path + ".tmp"
-    with open(temp_path, "w", encoding="utf-8") as handle:
-        json.dump(journal, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    with open(temp_path, "r", encoding="utf-8") as handle:
-        validated = json.load(handle)
-    if not isinstance(validated, dict):
-        raise ValueError("Restore operation journal must contain an object")
-    os.replace(temp_path, path)
-    _fsync_quiz_publication_directory(os.path.dirname(path))
+    return _restore_service.write_restore_operation_journal(
+        path,
+        journal,
+        fsync_directory=_fsync_quiz_publication_directory,
+    )
 
 
 def _update_restore_operation_journal(path, journal, state):
-    if state not in RESTORE_OPERATION_STATES:
-        raise ValueError(f"Unsupported restore operation state: {state}")
-    journal["state"] = state
-    journal["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
-    _write_restore_operation_journal(path, journal)
+    return _restore_service.update_restore_operation_journal(
+        path,
+        journal,
+        state,
+        states=RESTORE_OPERATION_STATES,
+        write_journal=_write_restore_operation_journal,
+        now=datetime.now,
+    )
 
 
 def _remove_restore_operation_journal(path):
-    try:
-        if os.path.lexists(path):
-            if os.path.islink(path):
-                return False
-            os.remove(path)
-        temp_path = path + ".tmp"
-        if os.path.lexists(temp_path) and not os.path.islink(temp_path):
-            os.remove(temp_path)
-        _fsync_quiz_publication_directory(os.path.dirname(path))
-        return True
-    except Exception as exc:
-        print(f"[RESTORE RECOVERY CLEANUP ERROR] {path}: {exc}")
-        return False
+    return _restore_service.remove_restore_operation_journal(
+        path,
+        fsync_directory=_fsync_quiz_publication_directory,
+        print_message=print,
+    )
 
 
 def _restore_operation_safe_name(value, *, label, suffix=None):
-    name = _safe_quiz_publication_name(value, label=label)
-    if suffix and not name.lower().endswith(suffix):
-        raise ValueError(f"{label} has an unsupported filename")
-    return name
+    return _restore_service.restore_operation_safe_name(
+        value,
+        label=label,
+        suffix=suffix,
+        safe_name=_safe_quiz_publication_name,
+    )
 
 
 def _restore_operation_target(root, name, *, label):
-    """Resolve one journal-derived child without accepting symlink escapes."""
-    return _safe_quiz_publication_target(root, name, label=label)
+    return _restore_service.restore_operation_target(
+        root,
+        name,
+        label=label,
+        safe_target=_safe_quiz_publication_target,
+    )
 
 
 def _validate_restore_operation_journal(journal, journal_path):
-    """Validate an untrusted local restore journal before using its paths."""
-    if not isinstance(journal, dict):
-        raise ValueError("journal must contain an object")
-    if journal.get("marker") != RESTORE_OPERATION_JOURNAL_MARKER:
-        raise ValueError("unsupported restore journal marker")
-    if journal.get("schema_version") != RESTORE_OPERATION_JOURNAL_VERSION:
-        raise ValueError("unsupported restore journal version")
-    operation_id = journal.get("operation_id")
-    if not isinstance(operation_id, str) or not RESTORE_OPERATION_ID_RE.fullmatch(operation_id):
-        raise ValueError("invalid restore operation ID")
-    expected_name = f"restore_{operation_id}.json"
-    if os.path.basename(journal_path) != expected_name:
-        raise ValueError("journal filename does not match its restore operation ID")
-    if journal.get("state") not in RESTORE_OPERATION_STATES:
-        raise ValueError("unsupported restore operation state")
-    for timestamp_name in ("created_at", "updated_at"):
-        value = journal.get(timestamp_name)
-        if not isinstance(value, str) or not value or len(value) > 80:
-            raise ValueError(f"invalid restore journal {timestamp_name}")
-
-    safety = journal.get("safety_backup")
-    staging = journal.get("staging")
-    if not isinstance(safety, dict) or not isinstance(staging, dict):
-        raise ValueError("restore journal path records are malformed")
-    safety_name = _restore_operation_safe_name(
-        safety.get("name"), label="safety backup", suffix=".zip"
+    return _restore_service.validate_restore_operation_journal(
+        journal,
+        journal_path,
+        journal_marker=RESTORE_OPERATION_JOURNAL_MARKER,
+        journal_version=RESTORE_OPERATION_JOURNAL_VERSION,
+        operation_id_pattern=RESTORE_OPERATION_ID_RE,
+        states=RESTORE_OPERATION_STATES,
+        token_pattern=DLMS_BACKUP_TOKEN_RE,
+        max_files=DLMS_BACKUP_MAX_FILES,
+        data_root_marker=DLMS_DATA_ROOT_MARKER,
+        excluded_top_level=DLMS_BACKUP_EXCLUDED_TOP_LEVEL,
+        backup_folder=BACKUP_FOLDER,
+        restore_staging_folder=BACKUP_RESTORE_STAGING_FOLDER,
+        operation_root=_restore_operation_root,
+        safe_name=_restore_operation_safe_name,
+        safe_target=_restore_operation_target,
     )
-    token = staging.get("token")
-    if not isinstance(token, str) or not DLMS_BACKUP_TOKEN_RE.fullmatch(token):
-        raise ValueError("invalid restore staging token")
-    live_roots = journal.get("live_roots")
-    if not isinstance(live_roots, dict):
-        raise ValueError("restore journal live-root metadata is malformed")
-
-    def validate_root_names(values, label):
-        if not isinstance(values, list) or len(values) > DLMS_BACKUP_MAX_FILES:
-            raise ValueError(f"restore journal {label} roots are malformed")
-        names = []
-        seen = set()
-        for value in values:
-            name = _restore_operation_safe_name(value, label=f"{label} root")
-            if name.casefold() in {
-                DLMS_DATA_ROOT_MARKER.casefold(), ".secret_key"
-            }:
-                raise ValueError(f"restore journal {label} root is protected")
-            if name.casefold() in DLMS_BACKUP_EXCLUDED_TOP_LEVEL:
-                raise ValueError(f"restore journal {label} root is excluded")
-            key = name.casefold()
-            if key in seen:
-                raise ValueError(f"restore journal {label} roots contain duplicates")
-            names.append(name)
-            seen.add(key)
-        return names
-
-    restore_roots = validate_root_names(live_roots.get("restore"), "restored")
-    safety_roots = validate_root_names(live_roots.get("safety"), "safety-backup")
-
-    recovery_name = f"recovery_{operation_id}"
-    paths = {
-        "safety": _restore_operation_target(
-            BACKUP_FOLDER, safety_name, label="safety backup"
-        ),
-        "stage": _restore_operation_target(
-            BACKUP_RESTORE_STAGING_FOLDER, token, label="restore staging directory"
-        ),
-        "recovery": _restore_operation_target(
-            _restore_operation_root(), recovery_name, label="restore recovery directory"
-        ),
-        "restore_roots": restore_roots,
-        "safety_roots": safety_roots,
-    }
-    return paths
 
 
 def _new_restore_operation(
@@ -2674,220 +2359,96 @@ def _new_restore_operation(
     safety_manifest=None,
     restore_roots=None,
 ):
-    """Create the durable pre-mutation restore record after safety backup creation."""
-    with RESTORE_OPERATION_LOCK:
-        _require_owned_app_data_root("journal a DLMS restore")
-        if not isinstance(token, str) or not DLMS_BACKUP_TOKEN_RE.fullmatch(token):
-            raise ValueError("Invalid restore token")
-        safety_name = os.path.basename(str(safety_path or ""))
-        expected_safety = _restore_operation_target(
-            BACKUP_FOLDER,
-            _restore_operation_safe_name(safety_name, label="safety backup", suffix=".zip"),
-            label="safety backup",
-        )
-        if os.path.normcase(os.path.realpath(str(safety_path))) != os.path.normcase(
-            os.path.realpath(expected_safety)
-        ):
-            raise ValueError("Safety backup is outside the DLMS backups directory")
-        if not os.path.isfile(expected_safety) or os.path.islink(expected_safety):
-            raise ValueError("Safety backup is missing or unsafe")
-
-        root = _restore_operation_root()
-        if os.path.lexists(root) and os.path.islink(root):
-            raise ValueError("Restore operation directory must not be a symlink")
-        os.makedirs(root, exist_ok=True)
-        if os.listdir(root):
-            raise RuntimeError(
-                "A prior restore operation requires recovery before another restore can begin"
-            )
-        operation_id = secrets.token_hex(16)
-        now = datetime.now().astimezone().isoformat(timespec="seconds")
-        journal = {
-            "marker": RESTORE_OPERATION_JOURNAL_MARKER,
-            "schema_version": RESTORE_OPERATION_JOURNAL_VERSION,
-            "operation_id": operation_id,
-            "created_at": now,
-            "updated_at": now,
-            "state": "safety_backup_created",
-            "safety_backup": {"name": safety_name},
-            "staging": {"token": token},
-            "backup_identity": {
-                "created_at": (manifest or {}).get("created_at"),
-                "dlms_version": (manifest or {}).get("dlms_version"),
-            },
-            "live_roots": {
-                "restore": sorted(set(restore_roots or []), key=str.casefold),
-                "safety": sorted(
-                    set((safety_manifest or {}).get("included_roots") or []),
-                    key=str.casefold,
-                ),
-            },
-        }
-        journal_path = os.path.join(root, f"restore_{operation_id}.json")
-        _write_restore_operation_journal(journal_path, journal)
-        _restore_operation_checkpoint("safety_backup_created", journal)
-        return journal_path, journal
+    return _restore_service.new_restore_operation(
+        token,
+        safety_path,
+        manifest,
+        safety_manifest=safety_manifest,
+        restore_roots=restore_roots,
+        lock=RESTORE_OPERATION_LOCK,
+        require_owned_root=_require_owned_app_data_root,
+        token_pattern=DLMS_BACKUP_TOKEN_RE,
+        backup_folder=BACKUP_FOLDER,
+        operation_root=_restore_operation_root,
+        safe_name=_restore_operation_safe_name,
+        safe_target=_restore_operation_target,
+        journal_marker=RESTORE_OPERATION_JOURNAL_MARKER,
+        journal_version=RESTORE_OPERATION_JOURNAL_VERSION,
+        write_journal=_write_restore_operation_journal,
+        checkpoint=_restore_operation_checkpoint,
+        token_hex=secrets.token_hex,
+        now=datetime.now,
+    )
 
 
 def _remove_recorded_restore_directory(path):
-    """Remove one already-validated helper directory, never a symlink."""
-    if not os.path.lexists(path):
-        return True
-    if os.path.islink(path):
-        raise ValueError(f"Refusing to remove symlinked restore helper path: {path}")
-    if not os.path.isdir(path):
-        raise ValueError(f"Restore helper path is not a directory: {path}")
-    shutil.rmtree(path)
-    return True
+    return _restore_service.remove_recorded_restore_directory(path)
 
 
 def _finish_restore_operation_cleanup(journal_path, paths, *, remove_stage=True):
-    """Clean exact helper-owned state only after live data is known coherent."""
-    _remove_recorded_restore_directory(paths["recovery"])
-    if remove_stage:
-        _remove_recorded_restore_directory(paths["stage"])
-    if not _remove_restore_operation_journal(journal_path):
-        raise RuntimeError("Restore journal cleanup did not complete")
+    return _restore_service.finish_restore_operation_cleanup(
+        journal_path,
+        paths,
+        remove_stage=remove_stage,
+        remove_directory=_remove_recorded_restore_directory,
+        remove_journal=_remove_restore_operation_journal,
+    )
 
 
 def _rollback_restore_operation(journal_path, journal, paths):
-    """Idempotently restore the exact recorded pre-restore safety snapshot."""
-    _update_restore_operation_journal(journal_path, journal, "rollback_pending")
-    _restore_operation_checkpoint("rollback_pending", journal)
-    _update_restore_operation_journal(journal_path, journal, "rollback_started")
-    _restore_operation_checkpoint("rollback_started", journal)
-
-    safety_path = paths["safety"]
-    if not os.path.isfile(safety_path) or os.path.islink(safety_path):
-        raise RuntimeError("The recorded pre-restore safety backup is missing or unsafe")
-    _remove_recorded_restore_directory(paths["recovery"])
-    os.makedirs(paths["recovery"], exist_ok=False)
-    try:
-        safety_report = _validate_dlms_backup(safety_path)
-        _extract_validated_backup(safety_path, paths["recovery"], safety_report)
-        _validate_staged_backup_semantics(paths["recovery"], safety_report["manifest"])
-        _prepare_staged_restore_database(paths["recovery"])
-        safety_keys = {name.casefold() for name in paths["safety_roots"]}
-        for root_name in paths["restore_roots"]:
-            if root_name.casefold() in safety_keys:
-                continue
-            restore_only_path = _restore_operation_target(
-                APP_DATA_DIR, root_name, label="restore-introduced root"
-            )
-            if os.path.isdir(restore_only_path) and not os.path.islink(restore_only_path):
-                shutil.rmtree(restore_only_path)
-            elif os.path.lexists(restore_only_path):
-                if os.path.islink(restore_only_path):
-                    raise ValueError("Restore-introduced root must not be a symlink")
-                os.remove(restore_only_path)
-        _apply_restored_data(paths["recovery"])
-        _validate_current_restored_database(DB_PATH)
-        reconcile_quiz_publications()
-        _update_restore_operation_journal(journal_path, journal, "rollback_completed")
-        _restore_operation_checkpoint("rollback_completed", journal)
-    except BaseException:
-        # Preserve the journal and safety archive; only retry-owned extraction is expendable.
-        _remove_recorded_restore_directory(paths["recovery"])
-        raise
-    _finish_restore_operation_cleanup(journal_path, paths)
+    return _restore_service.rollback_restore_operation(
+        journal_path,
+        journal,
+        paths,
+        update_journal=_update_restore_operation_journal,
+        checkpoint=_restore_operation_checkpoint,
+        remove_directory=_remove_recorded_restore_directory,
+        validate_backup=_validate_dlms_backup,
+        extract_backup=_extract_validated_backup,
+        validate_semantics=_validate_staged_backup_semantics,
+        prepare_database=_prepare_staged_restore_database,
+        safe_target=_restore_operation_target,
+        app_data_dir=APP_DATA_DIR,
+        apply_data=_apply_restored_data,
+        validate_current_database=_validate_current_restored_database,
+        db_path=DB_PATH,
+        reconcile_quiz_publications=reconcile_quiz_publications,
+        finish_cleanup=_finish_restore_operation_cleanup,
+    )
 
 
 def _read_restore_operation_journal(path):
-    if os.path.islink(path):
-        raise ValueError("restore journal must not be a symlink")
-    with open(path, "r", encoding="utf-8") as handle:
-        journal = json.load(handle)
-    paths = _validate_restore_operation_journal(journal, path)
-    return journal, paths
+    return _restore_service.read_restore_operation_journal(
+        path,
+        validate_journal=_validate_restore_operation_journal,
+    )
 
 
 def _recover_one_restore_operation(journal_path, journal, paths):
-    state = journal["state"]
-    if state in RESTORE_OPERATION_PRE_MUTATION_STATES:
-        _finish_restore_operation_cleanup(journal_path, paths)
-        return "abandoned"
-
-    if state in RESTORE_OPERATION_PRESERVE_STATES:
-        try:
-            _validate_current_restored_database(DB_PATH)
-        except Exception:
-            if state == "rollback_completed":
-                _rollback_restore_operation(journal_path, journal, paths)
-                return "rolled_back"
-            _rollback_restore_operation(journal_path, journal, paths)
-            return "rolled_back"
-        _finish_restore_operation_cleanup(journal_path, paths)
-        return "preserved"
-
-    _rollback_restore_operation(journal_path, journal, paths)
-    return "rolled_back"
+    return _restore_service.recover_one_restore_operation(
+        journal_path,
+        journal,
+        paths,
+        pre_mutation_states=RESTORE_OPERATION_PRE_MUTATION_STATES,
+        preserve_states=RESTORE_OPERATION_PRESERVE_STATES,
+        finish_cleanup=_finish_restore_operation_cleanup,
+        validate_current_database=_validate_current_restored_database,
+        db_path=DB_PATH,
+        rollback=_rollback_restore_operation,
+    )
 
 
 def reconcile_restore_operations():
-    """Recover only interrupted restores described by validated helper journals."""
-    _require_owned_app_data_root("reconcile interrupted DLMS restores")
-    report = {"processed": 0, "abandoned": 0, "preserved": 0, "rolled_back": 0}
-    root = _restore_operation_root()
-    if not os.path.lexists(root):
-        return report
-    if os.path.islink(root) or not os.path.isdir(root):
-        raise RuntimeError("Restore recovery directory is unsafe")
-    if not _is_same_path_or_ancestor(
-        _canonical_data_root(APP_DATA_DIR), os.path.realpath(root)
-    ):
-        raise RuntimeError("Restore recovery directory escapes the DLMS data root")
-
-    journal_paths = []
-    unexpected = []
-    for name in sorted(os.listdir(root)):
-        path = os.path.join(root, name)
-        if re.fullmatch(r"restore_[a-f0-9]{32}\.json", name):
-            journal_paths.append(path)
-        elif name.endswith(".tmp"):
-            # A canonical journal, when present, is authoritative. A lone temp file
-            # can only precede the durable state transition and is safe to leave for
-            # inspection rather than infer from incomplete JSON.
-            canonical = path[:-4]
-            if os.path.islink(path) or not os.path.exists(canonical):
-                unexpected.append(name)
-        elif re.fullmatch(r"recovery_[a-f0-9]{32}", name):
-            operation_id = name.removeprefix("recovery_")
-            matching_journal = os.path.join(root, f"restore_{operation_id}.json")
-            if not os.path.isfile(matching_journal) or os.path.islink(path):
-                unexpected.append(name)
-        else:
-            unexpected.append(name)
-    if unexpected:
-        raise RuntimeError(
-            "Restore recovery contains malformed or unsupported helper state: "
-            + ", ".join(unexpected[:5])
-        )
-    if len(journal_paths) > 1:
-        raise RuntimeError(
-            "Multiple restore journals require manual inspection before recovery"
-        )
-
-    for journal_path in journal_paths:
-        try:
-            journal, paths = _read_restore_operation_journal(journal_path)
-            initial_state = journal["state"]
-            outcome = _recover_one_restore_operation(journal_path, journal, paths)
-            report["processed"] += 1
-            report[outcome] += 1
-            print(
-                f"[RESTORE RECOVERY] {journal['operation_id']} {outcome} "
-                f"from state {initial_state}"
-            )
-        except Exception as exc:
-            print(
-                f"[RESTORE RECOVERY ERROR] {os.path.basename(journal_path)}: "
-                f"{type(exc).__name__}: {exc}"
-            )
-            raise RuntimeError(
-                "Interrupted restore recovery could not complete safely"
-            ) from exc
-    return report
-
+    return _restore_service.reconcile_restore_operations(
+        require_owned_root=_require_owned_app_data_root,
+        operation_root=_restore_operation_root,
+        app_data_dir=APP_DATA_DIR,
+        canonical_data_root=_canonical_data_root,
+        is_same_path_or_ancestor=_is_same_path_or_ancestor,
+        read_journal=_read_restore_operation_journal,
+        recover_one=_recover_one_restore_operation,
+        print_message=print,
+    )
 
 # =========================
 # SERVE RUNTIME LOGOS
@@ -10109,49 +9670,25 @@ def delete_quiz(quiz_id):
 # RESET / RECOVERY OPERATIONS
 # =========================
 def _clear_directory_contents(path):
-    if not os.path.isdir(path):
-        return
-    for name in os.listdir(path):
-        target = os.path.join(path, name)
-        if os.path.isdir(target) and not os.path.islink(target):
-            shutil.rmtree(target)
-        else:
-            os.remove(target)
+    return _restore_service.clear_directory_contents(path)
 
 
 def _reset_quiz_library_core():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys = OFF")
-    cur = conn.cursor()
-    cur.executescript("""
-        DELETE FROM learning_events;
-        DELETE FROM question_concepts;
-        DELETE FROM concepts;
-        DELETE FROM missed_questions;
-        DELETE FROM attempt_answers;
-        DELETE FROM attempts;
-        DELETE FROM choices;
-        DELETE FROM questions;
-        DELETE FROM quizzes;
-        DELETE FROM sqlite_sequence;
-    """)
-    conn.commit()
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.close()
-    save_registry([])
-    for folder in [QUIZ_FOLDER, DATA_FOLDER, QUIZ_ASSET_FOLDER, LOGO_FOLDER]:
-        _clear_directory_contents(folder)
-    _ensure_runtime_data_dirs()
+    return _restore_service.reset_quiz_library_core(
+        db_path=DB_PATH,
+        save_registry=save_registry,
+        folders=[QUIZ_FOLDER, DATA_FOLDER, QUIZ_ASSET_FOLDER, LOGO_FOLDER],
+        clear_directory=_clear_directory_contents,
+        ensure_runtime_dirs=_ensure_runtime_data_dirs,
+        sqlite_module=sqlite3,
+    )
 
 
 def _reset_learning_intelligence_core():
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        with conn:
-            conn.execute("DELETE FROM learning_events")
-    finally:
-        conn.close()
-
+    return _restore_service.reset_learning_intelligence_core(
+        DB_PATH,
+        sqlite_module=sqlite3,
+    )
 
 def _remove_unprotected_content_packs():
     return _content_pack_mutation_service.remove_unprotected_content_packs(
@@ -10163,49 +9700,48 @@ def _remove_unprotected_content_packs():
 
 
 def _reset_source_content_core():
-    # Use the same dependency-preservation path as normal Content Pack deletion
-    # before removing non-protected installed packs. This keeps legacy generated
-    # image quizzes independent of their source pack.
-    _remove_unprotected_content_packs()
-
-    for folder in [
-        PDF_QUESTION_BANK_FOLDER, PDF_TERMINOLOGY_BANK_FOLDER, PDF_IMPORT_DRAFT_FOLDER,
-        IMAGE_BUILDER_DRAFT_FOLDER, CONTENT_PACK_STAGING_FOLDER, UPLOAD_FOLDER,
-    ]:
-        _clear_directory_contents(folder)
-    _ensure_runtime_data_dirs()
+    return _restore_service.reset_source_content_core(
+        remove_unprotected_packs=_remove_unprotected_content_packs,
+        folders=[
+            PDF_QUESTION_BANK_FOLDER,
+            PDF_TERMINOLOGY_BANK_FOLDER,
+            PDF_IMPORT_DRAFT_FOLDER,
+            IMAGE_BUILDER_DRAFT_FOLDER,
+            CONTENT_PACK_STAGING_FOLDER,
+            UPLOAD_FOLDER,
+        ],
+        clear_directory=_clear_directory_contents,
+        ensure_runtime_dirs=_ensure_runtime_data_dirs,
+    )
 
 
 def _reset_app_settings_core():
-    if os.path.isfile(PORTAL_CONFIG):
-        os.remove(PORTAL_CONFIG)
-    _clear_directory_contents(BACKGROUND_FOLDER)
-    load_portal_config()  # recreate current defaults immediately
+    return _restore_service.reset_app_settings_core(
+        portal_config=PORTAL_CONFIG,
+        background_folder=BACKGROUND_FOLDER,
+        clear_directory=_clear_directory_contents,
+        load_portal_config=load_portal_config,
+    )
 
 
 def _full_data_reset_core():
-    # Preserve backup archives by design. Everything else in APP_DATA_DIR is
-    # runtime/user data and is returned to a first-run state.
-    for name in os.listdir(APP_DATA_DIR):
-        if name.casefold() == "backups" or name == DLMS_DATA_ROOT_MARKER:
-            continue
-        target = os.path.join(APP_DATA_DIR, name)
-        if os.path.isdir(target) and not os.path.islink(target):
-            shutil.rmtree(target)
-        else:
-            os.remove(target)
-    _ensure_runtime_data_dirs()
-    ensure_db_initialized()
-    save_registry([])
-    load_portal_config()
+    return _restore_service.full_data_reset_core(
+        app_data_dir=APP_DATA_DIR,
+        data_root_marker=DLMS_DATA_ROOT_MARKER,
+        ensure_runtime_dirs=_ensure_runtime_data_dirs,
+        ensure_db_initialized=ensure_db_initialized,
+        save_registry=save_registry,
+        load_portal_config=load_portal_config,
+    )
 
 
 def _run_reset_with_backup(reset_label, reset_callable):
-    _require_owned_app_data_root(f"run the {reset_label} reset")
-    safety_path, _ = _create_dlms_backup("pre-reset-" + reset_label)
-    reset_callable()
-    return os.path.basename(safety_path)
-
+    return _restore_service.run_reset_with_backup(
+        reset_label,
+        reset_callable,
+        require_owned_root=_require_owned_app_data_root,
+        create_backup=_create_dlms_backup,
+    )
 
 @app.route("/api/reset_quiz_library", methods=["POST"])
 def reset_quiz_library():
@@ -10264,8 +9800,7 @@ def reset_all_data():
         return jsonify(status="error", error=message), status
 
 
-class DataRootOwnershipError(RuntimeError):
-    pass
+DataRootOwnershipError = _restore_service.DataRootOwnershipError
 
 
 def _destructive_operation_error(exc, operation):
@@ -10275,24 +9810,22 @@ def _destructive_operation_error(exc, operation):
 
 
 def _validate_destructive_data_root_path(root=None):
-    """Canonicalize a destructive target and reject independently unsafe roots."""
-    target = _canonical_data_root(root or APP_DATA_DIR)
-    if _data_root_path_is_dangerous(target):
-        raise DataRootOwnershipError("DLMS refused an unsafe application-data path.")
-    return target
+    return _restore_service.validate_destructive_data_root_path(
+        root or APP_DATA_DIR,
+        canonical_data_root=_canonical_data_root,
+        data_root_path_is_dangerous=_data_root_path_is_dangerous,
+        ownership_error=DataRootOwnershipError,
+    )
 
 
 def _require_owned_app_data_root(operation="perform this destructive operation"):
-    target = _validate_destructive_data_root_path(APP_DATA_DIR)
-    if not os.path.isdir(target):
-        raise DataRootOwnershipError(
-            f"DLMS cannot {operation}: the configured application-data directory does not exist."
-        )
-    if _read_data_root_marker(target) is None:
-        raise DataRootOwnershipError(
-            f"DLMS cannot {operation}: the configured application-data directory is not verified as a dedicated DLMS data root."
-        )
-    return target
+    return _restore_service.require_owned_app_data_root(
+        operation,
+        app_data_dir=APP_DATA_DIR,
+        validate_target=_validate_destructive_data_root_path,
+        read_data_root_marker=_read_data_root_marker,
+        ownership_error=DataRootOwnershipError,
+    )
 
 
 def _validate_app_data_removal_target():
@@ -10301,11 +9834,26 @@ def _validate_app_data_removal_target():
 
 
 def _remove_all_dlms_runtime_data_core():
-    """Remove the entire DLMS-owned writable data directory, including backups."""
-    target = _validate_app_data_removal_target()
-    if os.path.isdir(target):
-        shutil.rmtree(target)
-    return target
+    return _restore_service.remove_all_dlms_runtime_data(
+        validate_removal_target=_validate_app_data_removal_target,
+    )
+
+
+def _shutdown_after_data_removal(removed_path, pid):
+    print(f"[REMOVE ALL DLMS DATA] Removed runtime data: {removed_path}")
+    print("[REMOVE ALL DLMS DATA] Shutting down DLMS; executable/source files were preserved.")
+    os.kill(pid, signal.SIGINT)
+
+
+def _schedule_post_removal_shutdown(removed_path):
+    from threading import Timer
+    pid = os.getpid()
+    return _restore_service.schedule_post_removal_shutdown(
+        removed_path,
+        shutdown_callback=lambda path: _shutdown_after_data_removal(path, pid),
+        timer_factory=Timer,
+        delay=0.75,
+    )
 
 
 @app.route("/api/remove_all_dlms_data", methods=["POST"])
@@ -10322,16 +9870,8 @@ def remove_all_dlms_data():
         message, status = _destructive_operation_error(exc, "Permanent DLMS data removal")
         return jsonify(status="error", error=message), status
 
-    # The executable/source installation is intentionally left untouched. Shut
-    # DLMS down after returning the response so the just-removed runtime tree is
-    # not recreated by continued use in the same process.
-    pid = os.getpid()
-    def shutdown_after_removal():
-        print(f"[REMOVE ALL DLMS DATA] Removed runtime data: {removed_path}")
-        print("[REMOVE ALL DLMS DATA] Shutting down DLMS; executable/source files were preserved.")
-        os.kill(pid, signal.SIGINT)
-    from threading import Timer
-    Timer(0.75, shutdown_after_removal).start()
+    # The executable/source installation is intentionally left untouched.
+    _schedule_post_removal_shutdown(removed_path)
 
     return jsonify(status="ok", removed_path=removed_path, executable_removed=False)
 
@@ -16950,102 +16490,42 @@ def settings_confirm_restore(token):
         return _settings_confirm_restore_locked(token)
 
 
-def _settings_confirm_restore_locked(token):
-    journal_path = None
-    journal = None
-    try:
-        stage_dir = _restore_staging_dir(token)
-        upload_path = os.path.join(stage_dir, "restore.zip")
-        if not os.path.isfile(upload_path):
-            raise FileNotFoundError("Staged restore file was not found or expired")
-        report = _validate_dlms_backup(upload_path)
-        _require_owned_app_data_root("restore DLMS backup data")
+def _complete_staged_restore(token):
+    return _restore_service.complete_staged_restore(
+        token,
+        restore_staging_dir=_restore_staging_dir,
+        validate_backup=_validate_dlms_backup,
+        require_owned_root=_require_owned_app_data_root,
+        extract_backup=_extract_validated_backup,
+        validate_semantics=_validate_staged_backup_semantics,
+        prepare_database=_prepare_staged_restore_database,
+        create_backup=_create_dlms_backup,
+        new_operation=_new_restore_operation,
+        update_journal=_update_restore_operation_journal,
+        checkpoint=_restore_operation_checkpoint,
+        apply_data=_apply_restored_data,
+        validate_current_database=_validate_current_restored_database,
+        db_path=DB_PATH,
+        reconcile_quiz_publications=reconcile_quiz_publications,
+        read_journal=_read_restore_operation_journal,
+        recover_one=_recover_one_restore_operation,
+        validate_journal=_validate_restore_operation_journal,
+        finish_cleanup=_finish_restore_operation_cleanup,
+        print_message=print,
+    )
 
-        temp_extract = tempfile.mkdtemp(prefix="apply-", dir=stage_dir)
-        try:
-            _extract_validated_backup(upload_path, temp_extract, report)
-            try:
-                _validate_staged_backup_semantics(temp_extract, report["manifest"])
-                _prepare_staged_restore_database(temp_extract)
-            except ValueError:
-                shutil.rmtree(stage_dir, ignore_errors=True)
-                raise
-            safety_path, safety_manifest = _create_dlms_backup("pre-restore")
-            journal_path, journal = _new_restore_operation(
-                token,
-                safety_path,
-                report.get("manifest"),
-                safety_manifest=safety_manifest,
-                restore_roots=os.listdir(temp_extract),
-            )
-            try:
-                _update_restore_operation_journal(
-                    journal_path, journal, "live_apply_started"
-                )
-                _restore_operation_checkpoint("live_apply_started", journal)
-                _apply_restored_data(temp_extract)
-                _update_restore_operation_journal(
-                    journal_path, journal, "live_apply_completed"
-                )
-                _restore_operation_checkpoint("live_apply_completed", journal)
-                _validate_current_restored_database(DB_PATH)
-                _update_restore_operation_journal(
-                    journal_path, journal, "post_apply_validated"
-                )
-                _restore_operation_checkpoint("post_apply_validated", journal)
-                reconcile_quiz_publications()
-                _update_restore_operation_journal(
-                    journal_path, journal, "reconciliation_completed"
-                )
-                _restore_operation_checkpoint("reconciliation_completed", journal)
-            except Exception as restore_exc:
-                print("[RESTORE] Apply/finalization failed; attempting automatic rollback:", restore_exc)
-                try:
-                    disk_journal, paths = _read_restore_operation_journal(journal_path)
-                    _recover_one_restore_operation(journal_path, disk_journal, paths)
-                except Exception as rollback_exc:
-                    raise RuntimeError(
-                        f"Restore failed ({restore_exc}); automatic rollback also failed ({rollback_exc}). "
-                        f"Safety backup remains at {os.path.basename(safety_path)}."
-                    ) from restore_exc
-                raise RuntimeError(
-                    f"Restore failed and DLMS rolled back to the pre-restore snapshot. "
-                    f"Safety backup: {os.path.basename(safety_path)}. Error: {restore_exc}"
-                ) from restore_exc
-        finally:
-            shutil.rmtree(temp_extract, ignore_errors=True)
-        cleanup_pending = False
-        try:
-            _update_restore_operation_journal(journal_path, journal, "complete")
-            _restore_operation_checkpoint("complete", journal)
-            paths = _validate_restore_operation_journal(journal, journal_path)
-            _finish_restore_operation_cleanup(journal_path, paths)
-        except Exception as cleanup_exc:
-            # reconciliation_completed is the durable success boundary. A
-            # helper cleanup failure after it must not turn a completed restore
-            # into an ambiguous failure response; startup recovery can safely
-            # finish cleanup while preserving the restored snapshot.
-            cleanup_pending = True
-            print(
-                "[RESTORE CLEANUP ERROR] Restore completed; helper cleanup will "
-                f"retry at startup: {type(cleanup_exc).__name__}: {cleanup_exc}"
-            )
+
+def _settings_confirm_restore_locked(token):
+    try:
+        result = _complete_staged_restore(token)
+        safety_path = result["safety_path"]
+        cleanup_pending = result["cleanup_pending"]
 
         return render_template_string(r"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Complete - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
 <body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div>{% if cleanup_pending %}<div class="settings-warning-panel"><strong>Cleanup will finish automatically</strong><span>The restored data is complete. DLMS will retry removal of temporary restore files the next time it starts.</span></div>{% endif %}<p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/backup'">Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
 """, safety_name=os.path.basename(safety_path), cleanup_pending=cleanup_pending)
     except Exception as exc:
-        if journal_path is None:
-            try:
-                cleanup_stage = _restore_staging_dir(token)
-                if os.path.isdir(cleanup_stage) and not os.path.islink(cleanup_stage):
-                    shutil.rmtree(cleanup_stage)
-            except Exception as cleanup_exc:
-                print(
-                    "[RESTORE CLEANUP ERROR] Could not remove pre-mutation staging: "
-                    f"{type(cleanup_exc).__name__}: {cleanup_exc}"
-                )
         print("[RESTORE ERROR]", exc)
         public_error = (
             str(exc) if isinstance(exc, (DataRootOwnershipError, RestoreFutureSchemaError))

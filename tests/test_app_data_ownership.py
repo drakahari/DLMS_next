@@ -145,6 +145,25 @@ class AppDataOwnershipTests(unittest.TestCase):
         self.assertIn("not verified", response.get_json()["error"])
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "safe")
 
+    def test_successful_remove_hands_shutdown_off_only_after_data_removal(self):
+        client = dlms.app.test_client()
+        removed_path = str(self.root / "removed-owned-data")
+        with mock.patch.object(
+            dlms, "_remove_all_dlms_runtime_data_core", return_value=removed_path,
+        ) as remove, mock.patch.object(
+            dlms, "_schedule_post_removal_shutdown"
+        ) as shutdown:
+            response = client.post(
+                "/api/remove_all_dlms_data",
+                json={"confirmation": "REMOVE DLMS DATA"},
+                headers=csrf_headers(client),
+            )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(removed_path, response.get_json()["removed_path"])
+        remove.assert_called_once_with()
+        shutdown.assert_called_once_with(removed_path)
+
     def test_reset_refuses_unowned_root_before_backup_or_mutation(self):
         root = self.root / "unowned-reset"
         root.mkdir()
@@ -154,6 +173,17 @@ class AppDataOwnershipTests(unittest.TestCase):
             with self.assertRaises(dlms.DataRootOwnershipError):
                 dlms._run_reset_with_backup("test", reset)
         backup.assert_not_called()
+        reset.assert_not_called()
+
+    def test_reset_backup_failure_prevents_scoped_mutation(self):
+        owned = self._owned_root("backup-failure-reset")
+        reset = mock.Mock()
+        with mock.patch.object(dlms, "APP_DATA_DIR", str(owned)), \
+             mock.patch.object(
+                 dlms, "_create_dlms_backup", side_effect=OSError("backup failed"),
+             ):
+            with self.assertRaisesRegex(OSError, "backup failed"):
+                dlms._run_reset_with_backup("test", reset)
         reset.assert_not_called()
 
     def test_restore_apply_requires_ownership_and_accepts_verified_root(self):
