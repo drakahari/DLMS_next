@@ -292,6 +292,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
 
         self.assertIn('project_root / "app.py"', spec)
         self.assertIn('project_root / "static"', spec)
+        self.assertIn('project_root / "templates"', spec)
         self.assertIn('project_root / "init.sql"', spec)
         self.assertNotIn("Tree(", spec)
         for forbidden in (

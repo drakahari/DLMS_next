@@ -1,0 +1,102 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - DLMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home settings-hub-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("Settings")|safe }}
+<main class="dashboard-main settings-dashboard-main">
+<div class="settings-page-shell">
+    <div class="settings-page-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <div>
+            <span class="settings-eyebrow">SYSTEM</span>
+            <h1>⚙️ Settings</h1>
+            <p>Configure DLMS by category. Each settings area saves independently.</p>
+        </div>
+    </div>
+
+    <div class="settings-hub-grid">
+        <a class="settings-hub-card is-ready" href="/settings/appearance">
+            <div class="settings-hub-icon icon-blue">🎨</div>
+            <div class="settings-hub-copy">
+                <div class="settings-card-kicker">AVAILABLE</div>
+                <h2>Appearance</h2>
+                <p>Change the dashboard title and site background image.</p>
+            </div>
+            <span class="settings-hub-arrow">›</span>
+        </a>
+
+        <a class="settings-hub-card is-ready" href="/settings/navigation">
+            <div class="settings-hub-icon icon-green">☰</div>
+            <div class="settings-hub-copy">
+                <div class="settings-card-kicker">AVAILABLE</div>
+                <h2>Navigation</h2>
+                <p>Choose which study areas appear in the DLMS navigation.</p>
+            </div>
+            <span class="settings-hub-arrow">›</span>
+        </a>
+
+        <a class="settings-hub-card is-ready" href="/settings/ai">
+            <div class="settings-hub-icon icon-purple">🤖</div>
+            <div class="settings-hub-copy">
+                <div class="settings-card-kicker">AVAILABLE</div>
+                <h2>AI Integration</h2>
+                <p>AI helper, provider, custom URL, and editable prompt templates.</p>
+            </div>
+            <span class="settings-hub-arrow">›</span>
+        </a>
+
+        <a class="settings-hub-card is-ready" href="/settings/parsing">
+            <div class="settings-hub-icon icon-orange">🧩</div>
+            <div class="settings-hub-copy">
+                <div class="settings-card-kicker">AVAILABLE</div>
+                <h2>Parsing</h2>
+                <p>Confidence analysis, regex tools, BOM cleanup, and invisible characters.</p>
+            </div>
+            <span class="settings-hub-arrow">›</span>
+        </a>
+
+        <a class="settings-hub-card is-ready" href="/settings/backup">
+            <div class="settings-hub-icon icon-green">💾</div>
+            <div class="settings-hub-copy">
+                <div class="settings-card-kicker">AVAILABLE</div>
+                <h2>Backup &amp; Restore</h2>
+                <p>Create, validate, and restore portable DLMS backups.</p>
+            </div>
+            <span class="settings-hub-arrow">›</span>
+        </a>
+
+        <a class="settings-hub-card is-ready settings-danger-card" href="/settings/reset-remove">
+            <div class="settings-hub-icon icon-red">⚠</div>
+            <div class="settings-hub-copy">
+                <div class="settings-card-kicker">DESTRUCTIVE ACTIONS</div>
+                <h2>Reset &amp; Remove</h2>
+                <p>Clear history, run scoped resets, or remove DLMS data with explicit safeguards.</p>
+            </div>
+            <span class="settings-hub-arrow">›</span>
+        </a>
+
+        <a class="settings-hub-card is-ready" href="/admin/maintenance">
+            <div class="settings-hub-icon icon-cyan">🛠</div>
+            <div class="settings-hub-copy">
+                <div class="settings-card-kicker">SYSTEM TOOL</div>
+                <h2>System Tools</h2>
+                <p>Rebuild generated quiz pages and open advanced image/content maintenance tools.</p>
+            </div>
+            <span class="settings-hub-arrow">›</span>
+        </a>
+    </div>
+
+</div>
+</main>
+</div>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """Canonical platform-aware PyInstaller build for DLMS.
 
-Only the application entry point and the two required local data inputs are
+Only the application entry point and the required local runtime resources are
 declared here. Runtime data always belongs in the per-user DLMS data root and
 must never be added to this manifest. Windows and Linux remain one-file builds;
 macOS is packaged as a native application bundle.
@@ -36,6 +36,7 @@ else:
 
 bundle_data = [
     (str(project_root / "static"), "static"),
+    (str(project_root / "templates"), "templates"),
     (str(project_root / "init.sql"), "."),
 ]
 

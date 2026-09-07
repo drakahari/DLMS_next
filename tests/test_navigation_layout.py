@@ -1,6 +1,7 @@
 import os
 import re
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from tests._isolation import ensure_test_data_isolation
@@ -26,10 +27,17 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertNotRegex(page, r"(?i)\brc[._ -]?4\b")
 
     def test_settings_hub_uses_standard_shell_without_migration_copy(self):
-        response = self.client.get("/settings")
+        with mock.patch.object(
+            dlms, "render_template", wraps=dlms.render_template,
+        ) as render_template:
+            response = self.client.get("/settings")
         page = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
+        render_template.assert_called_once_with("settings/index.html")
+        self.assertTrue(
+            (Path(dlms.TEMPLATE_ROOT) / "settings" / "index.html").is_file()
+        )
         self.assertIn('class="dashboard-shell"', page)
         self.assertIn('id="dashboardSidebar"', page)
         self.assertIn('data-settings-menu', page)
@@ -54,6 +62,24 @@ class NavigationLayoutTests(unittest.TestCase):
                 self.assertIn('id="dashboardSidebar"', page)
                 self.assertIn('data-settings-menu', page)
                 self.assertIn("/settings", page)
+
+    def test_navigation_and_appearance_use_external_templates(self):
+        cases = (
+            ("/settings/navigation", "settings/navigation.html", "visibility"),
+            ("/settings/appearance", "settings/appearance.html", "cfg"),
+        )
+        for route, template_name, context_name in cases:
+            with self.subTest(route=route), mock.patch.object(
+                dlms, "render_template", wraps=dlms.render_template,
+            ) as render_template:
+                response = self.client.get(route)
+
+            self.assertEqual(response.status_code, 200)
+            render_template.assert_called_once()
+            args, kwargs = render_template.call_args
+            self.assertEqual(args, (template_name,))
+            self.assertIn(context_name, kwargs)
+            self.assertTrue((Path(dlms.TEMPLATE_ROOT) / template_name).is_file())
 
     def test_settings_data_destinations_and_history_clear_location_match_current_ia(self):
         backup = self.client.get("/settings/backup").get_data(as_text=True)
