@@ -2090,3 +2090,154 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
     assert browser.evaluate("window.__maintenanceCalls") == [
         {"url": "/admin/rebuild_all_quiz_html", "method": "POST"}
     ]
+
+
+def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    browser.navigate(f"{base_url}/content-packs")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector('[data-nav-key=content][aria-current=page]') && "
+        "document.querySelector(\"form[action='/content-packs/import'] input[name=csrf_token]\")"
+    )
+    empty = browser.evaluate(
+        "(() => ({"
+        "heading:document.querySelector('.pack-empty-card h2')?.textContent,"
+        "count:document.querySelector('.pack-count-pill').textContent.trim(),"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label'),"
+        "menuControls:document.getElementById('menuButton').getAttribute('aria-controls'),"
+        "dialogHidden:document.getElementById('deletePackDialog').hidden,"
+        "dialogRole:document.querySelector('.content-pack-delete-dialog').getAttribute('role'),"
+        "dialogModal:document.querySelector('.content-pack-delete-dialog').getAttribute('aria-modal'),"
+        "importCsrf:document.querySelector(\"form[action='/content-packs/import'] input[name=csrf_token]\")?.value.length>0,"
+        "deleteCsrf:document.querySelector(\"form[action='/content-packs/delete'] input[name=csrf_token]\")?.value.length>0"
+        "}))()"
+    )
+    assert empty == {
+        "heading": "No content packs installed",
+        "count": "0 installed folders",
+        "menuLabel": "Toggle navigation",
+        "menuControls": "dashboardSidebar",
+        "dialogHidden": True,
+        "dialogRole": "dialog",
+        "dialogModal": "true",
+        "importCsrf": True,
+        "deleteCsrf": True,
+    }
+
+    folder = "DLMS_Study_browser_catalog"
+    pack_name = "Browser <Pack> & Safe"
+    description = 'Browser </script><img id="packInjected"> description & safe'
+    pack_root = browser_stack.data_root / "content_packs" / folder
+    data_root = pack_root / "data"
+    data_root.mkdir(parents=True)
+    (pack_root / "manifest.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "browser_catalog",
+            "name": pack_name,
+            "version": "1.0 <safe>",
+            "description": description,
+            "content_domain": "Other & Browser",
+            "datasets": [{
+                "id": "terms",
+                "title": "Browser terms",
+                "type": "matching",
+                "path": "data/terms.json",
+            }],
+            "image_datasets": [],
+            "quiz_datasets": [],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "terms.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "terms",
+            "title": "Browser terms",
+            "source": {"organization": "DLMS Browser Test", "license": "CC0"},
+            "terms": [
+                {"term": "Catalog", "definition": "A listed collection."},
+                {"term": "Detail", "definition": "Pack metadata."},
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    browser.navigate(f"{base_url}/content-packs?browser-pack=1")
+    browser.wait_for(
+        "document.querySelector('.content-pack-table tbody') && "
+        "document.querySelector('.content-pack-name strong')?.textContent.includes('Browser <Pack>')"
+    )
+    catalog = browser.evaluate(
+        "(() => {const row=document.querySelector('.content-pack-table tbody tr');"
+        "const details=row.querySelector(\"a[href*='/content-packs/details/']\");"
+        "const exportLink=row.querySelector(\"a[href*='/content-packs/export/']\");"
+        "return {name:row.querySelector('.content-pack-name strong').textContent,"
+        "folder:row.querySelector('.content-pack-name small').textContent,"
+        "count:document.querySelector('.pack-count-pill').textContent.trim(),"
+        "status:row.querySelector('.content-pack-status').textContent,"
+        "matching:row.querySelector('.content-pack-counts').textContent.trim(),"
+        "details:details?.getAttribute('href'),exportHref:exportLink?.getAttribute('href'),"
+        "injected:document.getElementById('packInjected')!==null};})()"
+    )
+    assert catalog == {
+        "name": pack_name,
+        "folder": folder,
+        "count": "1 installed folder",
+        "status": "Valid",
+        "matching": "1 matching",
+        "details": f"/content-packs/details/{folder}",
+        "exportHref": f"/content-packs/export/{folder}",
+        "injected": False,
+    }
+
+    browser.click(".content-pack-action.danger")
+    browser.wait_for("!document.getElementById('deletePackDialog').hidden")
+    opened = browser.evaluate(
+        "(() => {const dialog=document.getElementById('deletePackDialog');"
+        "const checkbox=dialog.querySelector('input[name=confirm_delete]');checkbox.checked=true;"
+        "return {message:document.getElementById('deletePackMessage').textContent,"
+        "folder:document.getElementById('deletePackFolder').value,"
+        "injected:document.getElementById('packInjected')!==null,checked:checkbox.checked};})()"
+    )
+    assert opened == {
+        "message": f"Delete “{pack_name}” from installed Content Packs?",
+        "folder": folder,
+        "injected": False,
+        "checked": True,
+    }
+    browser.click("#deletePackDialog button[type=button]")
+    assert browser.evaluate(
+        "document.getElementById('deletePackDialog').hidden && "
+        "!document.querySelector('#deletePackDialog input[name=confirm_delete]').checked"
+    ) is True
+
+    browser.navigate(f"{base_url}/content-packs/details/{folder}")
+    browser.wait_for(
+        "document.querySelector('[data-nav-key=content][aria-current=page]') && "
+        "document.querySelector('.pack-detail-hero h2')?.textContent.includes('Browser <Pack>')"
+    )
+    detail = browser.evaluate(
+        "(() => ({"
+        "heading:document.querySelector('.pack-detail-hero h2').textContent,"
+        "description:document.querySelector('.pack-detail-hero p').textContent,"
+        "status:document.querySelector('.content-pack-status').textContent,"
+        "datasets:document.querySelector('.pack-detail-stat-grid strong').textContent,"
+        "folder:Array.from(document.querySelectorAll('.pack-detail-meta div')).find(el=>el.querySelector('strong')?.textContent==='Folder')?.querySelector('span').textContent,"
+        "backHref:document.querySelector('.pack-detail-actions a').getAttribute('href'),"
+        "exportHref:document.querySelector(\".pack-detail-actions a[href*='/export/']\")?.getAttribute('href'),"
+        "injected:document.getElementById('packInjected')!==null"
+        "}))()"
+    )
+    assert detail == {
+        "heading": pack_name,
+        "description": description,
+        "status": "Valid",
+        "datasets": "1",
+        "folder": folder,
+        "backHref": "/content-packs",
+        "exportHref": f"/content-packs/export/{folder}",
+        "injected": False,
+    }

@@ -1,0 +1,32 @@
+
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Content Pack Details - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home content-packs-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+<div class="dashboard-brand"><div class="dashboard-brand-mark">⬡</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<nav class="dashboard-nav">
+<a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+<a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+<a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+<a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+<a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+<a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+<a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+<div class="dashboard-nav-group"><a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a><div class="dashboard-nav-submenu"><a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a><a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a></div></div>
+</nav>
+<div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system">
+<a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+<a class="dashboard-nav-item active" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+<a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+<a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+<a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+</nav><div class="dashboard-sidebar-version">Pack Details</div></aside>
+<main class="dashboard-main content-packs-main"><header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">CONTENT PACK REPORT</div><h1>{{ report.pack_name }}</h1><p>Installed Study Pack metadata and independent DLMS validation.</p></div></header>
+<section class="dashboard-panel pack-detail-hero"><div><span class="medical-eyebrow">{{ manifest.get('content_domain') or manifest.get('extends') or 'GENERAL' }}{% if manifest.get('version') %} · v{{ manifest.get('version') }}{% endif %}</span><h2>{{ report.pack_name }}</h2><p>{{ manifest.get('description') or 'No pack description provided.' }}</p></div><span class="content-pack-status {{ 'is-valid' if report.valid else 'is-invalid' }}">{{ 'Valid' if report.valid else 'Invalid' }}</span></section>
+<section class="pack-detail-stat-grid"><article class="dashboard-stat-card"><span>Datasets</span><strong>{{ matching + image + mixed }}</strong><small>{{ matching }} matching · {{ image }} image · {{ mixed }} mixed</small></article><article class="dashboard-stat-card"><span>Storage</span><strong>{{ report.size }}</strong><small>{{ report.file_count }} files</small></article><article class="dashboard-stat-card"><span>Generated Quizzes</span><strong>{{ report.generated_quizzes }}</strong><small>tracked from this pack</small></article><article class="dashboard-stat-card"><span>Warnings</span><strong>{{ report.warnings|length }}</strong><small>{{ report.errors|length }} blocking errors</small></article></section>
+<section class="dashboard-panel pack-validation-panel"><div class="content-pack-manager-heading"><div><span class="medical-eyebrow">INDEPENDENT VALIDATION</span><h2>Validation Report</h2></div><span class="pack-count-pill">{{ report.checks|length }} checks</span></div><div class="pack-validation-checks">{% for check in report.checks %}<div class="pack-validation-check"><span class="pack-validation-state {{ check.status|lower }}">{{ check.status }}</span><strong>{{ check.name }}</strong><span>{{ check.detail }}</span></div>{% endfor %}</div>{% if report.errors %}<div class="pack-validation-messages errors"><h3>Blocking problems</h3><ul>{% for item in report.errors %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}{% if report.warnings %}<div class="pack-validation-messages warnings"><h3>Warnings</h3><ul>{% for item in report.warnings %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}</section>
+<section class="dashboard-panel pack-detail-meta"><div><strong>Pack ID</strong><span>{{ report.pack_id or 'Unavailable' }}</span></div><div><strong>Folder</strong><span>{{ report.folder }}</span></div><div><strong>Installed / modified</strong><span>{{ report.installed_at }}</span></div><div><strong>Schema</strong><span>{{ manifest.get('schema_version', 'Unavailable') }}</span></div></section>
+<section class="pack-detail-actions"><a class="medical-ai-secondary-button" href="/content-packs">← Back to Content Packs</a>{% if report.valid %}<a class="medical-primary-button" href="/content-packs/export/{{ report.folder }}">Export Study Pack ZIP</a>{% endif %}</section>
+</main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script>
+</body></html>

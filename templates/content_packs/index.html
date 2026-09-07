@@ -1,0 +1,218 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Packs - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home content-packs-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark">◇</div>
+            <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+        </div>
+        <nav class="dashboard-nav">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            {% if medical_pack_installed %}
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <div class="dashboard-nav-submenu medical-global-submenu">
+                <a class="dashboard-nav-subitem" href="/medical/matching"><span class="dashboard-nav-subicon">↳</span><span>Terminology &amp; Matching</span></a>
+                <a class="dashboard-nav-subitem" href="/medical/anatomy"><span class="dashboard-nav-subicon">↳</span><span>Anatomy &amp; Images</span></a>
+                <a class="dashboard-nav-subitem" href="/study-packs/ai-builder?domain=Medical&amp;from=medical"><span class="dashboard-nav-subicon">↳</span><span>AI Study Pack Builder</span></a>
+            </div>
+            {% endif %}
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <div class="dashboard-nav-submenu"><a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a><a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a></div>
+            </div>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item active" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        </nav>
+        <div class="dashboard-sidebar-version">Content Packs</div>
+    </aside>
+
+    <main class="dashboard-main content-packs-main">
+        <header class="dashboard-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div><div class="medical-eyebrow">CONTENT MANAGEMENT</div><h1>Content Packs</h1>
+            <p>Validate, inspect, open, and safely remove installed study content.</p></div>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="content-pack-flashes">
+            {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <section class="dashboard-panel content-pack-upload-panel">
+            <div class="content-pack-upload-copy">
+                <span class="medical-eyebrow">INSTALL STUDY CONTENT</span>
+                <h2>Install Content Pack</h2>
+                <p>Select a DLMS Study Pack ZIP. DLMS stages and independently validates the archive first; nothing is installed until you review the report and confirm.</p>
+                <div class="content-pack-upload-guardrails">
+                    <span>One top-level pack folder</span>
+                    <span>Safe archive paths</span>
+                    <span>Manifest + JSON validation</span>
+                    <span>Referenced-file checks</span>
+                </div>
+            </div>
+            <form method="POST" action="/content-packs/import" enctype="multipart/form-data" class="content-pack-upload-form">
+                <label class="build-field"><span>Study Pack ZIP</span><input type="file" name="pack_zip" accept=".zip,application/zip" required><small>The ZIP is validated before installation.</small></label>
+                <button class="medical-primary-button" type="submit">Validate ZIP</button>
+            </form>
+        </section>
+
+        <section class="dashboard-panel pack-install-panel">
+            <div class="pack-install-heading">
+                <div><span class="medical-eyebrow">INSTALL LOCATION</span><h2>Content Pack Folder</h2></div>
+                <span class="pack-count-pill">{{ packs|length }} installed folder{{ '' if packs|length == 1 else 's' }}</span>
+            </div>
+            <code class="pack-path">{{ pack_folder }}</code>
+            <p>Each pack should be one direct child folder containing <strong>manifest.json</strong>. Deleting a pack removes its source datasets and images; generated quizzes and history are preserved.</p>
+        </section>
+
+        <section class="dashboard-panel content-pack-manager">
+            <div class="content-pack-manager-heading">
+                <div><span class="medical-eyebrow">INSTALLED CONTENT</span><h2>Pack Manager</h2></div>
+                <a class="medical-primary-button" href="/study-packs">Open Study Packs</a>
+            </div>
+
+            {% if packs %}
+            <div class="content-pack-table-wrap">
+            <table class="content-pack-table">
+                <thead>
+                    <tr>
+                        <th>Pack</th>
+                        <th>Status</th>
+                        <th>Content</th>
+                        <th>Storage</th>
+                        <th>Quizzes</th>
+                        <th class="content-pack-actions-col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pack in packs %}
+                    <tr>
+                        <td>
+                            <div class="content-pack-name">
+                                <strong>{{ pack.name }}</strong>
+                                <span>{{ pack.domain }}{% if pack.version %} · v{{ pack.version }}{% endif %}</span>
+                                <small>{{ pack.folder }}</small>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="content-pack-status {{ 'is-invalid' if pack.status == 'Invalid' else ('is-warning' if pack.warning_count else 'is-valid') }}">{{ pack.status }}</span>
+                            {% if pack.protected %}<span class="content-pack-protected">Protected</span>{% endif %}
+                        </td>
+                        <td>
+                            <div class="content-pack-counts">
+                                {% if pack.matching_count %}<span>{{ pack.matching_count }} matching</span>{% endif %}
+                                {% if pack.image_count %}<span>{{ pack.image_count }} image</span>{% endif %}
+                                {% if pack.mixed_count %}<span>{{ pack.mixed_count }} mixed</span>{% endif %}
+                                {% if not pack.dataset_count %}<span>—</span>{% endif %}
+                            </div>
+                        </td>
+                        <td><span class="content-pack-storage">{{ pack.size }}</span><small>{{ pack.file_count }} files</small></td>
+                        <td>
+                            <span class="content-pack-storage">{{ pack.generated_quizzes }}</span>
+                            <small>tracked generated</small>
+                        </td>
+                        <td class="content-pack-actions-col">
+                            <div class="content-pack-actions">
+                                {% if pack.exportable %}
+                                <a class="content-pack-action" href="/study-packs">Open</a>
+                                <a class="content-pack-action" href="/content-packs/export/{{ pack.folder }}">Export</a>
+                                {% endif %}
+                                <a class="content-pack-action" href="/content-packs/details/{{ pack.folder }}">Details</a>
+                                {% if pack.protected %}
+                                <span class="content-pack-action disabled">Delete</span>
+                                {% else %}
+                                <button type="button" class="content-pack-action danger" onclick='openDeletePack({{ pack.folder|tojson }},{{ pack.name|tojson }})'>Delete</button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="content-pack-detail-row content-pack-inline-status-row">
+                        <td colspan="6"><div class="content-pack-inline-status">
+                            <span>{{ pack.status_detail }}</span>
+                            {% if pack.warning_count %}<span class="content-pack-inline-warning">{{ pack.warning_count }} warning{{ '' if pack.warning_count == 1 else 's' }}</span>{% endif %}
+                            {% if pack.error_count %}<span class="content-pack-inline-error">{{ pack.error_count }} error{{ '' if pack.error_count == 1 else 's' }}</span>{% endif %}
+                        </div></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="pack-empty-card"><h2>No content packs installed</h2><p>DLMS core is working normally. Install or create a Study Pack to manage it here.</p></div>
+            {% endif %}
+        </section>
+    </main>
+</div>
+
+<div class="content-pack-delete-backdrop" id="deletePackDialog" hidden>
+    <div class="content-pack-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="deletePackTitle">
+        <span class="medical-eyebrow">REMOVE STUDY CONTENT</span>
+        <h2 id="deletePackTitle">Delete Study Pack?</h2>
+        <p id="deletePackMessage"></p>
+        <div class="content-pack-delete-note">
+            <strong>Generated quizzes and attempt history are kept.</strong>
+            <span>Before removal, DLMS copies any legacy quiz images that still depend on this pack into quiz-owned storage.</span>
+        </div>
+        <form method="POST" action="/content-packs/delete" id="deletePackForm">
+            <input type="hidden" name="folder" id="deletePackFolder">
+            <label class="content-pack-confirm-check">
+                <input type="checkbox" name="confirm_delete" value="yes" required>
+                <span>I understand the installed source pack will be removed.</span>
+            </label>
+            <div class="content-pack-delete-actions">
+                <button type="button" class="medical-ai-secondary-button" onclick="closeDeletePack()">Cancel</button>
+                <button type="submit" class="content-pack-delete-button">Delete Study Pack</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const menuButton=document.getElementById("menuButton");
+const sidebar=document.getElementById("dashboardSidebar");
+if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}
+
+function openDeletePack(folder,name){
+    document.getElementById("deletePackFolder").value=folder;
+    document.getElementById("deletePackMessage").textContent=`Delete “${name}” from installed Content Packs?`;
+    document.getElementById("deletePackDialog").hidden=false;
+}
+function closeDeletePack(){
+    const dialog=document.getElementById("deletePackDialog");
+    dialog.hidden=true;
+    const check=dialog.querySelector('input[name="confirm_delete"]');
+    if(check) check.checked=false;
+}
+document.getElementById("deletePackDialog")?.addEventListener("click",(event)=>{
+    if(event.target.id==="deletePackDialog") closeDeletePack();
+});
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body></html>
+    {# Preserve trailing indentation from the former embedded string. #}
