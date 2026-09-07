@@ -6,6 +6,7 @@ import unittest
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import help as help_routes
 
 
 class HelpDocumentationTests(unittest.TestCase):
@@ -28,9 +29,9 @@ class HelpDocumentationTests(unittest.TestCase):
             "settings": "help-settings.html",
             "maintenance": "help-maintenance.html",
         }
-        self.assertEqual({key: dlms.HELP_TOPIC_FILES[key] for key in expected}, expected)
+        self.assertEqual({key: help_routes.HELP_TOPIC_FILES[key] for key in expected}, expected)
 
-        for topic, filename in dlms.HELP_TOPIC_FILES.items():
+        for topic, filename in help_routes.HELP_TOPIC_FILES.items():
             with self.subTest(topic=topic):
                 self.assertTrue(os.path.isfile(os.path.join(dlms.STATIC_ROOT, filename)))
                 response = self.client.get(f"/help/{topic}")
@@ -309,7 +310,7 @@ class HelpDocumentationTests(unittest.TestCase):
             with open(path, encoding="utf-8") as handle:
                 for topic in topic_reference.findall(handle.read()):
                     with self.subTest(page=os.path.basename(path), topic=topic):
-                        self.assertIn(topic, dlms.HELP_TOPIC_FILES)
+                        self.assertIn(topic, help_routes.HELP_TOPIC_FILES)
 
     def test_getting_started_includes_short_trusted_lan_guidance(self):
         page = self._static("help-getting-started.html")

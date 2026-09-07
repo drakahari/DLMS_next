@@ -8,6 +8,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import core as core_routes
 from markupsafe import escape
 
 
@@ -38,12 +39,19 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
 
     def test_inventory_items_use_external_templates_under_template_root(self):
         source = Path(dlms.__file__).read_text(encoding="utf-8")
-        tree = ast.parse(source)
+        trees = [
+            ast.parse(source),
+            *[
+                ast.parse(path.read_text(encoding="utf-8"))
+                for path in sorted((ROOT / "dlms" / "routes").glob("*.py"))
+            ],
+        ]
 
         for function_name, template_name in self.ROUTE_TEMPLATES.items():
             with self.subTest(function=function_name):
                 function = next(
                     node
+                    for tree in trees
                     for node in ast.walk(tree)
                     if isinstance(node, ast.FunctionDef) and node.name == function_name
                 )
@@ -136,11 +144,11 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         self.assertIn('fetch("/api/shutdown", { method: "POST" })', body)
         self.assertIn('aria-label="Primary navigation"', body)
 
-        with mock.patch.object(dlms, "render_template", return_value="dashboard-sentinel") as render:
+        with mock.patch.object(core_routes, "render_template", return_value="dashboard-sentinel") as render:
             with mock.patch.object(dlms, "get_portal_title", return_value="Portal"), mock.patch.object(
                 dlms, "content_pack_summary", return_value=packs
             ):
-                result = dlms.home()
+                result = dlms.app.view_functions["core.home"]()
         self.assertEqual("dashboard-sentinel", result)
         render.assert_called_once_with(
             "dashboard/index.html",
