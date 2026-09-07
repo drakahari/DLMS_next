@@ -14,6 +14,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import law as law_routes
 from tests.csrf_test_utils import csrf_token
 
 
@@ -416,7 +417,7 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         ), mock.patch.object(
             dlms, "load_law_registry", return_value=registry
         ), mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            law_routes, "render_template", return_value="rendered"
         ) as renderer:
             response = self.client.get("/law/create")
 
@@ -451,7 +452,7 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         ), mock.patch.object(
             dlms, "load_law_registry", return_value=registry
         ), mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            law_routes, "render_template", return_value="rendered"
         ) as renderer:
             response = self.client.get("/law/import")
 

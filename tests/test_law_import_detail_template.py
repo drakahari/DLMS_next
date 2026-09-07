@@ -12,6 +12,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import law as law_routes
 
 
 class LawImportDetailTemplateTests(unittest.TestCase):
@@ -274,7 +275,7 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         ), mock.patch.object(
             dlms, "parse_law_packet_sections", return_value=sections
         ), mock.patch.object(dlms, "datetime") as datetime_mock, mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            law_routes, "render_template", return_value="rendered"
         ) as renderer:
             datetime_mock.fromtimestamp.return_value.strftime.return_value = (
                 "2026-09-07 12:34:56"

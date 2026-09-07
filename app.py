@@ -53,6 +53,7 @@ from dlms.services import law as _law_service
 from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
 from dlms.routes.it import ITStudyDependencies, create_it_blueprint
+from dlms.routes.law import LawRouteDependencies, create_law_blueprint
 from dlms.routes.admin_images import (
     AdminImageRouteDependencies,
     create_admin_images_blueprint,
@@ -3086,163 +3087,6 @@ app.register_blueprint(create_it_blueprint(ITStudyDependencies(
 
 
 # =========================
-# LAW STUDY MODULE - LANDING
-# =========================
-@app.route("/law")
-def law_study_home():
-    portal_title = get_portal_title()
-    law_registry = load_law_registry()
-    saved_cases = len(law_registry.get("cases", []))
-    course_count = len(law_registry.get("folders", []))
-
-    return render_template(
-        "law/index.html",
-        portal_title=portal_title,
-        law_registry=law_registry,
-        saved_cases=saved_cases,
-        course_count=course_count,
-    )
-
-
-# =========================
-# LAW STUDY MODULE - CREATE CASE REVIEW FORM
-# =========================
-@app.route("/law/create", methods=["GET", "POST"])
-def law_create_case_review():
-    portal_title = get_portal_title()
-    law_registry = load_law_registry()
-    law_folders = law_registry.get("folders", [])
-
-    case_name = ""
-    course = law_folders[0] if law_folders else "Torts"
-    ai_provider = "chatgpt"
-    generated_prompt = ""
-    ai_provider_url = ""
-    case_slug = ""
-
-    include_case_brief = True
-    include_socratic = True
-    include_irac = True
-    include_flashcards = True
-
-    if request.method == "POST":
-        case_name = request.form.get("case_name", "").strip()
-        course = request.form.get("course", course).strip()
-        ai_provider = request.form.get("ai_provider", "chatgpt").strip().lower()
-
-        case_slug = make_law_case_slug(case_name)
-
-        if case_name:
-            try:
-                _law_service.start_pending_case_workflow(
-                    law_registry,
-                    case_name=case_name,
-                    case_slug=case_slug,
-                    course=course,
-                    created_at=datetime.now().isoformat(timespec="seconds"),
-                    save_law_registry=save_law_registry,
-                )
-            except Exception as e:
-                print(f"[LAW WORKFLOW ERROR] Failed starting case workflow: {e}")
-                return "Failed to start Law case workflow", 500
-
-        provider_urls = {
-            "chatgpt": "https://chatgpt.com/",
-            "claude": "https://claude.ai/",
-            "gemini": "https://gemini.google.com/",
-            "local": load_portal_config().get("ai_custom_url", "")
-        }
-
-        ai_provider_url = provider_urls.get(ai_provider, "")
-
-        include_case_brief = "include_case_brief" in request.form
-        include_socratic = "include_socratic" in request.form
-        include_irac = "include_irac" in request.form
-        include_flashcards = "include_flashcards" in request.form
-
-        requested_sections = []
-
-        if include_case_brief:
-            requested_sections.append("""
-1. Case Brief
-   - Full case name and citation
-   - Court and year
-   - Procedural posture
-   - Key facts
-   - Issue
-   - Rule
-   - Holding
-   - Reasoning
-   - Important concurrence or dissent, if any
-""".strip())
-
-        if include_socratic:
-            requested_sections.append("""
-    2. Socratic Review
-    - Five cold-call style questions
-    - One fact-change question
-    - One policy question
-    - Do not place the model answers directly under the questions
-
-    2A. Socratic Answer Key
-    - Provide short model guidance for each Socratic question
-    - Keep each answer concise
-    - This section should be treated as hidden-by-default in DLMS
-    - Label each answer so it clearly matches the question number
-    """.strip())
-
-        if include_irac:
-            requested_sections.append("""
-3. IRAC Drill
-   - One short practice fact pattern based on the case
-   - Issue
-   - Rule
-   - Application / Analysis
-   - Conclusion
-   - Model IRAC answer
-""".strip())
-
-        if include_flashcards:
-            requested_sections.append("""
-4. Rule Flashcards
-   - Five active-recall flashcards
-   - Front: question
-   - Back: concise answer
-   - Focus on rule, holding, reasoning, and key facts
-""".strip())
-
-        if case_name:
-            cfg = load_portal_config()
-            law_prompt_template = str(cfg.get("law_ai_prompt_template") or DEFAULT_LAW_AI_PROMPT).strip()
-
-            # Law Study uses its own prompt template so quiz-explanation prompts remain independent.
-            generated_prompt = (
-                law_prompt_template
-                .replace("{{case_name}}", case_name)
-                .replace("{{course}}", course)
-                .replace("{{study_sections}}", chr(10).join(requested_sections))
-            )
-
-        else:
-            generated_prompt = "Please enter a case name before generating the AI prompt."
-
-    return render_template(
-        "law/create.html",
-        portal_title=portal_title,
-        law_folders=law_folders,
-        case_name=case_name,
-        case_slug=case_slug,
-        course=course,
-        ai_provider=ai_provider,
-        generated_prompt=generated_prompt,
-        ai_provider_url=ai_provider_url,
-        include_case_brief=include_case_brief,
-        include_socratic=include_socratic,
-        include_irac=include_irac,
-        include_flashcards=include_flashcards,
-    )
-
-# =========================
 # LAW STUDY HELPER FUNCTIONS
 # =========================
 
@@ -3311,124 +3155,27 @@ def parse_socratic_questions(socratic_text):
 
 
 
-# =========================
-# LAW STUDY MODULE - CANCEL PENDING WORKFLOW
-# =========================
-@app.route("/law/workflow/cancel", methods=["POST"])
-def law_cancel_pending_workflow():
-    registry = load_law_registry()
-
-    if "pending_case_workflow" in registry:
-        try:
-            _law_service.cancel_pending_case_workflow(
-                registry,
-                save_law_registry=save_law_registry,
-            )
-        except Exception as e:
-            print(f"[LAW WORKFLOW ERROR] Failed cancelling case workflow: {e}")
-            return "Failed to cancel Law case workflow", 500
-
-    return redirect("/law/import?workflow_cancelled=1")
-
-
-
-
 
-# =========================
-# LAW STUDY MODULE - IMPORT CASE PACKET
-# =========================
-@app.route("/law/import", methods=["GET", "POST"])
-def law_import_case_packet():
-    portal_title = get_portal_title()
 
-    law_registry = load_law_registry()
-    pending_workflow = law_registry.get("pending_case_workflow", {}) or {}
 
-    case_name = request.values.get("case_name", "").strip()
-    case_slug = request.values.get("case_slug", "").strip()
 
-    if not case_name:
-        case_name = str(pending_workflow.get("case_name", "")).strip()
 
-    if not case_slug:
-        case_slug = str(pending_workflow.get("case_slug", "")).strip()
 
-    if case_name and not case_slug:
-        case_slug = make_law_case_slug(case_name)
 
-    raw_packet = ""
-    packet_submitted = False
-    line_count = 0
-    char_count = 0
-    saved_file = ""
-    save_message = ""
 
-    if request.method == "POST":
-        raw_packet = request.form.get("raw_packet", "").strip()
-        action = request.form.get("action", "preview")
 
-        packet_submitted = bool(raw_packet)
 
-        if raw_packet:
-            line_count = len(raw_packet.splitlines())
-            char_count = len(raw_packet)
 
-            if action in {"save_and_preview", "save_raw"}:
-                try:
-                    saved_file = save_law_raw_packet(raw_packet, case_slug)
 
-                    if action == "save_and_preview":
-                        return redirect(url_for("law_view_saved_import", filename=saved_file))
 
-                    save_message = f"Saved raw case packet as {saved_file}"
 
-                except Exception as e:
-                    print(f"[LAW IMPORT ERROR] Failed saving raw packet: {e}")
-                    save_message = "Error: failed to save raw case packet."
 
-    return render_template(
-        "law/import.html",
-        portal_title=portal_title,
-        case_name=case_name,
-        case_slug=case_slug,
-        raw_packet=raw_packet,
-        packet_submitted=packet_submitted,
-        line_count=line_count,
-        char_count=char_count,
-        saved_file=saved_file,
-        save_message=save_message,
-    )
 
 
-# =========================
-# LAW STUDY MODULE - SAVED RAW IMPORTS
-# =========================
-@app.route("/law/imports")
-def law_saved_imports():
-    portal_title = get_portal_title()
 
-    imports = []
 
-    try:
-        imports = _law_service.list_law_raw_imports(
-            LAW_IMPORTS_FOLDER,
-            from_timestamp=datetime.fromtimestamp,
-            imports=imports,
-            makedirs=os.makedirs,
-            listdir=os.listdir,
-            join_path=os.path.join,
-            isfile=os.path.isfile,
-            stat_file=os.stat,
-        )
 
-    except Exception as e:
-        print(f"[LAW IMPORTS ERROR] Failed loading saved imports: {e}")
 
-    return render_template(
-        "law/imports.html",
-        portal_title=portal_title,
-        imports=imports,
-    )
 
 
 
@@ -3436,485 +3183,27 @@ def law_saved_imports():
 
 
 
-# =========================
-# LAW STUDY MODULE - VIEW SAVED RAW IMPORT
-# =========================
-@app.route("/law/imports/<path:filename>")
-def law_view_saved_import(filename):
-    portal_title = get_portal_title()
 
-    safe_name = safe_law_import_filename(filename)
 
-    if not safe_name:
-        return "Invalid import filename", 400
 
-    import_path = os.path.join(LAW_IMPORTS_FOLDER, safe_name)
 
-    if not os.path.exists(import_path) or not os.path.isfile(import_path):
-        return "Saved import not found", 404
-
-    try:
-        raw_packet = _law_service.load_law_raw_packet(import_path, open_file=open)
-    except Exception as e:
-        print(f"[LAW IMPORT ERROR] Failed reading saved import: {e}")
-        return "Failed to read saved import", 500
 
-    line_count = len(raw_packet.splitlines())
-    char_count = len(raw_packet)
 
-    modified = datetime.fromtimestamp(os.stat(import_path).st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-    size = os.stat(import_path).st_size
-    parsed_sections = parse_law_packet_sections(raw_packet)
 
-    return render_template(
-        "law/import-detail.html",
-        portal_title=portal_title,
-        filename=safe_name,
-        raw_packet=raw_packet,
-        line_count=line_count,
-        char_count=char_count,
-        modified=modified,
-        size=size,
-        parsed_sections=parsed_sections,
-    )
 
 
 
-# =========================
-# LAW STUDY MODULE - DELETE SAVED RAW IMPORT
-# =========================
-@app.route("/law/imports/<path:filename>/delete", methods=["POST"])
-def law_delete_saved_import(filename):
-    safe_name = safe_law_import_filename(filename)
 
-    if not safe_name:
-        return "Invalid import filename", 400
 
-    import_path = os.path.join(LAW_IMPORTS_FOLDER, safe_name)
 
-    try:
-        _law_service.delete_law_raw_packet(
-            import_path,
-            exists=os.path.exists,
-            isfile=os.path.isfile,
-            remove_file=os.remove,
-        )
 
-    except Exception as e:
-        print(f"[LAW IMPORT ERROR] Failed deleting saved import: {e}")
-        return "Failed to delete saved import", 500
 
-    return redirect("/law/imports?deleted=1")
 
 
 
-# =========================
-# LAW STUDY MODULE - CREATE CASE REVIEW FROM IMPORT
-# =========================
-@app.route("/law/imports/<path:filename>/create_case", methods=["POST"])
-def law_create_case_from_import(filename):
-    safe_name = safe_law_import_filename(filename)
 
-    if not safe_name:
-        return "Invalid import filename", 400
 
-    import_path = os.path.join(LAW_IMPORTS_FOLDER, safe_name)
 
-    if not os.path.exists(import_path) or not os.path.isfile(import_path):
-        return "Saved import not found", 404
-
-    try:
-        raw_packet = _law_service.load_law_raw_packet(import_path, open_file=open)
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed reading import: {e}")
-        return "Failed to read saved import", 500
-
-    parsed_sections = parse_law_packet_sections(raw_packet)
-
-    if not parsed_sections:
-        return "No recognized Law Study sections were found. Cannot create case review yet.", 400
-
-    try:
-        case_id = _law_service.create_law_case_from_import(
-            safe_name,
-            raw_packet,
-            parsed_sections,
-            cases_folder=LAW_CASES_FOLDER,
-            load_law_registry=load_law_registry,
-            extract_law_slug_from_import_filename=extract_law_slug_from_import_filename,
-            extract_law_case_title=extract_law_case_title,
-            secure_filename=secure_filename,
-            now=datetime.now,
-            commit_law_case_and_registry=_commit_law_case_and_registry,
-            makedirs=os.makedirs,
-            join_path=os.path.join,
-            isfile=os.path.isfile,
-        )
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed creating case review: {e}")
-        return "Failed to create case review", 500
-
-    return redirect(url_for("law_view_case_review", case_id=case_id))
-
-
-
-# =========================
-# LAW STUDY MODULE - SAVED CASE REVIEWS
-# =========================
-@app.route("/law/cases")
-def law_case_reviews():
-    portal_title = get_portal_title()
-    registry = load_law_registry()
-
-    cases = registry.get("cases", [])
-
-    # newest first
-    cases = sorted(
-        cases,
-        key=lambda c: str(c.get("created_at", "")),
-        reverse=True
-    )
-
-    return render_template(
-        "law/cases.html",
-        portal_title=portal_title,
-        cases=cases,
-    )
-
-
-
-# =========================
-# LAW STUDY MODULE - VIEW CASE REVIEW
-# =========================
-@app.route("/law/cases/<case_id>")
-def law_view_case_review(case_id):
-    portal_title = get_portal_title()
-    law_registry = load_law_registry()
-    law_folders = law_registry.get("folders", [])
-
-    case_entry = get_law_case_by_id(case_id)
-
-    if not case_entry:
-        return "Law case review not found", 404
-
-    case_file = secure_filename(case_entry.get("file") or "")
-
-    if not case_file.lower().endswith(".json"):
-        return "Invalid case file", 400
-
-    case_path = os.path.join(LAW_CASES_FOLDER, case_file)
-
-    if not os.path.exists(case_path) or not os.path.isfile(case_path):
-        return "Law case file not found", 404
-
-    try:
-        case_data = _load_law_case_data(case_path)
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed reading case review: {e}")
-        return "Failed to read case review", 500
-
-    sections = case_data.get("sections", {}) or {}
-    sources_used = case_data.get("sources_used", "")
-
-    section_cards = [
-        {
-            "key": "case_brief",
-            "title": "Case Brief",
-            "icon": "📄",
-            "content": sections.get("case_brief", "")
-        }
-    ]
-
-    irac_drill_content = sections.get("irac_drill", "")
-    rule_flashcards_content = sections.get("rule_flashcards", "")
-    socratic_answer_key = sections.get("socratic_answer_key", "")
-    socratic_questions = parse_socratic_questions(sections.get("socratic_review", ""))
-    socratic_student_answers = case_data.get("socratic_student_answers", {}) or {}
-    irac_student_response = case_data.get("irac_student_response", {}) or {}
-    socratic_total = len(socratic_questions)
-
-    socratic_answered = 0
-    for question in socratic_questions:
-        qid = question.get("id")
-        answer = str(socratic_student_answers.get(qid, "")).strip()
-        if answer:
-            socratic_answered += 1
-
-    socratic_progress_text = f"{socratic_answered} of {socratic_total} answered"
-
-    return render_template(
-        "law/case-detail.html",
-        portal_title=portal_title,
-        case_entry=case_entry,
-        case_data=case_data,
-        rule_flashcards_content=rule_flashcards_content,
-        section_cards=section_cards,
-        socratic_answer_key=socratic_answer_key,
-        socratic_questions=socratic_questions,
-        socratic_student_answers=socratic_student_answers,
-        socratic_total=socratic_total,
-        socratic_answered=socratic_answered,
-        socratic_progress_text=socratic_progress_text,
-        sources_used=sources_used,
-        irac_student_response=irac_student_response,
-        irac_drill_content=irac_drill_content,
-        law_folders=law_folders,
-    )
-
-
-
-# =========================
-# LAW STUDY MODULE - UPDATE CASE REVIEW DETAILS
-# =========================
-@app.route("/law/cases/<case_id>/update_details", methods=["POST"])
-def law_update_case_review_details(case_id):
-    case_entry = get_law_case_by_id(case_id)
-
-    if not case_entry:
-        return "Law case review not found", 404
-
-    case_file = secure_filename(case_entry.get("file") or "")
-
-    if not case_file.lower().endswith(".json"):
-        return "Invalid case file", 400
-
-    case_path = os.path.join(LAW_CASES_FOLDER, case_file)
-
-    if not os.path.exists(case_path) or not os.path.isfile(case_path):
-        return "Law case file not found", 404
-
-    new_title = request.form.get("title", "").strip()
-    new_course = request.form.get("course", "").strip()
-
-    try:
-        _law_service.update_law_case_details(
-            case_path,
-            case_id,
-            case_entry,
-            new_title,
-            new_course,
-            now=datetime.now,
-            load_law_registry=load_law_registry,
-            registry_case_for_mutation=_law_registry_case_for_mutation,
-            commit_law_case_and_registry=_commit_law_case_and_registry,
-            load_case_data=_load_law_case_data,
-        )
-
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed updating case review details: {e}")
-        return "Failed to update case review details", 500
-
-    return redirect(f"/law/cases/{case_id}?updated=1")
-
-
-# =========================
-# LAW STUDY MODULE - DELETE CASE REVIEW
-# =========================
-@app.route("/law/cases/<case_id>/delete", methods=["POST"])
-def law_delete_case_review(case_id):
-    case_entry = get_law_case_by_id(case_id)
-
-    if not case_entry:
-        return "Law case review not found", 404
-
-    case_file = secure_filename(case_entry.get("file") or "")
-
-    if not case_file.lower().endswith(".json"):
-        return "Invalid case file", 400
-
-    case_path = os.path.join(LAW_CASES_FOLDER, case_file)
-
-    try:
-        registry = load_law_registry()
-        _delete_law_case_and_registry(case_path, registry, case_id)
-
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed deleting case review: {e}")
-        return "Failed to delete case review", 500
-
-    return redirect("/law/cases?deleted=1")
-
-
-
-
-
-
-
-
-
-#@app.route("/<path:path>")
-#def static_proxy(path):
-    #return send_from_directory(".", path)
-
-
-# =========================
-# LAW STUDY MODULE - UPDATE CASE REVIEW NOTES
-# =========================
-@app.route("/law/cases/<case_id>/update_notes", methods=["POST"])
-def law_update_case_review_notes(case_id):
-    case_entry = get_law_case_by_id(case_id)
-
-    if not case_entry:
-        return "Law case review not found", 404
-
-    case_file = secure_filename(case_entry.get("file") or "")
-
-    if not case_file.lower().endswith(".json"):
-        return "Invalid case file", 400
-
-    case_path = os.path.join(LAW_CASES_FOLDER, case_file)
-
-    if not os.path.exists(case_path) or not os.path.isfile(case_path):
-        return "Law case file not found", 404
-
-    student_notes = request.form.get("student_notes", "").strip()
-
-    try:
-        _law_service.update_law_case_notes(
-            case_path,
-            case_id,
-            student_notes,
-            now=datetime.now,
-            load_law_registry=load_law_registry,
-            registry_case_for_mutation=_law_registry_case_for_mutation,
-            commit_law_case_and_registry=_commit_law_case_and_registry,
-            load_case_data=_load_law_case_data,
-        )
-
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed updating case review notes: {e}")
-        return "Failed to update case review notes", 500
-
-    return redirect(f"/law/cases/{case_id}?notes_updated=1")
-
-
-# =========================
-# LAW STUDY MODULE - UPDATE SOCRATIC ANSWERS
-# =========================
-@app.route("/law/cases/<case_id>/update_socratic_answers", methods=["POST"])
-def law_update_socratic_answers(case_id):
-    case_entry = get_law_case_by_id(case_id)
-
-    if not case_entry:
-        return "Law case review not found", 404
-
-    case_file = secure_filename(case_entry.get("file") or "")
-
-    if not case_file.lower().endswith(".json"):
-        return "Invalid case file", 400
-
-    case_path = os.path.join(LAW_CASES_FOLDER, case_file)
-
-    if not os.path.exists(case_path) or not os.path.isfile(case_path):
-        return "Law case file not found", 404
-
-    try:
-        _law_service.update_law_case_socratic_answers(
-            case_path,
-            case_id,
-            request.form.to_dict(flat=True),
-            now=datetime.now,
-            parse_socratic_questions=parse_socratic_questions,
-            load_law_registry=load_law_registry,
-            registry_case_for_mutation=_law_registry_case_for_mutation,
-            commit_law_case_and_registry=_commit_law_case_and_registry,
-            load_case_data=_load_law_case_data,
-        )
-
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed updating Socratic answers: {e}")
-        return "Failed to update Socratic answers", 500
-
-    return redirect(f"/law/cases/{case_id}?socratic_answers_updated=1")
-
-
-# =========================
-# LAW STUDY MODULE - UPDATE IRAC RESPONSE
-# =========================
-@app.route("/law/cases/<case_id>/update_irac_response", methods=["POST"])
-def law_update_irac_response(case_id):
-    case_entry = get_law_case_by_id(case_id)
-
-    if not case_entry:
-        return "Law case review not found", 404
-
-    case_file = secure_filename(case_entry.get("file") or "")
-
-    if not case_file.lower().endswith(".json"):
-        return "Invalid case file", 400
-
-    case_path = os.path.join(LAW_CASES_FOLDER, case_file)
-
-    if not os.path.exists(case_path) or not os.path.isfile(case_path):
-        return "Law case file not found", 404
-
-    irac_response = {
-        "issue": request.form.get("irac_issue", "").strip(),
-        "rule": request.form.get("irac_rule", "").strip(),
-        "analysis": request.form.get("irac_analysis", "").strip(),
-        "conclusion": request.form.get("irac_conclusion", "").strip()
-    }
-
-    try:
-        _law_service.update_law_case_irac_response(
-            case_path,
-            case_id,
-            irac_response,
-            now=datetime.now,
-            load_law_registry=load_law_registry,
-            registry_case_for_mutation=_law_registry_case_for_mutation,
-            commit_law_case_and_registry=_commit_law_case_and_registry,
-            load_case_data=_load_law_case_data,
-        )
-
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed updating IRAC response: {e}")
-        return "Failed to update IRAC response", 500
-
-    return redirect(f"/law/cases/{case_id}?irac_updated=1")
-
-
-
-# =========================
-# LAW STUDY MODULE - EXPORT CASE REVIEW
-# =========================
-@app.route("/law/cases/<case_id>/export.txt")
-def law_export_case_review_txt(case_id):
-    case_entry = get_law_case_by_id(case_id)
-
-    if not case_entry:
-        return "Law case review not found", 404
-
-    case_file = secure_filename(case_entry.get("file") or "")
-
-    if not case_file.lower().endswith(".json"):
-        return "Invalid case file", 400
-
-    case_path = os.path.join(LAW_CASES_FOLDER, case_file)
-
-    if not os.path.exists(case_path) or not os.path.isfile(case_path):
-        return "Law case file not found", 404
-
-    try:
-        case_data = _load_law_case_data(case_path)
-    except Exception as e:
-        print(f"[LAW CASE ERROR] Failed exporting case review: {e}")
-        return "Failed to export case review", 500
-
-    export_text, filename = _law_service.build_law_case_export(
-        case_data,
-        case_id,
-        app_version=APP_VERSION,
-        exported_on=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    )
-
-    return Response(
-        export_text,
-        mimetype="text/plain",
-        headers={
-            "Content-Disposition": f"attachment; filename={filename}"
-        }
-    )
 
 
 
@@ -7419,6 +6708,120 @@ def resolve_logo_filename(logo_filename):
         return None
 
     return logo_filename
+
+
+app.register_blueprint(create_law_blueprint(LawRouteDependencies(
+    app_version=lambda: APP_VERSION,
+    default_law_ai_prompt=lambda: DEFAULT_LAW_AI_PROMPT,
+    get_portal_title=lambda: get_portal_title(),
+    load_portal_config=lambda: load_portal_config(),
+    load_law_registry=lambda: load_law_registry(),
+    law_case_path=lambda case_file: os.path.join(LAW_CASES_FOLDER, case_file),
+    law_import_path=lambda import_file: os.path.join(LAW_IMPORTS_FOLDER, import_file),
+    make_law_case_slug=lambda case_name: make_law_case_slug(case_name),
+    safe_law_import_filename=lambda filename: safe_law_import_filename(filename),
+    save_law_raw_packet=lambda raw_packet, case_slug="": save_law_raw_packet(raw_packet, case_slug),
+    parse_law_packet_sections=lambda raw_text: parse_law_packet_sections(raw_text),
+    get_law_case_by_id=lambda case_id: get_law_case_by_id(case_id),
+    load_law_case_data=lambda case_path: _load_law_case_data(case_path),
+    parse_socratic_questions=lambda text: parse_socratic_questions(text),
+    start_pending_case_workflow=lambda registry, **kwargs: _law_service.start_pending_case_workflow(
+        registry,
+        save_law_registry=save_law_registry,
+        **kwargs,
+    ),
+    cancel_pending_case_workflow=lambda registry: _law_service.cancel_pending_case_workflow(
+        registry,
+        save_law_registry=save_law_registry,
+    ),
+    list_law_raw_imports=lambda *, imports: _law_service.list_law_raw_imports(
+        LAW_IMPORTS_FOLDER,
+        from_timestamp=datetime.fromtimestamp,
+        imports=imports,
+        makedirs=os.makedirs,
+        listdir=os.listdir,
+        join_path=os.path.join,
+        isfile=os.path.isfile,
+        stat_file=os.stat,
+    ),
+    load_law_raw_packet=lambda import_path: _law_service.load_law_raw_packet(
+        import_path,
+        open_file=open,
+    ),
+    delete_law_raw_packet=lambda import_path: _law_service.delete_law_raw_packet(
+        import_path,
+        exists=os.path.exists,
+        isfile=os.path.isfile,
+        remove_file=os.remove,
+    ),
+    create_law_case_from_import=lambda safe_name, raw_packet, parsed_sections: _law_service.create_law_case_from_import(
+        safe_name,
+        raw_packet,
+        parsed_sections,
+        cases_folder=LAW_CASES_FOLDER,
+        load_law_registry=load_law_registry,
+        extract_law_slug_from_import_filename=extract_law_slug_from_import_filename,
+        extract_law_case_title=extract_law_case_title,
+        secure_filename=secure_filename,
+        now=datetime.now,
+        commit_law_case_and_registry=_commit_law_case_and_registry,
+        makedirs=os.makedirs,
+        join_path=os.path.join,
+        isfile=os.path.isfile,
+    ),
+    update_law_case_details=lambda case_path, case_id, case_entry, new_title, new_course: _law_service.update_law_case_details(
+        case_path,
+        case_id,
+        case_entry,
+        new_title,
+        new_course,
+        now=datetime.now,
+        load_law_registry=load_law_registry,
+        registry_case_for_mutation=_law_registry_case_for_mutation,
+        commit_law_case_and_registry=_commit_law_case_and_registry,
+        load_case_data=_load_law_case_data,
+    ),
+    delete_law_case_and_registry=lambda case_path, registry, case_id: _delete_law_case_and_registry(
+        case_path,
+        registry,
+        case_id,
+    ),
+    update_law_case_notes=lambda case_path, case_id, student_notes: _law_service.update_law_case_notes(
+        case_path,
+        case_id,
+        student_notes,
+        now=datetime.now,
+        load_law_registry=load_law_registry,
+        registry_case_for_mutation=_law_registry_case_for_mutation,
+        commit_law_case_and_registry=_commit_law_case_and_registry,
+        load_case_data=_load_law_case_data,
+    ),
+    update_law_case_socratic_answers=lambda case_path, case_id, form_data: _law_service.update_law_case_socratic_answers(
+        case_path,
+        case_id,
+        form_data,
+        now=datetime.now,
+        parse_socratic_questions=parse_socratic_questions,
+        load_law_registry=load_law_registry,
+        registry_case_for_mutation=_law_registry_case_for_mutation,
+        commit_law_case_and_registry=_commit_law_case_and_registry,
+        load_case_data=_load_law_case_data,
+    ),
+    update_law_case_irac_response=lambda case_path, case_id, irac_response: _law_service.update_law_case_irac_response(
+        case_path,
+        case_id,
+        irac_response,
+        now=datetime.now,
+        load_law_registry=load_law_registry,
+        registry_case_for_mutation=_law_registry_case_for_mutation,
+        commit_law_case_and_registry=_commit_law_case_and_registry,
+        load_case_data=_load_law_case_data,
+    ),
+    build_law_case_export=lambda *args, **kwargs: _law_service.build_law_case_export(*args, **kwargs),
+    secure_filename=lambda filename: secure_filename(filename),
+    now=lambda: datetime.now(),
+    from_timestamp=lambda timestamp: datetime.fromtimestamp(timestamp),
+)))
 
 
 app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(

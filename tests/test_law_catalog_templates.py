@@ -11,6 +11,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import law as law_routes
 
 
 class LawCatalogTemplateTests(unittest.TestCase):
@@ -252,7 +253,7 @@ class LawCatalogTemplateTests(unittest.TestCase):
         ), mock.patch.object(
             dlms._law_service, "list_law_raw_imports", return_value=imports
         ), mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            law_routes, "render_template", return_value="rendered"
         ) as renderer:
             response = self.client.get("/law/imports")
 
@@ -274,7 +275,7 @@ class LawCatalogTemplateTests(unittest.TestCase):
         ), mock.patch.object(
             dlms, "load_law_registry", return_value=registry
         ), mock.patch.object(
-            dlms, "render_template", return_value="rendered"
+            law_routes, "render_template", return_value="rendered"
         ) as renderer:
             response = self.client.get("/law/cases")
 
