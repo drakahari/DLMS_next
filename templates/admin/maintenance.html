@@ -1,0 +1,87 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Tools - DLMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+
+<body class="dashboard-home system-tools-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("System Tools")|safe }}
+<main class="dashboard-main system-tools-main">
+    <header class="dashboard-header system-tools-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <div>
+            <div class="build-eyebrow">SETTINGS / SYSTEM TOOLS</div>
+            <h1>System Tools</h1>
+            <p>Advanced tools for refreshing generated quiz pages and preparing image-based study content.</p>
+        </div>
+    </header>
+
+    <section class="dashboard-panel system-tools-panel">
+        <section class="system-tools-action">
+            <div>
+                <div class="build-eyebrow">QUIZ PAGE MAINTENANCE</div>
+                <h2>Rebuild All Quiz Pages</h2>
+                <p>Re-render every registered quiz's generated HTML page using the current DLMS quiz-page template. This is useful after upgrading DLMS so older quiz pages receive current interface features.</p>
+                <p class="system-tools-note">This refreshes HTML wrappers only. It does not recreate quiz JSON, change questions or answers, change quiz IDs or registry entries, or rewrite attempt history.</p>
+            </div>
+            <button id="rebuildAllBtn" class="build-primary-button" type="button">🔄 Rebuild All Quiz Pages</button>
+            <p id="rebuildStatus" class="system-tools-status" aria-live="polite"></p>
+        </section>
+
+        <section class="system-tools-action">
+            <div>
+                <div class="build-eyebrow">IMAGE CONTENT</div>
+                <h2>Image Study Editor</h2>
+                <p>Prepare images for study, add non-destructive text overlays, draw precise circle or polygon hit regions, test them, and save metadata into an installed content pack.</p>
+            </div>
+            <a class="build-secondary-link system-tools-secondary-action" href="/admin/image-editor">◎ Open Image Study Editor</a>
+        </section>
+    </section>
+</main>
+</div>
+
+<script>
+const rebuildBtn = document.getElementById("rebuildAllBtn");
+const rebuildStatus = document.getElementById("rebuildStatus");
+
+rebuildBtn.addEventListener("click", async () => {
+    const ok = confirm(
+        "Rebuild all quiz pages using the current DLMS template?\n\n" +
+        "Quiz questions, answers, IDs, and history will not be changed."
+    );
+
+    if (!ok) return;
+
+    rebuildBtn.disabled = true;
+    rebuildStatus.textContent = "Rebuilding quiz pages...";
+
+    try {
+        const response = await fetch("/admin/rebuild_all_quiz_html", {method: "POST"});
+
+        if (!response.ok) {
+            throw new Error("Rebuild request failed");
+        }
+
+        const data = await response.json();
+
+        rebuildStatus.textContent =
+            `Complete: ${data.rebuilt} rebuilt, ${data.failed.length} failed.`;
+
+    } catch (err) {
+        console.error(err);
+        rebuildStatus.textContent = "Rebuild failed. Check the server log.";
+    } finally {
+        rebuildBtn.disabled = false;
+    }
+});
+</script>
+
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

@@ -1959,3 +1959,134 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
     finally:
         if disabled_marker.exists():
             disabled_marker.rename(marker)
+
+
+def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/admin/maintenance")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector('[data-nav-key=settings][aria-current=page]')"
+    )
+
+    accessibility = browser.evaluate(
+        "(() => ({"
+        "menuLabel:document.querySelector('[data-settings-menu]').getAttribute('aria-label'),"
+        "menuControls:document.querySelector('[data-settings-menu]').getAttribute('aria-controls'),"
+        "menuExpanded:document.querySelector('[data-settings-menu]').getAttribute('aria-expanded'),"
+        "buttonType:document.getElementById('rebuildAllBtn').type,"
+        "statusLive:document.getElementById('rebuildStatus').getAttribute('aria-live'),"
+        "imageEditorHref:document.querySelector('.system-tools-secondary-action').getAttribute('href')"
+        "}))()"
+    )
+    assert accessibility == {
+        "menuLabel": "Toggle navigation",
+        "menuControls": "dashboardSidebar",
+        "menuExpanded": "false",
+        "buttonType": "button",
+        "statusLive": "polite",
+        "imageEditorHref": "/admin/image-editor",
+    }
+
+    confirmation = (
+        "Rebuild all quiz pages using the current DLMS template?\n\n"
+        "Quiz questions, answers, IDs, and history will not be changed."
+    )
+    cancelled = browser.evaluate(
+        "(() => {window.__maintenanceCalls=[];window.__maintenanceConfirms=[];"
+        "window.confirm=message=>{window.__maintenanceConfirms.push(message);return false};"
+        "const originalFetch=window.fetch.bind(window);"
+        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "return originalFetch(input,init)};document.getElementById('rebuildAllBtn').click();"
+        "return {calls:window.__maintenanceCalls,confirms:window.__maintenanceConfirms,"
+        "disabled:document.getElementById('rebuildAllBtn').disabled,"
+        "status:document.getElementById('rebuildStatus').textContent};})()"
+    )
+    assert cancelled == {
+        "calls": [],
+        "confirms": [confirmation],
+        "disabled": False,
+        "status": "",
+    }
+
+    assert browser.evaluate(
+        "(() => {window.__maintenanceCalls=[];window.__maintenanceConfirms=[];"
+        "window.confirm=message=>{window.__maintenanceConfirms.push(message);return true};"
+        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "return new Promise(resolve=>{window.__resolveMaintenanceFetch=resolve})};return true;})()"
+    ) is True
+    browser.click("#rebuildAllBtn")
+    browser.wait_for(
+        "document.getElementById('rebuildAllBtn').disabled && "
+        "document.getElementById('rebuildStatus').textContent === 'Rebuilding quiz pages...'"
+    )
+    browser.evaluate(
+        "window.__resolveMaintenanceFetch(new Response(JSON.stringify({"
+        "status:'complete',rebuilt:'<img id=maintenanceInjected>',failed:['<svg>']}),"
+        "{status:200,headers:{'Content-Type':'application/json'}}));true"
+    )
+    browser.wait_for(
+        "!document.getElementById('rebuildAllBtn').disabled && "
+        "document.getElementById('rebuildStatus').textContent.startsWith('Complete:')"
+    )
+    safe_status = browser.evaluate(
+        "(() => {const status=document.getElementById('rebuildStatus');return {"
+        "text:status.textContent,html:status.innerHTML,"
+        "injected:document.getElementById('maintenanceInjected')!==null,"
+        "calls:window.__maintenanceCalls,confirms:window.__maintenanceConfirms};})()"
+    )
+    assert safe_status == {
+        "text": "Complete: <img id=maintenanceInjected> rebuilt, 1 failed.",
+        "html": "Complete: &lt;img id=maintenanceInjected&gt; rebuilt, 1 failed.",
+        "injected": False,
+        "calls": [{"url": "/admin/rebuild_all_quiz_html", "method": "POST"}],
+        "confirms": [confirmation],
+    }
+
+    assert browser.evaluate(
+        "(() => {window.confirm=()=>true;window.fetch=()=>new Promise(resolve=>{"
+        "window.__resolveMaintenanceFetch=resolve});return true;})()"
+    ) is True
+    browser.click("#rebuildAllBtn")
+    browser.wait_for(
+        "document.getElementById('rebuildAllBtn').disabled && "
+        "document.getElementById('rebuildStatus').textContent === 'Rebuilding quiz pages...'"
+    )
+    browser.evaluate(
+        "window.__resolveMaintenanceFetch(new Response(JSON.stringify({error:'forced failure'}),"
+        "{status:503,headers:{'Content-Type':'application/json'}}));true"
+    )
+    browser.wait_for(
+        "!document.getElementById('rebuildAllBtn').disabled && "
+        "document.getElementById('rebuildStatus').textContent === "
+        "'Rebuild failed. Check the server log.'"
+    )
+
+    browser.navigate(f"{browser_stack.base_url}/admin/maintenance?live=1")
+    browser.wait_for("window.dlmsCsrfToken && document.getElementById('rebuildAllBtn')")
+    expected_rebuilt = sum(
+        entry.get("id") is not None
+        for entry in json.loads(
+            (browser_stack.data_root / "config" / "quizzes.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    )
+    assert browser.evaluate(
+        "(() => {const protectedFetch=window.fetch.bind(window);window.__maintenanceCalls=[];"
+        "window.confirm=()=>true;window.fetch=(input,init={})=>{"
+        "window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "return protectedFetch(input,init)};return true;})()"
+    ) is True
+    browser.click("#rebuildAllBtn")
+    browser.wait_for(
+        "!document.getElementById('rebuildAllBtn').disabled && "
+        "document.getElementById('rebuildStatus').textContent.startsWith('Complete:')",
+        timeout=12.0,
+    )
+    assert browser.evaluate("document.getElementById('rebuildStatus').textContent") == (
+        f"Complete: {expected_rebuilt} rebuilt, 0 failed."
+    )
+    assert browser.evaluate("window.__maintenanceCalls") == [
+        {"url": "/admin/rebuild_all_quiz_html", "method": "POST"}
+    ]
