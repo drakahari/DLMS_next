@@ -7,6 +7,7 @@ os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from dlms.routes import pdf_import as pdf_import_routes
 from tests.csrf_test_utils import csrf_token
 
 class PDFImportParserTests(unittest.TestCase):
@@ -243,7 +244,9 @@ class PDFImportParserTests(unittest.TestCase):
             ],
             "used_question_numbers": [],
         }
-        selected = dlms._select_pdf_bank_questions(bank, mode="random", count=20)
+        selected = pdf_import_routes._select_pdf_bank_questions(
+            bank, mode="random", count=20
+        )
         self.assertEqual(len(selected), 20)
         self.assertEqual(len(bank["questions"]), 100)
 
@@ -262,9 +265,13 @@ class PDFImportParserTests(unittest.TestCase):
             ],
             "used_question_numbers": [1, 2, 3, 4],
         }
-        unused = dlms._select_pdf_bank_questions(bank, mode="unused", count=3)
+        unused = pdf_import_routes._select_pdf_bank_questions(
+            bank, mode="unused", count=3
+        )
         self.assertTrue(all(q["original_number"] not in {1,2,3,4} for q in unused))
-        ranged = dlms._select_pdf_bank_questions(bank, mode="range", start_number=4, end_number=7)
+        ranged = pdf_import_routes._select_pdf_bank_questions(
+            bank, mode="range", start_number=4, end_number=7
+        )
         self.assertEqual([q["original_number"] for q in ranged], [4,5,6,7])
 
     def test_pdf_bank_excluded_questions_are_not_selected(self):
@@ -275,7 +282,9 @@ class PDFImportParserTests(unittest.TestCase):
                 {"number": 3, "original_number": 3, "question": "Three", "active": True},
             ]
         }
-        selected = dlms._select_pdf_bank_questions(bank, mode="all", count=50)
+        selected = pdf_import_routes._select_pdf_bank_questions(
+            bank, mode="all", count=50
+        )
         self.assertEqual([q["original_number"] for q in selected], [1, 3])
 
 
@@ -536,10 +545,14 @@ class PDFImportParserTests(unittest.TestCase):
             ],
             "used_term_numbers": [1, 2, 3],
         }
-        selected = dlms._select_pdf_term_bank_items(bank, mode="random", count=10)
+        selected = pdf_import_routes._select_pdf_term_bank_items(
+            bank, mode="random", count=10
+        )
         self.assertEqual(len(selected), 10)
         self.assertEqual(len(bank["terms"]), 40)
-        unused = dlms._select_pdf_term_bank_items(bank, mode="unused", count=5)
+        unused = pdf_import_routes._select_pdf_term_bank_items(
+            bank, mode="unused", count=5
+        )
         self.assertTrue(all(t["number"] not in {1, 2, 3} for t in unused))
 
     def test_pdf_terminology_generates_matching_and_multiple_choice(self):
@@ -552,11 +565,15 @@ class PDFImportParserTests(unittest.TestCase):
             ],
         }
         selected = bank["terms"][:4]
-        runtime, dbq = dlms._pdf_terms_matching_questions(bank, selected, "term_to_definition")
+        runtime, dbq = pdf_import_routes._pdf_terms_matching_questions(
+            bank, selected, "term_to_definition"
+        )
         self.assertEqual(runtime[0]["type"], "matching")
         self.assertEqual(len(runtime[0]["pairs"]), 4)
 
-        runtime, dbq = dlms._pdf_terms_mc_questions(bank, selected[:2], "definition_to_term")
+        runtime, dbq = pdf_import_routes._pdf_terms_mc_questions(
+            bank, selected[:2], "definition_to_term"
+        )
         self.assertEqual(len(runtime), 2)
         self.assertTrue(all(q["type"] == "choice" for q in runtime))
         self.assertTrue(all(len(q["choices"]) == 4 for q in runtime))

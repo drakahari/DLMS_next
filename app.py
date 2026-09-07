@@ -62,6 +62,10 @@ from dlms.routes.content_packs import (
     create_content_packs_blueprint,
 )
 from dlms.routes.medical import MedicalRouteDependencies, create_medical_blueprint
+from dlms.routes.pdf_import import (
+    PDFImportRouteDependencies,
+    create_pdf_import_blueprint,
+)
 from dlms.routes.quiz import (
     QuizAuthoringDependencies,
     QuizEditorDependencies,
@@ -4647,108 +4651,6 @@ def _delete_pdf_question_bank(bank_id):
     )
 
 
-def _pdf_bank_active_questions(bank):
-    active = [
-        q for q in (bank.get("questions") or [])
-        if isinstance(q, dict) and q.get("active", True)
-    ]
-    return sorted(
-        active,
-        key=lambda q: (int(q.get("original_number") or q.get("number") or 0), int(q.get("number") or 0))
-    )
-
-def _select_pdf_bank_questions(bank, mode="random", count=50, start_number=1, end_number=None):
-    active = _pdf_bank_active_questions(bank)
-    if not active:
-        raise ValueError("This question bank has no active questions.")
-
-    mode = str(mode or "random").strip().lower()
-    try:
-        count = max(1, int(count))
-    except Exception:
-        count = 50
-    count = min(count, len(active))
-
-    if mode == "all":
-        return active
-
-    if mode == "range":
-        try:
-            start_number = int(start_number)
-            end_number = int(end_number)
-        except Exception:
-            raise ValueError("Question range requires valid start and end numbers.")
-        if end_number < start_number:
-            raise ValueError("Range end must be greater than or equal to range start.")
-        selected = [
-            q for q in active
-            if start_number <= int(q.get("original_number") or q.get("number") or 0) <= end_number
-        ]
-        if not selected:
-            raise ValueError("No active questions fall within that range.")
-        return selected
-
-    if mode == "sequential":
-        try:
-            start_number = int(start_number)
-        except Exception:
-            start_number = 1
-        candidates = [
-            q for q in active
-            if int(q.get("original_number") or q.get("number") or 0) >= start_number
-        ]
-        if not candidates:
-            raise ValueError("No active questions exist at or after that starting question number.")
-        return candidates[:count]
-
-    if mode == "unused":
-        used = {int(n) for n in (bank.get("used_question_numbers") or []) if str(n).isdigit()}
-        candidates = [
-            q for q in active
-            if int(q.get("original_number") or q.get("number") or 0) not in used
-        ]
-        if not candidates:
-            raise ValueError("All active questions in this bank have already been used.")
-        return random.sample(candidates, min(count, len(candidates)))
-
-    # Default: random from the entire active bank.
-    return random.sample(active, count)
-
-def _pdf_bank_question_to_quiz(question, number, bank):
-    choices = []
-    correct = str(question.get("correct") or "").strip().upper()
-    for raw in question.get("choices") or []:
-        if not isinstance(raw, dict):
-            continue
-        label = str(raw.get("label") or "").strip().upper()
-        text = str(raw.get("text") or "").strip()
-        if label and text:
-            choices.append({
-                "label": label,
-                "text": text,
-                "is_correct": label == correct,
-            })
-    if len(choices) < 2 or correct not in {c["label"] for c in choices}:
-        raise ValueError(
-            f"Bank question {question.get('original_number') or question.get('number')} is incomplete."
-        )
-    return {
-        "number": number,
-        "type": "choice",
-        "question": str(question.get("question") or "").strip(),
-        "choices": choices,
-        "correct": [correct],
-        "explanation": str(question.get("explanation") or "").strip(),
-        "source": {
-            "organization": "User-provided document",
-            "dataset": bank.get("source_name") or bank.get("title") or "PDF question bank",
-            "version": "",
-            "url": "",
-            "license": "User-provided; redistribution not cleared",
-        },
-    }
-
-
 # =========================================================
 # PERSISTENT PDF TERMINOLOGY BANKS
 # Kept separate from question-bank storage for backward compatibility.
@@ -4802,140 +4704,6 @@ def _delete_pdf_terminology_bank(bank_id):
     )
 
 
-def _pdf_term_bank_active_terms(bank):
-    active = [
-        t for t in (bank.get("terms") or [])
-        if isinstance(t, dict) and t.get("active", True)
-    ]
-    return sorted(active, key=lambda t: int(t.get("number") or 0))
-
-def _select_pdf_term_bank_items(bank, mode="random", count=25, start_number=1, end_number=None):
-    active = _pdf_term_bank_active_terms(bank)
-    if not active:
-        raise ValueError("This terminology bank has no active terms.")
-
-    mode = str(mode or "random").strip().lower()
-    try:
-        count = max(1, int(count))
-    except Exception:
-        count = 25
-    count = min(count, len(active))
-
-    if mode == "all":
-        return active
-
-    if mode == "range":
-        try:
-            start_number = int(start_number)
-            end_number = int(end_number)
-        except Exception:
-            raise ValueError("Term range requires valid start and end numbers.")
-        if end_number < start_number:
-            raise ValueError("Range end must be greater than or equal to range start.")
-        selected = [t for t in active if start_number <= int(t.get("number") or 0) <= end_number]
-        if not selected:
-            raise ValueError("No active terms fall within that range.")
-        return selected
-
-    if mode == "sequential":
-        try:
-            start_number = int(start_number)
-        except Exception:
-            start_number = 1
-        candidates = [t for t in active if int(t.get("number") or 0) >= start_number]
-        if not candidates:
-            raise ValueError("No active terms exist at or after that starting number.")
-        return candidates[:count]
-
-    if mode == "unused":
-        used = {int(n) for n in (bank.get("used_term_numbers") or []) if str(n).isdigit()}
-        candidates = [t for t in active if int(t.get("number") or 0) not in used]
-        if not candidates:
-            raise ValueError("All active terms in this bank have already been used.")
-        return random.sample(candidates, min(count, len(candidates)))
-
-    return random.sample(active, count)
-
-def _pdf_term_source(bank):
-    return {
-        "organization": "User-provided document",
-        "dataset": bank.get("source_name") or bank.get("title") or "PDF terminology bank",
-        "version": "",
-        "url": "",
-        "license": "User-provided; redistribution not cleared",
-    }
-
-def _pdf_terms_matching_questions(bank, selected, direction="random"):
-    pairs = [
-        {"left": str(t.get("term") or "").strip(), "right": str(t.get("definition") or "").strip()}
-        for t in selected
-        if str(t.get("term") or "").strip() and str(t.get("definition") or "").strip()
-    ]
-    if len(pairs) < 2:
-        raise ValueError("Matching practice requires at least two complete terms.")
-    q = {
-        "number": 1,
-        "type": "matching",
-        "question": "Match each term with its correct definition.",
-        "pairs": pairs,
-        "round_size": len(pairs),
-        "direction": direction if direction in {"random", "term_to_definition", "definition_to_term"} else "random",
-        "explanation": "Definitions are taken from the reviewed user-provided terminology bank.",
-        "source": _pdf_term_source(bank),
-    }
-    return [q], [dict(q)]
-
-def _pdf_terms_mc_questions(bank, selected, direction="definition_to_term"):
-    pool = _pdf_term_bank_active_terms(bank)
-    if len(pool) < 4:
-        raise ValueError("Multiple-choice terminology practice requires at least four active terms.")
-
-    runtime, db_questions = [], []
-    for number, target in enumerate(selected, 1):
-        target_term = str(target.get("term") or "").strip()
-        target_def = str(target.get("definition") or "").strip()
-        if not target_term or not target_def:
-            continue
-
-        distractor_pool = [t for t in pool if int(t.get("number") or 0) != int(target.get("number") or 0)]
-        distractors = random.sample(distractor_pool, 3)
-        option_terms = [target] + distractors
-        random.shuffle(option_terms)
-
-        choices = []
-        correct = []
-        for option in option_terms:
-            label = chr(65 + len(choices))
-            is_correct = int(option.get("number") or 0) == int(target.get("number") or 0)
-            if direction == "term_to_definition":
-                text = str(option.get("definition") or "").strip()
-            else:
-                text = str(option.get("term") or "").strip()
-            choices.append({"label": label, "text": text, "is_correct": is_correct})
-            if is_correct:
-                correct.append(label)
-
-        if direction == "term_to_definition":
-            question = f"Which definition best matches the term: {target_term}?"
-        else:
-            question = f"Which term best matches this definition? {target_def}"
-
-        q = {
-            "number": number,
-            "type": "choice",
-            "question": question,
-            "choices": choices,
-            "correct": correct,
-            "explanation": f"{target_term}: {target_def}",
-            "source": _pdf_term_source(bank),
-        }
-        runtime.append(q)
-        db_questions.append(dict(q))
-
-    if not runtime:
-        raise ValueError("No usable multiple-choice questions were generated.")
-    return runtime, db_questions
-
 # =========================================================
 # SMART PDF IMPORT — QUESTION BANK MVP
 # Isolated from the existing text/paste/CSV parsers.
@@ -4977,6 +4745,37 @@ def _load_pdf_import_draft(draft_id):
         os_module=os,
         json_module=json,
     )
+
+
+def _save_pdf_import_upload(upload, draft_id):
+    """Persist one bounded upload in configured Smart PDF draft storage."""
+    temp_pdf = os.path.join(PDF_IMPORT_DRAFT_FOLDER, f"{draft_id}.pdf")
+    try:
+        os.makedirs(PDF_IMPORT_DRAFT_FOLDER, exist_ok=True)
+        _bounded_save_upload(upload, temp_pdf, PDF_IMPORT_MAX_BYTES, "PDF")
+    except Exception:
+        try:
+            os.remove(temp_pdf)
+        except OSError:
+            pass
+        raise
+    return temp_pdf
+
+
+def _remove_pdf_import_upload(temp_pdf):
+    if not temp_pdf:
+        return
+    try:
+        os.remove(temp_pdf)
+    except OSError:
+        pass
+
+
+def _delete_pdf_import_draft_file(draft_id):
+    try:
+        os.remove(_pdf_import_draft_path(draft_id))
+    except OSError:
+        pass
 
 def _pdf_clean_line(line):
     return _smart_pdf_parser._pdf_clean_line(line)
@@ -5086,564 +4885,6 @@ def _pdf_parse_question_bank(pages):
         question_chunk_structure=_pdf_question_chunk_structure,
         parse_question_chunk=_pdf_parse_question_chunk,
     )
-
-@app.route("/pdf-import")
-def pdf_import_page():
-    return render_template("pdf_import/index.html", banks=_list_pdf_question_banks(), term_banks=_list_pdf_terminology_banks())
-
-@app.route("/pdf-import/bank/<bank_id>/delete", methods=["POST"])
-def pdf_question_bank_delete(bank_id):
-    try:
-        title = _delete_pdf_question_bank(bank_id)
-        flash(
-            f"Deleted source question bank '{title}'. Existing generated quizzes were not deleted.",
-            "success",
-        )
-    except FileNotFoundError:
-        flash("PDF question bank was already removed or could not be found.", "error")
-    except Exception as exc:
-        print(f"[PDF QUESTION BANK DELETE ERROR] {type(exc).__name__}: {exc}")
-        flash("Could not delete the PDF question bank.", "error")
-    return redirect("/pdf-import")
-
-
-@app.route("/pdf-import/terms/<bank_id>/delete", methods=["POST"])
-def pdf_terminology_bank_delete(bank_id):
-    try:
-        title = _delete_pdf_terminology_bank(bank_id)
-        flash(
-            f"Deleted source terminology bank '{title}'. Existing generated quizzes were not deleted.",
-            "success",
-        )
-    except FileNotFoundError:
-        flash("PDF terminology bank was already removed or could not be found.", "error")
-    except Exception as exc:
-        print(f"[PDF TERMINOLOGY BANK DELETE ERROR] {type(exc).__name__}: {exc}")
-        flash("Could not delete the PDF terminology bank.", "error")
-    return redirect("/pdf-import")
-
-
-@app.route("/pdf-import/analyze", methods=["POST"])
-def pdf_import_analyze():
-    upload = request.files.get("pdf_file")
-    if not upload or not upload.filename:
-        flash("Choose a PDF to analyze.", "error")
-        return redirect("/pdf-import")
-    if not str(upload.filename).lower().endswith(".pdf"):
-        flash("Smart PDF Import currently accepts PDF files only.", "error")
-        return redirect("/pdf-import")
-    if not request.form.get("rights_ok"):
-        flash("Confirm that you have permission to use the document for your own study.", "error")
-        return redirect("/pdf-import")
-    if request.content_length and request.content_length > PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES:
-        flash("PDF exceeds the 64 MB Smart PDF Import limit.", "error")
-        return redirect("/pdf-import")
-
-    draft_id = secrets.token_urlsafe(12).replace("-", "").replace("_", "")[:20]
-    source_name = secure_filename(upload.filename) or "study.pdf"
-    temp_pdf = os.path.join(PDF_IMPORT_DRAFT_FOLDER, f"{draft_id}.pdf")
-    try:
-        os.makedirs(PDF_IMPORT_DRAFT_FOLDER, exist_ok=True)
-        _bounded_save_upload(upload, temp_pdf, PDF_IMPORT_MAX_BYTES, "PDF")
-        pages = _pdf_extract_pages(temp_pdf)
-        pages, removed_margins = _pdf_suppress_repeated_margins(pages)
-
-        requested_type = (request.form.get("pdf_content_type") or "auto").strip().lower()
-        question_result = _pdf_parse_question_bank(pages)
-        glossary_result = _pdf_parse_glossary(pages)
-
-        if requested_type == "question_bank":
-            document_type = "question_bank"
-            detection = {"forced": True}
-        elif requested_type == "glossary":
-            document_type = "glossary"
-            detection = {"forced": True}
-        else:
-            document_type, detection = _pdf_detect_document_type(
-                pages, question_result=question_result, glossary_result=glossary_result
-            )
-
-        if document_type == "question_bank":
-            result = question_result
-            if not result.get("questions"):
-                result = _pdf_question_recovery_result(pages)
-                detection = {**(detection or {}), "recovery_mode": True, "reason": "no_structured_question_records"}
-        elif document_type == "glossary":
-            result = glossary_result
-            if not result.get("terms"):
-                result = _pdf_glossary_recovery_result(pages)
-                detection = {**(detection or {}), "recovery_mode": True, "reason": "no_structured_glossary_records"}
-        else:
-            # Auto-detect may still be inconclusive for an unusual layout. Preserve
-            # the extracted text in Review & Repair rather than throwing it away.
-            answer_markers = sum(1 for p in pages for line in p.get("lines", []) if re.search(r"Correct\s+Answer:", line, re.I))
-            choice_lines = sum(1 for p in pages for line in p.get("lines", []) if re.match(r"^[A-Z]\.\s+", line))
-            if answer_markers or choice_lines >= 2:
-                document_type = "question_bank"
-                result = _pdf_question_recovery_result(pages)
-                detection = {**(detection or {}), "recovery_mode": True, "reason": "auto_low_confidence_question_like"}
-            elif glossary_result.get("terms"):
-                document_type = "glossary"
-                result = glossary_result
-            else:
-                document_type = "question_bank"
-                result = _pdf_question_recovery_result(pages)
-                detection = {**(detection or {}), "recovery_mode": True, "reason": "auto_unstructured_recovery"}
-
-        if document_type == "question_bank":
-            result["questions"] = [_pdf_add_question_review_slots(q) for q in (result.get("questions") or [])]
-            if not result.get("questions"):
-                raise ValueError("No selectable text could be recovered from this PDF. OCR is not enabled.")
-        elif document_type == "glossary" and not result.get("terms"):
-            raise ValueError("No selectable text could be recovered from this PDF. OCR is not enabled.")
-
-        draft = {
-            "id": draft_id,
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-            "source_name": source_name,
-            "source_kind": "user-provided-pdf",
-            "redistribution_status": "not-cleared-for-redistribution",
-            "document_type": document_type,
-            "detection": detection,
-            "quiz_title": (request.form.get("quiz_title") or "").strip() or os.path.splitext(source_name)[0],
-            "exam_minutes": normalize_exam_minutes(request.form.get("exam_minutes")),
-            "page_count": len(pages),
-            "removed_margin_text": removed_margins,
-            **result,
-        }
-        _save_pdf_import_draft(draft)
-    except Exception as exc:
-        print(f"[PDF ANALYSIS ERROR] {type(exc).__name__}: {exc}")
-        flash("PDF analysis failed. The document may be malformed, encrypted, or outside the supported limits.", "error")
-        return redirect("/pdf-import")
-    finally:
-        try:
-            os.remove(temp_pdf)
-        except OSError:
-            pass
-    return redirect(f"/pdf-import/review/{draft_id}")
-
-def _render_pdf_glossary_review(draft):
-    return render_template("pdf_import/review-glossary.html", draft=draft)
-
-@app.route("/pdf-import/review/<draft_id>")
-def pdf_import_review(draft_id):
-    try:
-        draft = _load_pdf_import_draft(draft_id)
-    except Exception as exc:
-        print(f"[PDF REVIEW LOAD ERROR] {type(exc).__name__}: {exc}")
-        flash("The PDF review session is unavailable or expired.", "error")
-        return redirect("/pdf-import")
-
-    if draft.get("document_type") == "glossary":
-        return _render_pdf_glossary_review(draft)
-
-    return render_template("pdf_import/review-question-bank.html", draft=draft)
-
-@app.route("/pdf-import/save/<draft_id>", methods=["POST"])
-def pdf_import_save(draft_id):
-    try:
-        draft = _load_pdf_import_draft(draft_id)
-    except Exception as exc:
-        print(f"[PDF REVIEW SAVE ERROR] {type(exc).__name__}: {exc}")
-        flash("The PDF review session is unavailable or expired.", "error")
-        return redirect("/pdf-import")
-
-    if draft.get("document_type") == "glossary":
-        bank_title = (request.form.get("quiz_title") or "").strip()
-        if not bank_title:
-            flash("Terminology bank title is required.", "error")
-            return redirect(f"/pdf-import/review/{draft_id}")
-
-        raw_payload = (request.form.get("term_review_payload") or "").strip()
-        try:
-            submitted_items = json.loads(raw_payload) if raw_payload else []
-        except Exception:
-            submitted_items = []
-        if not isinstance(submitted_items, list):
-            submitted_items = []
-
-        bank_terms = []
-        originals = draft.get("terms") or []
-        for idx, original in enumerate(originals):
-            submitted = next(
-                (x for x in submitted_items if isinstance(x, dict) and int(x.get("index", -1)) == idx),
-                None,
-            )
-            excluded = bool((submitted or {}).get("exclude"))
-            term = str((submitted or {}).get("term") if submitted is not None else original.get("term") or "").strip()
-            definition = str((submitted or {}).get("definition") if submitted is not None else original.get("definition") or "").strip()
-            valid = bool(term and definition)
-            if not excluded and not valid:
-                flash(
-                    f"Term {original.get('number')} needs both a term and definition. Repair it or exclude it.",
-                    "error",
-                )
-                return redirect(f"/pdf-import/review/{draft_id}")
-            bank_terms.append({
-                "number": idx + 1,
-                "term": term,
-                "definition": definition,
-                "pages": original.get("pages") or [],
-                "parser_status": original.get("status") or ("complete" if valid else "incomplete"),
-                "parser_issues": original.get("issues") or [],
-                "active": not excluded and valid,
-            })
-
-        if not bank_terms:
-            flash("No terminology records were available to save.", "error")
-            return redirect(f"/pdf-import/review/{draft_id}")
-
-        bank_id = "pdfterms_" + secrets.token_urlsafe(9).replace("-", "").replace("_", "")[:14]
-        bank = {
-            "schema_version": 1,
-            "id": bank_id,
-            "kind": "terminology",
-            "title": bank_title,
-            "source_name": draft.get("source_name") or "PDF import",
-            "source_kind": "user-provided-pdf",
-            "redistribution_status": "not-cleared-for-redistribution",
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-            "default_exam_minutes": normalize_exam_minutes(request.form.get("exam_minutes")),
-            "page_count": draft.get("page_count") or 0,
-            "terms": bank_terms,
-            "used_term_numbers": [],
-            "generated_quizzes": [],
-        }
-        _save_pdf_terminology_bank(bank)
-        try:
-            os.remove(_pdf_import_draft_path(draft_id))
-        except OSError:
-            pass
-
-        active_count = len(_pdf_term_bank_active_terms(bank))
-        excluded_count = len(bank_terms) - active_count
-        flash(
-            f"Saved terminology bank '{bank_title}' with {active_count} active term(s)"
-            + (f" and {excluded_count} excluded source record(s)." if excluded_count else "."),
-            "success",
-        )
-        return redirect(f"/pdf-import/terms/{bank_id}")
-
-    bank_title = (request.form.get("quiz_title") or "").strip()
-    exam_minutes = normalize_exam_minutes(request.form.get("exam_minutes"))
-    if not bank_title:
-        flash("Question bank title is required.", "error")
-        return redirect(f"/pdf-import/review/{draft_id}")
-
-    submitted_items = None
-    raw_payload = (request.form.get("review_payload") or "").strip()
-    if raw_payload:
-        try:
-            parsed_payload = json.loads(raw_payload)
-            if isinstance(parsed_payload, list):
-                submitted_items = parsed_payload
-        except Exception:
-            submitted_items = None
-
-    originals = draft.get("questions") or []
-    bank_questions = []
-
-    for idx, original in enumerate(originals):
-        submitted = None
-        if submitted_items is not None:
-            submitted = next(
-                (item for item in submitted_items
-                 if isinstance(item, dict) and int(item.get("index", -1)) == idx),
-                None,
-            )
-
-        excluded = False
-        if submitted is not None:
-            excluded = bool(submitted.get("delete"))
-            question = str(submitted.get("question") or "").strip()
-            choices = []
-            for raw_choice in submitted.get("choices") or []:
-                if not isinstance(raw_choice, dict):
-                    continue
-                label = str(raw_choice.get("label") or "").strip().upper()
-                text = str(raw_choice.get("text") or "").strip()
-                if label and text:
-                    choices.append({"label": label, "text": text})
-            correct = str(submitted.get("correct") or "").strip().upper()
-            explanation = str(submitted.get("explanation") or "").strip()
-            feedback = submitted.get("feedback") if isinstance(submitted.get("feedback"), dict) else {}
-        else:
-            excluded = bool(request.form.get(f"delete_{idx}"))
-            question = (request.form.get(f"question_{idx}") or original.get("question") or "").strip()
-            choices = []
-            for choice in original.get("choices") or []:
-                label = str(choice.get("label") or "").strip().upper()
-                text = (request.form.get(f"choice_{idx}_{label}") or choice.get("text") or "").strip()
-                if label and text:
-                    choices.append({"label": label, "text": text})
-            correct = (request.form.get(f"correct_{idx}") or original.get("correct") or "").strip().upper()
-            explanation = (request.form.get(f"explanation_{idx}") or original.get("explanation") or "").strip()
-            feedback = original.get("choice_feedback") if isinstance(original.get("choice_feedback"), dict) else {}
-
-        labels = {c["label"] for c in choices}
-        valid = bool(question and len(choices) >= 2 and correct in labels)
-
-        # An active question must be structurally complete. Excluded questions are
-        # preserved exactly so the user never loses parsed source material.
-        if not excluded and not valid:
-            missing = []
-            if not question:
-                missing.append("question text")
-            if len(choices) < 2:
-                missing.append(f"answer choices ({len(choices)} detected/submitted)")
-            if not correct:
-                missing.append("correct answer")
-            elif correct not in labels:
-                missing.append(f"correct answer {correct} does not match submitted choices")
-            flash(
-                f"Question {original.get('number')} cannot be active in the bank: "
-                f"{', '.join(missing)}. Repair it or mark it for deletion/exclusion.",
-                "error",
-            )
-            return redirect(f"/pdf-import/review/{draft_id}")
-
-        feedback_parts = []
-        for c in choices:
-            fb = str((feedback or {}).get(c["label"]) or "").strip()
-            if fb:
-                feedback_parts.append(f"{c['label']}: {fb}")
-        stored_explanation = explanation
-        if feedback_parts:
-            stored_explanation = (
-                f"{stored_explanation}\n\nOther option notes: " + " | ".join(feedback_parts)
-            ).strip()
-
-        bank_questions.append({
-            "number": idx + 1,
-            "original_number": int(original.get("number") or idx + 1),
-            "question": question,
-            "choices": choices,
-            "correct": correct,
-            "explanation": stored_explanation,
-            "choice_feedback": feedback or {},
-            "pages": original.get("pages") or [],
-            "parser_status": original.get("status") or ("complete" if valid else "incomplete"),
-            "parser_issues": original.get("issues") or [],
-            "active": not excluded and valid,
-        })
-
-    if not bank_questions:
-        flash("No parsed questions were available to save.", "error")
-        return redirect(f"/pdf-import/review/{draft_id}")
-
-    bank_id = "pdfbank_" + secrets.token_urlsafe(9).replace("-", "").replace("_", "")[:14]
-    bank = {
-        "schema_version": 1,
-        "id": bank_id,
-        "title": bank_title,
-        "source_name": draft.get("source_name") or "PDF import",
-        "source_kind": "user-provided-pdf",
-        "redistribution_status": "not-cleared-for-redistribution",
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-        "default_exam_minutes": exam_minutes,
-        "page_count": draft.get("page_count") or 0,
-        "questions": bank_questions,
-        "used_question_numbers": [],
-        "generated_quizzes": [],
-    }
-    _save_pdf_question_bank(bank)
-
-    try:
-        os.remove(_pdf_import_draft_path(draft_id))
-    except OSError:
-        pass
-
-    active_count = len(_pdf_bank_active_questions(bank))
-    excluded_count = len(bank_questions) - active_count
-    flash(
-        f"Saved question bank '{bank_title}' with {active_count} active question(s)"
-        + (f" and {excluded_count} excluded source question(s)." if excluded_count else "."),
-        "success",
-    )
-    return redirect(f"/pdf-import/bank/{bank_id}")
-
-
-@app.route("/pdf-import/banks")
-def pdf_question_banks_page():
-    return redirect("/pdf-import")
-
-
-@app.route("/pdf-import/bank/<bank_id>")
-def pdf_question_bank_page(bank_id):
-    try:
-        bank = _load_pdf_question_bank(bank_id)
-    except Exception as exc:
-        print(f"[PDF QUESTION BANK LOAD ERROR] {type(exc).__name__}: {exc}")
-        flash("The selected PDF question bank could not be loaded.", "error")
-        return redirect("/pdf-import")
-
-    questions = bank.get("questions") or []
-    active = _pdf_bank_active_questions(bank)
-    excluded = [q for q in questions if isinstance(q, dict) and not q.get("active", True)]
-    used = {int(n) for n in (bank.get("used_question_numbers") or []) if str(n).isdigit()}
-    max_number = max(
-        [int(q.get("original_number") or q.get("number") or 0) for q in questions if isinstance(q, dict)] or [1]
-    )
-    default_count = min(50, len(active)) if active else 1
-
-    return render_template(
-        "pdf_import/question-bank.html", bank=bank, questions=questions, active=active, excluded=excluded,
-        used=used, default_count=default_count, max_number=max_number
-    )
-
-
-@app.route("/pdf-import/bank/<bank_id>/generate", methods=["POST"])
-def pdf_question_bank_generate(bank_id):
-    try:
-        bank = _load_pdf_question_bank(bank_id)
-        quiz_title = (request.form.get("quiz_title") or "").strip()
-        if not quiz_title:
-            raise ValueError("Quiz title is required.")
-        exam_minutes = normalize_exam_minutes(request.form.get("exam_minutes"))
-        mode = (request.form.get("selection_mode") or "random").strip().lower()
-        selected = _select_pdf_bank_questions(
-            bank,
-            mode=mode,
-            count=request.form.get("question_count") or 50,
-            start_number=request.form.get("start_number") or 1,
-            end_number=request.form.get("end_number"),
-        )
-
-        quiz_data = [
-            _pdf_bank_question_to_quiz(q, i, bank)
-            for i, q in enumerate(selected, 1)
-        ]
-        quiz_id, _ = _publish_quiz(
-            quiz_title,
-            quiz_data,
-            filename_prefix="pdf_bank",
-            exam_minutes=exam_minutes,
-        )
-
-        try:
-            selected_numbers = [
-                int(q.get("original_number") or q.get("number") or 0)
-                for q in selected
-            ]
-            used = {int(n) for n in (bank.get("used_question_numbers") or []) if str(n).isdigit()}
-            used.update(n for n in selected_numbers if n)
-            bank["used_question_numbers"] = sorted(used)
-            bank.setdefault("generated_quizzes", []).append({
-                "quiz_id": quiz_id,
-                "title": quiz_title,
-                "created_at": datetime.now().isoformat(timespec="seconds"),
-                "selection_mode": mode,
-                "question_count": len(selected),
-                "question_numbers": selected_numbers,
-            })
-            _save_pdf_question_bank(bank)
-        except Exception as exc:
-            print(f"[PDF QUIZ ACCOUNTING ERROR] Published quiz {quiz_id}: {type(exc).__name__}: {exc}")
-            flash("Quiz created, but source-bank usage tracking could not be updated.", "warning")
-
-        flash(
-            f"Created '{quiz_title}' with {len(selected)} question(s) from '{bank.get('title')}'. "
-            f"The source bank remains intact.",
-            "success",
-        )
-        return redirect(f"/edit_quiz/{quiz_id}")
-    except Exception as exc:
-        print(f"[PDF QUIZ GENERATION ERROR] {type(exc).__name__}: {exc}")
-        flash("Could not generate a quiz from the selected PDF question bank.", "error")
-        return redirect(f"/pdf-import/bank/{bank_id}")
-
-
-@app.route("/pdf-import/terms")
-def pdf_terminology_banks_page():
-    return redirect("/pdf-import")
-
-
-@app.route("/pdf-import/terms/<bank_id>")
-def pdf_terminology_bank_page(bank_id):
-    try:
-        bank = _load_pdf_terminology_bank(bank_id)
-    except Exception as exc:
-        print(f"[PDF TERMINOLOGY BANK LOAD ERROR] {type(exc).__name__}: {exc}")
-        flash("The selected PDF terminology bank could not be loaded.", "error")
-        return redirect("/pdf-import")
-
-    terms = bank.get("terms") or []
-    active = _pdf_term_bank_active_terms(bank)
-    excluded = [t for t in terms if isinstance(t, dict) and not t.get("active", True)]
-    used = {int(n) for n in (bank.get("used_term_numbers") or []) if str(n).isdigit()}
-    max_number = max([int(t.get("number") or 0) for t in terms if isinstance(t, dict)] or [1])
-    default_count = min(25, len(active)) if active else 1
-
-    return render_template("pdf_import/terminology-bank.html", bank=bank, terms=terms, active=active, excluded=excluded, used=used, max_number=max_number, default_count=default_count)
-
-
-@app.route("/pdf-import/terms/<bank_id>/generate", methods=["POST"])
-def pdf_terminology_bank_generate(bank_id):
-    try:
-        bank = _load_pdf_terminology_bank(bank_id)
-        quiz_title = (request.form.get("quiz_title") or "").strip()
-        if not quiz_title:
-            raise ValueError("Quiz title is required.")
-        exam_minutes = normalize_exam_minutes(request.form.get("exam_minutes"))
-        mode = (request.form.get("selection_mode") or "random").strip().lower()
-        practice_type = (request.form.get("practice_type") or "matching").strip().lower()
-        direction = (request.form.get("direction") or "random").strip().lower()
-
-        selected = _select_pdf_term_bank_items(
-            bank,
-            mode=mode,
-            count=request.form.get("term_count") or 25,
-            start_number=request.form.get("start_number") or 1,
-            end_number=request.form.get("end_number"),
-        )
-
-        if practice_type == "multiple_choice":
-            mc_direction = direction if direction in {"term_to_definition", "definition_to_term"} else "definition_to_term"
-            runtime, db_questions = _pdf_terms_mc_questions(bank, selected, mc_direction)
-        else:
-            runtime, db_questions = _pdf_terms_matching_questions(bank, selected, direction)
-
-        quiz_id, _ = _create_quiz_from_runtime(
-            quiz_title,
-            runtime,
-            db_questions,
-            filename_prefix="pdf_terms",
-            exam_minutes=exam_minutes,
-        )
-
-        try:
-            selected_numbers = [int(t.get("number") or 0) for t in selected]
-            used = {int(n) for n in (bank.get("used_term_numbers") or []) if str(n).isdigit()}
-            used.update(n for n in selected_numbers if n)
-            bank["used_term_numbers"] = sorted(used)
-            bank.setdefault("generated_quizzes", []).append({
-                "quiz_id": quiz_id,
-                "title": quiz_title,
-                "created_at": datetime.now().isoformat(timespec="seconds"),
-                "practice_type": practice_type,
-                "selection_mode": mode,
-                "direction": direction,
-                "term_count": len(selected),
-                "term_numbers": selected_numbers,
-            })
-            _save_pdf_terminology_bank(bank)
-        except Exception as exc:
-            print(f"[PDF TERMINOLOGY ACCOUNTING ERROR] Published quiz {quiz_id}: {type(exc).__name__}: {exc}")
-            flash("Practice quiz created, but source-bank usage tracking could not be updated.", "warning")
-
-        flash(
-            f"Created '{quiz_title}' from {len(selected)} terminology item(s). The source bank remains intact.",
-            "success",
-        )
-        return redirect(f"/edit_quiz/{quiz_id}")
-    except Exception as exc:
-        print(f"[PDF TERMINOLOGY GENERATION ERROR] {type(exc).__name__}: {exc}")
-        flash("Could not generate practice from the selected terminology bank.", "error")
-        return redirect(f"/pdf-import/terms/{bank_id}")
-
-
-
 
 # =========================================================
 # SMART SUGGESTIONS ENGINE — FINAL CONSOLIDATED
@@ -8178,6 +7419,38 @@ def resolve_logo_filename(logo_filename):
         return None
 
     return logo_filename
+
+
+app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(
+    pdf_import_max_bytes=lambda: PDF_IMPORT_MAX_BYTES,
+    upload_multipart_overhead_bytes=lambda: UPLOAD_MULTIPART_OVERHEAD_BYTES,
+    save_pdf_import_upload=lambda upload, draft_id: _save_pdf_import_upload(upload, draft_id),
+    remove_pdf_import_upload=lambda temp_pdf: _remove_pdf_import_upload(temp_pdf),
+    save_pdf_import_draft=lambda draft: _save_pdf_import_draft(draft),
+    load_pdf_import_draft=lambda draft_id: _load_pdf_import_draft(draft_id),
+    delete_pdf_import_draft=lambda draft_id: _delete_pdf_import_draft_file(draft_id),
+    list_pdf_question_banks=lambda: _list_pdf_question_banks(),
+    save_pdf_question_bank=lambda bank: _save_pdf_question_bank(bank),
+    load_pdf_question_bank=lambda bank_id: _load_pdf_question_bank(bank_id),
+    delete_pdf_question_bank=lambda bank_id: _delete_pdf_question_bank(bank_id),
+    list_pdf_terminology_banks=lambda: _list_pdf_terminology_banks(),
+    save_pdf_terminology_bank=lambda bank: _save_pdf_terminology_bank(bank),
+    load_pdf_terminology_bank=lambda bank_id: _load_pdf_terminology_bank(bank_id),
+    delete_pdf_terminology_bank=lambda bank_id: _delete_pdf_terminology_bank(bank_id),
+    extract_pdf_pages=lambda pdf_path: _pdf_extract_pages(pdf_path),
+    suppress_repeated_pdf_margins=lambda pages: _pdf_suppress_repeated_margins(pages),
+    parse_pdf_question_bank=lambda pages: _pdf_parse_question_bank(pages),
+    parse_pdf_glossary=lambda pages: _pdf_parse_glossary(pages),
+    detect_pdf_document_type=lambda *args, **kwargs: _pdf_detect_document_type(*args, **kwargs),
+    recover_pdf_questions=lambda pages: _pdf_question_recovery_result(pages),
+    recover_pdf_glossary=lambda pages: _pdf_glossary_recovery_result(pages),
+    add_pdf_question_review_slots=lambda question: _pdf_add_question_review_slots(question),
+    secure_filename=lambda filename: secure_filename(filename),
+    normalize_exam_minutes=lambda value: normalize_exam_minutes(value),
+    timestamp_now=lambda: datetime.now().isoformat(timespec="seconds"),
+    publish_quiz=lambda *args, **kwargs: _publish_quiz(*args, **kwargs),
+    create_quiz_from_runtime=lambda *args, **kwargs: _create_quiz_from_runtime(*args, **kwargs),
+)))
 
 
 app.register_blueprint(create_content_packs_blueprint(ContentPackRouteDependencies(
