@@ -3587,3 +3587,295 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
         "document.querySelector('[name=case_name]').value === '' && "
         "document.querySelector('[name=case_slug]').value === ''"
     ) is True
+
+
+def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    data_root = browser_stack.data_root
+
+    browser.navigate(f"{base_url}/pdf-import")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector('form[action=\"/pdf-import/analyze\"] input[name=csrf_token]')"
+    )
+    pdf_landing = browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/analyze\"]');"
+        "return {title:document.title,method:form.method,enctype:form.enctype,"
+        "file:form.querySelector('[name=pdf_file]').required,"
+        "rights:form.querySelector('[name=rights_ok]').required,"
+        "csrf:form.querySelector('[name=csrf_token]').value.length>0,"
+        "nav:document.querySelector('[data-nav-key=build]').getAttribute('aria-current')};})()"
+    )
+    assert pdf_landing == {
+        "title": "Smart PDF Import - DLMS",
+        "method": "post",
+        "enctype": "multipart/form-data",
+        "file": True,
+        "rights": True,
+        "csrf": True,
+        "nav": None,
+    }
+
+    review_root = data_root / "pdf_import_drafts"
+    review_root.mkdir(exist_ok=True)
+    hostile = 'Browser </textarea><img id="segment19Injected"> & Review'
+    question_draft = {
+        "id": "browser_question_review",
+        "source_name": hostile,
+        "page_count": 2,
+        "document_type": "question_bank",
+        "detection": {"recovery_mode": True},
+        "recovery_mode": True,
+        "quiz_title": hostile,
+        "exam_minutes": 45,
+        "summary": {"detected": 1, "complete": 0, "review": 1, "incomplete": 0},
+        "questions": [{
+            "number": 7,
+            "question": hostile,
+            "choices": [{"label": "A", "text": hostile}, {"label": "B", "text": "Safe"}],
+            "correct": "B",
+            "declared_answer_text": "Safe",
+            "explanation": hostile,
+            "choice_feedback": {"A": hostile},
+            "pages": [1, 2],
+            "status": "review",
+            "issues": [hostile],
+        }],
+    }
+    glossary_draft = {
+        "id": "browser_term_review",
+        "source_name": hostile,
+        "page_count": 1,
+        "document_type": "glossary",
+        "detection": {"recovery_mode": False},
+        "recovery_mode": False,
+        "quiz_title": hostile,
+        "exam_minutes": 30,
+        "summary": {"detected": 1, "complete": 1, "review": 0, "incomplete": 0},
+        "terms": [{
+            "number": 3,
+            "term": hostile,
+            "definition": hostile,
+            "pages": [1],
+            "status": "complete",
+            "issues": [],
+        }],
+    }
+    (review_root / "browser_question_review.json").write_text(
+        json.dumps(question_draft), encoding="utf-8"
+    )
+    (review_root / "browser_term_review.json").write_text(
+        json.dumps(glossary_draft), encoding="utf-8"
+    )
+
+    for draft_id, form_id, selector, live_id in (
+        ("browser_question_review", "pdfReviewForm", '[data-pdf-role="select"]', "pdfSelectionCount"),
+        ("browser_term_review", "pdfTermReviewForm", '[data-term-role="select"]', "pdfTermSelectionCount"),
+    ):
+        browser.navigate(f"{base_url}/pdf-import/review/{draft_id}")
+        browser.wait_for(
+            f"document.querySelector('#{form_id} input[name=csrf_token]') && "
+            f"document.querySelector({json.dumps(selector)})"
+        )
+        state = browser.evaluate(
+            f"(() => {{const form=document.getElementById('{form_id}');"
+            f"document.querySelector({json.dumps(selector)}).click();"
+            f"return {{method:form.method,action:form.getAttribute('action'),"
+            f"selected:document.getElementById('{live_id}').textContent,"
+            "csrf:form.querySelector('[name=csrf_token]').value.length>0,"
+            "injected:!!document.getElementById('segment19Injected')};})()"
+        )
+        assert state == {
+            "method": "post",
+            "action": f"/pdf-import/save/{draft_id}",
+            "selected": "1 selected",
+            "csrf": True,
+            "injected": False,
+        }
+
+    question_bank_root = data_root / "pdf_question_banks"
+    term_bank_root = data_root / "pdf_terminology_banks"
+    question_bank_root.mkdir(exist_ok=True)
+    term_bank_root.mkdir(exist_ok=True)
+    (question_bank_root / "browser_question_bank.json").write_text(
+        json.dumps({
+            "id": "browser_question_bank",
+            "title": hostile,
+            "source_name": hostile,
+            "default_exam_minutes": 60,
+            "used_question_numbers": [1],
+            "generated_quizzes": [{"quiz_id": 1}],
+            "questions": [
+                {"number": 1, "original_number": 1, "question": hostile, "active": True, "pages": [1]},
+                {"number": 2, "original_number": 2, "question": "Excluded", "active": False, "pages": [2]},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    (term_bank_root / "browser_term_bank.json").write_text(
+        json.dumps({
+            "id": "browser_term_bank",
+            "title": hostile,
+            "source_name": hostile,
+            "default_exam_minutes": 60,
+            "used_term_numbers": [1],
+            "generated_quizzes": [{"quiz_id": 1}],
+            "terms": [
+                {"number": 1, "term": hostile, "definition": hostile, "active": True, "pages": [1]},
+                {"number": 2, "term": "Excluded", "definition": "Preserved", "active": False, "pages": [2]},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    for url, action, count_name in (
+        ("/pdf-import/bank/browser_question_bank", "/pdf-import/bank/browser_question_bank/generate", "question_count"),
+        ("/pdf-import/terms/browser_term_bank", "/pdf-import/terms/browser_term_bank/generate", "term_count"),
+    ):
+        browser.navigate(f"{base_url}{url}")
+        browser.wait_for(f"document.querySelector('form[action=\"{action}\"] input[name=csrf_token]')")
+        bank_state = browser.evaluate(
+            f"(() => {{const form=document.querySelector('form[action=\"{action}\"]');"
+            f"return {{count:form.querySelector('[name={count_name}]').value,"
+            "csrf:form.querySelector('[name=csrf_token]').value.length>0,"
+            "excluded:document.body.textContent.includes('EXCLUDED'),"
+            "injected:!!document.getElementById('segment19Injected')};})()"
+        )
+        assert bank_state == {"count": "1", "csrf": True, "excluded": True, "injected": False}
+
+    browser.navigate(f"{base_url}/study-packs/ai-builder?domain=Medical&from=medical")
+    browser.wait_for(
+        "window.dlmsCsrfToken && document.querySelector('.medical-ai-builder-form input[name=csrf_token]')"
+    )
+    defaults = browser.evaluate(
+        "(() => {const form=document.querySelector('.medical-ai-builder-form');"
+        "return {domain:form.domain.value,difficulty:form.difficulty.value,"
+        "matching:form.include_matching.checked,images:form.include_images.checked,"
+        "multipleChoice:form.include_multiple_choice.checked,"
+        "noticeHidden:document.getElementById('medicalGuardrailNotice').classList.contains('is-hidden'),"
+        "back:document.querySelector('.medical-ai-action-row a').getAttribute('href')};})()"
+    )
+    assert defaults == {
+        "domain": "Medical",
+        "difficulty": "Foundational",
+        "matching": True,
+        "images": True,
+        "multipleChoice": False,
+        "noticeHidden": False,
+        "back": "/medical",
+    }
+    browser.evaluate(
+        "(() => {const form=document.querySelector('.medical-ai-builder-form');"
+        "form.topic.value='Browser Segment 19';form.requestSubmit();return true;})()"
+    )
+    browser.wait_for(
+        "document.getElementById('studyPrompt') && "
+        "document.querySelector('form[action=\"/study-packs/ai-builder/import\"] input[name=csrf_token]')"
+    )
+    ai_state = browser.evaluate(
+        "(() => {const prompt=document.getElementById('studyPrompt').value;"
+        "const upload=document.querySelector('form[action=\"/study-packs/ai-builder/import\"]');"
+        "return {topic:prompt.includes('Browser Segment 19'),medical:prompt.includes('MEDICAL-SPECIFIC SAFETY'),"
+        "zip:upload.querySelector('[name=pack_zip]').required,"
+        "csrf:upload.querySelector('[name=csrf_token]').value.length>0};})()"
+    )
+    assert ai_state == {"topic": True, "medical": True, "zip": True, "csrf": True}
+
+    image_path = data_root / "segment19-browser.png"
+    image_path.write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    ))
+    browser.navigate(f"{base_url}/study-packs/image-builder")
+    browser.wait_for(
+        "document.querySelector('.image-builder-upload-form input[name=csrf_token]') && "
+        "document.querySelector('[name=study_images]')"
+    )
+    browser.set_files("[name=study_images]", [image_path])
+    browser.click(".image-builder-upload-form button[type=submit]")
+    browser.wait_for("document.getElementById('builderForm') && typeof DRAFT === 'object'")
+    image_builder_state = browser.evaluate(
+        "(() => {const form=document.getElementById('builderForm');"
+        "return {action:form.getAttribute('action'),method:form.method,images:DRAFT.images.length,"
+        "payload:!!document.getElementById('builderPayload'),rights:form.rights_ok.required,"
+        "csrf:form.querySelector('[name=csrf_token]').value.length>0,questions:document.querySelectorAll('.image-builder-question-card').length};})()"
+    )
+    assert image_builder_state == {
+        "action": "/study-packs/image-builder/save",
+        "method": "post",
+        "images": 1,
+        "payload": True,
+        "rights": True,
+        "csrf": True,
+        "questions": 1,
+    }
+
+    pack_root = data_root / "content_packs" / "DLMS_Study_segment19_browser_editor"
+    (pack_root / "data").mkdir(parents=True)
+    (pack_root / "images").mkdir()
+    (pack_root / "images" / "diagram.png").write_bytes(image_path.read_bytes())
+    (pack_root / "manifest.json").write_text(json.dumps({
+        "schema_version": 1,
+        "id": "segment19_editor",
+        "name": "Segment 19 Editor",
+        "version": "1.0.0",
+        "content_domain": "Science",
+        "datasets": [],
+        "image_datasets": [{
+            "id": "visuals", "title": "Visuals", "type": "hotspot", "path": "data/visuals.json"
+        }],
+        "quiz_datasets": [],
+    }), encoding="utf-8")
+    editor_data_path = pack_root / "data" / "visuals.json"
+    editor_data_path.write_text(json.dumps({
+        "schema_version": 1,
+        "id": "visuals",
+        "title": "Segment 19 Visuals",
+        "source": {"organization": "DLMS Browser", "license": "CC0"},
+        "images": [{
+            "id": "diagram",
+            "file": "images/diagram.png",
+            "alt_text": "Segment 19 diagram",
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "edits": [],
+            "hotspots": [{
+                "id": "target", "label": "Target", "prompt": "Identify target.",
+                "shape": {"type": "circle", "x": .5, "y": .5, "radius": .1},
+            }],
+        }],
+    }), encoding="utf-8")
+    browser.navigate(
+        f"{base_url}/admin/image-editor?pack=segment19_editor&dataset=visuals&kind=hotspot"
+    )
+    browser.wait_for(
+        "window.dlmsCsrfToken && typeof EDITOR_DATA === 'object' && "
+        "EDITOR_DATA.images.length === 1 && document.getElementById('saveBtn')"
+    )
+    editor_state = browser.evaluate(
+        "(() => ({pack:EDITOR_DATA.pack_id,dataset:EDITOR_DATA.dataset_id,kind:EDITOR_DATA.dataset_kind,"
+        "status:document.getElementById('editorStatus').textContent,"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label')}))()"
+    )
+    assert editor_state == {
+        "pack": "segment19_editor",
+        "dataset": "visuals",
+        "kind": "hotspot",
+        "status": "Clickable-region mode.",
+        "menuLabel": "Toggle navigation",
+    }
+    browser.evaluate(
+        "window.confirm=()=>true;document.getElementById('saveBtn').click();true"
+    )
+    browser.wait_for("document.getElementById('editorStatus').textContent.includes('Saved Target')")
+    browser.evaluate(
+        "document.getElementById('prepModeBtn').click();"
+        "imageEdits=[{type:'mask',x:.1,y:.1,w:.2,h:.2,style:'blur'}];"
+        "document.getElementById('saveEditsBtn').click();true"
+    )
+    browser.wait_for("document.getElementById('editorStatus').textContent.includes('Image prep saved')")
+    saved_editor_data = json.loads(editor_data_path.read_text(encoding="utf-8"))
+    assert saved_editor_data["images"][0]["hotspots"][0]["shape"] == {
+        "type": "circle", "x": .5, "y": .5, "radius": .1
+    }
+    assert saved_editor_data["images"][0]["edits"] == [
+        {"type": "mask", "x": .1, "y": .1, "w": .2, "h": .2, "style": "blur"}
+    ]

@@ -1,0 +1,274 @@
+
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Smart PDF Import - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+<style>
+/* Smart PDF page-local containment. Keeps long text, form controls, and grids inside panels. */
+.pdf-import-page *,
+.pdf-import-page *::before,
+.pdf-import-page *::after { box-sizing: border-box; }
+
+.pdf-import-page .dashboard-main,
+.pdf-import-page .dashboard-header,
+.pdf-import-page .dashboard-panel,
+.pdf-import-page .pdf-import-intro,
+.pdf-import-page .pdf-bank-list-panel,
+.pdf-import-page .pdf-bank-generator,
+.pdf-import-page .pdf-bank-source-panel,
+.pdf-import-page .pdf-import-create-bar {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pdf-import-page .dashboard-header > div,
+.pdf-import-page .dashboard-header p,
+.pdf-import-page .pdf-bank-panel-heading,
+.pdf-import-page .pdf-bank-panel-heading > div,
+.pdf-import-page .pdf-bank-row > *,
+.pdf-import-page .pdf-bank-mode-help > *,
+.pdf-import-page .pdf-import-intro > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.pdf-import-page .pdf-import-upload-form,
+.pdf-import-page .pdf-bank-generator-form {
+    min-width: 0;
+    width: 100%;
+}
+
+.pdf-import-page .pdf-import-upload-form > *,
+.pdf-import-page .pdf-bank-generator-form > *,
+.pdf-import-page .build-field {
+    min-width: 0;
+}
+
+.pdf-import-page input[type="text"],
+.pdf-import-page input[type="number"],
+.pdf-import-page input[type="file"],
+.pdf-import-page select,
+.pdf-import-page textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.pdf-import-page input[type="file"] {
+    overflow: hidden;
+}
+
+.pdf-import-page .pdf-bank-row {
+    min-width: 0;
+}
+
+.pdf-import-page .pdf-bank-row > div:first-child strong,
+.pdf-import-page .pdf-bank-row > div:first-child small {
+    display: block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.pdf-import-page .pdf-bank-generator-form {
+    grid-template-columns: minmax(0, 2fr) minmax(120px, .7fr) minmax(180px, 1fr);
+}
+
+.pdf-import-page .pdf-bank-question-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.pdf-import-page .pdf-bank-question-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.pdf-import-page .pdf-bank-question-table th:nth-child(1),
+.pdf-import-page .pdf-bank-question-table td:nth-child(1) { width: 6%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(2),
+.pdf-import-page .pdf-bank-question-table td:nth-child(2) { width: 14%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(3),
+.pdf-import-page .pdf-bank-question-table td:nth-child(3) { width: 62%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(4),
+.pdf-import-page .pdf-bank-question-table td:nth-child(4) { width: 9%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(5),
+.pdf-import-page .pdf-bank-question-table td:nth-child(5) { width: 9%; }
+
+.pdf-import-page .pdf-bank-question-table td {
+    overflow-wrap: anywhere;
+    vertical-align: top;
+}
+
+.pdf-review-bulk-bar {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin:12px 0 16px;
+}
+.pdf-review-bulk-bar button {
+    width:auto;
+}
+.pdf-review-bulk-bar .pdf-review-danger-action {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:auto;
+    min-width:0;
+    min-height:36px;
+    padding:8px 13px;
+    border-radius:9px;
+    white-space:nowrap;
+    line-height:1.2;
+    color:#ff9ca5 !important;
+    background:rgba(96,15,28,.26) !important;
+    border:1px solid rgba(255,77,92,.40) !important;
+    box-shadow:none !important;
+}
+.pdf-review-bulk-status {
+    margin-left:auto;
+    color:#9eb3c8;
+    font-size:13px;
+}
+.pdf-review-select-toggle {
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    margin-right:12px;
+    color:#cbd9e7;
+    font-size:13px;
+}
+.pdf-review-select-toggle input {
+    width:auto;
+}
+
+@media (max-width: 1180px) {
+    .pdf-import-page .pdf-import-upload-form,
+    .pdf-import-page .pdf-bank-generator-form {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .pdf-import-page .pdf-import-upload-form .build-submit-row,
+    .pdf-import-page .pdf-import-upload-form .pdf-import-rights,
+    .pdf-import-page .pdf-bank-generator-form .build-submit-row {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 760px) {
+    .pdf-import-page .pdf-import-upload-form,
+    .pdf-import-page .pdf-bank-generator-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .pdf-import-page .pdf-import-upload-form .build-submit-row,
+    .pdf-import-page .pdf-import-upload-form .pdf-import-rights,
+    .pdf-import-page .pdf-bank-generator-form .build-submit-row {
+        grid-column: auto;
+    }
+    .pdf-import-page .pdf-bank-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+</style>
+</head>
+<body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+<div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav>
+<div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav>
+<div class="dashboard-sidebar-version">Smart PDF Import</div></aside>
+<main class="dashboard-main pdf-import-main">
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="pdf-import-flash-stack">
+{% for category, message in messages %}
+<div class="flash {{ category }}">{{ message }}</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT</div><h1>Import Study Content from PDF</h1><p>DLMS can recognize structured question banks or glossary/terminology material, parse the full source, and let you review it before generating manageable quizzes.</p></div></header>
+<section class="dashboard-panel pdf-import-intro"><div><span class="build-method-label">SAFE ADDITIVE WORKFLOW</span><h2>Your existing parsers are untouched</h2><p>This is a separate importer. The original text upload, paste parser, CSV matching importer, manual builder, and image builder continue to work exactly as before.</p></div>
+<div class="pdf-import-badges"><span>Question banks</span><span>Glossary / terminology</span><span>Automatic detection</span><span>Cross-page content</span><span>Inline repair</span></div></section>
+<section class="dashboard-panel">
+<form action="/pdf-import/analyze" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form">
+<label class="build-field"><span>PDF file</span><input type="file" name="pdf_file" accept=".pdf,application/pdf" required><small>Selectable-text PDFs work best. This preview does not perform OCR.</small></label>
+<label class="build-field"><span>Source bank title</span><input type="text" name="quiz_title" placeholder="Example: CISM Glossary or PenTest+ Practice"><small>You can change this again on the review screen.</small></label>
+<label class="build-field"><span>Content type</span><select name="pdf_content_type"><option value="auto">Auto-detect</option><option value="question_bank">Question bank</option><option value="glossary">Glossary / terminology</option></select><small>Choose manually if the PDF has an unusual layout.</small></label>
+<label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label>
+<label class="pdf-import-rights"><input type="checkbox" name="rights_ok" required><span>I have permission to use this document for my own study. DLMS will treat the imported material as user-provided and not cleared for redistribution.</span></label>
+<div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Quiz</a><button class="build-primary-button" type="submit">Analyze PDF</button></div>
+</form></section>
+<section class="dashboard-panel pdf-import-note"><strong>Current Smart PDF scope</strong><p>DLMS handles selectable-text multiple-choice question banks and glossary/terminology layouts. Ambiguous records are flagged for review instead of being guessed. OCR and arbitrary textbook/chapter interpretation are intentionally out of scope for this release candidate.</p></section>
+{% if banks or term_banks %}
+<div class="pdf-bank-toolbar">
+<div><strong>Saved PDF source banks</strong><span>Collapse large collections or enable management controls when you need them.</span></div>
+<div class="pdf-bank-toolbar-actions">
+<button type="button" class="pdf-bank-quiet-button" id="pdfExpandBanks">Expand All</button>
+<button type="button" class="pdf-bank-quiet-button" id="pdfCollapseBanks">Collapse All</button>
+<button type="button" class="pdf-bank-manage-button" id="pdfManageBanks" aria-pressed="false">Manage Banks</button>
+</div>
+</div>
+{% endif %}
+
+{% if banks %}
+<details class="dashboard-panel pdf-bank-list-panel pdf-bank-collapsible" data-pdf-bank-section>
+<summary class="pdf-bank-section-summary">
+<div class="pdf-bank-section-copy"><span class="build-method-label">SAVED SOURCE BANKS</span><h2>Question Banks</h2><p>Reviewed source questions remain available here. Generate manageable quizzes without re-parsing the PDF.</p></div>
+<div class="pdf-bank-section-meta"><span>{{ banks|length }} bank{% if banks|length != 1 %}s{% endif %}</span><span class="pdf-bank-chevron">›</span></div>
+</summary>
+<div class="pdf-bank-section-body">
+<div class="pdf-bank-list">
+{% for bank in banks %}
+<div class="pdf-bank-row">
+<a class="pdf-bank-row-main" href="/pdf-import/bank/{{ bank.id }}">
+<div><strong>{{ bank.title }}</strong><small>Question bank · {{ bank.source_name }}</small></div>
+<div class="pdf-bank-row-stats"><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
+<span class="pdf-bank-open">Open →</span>
+</a>
+<form class="pdf-bank-manage-action" method="POST" action="/pdf-import/bank/{{ bank.id }}/delete" onsubmit="return confirm('Delete source question bank “{{ bank.title|e }}”? Existing quizzes generated from it will remain available.');">
+<button class="pdf-bank-delete-button" type="submit">Delete</button>
+</form>
+</div>
+{% endfor %}
+</div>
+</div>
+</details>
+{% endif %}
+
+{% if term_banks %}
+<details class="dashboard-panel pdf-bank-list-panel pdf-bank-collapsible" data-pdf-bank-section>
+<summary class="pdf-bank-section-summary">
+<div class="pdf-bank-section-copy"><span class="build-method-label">SAVED TERMINOLOGY</span><h2>Terminology Banks</h2><p>Reviewed glossary terms can generate matching or multiple-choice practice without re-parsing the PDF.</p></div>
+<div class="pdf-bank-section-meta"><span>{{ term_banks|length }} bank{% if term_banks|length != 1 %}s{% endif %}</span><span class="pdf-bank-chevron">›</span></div>
+</summary>
+<div class="pdf-bank-section-body">
+<div class="pdf-bank-list">
+{% for bank in term_banks %}
+<div class="pdf-bank-row">
+<a class="pdf-bank-row-main" href="/pdf-import/terms/{{ bank.id }}">
+<div><strong>{{ bank.title }}</strong><small>Terminology bank · {{ bank.source_name }}</small></div>
+<div class="pdf-bank-row-stats"><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
+<span class="pdf-bank-open">Open →</span>
+</a>
+<form class="pdf-bank-manage-action" method="POST" action="/pdf-import/terms/{{ bank.id }}/delete" onsubmit="return confirm('Delete source terminology bank “{{ bank.title|e }}”? Existing quizzes generated from it will remain available.');">
+<button class="pdf-bank-delete-button" type="submit">Delete</button>
+</form>
+</div>
+{% endfor %}
+</div>
+</div>
+</details>
+{% endif %}
+</main></div>
+<script>
+document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
+const pdfBankSections=[...document.querySelectorAll("[data-pdf-bank-section]")];
+document.getElementById("pdfExpandBanks")?.addEventListener("click",()=>pdfBankSections.forEach(section=>section.open=true));
+document.getElementById("pdfCollapseBanks")?.addEventListener("click",()=>pdfBankSections.forEach(section=>section.open=false));
+document.getElementById("pdfManageBanks")?.addEventListener("click",event=>{
+    const enabled=document.body.classList.toggle("pdf-bank-manage-mode");
+    event.currentTarget.setAttribute("aria-pressed",enabled?"true":"false");
+    event.currentTarget.textContent=enabled?"Done Managing":"Manage Banks";
+});
+</script>
+<script src="/static/nav-normalize.js"></script></body></html>

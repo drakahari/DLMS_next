@@ -149,9 +149,11 @@ class BackupBrowserContentPolicyTests(unittest.TestCase):
                     self.assertEqual(url, json.loads(portal.read_text(encoding="utf-8"))["ai_custom_url"])
 
     def test_ai_launch_templates_serialize_valid_urls_as_javascript_data(self):
-        source = Path(dlms.__file__).read_text(encoding="utf-8")
+        study_pack_builder_source = (
+            Path(dlms.TEMPLATE_ROOT) / "study_packs" / "ai-builder.html"
+        ).read_text(encoding="utf-8")
         law_create_source = (Path(dlms.TEMPLATE_ROOT) / "law" / "create.html").read_text(encoding="utf-8")
-        self.assertIn("onclick='copyAndOpen({{ ai_url|tojson }})'", source)
+        self.assertIn("onclick='copyAndOpen({{ ai_url|tojson }})'", study_pack_builder_source)
         self.assertIn("onclick='copyPromptAndOpenAi({{ ai_provider_url|tojson }})'", law_create_source)
 
 

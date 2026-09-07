@@ -1,0 +1,231 @@
+
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Review PDF Import - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+<style>
+/* Smart PDF page-local containment. Keeps long text, form controls, and grids inside panels. */
+.pdf-import-page *,
+.pdf-import-page *::before,
+.pdf-import-page *::after { box-sizing: border-box; }
+
+.pdf-import-page .dashboard-main,
+.pdf-import-page .dashboard-header,
+.pdf-import-page .dashboard-panel,
+.pdf-import-page .pdf-import-intro,
+.pdf-import-page .pdf-bank-list-panel,
+.pdf-import-page .pdf-bank-generator,
+.pdf-import-page .pdf-bank-source-panel,
+.pdf-import-page .pdf-import-create-bar {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pdf-import-page .dashboard-header > div,
+.pdf-import-page .dashboard-header p,
+.pdf-import-page .pdf-bank-panel-heading,
+.pdf-import-page .pdf-bank-panel-heading > div,
+.pdf-import-page .pdf-bank-row > *,
+.pdf-import-page .pdf-bank-mode-help > *,
+.pdf-import-page .pdf-import-intro > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.pdf-import-page .pdf-import-upload-form,
+.pdf-import-page .pdf-bank-generator-form {
+    min-width: 0;
+    width: 100%;
+}
+
+.pdf-import-page .pdf-import-upload-form > *,
+.pdf-import-page .pdf-bank-generator-form > *,
+.pdf-import-page .build-field {
+    min-width: 0;
+}
+
+.pdf-import-page input[type="text"],
+.pdf-import-page input[type="number"],
+.pdf-import-page input[type="file"],
+.pdf-import-page select,
+.pdf-import-page textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.pdf-import-page input[type="file"] {
+    overflow: hidden;
+}
+
+.pdf-import-page .pdf-bank-row {
+    min-width: 0;
+}
+
+.pdf-import-page .pdf-bank-row > div:first-child strong,
+.pdf-import-page .pdf-bank-row > div:first-child small {
+    display: block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.pdf-import-page .pdf-bank-generator-form {
+    grid-template-columns: minmax(0, 2fr) minmax(120px, .7fr) minmax(180px, 1fr);
+}
+
+.pdf-import-page .pdf-bank-question-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.pdf-import-page .pdf-bank-question-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.pdf-import-page .pdf-bank-question-table th:nth-child(1),
+.pdf-import-page .pdf-bank-question-table td:nth-child(1) { width: 6%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(2),
+.pdf-import-page .pdf-bank-question-table td:nth-child(2) { width: 14%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(3),
+.pdf-import-page .pdf-bank-question-table td:nth-child(3) { width: 62%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(4),
+.pdf-import-page .pdf-bank-question-table td:nth-child(4) { width: 9%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(5),
+.pdf-import-page .pdf-bank-question-table td:nth-child(5) { width: 9%; }
+
+.pdf-import-page .pdf-bank-question-table td {
+    overflow-wrap: anywhere;
+    vertical-align: top;
+}
+
+@media (max-width: 1180px) {
+    .pdf-import-page .pdf-import-upload-form,
+    .pdf-import-page .pdf-bank-generator-form {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .pdf-import-page .pdf-import-upload-form .build-submit-row,
+    .pdf-import-page .pdf-import-upload-form .pdf-import-rights,
+    .pdf-import-page .pdf-bank-generator-form .build-submit-row {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 760px) {
+    .pdf-import-page .pdf-import-upload-form,
+    .pdf-import-page .pdf-bank-generator-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .pdf-import-page .pdf-import-upload-form .build-submit-row,
+    .pdf-import-page .pdf-import-upload-form .pdf-import-rights,
+    .pdf-import-page .pdf-bank-generator-form .build-submit-row {
+        grid-column: auto;
+    }
+    .pdf-import-page .pdf-bank-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+</style>
+</head>
+<body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">PDF Review</div></aside>
+<main class="dashboard-main pdf-import-main">
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="pdf-import-flash-stack">
+{% for category, message in messages %}
+<div class="flash {{ category }}">{{ message }}</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · REVIEW</div><h1>Review &amp; Repair</h1><p>{{ draft.source_name }} · {{ draft.page_count }} page{% if draft.page_count != 1 %}s{% endif %}. {% if draft.recovery_mode or draft.detection.recovery_mode %}Automatic parsing confidence was low, so DLMS preserved recoverable text and editable fields for manual reconstruction. Verify each kept record carefully.{% else %}DLMS parsed the full source. Repair anything misread or exclude unusable questions, then save the reusable question bank.{% endif %}</p></div></header>
+<section class="pdf-import-summary-grid">
+<article class="dashboard-stat-card"><span>Detected</span><strong>{{ draft.summary.detected }}</strong><small>questions</small></article>
+<article class="dashboard-stat-card"><span>Complete</span><strong>{{ draft.summary.complete }}</strong><small>ready</small></article>
+<article class="dashboard-stat-card"><span>Review</span><strong>{{ draft.summary.review }}</strong><small>needs attention</small></article>
+<article class="dashboard-stat-card"><span>Incomplete</span><strong>{{ draft.summary.incomplete }}</strong><small>repair or remove</small></article>
+</section>
+<div class="pdf-import-filter-row"><button type="button" data-filter="all" class="active">All</button><button type="button" data-filter="complete">Complete</button><button type="button" data-filter="review">Needs Review</button><button type="button" data-filter="incomplete">Incomplete</button></div>
+<details class="pdf-review-bulk-help">
+<summary>How filters and bulk actions work</summary>
+<div class="pdf-review-bulk-help-body">
+<p>Filters change which question cards are visible. <strong>Select All Visible</strong> selects only cards in the current filtered view; selections remain when you switch filters. <strong>Clear Selection</strong> clears selections across every filter.</p>
+<p><strong>Mark Selected for Deletion</strong> turns on each selected card's Delete question setting. <strong>Keep Selected</strong> turns it back off. Nothing is committed until you choose <strong>Save Reviewed Question Bank</strong>.</p>
+</div>
+</details>
+<div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk question actions"><div class="pdf-review-bulk-actions"><button type="button" class="build-secondary-link" id="pdfSelectAllVisible">Select All Visible</button><button type="button" class="build-secondary-link" id="pdfClearSelection">Clear Selection</button><button type="button" class="build-secondary-link pdf-review-danger-action" id="pdfDeleteSelected">Mark Selected for Deletion</button><button type="button" class="build-secondary-link" id="pdfKeepSelected">Keep Selected</button></div><span class="pdf-review-bulk-status" id="pdfSelectionCount" aria-live="polite">0 selected</span></div>
+<form method="POST" action="/pdf-import/save/{{ draft.id }}" id="pdfReviewForm">
+<input type="hidden" name="review_payload" id="pdfReviewPayload" value="">
+<section class="dashboard-panel pdf-import-finalize"><div class="build-two-column-fields"><label class="build-field"><span>Question bank title</span><input name="quiz_title" value="{{ draft.quiz_title }}" required form="pdfReviewForm"></label><label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ draft.exam_minutes }}" form="pdfReviewForm"></label></div><div class="pdf-import-source-note">Source: user-provided PDF · redistribution status: not cleared for redistribution</div></section>
+<div class="pdf-import-question-list">
+{% for q in draft.questions %}
+<article class="dashboard-panel pdf-import-question-card status-{{ q.status }}" data-status="{{ q.status }}" data-question-index="{{ loop.index0 }}" data-question-number="{{ q.number }}">
+<div class="pdf-import-question-head"><div><label class="pdf-review-select-toggle"><input type="checkbox" data-pdf-role="select"><span>Select</span></label><span class="pdf-status {{ q.status }}">{{ q.status|replace("_"," ")|upper }}</span><strong>Question {{ q.number }}</strong><small>PDF page{% if q.pages|length != 1 %}s{% endif %} {{ q.pages|join(", ") }}</small></div><label class="pdf-delete-toggle"><input type="checkbox" name="delete_{{ loop.index0 }}" value="1" form="pdfReviewForm" data-pdf-role="delete"><span>Delete question</span></label></div>
+{% if q.issues %}<div class="pdf-import-issues">{% for issue in q.issues %}<div>⚠ {{ issue }}</div>{% endfor %}</div>{% endif %}
+<input type="hidden" name="original_number_{{ loop.index0 }}" value="{{ q.number }}" form="pdfReviewForm">
+<label class="build-field"><span>Question text</span><textarea name="question_{{ loop.index0 }}" rows="4" form="pdfReviewForm" data-pdf-role="question">{{ q.question }}</textarea></label>
+<div class="pdf-import-choice-grid">
+{% for choice in q.choices %}
+<label class="build-field pdf-choice-field"><span>{{ choice.label }}{% if choice.label == q.correct %} · detected correct{% endif %}</span><input name="choice_{{ loop.index0 }}_{{ choice.label }}" value="{{ choice.text }}" form="pdfReviewForm" data-pdf-role="choice" data-choice-label="{{ choice.label }}"></label>
+{% endfor %}
+</div>
+<div class="build-two-column-fields">
+<label class="build-field"><span>Correct answer</span><select name="correct_{{ loop.index0 }}" form="pdfReviewForm" data-pdf-role="correct"><option value="" {% if not q.correct %}selected{% endif %}>Choose a correct answer</option>{% for choice in q.choices %}<option value="{{ choice.label }}" {% if choice.label == q.correct %}selected{% endif %}>{{ choice.label }} — {{ choice.text }}</option>{% endfor %}</select></label>
+<label class="build-field"><span>Detected answer text</span><input value="{{ q.declared_answer_text }}" readonly></label>
+</div>
+<label class="build-field"><span>Study Mode explanation</span><textarea name="explanation_{{ loop.index0 }}" rows="4" form="pdfReviewForm" data-pdf-role="explanation">{{ q.explanation }}</textarea></label>
+{% if q.choice_feedback %}<details class="pdf-feedback-details"><summary>Detected incorrect-choice explanations</summary><div class="pdf-feedback-grid">{% for label, text in q.choice_feedback.items() %}<label class="build-field"><span>{{ label }} feedback</span><textarea name="feedback_{{ loop.index0 }}_{{ label }}" rows="2" form="pdfReviewForm" data-pdf-role="feedback" data-choice-label="{{ label }}">{{ text }}</textarea></label>{% endfor %}</div></details>{% endif %}
+</article>
+{% endfor %}
+</div>
+<section class="dashboard-panel pdf-import-create-bar"><div><strong>Save the complete reviewed source bank.</strong><span>Questions marked Delete are preserved in the bank as excluded, not used for generated quizzes. You can later generate random, sequential, range-based, or unused-question quizzes of any manageable size.</span></div><div class="build-submit-row"><a class="build-secondary-link" href="/pdf-import">Start Over</a><button class="build-primary-button" type="submit" form="pdfReviewForm">Save Reviewed Question Bank</button></div></section>
+</form></main></div>
+<script>
+document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
+const pdfQuestionCards=[...document.querySelectorAll(".pdf-import-question-card")];
+const pdfSelectionCount=document.getElementById("pdfSelectionCount");
+function pdfUpdateSelectionCount(){
+ const selected=pdfQuestionCards.filter(card=>card.querySelector('[data-pdf-role="select"]')?.checked).length;
+ if(pdfSelectionCount) pdfSelectionCount.textContent=`${selected} selected`;
+}
+function pdfSelectedCards(){return pdfQuestionCards.filter(card=>card.querySelector('[data-pdf-role="select"]')?.checked);}
+document.querySelectorAll(".pdf-import-filter-row button").forEach(btn=>btn.addEventListener("click",()=>{
+ document.querySelectorAll(".pdf-import-filter-row button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");
+ const f=btn.dataset.filter;pdfQuestionCards.forEach(card=>card.hidden=f!=="all"&&card.dataset.status!==f);
+}));
+pdfQuestionCards.forEach(card=>card.querySelector('[data-pdf-role="select"]')?.addEventListener("change",pdfUpdateSelectionCount));
+document.getElementById("pdfSelectAllVisible")?.addEventListener("click",()=>{pdfQuestionCards.filter(card=>!card.hidden).forEach(card=>{const box=card.querySelector('[data-pdf-role="select"]');if(box) box.checked=true;});pdfUpdateSelectionCount();});
+document.getElementById("pdfClearSelection")?.addEventListener("click",()=>{pdfQuestionCards.forEach(card=>{const box=card.querySelector('[data-pdf-role="select"]');if(box) box.checked=false;});pdfUpdateSelectionCount();});
+document.getElementById("pdfDeleteSelected")?.addEventListener("click",()=>{const cards=pdfSelectedCards();if(!cards.length)return;if(!confirm(`Mark ${cards.length} selected question(s) for deletion/exclusion?`))return;cards.forEach(card=>{const box=card.querySelector('[data-pdf-role="delete"]');if(box) box.checked=true;});});
+document.getElementById("pdfKeepSelected")?.addEventListener("click",()=>{pdfSelectedCards().forEach(card=>{const box=card.querySelector('[data-pdf-role="delete"]');if(box) box.checked=false;});});
+pdfUpdateSelectionCount();
+const pdfReviewForm=document.getElementById("pdfReviewForm");
+if(pdfReviewForm){
+ pdfReviewForm.addEventListener("submit",()=>{
+  const payload=[];
+  document.querySelectorAll(".pdf-import-question-card").forEach(card=>{
+   const choices=[];
+   card.querySelectorAll('[data-pdf-role="choice"]').forEach(input=>{
+    choices.push({label:input.dataset.choiceLabel||"",text:input.value||""});
+   });
+   const feedback={};
+   card.querySelectorAll('[data-pdf-role="feedback"]').forEach(input=>{
+    feedback[input.dataset.choiceLabel||""]=input.value||"";
+   });
+   payload.push({
+    index:Number(card.dataset.questionIndex||0),
+    number:Number(card.dataset.questionNumber||0),
+    delete:!!card.querySelector('[data-pdf-role="delete"]')?.checked,
+    question:card.querySelector('[data-pdf-role="question"]')?.value||"",
+    choices,
+    correct:card.querySelector('[data-pdf-role="correct"]')?.value||"",
+    explanation:card.querySelector('[data-pdf-role="explanation"]')?.value||"",
+    feedback
+   });
+  });
+  const hidden=document.getElementById("pdfReviewPayload");
+  if(hidden) hidden.value=JSON.stringify(payload);
+ });
+}
+</script><script src="/static/nav-normalize.js"></script></body></html>

@@ -1,0 +1,120 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AI Study Pack Builder - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home medical-ai-builder-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand"><div class="dashboard-brand-mark">AI</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+    <nav class="dashboard-nav">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+        <a class="dashboard-nav-item active" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        {% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}
+        <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">AI Study Pack Builder</div>
+</aside>
+
+<main class="dashboard-main medical-main">
+    <header class="dashboard-header">
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <div>
+            <div class="medical-eyebrow">ANY SUBJECT · CUSTOM CONTENT</div>
+            <h1>AI Study Pack Builder</h1>
+            <p>One domain-aware builder creates controlled DLMS-ready content-pack prompts for medical, IT, science, history, and other study subjects.</p>
+        </div>
+    </header>
+
+    <ol class="study-pack-workflow-steps" aria-label="AI Study Pack workflow">
+        <li class="{{ 'is-complete' if generated_prompt else 'is-current' }}">Configure</li><li class="{{ 'is-current' if generated_prompt else '' }}">Generate Prompt</li><li>Bring Back ZIP</li><li>Validate</li><li>Install</li><li>Study</li>
+    </ol>
+
+    <section class="dashboard-panel medical-ai-builder-panel">
+        <form method="POST" class="medical-ai-builder-form">
+            <input type="hidden" name="from_section" value="{{ from_section }}">
+            <label class="medical-ai-topic-field">
+                <span>What do you want to study?</span>
+                <input type="text" name="topic" value="{{ topic }}" required placeholder="Examples: AWS networking, cranial nerves, Linux permissions, cellular biology">
+            </label>
+
+            <div class="study-ai-grid">
+                <label><span>Subject / Domain</span>
+                    <select name="domain" id="studyDomain">
+                    {% for x in domains %}<option {% if domain==x %}selected{% endif %}>{{ x }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label><span>Difficulty</span><select name="difficulty">{% for x in ['Foundational','Intermediate','Comprehensive'] %}<option {% if difficulty==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+                <label><span>Pack Size</span><select name="size">{% for x in ['Compact','Standard','Large'] %}<option {% if size==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+                <label><span>Images Requested</span><select name="image_count">{% for x in ['None','1','2–3','4–6'] %}<option {% if image_count==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+                <label><span>Image Style</span><select name="image_style">{% for x in ['Real / photographic','Diagram / schematic','Drawn educational illustration','Mixed'] %}<option {% if image_style==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+                <label><span>AI Provider</span><select name="ai_provider"><option value="chatgpt" {% if ai_provider=='chatgpt' %}selected{% endif %}>ChatGPT</option><option value="claude" {% if ai_provider=='claude' %}selected{% endif %}>Claude</option><option value="gemini" {% if ai_provider=='gemini' %}selected{% endif %}>Gemini</option><option value="local" {% if ai_provider=='local' %}selected{% endif %}>Local / Custom</option></select></label>
+            </div>
+
+            <div id="medicalGuardrailNotice" class="study-ai-domain-notice {% if domain != 'Medical' %}is-hidden{% endif %}">
+                <strong>Medical safeguards enabled</strong>
+                <span>Medical selections automatically add stricter source, licensing, provenance, and non-synthetic-image requirements to the prompt.</span>
+            </div>
+
+            <div class="medical-ai-option-grid">
+                <label class="medical-ai-option-card"><input type="checkbox" name="include_matching" {% if include_matching %}checked{% endif %}><div><strong>Matching / Terminology</strong><span>Create source-supported matching datasets with Study Mode explanations.</span></div></label>
+                <label class="medical-ai-option-card"><input type="checkbox" name="include_multiple_choice" {% if include_multiple_choice %}checked{% endif %}><div><strong>Multiple-Choice Questions</strong><span>Create source-supported single-select questions with DLMS-assigned A–Z labels.</span></div></label>
+                <label class="medical-ai-option-card"><input type="checkbox" name="include_images" {% if include_images %}checked{% endif %}><div><strong>Images / Diagrams</strong><span>Create one or multiple image-based hotspot datasets when useful.</span></div></label>
+            </div>
+
+            <div class="medical-ai-action-row">
+                <button class="medical-primary-button" type="submit">Generate AI Prompt</button>
+                <a class="medical-ai-quiet-link" href="{{ back_url }}">← Back to {{ back_label }}</a>
+            </div>
+        </form>
+    </section>
+
+    {% if generated_prompt %}
+    <section class="dashboard-panel medical-ai-prompt-panel">
+        <div class="medical-ai-builder-heading">
+            <div><span class="medical-eyebrow">GENERATED PROMPT</span><h2>Ready for {{ ai_provider|capitalize }}</h2><p>Edit if desired, then copy it to your AI provider.</p></div>
+            <span class="medical-ai-safety-pill">{{ 'Medical guardrails' if domain == 'Medical' else 'Source-first' }}</span>
+        </div>
+        <textarea id="studyPrompt" class="medical-ai-prompt-box" rows="30">{{ generated_prompt }}</textarea>
+        <div class="medical-ai-action-row">
+            {% if ai_url %}<button type="button" class="medical-primary-button" onclick='copyAndOpen({{ ai_url|tojson }})'>Copy Prompt &amp; Open AI</button>{% endif %}
+            <button type="button" class="medical-ai-secondary-button" onclick="copyPrompt()">Copy Prompt</button>
+        </div>
+    </section>
+
+    {% if topic %}
+    <section class="dashboard-panel study-pack-builder-return-panel">
+        <div class="medical-ai-builder-heading">
+            <div><span class="medical-eyebrow">STEP 3 · BRING BACK ZIP</span><h2>Bring Back Study Pack ZIP</h2><p>Upload the completed DLMS Study Pack ZIP from your AI provider. DLMS will stage and independently validate it before installation.</p></div>
+            <span class="medical-ai-safety-pill">ZIP required</span>
+        </div>
+        <form method="POST" action="/study-packs/ai-builder/import" enctype="multipart/form-data" class="content-pack-upload-form study-pack-builder-return-form">
+            <label class="build-field"><span>Completed Study Pack ZIP</span><input type="file" name="pack_zip" accept=".zip,application/zip" required><small>One top-level Study Pack folder with manifest.json. Text-only AI responses are not installable until packaged with their required files and assets.</small></label>
+            <button class="medical-primary-button" type="submit">Validate Study Pack ZIP</button>
+        </form>
+    </section>
+    {% endif %}
+    {% endif %}
+</main>
+</div>
+
+<script>
+function box(){return document.getElementById('studyPrompt')}
+function selectP(){const b=box();if(!b)return null;b.focus();b.select();b.setSelectionRange(0,b.value.length);return b}
+function copyPrompt(show=true){const b=selectP();if(!b)return false;let ok=false;try{ok=document.execCommand('copy')}catch(e){}if(show)alert(ok?'Prompt copied.':'Prompt selected; press Ctrl+C.');return ok}
+function copyAndOpen(u){copyPrompt(false);window.open(u,'_blank','noopener,noreferrer')}
+document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));
+document.getElementById('studyDomain')?.addEventListener('change', (event) => {
+    document.getElementById('medicalGuardrailNotice')?.classList.toggle('is-hidden', event.target.value !== 'Medical');
+});
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

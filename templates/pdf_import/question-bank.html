@@ -1,0 +1,185 @@
+
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PDF Question Bank - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+<style>
+/* Smart PDF page-local containment. Keeps long text, form controls, and grids inside panels. */
+.pdf-import-page *,
+.pdf-import-page *::before,
+.pdf-import-page *::after { box-sizing: border-box; }
+
+.pdf-import-page .dashboard-main,
+.pdf-import-page .dashboard-header,
+.pdf-import-page .dashboard-panel,
+.pdf-import-page .pdf-import-intro,
+.pdf-import-page .pdf-bank-list-panel,
+.pdf-import-page .pdf-bank-generator,
+.pdf-import-page .pdf-bank-source-panel,
+.pdf-import-page .pdf-import-create-bar {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pdf-import-page .dashboard-header > div,
+.pdf-import-page .dashboard-header p,
+.pdf-import-page .pdf-bank-panel-heading,
+.pdf-import-page .pdf-bank-panel-heading > div,
+.pdf-import-page .pdf-bank-row > *,
+.pdf-import-page .pdf-bank-mode-help > *,
+.pdf-import-page .pdf-import-intro > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.pdf-import-page .pdf-import-upload-form,
+.pdf-import-page .pdf-bank-generator-form {
+    min-width: 0;
+    width: 100%;
+}
+
+.pdf-import-page .pdf-import-upload-form > *,
+.pdf-import-page .pdf-bank-generator-form > *,
+.pdf-import-page .build-field {
+    min-width: 0;
+}
+
+.pdf-import-page input[type="text"],
+.pdf-import-page input[type="number"],
+.pdf-import-page input[type="file"],
+.pdf-import-page select,
+.pdf-import-page textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.pdf-import-page input[type="file"] {
+    overflow: hidden;
+}
+
+.pdf-import-page .pdf-bank-row {
+    min-width: 0;
+}
+
+.pdf-import-page .pdf-bank-row > div:first-child strong,
+.pdf-import-page .pdf-bank-row > div:first-child small {
+    display: block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.pdf-import-page .pdf-bank-generator-form {
+    grid-template-columns: minmax(0, 2fr) minmax(120px, .7fr) minmax(180px, 1fr);
+}
+
+.pdf-import-page .pdf-bank-question-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.pdf-import-page .pdf-bank-question-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.pdf-import-page .pdf-bank-question-table th:nth-child(1),
+.pdf-import-page .pdf-bank-question-table td:nth-child(1) { width: 6%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(2),
+.pdf-import-page .pdf-bank-question-table td:nth-child(2) { width: 14%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(3),
+.pdf-import-page .pdf-bank-question-table td:nth-child(3) { width: 62%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(4),
+.pdf-import-page .pdf-bank-question-table td:nth-child(4) { width: 9%; }
+.pdf-import-page .pdf-bank-question-table th:nth-child(5),
+.pdf-import-page .pdf-bank-question-table td:nth-child(5) { width: 9%; }
+
+.pdf-import-page .pdf-bank-question-table td {
+    overflow-wrap: anywhere;
+    vertical-align: top;
+}
+
+@media (max-width: 1180px) {
+    .pdf-import-page .pdf-import-upload-form,
+    .pdf-import-page .pdf-bank-generator-form {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .pdf-import-page .pdf-import-upload-form .build-submit-row,
+    .pdf-import-page .pdf-import-upload-form .pdf-import-rights,
+    .pdf-import-page .pdf-bank-generator-form .build-submit-row {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 760px) {
+    .pdf-import-page .pdf-import-upload-form,
+    .pdf-import-page .pdf-bank-generator-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .pdf-import-page .pdf-import-upload-form .build-submit-row,
+    .pdf-import-page .pdf-import-upload-form .pdf-import-rights,
+    .pdf-import-page .pdf-bank-generator-form .build-submit-row {
+        grid-column: auto;
+    }
+    .pdf-import-page .pdf-bank-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+</style>
+</head>
+<body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav><div class="dashboard-sidebar-version">PDF Question Bank</div></aside>
+<main class="dashboard-main pdf-import-main">
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="pdf-import-flash-stack">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">PDF QUESTION BANK</div><h1>{{ bank.title }}</h1><p>{{ bank.source_name }} · All parsed source questions are retained. Generate as many manageable quizzes as you want without re-importing the PDF.</p></div></header>
+<section class="pdf-import-summary-grid">
+<article class="dashboard-stat-card"><span>Parsed</span><strong>{{ questions|length }}</strong><small>source questions</small></article>
+<article class="dashboard-stat-card"><span>Active</span><strong>{{ active|length }}</strong><small>available</small></article>
+<article class="dashboard-stat-card"><span>Used</span><strong>{{ used|length }}</strong><small>unique questions</small></article>
+<article class="dashboard-stat-card"><span>Generated</span><strong>{{ bank.generated_quizzes|length }}</strong><small>quizzes</small></article>
+</section>
+
+<section class="dashboard-panel pdf-bank-generator">
+<div class="pdf-bank-panel-heading"><div><span class="build-method-label">GENERATE PRACTICE</span><h2>Create Quiz from Question Bank</h2><p>The bank stays intact. Only the selected questions are copied into the generated quiz.</p></div></div>
+<form method="POST" action="/pdf-import/bank/{{ bank.id }}/generate" class="pdf-bank-generator-form">
+<label class="build-field"><span>Quiz title</span><input type="text" name="quiz_title" value="{{ bank.title }} — Practice" required></label>
+<label class="build-field"><span>Question count</span><input type="number" name="question_count" min="1" max="{{ active|length }}" value="{{ default_count }}" required></label>
+<label class="build-field"><span>Selection</span><select name="selection_mode" id="pdfBankSelection">
+<option value="random">Random questions</option>
+<option value="unused">Random unused questions</option>
+<option value="sequential">Sequential from question number</option>
+<option value="range">Specific question range</option>
+<option value="all">All active questions</option>
+</select></label>
+<label class="build-field pdf-bank-start"><span>Start question #</span><input type="number" name="start_number" min="1" max="{{ max_number }}" value="1"></label>
+<label class="build-field pdf-bank-end"><span>End question #</span><input type="number" name="end_number" min="1" max="{{ max_number }}" value="{{ [50,max_number]|min }}"></label>
+<label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ bank.default_exam_minutes or 90 }}"></label>
+<div class="build-submit-row"><a class="build-secondary-link" href="/pdf-import">All PDF Banks</a><button class="build-primary-button" type="submit">Create Quiz</button></div>
+</form>
+<div class="pdf-bank-mode-help">
+<strong>Selection behavior</strong>
+<span><b>Random:</b> any active questions.</span>
+<span><b>Unused:</b> only questions never used by this bank before.</span>
+<span><b>Sequential:</b> starts at the question number you choose and takes the requested count.</span>
+<span><b>Range:</b> includes all active source questions in the selected number range.</span>
+</div>
+</section>
+
+<section class="dashboard-panel pdf-bank-source-panel">
+<div class="pdf-bank-panel-heading"><div><span class="build-method-label">SOURCE INVENTORY</span><h2>Parsed Questions</h2><p>{{ active|length }} active · {{ excluded|length }} excluded but preserved</p></div></div>
+<div class="pdf-bank-question-table-wrap"><table class="study-dataset-table pdf-bank-question-table"><thead><tr><th>#</th><th>Status</th><th>Question</th><th>Used</th><th>Page</th></tr></thead><tbody>
+{% for q in questions %}
+<tr class="{% if not q.active %}pdf-bank-excluded-row{% endif %}">
+<td>{{ q.original_number }}</td>
+<td>{% if q.active %}<span class="pdf-status complete">ACTIVE</span>{% else %}<span class="pdf-status incomplete">EXCLUDED</span>{% endif %}</td>
+<td>{{ q.question or "(source question incomplete)" }}</td>
+<td>{% if q.original_number in used %}Yes{% else %}No{% endif %}</td>
+<td>{{ q.pages|join(", ") }}</td>
+</tr>
+{% endfor %}
+</tbody></table></div>
+</section>
+</main></div>
+<script>
+document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
+</script><script src="/static/nav-normalize.js"></script></body></html>

@@ -274,8 +274,11 @@ class NavigationLayoutTests(unittest.TestCase):
         )
 
     def test_image_editor_context_link_uses_system_tools(self):
-        self.assertIn("← System Tools", dlms.HOTSPOT_EDITOR_TEMPLATE)
-        self.assertNotIn("← Back to Maintenance", dlms.HOTSPOT_EDITOR_TEMPLATE)
+        image_editor_template = Path(
+            dlms.TEMPLATE_ROOT, "admin", "image-editor.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("← System Tools", image_editor_template)
+        self.assertNotIn("← Back to Maintenance", image_editor_template)
 
     def test_medical_empty_state_uses_dedicated_semantic_spacing_rules(self):
         with mock.patch.object(dlms, "_medical_pack_page_data", return_value=(None, [], [])):

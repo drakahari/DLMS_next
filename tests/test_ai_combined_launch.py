@@ -18,6 +18,9 @@ class AICombinedLaunchTests(unittest.TestCase):
         cls.review_source = (ROOT / "static" / "review.html").read_text(encoding="utf-8")
         cls.study_source = (ROOT / "static" / "script.js").read_text(encoding="utf-8")
         cls.app_source = (ROOT / "app.py").read_text(encoding="utf-8")
+        cls.study_pack_builder_source = (
+            ROOT / "templates" / "study_packs" / "ai-builder.html"
+        ).read_text(encoding="utf-8")
 
     def test_history_single_combined_action_copies_synchronously_before_open(self):
         block = source_block(
@@ -101,9 +104,9 @@ class AICombinedLaunchTests(unittest.TestCase):
     def test_study_pack_builder_combined_action_is_unchanged(self):
         self.assertIn(
             "function copyAndOpen(u){copyPrompt(false);window.open(u,'_blank','noopener,noreferrer')}",
-            self.app_source,
+            self.study_pack_builder_source,
         )
-        self.assertIn("Copy Prompt &amp; Open AI", self.app_source)
+        self.assertIn("Copy Prompt &amp; Open AI", self.study_pack_builder_source)
         self.assertNotIn("window.open(prompt", self.review_source)
         self.assertNotIn("window.open(finalPrompt", self.study_source)
 
