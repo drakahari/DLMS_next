@@ -46,6 +46,7 @@ from dlms.services import content_pack_mutations as _content_pack_mutation_servi
 from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
 from dlms.services import quiz_publication as _quiz_publication_service
+from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import law as _law_service
 
 # =========================
@@ -9789,123 +9790,84 @@ def rebuild_quiz_html_from_registry(quiz_id, *, quiz_entry=None, output_path=Non
 
 
 def _commit_quiz_mutation(conn):
-    """Commit boundary kept separate for deterministic mutation fault tests."""
-    conn.commit()
+    return _quiz_mutation_service.commit_quiz_mutation(conn)
 
 
 def _stage_quiz_mutation_artifacts(conn, quiz_id, quiz_entry):
-    staging_root = _quiz_publication_staging_root()
-    os.makedirs(staging_root, exist_ok=True)
-    staging_dir = tempfile.mkdtemp(prefix="mutation_", dir=staging_root)
-    html_name, json_name = _quiz_artifact_names(quiz_entry)
-    staged_json = os.path.join(staging_dir, json_name)
-    staged_html = os.path.join(staging_dir, html_name)
-    try:
-        if not rebuild_quiz_json_from_db(
-            quiz_id, conn=conn, quiz_entry=quiz_entry, output_path=staged_json
-        ):
-            raise RuntimeError("Quiz JSON staging failed")
-        if not rebuild_quiz_html_from_registry(
-            quiz_id, quiz_entry=quiz_entry, output_path=staged_html
-        ):
-            raise RuntimeError("Quiz HTML staging failed")
-        return {
-            "staging_dir": staging_dir,
-            "files": [
-                (staged_json, os.path.join(DATA_FOLDER, json_name)),
-                (staged_html, os.path.join(QUIZ_FOLDER, html_name)),
-            ],
-        }
-    except Exception:
-        shutil.rmtree(staging_dir, ignore_errors=True)
-        raise
+    return _quiz_mutation_service.stage_quiz_mutation_artifacts(
+        conn,
+        quiz_id,
+        quiz_entry,
+        staging_root=_quiz_publication_staging_root,
+        quiz_artifact_names=_quiz_artifact_names,
+        rebuild_quiz_json=rebuild_quiz_json_from_db,
+        rebuild_quiz_html=rebuild_quiz_html_from_registry,
+        data_folder=DATA_FOLDER,
+        quiz_folder=QUIZ_FOLDER,
+        makedirs=os.makedirs,
+        make_temp_dir=tempfile.mkdtemp,
+        join_path=os.path.join,
+        remove_tree=shutil.rmtree,
+    )
 
 
 def _promote_quiz_mutation_artifacts(staged):
-    """Replace live edit artifacts atomically while retaining exact rollback copies."""
-    promoted = []
-    try:
-        for index, (staged_path, final_path) in enumerate(staged["files"]):
-            os.makedirs(os.path.dirname(final_path), exist_ok=True)
-            backup_path = os.path.join(
-                staged["staging_dir"], f"previous_{index}_{os.path.basename(final_path)}"
-            )
-            existed = os.path.isfile(final_path)
-            if existed:
-                shutil.copy2(final_path, backup_path)
-            os.replace(staged_path, final_path)
-            promoted.append((final_path, backup_path, existed))
-        return promoted
-    except Exception:
-        _restore_quiz_mutation_artifacts(promoted)
-        raise
+    return _quiz_mutation_service.promote_quiz_mutation_artifacts(
+        staged,
+        restore_artifacts=_restore_quiz_mutation_artifacts,
+        makedirs=os.makedirs,
+        dirname=os.path.dirname,
+        join_path=os.path.join,
+        basename=os.path.basename,
+        isfile=os.path.isfile,
+        copy_file=shutil.copy2,
+        replace_file=os.replace,
+    )
 
 
 def _restore_quiz_mutation_artifacts(promoted):
-    errors = []
-    for final_path, backup_path, existed in reversed(promoted):
-        try:
-            if existed and os.path.isfile(backup_path):
-                os.replace(backup_path, final_path)
-            elif not existed and os.path.lexists(final_path) and not os.path.islink(final_path):
-                os.remove(final_path)
-        except Exception as exc:
-            errors.append(exc)
-    if errors:
-        raise RuntimeError("Quiz artifact rollback could not be completed") from errors[0]
+    return _quiz_mutation_service.restore_quiz_mutation_artifacts(
+        promoted,
+        isfile=os.path.isfile,
+        replace_file=os.replace,
+        lexists=os.path.lexists,
+        islink=os.path.islink,
+        remove_file=os.remove,
+    )
 
 
 def _remove_new_quiz_logo(filename, original_registry):
-    if not filename or any(entry.get("logo") == filename for entry in original_registry):
-        return
-    path = os.path.join(LOGO_FOLDER, filename)
-    if os.path.basename(path) == filename and os.path.isfile(path) and not os.path.islink(path):
-        os.remove(path)
+    return _quiz_mutation_service.remove_new_quiz_logo(
+        filename,
+        original_registry,
+        logo_folder=LOGO_FOLDER,
+        join_path=os.path.join,
+        basename=os.path.basename,
+        isfile=os.path.isfile,
+        islink=os.path.islink,
+        remove_file=os.remove,
+    )
 
 
-def _finish_quiz_mutation(conn, quiz_id, registry_updates=None, new_logo_filename=None):
-    """Publish one existing-quiz mutation or compensate every handled failure."""
-    staged = None
-    promoted = []
-    original_registry = None
-    registry_attempted = False
-    try:
-        with registry_lock:
-            original_registry = load_registry()
-            updated_registry = [dict(entry) for entry in original_registry]
-            quiz_entry = _quiz_registry_entry(updated_registry, quiz_id)
-            if not quiz_entry:
-                raise RuntimeError("Quiz registry entry is missing")
-            if registry_updates:
-                quiz_entry.update(registry_updates)
-
-            staged = _stage_quiz_mutation_artifacts(conn, quiz_id, quiz_entry)
-            promoted = _promote_quiz_mutation_artifacts(staged)
-            registry_attempted = True
-            save_registry(updated_registry)
-            _commit_quiz_mutation(conn)
-    except Exception:
-        conn.rollback()
-        rollback_errors = []
-        if original_registry is not None and registry_attempted:
-            try:
-                save_registry(original_registry)
-            except Exception as exc:
-                rollback_errors.append(exc)
-        try:
-            _restore_quiz_mutation_artifacts(promoted)
-        except Exception as exc:
-            rollback_errors.append(exc)
-        try:
-            _remove_new_quiz_logo(new_logo_filename, original_registry or [])
-        except Exception as exc:
-            rollback_errors.append(exc)
-        if rollback_errors:
-            raise RuntimeError("Quiz edit failed and rollback was incomplete") from rollback_errors[0]
-        raise
-    finally:
-        if staged:
-            shutil.rmtree(staged["staging_dir"], ignore_errors=True)
+def _finish_quiz_mutation(
+    conn, quiz_id, registry_updates=None, new_logo_filename=None
+):
+    return _quiz_mutation_service.finish_quiz_mutation(
+        conn,
+        quiz_id,
+        registry_updates=registry_updates,
+        new_logo_filename=new_logo_filename,
+        registry_lock=registry_lock,
+        load_registry=load_registry,
+        save_registry=save_registry,
+        quiz_registry_entry=_quiz_registry_entry,
+        stage_artifacts=_stage_quiz_mutation_artifacts,
+        promote_artifacts=_promote_quiz_mutation_artifacts,
+        commit_mutation=_commit_quiz_mutation,
+        restore_artifacts=_restore_quiz_mutation_artifacts,
+        remove_new_logo=_remove_new_quiz_logo,
+        remove_tree=shutil.rmtree,
+    )
 
 
 @app.route("/admin/rebuild_all_quiz_html", methods=["POST"])
@@ -9949,104 +9911,42 @@ def rebuild_all_quiz_html():
 # EDIT QUIZ - SAVE CHANGES
 # =========================
 def _quiz_owns_question(cur, quiz_id, question_id):
-    return cur.execute(
-        "SELECT 1 FROM questions WHERE id = ? AND quiz_id = ?",
-        (question_id, quiz_id),
-    ).fetchone() is not None
+    return _quiz_mutation_service.quiz_owns_question(cur, quiz_id, question_id)
 
 
 def _quiz_owns_choice(cur, quiz_id, choice_id):
-    return cur.execute(
-        """
-        SELECT 1 FROM choices c
-        JOIN questions q ON q.id = c.question_id
-        WHERE c.id = ? AND q.quiz_id = ?
-        """,
-        (choice_id, quiz_id),
-    ).fetchone() is not None
+    return _quiz_mutation_service.quiz_owns_choice(cur, quiz_id, choice_id)
 
 
 def _quiz_owns_matching_pair(cur, quiz_id, pair_id):
-    return cur.execute(
-        """
-        SELECT 1 FROM matching_pairs mp
-        JOIN questions q ON q.id = mp.question_id
-        WHERE mp.id = ? AND q.quiz_id = ?
-        """,
-        (pair_id, quiz_id),
-    ).fetchone() is not None
+    return _quiz_mutation_service.quiz_owns_matching_pair(cur, quiz_id, pair_id)
 
 
 def _quiz_edit_validation(cur, quiz_id):
-    errors = []
-    warnings = []
-    questions = cur.execute(
-        """
-        SELECT id, question_number, COALESCE(question_type, 'choice') AS question_type
-        FROM questions
-        WHERE quiz_id = ?
-        ORDER BY question_number
-        """,
-        (quiz_id,),
-    ).fetchall()
-    for question in questions:
-        if question["question_type"] == "matching":
-            pair_rows = cur.execute(
-                "SELECT id, left_text, right_text FROM matching_pairs WHERE question_id = ?",
-                (question["id"],),
-            ).fetchall()
-            records = [
-                {"id": row["id"], "left": row["left_text"], "right": row["right_text"]}
-                for row in pair_rows
-            ]
-            errors.extend(_matching_record_validation_errors(
-                records,
-                context=f"quiz {quiz_id}, matching question {question['question_number']}",
-                left_key="left",
-                right_key="right",
-                record_name="pair",
-            ))
-            warnings.extend(_matching_case_only_term_warnings(
-                records,
-                context=f"quiz {quiz_id}, matching question {question['question_number']}",
-                left_key="left",
-                record_name="pair",
-            ))
-            continue
-
-        correct_count = cur.execute(
-            "SELECT COUNT(*) FROM choices WHERE question_id = ? AND is_correct = 1",
-            (question["id"],),
-        ).fetchone()[0]
-        if correct_count == 0:
-            errors.append(
-                f"Question {question['question_number']} must have at least one correct answer."
-            )
-    return errors, warnings
+    return _quiz_mutation_service.quiz_edit_validation(
+        cur,
+        quiz_id,
+        matching_record_validation_errors=_matching_record_validation_errors,
+        matching_case_only_term_warnings=_matching_case_only_term_warnings,
+    )
 
 
-def _publish_quiz_edit_request(conn, quiz_id, *, title, exam_minutes, logo_file, timestamp):
-    logo_filename = finalize_logo_from_request(app, timestamp, logo_file=logo_file)
-    updates = {"exam_minutes": exam_minutes}
-    if title:
-        updates["title"] = title
-        if logo_filename:
-            updates["logo"] = logo_filename
-    try:
-        _finish_quiz_mutation(
-            conn,
-            quiz_id,
-            registry_updates=updates,
-            new_logo_filename=logo_filename,
-        )
-    except Exception:
-        # A logo can be finalized before staging begins; remove only this new,
-        # request-owned file if the shared mutation helper did not reach cleanup.
-        try:
-            _remove_new_quiz_logo(logo_filename, load_registry())
-        except Exception:
-            pass
-        raise
+def _publish_quiz_edit_request(
+    conn, quiz_id, *, title, exam_minutes, logo_file, timestamp
+):
+    return _quiz_mutation_service.publish_quiz_edit_request(
+        conn,
+        quiz_id,
+        title=title,
+        exam_minutes=exam_minutes,
+        logo_file=logo_file,
+        timestamp=timestamp,
+        flask_app=app,
+        finalize_logo=finalize_logo_from_request,
+        finish_mutation=_finish_quiz_mutation,
+        remove_new_logo=_remove_new_quiz_logo,
+        load_registry=load_registry,
+    )
 
 
 @app.route("/edit_quiz/<int:quiz_id>", methods=["POST"])
@@ -10525,82 +10425,51 @@ def delete_match_pair_from_question(quiz_id, pair_id):
 # DELETE QUIZ (AUTHORITATIVE)
 # =========================
 def _commit_quiz_deletion(conn):
-    """Commit boundary kept separate for deterministic deletion fault tests."""
-    conn.commit()
+    return _quiz_mutation_service.commit_quiz_deletion(conn)
 
 
 def _cleanup_deleted_quiz_artifacts(quiz_entry, remaining_registry):
-    """Best-effort cleanup after the DB and registry no longer expose a quiz."""
-    if not quiz_entry:
-        return
-    try:
-        html_name, json_name = _quiz_artifact_names(quiz_entry)
-        targets = [
-            os.path.join(QUIZ_FOLDER, html_name),
-            os.path.join(DATA_FOLDER, json_name),
-        ]
-        for target in targets:
-            if os.path.isfile(target) and not os.path.islink(target):
-                try:
-                    os.remove(target)
-                except Exception as exc:
-                    print(f"[DELETE CLEANUP ERROR] Could not remove {target}: {exc}")
+    return _quiz_mutation_service.cleanup_deleted_quiz_artifacts(
+        quiz_entry,
+        remaining_registry,
+        quiz_artifact_names=_quiz_artifact_names,
+        quiz_folder=QUIZ_FOLDER,
+        data_folder=DATA_FOLDER,
+        quiz_asset_folder=QUIZ_ASSET_FOLDER,
+        logo_folder=LOGO_FOLDER,
+        join_path=os.path.join,
+        splitext=os.path.splitext,
+        basename=os.path.basename,
+        isfile=os.path.isfile,
+        isdir=os.path.isdir,
+        islink=os.path.islink,
+        remove_file=os.remove,
+        remove_tree=shutil.rmtree,
+        print_message=print,
+    )
 
-        asset_dir = os.path.join(QUIZ_ASSET_FOLDER, os.path.splitext(html_name)[0])
-        if os.path.isdir(asset_dir) and not os.path.islink(asset_dir):
-            try:
-                shutil.rmtree(asset_dir)
-            except Exception as exc:
-                print(f"[DELETE CLEANUP ERROR] Could not remove {asset_dir}: {exc}")
-    except Exception as exc:
-        print(f"[DELETE CLEANUP ERROR] Invalid recorded quiz artifacts: {exc}")
 
-    logo_name = str(quiz_entry.get("logo") or "")
-    logo_is_shared = any(entry.get("logo") == logo_name for entry in remaining_registry)
-    if logo_name and not logo_is_shared and logo_name == os.path.basename(logo_name):
-        logo_path = os.path.join(LOGO_FOLDER, logo_name)
-        if os.path.isfile(logo_path) and not os.path.islink(logo_path):
-            try:
-                os.remove(logo_path)
-            except Exception as exc:
-                print(f"[DELETE CLEANUP ERROR] Could not remove {logo_path}: {exc}")
+def _delete_quiz_transaction(quiz_id):
+    return _quiz_mutation_service.delete_quiz_transaction(
+        quiz_id,
+        get_db=get_db,
+        registry_lock=registry_lock,
+        load_registry=load_registry,
+        save_registry=save_registry,
+        commit_deletion=_commit_quiz_deletion,
+        print_message=print,
+    )
 
 
 @app.route("/delete_quiz/<int:quiz_id>", methods=["POST"])
 def delete_quiz(quiz_id):
     print("[DELETE] Requested quiz_id:", quiz_id)
-    conn = get_db()
-    conn.execute("PRAGMA foreign_keys = ON")
-    deleted_entry = None
-    kept = []
     try:
-        with registry_lock:
-            original_registry = load_registry()
-            for entry in original_registry:
-                if str(entry.get("id")) == str(quiz_id):
-                    deleted_entry = entry
-                    print("[DELETE] Removing registry entry:", entry)
-                else:
-                    kept.append(entry)
-
-            conn.execute("DELETE FROM quizzes WHERE id = ?", (quiz_id,))
-            registry_published = False
-            try:
-                save_registry(kept)
-                registry_published = True
-                _commit_quiz_deletion(conn)
-            except Exception:
-                conn.rollback()
-                if registry_published:
-                    save_registry(original_registry)
-                raise
+        deleted_entry, kept = _delete_quiz_transaction(quiz_id)
     except Exception as exc:
-        conn.rollback()
         print(f"[DELETE ERROR] Quiz deletion was rolled back: {exc}")
         flash("The quiz could not be deleted. The existing quiz was preserved.", "error")
         return redirect("/library")
-    finally:
-        conn.close()
 
     _cleanup_deleted_quiz_artifacts(deleted_entry, kept)
 

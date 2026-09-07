@@ -184,6 +184,25 @@ class QuizMutationAtomicityTests(unittest.TestCase):
         self.assertEqual(before, self._snapshot())
         self._assert_no_mutation_staging()
 
+    def test_json_artifact_promotion_failure_restores_complete_edit(self):
+        before = self._snapshot()
+        original_replace = dlms.os.replace
+
+        def fail_json_promotion(source, target):
+            if "mutation_" in source and target.endswith(".json"):
+                raise RuntimeError("JSON promotion failed")
+            return original_replace(source, target)
+
+        with mock.patch.object(dlms.os, "replace", side_effect=fail_json_promotion):
+            response = self.client.post(
+                f"/edit_quiz/{self.quiz_id}",
+                data=self._edit_form(),
+                headers=csrf_headers(self.client),
+            )
+        self.assertEqual(302, response.status_code)
+        self.assertEqual(before, self._snapshot())
+        self._assert_no_mutation_staging()
+
     def test_registry_write_failure_rolls_back_db_and_promoted_artifacts(self):
         before = self._snapshot()
         original_save = dlms.save_registry
@@ -197,6 +216,20 @@ class QuizMutationAtomicityTests(unittest.TestCase):
             return original_save(registry)
 
         with mock.patch.object(dlms, "save_registry", side_effect=fail_candidate_once):
+            response = self.client.post(
+                f"/edit_quiz/{self.quiz_id}",
+                data=self._edit_form(),
+                headers=csrf_headers(self.client),
+            )
+        self.assertEqual(302, response.status_code)
+        self.assertEqual(before, self._snapshot())
+        self._assert_no_mutation_staging()
+
+    def test_edit_commit_failure_restores_registry_database_and_artifacts(self):
+        before = self._snapshot()
+        with mock.patch.object(
+            dlms, "_commit_quiz_mutation", side_effect=RuntimeError("commit failed")
+        ):
             response = self.client.post(
                 f"/edit_quiz/{self.quiz_id}",
                 data=self._edit_form(),
@@ -227,6 +260,103 @@ class QuizMutationAtomicityTests(unittest.TestCase):
             )
         self.assertEqual(302, response.status_code)
         self.assertEqual(before, self._snapshot())
+
+    def test_successful_deletion_removes_only_the_quiz_owned_artifact_bucket(self):
+        owned_bucket = Path(dlms.QUIZ_ASSET_FOLDER) / Path(self.html_name).stem
+        owned_bucket.mkdir(parents=True)
+        (owned_bucket / "owned.png").write_bytes(b"owned")
+        unrelated_bucket = Path(dlms.QUIZ_ASSET_FOLDER) / "unrelated"
+        unrelated_bucket.mkdir()
+        (unrelated_bucket / "keep.png").write_bytes(b"keep")
+
+        response = self.client.post(
+            f"/delete_quiz/{self.quiz_id}", headers=csrf_headers(self.client)
+        )
+
+        self.assertEqual(302, response.status_code)
+        self.assertFalse(owned_bucket.exists())
+        self.assertEqual(b"keep", (unrelated_bucket / "keep.png").read_bytes())
+        self.assertEqual([], dlms.load_registry())
+        conn = dlms.get_db()
+        try:
+            self.assertIsNone(
+                conn.execute(
+                    "SELECT id FROM quizzes WHERE id = ?", (self.quiz_id,)
+                ).fetchone()
+            )
+        finally:
+            conn.close()
+
+    def test_deleting_one_quiz_preserves_a_logo_shared_by_another_quiz(self):
+        logo = Path(dlms.LOGO_FOLDER) / "shared.png"
+        logo.write_bytes(b"shared-logo")
+        registry = dlms.load_registry()
+        registry[0]["logo"] = logo.name
+        dlms.save_registry(registry)
+        other_id, _ = dlms._publish_quiz(
+            "Other quiz",
+            [{
+                "number": 1,
+                "type": "choice",
+                "question": "Other question",
+                "choices": [
+                    {"label": "A", "text": "Correct", "is_correct": True},
+                    {"label": "B", "text": "Incorrect", "is_correct": False},
+                ],
+            }],
+            filename_prefix="shared_logo_other",
+            logo_filename=logo.name,
+        )
+
+        response = self.client.post(
+            f"/delete_quiz/{self.quiz_id}", headers=csrf_headers(self.client)
+        )
+
+        self.assertEqual(302, response.status_code)
+        self.assertEqual(b"shared-logo", logo.read_bytes())
+        self.assertEqual([other_id], [entry["id"] for entry in dlms.load_registry()])
+
+    def test_deleting_the_only_logo_owner_removes_the_owned_logo(self):
+        logo = Path(dlms.LOGO_FOLDER) / "owned.png"
+        logo.write_bytes(b"owned-logo")
+        registry = dlms.load_registry()
+        registry[0]["logo"] = logo.name
+        dlms.save_registry(registry)
+
+        response = self.client.post(
+            f"/delete_quiz/{self.quiz_id}", headers=csrf_headers(self.client)
+        )
+
+        self.assertEqual(302, response.status_code)
+        self.assertFalse(logo.exists())
+        self.assertEqual([], dlms.load_registry())
+
+    def test_artifact_cleanup_failure_does_not_reverse_committed_deletion(self):
+        html_path = Path(dlms.QUIZ_FOLDER) / self.html_name
+        original_remove = dlms.os.remove
+
+        def fail_html_cleanup(path):
+            if os.path.abspath(path) == os.path.abspath(html_path):
+                raise OSError("simulated cleanup failure")
+            return original_remove(path)
+
+        with mock.patch.object(dlms.os, "remove", side_effect=fail_html_cleanup):
+            response = self.client.post(
+                f"/delete_quiz/{self.quiz_id}", headers=csrf_headers(self.client)
+            )
+
+        self.assertEqual(302, response.status_code)
+        self.assertTrue(html_path.exists())
+        self.assertEqual([], dlms.load_registry())
+        conn = dlms.get_db()
+        try:
+            self.assertIsNone(
+                conn.execute(
+                    "SELECT id FROM quizzes WHERE id = ?", (self.quiz_id,)
+                ).fetchone()
+            )
+        finally:
+            conn.close()
 
     def test_successful_edit_updates_all_stores_and_keeps_valid_json(self):
         response = self.client.post(
