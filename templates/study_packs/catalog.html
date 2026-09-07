@@ -1,0 +1,240 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ "Other Studies" if other_mode else "Study Packs" }} - DLMS</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home study-packs-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand">
+        <div class="dashboard-brand-mark">▣</div>
+        <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+    </div>
+    <nav class="dashboard-nav">
+        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+        <a class="dashboard-nav-item active" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+        <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        {% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}
+        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        <div class="dashboard-nav-group"><a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a><div class="dashboard-nav-submenu"><a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a><a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a></div></div>
+    </nav>
+    <div class="dashboard-nav-section-label"><span>System</span></div>
+    <nav class="dashboard-nav dashboard-nav-system">
+        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">{{ "Other Studies" if other_mode else "Study Packs" }}</div>
+</aside>
+
+<main class="dashboard-main study-packs-main">
+    <header class="dashboard-header">
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <div>
+            <div class="medical-eyebrow">{{ "CROSS-DOMAIN STUDY" if other_mode else "CUSTOM STUDY CONTENT" }}</div>
+            <h1>{{ "Other Studies" if other_mode else "Study Packs" }}</h1>
+            <p>{{ "Study subjects outside the dedicated IT, Law, and Medical workspaces." if other_mode else "Launch focused practice from installed study content without scrolling through large card grids." }}</p>
+        </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="content-pack-flashes">
+        {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {% if installed_pack_id %}
+    <section class="dashboard-panel study-pack-installed-notice" aria-label="Newly installed Study Pack">
+        <div><span class="medical-eyebrow">STUDY PACK INSTALLED</span><strong>{{ installed_pack_id }}</strong><p>Your validated Study Pack is ready. Open it below and choose the dataset you want to study.</p></div>
+        <a class="medical-primary-button" href="#installed-study-pack">Open Study Pack</a>
+    </section>
+    {% endif %}
+
+    <section class="study-pack-launch-grid">
+        <a class="dashboard-panel study-pack-launch" href="{{ '/study-packs/ai-builder?domain=Other&from=other' if other_mode else '/study-packs/ai-builder' }}">
+            <div class="study-pack-launch-icon">AI</div>
+            <div><span class="medical-eyebrow">CREATE</span><h2>AI Study Pack Builder</h2><p>{{ "Create a source-disciplined prompt for a subject outside IT, Law, or Medical." if other_mode else "Create a source-disciplined DLMS pack prompt for any subject." }}</p></div>
+        </a>
+        <a class="dashboard-panel study-pack-launch" href="/study-packs/image-builder">
+            <div class="study-pack-launch-icon">▧</div>
+            <div><span class="medical-eyebrow">BUILD</span><h2>Build from Images</h2><p>Use your own images for regular questions, matching, or hotspots.</p></div>
+        </a>
+        <a class="dashboard-panel study-pack-launch" href="/admin/image-editor">
+            <div class="study-pack-launch-icon">◎</div>
+            <div><span class="medical-eyebrow">EDIT</span><h2>Image Study Editor</h2><p>Prepare images and refine clickable regions without changing originals.</p></div>
+        </a>
+    </section>
+
+    {% if packs %}
+    <div class="study-pack-toolbar">
+        <div>
+            <span class="medical-eyebrow">INSTALLED CONTENT</span>
+            <strong>{{ packs|length }} study pack{{ '' if packs|length == 1 else 's' }}</strong>
+        </div>
+        <div class="study-pack-toolbar-actions">
+            <a class="medical-ai-secondary-button study-pack-manage-link" href="/content-packs">Manage Packs</a>
+            <button type="button" class="medical-ai-secondary-button" id="expandAllPacks">Expand All</button>
+            <button type="button" class="medical-ai-secondary-button" id="collapseAllPacks">Collapse All</button>
+        </div>
+    </div>
+
+    {% for pack in packs %}
+    <details id="{{ 'installed-study-pack' if pack.id == installed_pack_id else '' }}" class="dashboard-panel study-pack-section study-pack-collapsible {% if pack.id == installed_pack_id %}is-newly-installed{% endif %}" data-pack-id="{{ pack.id }}" {% if loop.first or pack.id == installed_pack_id %}open{% endif %}>
+        <summary class="study-pack-summary">
+            <div class="study-pack-summary-main">
+                <span class="study-pack-chevron" aria-hidden="true">›</span>
+                <div>
+                    <span class="medical-eyebrow">{{ pack.domain|upper }} · {{ pack.version }}</span>
+                    <h2>{{ pack.name }}</h2>
+                    <p>{{ pack.description }}</p>
+                </div>
+            </div>
+            <div class="study-pack-summary-meta">
+                <span class="pack-count-pill">{{ pack.datasets|length + pack.image_datasets|length + pack.quiz_datasets|length }} datasets</span>
+                {% if pack.datasets %}<span>{{ pack.datasets|length }} matching</span>{% endif %}
+                {% if pack.image_datasets %}<span>{{ pack.image_datasets|length }} image</span>{% endif %}
+                {% if pack.quiz_datasets %}<span>{{ pack.quiz_datasets|length }} mixed</span>{% endif %}
+            </div>
+        </summary>
+
+        <div class="study-pack-body study-pack-table-body">
+            <div class="study-dataset-table-wrap">
+            <table class="study-dataset-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Dataset</th>
+                        <th>Content</th>
+                        <th>Options</th>
+                        <th class="study-dataset-action-col">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for d in pack.quiz_datasets %}
+                    <tr>
+                        <td><span class="study-type-badge mixed">Mixed</span></td>
+                        <td>
+                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-mixed-{{ loop.index }}')">{{ d.title }}</button>
+                            {% if d.category %}<small>{{ d.category }}</small>{% endif %}
+                        </td>
+                        <td><span>{{ d.question_count }} questions</span>{% if d.image_count %}<small>{{ d.image_count }} images{% if d.hotspot_count %} · {{ d.hotspot_count }} hotspots{% endif %}</small>{% endif %}</td>
+                        <td><span class="study-options-muted">Ready to generate</span></td>
+                        <td class="study-dataset-action-col">
+                            <form method="POST" action="/study-packs/quiz/generate">
+                                <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                                <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                                <button class="study-table-primary" type="submit">Create Quiz</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr class="study-dataset-detail-row" id="dataset-{{ pack.id }}-mixed-{{ loop.index }}" hidden>
+                        <td colspan="5"><p>{{ d.description or 'No additional description supplied.' }}</p></td>
+                    </tr>
+                {% endfor %}
+
+                {% for d in pack.datasets %}
+                    <tr>
+                        <td><span class="study-type-badge matching">Matching</span></td>
+                        <td>
+                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-matching-{{ loop.index }}')">{{ d.title }}</button>
+                            {% if d.category %}<small>{{ d.category }}</small>{% endif %}
+                        </td>
+                        <td><span>{{ d.term_count }} items</span></td>
+                        <td>
+                            <div class="study-table-inline-form">
+                                <label><span>Pairs</span><input form="matchForm-{{ pack.id }}-{{ loop.index }}" type="number" name="round_size" min="2" max="{{ d.term_count }}" value="{{ 10 if d.term_count >= 10 else d.term_count }}"></label>
+                                <label><span>Direction</span>
+                                    <select form="matchForm-{{ pack.id }}-{{ loop.index }}" name="direction">
+                                        <option value="random">Random</option>
+                                        <option value="term_to_definition">Term → Definition</option>
+                                        <option value="definition_to_term">Definition → Term</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </td>
+                        <td class="study-dataset-action-col">
+                            <form id="matchForm-{{ pack.id }}-{{ loop.index }}" method="POST" action="/study-packs/generate">
+                                <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                                <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                                <button class="study-table-primary" type="submit">Create Quiz</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr class="study-dataset-detail-row" id="dataset-{{ pack.id }}-matching-{{ loop.index }}" hidden>
+                        <td colspan="5"><p>{{ d.description or 'No additional description supplied.' }}</p></td>
+                    </tr>
+                {% endfor %}
+
+                {% for d in pack.image_datasets %}
+                    <tr>
+                        <td><span class="study-type-badge image">Image</span></td>
+                        <td>
+                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-image-{{ loop.index }}')">{{ d.title }}</button>
+                            {% if d.category %}<small>{{ d.category }}</small>{% endif %}
+                        </td>
+                        <td><span>{{ d.image_count }} image{{ '' if d.image_count == 1 else 's' }}</span><small>{{ d.hotspot_count }} targets</small></td>
+                        <td><span class="study-options-muted">Hotspot practice</span></td>
+                        <td class="study-dataset-action-col">
+                            <form method="POST" action="/study-packs/image/generate">
+                                <input type="hidden" name="pack_id" value="{{ pack.id }}">
+                                <input type="hidden" name="dataset_id" value="{{ d.id }}">
+                                <button class="study-table-primary" type="submit">Create Quiz</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr class="study-dataset-detail-row" id="dataset-{{ pack.id }}-image-{{ loop.index }}" hidden>
+                        <td colspan="5"><p>{{ d.description or 'No additional description supplied.' }}</p></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </details>
+    {% endfor %}
+    {% else %}
+    <section class="dashboard-panel pack-empty-card">
+        <h2>{{ "No Other Studies packs installed yet" if other_mode else "No usable study packs yet" }}</h2>
+        <p>{{ "Create a pack with the AI Study Pack Builder or install a compatible Content Pack whose domain is outside IT, Law, and Medical." if other_mode else "Create one with the AI Study Pack Builder, Build from Images, or install a compatible Content Pack." }}</p>
+    </section>
+    {% endif %}
+</main>
+</div>
+
+<script>
+const sidebar=document.getElementById('dashboardSidebar');
+document.getElementById('menuButton')?.addEventListener('click',()=>sidebar?.classList.toggle('open'));
+
+const packDetails=[...document.querySelectorAll('.study-pack-collapsible')];
+const stateKey='dlms.studyPacks.openState.v1';
+function readPackState(){try{return JSON.parse(localStorage.getItem(stateKey)||'{}')||{}}catch(e){return {}}}
+function savePackState(){const state={};packDetails.forEach(el=>state[el.dataset.packId]=el.open);try{localStorage.setItem(stateKey,JSON.stringify(state))}catch(e){}}
+const savedState=readPackState();
+packDetails.forEach(el=>{if(Object.prototype.hasOwnProperty.call(savedState,el.dataset.packId))el.open=!!savedState[el.dataset.packId];el.addEventListener('toggle',savePackState)});
+const installedPack=document.getElementById('installed-study-pack');
+if(installedPack){
+    installedPack.open=true;
+    requestAnimationFrame(()=>installedPack.scrollIntoView({block:'start',behavior:'smooth'}));
+}
+document.getElementById('expandAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=true);savePackState()});
+document.getElementById('collapseAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=false);savePackState()});
+function toggleDatasetDetails(id){
+    const row=document.getElementById(`dataset-${id}`);
+    if(row) row.hidden=!row.hidden;
+}
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

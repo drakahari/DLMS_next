@@ -2897,3 +2897,221 @@ def test_it_read_only_views_empty_populated_controls_csrf_and_escaping(browser_s
     }
     browser.click(".study-dataset-title-button")
     browser.wait_for("!document.querySelector('.study-dataset-detail-row').hidden")
+
+
+def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    folder = "DLMS_Study_browser_study_packs_catalog"
+    pack_root = browser_stack.data_root / "content_packs" / folder
+    data_root = pack_root / "data"
+    assets_root = pack_root / "assets"
+    data_root.mkdir(parents=True)
+    assets_root.mkdir()
+    pack_name = 'Catalog </script><img id="studyPackInjected"> & Safe'
+    pack_description = 'Pack <b id="studyPackDescriptionInjected"> details & safe'
+    matching_title = 'Terms </script><svg id="studyMatchingInjected"> & Safe'
+    matching_description = 'Term <b id="studyMatchingDescriptionInjected"> details'
+    image_title = 'Images </script><svg id="studyImageInjected"> & Safe'
+    image_description = 'Image <b id="studyImageDescriptionInjected"> details'
+    quiz_title = 'Questions </script><svg id="studyQuizInjected"> & Safe'
+    quiz_description = 'Question <b id="studyQuizDescriptionInjected"> details'
+    (pack_root / "manifest.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "browser_catalog",
+            "name": pack_name,
+            "version": "3.0 <safe>",
+            "description": pack_description,
+            "content_domain": "Science & Engineering",
+            "datasets": [{
+                "id": "terms",
+                "title": matching_title,
+                "description": matching_description,
+                "type": "matching",
+                "path": "data/terms.json",
+            }],
+            "image_datasets": [{
+                "id": "images",
+                "title": image_title,
+                "description": image_description,
+                "type": "image",
+                "path": "data/images.json",
+            }],
+            "quiz_datasets": [{
+                "id": "questions",
+                "title": quiz_title,
+                "description": quiz_description,
+                "type": "quiz",
+                "path": "data/questions.json",
+            }],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "terms.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "terms",
+            "title": matching_title,
+            "category": 'Foundations <category> & "safe"',
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "terms": [
+                {"term": "Mass", "definition": "Quantity of matter."},
+                {"term": "Force", "definition": "Mass times acceleration."},
+                {"term": "Energy", "definition": "Capacity to do work."},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "images.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "images",
+            "title": image_title,
+            "category": 'Diagrams <category> & "safe"',
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "images": [{
+                "id": "diagram",
+                "file": "assets/diagram.png",
+                "alt_text": "Browser science diagram",
+                "source": {"organization": "DLMS Browser", "license": "CC0"},
+                "hotspots": [
+                    {
+                        "id": "one",
+                        "label": "Point One",
+                        "prompt": "Identify point one.",
+                        "shape": {"type": "circle", "cx": 0.4, "cy": 0.4, "r": 0.1},
+                    },
+                    {
+                        "id": "two",
+                        "label": "Point Two",
+                        "prompt": "Identify point two.",
+                        "shape": {"type": "circle", "cx": 0.6, "cy": 0.6, "r": 0.1},
+                    },
+                ],
+            }],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "questions.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "questions",
+            "title": quiz_title,
+            "category": 'Review <category> & "safe"',
+            "source": {"organization": "DLMS Browser", "license": "CC0"},
+            "questions": [{
+                "type": "choice",
+                "question": "Which quantity is measured in joules?",
+                "choices": [
+                    {"text": "Energy", "is_correct": True},
+                    {"text": "Mass", "is_correct": False},
+                ],
+            }],
+        }),
+        encoding="utf-8",
+    )
+    (assets_root / "diagram.png").write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+    )
+
+    browser.navigate(f"{base_url}/study-packs")
+    browser.evaluate("localStorage.removeItem('dlms.studyPacks.openState.v1')")
+    browser.navigate(f"{base_url}/study-packs?installed=browser_catalog")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector(\"[data-pack-id='browser_catalog'] form[action='/study-packs/generate'] input[name=csrf_token]\") && "
+        "document.querySelector(\"[data-pack-id='browser_catalog'] form[action='/study-packs/image/generate'] input[name=csrf_token]\") && "
+        "document.querySelector(\"[data-pack-id='browser_catalog'] form[action='/study-packs/quiz/generate'] input[name=csrf_token]\")"
+    )
+    catalog = browser.evaluate(
+        "(() => {const pack=document.querySelector(\"[data-pack-id='browser_catalog']\");"
+        "const forms=Array.from(pack.querySelectorAll('form'));"
+        "const counts=Array.from(pack.querySelectorAll('.study-pack-summary-meta span')).map(el=>el.textContent.trim());"
+        "return {name:pack.querySelector('h2').textContent,description:pack.querySelector('.study-pack-summary-main p').textContent,"
+        "eyebrow:pack.querySelector('.medical-eyebrow').textContent,counts,open:pack.open,"
+        "installedId:pack.id,installedClass:pack.classList.contains('is-newly-installed'),"
+        "noticeLabel:document.querySelector('.study-pack-installed-notice').getAttribute('aria-label'),"
+        "noticeId:document.querySelector('.study-pack-installed-notice strong').textContent,"
+        "noticeHref:document.querySelector('.study-pack-installed-notice a').getAttribute('href'),"
+        "actions:forms.map(form=>form.getAttribute('action')).sort(),"
+        "methods:forms.map(form=>form.method),"
+        "packIds:forms.map(form=>form.querySelector(\"input[name='pack_id']\").value),"
+        "datasetIds:forms.map(form=>form.querySelector(\"input[name='dataset_id']\").value).sort(),"
+        "csrf:forms.every(form=>form.querySelector(\"input[name='csrf_token']\")?.value.length>0),"
+        "round:pack.querySelector(\"input[name='round_size']\").value,"
+        "roundForm:pack.querySelector(\"input[name='round_size']\").getAttribute('form'),"
+        "direction:pack.querySelector(\"select[name='direction']\").value,"
+        "navCurrent:document.querySelector('[data-nav-key=study]').getAttribute('aria-current'),"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label'),"
+        "injected:!!document.getElementById('studyPackInjected')||!!document.getElementById('studyPackDescriptionInjected')||"
+        "!!document.getElementById('studyMatchingInjected')||!!document.getElementById('studyMatchingDescriptionInjected')||"
+        "!!document.getElementById('studyImageInjected')||!!document.getElementById('studyImageDescriptionInjected')||"
+        "!!document.getElementById('studyQuizInjected')||!!document.getElementById('studyQuizDescriptionInjected')};})()"
+    )
+    assert catalog == {
+        "name": pack_name,
+        "description": pack_description,
+        "eyebrow": "SCIENCE & ENGINEERING · 3.0 <safe>",
+        "counts": ["3 datasets", "1 matching", "1 image", "1 mixed"],
+        "open": True,
+        "installedId": "installed-study-pack",
+        "installedClass": True,
+        "noticeLabel": "Newly installed Study Pack",
+        "noticeId": "browser_catalog",
+        "noticeHref": "#installed-study-pack",
+        "actions": [
+            "/study-packs/generate",
+            "/study-packs/image/generate",
+            "/study-packs/quiz/generate",
+        ],
+        "methods": ["post", "post", "post"],
+        "packIds": ["browser_catalog", "browser_catalog", "browser_catalog"],
+        "datasetIds": ["images", "questions", "terms"],
+        "csrf": True,
+        "round": "3",
+        "roundForm": "matchForm-browser_catalog-1",
+        "direction": "random",
+        "navCurrent": "page",
+        "menuLabel": "Toggle navigation",
+        "injected": False,
+    }
+
+    browser.click("#collapseAllPacks")
+    browser.wait_for("!document.querySelector(\"[data-pack-id='browser_catalog']\").open")
+    assert browser.evaluate(
+        "JSON.parse(localStorage.getItem('dlms.studyPacks.openState.v1')).browser_catalog"
+    ) is False
+    browser.click("#expandAllPacks")
+    browser.wait_for("document.querySelector(\"[data-pack-id='browser_catalog']\").open")
+    matching_toggle = (
+        "[data-pack-id='browser_catalog'] "
+        "form[action='/study-packs/generate']"
+    )
+    browser.evaluate(
+        f"document.querySelector({json.dumps(matching_toggle)})"
+        ".closest('tr').querySelector('.study-dataset-title-button').click()"
+    )
+    browser.wait_for(
+        "!document.getElementById('dataset-browser_catalog-matching-1').hidden"
+    )
+
+    browser.navigate(f"{base_url}/study-packs?domain_group=other")
+    browser.wait_for("document.querySelector('[data-nav-key=other][aria-current=page]')")
+    other = browser.evaluate(
+        "(() => ({heading:document.querySelector('.dashboard-header h1').textContent,"
+        "builderHref:document.querySelector('.study-pack-launch').getAttribute('href'),"
+        "catalogPresent:!!document.querySelector(\"[data-pack-id='browser_catalog']\"),"
+        "itPresent:!!document.querySelector(\"[data-pack-id='browser_it_views']\"),"
+        "medicalPresent:!!document.querySelector(\"[data-pack-id='browser_medical_views']\")}))()"
+    )
+    assert other == {
+        "heading": "Other Studies",
+        "builderHref": "/study-packs/ai-builder?domain=Other&from=other",
+        "catalogPresent": True,
+        "itPresent": False,
+        "medicalPresent": False,
+    }
