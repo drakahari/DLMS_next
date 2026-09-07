@@ -15724,10 +15724,7 @@ def settings_create_backup():
         return send_from_directory(BACKUP_FOLDER, os.path.basename(path), as_attachment=True)
     except Exception as exc:
         print("[BACKUP ERROR]", exc)
-        return render_template_string(r"""
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Backup Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Backup failed</h1><p>DLMS did not modify your existing data.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Unable to create backup</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
-""", error="DLMS could not create the backup. Check the local application log for details."), 500
+        return render_template("settings/backup-failed.html", error="DLMS could not create the backup. Check the local application log for details."), 500
 
 
 @app.route("/settings/data/restore/stage", methods=["POST"])
@@ -15751,30 +15748,11 @@ def settings_stage_restore():
     except Exception as exc:
         shutil.rmtree(stage_dir, ignore_errors=True)
         print(f"[RESTORE VALIDATION ERROR] {type(exc).__name__}: {exc}")
-        return render_template_string(r"""
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Validation Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY / RESTORE</span><h1>Backup rejected</h1><p>No DLMS data was changed.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore validation failed</strong><span>{{ error }}</span></div><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
-""", error="The backup failed validation and was not accepted. Check the local DLMS log for details."), 400
+        return render_template("settings/restore-validation-failed.html", error="The backup failed validation and was not accepted. Check the local DLMS log for details."), 400
 
     manifest = report["manifest"]
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
-    return render_template_string(r"""
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm Restore - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><form method="POST" action="/settings/backup/restore/cancel/{{ token }}"><button class="settings-back-button" type="submit">Cancel</button></form></div>
-<div class="settings-detail-card">
-<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">✓</div><div><h2>Valid DLMS Backup</h2><p>Review the snapshot metadata before replacing current data.</p></div></div>
-<div class="settings-current-value"><strong>Created:</strong> {{ manifest.created_at or 'Unknown' }}</div>
-<div class="settings-current-value"><strong>DLMS version:</strong> {{ manifest.dlms_version or 'Unknown' }}</div>
-<div class="settings-current-value"><strong>Files:</strong> {{ report.file_count }}</div>
-<div class="settings-current-value"><strong>Uncompressed data:</strong> {{ '%.1f'|format(report.uncompressed_bytes / 1048576) }} MB</div>
-<div class="settings-current-value"><strong>Snapshot summary:</strong> {{ summary.get('quizzes',0) }} quizzes · {{ summary.get('attempts',0) }} attempts · {{ summary.get('content_packs',0) }} Content Packs · {{ summary.get('pdf_question_banks',0) }} question banks · {{ summary.get('pdf_terminology_banks',0) }} terminology banks</div>
-{% if semantic_validation.get('portal_config', {}).get('status') == 'normalized' %}<div class="settings-warning-panel"><strong>Custom AI URL will be cleared</strong><span>The backup contained a relative, DLMS-local, or unsupported Custom AI URL. The rest of the validated backup can be restored normally; configure a new absolute HTTP or HTTPS destination afterward if needed.</span></div>{% endif %}
-<div class="settings-warning-panel"><strong>Automatic safety backup</strong><span>Before restoring, DLMS will create a new backup of your current data. If the restore operation fails, your pre-restore snapshot remains available in the DLMS backups folder.</span></div>
-</section>
-<div class="settings-form-actions"><form method="POST" action="/settings/backup/restore/confirm/{{ token }}"><button class="settings-primary-button" type="submit">Restore This Backup</button></form><form method="POST" action="/settings/backup/restore/cancel/{{ token }}"><button class="settings-secondary-button" type="submit">Cancel</button></form></div>
-</div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
-""", manifest=manifest, report=report, semantic_validation=semantic_result, summary=summary, token=token)
+    return render_template("settings/restore-confirm.html", manifest=manifest, report=report, semantic_validation=semantic_result, summary=summary, token=token)
 
 
 @app.route("/settings/data/restore/cancel/<token>", methods=["POST"])
@@ -15837,20 +15815,14 @@ def _settings_confirm_restore_locked(token):
         safety_path = result["safety_path"]
         cleanup_pending = result["cleanup_pending"]
 
-        return render_template_string(r"""
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Complete - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore complete</h1><p>DLMS restored the validated backup snapshot.</p></div></div><div class="settings-detail-card"><div class="settings-warning-panel"><strong>Pre-restore safety backup preserved</strong><span>{{ safety_name }}</span></div>{% if cleanup_pending %}<div class="settings-warning-panel"><strong>Cleanup will finish automatically</strong><span>The restored data is complete. DLMS will retry removal of temporary restore files the next time it starts.</span></div>{% endif %}<p>Reload DLMS pages before continuing. If restored settings changed appearance or behavior, the new values will be used on subsequent page loads.</p><div class="settings-form-actions"><button class="settings-primary-button" onclick="location.href='/'">Dashboard</button><button class="settings-secondary-button" onclick="location.href='/settings/backup'">Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
-""", safety_name=os.path.basename(safety_path), cleanup_pending=cleanup_pending)
+        return render_template("settings/restore-complete.html", safety_name=os.path.basename(safety_path), cleanup_pending=cleanup_pending)
     except Exception as exc:
         print("[RESTORE ERROR]", exc)
         public_error = (
             str(exc) if isinstance(exc, (DataRootOwnershipError, RestoreFutureSchemaError))
             else "DLMS could not complete the restore. Existing data was preserved or rolled back. Check the local application log for details."
         )
-        return render_template_string(r"""
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restore Failed - DLMS</title><link rel="stylesheet" href="/static/style.css"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell"><div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">DATA SAFETY</span><h1>Restore failed</h1><p>DLMS stopped the restore because an error occurred.</p></div></div><div class="settings-detail-card"><div class="settings-critical-panel"><strong>Restore did not complete</strong><span>{{ error }}</span></div><p>If a pre-restore backup was created, it remains in the DLMS backups folder.</p><div class="settings-form-actions"><button class="settings-secondary-button" onclick="location.href='/settings/backup'">← Back to Backup &amp; Restore</button></div></div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>
-""", error=public_error), (
+        return render_template("settings/restore-failed.html", error=public_error), (
             400 if isinstance(exc, ValueError)
             else 409 if isinstance(exc, DataRootOwnershipError)
             else 500
@@ -15879,34 +15851,7 @@ def settings_backup_page():
     except Exception:
         recent_backups = []
 
-    return render_template_string(r"""
-<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Backup & Restore Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
-<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
-<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>💾 Backup &amp; Restore</h1><p>Create portable backups or validate and restore an existing DLMS backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
-
-<div class="settings-detail-card">
-<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">⇩</div><div><h2>Portable Backup</h2><p>Create one ZIP snapshot containing your persistent DLMS data.</p></div></div>
-<div class="settings-image-guidance"><strong>Included:</strong> quizzes and runtime JSON, database/history, settings, Study/Content Packs, quiz assets, Smart PDF source banks, drafts, Law Study content, backgrounds, and persistent logos.<br><strong>Excluded:</strong> temporary uploads, Content Pack staging files, temporary logo previews, and older backup archives.</div>
-<form method="POST" action="/settings/backup/create"><div class="settings-form-actions"><button type="submit" class="settings-primary-button">⇩ Create &amp; Download Backup</button></div></form>
-{% if recent_backups %}<div class="settings-current-value"><strong>Recent safety backups kept on this device:</strong><ul>{% for item in recent_backups %}<li>{{ item.name }} — {{ item.size }} — {{ item.modified }}</li>{% endfor %}</ul></div>{% endif %}
-</section>
-
-<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-blue">⇧</div><div><h2>Restore from Backup</h2><p>Upload a DLMS portable-backup ZIP. DLMS validates it and shows a confirmation page before changing anything.</p></div></div>
-{% if request.args.get('restore_error') %}<div class="settings-critical-panel"><strong>Restore file not accepted</strong><span>Select a DLMS ZIP backup created by this Backup &amp; Restore page.</span></div>{% endif %}
-{% if request.args.get('restore_cancelled') %}<div class="settings-warning-panel"><strong>Restore cancelled</strong><span>The validated backup staging files were removed. No DLMS data was changed.</span></div>{% endif %}
-<div class="settings-warning-panel"><strong>Restore is deliberately cautious.</strong><span>The uploaded ZIP is checked for archive integrity, traversal/symlink attacks, schema compatibility, duplicate paths, and expansion limits. DLMS also creates a pre-restore backup of the current data before applying the snapshot.</span></div>
-<form method="POST" action="/settings/backup/restore/stage" enctype="multipart/form-data"><label class="settings-field-label" for="backupFile">DLMS backup ZIP</label><input id="backupFile" class="settings-file-input" type="file" name="backup_file" accept=".zip,application/zip" required><div class="settings-form-actions"><button type="submit" class="settings-primary-button">Validate Backup &amp; Continue</button></div></form>
-</section>
-
-<div class="settings-form-actions"><button type="button" class="settings-secondary-button" onclick="location.href='/settings'">← Back to Settings</button><button type="button" class="settings-secondary-button" onclick="location.href='/settings/reset-remove'">⚠ Reset &amp; Remove</button></div>
-</div>
-<div class="settings-scope-note"><strong>Portable design:</strong> runtime data is stored separately from the executable. A DLMS backup is intended to move that persistent data between compatible DLMS installations and provide a recovery point before destructive maintenance.</div>
-</div>
-</main>
-</div>
-<script src="/static/nav-normalize.js"></script></body></html>
-""", recent_backups=recent_backups)
+    return render_template("settings/backup.html", recent_backups=recent_backups)
 
 
 @app.route("/settings/reset")

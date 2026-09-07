@@ -1,0 +1,16 @@
+
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm Restore - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>Review backup before restore</h1><p>DLMS validated the archive and staged data. Nothing has been restored yet.</p></div><form method="POST" action="/settings/backup/restore/cancel/{{ token }}"><button class="settings-back-button" type="submit">Cancel</button></form></div>
+<div class="settings-detail-card">
+<section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">✓</div><div><h2>Valid DLMS Backup</h2><p>Review the snapshot metadata before replacing current data.</p></div></div>
+<div class="settings-current-value"><strong>Created:</strong> {{ manifest.created_at or 'Unknown' }}</div>
+<div class="settings-current-value"><strong>DLMS version:</strong> {{ manifest.dlms_version or 'Unknown' }}</div>
+<div class="settings-current-value"><strong>Files:</strong> {{ report.file_count }}</div>
+<div class="settings-current-value"><strong>Uncompressed data:</strong> {{ '%.1f'|format(report.uncompressed_bytes / 1048576) }} MB</div>
+<div class="settings-current-value"><strong>Snapshot summary:</strong> {{ summary.get('quizzes',0) }} quizzes · {{ summary.get('attempts',0) }} attempts · {{ summary.get('content_packs',0) }} Content Packs · {{ summary.get('pdf_question_banks',0) }} question banks · {{ summary.get('pdf_terminology_banks',0) }} terminology banks</div>
+{% if semantic_validation.get('portal_config', {}).get('status') == 'normalized' %}<div class="settings-warning-panel"><strong>Custom AI URL will be cleared</strong><span>The backup contained a relative, DLMS-local, or unsupported Custom AI URL. The rest of the validated backup can be restored normally; configure a new absolute HTTP or HTTPS destination afterward if needed.</span></div>{% endif %}
+<div class="settings-warning-panel"><strong>Automatic safety backup</strong><span>Before restoring, DLMS will create a new backup of your current data. If the restore operation fails, your pre-restore snapshot remains available in the DLMS backups folder.</span></div>
+</section>
+<div class="settings-form-actions"><form method="POST" action="/settings/backup/restore/confirm/{{ token }}"><button class="settings-primary-button" type="submit">Restore This Backup</button></form><form method="POST" action="/settings/backup/restore/cancel/{{ token }}"><button class="settings-secondary-button" type="submit">Cancel</button></form></div>
+</div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>

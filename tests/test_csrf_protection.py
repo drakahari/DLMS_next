@@ -421,6 +421,11 @@ class CsrfFrontendStaticTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = Path(dlms.STATIC_ROOT, "nav-normalize.js").read_text(encoding="utf-8")
         cls.app_source = Path(dlms.__file__).read_text(encoding="utf-8")
+        cls.ui_sources = [(Path(dlms.__file__), cls.app_source)]
+        cls.ui_sources.extend(
+            (path, path.read_text(encoding="utf-8"))
+            for path in sorted(Path(dlms.TEMPLATE_ROOT).rglob("*.html"))
+        )
 
     def test_bootstrap_injects_only_same_origin_unsafe_forms(self):
         self.assertIn("document.querySelectorAll('form').forEach(protectForm)", self.source)
@@ -446,7 +451,10 @@ class CsrfFrontendStaticTests(unittest.TestCase):
             # A route can also appear in preflight tables and handlers. Find an
             # actual page/caller occurrence followed by the shared bootstrap.
             pattern = re.escape(marker) + r"[\s\S]{0,18000}?/static/nav-normalize\.js"
-            self.assertRegex(self.app_source, pattern, marker)
+            self.assertTrue(
+                any(re.search(pattern, source) for _path, source in self.ui_sources),
+                marker,
+            )
 
 
 if __name__ == "__main__":

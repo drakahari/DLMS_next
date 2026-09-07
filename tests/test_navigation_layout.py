@@ -77,6 +77,7 @@ class NavigationLayoutTests(unittest.TestCase):
                     "medical_study_pack_default_addendum",
                 ),
             ),
+            ("/settings/backup", "settings/backup.html", ("recent_backups",)),
             ("/settings/parsing", "settings/parsing.html", ("cfg",)),
         )
         for route, template_name, context_names in cases:
