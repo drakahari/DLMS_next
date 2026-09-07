@@ -3328,3 +3328,99 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
     ) == "true"
     browser.click(".law-subpage-header h1")
     browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open')")
+
+
+def test_law_import_detail_normalizes_path_escapes_raw_packet_and_protects_form(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    normalized_name = "nested_browser-detail-packet.txt"
+    raw_packet = (
+        "Sources Used\n"
+        'Source & <b id="lawDetailSourceInjected">unsafe</b> '
+        '</textarea><script id="lawDetailScriptInjected">bad()</script> \u2028\u2029\n\n'
+        "1. Case Brief\n"
+        'Facts & <svg id="lawDetailFactsInjected"></svg>\n\n'
+        "4. Rule Flashcards\n"
+        "Q: What rule applies?\nA: The preserved rule."
+    )
+    import_path = browser_stack.data_root / "law" / "imports" / normalized_name
+    import_path.write_text(raw_packet, encoding="utf-8")
+
+    browser.set_viewport(760, 1100)
+    browser.navigate(f"{base_url}/law/imports/nested/browser-detail-packet.txt?created_case=1")
+    browser.wait_for(
+        "document.querySelector('[data-nav-key=law][aria-current=page]') && "
+        "document.querySelector('.law-detail-primary-form input[name=csrf_token]')"
+    )
+    detail = browser.evaluate(
+        "(() => {const form=document.querySelector('.law-detail-primary-form');"
+        "const stats=Array.from(document.querySelectorAll('.law-detail-stat strong')).map(node=>node.textContent);"
+        "const cards=Array.from(document.querySelectorAll('.law-parse-card'));"
+        "const textarea=document.querySelector('.law-raw-packet');"
+        "return {heading:document.querySelector('.law-detail-heading h2').textContent,stats,"
+        "status:document.querySelector('.law-status-pill').textContent,"
+        "banner:document.querySelector('.law-message.success').textContent,"
+        "titles:cards.map(card=>card.querySelector('h3').textContent),"
+        "summary:Array.from(document.querySelectorAll('.law-message.success')).at(-1).textContent,"
+        "raw:textarea.value,readOnly:textarea.readOnly,rows:textarea.rows,"
+        "method:form.method,action:form.getAttribute('action'),"
+        "csrf:!!form.querySelector('input[name=csrf_token][type=hidden]'),"
+        "createText:form.querySelector('button').textContent,"
+        "confirm:form.querySelector('button').getAttribute('onclick'),"
+        "backActions:Array.from(document.querySelectorAll('.law-detail-actions button')).map(button=>button.getAttribute('onclick')),"
+        "primaryNav:document.querySelector('nav.dashboard-nav').getAttribute('aria-label'),"
+        "systemNav:document.querySelector('nav.dashboard-nav-system').getAttribute('aria-label'),"
+        "menuLabel:document.getElementById('menuButton').getAttribute('aria-label'),"
+        "injected:!!document.getElementById('lawDetailSourceInjected')||"
+        "!!document.getElementById('lawDetailScriptInjected')||"
+        "!!document.getElementById('lawDetailFactsInjected')};})()"
+    )
+    assert detail == {
+        "heading": normalized_name,
+        "stats": [
+            str(len(raw_packet.splitlines())),
+            str(len(raw_packet)),
+            f"{import_path.stat().st_size} bytes",
+            detail["stats"][3],
+        ],
+        "status": "Raw Import",
+        "banner": (
+            "Case review created.The structured case file was saved and added to the "
+            "Law Study registry."
+        ),
+        "titles": ["Sources Used", "1. Case Brief", "4. Rule Flashcards"],
+        "summary": (
+            "Parser preview:DLMS found 3 recognized sections. Nothing new is saved "
+            "until you create the case review."
+        ),
+        "raw": raw_packet,
+        "readOnly": True,
+        "rows": 24,
+        "method": "post",
+        "action": f"/law/imports/{normalized_name}/create_case",
+        "csrf": True,
+        "createText": "Create Case Review From Import",
+        "confirm": (
+            "return confirm('Create a structured Law Case Review from this import?');"
+        ),
+        "backActions": [
+            "location.href='/law/imports'",
+            "location.href='/law/cases'",
+            "location.href='/law/import'",
+        ],
+        "primaryNav": "Primary navigation",
+        "systemNav": "System navigation",
+        "menuLabel": "Toggle navigation",
+        "injected": False,
+    }
+    assert len(detail["stats"][3]) == 19
+    assert detail["stats"][3][4] == "-"
+    assert detail["stats"][3][7] == "-"
+
+    browser.click("#menuButton")
+    browser.wait_for("document.getElementById('dashboardSidebar').classList.contains('open')")
+    assert browser.evaluate(
+        "document.getElementById('menuButton').getAttribute('aria-expanded')"
+    ) == "true"
+    browser.click(".law-subpage-header h1")
+    browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open')")

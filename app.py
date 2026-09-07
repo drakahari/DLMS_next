@@ -5730,140 +5730,16 @@ def law_view_saved_import(filename):
     size = os.stat(import_path).st_size
     parsed_sections = parse_law_packet_sections(raw_packet)
 
-    return render_template_string("""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>View Law Import - DLMS</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" href="/static/favicon.ico">
-</head>
-<body class="dashboard-home law-subpage law-import-detail-page">
-<div class="dashboard-shell">
-<aside class="dashboard-sidebar" id="dashboardSidebar">
-    <div class="dashboard-brand">
-        <div class="dashboard-brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" role="img">
-                <path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/>
-                <path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </div>
-        <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
-    </div>
-    <nav class="dashboard-nav" aria-label="Primary navigation">
-        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
-        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
-        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
-            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
-        <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
-        {% if medical_pack_installed %}
-        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
-        {% endif %}
-        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
-        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
-            <div class="dashboard-nav-group">
-                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
-                <div class="dashboard-nav-submenu">
-                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
-                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
-                </div>
-            </div>
-    </nav>
-    <div class="dashboard-nav-section-label"><span>System</span></div>
-    <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
-        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
-        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
-        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
-        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
-    </nav>
-    <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button>
-    <div class="dashboard-sidebar-version">Law Study</div>
-</aside>
-<main class="dashboard-main law-subpage-main">
-    <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
-        <div><div class="law-subpage-eyebrow">LAW STUDY · SAVED IMPORT</div><h1>View Law Import</h1><p>Inspect the raw packet and recognized study sections before creating a structured case review.</p></div>
-    </header>
-
-    <section class="dashboard-panel law-detail-panel">
-        <div class="law-detail-heading">
-            <div><span class="law-subpage-eyebrow">RAW CASE PACKET</span><h2>{{ filename }}</h2><p>Saved AI-generated source packet awaiting or supporting structured case review.</p></div>
-            <span class="law-status-pill">Raw Import</span>
-        </div>
-
-        <div class="law-detail-stat-grid">
-            <div class="law-detail-stat"><span>Lines</span><strong>{{ line_count }}</strong></div>
-            <div class="law-detail-stat"><span>Characters</span><strong>{{ char_count }}</strong></div>
-            <div class="law-detail-stat"><span>Size</span><strong>{{ size }} bytes</strong></div>
-            <div class="law-detail-stat"><span>Modified</span><strong class="law-detail-date">{{ modified }}</strong></div>
-        </div>
-
-        {% if request.args.get('created_case') %}
-        <div class="law-message success"><strong>Case review created.</strong><span>The structured case file was saved and added to the Law Study registry.</span></div>
-        {% endif %}
-
-        <div class="law-section-heading"><span class="law-subpage-eyebrow">PARSER</span><h3>Recognized Sections</h3></div>
-        {% if parsed_sections %}
-        <div class="law-parse-grid">
-            {% for section in parsed_sections %}
-            <article class="law-parse-card"><div class="law-parse-check">✓</div><div><h3>{{ section.title }}</h3><p>{{ section.line_count }} lines · {{ section.char_count }} characters</p></div></article>
-            {% endfor %}
-        </div>
-        <div class="law-message success"><strong>Parser preview:</strong><span>DLMS found {{ parsed_sections|length }} recognized section{% if parsed_sections|length != 1 %}s{% endif %}. Nothing new is saved until you create the case review.</span></div>
-        <form method="POST" action="/law/imports/{{ filename }}/create_case" class="law-detail-primary-form">
-            <button type="submit" class="law-primary-action" onclick="return confirm('Create a structured Law Case Review from this import?');">Create Case Review From Import</button>
-        </form>
-        {% else %}
-        <div class="law-message warning"><strong>No recognized Law Study headings found.</strong><span>Expected headings include Case Brief, Socratic Review, Socratic Answer Key, IRAC Drill, and Rule Flashcards.</span></div>
-        {% endif %}
-
-        <div class="law-section-heading"><span class="law-subpage-eyebrow">SOURCE</span><h3>Raw Packet Text</h3></div>
-        <textarea class="law-raw-packet" readonly rows="24">{{ raw_packet }}</textarea>
-
-        <div class="law-detail-actions">
-            <button type="button" class="law-secondary-action" onclick="location.href='/law/imports'">Back to Saved Imports</button>
-            <button type="button" class="law-secondary-action" onclick="location.href='/law/cases'">My Case Reviews</button>
-            <button type="button" class="law-secondary-action" onclick="location.href='/law/import'">Import Another Packet</button>
-        </div>
-    </section>
-</main>
-</div>
-<script>
-const menuButton = document.getElementById("menuButton");
-const sidebar = document.getElementById("dashboardSidebar");
-if (menuButton && sidebar) {
-    menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));
-    document.addEventListener("click", event => {
-        if (window.innerWidth > 820 || !sidebar.classList.contains("open")) return;
-        if (sidebar.contains(event.target) || menuButton.contains(event.target)) return;
-        sidebar.classList.remove("open");
-    });
-}
-const shutdownBtn = document.getElementById("shutdownBtn");
-if (shutdownBtn) {
-    shutdownBtn.addEventListener("click", async () => {
-        if (!confirm("Shut down DLMS? You will need to restart it manually.")) return;
-        try {
-            const res = await fetch("/api/shutdown", { method: "POST" });
-            const data = await res.json();
-            if (data.status === "ok") alert("DLMS is shutting down.");
-            else throw new Error();
-        } catch (err) { alert("Failed to shut down DLMS."); }
-    });
-}
-</script>
-<script src="/static/nav-normalize.js"></script>
-</body>
-</html>
-""",
-    portal_title=portal_title,
-    filename=safe_name,
-    raw_packet=raw_packet,
-    line_count=line_count,
-    char_count=char_count,
-    modified=modified,
-    size=size,
-    parsed_sections=parsed_sections
+    return render_template(
+        "law/import-detail.html",
+        portal_title=portal_title,
+        filename=safe_name,
+        raw_packet=raw_packet,
+        line_count=line_count,
+        char_count=char_count,
+        modified=modified,
+        size=size,
+        parsed_sections=parsed_sections,
     )
 
 
