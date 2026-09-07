@@ -66,6 +66,10 @@ class ReleaseDocumentationTests(unittest.TestCase):
         law_source = (ROOT / "dlms" / "services" / "law.py").read_text(
             encoding="utf-8"
         )
+        quiz_route_source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((ROOT / "dlms" / "routes" / "quiz").glob("*.py"))
+        )
         dashboard = (ROOT / "templates" / "dashboard" / "index.html").read_text(encoding="utf-8")
         server_template_source = app_source + "\n" + "\n".join(
             path.read_text(encoding="utf-8")
@@ -75,6 +79,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertEqual(server_template_source.count("DLMS v{{ app_version }}"), 7)
         self.assertEqual(
             app_source.count('lines.append(f"# Exported from DLMS v{APP_VERSION}")')
+            + quiz_route_source.count('lines.append(f"# Exported from DLMS v{APP_VERSION}")')
             + law_source.count('lines.append(f"# Exported from DLMS v{app_version}")'),
             3,
         )

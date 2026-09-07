@@ -43,7 +43,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
             ast.parse(source),
             *[
                 ast.parse(path.read_text(encoding="utf-8"))
-                for path in sorted((ROOT / "dlms" / "routes").glob("*.py"))
+                for path in sorted((ROOT / "dlms" / "routes").rglob("*.py"))
             ],
         ]
 
