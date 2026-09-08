@@ -14,6 +14,8 @@ software.
 * [DLMS 3.0.2 Stable Release Audit](2026-09-05-stable-release-audit.md)
 * [September 5, 2026 Product Quality Assessment](2026-09-05-product-quality-assessment.md)
 * [DLMS 3.0.2 Native Packaging Audit](2026-09-05-native-packaging-audit.md)
+* [September 8, 2026 Post-Modularization Product Quality
+  Assessment](2026-09-08-product-quality-assessment.md)
 
 ## Product-quality history
 
@@ -21,9 +23,12 @@ software.
   rounding).
 * September 5, 2026: weighted score **9.13/10** (`9.126/10` before
   rounding).
-* Both assessments rated Overall Product Quality at **9.1/10** and concluded that
-  DLMS 3.0.2 was appropriate for stable release.
+* September 8, 2026: weighted score **9.40/10** (`9.398/10` before
+  rounding), with readiness classified as **READY WITH NON-BLOCKING DEBT**.
+* The September 3 and September 5 assessments rated Overall Product Quality at
+  **9.1/10**. The post-modularization September 8 assessment rated it at
+  **9.4/10**.
 
-The close results provide useful longitudinal consistency across separately
-performed assessments. Each remains its own historical record; neither replaces
-the other, and no average score is calculated.
+The results provide a longitudinal record across separately performed
+assessments. Each remains its own historical record; none replaces an earlier
+assessment, and no average score is calculated.
