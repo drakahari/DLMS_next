@@ -105,6 +105,10 @@ class ContentPackImportReviewTemplateTests(unittest.TestCase):
         self.assertIn("Sample Study Pack", page)
         self.assertIn("DLMS_Study_sample.zip · 7 files · 1.5 MB expanded", page)
         self.assertIn("2 datasets", page)
+        self.assertIn(
+            'class="content-pack-status is-valid" role="status" aria-live="polite">Valid</span>',
+            page,
+        )
         self.assertIn("<span>Passed</span><strong>1</strong>", page)
         self.assertIn("<span>Warnings</span><strong>1</strong>", page)
         self.assertIn("<span>Errors</span><strong>0</strong>", page)
@@ -153,6 +157,9 @@ class ContentPackImportReviewTemplateTests(unittest.TestCase):
         self.assertIn("<h2>blocked.zip</h2>", page)
         self.assertIn("blocked.zip · 1 files · 0.0 MB expanded", page)
         self.assertIn("0 datasets", page)
+        self.assertIn(
+            'class="content-pack-status is-invalid" role="alert">Invalid</span>', page
+        )
         self.assertIn("<h3>Blocking problems</h3>", page)
         self.assertIn("Manifest is missing an id.", page)
         self.assertIn(

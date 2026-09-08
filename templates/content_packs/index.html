@@ -58,7 +58,7 @@
         {% if messages %}
         <div class="content-pack-flashes">
             {% for category, message in messages %}
-            <div class="flash {{ category }}">{{ message }}</div>
+            <div class="flash {{ category }}" {% if category == 'error' %}role="alert"{% else %}role="status" aria-live="polite"{% endif %}>{{ message }}</div>
             {% endfor %}
         </div>
         {% endif %}

@@ -123,6 +123,9 @@ class LawCatalogTemplateTests(unittest.TestCase):
         page = self._get_imports([], "?deleted=1")
         self.assertIn("Saved import deleted.", page)
         self.assertIn("Structured case reviews were not changed.", page)
+        self.assertIn(
+            'class="law-notice success" role="status" aria-live="polite"', page
+        )
 
         with mock.patch.object(
             dlms._law_service,
@@ -220,6 +223,9 @@ class LawCatalogTemplateTests(unittest.TestCase):
         self.assertIn('<span class="law-count-pill">0 saved</span>', page)
         self.assertIn("Case review deleted.", page)
         self.assertIn("The original raw import was not changed.", page)
+        self.assertIn(
+            'class="law-notice success" role="status" aria-live="polite"', page
+        )
 
     def test_catalogs_do_not_render_or_consume_flashed_messages(self):
         message = 'Law catalog flash <b id="lawCatalogFlashInjected"> & pending'

@@ -50,7 +50,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     <div class="content-pack-flashes">
-        {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+        {% for category, message in messages %}<div class="flash {{ category }}" {% if category == 'error' %}role="alert"{% else %}role="status" aria-live="polite"{% endif %}>{{ message }}</div>{% endfor %}
     </div>
     {% endif %}
     {% endwith %}
@@ -126,7 +126,7 @@
                     <tr>
                         <td><span class="study-type-badge mixed">Mixed</span></td>
                         <td>
-                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-mixed-{{ loop.index }}')">{{ d.title }}</button>
+                            <button type="button" class="study-dataset-title-button" aria-expanded="false" aria-controls="dataset-{{ pack.id }}-mixed-{{ loop.index }}" onclick="toggleDatasetDetails(this)">{{ d.title }}</button>
                             {% if d.category %}<small>{{ d.category }}</small>{% endif %}
                         </td>
                         <td><span>{{ d.question_count }} questions</span>{% if d.image_count %}<small>{{ d.image_count }} images{% if d.hotspot_count %} · {{ d.hotspot_count }} hotspots{% endif %}</small>{% endif %}</td>
@@ -148,7 +148,7 @@
                     <tr>
                         <td><span class="study-type-badge matching">Matching</span></td>
                         <td>
-                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-matching-{{ loop.index }}')">{{ d.title }}</button>
+                            <button type="button" class="study-dataset-title-button" aria-expanded="false" aria-controls="dataset-{{ pack.id }}-matching-{{ loop.index }}" onclick="toggleDatasetDetails(this)">{{ d.title }}</button>
                             {% if d.category %}<small>{{ d.category }}</small>{% endif %}
                         </td>
                         <td><span>{{ d.term_count }} items</span></td>
@@ -181,7 +181,7 @@
                     <tr>
                         <td><span class="study-type-badge image">Image</span></td>
                         <td>
-                            <button type="button" class="study-dataset-title-button" onclick="toggleDatasetDetails('{{ pack.id }}-image-{{ loop.index }}')">{{ d.title }}</button>
+                            <button type="button" class="study-dataset-title-button" aria-expanded="false" aria-controls="dataset-{{ pack.id }}-image-{{ loop.index }}" onclick="toggleDatasetDetails(this)">{{ d.title }}</button>
                             {% if d.category %}<small>{{ d.category }}</small>{% endif %}
                         </td>
                         <td><span>{{ d.image_count }} image{{ '' if d.image_count == 1 else 's' }}</span><small>{{ d.hotspot_count }} targets</small></td>
@@ -230,9 +230,12 @@ if(installedPack){
 }
 document.getElementById('expandAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=true);savePackState()});
 document.getElementById('collapseAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=false);savePackState()});
-function toggleDatasetDetails(id){
-    const row=document.getElementById(`dataset-${id}`);
-    if(row) row.hidden=!row.hidden;
+function toggleDatasetDetails(toggle){
+    const row=document.getElementById(toggle.getAttribute('aria-controls'));
+    if(!row) return;
+    const open=row.hidden;
+    row.hidden=!open;
+    toggle.setAttribute('aria-expanded',String(open));
 }
 </script>
 <script src="/static/nav-normalize.js"></script>

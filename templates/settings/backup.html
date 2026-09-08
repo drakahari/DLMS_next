@@ -13,8 +13,8 @@
 </section>
 
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-blue">⇧</div><div><h2>Restore from Backup</h2><p>Upload a DLMS portable-backup ZIP. DLMS validates it and shows a confirmation page before changing anything.</p></div></div>
-{% if request.args.get('restore_error') %}<div class="settings-critical-panel"><strong>Restore file not accepted</strong><span>Select a DLMS ZIP backup created by this Backup &amp; Restore page.</span></div>{% endif %}
-{% if request.args.get('restore_cancelled') %}<div class="settings-warning-panel"><strong>Restore cancelled</strong><span>The validated backup staging files were removed. No DLMS data was changed.</span></div>{% endif %}
+{% if request.args.get('restore_error') %}<div class="settings-critical-panel" role="alert"><strong>Restore file not accepted</strong><span>Select a DLMS ZIP backup created by this Backup &amp; Restore page.</span></div>{% endif %}
+{% if request.args.get('restore_cancelled') %}<div class="settings-warning-panel" role="status" aria-live="polite"><strong>Restore cancelled</strong><span>The validated backup staging files were removed. No DLMS data was changed.</span></div>{% endif %}
 <div class="settings-warning-panel"><strong>Restore is deliberately cautious.</strong><span>The uploaded ZIP is checked for archive integrity, traversal/symlink attacks, schema compatibility, duplicate paths, and expansion limits. DLMS also creates a pre-restore backup of the current data before applying the snapshot.</span></div>
 <form method="POST" action="/settings/backup/restore/stage" enctype="multipart/form-data"><label class="settings-field-label" for="backupFile">DLMS backup ZIP</label><input id="backupFile" class="settings-file-input" type="file" name="backup_file" accept=".zip,application/zip" required><div class="settings-form-actions"><button type="submit" class="settings-primary-button">Validate Backup &amp; Continue</button></div></form>
 </section>

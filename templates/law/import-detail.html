@@ -67,7 +67,7 @@
         </div>
 
         {% if request.args.get('created_case') %}
-        <div class="law-message success"><strong>Case review created.</strong><span>The structured case file was saved and added to the Law Study registry.</span></div>
+        <div class="law-message success" role="status" aria-live="polite"><strong>Case review created.</strong><span>The structured case file was saved and added to the Law Study registry.</span></div>
         {% endif %}
 
         <div class="law-section-heading"><span class="law-subpage-eyebrow">PARSER</span><h3>Recognized Sections</h3></div>
@@ -85,8 +85,8 @@
         <div class="law-message warning"><strong>No recognized Law Study headings found.</strong><span>Expected headings include Case Brief, Socratic Review, Socratic Answer Key, IRAC Drill, and Rule Flashcards.</span></div>
         {% endif %}
 
-        <div class="law-section-heading"><span class="law-subpage-eyebrow">SOURCE</span><h3>Raw Packet Text</h3></div>
-        <textarea class="law-raw-packet" readonly rows="24">{{ raw_packet }}</textarea>
+        <div class="law-section-heading"><span class="law-subpage-eyebrow">SOURCE</span><h3><label for="lawSavedRawPacket">Raw Packet Text</label></h3></div>
+        <textarea id="lawSavedRawPacket" class="law-raw-packet" readonly rows="24">{{ raw_packet }}</textarea>
 
         <div class="law-detail-actions">
             <button type="button" class="law-secondary-action" onclick="location.href='/law/imports'">Back to Saved Imports</button>

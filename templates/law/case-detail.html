@@ -112,7 +112,7 @@
         </div>
 
         {% if request.args.get('updated') %}
-        <div style="
+        <div role="status" aria-live="polite" style="
             margin-bottom:18px;
             padding:14px;
             border-radius:12px;
@@ -125,7 +125,7 @@
         {% endif %}
 
         {% if request.args.get('notes_updated') %}
-        <div style="
+        <div role="status" aria-live="polite" style="
             margin-bottom:18px;
             padding:14px;
             border-radius:12px;
@@ -138,7 +138,7 @@
         {% endif %}   
 
           {% if request.args.get('socratic_answers_updated') %}
-        <div style="
+        <div role="status" aria-live="polite" style="
             margin-bottom:18px;
             padding:14px;
             border-radius:12px;
@@ -151,7 +151,7 @@
         {% endif %}                     
 
         {% if request.args.get('irac_updated') %}
-        <div style="
+        <div role="status" aria-live="polite" style="
             margin-bottom:18px;
             padding:14px;
             border-radius:12px;
@@ -179,16 +179,17 @@
     <h2 style="margin-top:0;">✏️ Edit Case Details</h2>
 
     <form method="POST" action="{{ url_for('law.law_update_case_review_details', case_id=case_data.id) }}">
-        <label><strong>Case Title</strong></label><br>
+        <label for="lawCaseTitle"><strong>Case Title</strong></label><br>
         <input type="text"
+               id="lawCaseTitle"
                name="title"
                value="{{ case_data.title }}"
                style="width:100%; padding:10px; border-radius:8px; box-sizing:border-box;">
 
         <br><br>
 
-        <label><strong>Course</strong></label><br>
-        <select name="course"
+        <label for="lawCaseCourse"><strong>Course</strong></label><br>
+        <select id="lawCaseCourse" name="course"
                 style="width:100%; padding:10px; border-radius:8px; box-sizing:border-box;">
             <option value="Uncategorized" {% if case_data.course == "Uncategorized" %}selected{% endif %}>
                 Uncategorized
@@ -234,32 +235,32 @@
         </p>
 
         <form method="POST" action="{{ url_for('law.law_update_irac_response', case_id=case_data.id) }}">
-            <label><strong>Issue</strong></label><br>
-            <textarea class="law-detail-textarea" name="irac_issue"
+            <label for="lawIracIssue"><strong>Issue</strong></label><br>
+            <textarea id="lawIracIssue" class="law-detail-textarea" name="irac_issue"
                     rows="4"
                     placeholder="State the legal issue..."
                     style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ irac_student_response.get("issue", "") }}</textarea>
 
             <br><br>
 
-            <label><strong>Rule</strong></label><br>
-            <textarea class="law-detail-textarea" name="irac_rule"
+            <label for="lawIracRule"><strong>Rule</strong></label><br>
+            <textarea id="lawIracRule" class="law-detail-textarea" name="irac_rule"
                     rows="4"
                     placeholder="State the governing rule..."
                     style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ irac_student_response.get("rule", "") }}</textarea>
 
             <br><br>
 
-            <label><strong>Analysis / Application</strong></label><br>
-            <textarea class="law-detail-textarea" name="irac_analysis"
+            <label for="lawIracAnalysis"><strong>Analysis / Application</strong></label><br>
+            <textarea id="lawIracAnalysis" class="law-detail-textarea" name="irac_analysis"
                     rows="7"
                     placeholder="Apply the rule to the facts..."
                     style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ irac_student_response.get("analysis", "") }}</textarea>
 
             <br><br>
 
-            <label><strong>Conclusion</strong></label><br>
-            <textarea class="law-detail-textarea" name="irac_conclusion"
+            <label for="lawIracConclusion"><strong>Conclusion</strong></label><br>
+            <textarea id="lawIracConclusion" class="law-detail-textarea" name="irac_conclusion"
                     rows="4"
                     placeholder="State the likely result..."
                     style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ irac_student_response.get("conclusion", "") }}</textarea>
@@ -279,7 +280,7 @@
             Hidden by default for active recall. Try writing your own IRAC response first, then reveal the imported drill guidance.
         </p>
 
-        <button type="button" onclick="toggleIracDrill()">
+        <button type="button" aria-expanded="false" aria-controls="iracDrillBox" onclick="toggleIracDrill(this)">
             👁 Reveal / Hide IRAC Drill
         </button>
 
@@ -350,8 +351,8 @@
                     margin-bottom:12px;
                 ">{{ question.text }}</pre>
 
-                <label><strong>Your Answer</strong></label><br>
-                <textarea class="law-detail-textarea" name="answer_{{ question.id }}"
+                <label for="lawSocraticAnswer{{ loop.index }}"><strong>Your Answer</strong></label><br>
+                <textarea id="lawSocraticAnswer{{ loop.index }}" class="law-detail-textarea" name="answer_{{ question.id }}"
                           rows="5"
                           placeholder="Type your answer before revealing the guidance..."
                           style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ socratic_student_answers.get(question.id, "") }}</textarea>
@@ -378,7 +379,7 @@
                 Hidden by default for active recall. Try answering the Socratic questions first, then reveal the guidance.
             </p>
 
-            <button type="button" onclick="toggleSocraticAnswerKey()">
+            <button type="button" aria-expanded="false" aria-controls="socraticAnswerKey" onclick="toggleSocraticAnswerKey(this)">
                 👁 Reveal / Hide Answer Key
             </button>
 
@@ -409,14 +410,14 @@
         {% endif %}
                                   
         <div class="portal-card law-case-section">
-            <h2 style="margin-top:0;">📝 Student Notes</h2>
+            <h2 id="lawStudentNotesHeading" style="margin-top:0;">📝 Student Notes</h2>
 
             <p style="opacity:.8;">
                 Add your own class notes, professor comments, questions, or reminders here.
             </p>
 
             <form method="POST" action="{{ url_for('law.law_update_case_review_notes', case_id=case_data.id) }}">
-                <textarea class="law-detail-textarea" name="student_notes"
+                <textarea id="lawStudentNotes" class="law-detail-textarea" name="student_notes" aria-labelledby="lawStudentNotesHeading"
                         rows="10"
                         placeholder="Add your own notes about this case..."
                         style="width:100%; padding:12px; border-radius:10px; box-sizing:border-box;">{{ case_data.student_notes }}</textarea>
@@ -456,32 +457,28 @@ document.querySelectorAll("[data-law-navigation-url]").forEach(control => {
     control.addEventListener("click", () => window.location.assign(control.dataset.lawNavigationUrl));
 });
 
-function toggleIracDrill() {
+function toggleIracDrill(control) {
     const box = document.getElementById("iracDrillBox");
 
     if (!box) {
         return;
     }
 
-    if (box.style.display === "none" || box.style.display === "") {
-        box.style.display = "block";
-    } else {
-        box.style.display = "none";
-    }
+    const open = box.style.display === "none" || box.style.display === "";
+    box.style.display = open ? "block" : "none";
+    (control || document.querySelector('[aria-controls="iracDrillBox"]'))?.setAttribute("aria-expanded", String(open));
 }
 
-function toggleSocraticAnswerKey() {
+function toggleSocraticAnswerKey(control) {
     const box = document.getElementById("socraticAnswerKey");
 
     if (!box) {
         return;
     }
 
-    if (box.style.display === "none" || box.style.display === "") {
-        box.style.display = "block";
-    } else {
-        box.style.display = "none";
-    }
+    const open = box.style.display === "none" || box.style.display === "";
+    box.style.display = open ? "block" : "none";
+    (control || document.querySelector('[aria-controls="socraticAnswerKey"]'))?.setAttribute("aria-expanded", String(open));
 }
 
 const menuButton = document.getElementById("menuButton");

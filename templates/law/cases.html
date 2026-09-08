@@ -80,7 +80,7 @@
         </div>
 
         {% if request.args.get('deleted') %}
-        <div class="law-notice success"><strong>Case review deleted.</strong><span>The original raw import was not changed.</span></div>
+        <div class="law-notice success" role="status" aria-live="polite"><strong>Case review deleted.</strong><span>The original raw import was not changed.</span></div>
         {% endif %}
 
         {% if cases %}

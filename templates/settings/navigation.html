@@ -25,7 +25,7 @@
     </div>
 
     {% if request.args.get('saved') %}
-    <div class="settings-success-banner">✓ Navigation settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite">✓ Navigation settings saved.</div>
     {% endif %}
 
     <form class="settings-detail-card" action="/settings/navigation/save" method="POST">

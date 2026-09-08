@@ -11,6 +11,10 @@ NAVIGATION = (ROOT / "static" / "nav-normalize.js").read_text(encoding="utf-8")
 LIBRARY_SOURCE = (ROOT / "templates" / "quiz" / "library.html").read_text(encoding="utf-8")
 
 
+def _template_source(relative_path):
+    return (ROOT / "templates" / relative_path).read_text(encoding="utf-8")
+
+
 def _ui_sources():
     yield ROOT / "app.py", APP_SOURCE
     for path in sorted((ROOT / "dlms" / "routes").rglob("*.py")):
@@ -101,3 +105,118 @@ def test_reduced_motion_preference_disables_nonessential_animation_and_smooth_sc
     assert "animation-iteration-count: 1 !important" in body
     assert "transition-duration: 0.01ms !important" in body
     assert "scroll-behavior: auto !important" in body
+
+
+def test_dataset_disclosures_reference_stable_regions_and_synchronize_state():
+    study_packs = _template_source("study_packs/catalog.html")
+    for kind in ("mixed", "matching", "image"):
+        control = "dataset-{{ pack.id }}-" + kind + "-{{ loop.index }}"
+        assert f'aria-controls="{control}"' in study_packs
+        assert f'id="{control}"' in study_packs
+    assert study_packs.count('aria-expanded="false"') >= 4
+    assert "toggle.setAttribute('aria-expanded',String(open))" in study_packs
+
+    it_matching = _template_source("it/matching.html")
+    assert 'aria-controls="it-match-{{ loop.index }}"' in it_matching
+    assert 'id="it-match-{{ loop.index }}"' in it_matching
+    assert "toggle.setAttribute('aria-expanded',String(open))" in it_matching
+    assert "setItDetails(true)" in it_matching
+    assert "setItDetails(false)" in it_matching
+
+    it_images = _template_source("it/images.html")
+    assert 'aria-controls="it-image-{{ loop.index }}"' in it_images
+    assert 'id="it-image-{{ loop.index }}"' in it_images
+    assert "toggle.setAttribute('aria-expanded',String(open))" in it_images
+
+    medical_matching = _template_source("medical/matching.html")
+    assert 'aria-controls="matching-detail-{{ loop.index }}"' in medical_matching
+    assert 'id="matching-detail-{{ loop.index }}"' in medical_matching
+    assert 'toggle.setAttribute("aria-expanded", open ? "true" : "false")' in medical_matching
+
+    medical_anatomy = _template_source("medical/anatomy.html")
+    assert 'aria-controls="anatomy-detail-{{ loop.index }}"' in medical_anatomy
+    assert 'id="anatomy-detail-{{ loop.index }}"' in medical_anatomy
+    assert 'toggle.setAttribute("aria-expanded", open ? "true" : "false")' in medical_anatomy
+
+
+def test_law_fields_and_reveal_controls_have_programmatic_names():
+    law_import = _template_source("law/import.html")
+    assert 'for="lawRawPacketInput"' in law_import
+    assert 'id="lawRawPacketInput" name="raw_packet"' in law_import
+
+    import_detail = _template_source("law/import-detail.html")
+    assert '<label for="lawSavedRawPacket">Raw Packet Text</label>' in import_detail
+    assert 'id="lawSavedRawPacket" class="law-raw-packet"' in import_detail
+
+    law_create = _template_source("law/create.html")
+    assert 'id="lawGeneratedPromptHeading"' in law_create
+    assert 'aria-labelledby="lawGeneratedPromptHeading"' in law_create
+
+    case_detail = _template_source("law/case-detail.html")
+    for field_id in (
+        "lawCaseTitle",
+        "lawCaseCourse",
+        "lawIracIssue",
+        "lawIracRule",
+        "lawIracAnalysis",
+        "lawIracConclusion",
+    ):
+        assert f'for="{field_id}"' in case_detail
+        assert f'id="{field_id}"' in case_detail
+    assert 'for="lawSocraticAnswer{{ loop.index }}"' in case_detail
+    assert 'id="lawSocraticAnswer{{ loop.index }}"' in case_detail
+    assert 'id="lawStudentNotesHeading"' in case_detail
+    assert 'aria-labelledby="lawStudentNotesHeading"' in case_detail
+    assert 'aria-expanded="false" aria-controls="iracDrillBox"' in case_detail
+    assert 'aria-expanded="false" aria-controls="socraticAnswerKey"' in case_detail
+    assert 'id="iracDrillBox"' in case_detail
+    assert 'id="socraticAnswerKey"' in case_detail
+    assert 'setAttribute("aria-expanded", String(open))' in case_detail
+
+
+def test_post_action_feedback_uses_status_or_alert_without_announcing_static_guidance():
+    law_import = _template_source("law/import.html")
+    assert 'class="law-notice success" role="status" aria-live="polite"' in law_import
+    assert "{% if save_message_category == 'error' %}role=\"alert\"" in law_import
+    assert "{% else %}role=\"status\" aria-live=\"polite\"{% endif %}" in law_import
+    assert '<div class="law-notice warning">' in law_import
+
+    import_detail = _template_source("law/import-detail.html")
+    assert 'class="law-message success" role="status" aria-live="polite"' in import_detail
+    assert '<div class="law-message success"><strong>Parser preview:' in import_detail
+
+    for relative_path in (
+        "law/case-detail.html",
+        "law/cases.html",
+        "law/imports.html",
+        "settings/ai.html",
+        "settings/appearance.html",
+        "settings/navigation.html",
+        "settings/parsing.html",
+    ):
+        source = _template_source(relative_path)
+        assert 'role="status" aria-live="polite"' in source, relative_path
+
+    content_review = _template_source("content_packs/import-review.html")
+    assert "{% if report.valid %}role=\"status\" aria-live=\"polite\"{% else %}role=\"alert\"{% endif %}" in content_review
+    assert '<div class="pack-validation-messages warnings">' in content_review
+
+    content_catalog = _template_source("content_packs/index.html")
+    assert "{% if category == 'error' %}role=\"alert\"{% else %}role=\"status\" aria-live=\"polite\"{% endif %}" in content_catalog
+
+    backup = _template_source("settings/backup.html")
+    assert 'class="settings-critical-panel" role="alert"' in backup
+    assert 'class="settings-warning-panel" role="status" aria-live="polite"' in backup
+    assert '<div class="settings-warning-panel"><strong>Restore is deliberately cautious.' in backup
+
+    for relative_path in (
+        "settings/backup-failed.html",
+        "settings/restore-failed.html",
+        "settings/restore-validation-failed.html",
+    ):
+        assert 'class="settings-critical-panel" role="alert"' in _template_source(relative_path)
+
+    reset_remove = _template_source("settings/reset-remove.html")
+    assert reset_remove.count('role="status" aria-live="polite"') == 2
+    assert 'target.setAttribute("role",isError?"alert":"status")' in reset_remove
+    assert 'target.setAttribute("aria-live",isError?"assertive":"polite")' in reset_remove

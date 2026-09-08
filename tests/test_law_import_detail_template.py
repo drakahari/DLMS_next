@@ -91,7 +91,13 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         self.assertIn('aria-label="Toggle navigation"', page)
         self.assertIn('aria-controls="dashboardSidebar"', page)
         self.assertIn('aria-expanded="false"', page)
-        self.assertIn('<textarea class="law-raw-packet" readonly rows="24">', page)
+        self.assertIn(
+            '<h3><label for="lawSavedRawPacket">Raw Packet Text</label></h3>', page
+        )
+        self.assertIn(
+            '<textarea id="lawSavedRawPacket" class="law-raw-packet" readonly rows="24">',
+            page,
+        )
         self.assertIn("location.href='/law/imports'", page)
         self.assertIn("location.href='/law/cases'", page)
         self.assertIn("location.href='/law/import'", page)
@@ -112,7 +118,9 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         self.assertIn("Expected headings include Case Brief", page)
         self.assertNotIn('class="law-detail-primary-form"', page)
         self.assertIn(
-            '<textarea class="law-raw-packet" readonly rows="24"></textarea>', page
+            '<textarea id="lawSavedRawPacket" class="law-raw-packet" readonly '
+            'rows="24"></textarea>',
+            page,
         )
 
     def test_parser_preview_form_contract_pluralization_and_escaping(self):
@@ -157,7 +165,8 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         self.assertIn("Create Case Review From Import", page)
         self.assertNotIn('name="csrf_token"', page)
         self.assertIn(
-            f'<textarea class="law-raw-packet" readonly rows="24">{escape(raw_packet)}</textarea>',
+            f'<textarea id="lawSavedRawPacket" class="law-raw-packet" readonly '
+            f'rows="24">{escape(raw_packet)}</textarea>',
             page,
         )
         for raw_markup in (

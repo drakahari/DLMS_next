@@ -70,8 +70,8 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             '<label class="settings-field-label" for="removeDlmsConfirmation">', page
         )
         self.assertIn('autocomplete="off" spellcheck="false"', page)
-        self.assertIn('id="clearDBStatus" class="settings-operation-status" aria-live="polite"', page)
-        self.assertIn('id="resetStatus" class="settings-operation-status" aria-live="polite"', page)
+        self.assertIn('id="clearDBStatus" class="settings-operation-status" role="status" aria-live="polite"', page)
+        self.assertIn('id="resetStatus" class="settings-operation-status" role="status" aria-live="polite"', page)
         self.assertIn('aria-label="Toggle navigation"', page)
         self.assertIn('aria-controls="dashboardSidebar"', page)
         self.assertIn('aria-expanded="false"', page)
@@ -109,15 +109,15 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'resetStatus.textContent=`Creating safety backup and resetting ${label}...`',
+            'setOperationStatus(resetStatus,`Creating safety backup and resetting ${label}...`)',
             page,
         )
         self.assertIn(
-            'resetStatus.textContent=`✅ ${label} reset completed. Safety backup: ${data.backup||"created"}`',
+            'setOperationStatus(resetStatus,`✅ ${label} reset completed. Safety backup: ${data.backup||"created"}`)',
             page,
         )
         self.assertIn(
-            'resetStatus.textContent=`❌ Reset failed: ${err.message}`', page
+            'setOperationStatus(resetStatus,`❌ Reset failed: ${err.message}`,true)', page
         )
         self.assertIn(
             'document.querySelectorAll(".resetAction").forEach(b=>b.disabled=false)',
@@ -134,13 +134,13 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
         )
         self.assertIn('fetch("/api/clear_db_history",{method:"POST"})', page)
         self.assertIn('clearDBBtn.disabled=true', page)
-        self.assertIn('clearDBStatus.textContent="Clearing saved history..."', page)
+        self.assertIn('setOperationStatus(clearDBStatus,"Clearing saved history...")', page)
         self.assertIn(
-            'clearDBStatus.textContent="✅ Saved attempt and missed-question history cleared."',
+            'setOperationStatus(clearDBStatus,"✅ Saved attempt and missed-question history cleared.")',
             page,
         )
         self.assertIn(
-            'clearDBStatus.textContent="❌ History clear failed. Check the server log."',
+            'setOperationStatus(clearDBStatus,"❌ History clear failed. Check the server log.",true)',
             page,
         )
         self.assertIn('finally{clearDBBtn.disabled=false}', page)
@@ -171,15 +171,15 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'resetStatus.textContent="Permanently removing DLMS runtime data and shutting down..."',
+            'setOperationStatus(resetStatus,"Permanently removing DLMS runtime data and shutting down...")',
             page,
         )
         self.assertIn(
-            'resetStatus.textContent="✅ DLMS runtime data removed. DLMS is shutting down. The executable/source installation was preserved."',
+            'setOperationStatus(resetStatus,"✅ DLMS runtime data removed. DLMS is shutting down. The executable/source installation was preserved.")',
             page,
         )
         self.assertIn(
-            'resetStatus.textContent=`❌ Permanent removal failed: ${err.message}`',
+            'setOperationStatus(resetStatus,`❌ Permanent removal failed: ${err.message}`,true)',
             page,
         )
         self.assertIn(

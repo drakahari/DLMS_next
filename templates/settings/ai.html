@@ -25,7 +25,7 @@
     </div>
 
     {% if request.args.get('saved') == '1' %}
-    <div class="settings-success-banner">✓ AI integration settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite">✓ AI integration settings saved.</div>
     {% endif %}
 
     <form class="settings-detail-card" action="/settings/ai/save" method="POST">

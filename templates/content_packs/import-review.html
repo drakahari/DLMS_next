@@ -33,7 +33,7 @@
 <h2>{{ report.pack_name or metadata.uploaded_name }}</h2>
 <p>{{ metadata.uploaded_name }} · {{ metadata.file_count }} files · {{ "%.1f"|format(metadata.uncompressed_bytes / 1048576) }} MB expanded</p>
 </div>
-<span class="content-pack-status {{ 'is-valid' if report.valid else 'is-invalid' }}">{{ 'Valid' if report.valid else 'Invalid' }}</span>
+<span class="content-pack-status {{ 'is-valid' if report.valid else 'is-invalid' }}" {% if report.valid %}role="status" aria-live="polite"{% else %}role="alert"{% endif %}>{{ 'Valid' if report.valid else 'Invalid' }}</span>
 </section>
 
 <section class="dashboard-panel pack-validation-panel">

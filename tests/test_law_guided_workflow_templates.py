@@ -189,7 +189,8 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
             save_law_registry=dlms.save_law_registry,
         )
         prompt_match = re.search(
-            r'(?s)<textarea id="lawPromptBox" class="law-prompt-box" rows="18">(.*?)</textarea>',
+            r'(?s)<textarea id="lawPromptBox" class="law-prompt-box" rows="18" '
+            r'aria-labelledby="lawGeneratedPromptHeading">(.*?)</textarea>',
             page,
         )
         self.assertIsNotNone(prompt_match)
@@ -304,6 +305,10 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         page = response.get_data(as_text=True)
         stripped = raw.strip()
         self.assertIn('<form method="POST" action="/law/import" class="law-form">', page)
+        self.assertIn(
+            '<label class="law-field law-field-wide" for="lawRawPacketInput">', page
+        )
+        self.assertIn('id="lawRawPacketInput" name="raw_packet"', page)
         self.assertIn('<input type="hidden" name="case_name" value="Pending Case">', page)
         self.assertIn('<input type="hidden" name="case_slug" value="pending-case">', page)
         self.assertIn('name="raw_packet" class="law-import-textarea" rows="22"', page)
@@ -350,7 +355,7 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         saved_page = saved.get_data(as_text=True)
         self.assertIn("Saved raw case packet as saved-packet.txt", saved_page)
         self.assertIn(
-            '<div class="law-notice success"><strong>Saved raw case packet as '
+            '<div class="law-notice success" role="status" aria-live="polite"><strong>Saved raw case packet as '
             "saved-packet.txt</strong></div>",
             saved_page,
         )
@@ -375,7 +380,7 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         failed_page = failed.get_data(as_text=True)
         self.assertIn("Error: failed to save raw case packet.", failed_page)
         self.assertIn(
-            '<div class="law-notice error"><strong>Error: failed to save raw '
+            '<div class="law-notice error" role="alert"><strong>Error: failed to save raw '
             "case packet.</strong></div>",
             failed_page,
         )

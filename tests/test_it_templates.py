@@ -188,8 +188,14 @@ class ITTemplateTests(unittest.TestCase):
         self.assertIn('<option value="random">Random</option>', page)
         self.assertIn('form="it-match-form-1" class="medical-primary-button', page)
         self.assertIn('id="it-match-1" class="study-dataset-detail-row it-detail-row" hidden', page)
-        self.assertIn("document.querySelectorAll('.it-detail-row').forEach(r=>r.hidden=false)", page)
-        self.assertIn("document.querySelectorAll('.it-detail-row').forEach(r=>r.hidden=true)", page)
+        self.assertIn(
+            'class="study-dataset-title-button it-dataset-toggle" '
+            'aria-expanded="false" aria-controls="it-match-1"',
+            page,
+        )
+        self.assertIn('onclick="setItDetails(true)"', page)
+        self.assertIn('onclick="setItDetails(false)"', page)
+        self.assertIn("toggle.setAttribute('aria-expanded',String(open))", page)
         self.assertIn(
             'class="dashboard-nav-subitem active" href="/it/matching" aria-current="page"',
             page,
@@ -233,6 +239,12 @@ class ITTemplateTests(unittest.TestCase):
         self.assertIn(f'name="pack_id" value="{escape(dataset["pack_id"])}"', page)
         self.assertIn(f'name="dataset_id" value="{escape(dataset["id"])}"', page)
         self.assertIn('id="it-image-1" class="study-dataset-detail-row" hidden', page)
+        self.assertIn(
+            'class="study-dataset-title-button it-dataset-toggle" '
+            'aria-expanded="false" aria-controls="it-image-1"',
+            page,
+        )
+        self.assertIn("toggle.setAttribute('aria-expanded',String(open))", page)
         self.assertIn(
             'class="dashboard-nav-subitem active" href="/it/images" aria-current="page"',
             page,

@@ -134,6 +134,15 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
         self.assertIn('name="round_size" min="2" max="12" value="10"', page)
         self.assertIn('name="direction"', page)
         self.assertIn('<option value="random">Random</option>', page)
+        for controlled_id in (
+            "dataset-network_pack-mixed-1",
+            "dataset-network_pack-matching-1",
+            "dataset-network_pack-image-1",
+        ):
+            self.assertIn(
+                f'aria-expanded="false" aria-controls="{controlled_id}"', page
+            )
+            self.assertIn(f'id="{controlled_id}" hidden', page)
         self.assertIn('id="expandAllPacks"', page)
         self.assertIn('id="collapseAllPacks"', page)
         self.assertIn('href="/content-packs">Manage Packs</a>', page)
@@ -191,8 +200,8 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
         self.assertIn(f'name="pack_id" value="{escape(hostile_id)}"', page)
         self.assertIn(f'name="dataset_id" value="{escape(dataset_id)}"', page)
         self.assertIn(
-            "onclick=\"toggleDatasetDetails('"
-            f"{escape(hostile_id)}-matching-1')\"",
+            f'aria-controls="dataset-{escape(hostile_id)}-matching-1" '
+            'onclick="toggleDatasetDetails(this)"',
             page,
         )
 
@@ -210,7 +219,8 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
         self.assertIn("installedPack.scrollIntoView", inline_script)
         self.assertIn("expandAllPacks", inline_script)
         self.assertIn("collapseAllPacks", inline_script)
-        self.assertIn("function toggleDatasetDetails(id)", inline_script)
+        self.assertIn("function toggleDatasetDetails(toggle)", inline_script)
+        self.assertIn("toggle.setAttribute('aria-expanded',String(open))", inline_script)
         self.assertIn('<script src="/static/nav-normalize.js"></script>', page)
 
     def test_route_uses_external_template_with_unchanged_context(self):

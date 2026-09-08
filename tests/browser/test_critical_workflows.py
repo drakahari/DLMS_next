@@ -1822,7 +1822,9 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         "(() => ({"
         "menuControls:document.querySelector('[data-settings-menu]').getAttribute('aria-controls'),"
         "menuExpanded:document.querySelector('[data-settings-menu]').getAttribute('aria-expanded'),"
+        "clearRole:document.getElementById('clearDBStatus').getAttribute('role'),"
         "clearLive:document.getElementById('clearDBStatus').getAttribute('aria-live'),"
+        "resetRole:document.getElementById('resetStatus').getAttribute('role'),"
         "resetLive:document.getElementById('resetStatus').getAttribute('aria-live'),"
         "removeLabel:document.querySelector('label[for=removeDlmsConfirmation]')?.textContent.trim(),"
         "clearType:document.getElementById('clearDBBtn').type,"
@@ -1833,7 +1835,9 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
     assert accessibility == {
         "menuControls": "dashboardSidebar",
         "menuExpanded": "false",
+        "clearRole": "status",
         "clearLive": "polite",
+        "resetRole": "status",
         "resetLive": "polite",
         "removeLabel": "Type REMOVE DLMS DATA to enable permanent removal",
         "clearType": "button",
@@ -1871,7 +1875,9 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
     )
     clear_contract = browser.evaluate(
         "({calls:window.__resetCalls,confirms:window.__resetConfirms,"
-        "status:document.getElementById('clearDBStatus').textContent})"
+        "status:document.getElementById('clearDBStatus').textContent,"
+        "role:document.getElementById('clearDBStatus').getAttribute('role'),"
+        "live:document.getElementById('clearDBStatus').getAttribute('aria-live')})"
     )
     assert clear_contract == {
         "calls": [{"url": "/api/clear_db_history", "method": "POST"}],
@@ -1881,6 +1887,8 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
             "Create a backup first if you may need this history later."
         ],
         "status": "✅ Saved attempt and missed-question history cleared.",
+        "role": "status",
+        "live": "polite",
     }
 
     assert browser.evaluate(
@@ -1932,7 +1940,9 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         )
         reset_failure = browser.evaluate(
             "({calls:window.__resetCalls,confirms:window.__resetConfirms,"
-            "status:document.getElementById('resetStatus').textContent})"
+            "status:document.getElementById('resetStatus').textContent,"
+            "role:document.getElementById('resetStatus').getAttribute('role'),"
+            "live:document.getElementById('resetStatus').getAttribute('aria-live')})"
         )
         assert reset_failure["calls"] == [
             {"url": "/api/reset_all_data", "method": "POST", "headers": {}, "body": None}
@@ -1943,6 +1953,8 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
             "Continue?"
         ]
         assert "not verified" in reset_failure["status"]
+        assert reset_failure["role"] == "alert"
+        assert reset_failure["live"] == "assertive"
         assert len(list((browser_stack.data_root / "backups").glob("*.zip"))) == backup_count
 
         cancel_result = browser.evaluate(
@@ -1979,7 +1991,9 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         )
         removal_failure = browser.evaluate(
             "({calls:window.__resetCalls,confirms:window.__resetConfirms,"
-            "status:document.getElementById('resetStatus').textContent})"
+            "status:document.getElementById('resetStatus').textContent,"
+            "role:document.getElementById('resetStatus').getAttribute('role'),"
+            "live:document.getElementById('resetStatus').getAttribute('aria-live')})"
         )
         assert removal_failure["calls"] == [{
             "url": "/api/remove_all_dlms_data",
@@ -1989,6 +2003,8 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         }]
         assert removal_failure["confirms"] == [removal_confirmation]
         assert "not verified" in removal_failure["status"]
+        assert removal_failure["role"] == "alert"
+        assert removal_failure["live"] == "assertive"
         assert browser_stack.data_root.is_dir()
         assert disabled_marker.is_file()
     finally:
@@ -2359,6 +2375,8 @@ def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_sta
         "return {heading:document.querySelector('.pack-review-summary h2').textContent,"
         "metadata:document.querySelector('.pack-review-summary p').textContent,"
         "status:document.querySelector('.content-pack-status').textContent,"
+        "statusRole:document.querySelector('.content-pack-status').getAttribute('role'),"
+        "statusLive:document.querySelector('.content-pack-status').getAttribute('aria-live'),"
         "installMethod:install.method,installAction:install.getAttribute('action'),"
         "cancelMethod:cancel.method,cancelAction:cancel.getAttribute('action'),"
         "confirmValue:confirm.value,confirmRequired:confirm.required,"
@@ -2372,6 +2390,8 @@ def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_sta
         "heading": pack_name,
         "metadata": f"{uploaded_name} · 2 files · 1.0 MB expanded",
         "status": "Valid",
+        "statusRole": "status",
+        "statusLive": "polite",
         "installMethod": "post",
         "installAction": f"/content-packs/import/{install_token}/install",
         "cancelMethod": "post",
@@ -2399,8 +2419,13 @@ def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_sta
         browser_stack.data_root / "content_packs" / install_folder
     ).is_dir()
     assert browser.evaluate(
-        "document.querySelector('.content-pack-flashes .flash.success').textContent"
-    ) == f"Installed Study Pack '{pack_name}' successfully."
+        "(() => {const notice=document.querySelector('.content-pack-flashes .flash.success');"
+        "return {text:notice.textContent,role:notice.getAttribute('role'),live:notice.getAttribute('aria-live')}})()"
+    ) == {
+        "text": f"Installed Study Pack '{pack_name}' successfully.",
+        "role": "status",
+        "live": "polite",
+    }
     assert browser.evaluate("document.getElementById('reviewInjected')===null") is True
 
     cancel_token = "abcdef1234567890abcdef1234567890"
@@ -2421,8 +2446,13 @@ def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_sta
     )
     assert not cancel_stage.exists()
     assert browser.evaluate(
-        "document.querySelector('.content-pack-flashes .flash.success').textContent"
-    ) == "Study Pack import cancelled; staging files were removed."
+        "(() => {const notice=document.querySelector('.content-pack-flashes .flash.success');"
+        "return {text:notice.textContent,role:notice.getAttribute('role'),live:notice.getAttribute('aria-live')}})()"
+    ) == {
+        "text": "Study Pack import cancelled; staging files were removed.",
+        "role": "status",
+        "live": "polite",
+    }
 
 
 def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(browser_stack):
@@ -2590,6 +2620,8 @@ def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(brow
         "csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
         "associated:Array.from(document.querySelectorAll('[form='+form.id+']')).every(node=>node.form===form),"
         "expanded:toggle.getAttribute('aria-expanded'),"
+        "controls:toggle.getAttribute('aria-controls'),"
+        "controlled:document.getElementById(toggle.getAttribute('aria-controls'))===document.getElementById(toggle.dataset.medicalDetail),"
         "detailHidden:document.getElementById(toggle.dataset.medicalDetail).hidden,"
         "navCurrent:document.querySelector('[data-nav-key=medical]').getAttribute('aria-current'),"
         "injected:!!document.getElementById('medicalMatchingInjected')||!!document.getElementById('medicalDescriptionInjected')};})()"
@@ -2608,6 +2640,8 @@ def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(brow
         "csrf": True,
         "associated": True,
         "expanded": "false",
+        "controls": "matching-detail-1",
+        "controlled": True,
         "detailHidden": True,
         "navCurrent": "page",
         "injected": False,
@@ -2639,6 +2673,8 @@ def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(brow
         "datasetId:form.querySelector('input[name=dataset_id]').value,"
         "csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
         "expanded:toggle.getAttribute('aria-expanded'),"
+        "controls:toggle.getAttribute('aria-controls'),"
+        "controlled:document.getElementById(toggle.getAttribute('aria-controls'))===document.getElementById(toggle.dataset.medicalDetail),"
         "detailHidden:document.getElementById(toggle.dataset.medicalDetail).hidden,"
         "navCurrent:document.querySelector('[data-nav-key=medical]').getAttribute('aria-current'),"
         "injected:!!document.getElementById('medicalAnatomyInjected')||"
@@ -2655,6 +2691,8 @@ def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(brow
         "datasetId": "anatomy",
         "csrf": True,
         "expanded": "false",
+        "controls": "anatomy-detail-1",
+        "controlled": True,
         "detailHidden": True,
         "navCurrent": "page",
         "injected": False,
@@ -2866,7 +2904,9 @@ def test_it_read_only_views_empty_populated_controls_csrf_and_escaping(browser_s
         "roundMin:round.min,roundMax:round.max,roundValue:round.value,roundForm:round.getAttribute('form'),"
         "direction:direction.value,directionForm:direction.getAttribute('form'),"
         "submitForm:submit.getAttribute('form'),csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
-        "expanded:toggle.getAttribute('aria-expanded'),detailHidden:document.querySelector('.study-dataset-detail-row').hidden,"
+        "expanded:toggle.getAttribute('aria-expanded'),controls:toggle.getAttribute('aria-controls'),"
+        "controlled:document.getElementById(toggle.getAttribute('aria-controls'))===document.querySelector('.study-dataset-detail-row'),"
+        "detailHidden:document.querySelector('.study-dataset-detail-row').hidden,"
         "navCurrent:document.querySelector('[data-nav-key=it]').getAttribute('aria-current'),"
         "injected:!!document.getElementById('itMatchingInjected')||!!document.getElementById('itMatchingDescriptionInjected')};})()"
     )
@@ -2885,23 +2925,34 @@ def test_it_read_only_views_empty_populated_controls_csrf_and_escaping(browser_s
         "directionForm": "it-match-form-1",
         "submitForm": "it-match-form-1",
         "csrf": True,
-        "expanded": None,
+        "expanded": "false",
+        "controls": "it-match-1",
+        "controlled": True,
         "detailHidden": True,
         "navCurrent": "page",
         "injected": False,
     }
     browser.click(".study-dataset-title-button")
-    browser.wait_for("!document.querySelector('.study-dataset-detail-row').hidden")
+    browser.wait_for(
+        "!document.querySelector('.study-dataset-detail-row').hidden && "
+        "document.querySelector('.study-dataset-title-button').getAttribute('aria-expanded')==='true'"
+    )
     browser.evaluate(
         "Array.from(document.querySelectorAll('.medical-compact-panel-actions button'))"
         ".find(button=>button.textContent==='Collapse All').click()"
     )
-    browser.wait_for("document.querySelector('.study-dataset-detail-row').hidden")
+    browser.wait_for(
+        "document.querySelector('.study-dataset-detail-row').hidden && "
+        "document.querySelector('.study-dataset-title-button').getAttribute('aria-expanded')==='false'"
+    )
     browser.evaluate(
         "Array.from(document.querySelectorAll('.medical-compact-panel-actions button'))"
         ".find(button=>button.textContent==='Expand All').click()"
     )
-    browser.wait_for("!document.querySelector('.study-dataset-detail-row').hidden")
+    browser.wait_for(
+        "!document.querySelector('.study-dataset-detail-row').hidden && "
+        "document.querySelector('.study-dataset-title-button').getAttribute('aria-expanded')==='true'"
+    )
 
     browser.navigate(f"{base_url}/it/images")
     browser.wait_for(
@@ -2916,7 +2967,9 @@ def test_it_read_only_views_empty_populated_controls_csrf_and_escaping(browser_s
         "packId:form.querySelector(\"input[name='pack_id']\").value,"
         "datasetId:form.querySelector(\"input[name='dataset_id']\").value,"
         "csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
-        "expanded:toggle.getAttribute('aria-expanded'),detailHidden:document.querySelector('.study-dataset-detail-row').hidden,"
+        "expanded:toggle.getAttribute('aria-expanded'),controls:toggle.getAttribute('aria-controls'),"
+        "controlled:document.getElementById(toggle.getAttribute('aria-controls'))===document.querySelector('.study-dataset-detail-row'),"
+        "detailHidden:document.querySelector('.study-dataset-detail-row').hidden,"
         "navCurrent:document.querySelector('[data-nav-key=it]').getAttribute('aria-current'),"
         "injected:!!document.getElementById('itImageInjected')||!!document.getElementById('itImageDescriptionInjected')};})()"
     )
@@ -2928,13 +2981,18 @@ def test_it_read_only_views_empty_populated_controls_csrf_and_escaping(browser_s
         "packId": "browser_it_views",
         "datasetId": "diagrams",
         "csrf": True,
-        "expanded": None,
+        "expanded": "false",
+        "controls": "it-image-1",
+        "controlled": True,
         "detailHidden": True,
         "navCurrent": "page",
         "injected": False,
     }
     browser.click(".study-dataset-title-button")
-    browser.wait_for("!document.querySelector('.study-dataset-detail-row').hidden")
+    browser.wait_for(
+        "!document.querySelector('.study-dataset-detail-row').hidden && "
+        "document.querySelector('.study-dataset-title-button').getAttribute('aria-expanded')==='true'"
+    )
 
 
 def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_stack):
@@ -3134,7 +3192,9 @@ def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_
         ".closest('tr').querySelector('.study-dataset-title-button').click()"
     )
     browser.wait_for(
-        "!document.getElementById('dataset-browser_catalog-matching-1').hidden"
+        "!document.getElementById('dataset-browser_catalog-matching-1').hidden && "
+        "document.querySelector(\"[aria-controls='dataset-browser_catalog-matching-1']\")"
+        ".getAttribute('aria-expanded')==='true'"
     )
 
     browser.navigate(f"{base_url}/study-packs?domain_group=other")
@@ -3407,6 +3467,7 @@ def test_law_import_detail_normalizes_path_escapes_raw_packet_and_protects_form(
         "titles:cards.map(card=>card.querySelector('h3').textContent),"
         "summary:Array.from(document.querySelectorAll('.law-message.success')).at(-1).textContent,"
         "raw:textarea.value,readOnly:textarea.readOnly,rows:textarea.rows,"
+        "rawLabel:textarea.labels[0]?.textContent.trim(),"
         "method:form.method,action:form.getAttribute('action'),"
         "csrf:!!form.querySelector('input[name=csrf_token][type=hidden]'),"
         "createText:form.querySelector('button').textContent,"
@@ -3440,6 +3501,7 @@ def test_law_import_detail_normalizes_path_escapes_raw_packet_and_protects_form(
         "raw": raw_packet,
         "readOnly": True,
         "rows": 24,
+        "rawLabel": "Raw Packet Text",
         "method": "post",
         "action": f"/law/imports/{normalized_name}/create_case",
         "csrf": True,
@@ -4078,6 +4140,14 @@ def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
         "csrf:forms.every(form=>!!form.querySelector('input[name=csrf_token]')),"
         "banners:['Case details updated.','Student notes updated.','Socratic answers updated.',"
         "'IRAC response updated.'].every(text=>document.body.textContent.includes(text)),"
+        "bannerSemantics:[...document.querySelectorAll('main [role=status]')].every(node=>node.getAttribute('aria-live')==='polite'),"
+        "bannerCount:document.querySelectorAll('main [role=status]').length,"
+        "titleLabel:document.getElementById('lawCaseTitle').labels[0]?.textContent.trim(),"
+        "courseLabel:document.getElementById('lawCaseCourse').labels[0]?.textContent.trim(),"
+        "iracLabels:['lawIracIssue','lawIracRule','lawIracAnalysis','lawIracConclusion'].map(id=>document.getElementById(id).labels[0]?.textContent.trim()),"
+        "socraticLabel:document.querySelector('[name^=answer_]').labels[0]?.textContent.trim(),"
+        "notesName:document.getElementById('lawStudentNotes').getAttribute('aria-labelledby'),"
+        "revealState:[...document.querySelectorAll('[aria-controls=iracDrillBox],[aria-controls=socraticAnswerKey]')].map(button=>({expanded:button.getAttribute('aria-expanded'),controlled:!!document.getElementById(button.getAttribute('aria-controls'))})),"
         "exportAction:[...document.querySelectorAll('button')].find(button=>"
         "button.textContent.includes('Export Case Review')).getAttribute('data-law-navigation-url'),"
         "exportInline:[...document.querySelectorAll('button')].find(button=>"
@@ -4097,16 +4167,30 @@ def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
         "methods": ["post", "post", "post", "post"],
         "csrf": True,
         "banners": True,
+        "bannerSemantics": True,
+        "bannerCount": 4,
+        "titleLabel": "Case Title",
+        "courseLabel": "Course",
+        "iracLabels": ["Issue", "Rule", "Analysis / Application", "Conclusion"],
+        "socraticLabel": "Your Answer",
+        "notesName": "lawStudentNotesHeading",
+        "revealState": [
+            {"expanded": "false", "controlled": True},
+            {"expanded": "false", "controlled": True},
+        ],
         "exportAction": f"/law/cases/{case_id}/export.txt",
         "exportInline": None,
         "injected": False,
         "current": "page",
         "menuLabel": "Toggle navigation",
     }
-    browser.evaluate("toggleIracDrill();toggleSocraticAnswerKey();true")
+    browser.click("[aria-controls=iracDrillBox]")
+    browser.click("[aria-controls=socraticAnswerKey]")
     assert browser.evaluate(
         "document.getElementById('iracDrillBox').style.display === 'block' && "
-        "document.getElementById('socraticAnswerKey').style.display === 'block'"
+        "document.getElementById('socraticAnswerKey').style.display === 'block' && "
+        "document.querySelector('[aria-controls=iracDrillBox]').getAttribute('aria-expanded')==='true' && "
+        "document.querySelector('[aria-controls=socraticAnswerKey]').getAttribute('aria-expanded')==='true'"
     ) is True
     browser.evaluate(
         "(() => {const notes=document.querySelector('[name=student_notes]');"

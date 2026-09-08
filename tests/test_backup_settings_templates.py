@@ -110,6 +110,15 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         )
         self.assertIn("Restore file not accepted", page)
         self.assertIn("Restore cancelled", page)
+        self.assertIn('class="settings-critical-panel" role="alert"', page)
+        self.assertIn(
+            'class="settings-warning-panel" role="status" aria-live="polite"',
+            page,
+        )
+        self.assertIn(
+            '<div class="settings-warning-panel"><strong>Restore is deliberately cautious.',
+            page,
+        )
         self.assertIn("No DLMS data was changed.", page)
         self.assertIn(str(escape(names[0])), page)
         self.assertNotIn(names[0], page)
@@ -159,6 +168,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         )
         self._assert_settings_shell(page)
         self.assertIn("Backup failed", page)
+        self.assertIn('class="settings-critical-panel" role="alert"', page)
         self.assertIn("DLMS did not modify your existing data.", page)
         self.assertIn(
             "DLMS could not create the backup. Check the local application log for details.",
@@ -205,6 +215,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         )
         self._assert_settings_shell(page)
         self.assertIn("Backup rejected", page)
+        self.assertIn('class="settings-critical-panel" role="alert"', page)
         self.assertIn("No DLMS data was changed.", page)
         self.assertIn(
             "The backup failed validation and was not accepted. Check the local DLMS log for details.",
@@ -360,6 +371,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         )
         self._assert_settings_shell(public_page)
         self.assertIn("Restore failed", public_page)
+        self.assertIn('class="settings-critical-panel" role="alert"', public_page)
         self.assertIn(str(escape(public_error)), public_page)
         self.assertNotIn(public_error, public_page)
         self.assertIn(

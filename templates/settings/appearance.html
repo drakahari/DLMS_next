@@ -25,7 +25,7 @@
     </div>
 
     {% if request.args.get('saved') == '1' %}
-    <div class="settings-success-banner">✓ Appearance settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite">✓ Appearance settings saved.</div>
     {% endif %}
 
     <form class="settings-detail-card" action="/settings/appearance/save" method="POST" enctype="multipart/form-data">

@@ -145,9 +145,9 @@
         {% if generated_prompt %}
         <section class="law-generated-panel">
             <div class="law-panel-heading compact">
-                <div><span class="law-subpage-eyebrow">GENERATED PROMPT</span><h2>Ready for AI</h2></div>
+                <div><span class="law-subpage-eyebrow">GENERATED PROMPT</span><h2 id="lawGeneratedPromptHeading">Ready for AI</h2></div>
             </div>
-            <textarea id="lawPromptBox" class="law-prompt-box" rows="18">{{ generated_prompt }}</textarea>
+            <textarea id="lawPromptBox" class="law-prompt-box" rows="18" aria-labelledby="lawGeneratedPromptHeading">{{ generated_prompt }}</textarea>
             <div class="law-action-row">
                 {% if ai_provider_url %}
                 <button type="button" class="law-primary-action" onclick='copyPromptAndOpenAi({{ ai_provider_url|tojson }})'>Copy Prompt &amp; Open AI</button>

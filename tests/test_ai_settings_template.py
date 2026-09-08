@@ -222,7 +222,12 @@ class AISettingsTemplateTests(unittest.TestCase):
         self.assertNotIn(message, self._render(config))
         self.assertNotIn(message, self._render(config, "?saved=0"))
         self.assertNotIn(message, self._render(config, "?saved=true"))
-        self.assertIn(message, self._render(config, "?saved=1"))
+        saved = self._render(config, "?saved=1")
+        self.assertIn(message, saved)
+        self.assertIn(
+            'class="settings-success-banner" role="status" aria-live="polite"',
+            saved,
+        )
 
 
 if __name__ == "__main__":
