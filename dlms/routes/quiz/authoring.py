@@ -377,7 +377,7 @@ def preview_paste(dependencies):
     cfg = load_portal_config()
     regex_mode = cfg.get("enable_regex_strip", False)
     regex_replace_enabled = cfg.get("enable_regex_replace", False)
-    
+
     if strip_rules:
         cleaned_lines = []
 
@@ -797,7 +797,7 @@ def process_paste(dependencies):
     # =========================
     # REGISTRY ID (CANONICAL)
     # =========================
-    
+
 
 
     # =========================
@@ -921,7 +921,7 @@ def process_file(dependencies):
     # =========================
     # REGISTRY ID (CANONICAL)
     # =========================
-    
+
 
     quiz_id, html_name = _publish_quiz(
         quiz_title,

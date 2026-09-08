@@ -13,6 +13,8 @@ LIBRARY_SOURCE = (ROOT / "templates" / "quiz" / "library.html").read_text(encodi
 
 def _ui_sources():
     yield ROOT / "app.py", APP_SOURCE
+    for path in sorted((ROOT / "dlms" / "routes").rglob("*.py")):
+        yield path, path.read_text(encoding="utf-8")
     for path in sorted((ROOT / "static").glob("*.html")):
         yield path, path.read_text(encoding="utf-8")
     for path in sorted((ROOT / "templates").rglob("*.html")):

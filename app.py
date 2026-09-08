@@ -4220,14 +4220,14 @@ def build_smart_suggestions(original_text, cleaned_text):
 # =============================
 def quick_structural_scan(text):
     lines = [l.strip() for l in text.splitlines() if l.strip()]
-    
+
     issues = []
     question_blocks = 0
     current_block_has_answer = False
     current_block_has_correct = False
 
     for line in lines:
-        
+
         # Detect likely question
         if re.match(r"^\d+[\).\-]?\s", line) or line.lower().startswith("question"):
             question_blocks += 1
@@ -4238,12 +4238,12 @@ def quick_structural_scan(text):
 
             current_block_has_answer = False
             current_block_has_correct = False
-        
+
         # Detect answer choices (A–Z supported)
         if re.match(r"^[A-Za-z][\).\-]?\s", line):
             current_block_has_answer = True
 
-        
+
         # Detect correct answer
         if "correct answer" in line.lower():
             current_block_has_correct = True

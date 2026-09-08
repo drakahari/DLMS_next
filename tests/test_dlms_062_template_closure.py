@@ -222,6 +222,15 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
                 source = (ROOT / relative_path).read_text(encoding="utf-8")
                 self.assertIn(marker, source)
 
+        route_source_markers = {
+            "tests/test_accessibility_cleanup.py": '(ROOT / "dlms" / "routes").rglob("*.py")',
+            "tests/test_csrf_protection.py": '/ "dlms" / "routes").rglob(',
+        }
+        for relative_path, marker in route_source_markers.items():
+            with self.subTest(route_source_scanner=relative_path):
+                source = (ROOT / relative_path).read_text(encoding="utf-8")
+                self.assertIn(marker, source)
+
 
 if __name__ == "__main__":
     unittest.main()

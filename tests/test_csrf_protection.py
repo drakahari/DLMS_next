@@ -424,6 +424,14 @@ class CsrfFrontendStaticTests(unittest.TestCase):
         cls.ui_sources = [(Path(dlms.__file__), cls.app_source)]
         cls.ui_sources.extend(
             (path, path.read_text(encoding="utf-8"))
+            for path in sorted(
+                (Path(dlms.__file__).resolve().parent / "dlms" / "routes").rglob(
+                    "*.py"
+                )
+            )
+        )
+        cls.ui_sources.extend(
+            (path, path.read_text(encoding="utf-8"))
             for path in sorted(Path(dlms.TEMPLATE_ROOT).rglob("*.html"))
         )
 
