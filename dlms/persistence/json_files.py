@@ -2,7 +2,30 @@
 
 import json
 import os
+import re
 import tempfile
+
+
+# ``tempfile.mkstemp`` uses one eight-character candidate from this alphabet
+# between the caller-provided prefix and suffix on supported CPython runtimes.
+_TEMPFILE_CANDIDATE_RE = re.compile(r"^[a-z0-9_]{8}$")
+
+
+def _atomic_persistence_target_name(name):
+    """Return the original data basename encoded by a persistence temp name."""
+    basename = os.path.basename(os.fspath(name))
+    if not basename.startswith(".") or not basename.endswith(".tmp"):
+        return None
+
+    stem = basename[1:-4]
+    target, separator, candidate = stem.rpartition(".")
+    if separator and target and _TEMPFILE_CANDIDATE_RE.fullmatch(candidate):
+        return target
+
+    target, separator, candidate = stem.rpartition(".corrupt-")
+    if separator and target and _TEMPFILE_CANDIDATE_RE.fullmatch(candidate):
+        return target
+    return None
 
 
 def _fsync_json_directory(path, *, os_module=None):

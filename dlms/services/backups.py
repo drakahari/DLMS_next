@@ -11,6 +11,39 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+from dlms.persistence import json_files
+
+
+# Keep the filename contract scoped to roots that the repository actually
+# writes atomically. Installed content packs may legitimately contain arbitrary
+# similarly named files and must remain portable.
+_ATOMIC_JSON_BACKUP_ROOTS = frozenset({
+    "data",
+    "pdf_import_drafts",
+    "pdf_question_banks",
+    "pdf_terminology_banks",
+})
+
+
+def _is_repository_atomic_persistence_temp(parts):
+    target_name = json_files._atomic_persistence_target_name(parts[-1])
+    if target_name is None:
+        return False
+
+    root = parts[0].casefold()
+    if root == "config":
+        return len(parts) == 2 and target_name.casefold() in {
+            "law.json", "portal.json", "quizzes.json"
+        }
+    if root in _ATOMIC_JSON_BACKUP_ROOTS:
+        return target_name.lower().endswith(".json")
+    if root == "law" and len(parts) >= 3:
+        if parts[1].casefold() == "cases":
+            return target_name.lower().endswith(".json")
+        if parts[1].casefold() == "imports":
+            return target_name.lower().endswith(".txt")
+    return False
+
 
 def backup_rel_is_excluded(
     rel_path,
@@ -64,7 +97,9 @@ def backup_file_inventory(
                 continue
             rel = os.path.join(rel_root, name) if rel_root else name
             rel = rel.replace("\\", "/")
-            if rel_is_excluded(rel):
+            if rel_is_excluded(rel) or _is_repository_atomic_persistence_temp(
+                rel.split("/")
+            ):
                 continue
             # results.db is added from SQLite's online backup API for consistency.
             if os.path.normcase(os.path.realpath(full)) == os.path.normcase(os.path.realpath(db_path)):

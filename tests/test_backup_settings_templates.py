@@ -141,10 +141,13 @@ class BackupSettingsTemplateTests(unittest.TestCase):
                 "/settings/backup/create",
                 headers=csrf_headers(self.client, "/settings/backup"),
             )
-        self.assertEqual(200, success.status_code)
-        self.assertEqual(b"portable backup", success.data)
-        self.assertIn("attachment", success.headers["Content-Disposition"])
-        self.assertIn("DLMS-backup.zip", success.headers["Content-Disposition"])
+        try:
+            self.assertEqual(200, success.status_code)
+            self.assertEqual(b"portable backup", success.data)
+            self.assertIn("attachment", success.headers["Content-Disposition"])
+            self.assertIn("DLMS-backup.zip", success.headers["Content-Disposition"])
+        finally:
+            success.close()
 
         with mock.patch.object(
             dlms, "_create_dlms_backup", side_effect=OSError("private path detail")
