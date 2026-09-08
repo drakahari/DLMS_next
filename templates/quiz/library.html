@@ -174,7 +174,7 @@
                                 <button type="button" class="library-quiet-button" onclick="hideRenameFolderForm(event, this)">Cancel</button>
                             </form>
                         </div>
-                        <form method="POST" action="/delete_quiz_folder" onsubmit="return confirm('Delete this folder? Quizzes inside it will move to Uncategorized.');">
+                        <form method="POST" action="/delete_quiz_folder" class="delete-folder-form" onsubmit="return confirm('Delete this folder? Quizzes inside it will move to Uncategorized.');">
                             <input type="hidden" name="folder" value="{{ folder_name }}">
                             <input type="hidden" name="view" value="{{ view }}">
                             <button type="submit" class="library-icon-button library-danger-icon" title="Delete folder" aria-label="Delete {{ folder_name }} folder">🗑</button>
@@ -283,14 +283,151 @@
     </main>
 </div>
 
+<script id="libraryFolderIdentityData" type="application/json">{{ folder_names|tojson }}</script>
 <script>
+const collapsedLibraryFoldersStorageKey = "dlmsCollapsedLibraryFolders";
+const pendingLibraryFolderMutationStorageKey = "dlmsPendingLibraryFolderMutation";
+
+function normalizeLibraryFolderIdentity(folderName) {
+    return String(folderName || "").trim().toLowerCase();
+}
+
 function getCollapsedLibraryFolders() {
-    try { return JSON.parse(localStorage.getItem("dlmsCollapsedLibraryFolders") || "[]"); }
+    try {
+        const folders = JSON.parse(localStorage.getItem(collapsedLibraryFoldersStorageKey) || "[]");
+        return Array.isArray(folders) ? folders.filter(folder => typeof folder === "string") : [];
+    }
     catch { return []; }
 }
 
 function saveCollapsedLibraryFolders(folders) {
-    localStorage.setItem("dlmsCollapsedLibraryFolders", JSON.stringify(folders));
+    try { localStorage.setItem(collapsedLibraryFoldersStorageKey, JSON.stringify(folders)); }
+    catch { /* Collapsing still works when browser storage is unavailable. */ }
+}
+
+function getCanonicalLibraryFolderMap() {
+    const canonicalFolders = new Map();
+    const data = document.getElementById("libraryFolderIdentityData");
+    let folderNames = [];
+    try {
+        const parsed = JSON.parse(data?.textContent || "[]");
+        if (Array.isArray(parsed)) folderNames = parsed;
+    } catch { /* Treat malformed page data as having no known folders. */ }
+    folderNames.forEach(folderName => {
+        if (typeof folderName !== "string") return;
+        const identity = normalizeLibraryFolderIdentity(folderName);
+        if (identity && !canonicalFolders.has(identity)) {
+            canonicalFolders.set(identity, folderName);
+        }
+    });
+    return canonicalFolders;
+}
+
+function normalizeCollapsedLibraryFolders(folders, canonicalFolders) {
+    const normalized = [];
+    const seen = new Set();
+    folders.forEach(folderName => {
+        const identity = normalizeLibraryFolderIdentity(folderName);
+        const canonicalName = canonicalFolders.get(identity);
+        if (!canonicalName || seen.has(identity)) return;
+        seen.add(identity);
+        normalized.push(canonicalName);
+    });
+    return normalized;
+}
+
+function libraryFolderIsCollapsed(folders, folderName) {
+    const identity = normalizeLibraryFolderIdentity(folderName);
+    return Boolean(identity) && folders.some(
+        savedFolder => normalizeLibraryFolderIdentity(savedFolder) === identity
+    );
+}
+
+function savePendingLibraryFolderMutation(mutation) {
+    try {
+        sessionStorage.setItem(
+            pendingLibraryFolderMutationStorageKey,
+            JSON.stringify(mutation)
+        );
+    } catch { /* Page-load cleanup still handles stale state without this hint. */ }
+}
+
+function takePendingLibraryFolderMutation() {
+    try {
+        const value = JSON.parse(
+            sessionStorage.getItem(pendingLibraryFolderMutationStorageKey) || "null"
+        );
+        sessionStorage.removeItem(pendingLibraryFolderMutationStorageKey);
+        return value && typeof value === "object" ? value : null;
+    } catch {
+        try { sessionStorage.removeItem(pendingLibraryFolderMutationStorageKey); }
+        catch { /* Browser storage is unavailable. */ }
+        return null;
+    }
+}
+
+function reconcileCollapsedLibraryFolders() {
+    const canonicalFolders = getCanonicalLibraryFolderMap();
+    let collapsedFolders = getCollapsedLibraryFolders();
+    const pendingMutation = takePendingLibraryFolderMutation();
+
+    if (pendingMutation?.type === "rename") {
+        const oldIdentity = normalizeLibraryFolderIdentity(pendingMutation.oldFolder);
+        const newIdentity = normalizeLibraryFolderIdentity(pendingMutation.newFolder);
+        const oldStillExists = canonicalFolders.has(oldIdentity);
+        const newCanonicalName = canonicalFolders.get(newIdentity);
+        const renameSucceeded = Boolean(
+            oldIdentity && newIdentity && newCanonicalName &&
+            (oldIdentity === newIdentity || !oldStillExists)
+        );
+        if (renameSucceeded) {
+            collapsedFolders = collapsedFolders.filter(folderName => {
+                const identity = normalizeLibraryFolderIdentity(folderName);
+                return identity !== oldIdentity && identity !== newIdentity;
+            });
+            if (pendingMutation.wasCollapsed) collapsedFolders.push(newCanonicalName);
+        }
+    } else if (pendingMutation?.type === "delete") {
+        const deletedIdentity = normalizeLibraryFolderIdentity(pendingMutation.folder);
+        if (deletedIdentity && !canonicalFolders.has(deletedIdentity)) {
+            collapsedFolders = collapsedFolders.filter(
+                folderName => normalizeLibraryFolderIdentity(folderName) !== deletedIdentity
+            );
+        }
+    }
+
+    collapsedFolders = normalizeCollapsedLibraryFolders(
+        collapsedFolders, canonicalFolders
+    );
+    saveCollapsedLibraryFolders(collapsedFolders);
+    return collapsedFolders;
+}
+
+function trackLibraryFolderMutations() {
+    document.querySelectorAll(".rename-folder-form").forEach(form => {
+        form.addEventListener("submit", event => {
+            if (event.defaultPrevented) return;
+            const oldFolder = form.querySelector('[name="old_folder"]')?.value || "";
+            const newFolder = form.querySelector('[name="new_folder"]')?.value || "";
+            savePendingLibraryFolderMutation({
+                type: "rename",
+                oldFolder,
+                newFolder,
+                wasCollapsed: libraryFolderIsCollapsed(
+                    getCollapsedLibraryFolders(), oldFolder
+                )
+            });
+        });
+    });
+    document.querySelectorAll(".delete-folder-form").forEach(form => {
+        form.addEventListener("submit", event => {
+            if (event.defaultPrevented) return;
+            savePendingLibraryFolderMutation({
+                type: "delete",
+                folder: form.querySelector('[name="folder"]')?.value || ""
+            });
+        });
+    });
 }
 
 function setLibraryFolderCollapsed(folder, collapsed) {
@@ -312,10 +449,14 @@ function toggleLibraryFolder(event, header) {
     const folderName = folder.getAttribute("data-folder-name");
     if (!folderName) return;
     const collapsedFolders = getCollapsedLibraryFolders();
-    const isCollapsed = collapsedFolders.includes(folderName);
+    const isCollapsed = libraryFolderIsCollapsed(collapsedFolders, folderName);
     setLibraryFolderCollapsed(folder, !isCollapsed);
     saveCollapsedLibraryFolders(
-        isCollapsed ? collapsedFolders.filter(name => name !== folderName) : [...collapsedFolders, folderName]
+        isCollapsed
+            ? collapsedFolders.filter(
+                name => normalizeLibraryFolderIdentity(name) !== normalizeLibraryFolderIdentity(folderName)
+            )
+            : [...collapsedFolders, folderName]
     );
 }
 
@@ -498,10 +639,13 @@ function moveLibraryQuiz(event, button, direction) {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-    const collapsedFolders = getCollapsedLibraryFolders();
+    const collapsedFolders = reconcileCollapsedLibraryFolders();
+    trackLibraryFolderMutations();
     document.querySelectorAll(".library-folder").forEach(folder => {
         const folderName = folder.getAttribute("data-folder-name");
-        if (folderName && collapsedFolders.includes(folderName)) setLibraryFolderCollapsed(folder, true);
+        if (folderName && libraryFolderIsCollapsed(collapsedFolders, folderName)) {
+            setLibraryFolderCollapsed(folder, true);
+        }
     });
 
     const search = document.getElementById("librarySearch");

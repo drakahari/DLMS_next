@@ -755,6 +755,178 @@ def test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browse
     browser.wait_for(f"!({folder_lookup(tail_folder)})")
 
 
+def test_library_folder_client_state_reconciles_rename_delete_and_legacy_promotion(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    storage_key = "dlmsCollapsedLibraryFolders"
+    original_folder = "Browser Client State"
+    renamed_folder = "Browser Renamed State"
+    recased_folder = "bROWSER rENAMED sTATE"
+    unrelated_folder = "Browser Unrelated State"
+
+    def folder_lookup(name):
+        return (
+            "[...document.querySelectorAll('.library-folder')]"
+            f".find(folder => folder.dataset.folderName === {json.dumps(name)})"
+        )
+
+    def add_folder(name):
+        browser.click(".library-add-folder > button")
+        assert browser.evaluate(
+            "(() => { const input = document.querySelector('.add-folder-form [name=folder]'); "
+            f"input.value = {json.dumps(name)}; return input.value; }})()"
+        ) == name
+        browser.click(".add-folder-form button[type=submit]")
+        browser.wait_for(f"Boolean({folder_lookup(name)})")
+
+    def collapsed_state():
+        return json.loads(browser.evaluate(
+            f"localStorage.getItem({json.dumps(storage_key)}) || '[]'"
+        ))
+
+    browser.navigate(f"{base_url}/library")
+    browser.evaluate(f"localStorage.removeItem({json.dumps(storage_key)}); true")
+    add_folder(original_folder)
+    add_folder(unrelated_folder)
+
+    assert browser.evaluate(
+        f"(() => {{ {folder_lookup(original_folder)}"
+        ".querySelector('.library-folder-toggle-button').click(); return true; })()"
+    ) is True
+    assert browser.evaluate(
+        f"(() => {{ {folder_lookup(unrelated_folder)}"
+        ".querySelector('.library-folder-toggle-button').click(); return true; })()"
+    ) is True
+    browser.wait_for(
+        f"{folder_lookup(original_folder)}.classList.contains('collapsed') && "
+        f"{folder_lookup(unrelated_folder)}.classList.contains('collapsed')"
+    )
+
+    browser.navigate(f"{base_url}/library?client-state-reload=1")
+    browser.wait_for(
+        f"{folder_lookup(original_folder)}.classList.contains('collapsed') && "
+        f"{folder_lookup(unrelated_folder)}.classList.contains('collapsed')"
+    )
+
+    assert browser.evaluate(
+        f"(() => {{ const form = {folder_lookup(original_folder)}"
+        ".querySelector('.rename-folder-form'); "
+        f"form.querySelector('[name=new_folder]').value = {json.dumps(renamed_folder)}; "
+        "form.requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(f"Boolean({folder_lookup(renamed_folder)})")
+    browser.wait_for(f"{folder_lookup(renamed_folder)}.classList.contains('collapsed')")
+    state_after_rename = collapsed_state()
+    assert renamed_folder in state_after_rename
+    assert original_folder not in state_after_rename
+    assert unrelated_folder in state_after_rename
+
+    assert browser.evaluate(
+        f"(() => {{ const form = {folder_lookup(renamed_folder)}"
+        ".querySelector('.rename-folder-form'); "
+        f"form.querySelector('[name=new_folder]').value = {json.dumps(recased_folder)}; "
+        "form.requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(f"Boolean({folder_lookup(recased_folder)})")
+    browser.wait_for(f"{folder_lookup(recased_folder)}.classList.contains('collapsed')")
+    state_after_recasing = collapsed_state()
+    assert recased_folder in state_after_recasing
+    assert sum(
+        1 for name in state_after_recasing
+        if name.strip().lower() == recased_folder.strip().lower()
+    ) == 1
+
+    browser.evaluate(
+        f"localStorage.setItem({json.dumps(storage_key)}, "
+        f"JSON.stringify([{json.dumps(recased_folder.lower())}, "
+        f"{json.dumps(recased_folder.upper())}, {json.dumps(unrelated_folder.lower())}, "
+        "'Missing Folder', '  uncategorized  '])); true"
+    )
+    browser.navigate(f"{base_url}/library?client-state-normalize=1")
+    browser.wait_for(f"{folder_lookup(recased_folder)}.classList.contains('collapsed')")
+    normalized_state = collapsed_state()
+    assert normalized_state == [recased_folder, unrelated_folder, "Uncategorized"]
+
+    # Browser Regression is temporarily assignment-only. Client reconciliation
+    # must retain its state and promotion must not introduce another identity.
+    portal_path = browser_stack.data_root / "config" / "portal.json"
+    portal = json.loads(portal_path.read_text(encoding="utf-8"))
+    portal["quiz_folders"] = [
+        name for name in portal.get("quiz_folders", [])
+        if name.strip().lower() != "browser regression"
+    ]
+    portal_path.write_text(json.dumps(portal, indent=2), encoding="utf-8")
+    browser.evaluate(
+        f"localStorage.setItem({json.dumps(storage_key)}, "
+        "JSON.stringify(['browser regression', 'BROWSER REGRESSION', "
+        f"{json.dumps(recased_folder)}, {json.dumps(unrelated_folder)}, "
+        "'uncategorized'])); true"
+    )
+    browser.navigate(f"{base_url}/library?assignment-only=1")
+    browser.wait_for(
+        f"{folder_lookup('Browser Regression')}.classList.contains('collapsed')"
+    )
+    assignment_only_state = collapsed_state()
+    assert assignment_only_state.count("Browser Regression") == 1
+
+    browser.click(".library-add-folder > button")
+    assert browser.evaluate(
+        "(() => { window.__dlmsClientStateMutationPending = true; "
+        "const input = document.querySelector('.add-folder-form [name=folder]'); "
+        "input.value = 'BROWSER REGRESSION'; return input.value; })()"
+    ) == "BROWSER REGRESSION"
+    browser.click(".add-folder-form button[type=submit]")
+    browser.wait_for(
+        "window.__dlmsClientStateMutationPending !== true && "
+        f"{folder_lookup('Browser Regression')}.classList.contains('collapsed')"
+    )
+    promoted_state = collapsed_state()
+    assert promoted_state.count("Browser Regression") == 1
+
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(recased_folder)}; "
+        "window.__dlmsClientStateMutationPending = true; "
+        "window.confirm = () => true; "
+        "folder.querySelector('.delete-folder-form').requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(
+        "window.__dlmsClientStateMutationPending !== true && "
+        f"!({folder_lookup(recased_folder)})"
+    )
+    browser.wait_for(
+        f"JSON.parse(localStorage.getItem({json.dumps(storage_key)}) || '[]')"
+        f".every(name => name.trim().toLowerCase() !== "
+        f"{json.dumps(recased_folder.strip().lower())})"
+    )
+    state_after_delete = collapsed_state()
+    assert all(
+        name.strip().lower() != recased_folder.strip().lower()
+        for name in state_after_delete
+    )
+    assert unrelated_folder in state_after_delete
+    assert "Browser Regression" in state_after_delete
+
+    assert browser.evaluate(
+        f"(() => {{ const folder = {folder_lookup(unrelated_folder)}; "
+        "window.__dlmsClientStateMutationPending = true; "
+        "window.confirm = () => true; "
+        "folder.querySelector('.delete-folder-form').requestSubmit(); return true; })()"
+    ) is True
+    browser.wait_for(
+        "window.__dlmsClientStateMutationPending !== true && "
+        f"!({folder_lookup(unrelated_folder)})"
+    )
+    browser.wait_for(
+        f"JSON.parse(localStorage.getItem({json.dumps(storage_key)}) || '[]')"
+        f".every(name => name.trim().toLowerCase() !== "
+        f"{json.dumps(unrelated_folder.strip().lower())})"
+    )
+    final_state = collapsed_state()
+    assert unrelated_folder not in final_state
+    assert "Browser Regression" in final_state
+    assert "Uncategorized" in final_state
+
+
 def test_navigation_visibility_persists_through_settings_and_page_reload(browser_stack):
     browser = browser_stack.browser
     keys = ("it", "law", "medical", "other")
