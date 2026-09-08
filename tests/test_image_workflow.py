@@ -32,7 +32,7 @@ def _bind_dlms_test_paths():
     dlms.DATA_FOLDER = str(root / "data")
     dlms.QUIZ_FOLDER = str(root / "quizzes")
     dlms.CONFIG_FOLDER = str(root / "config")
-    dlms.REGISTRY_FILE = str(root / "config" / "quizzes.json")
+    dlms.QUIZ_REGISTRY = str(root / "config" / "quizzes.json")
     dlms.CONTENT_PACK_STAGING_FOLDER = str(root / "content_pack_staging")
     for path in (
         dlms.CONTENT_PACK_FOLDER,

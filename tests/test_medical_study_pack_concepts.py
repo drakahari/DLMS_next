@@ -27,7 +27,6 @@ def _bind_paths():
     dlms.QUIZ_ASSET_FOLDER = str(root / "quiz_assets")
     dlms.CONFIG_FOLDER = str(root / "config")
     dlms.QUIZ_REGISTRY = str(root / "config" / "quizzes.json")
-    dlms.REGISTRY_FILE = dlms.QUIZ_REGISTRY
     dlms.PORTAL_CONFIG = str(root / "config" / "portal.json")
     dlms.CONTENT_PACK_FOLDER = str(root / "content_packs")
     dlms.CONTENT_PACK_STAGING_FOLDER = str(root / "content_pack_staging")

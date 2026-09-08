@@ -22,7 +22,6 @@ def _bind_paths():
     dlms.CONFIG_FOLDER = str(root / "config")
     dlms.PORTAL_CONFIG = str(root / "config" / "portal.json")
     dlms.QUIZ_REGISTRY = str(root / "config" / "quizzes.json")
-    dlms.REGISTRY_FILE = dlms.QUIZ_REGISTRY
     dlms.DB_PATH = str(root / "results.db")
     dlms.LOGO_FOLDER = str(root / "static" / "logos")
     dlms.LOGO_TEMP_FOLDER = str(root / "static" / "logos" / "_temp")

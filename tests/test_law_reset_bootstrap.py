@@ -40,7 +40,6 @@ class LawResetBootstrapTests(unittest.TestCase):
             "DATA_FOLDER": str(self.root / "data"),
             "QUIZ_FOLDER": str(self.root / "quizzes"),
             "CONFIG_FOLDER": str(config),
-            "REGISTRY_FILE": str(config / "quizzes.json"),
             "QUIZ_REGISTRY": str(config / "quizzes.json"),
             "PORTAL_CONFIG": str(config / "portal.json"),
             "DB_PATH": str(self.root / "results.db"),

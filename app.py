@@ -542,7 +542,6 @@ UPLOAD_FOLDER = os.path.join(APP_DATA_DIR, "uploads")
 DATA_FOLDER = os.path.join(APP_DATA_DIR, "data")
 QUIZ_FOLDER = os.path.join(APP_DATA_DIR, "quizzes")
 CONFIG_FOLDER = os.path.join(APP_DATA_DIR, "config")
-REGISTRY_FILE = os.path.join(APP_DATA_DIR, "config", "quizzes.json")
 
 # Law Study module storage
 LAW_FOLDER = os.path.join(APP_DATA_DIR, "law")
@@ -2568,18 +2567,6 @@ def load_portal_config():
         validate_custom_ai_url=_validate_custom_ai_url,
         atomic_write_json=_atomic_write_json,
         preserve_malformed_json=_preserve_malformed_json,
-    )
-
-
-def save_portal_config(title, show_confidence=False, enable_regex_replace=False, background_image=None):
-    return _portal_repository.save_portal_config(
-        PORTAL_CONFIG,
-        title,
-        show_confidence,
-        enable_regex_replace,
-        background_image,
-        load_config=load_portal_config,
-        atomic_write_json=_atomic_write_json,
     )
 
 

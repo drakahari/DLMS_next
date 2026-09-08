@@ -29,8 +29,8 @@ class ContentPackLegacyMigrationAtomicityTests(unittest.TestCase):
             name: getattr(dlms, name)
             for name in (
                 "APP_DATA_DIR", "CONTENT_PACK_FOLDER", "QUIZ_ASSET_FOLDER",
-                "DATA_FOLDER", "QUIZ_FOLDER", "CONFIG_FOLDER", "REGISTRY_FILE",
-                "QUIZ_REGISTRY", "DB_PATH",
+                "DATA_FOLDER", "QUIZ_FOLDER", "CONFIG_FOLDER", "QUIZ_REGISTRY",
+                "DB_PATH",
             )
         }
         dlms._initialize_data_root_ownership(str(self.root))
@@ -40,8 +40,7 @@ class ContentPackLegacyMigrationAtomicityTests(unittest.TestCase):
         dlms.DATA_FOLDER = str(self.root / "data")
         dlms.QUIZ_FOLDER = str(self.root / "quizzes")
         dlms.CONFIG_FOLDER = str(self.root / "config")
-        dlms.REGISTRY_FILE = str(self.root / "config" / "quizzes.json")
-        dlms.QUIZ_REGISTRY = dlms.REGISTRY_FILE
+        dlms.QUIZ_REGISTRY = str(self.root / "config" / "quizzes.json")
         dlms.DB_PATH = str(self.root / "results.db")
         for path in (
             dlms.CONTENT_PACK_FOLDER, dlms.QUIZ_ASSET_FOLDER, dlms.DATA_FOLDER,

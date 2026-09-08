@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from dlms.persistence import portal as portal_repository
 from tests._isolation import ensure_test_data_isolation
 
 
@@ -21,6 +22,15 @@ class PortalStructuredNormalizationTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.portal_path = Path(self.temporary.name) / "config" / "portal.json"
         self.portal_path.parent.mkdir(parents=True)
+
+    def _save_portal_config(self, title, **kwargs):
+        return portal_repository.save_portal_config(
+            str(self.portal_path),
+            title,
+            load_config=dlms.load_portal_config,
+            atomic_write_json=dlms._atomic_write_json,
+            **kwargs,
+        )
 
     def test_malformed_quiz_folders_are_preserved_then_normalized_before_use(self):
         malformed = b'{"title":"Recovery repro","quiz_folders":"oops"}'
@@ -133,19 +143,24 @@ class PortalStructuredNormalizationTests(unittest.TestCase):
         self.portal_path.write_text(json.dumps(existing), encoding="utf-8")
 
         with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)):
-            dlms.save_portal_config("Updated DLMS", show_confidence=True)
+            self._save_portal_config("Updated DLMS", show_confidence=True)
 
         persisted = json.loads(self.portal_path.read_text(encoding="utf-8"))
         self.assertEqual("Updated DLMS", persisted["title"])
         self.assertEqual(existing["future_setting"], persisted["future_setting"])
 
-    def test_app_atomic_write_patch_still_intercepts_portal_saves(self):
+    def test_portal_repository_accepts_configured_atomic_writer(self):
         existing = {"title": "Existing DLMS", "unknown": "preserve me"}
         self.portal_path.write_text(json.dumps(existing), encoding="utf-8")
 
         with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)), \
                 mock.patch.object(dlms, "_atomic_write_json") as atomic_write:
-            dlms.save_portal_config("Intercepted")
+            portal_repository.save_portal_config(
+                str(self.portal_path),
+                "Intercepted",
+                load_config=dlms.load_portal_config,
+                atomic_write_json=atomic_write,
+            )
 
         atomic_write.assert_called_once()
         args, kwargs = atomic_write.call_args

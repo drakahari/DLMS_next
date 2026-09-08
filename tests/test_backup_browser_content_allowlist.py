@@ -174,7 +174,6 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
             "DATA_FOLDER": self.live / "data",
             "QUIZ_FOLDER": self.live / "quizzes",
             "CONFIG_FOLDER": self.live / "config",
-            "REGISTRY_FILE": self.live / "config" / "quizzes.json",
             "QUIZ_REGISTRY": self.live / "config" / "quizzes.json",
             "PORTAL_CONFIG": self.live / "config" / "portal.json",
             "LAW_FOLDER": self.live / "law",

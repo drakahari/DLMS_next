@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from dlms.persistence import portal as portal_repository
 from tests._isolation import ensure_test_data_isolation
 
 
@@ -20,6 +21,16 @@ class AtomicJsonPersistenceTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="dlms-atomic-json-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+
+    @staticmethod
+    def _save_portal_config(portal_path, title, **kwargs):
+        return portal_repository.save_portal_config(
+            str(portal_path),
+            title,
+            load_config=dlms.load_portal_config,
+            atomic_write_json=dlms._atomic_write_json,
+            **kwargs,
+        )
 
     def test_successful_atomic_replacement(self):
         path = self.root / "settings.json"
@@ -195,7 +206,7 @@ class AtomicJsonPersistenceTests(unittest.TestCase):
             # A later malformed live value rotates the single recovery copy;
             # saving defaults plus the requested change cannot destroy it.
             portal_path.write_bytes(latest_portal_corruption)
-            dlms.save_portal_config("Recovered settings")
+            self._save_portal_config(portal_path, "Recovered settings")
 
         self.assertEqual(latest_portal_corruption, Path(str(portal_path) + ".corrupt").read_bytes())
         self.assertEqual(
@@ -216,7 +227,9 @@ class AtomicJsonPersistenceTests(unittest.TestCase):
         ), mock.patch.object(dlms, "PDF_QUESTION_BANK_FOLDER", str(question_folder)), mock.patch.object(
             dlms, "PDF_TERMINOLOGY_BANK_FOLDER", str(term_folder)
         ):
-            dlms.save_portal_config("Compatible title", show_confidence=False)
+            self._save_portal_config(
+                portal_path, "Compatible title", show_confidence=False
+            )
             registry = dlms.load_law_registry()
             registry["folders"].append("Evidence")
             dlms.save_law_registry(registry)
