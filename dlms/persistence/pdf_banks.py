@@ -316,22 +316,21 @@ def _save_pdf_import_draft(
     safe_id=None,
     path_for_id=None,
     os_module=None,
-    json_module=None,
-    open_file=None,
+    atomic_write_json=None,
 ):
     safe_id = safe_id or _pdf_import_safe_id
     if path_for_id is None:
         path_for_id = lambda draft_id: _pdf_import_draft_path(folder, draft_id)
     os_module = os_module or os
-    json_module = json_module or json
-    open_file = open_file or open
+    atomic_write_json = atomic_write_json or _default_atomic_write_json
 
     draft_id = safe_id(draft.get("id"))
     if not draft_id:
         raise ValueError("PDF import draft is missing an id")
     os_module.makedirs(folder, exist_ok=True)
-    with open_file(path_for_id(draft_id), "w", encoding="utf-8") as f:
-        json_module.dump(draft, f, indent=2, ensure_ascii=False)
+    atomic_write_json(
+        path_for_id(draft_id), draft, ensure_ascii=False, expected_type=dict
+    )
 
 
 def _load_pdf_import_draft(

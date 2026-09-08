@@ -3957,7 +3957,7 @@ def _save_pdf_import_draft(draft):
         safe_id=_pdf_import_safe_id,
         path_for_id=_pdf_import_draft_path,
         os_module=os,
-        json_module=json,
+        atomic_write_json=_atomic_write_json,
     )
 
 def _load_pdf_import_draft(draft_id):

@@ -17,6 +17,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from tests.csrf_test_utils import csrf_token
 
 
 class PDFPersistenceTests(unittest.TestCase):
@@ -91,13 +92,148 @@ class PDFPersistenceTests(unittest.TestCase):
             dlms._load_pdf_import_draft("missing")
         self.assertFalse((self.drafts / "broken.json.corrupt").exists())
 
-    def test_draft_save_remains_non_atomic_and_requires_an_id(self):
+    def test_draft_save_uses_configured_atomic_writer_and_requires_an_id(self):
+        draft = {"id": "plain", "questions": []}
+        expected_path = str(self.drafts / "plain.json")
+
         with mock.patch.object(dlms, "_atomic_write_json") as atomic_write:
-            dlms._save_pdf_import_draft({"id": "plain", "questions": []})
-        atomic_write.assert_not_called()
+            dlms._save_pdf_import_draft(draft)
+        atomic_write.assert_called_once_with(
+            expected_path,
+            draft,
+            ensure_ascii=False,
+            expected_type=dict,
+        )
 
         with self.assertRaisesRegex(ValueError, "PDF import draft is missing an id"):
             dlms._save_pdf_import_draft({"id": "../../", "questions": []})
+
+    def test_draft_atomic_overwrite_preserves_schema_and_serialization(self):
+        original = {
+            "id": "overwrite",
+            "created_at": "2026-09-07T10:00:00",
+            "questions": [{"number": 1, "question": "Before"}],
+        }
+        replacement = {
+            "id": "overwrite",
+            "created_at": "2026-09-07T10:00:00",
+            "questions": [{"number": 1, "question": "After"}],
+            "review": {"café": "東京"},
+        }
+
+        dlms._save_pdf_import_draft(original)
+        dlms._save_pdf_import_draft(replacement)
+
+        path = self.drafts / "overwrite.json"
+        self.assertEqual(replacement, dlms._load_pdf_import_draft("overwrite"))
+        self.assertEqual(
+            json.dumps(replacement, indent=2, ensure_ascii=False),
+            path.read_text(encoding="utf-8"),
+        )
+
+    def test_failed_draft_atomic_replace_preserves_live_file_and_cleans_temp(self):
+        original = {
+            "id": "replacement_failure",
+            "questions": [{"number": 1, "question": "Recoverable"}],
+        }
+        dlms._save_pdf_import_draft(original)
+        path = self.drafts / "replacement_failure.json"
+        original_text = path.read_text(encoding="utf-8")
+
+        with mock.patch.object(
+            dlms.os,
+            "replace",
+            side_effect=OSError("simulated draft replacement failure"),
+        ):
+            with self.assertRaisesRegex(
+                OSError, "simulated draft replacement failure"
+            ):
+                dlms._save_pdf_import_draft(
+                    {"id": "replacement_failure", "questions": []}
+                )
+
+        self.assertEqual(original_text, path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [], list(self.drafts.glob(".replacement_failure.json.*.tmp"))
+        )
+
+    def test_atomic_overwrite_preserves_a_malformed_draft_for_recovery(self):
+        self.drafts.mkdir()
+        path = self.drafts / "malformed_overwrite.json"
+        malformed = b'{"id": "malformed_overwrite"'
+        path.write_bytes(malformed)
+        replacement = {"id": "malformed_overwrite", "questions": []}
+
+        dlms._save_pdf_import_draft(replacement)
+
+        self.assertEqual(replacement, dlms._load_pdf_import_draft("malformed_overwrite"))
+        self.assertEqual(malformed, Path(str(path) + ".corrupt").read_bytes())
+        self.assertEqual([], list(self.drafts.glob(".*.tmp")))
+
+    def test_successful_bank_saves_still_delete_their_source_drafts(self):
+        question_draft = {
+            "id": "question_save",
+            "document_type": "question_bank",
+            "source_name": "questions.pdf",
+            "page_count": 1,
+            "questions": [
+                {
+                    "number": 1,
+                    "question": "Which answer is correct?",
+                    "choices": [
+                        {"label": "A", "text": "Correct"},
+                        {"label": "B", "text": "Incorrect"},
+                    ],
+                    "correct": "A",
+                    "pages": [1],
+                    "status": "complete",
+                    "issues": [],
+                }
+            ],
+        }
+        term_draft = {
+            "id": "term_save",
+            "document_type": "glossary",
+            "source_name": "terms.pdf",
+            "page_count": 1,
+            "terms": [
+                {
+                    "number": 1,
+                    "term": "Atomicity",
+                    "definition": "An all-or-nothing update property.",
+                    "pages": [1],
+                    "status": "complete",
+                    "issues": [],
+                }
+            ],
+        }
+        dlms._save_pdf_import_draft(question_draft)
+        dlms._save_pdf_import_draft(term_draft)
+        client = dlms.app.test_client()
+
+        question_response = client.post(
+            "/pdf-import/save/question_save",
+            data={
+                "quiz_title": "Saved Questions",
+                "exam_minutes": "30",
+                "csrf_token": csrf_token(client),
+            },
+        )
+        term_response = client.post(
+            "/pdf-import/save/term_save",
+            data={
+                "quiz_title": "Saved Terms",
+                "exam_minutes": "30",
+                "csrf_token": csrf_token(client),
+            },
+        )
+
+        self.assertEqual(302, question_response.status_code)
+        self.assertEqual(302, term_response.status_code)
+        self.assertFalse((self.drafts / "question_save.json").exists())
+        self.assertFalse((self.drafts / "term_save.json").exists())
+        self.assertEqual(1, len(list(self.questions.glob("*.json"))))
+        self.assertEqual(1, len(list(self.terms.glob("*.json"))))
 
     def test_question_bank_atomic_interception_and_timestamp_mutation(self):
         bank = {"id": "questions", "questions": [], "unknown": "preserved"}
