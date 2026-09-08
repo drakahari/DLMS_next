@@ -106,9 +106,33 @@ class FirefoxBidi:
         raise TimeoutError(f"Timed out waiting for Firefox command {method}")
 
     def navigate(self, url: str) -> None:
+        # Firefox can sporadically withhold navigation-completion responses on
+        # an otherwise healthy BiDi socket. Stamp the current document, start
+        # navigation without waiting on that response, then observe readiness
+        # through ordinary script commands instead.
+        marker = f"dlms-bidi-navigation-{self._next_id}-{time.monotonic_ns()}"
+        previous_url = self.evaluate("location.href")
+        self.evaluate(
+            f"window.__dlmsBidiNavigationMarker = {json.dumps(marker)}; true"
+        )
         self.command(
             "browsingContext.navigate",
-            {"context": self.context, "url": url, "wait": "complete"},
+            {"context": self.context, "url": url, "wait": "none"},
+            timeout=12.0,
+        )
+        encoded_marker = json.dumps(marker)
+        encoded_previous_url = json.dumps(previous_url)
+        encoded_url = json.dumps(url)
+        self.wait_for(
+            "(() => {"
+            "if (document.readyState !== 'complete') return false;"
+            f"const replaced = window.__dlmsBidiNavigationMarker !== {encoded_marker};"
+            f"const target = new URL({encoded_url});"
+            "const current = new URL(location.href);"
+            f"const sameDocumentMove = location.href !== {encoded_previous_url} && "
+            "current.href === target.href;"
+            "return current.origin === target.origin && (replaced || sameDocumentMove);"
+            "})()",
             timeout=12.0,
         )
 

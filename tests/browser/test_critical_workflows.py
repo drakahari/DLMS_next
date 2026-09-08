@@ -41,6 +41,17 @@ class BrowserStack:
     metadata: dict
 
 
+@dataclass
+class BrowserServer:
+    firefox: str
+    base_url: str
+    data_root: Path
+    metadata: dict
+    work_root: Path
+    env: dict
+    process_options: dict
+
+
 def _free_loopback_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -116,28 +127,16 @@ def _terminate_process_tree(process):
 
 
 @pytest.fixture(scope="module")
-def browser_stack(tmp_path_factory):
+def browser_server(tmp_path_factory):
     firefox = shutil.which("firefox") or shutil.which("firefox-esr")
     if not firefox:
         pytest.skip("Firefox is not installed")
 
     work_root = tmp_path_factory.mktemp("dlms-browser")
     data_root = work_root / "data-root"
-    profile = work_root / "firefox-profile"
-    profile.mkdir()
-    (profile / "user.js").write_text(
-        '\n'.join([
-            'user_pref("datareporting.healthreport.uploadEnabled", false);',
-            'user_pref("toolkit.telemetry.enabled", false);',
-            'user_pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);',
-        ]),
-        encoding="utf-8",
-    )
     server_port = _free_loopback_port()
-    browser_port = _free_loopback_port()
     base_url = f"http://127.0.0.1:{server_port}"
     server_log = work_root / "server.log"
-    browser_log = work_root / "firefox.log"
     env = os.environ.copy()
     env.update({
         "QUIZAPP_DATA_DIR": str(data_root),
@@ -149,11 +148,9 @@ def browser_stack(tmp_path_factory):
     })
     process_options = {"start_new_session": True} if os.name == "posix" else {}
     server_process = None
-    browser_process = None
-    browser = None
 
     try:
-        with server_log.open("w", encoding="utf-8") as server_output, browser_log.open("w", encoding="utf-8") as browser_output:
+        with server_log.open("w", encoding="utf-8") as server_output:
             server_process = subprocess.Popen(
                 [sys.executable, str(ROOT / "tests" / "browser" / "_server.py")],
                 cwd=ROOT,
@@ -164,10 +161,43 @@ def browser_stack(tmp_path_factory):
             )
             _wait_for_server(f"{base_url}/library", server_process, server_log)
             metadata = json.loads((data_root / "browser_fixture.json").read_text(encoding="utf-8"))
+            yield BrowserServer(
+                firefox=firefox,
+                base_url=base_url,
+                data_root=data_root,
+                metadata=metadata,
+                work_root=work_root,
+                env=env,
+                process_options=process_options,
+            )
+    finally:
+        _terminate_process_tree(server_process)
+        shutil.rmtree(work_root, ignore_errors=True)
 
+
+@pytest.fixture
+def browser_stack(browser_server):
+    browser_port = _free_loopback_port()
+    session_root = browser_server.work_root / f"firefox-session-{browser_port}"
+    profile = session_root / "profile"
+    profile.mkdir(parents=True)
+    (profile / "user.js").write_text(
+        '\n'.join([
+            'user_pref("datareporting.healthreport.uploadEnabled", false);',
+            'user_pref("toolkit.telemetry.enabled", false);',
+            'user_pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);',
+        ]),
+        encoding="utf-8",
+    )
+    browser_log = session_root / "firefox.log"
+    browser_process = None
+    browser = None
+
+    try:
+        with browser_log.open("w", encoding="utf-8") as browser_output:
             browser_process = subprocess.Popen(
                 [
-                    firefox,
+                    browser_server.firefox,
                     "--headless",
                     "--no-remote",
                     "--profile",
@@ -177,19 +207,23 @@ def browser_stack(tmp_path_factory):
                     "about:blank",
                 ],
                 cwd=ROOT,
-                env=env,
+                env=browser_server.env,
                 stdout=browser_output,
                 stderr=subprocess.STDOUT,
-                **process_options,
+                **browser_server.process_options,
             )
             browser = _connect_firefox(browser_port, browser_process, browser_log)
-            yield BrowserStack(browser, base_url, data_root, metadata)
+            yield BrowserStack(
+                browser,
+                browser_server.base_url,
+                browser_server.data_root,
+                browser_server.metadata,
+            )
     finally:
         if browser is not None:
             browser.close()
         _terminate_process_tree(browser_process)
-        _terminate_process_tree(server_process)
-        shutil.rmtree(work_root, ignore_errors=True)
+        shutil.rmtree(session_root, ignore_errors=True)
 
 
 def _wait_for_database_value(path, query, expected, timeout=6.0):
