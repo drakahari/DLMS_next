@@ -97,8 +97,8 @@
                     </div>
                 </div>
                 <div class="law-record-actions">
-                    <button type="button" class="law-open-action" onclick="location.href='/law/imports/{{ item.filename }}'">Open</button>
-                    <form method="POST" action="/law/imports/{{ item.filename }}/delete"
+                    <button type="button" class="law-open-action" data-law-navigation-url="{{ url_for('law.law_view_saved_import', filename=item.filename) }}">Open</button>
+                    <form method="POST" action="{{ url_for('law.law_delete_saved_import', filename=item.filename) }}"
                           onsubmit="return confirm('Delete this saved raw import? This will not delete any structured case reviews already created from it.');">
                         <button type="submit" class="law-trash-action" aria-label="Delete import" title="Delete import">🗑</button>
                     </form>
@@ -124,6 +124,10 @@
 <script>
 const menuButton = document.getElementById("menuButton");
 const sidebar = document.getElementById("dashboardSidebar");
+
+document.querySelectorAll("[data-law-navigation-url]").forEach(control => {
+    control.addEventListener("click", () => window.location.assign(control.dataset.lawNavigationUrl));
+});
 
 if (menuButton && sidebar) {
     menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));

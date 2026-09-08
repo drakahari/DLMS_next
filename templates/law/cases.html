@@ -98,8 +98,8 @@
                     <div class="law-record-source">Source: {{ case.source_import }}</div>
                 </div>
                 <div class="law-record-actions">
-                    <button type="button" class="law-open-action" onclick="location.href='/law/cases/{{ case.id }}'">Open</button>
-                    <form method="POST" action="/law/cases/{{ case.id }}/delete"
+                    <button type="button" class="law-open-action" data-law-navigation-url="{{ url_for('law.law_view_case_review', case_id=case.id) }}">Open</button>
+                    <form method="POST" action="{{ url_for('law.law_delete_case_review', case_id=case.id) }}"
                           onsubmit="return confirm('Delete this Law Case Review? This will remove the saved case review JSON file, but it will not delete the original raw import.');">
                         <button type="submit" class="law-trash-action" aria-label="Delete case review" title="Delete case review">🗑</button>
                     </form>
@@ -126,6 +126,10 @@
 <script>
 const menuButton = document.getElementById("menuButton");
 const sidebar = document.getElementById("dashboardSidebar");
+
+document.querySelectorAll("[data-law-navigation-url]").forEach(control => {
+    control.addEventListener("click", () => window.location.assign(control.dataset.lawNavigationUrl));
+});
 
 if (menuButton && sidebar) {
     menuButton.addEventListener("click", () => sidebar.classList.toggle("open"));

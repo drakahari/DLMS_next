@@ -225,7 +225,7 @@
 <div class="pdf-bank-row-stats"><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
 <span class="pdf-bank-open">Open →</span>
 </a>
-<form class="pdf-bank-manage-action" method="POST" action="/pdf-import/bank/{{ bank.id }}/delete" onsubmit="return confirm('Delete source question bank “{{ bank.title|e }}”? Existing quizzes generated from it will remain available.');">
+<form class="pdf-bank-manage-action" method="POST" action="/pdf-import/bank/{{ bank.id }}/delete" data-pdf-bank-kind="question" data-pdf-bank-title="{{ bank.title }}">
 <button class="pdf-bank-delete-button" type="submit">Delete</button>
 </form>
 </div>
@@ -250,7 +250,7 @@
 <div class="pdf-bank-row-stats"><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
 <span class="pdf-bank-open">Open →</span>
 </a>
-<form class="pdf-bank-manage-action" method="POST" action="/pdf-import/terms/{{ bank.id }}/delete" onsubmit="return confirm('Delete source terminology bank “{{ bank.title|e }}”? Existing quizzes generated from it will remain available.');">
+<form class="pdf-bank-manage-action" method="POST" action="/pdf-import/terms/{{ bank.id }}/delete" data-pdf-bank-kind="terminology" data-pdf-bank-title="{{ bank.title }}">
 <button class="pdf-bank-delete-button" type="submit">Delete</button>
 </form>
 </div>
@@ -262,6 +262,12 @@
 </main></div>
 <script>
 document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
+document.querySelectorAll("[data-pdf-bank-title]").forEach(form=>{
+    form.addEventListener("submit",event=>{
+        const message=`Delete source ${form.dataset.pdfBankKind} bank “${form.dataset.pdfBankTitle}”? Existing quizzes generated from it will remain available.`;
+        if(!window.confirm(message)) event.preventDefault();
+    });
+});
 const pdfBankSections=[...document.querySelectorAll("[data-pdf-bank-section]")];
 document.getElementById("pdfExpandBanks")?.addEventListener("click",()=>pdfBankSections.forEach(section=>section.open=true));
 document.getElementById("pdfCollapseBanks")?.addEventListener("click",()=>pdfBankSections.forEach(section=>section.open=false));

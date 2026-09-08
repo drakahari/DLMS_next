@@ -178,7 +178,7 @@
         <div class="portal-card law-case-section">
     <h2 style="margin-top:0;">✏️ Edit Case Details</h2>
 
-    <form method="POST" action="/law/cases/{{ case_data.id }}/update_details">
+    <form method="POST" action="{{ url_for('law.law_update_case_review_details', case_id=case_data.id) }}">
         <label><strong>Case Title</strong></label><br>
         <input type="text"
                name="title"
@@ -233,7 +233,7 @@
             Write your own IRAC response before revealing the imported IRAC Drill guidance.
         </p>
 
-        <form method="POST" action="/law/cases/{{ case_data.id }}/update_irac_response">
+        <form method="POST" action="{{ url_for('law.law_update_irac_response', case_id=case_data.id) }}">
             <label><strong>Issue</strong></label><br>
             <textarea class="law-detail-textarea" name="irac_issue"
                     rows="4"
@@ -331,7 +331,7 @@
 
     <form id="socraticAnswersForm"
       method="POST"
-      action="/law/cases/{{ case_data.id }}/update_socratic_answers">
+      action="{{ url_for('law.law_update_socratic_answers', case_id=case_data.id) }}">
         <div style="display:grid; gap:12px;">
             {% for question in socratic_questions %}
             <div style="
@@ -415,7 +415,7 @@
                 Add your own class notes, professor comments, questions, or reminders here.
             </p>
 
-            <form method="POST" action="/law/cases/{{ case_data.id }}/update_notes">
+            <form method="POST" action="{{ url_for('law.law_update_case_review_notes', case_id=case_data.id) }}">
                 <textarea class="law-detail-textarea" name="student_notes"
                         rows="10"
                         placeholder="Add your own notes about this case..."
@@ -431,7 +431,7 @@
 
         <br>
 
-        <button type="button" onclick="location.href='/law/cases/{{ case_data.id }}/export.txt'">
+        <button type="button" data-law-navigation-url="{{ url_for('law.law_export_case_review_txt', case_id=case_data.id) }}">
             ⬇️ Export Case Review
         </button>
 
@@ -452,6 +452,10 @@
 </div>
 
 <script>
+document.querySelectorAll("[data-law-navigation-url]").forEach(control => {
+    control.addEventListener("click", () => window.location.assign(control.dataset.lawNavigationUrl));
+});
+
 function toggleIracDrill() {
     const box = document.getElementById("iracDrillBox");
 

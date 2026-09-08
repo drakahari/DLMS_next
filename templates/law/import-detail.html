@@ -78,7 +78,7 @@
             {% endfor %}
         </div>
         <div class="law-message success"><strong>Parser preview:</strong><span>DLMS found {{ parsed_sections|length }} recognized section{% if parsed_sections|length != 1 %}s{% endif %}. Nothing new is saved until you create the case review.</span></div>
-        <form method="POST" action="/law/imports/{{ filename }}/create_case" class="law-detail-primary-form">
+        <form method="POST" action="{{ url_for('law.law_create_case_from_import', filename=filename) }}" class="law-detail-primary-form">
             <button type="submit" class="law-primary-action" onclick="return confirm('Create a structured Law Case Review from this import?');">Create Case Review From Import</button>
         </form>
         {% else %}

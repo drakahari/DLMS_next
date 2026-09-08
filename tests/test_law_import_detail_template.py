@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from flask import url_for
 from markupsafe import escape
 
 from tests._isolation import ensure_test_data_isolation
@@ -115,7 +116,10 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         )
 
     def test_parser_preview_form_contract_pluralization_and_escaping(self):
-        filename = 'packet & <name id="filenameInjected"> "quoted" \'single\'.txt'
+        filename = (
+            'packet & <name id="filenameInjected"> "quoted" \'single\' '
+            '</script> \\ \u2028\u2029.txt'
+        )
         raw_packet = (
             'Raw & <b id="rawInjected">text</b> </textarea>'
             '<script id="rawScriptInjected">bad()</script> \u2028\u2029'
@@ -133,6 +137,8 @@ class LawImportDetailTemplateTests(unittest.TestCase):
             size=123,
         )
         escaped_filename = str(escape(filename))
+        with dlms.app.test_request_context():
+            create_url = url_for("law.law_create_case_from_import", filename=filename)
 
         self.assertIn(f"<h2>{escaped_filename}</h2>", page)
         self.assertIn(f"<h3>{escape(title)}</h3>", page)
@@ -140,7 +146,7 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         self.assertIn(f"<p>3 lines · {escape(sections[1]['char_count'])} characters</p>", page)
         self.assertIn("DLMS found 2 recognized sections.", page)
         self.assertIn(
-            f'<form method="POST" action="/law/imports/{escaped_filename}/create_case" '
+            f'<form method="POST" action="{escape(create_url)}" '
             'class="law-detail-primary-form">',
             page,
         )

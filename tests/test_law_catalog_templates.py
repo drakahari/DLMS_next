@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from flask import url_for
 from markupsafe import escape
 
 from tests._isolation import ensure_test_data_isolation
@@ -85,24 +86,27 @@ class LawCatalogTemplateTests(unittest.TestCase):
         self.assertIn("location.href='/law'", page)
 
     def test_import_catalog_populated_metadata_actions_and_escaping(self):
-        filename = 'raw & <tag id="importInjected"> "double" \'single\' </script> \u2028\u2029.txt'
+        filename = 'raw & <tag id="importInjected"> "double" \'single\' </script> \\ \u2028\u2029.txt'
         size = '<b id="sizeInjected">42</b>'
         modified = '<svg id="modifiedInjected">2026</svg>'
         page = self._get_imports(
             [{"filename": filename, "size": size, "modified": modified}]
         )
         escaped_filename = str(escape(filename))
+        with dlms.app.test_request_context():
+            open_url = url_for("law.law_view_saved_import", filename=filename)
+            delete_url = url_for("law.law_delete_saved_import", filename=filename)
 
         self.assertIn('<span class="law-count-pill">1 saved</span>', page)
         self.assertIn(f"<h3>{escaped_filename}</h3>", page)
         self.assertIn(f"<span>{escape(size)} bytes</span>", page)
         self.assertIn(f"<span>Modified {escape(modified)}</span>", page)
         self.assertIn(
-            f"onclick=\"location.href='/law/imports/{escaped_filename}'\"",
-            page,
+            f'data-law-navigation-url="{escape(open_url)}"', page
         )
+        self.assertNotIn("onclick=\"location.href='/law/imports/", page)
         self.assertIn(
-            f'<form method="POST" action="/law/imports/{escaped_filename}/delete"',
+            f'<form method="POST" action="{escape(delete_url)}"',
             page,
         )
         self.assertIn(
@@ -149,7 +153,7 @@ class LawCatalogTemplateTests(unittest.TestCase):
         self.assertIn("location.href='/law'", page)
 
     def test_case_catalog_sorts_and_escapes_displayed_metadata_and_actions(self):
-        hostile = 'Case & <img id="caseInjected"> "quoted" \'single\' </script> \u2028\u2029'
+        hostile = 'Case & <img id="caseInjected"> "quoted" \'single\' </script> \\ \u2028\u2029'
         older = {
             "id": "older-case",
             "title": "Older Case",
@@ -169,6 +173,9 @@ class LawCatalogTemplateTests(unittest.TestCase):
         }
         page = self._get_cases({"cases": [older, newer]})
         escaped_hostile = str(escape(hostile))
+        with dlms.app.test_request_context():
+            open_url = url_for("law.law_view_case_review", case_id=hostile)
+            delete_url = url_for("law.law_delete_case_review", case_id=hostile)
 
         self.assertIn('<span class="law-count-pill">2 saved</span>', page)
         self.assertLess(page.index(escaped_hostile), page.index("Older Case"))
@@ -178,11 +185,11 @@ class LawCatalogTemplateTests(unittest.TestCase):
         self.assertIn(f"Source: {escape(newer['source_import'])}", page)
         self.assertIn("<span>Uncategorized</span>", page)
         self.assertIn(
-            f"onclick=\"location.href='/law/cases/{escaped_hostile}'\"",
-            page,
+            f'data-law-navigation-url="{escape(open_url)}"', page
         )
+        self.assertNotIn("onclick=\"location.href='/law/cases/", page)
         self.assertIn(
-            f'<form method="POST" action="/law/cases/{escaped_hostile}/delete"',
+            f'<form method="POST" action="{escape(delete_url)}"',
             page,
         )
         self.assertIn(
@@ -243,6 +250,7 @@ class LawCatalogTemplateTests(unittest.TestCase):
                 )
                 self.assertIn('fetch("/api/shutdown", { method: "POST" })', inline_script)
                 self.assertIn("sidebar.classList.toggle(\"open\")", inline_script)
+                self.assertIn("control.dataset.lawNavigationUrl", inline_script)
                 self.assertIn("DLMS is shutting down.", inline_script)
                 self.assertIn("Failed to shut down DLMS.", inline_script)
 

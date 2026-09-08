@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from flask import url_for
 from markupsafe import escape
 
 from tests._isolation import ensure_test_data_isolation
@@ -260,6 +261,44 @@ class ContentPackCatalogTemplateTests(unittest.TestCase):
         )
         self.assertNotIn("onclick='openDeletePack(\"folder-</script>", page)
 
+    def test_catalog_builds_encoded_folder_links_that_reach_details_and_export(self):
+        folder = 'Study ? # % space "double" \'single\' & Café'
+        pack = self._pack(folder=folder)
+        report = self._report(folder=folder)
+        with dlms.app.test_request_context():
+            details_url = url_for(
+                "content_packs.content_pack_details", folder=folder
+            )
+            export_url = url_for(
+                "content_packs.export_content_pack", folder=folder
+            )
+
+        page = self._catalog([pack])
+
+        self.assertIn(f'href="{escape(details_url)}"', page)
+        self.assertIn(f'href="{escape(export_url)}"', page)
+        for encoded in ("%3F", "%23", "%25", "%20", "%22", "%C3%A9"):
+            self.assertIn(encoded, details_url)
+            self.assertIn(encoded, export_url)
+
+        with mock.patch.object(
+            dlms, "_content_pack_folder_report", return_value=report
+        ) as report_loader, mock.patch.object(
+            dlms, "discover_content_packs", return_value={}
+        ):
+            details = self.client.get(details_url)
+        self.assertEqual(200, details.status_code)
+        report_loader.assert_called_once_with(folder)
+        self.assertIn(f'href="{escape(export_url)}"', details.get_data(as_text=True))
+
+        with mock.patch.object(
+            dlms, "_build_content_pack_export", return_value=(b"zip-data", "safe-pack")
+        ) as export_builder:
+            exported = self.client.get(export_url)
+        self.assertEqual(200, exported.status_code)
+        self.assertEqual(b"zip-data", exported.data)
+        export_builder.assert_called_once_with(folder)
+
     def test_detail_page_preserves_metadata_counts_validation_and_escaping(self):
         manifest = {
             "schema_version": '1<schema>',
@@ -307,9 +346,11 @@ class ContentPackCatalogTemplateTests(unittest.TestCase):
         self.assertIn("<h3>Warnings</h3>", page)
         self.assertNotIn("<h3>Blocking problems</h3>", page)
         self.assertIn("content-pack-status is-valid", page)
-        self.assertIn(
-            'href="/content-packs/export/folder-&lt;name&gt;&amp;&#34;"', page
-        )
+        with dlms.app.test_request_context():
+            export_url = url_for(
+                "content_packs.export_content_pack", folder=report["folder"]
+            )
+        self.assertIn(f'href="{escape(export_url)}"', page)
         self.assertIn('href="/content-packs">← Back to Content Packs</a>', page)
         self.assertIn(
             'class="dashboard-nav-item active" href="/content-packs"', page

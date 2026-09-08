@@ -141,9 +141,9 @@
                             <div class="content-pack-actions">
                                 {% if pack.exportable %}
                                 <a class="content-pack-action" href="/study-packs">Open</a>
-                                <a class="content-pack-action" href="/content-packs/export/{{ pack.folder }}">Export</a>
+                                <a class="content-pack-action" href="{{ url_for('content_packs.export_content_pack', folder=pack.folder) }}">Export</a>
                                 {% endif %}
-                                <a class="content-pack-action" href="/content-packs/details/{{ pack.folder }}">Details</a>
+                                <a class="content-pack-action" href="{{ url_for('content_packs.content_pack_details', folder=pack.folder) }}">Details</a>
                                 {% if pack.protected %}
                                 <span class="content-pack-action disabled">Delete</span>
                                 {% else %}

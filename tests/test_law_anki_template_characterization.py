@@ -3,6 +3,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from flask import url_for
+from markupsafe import escape
+
 from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
@@ -60,8 +63,7 @@ class LawAnkiTemplateCharacterizationTests(unittest.TestCase):
                 self.assertTrue((Path(dlms.TEMPLATE_ROOT) / template_name).is_file())
 
     def test_law_case_editor_preserves_forms_banners_content_and_escaping(self):
-        rendered_case_id = "case'</script>&\"\u2028\u2029"
-        escaped_case_id = "case&#39;&lt;/script&gt;&amp;&#34;\u2028\u2029"
+        rendered_case_id = "case'</script><img>&\"\\\u2028\u2029"
         case_data = {
             "id": rendered_case_id,
             "title": HOSTILE,
@@ -104,6 +106,24 @@ class LawAnkiTemplateCharacterizationTests(unittest.TestCase):
             )
 
         body = response.get_data(as_text=True)
+        with dlms.app.test_request_context():
+            action_urls = {
+                "update_details": url_for(
+                    "law.law_update_case_review_details", case_id=rendered_case_id
+                ),
+                "update_irac_response": url_for(
+                    "law.law_update_irac_response", case_id=rendered_case_id
+                ),
+                "update_socratic_answers": url_for(
+                    "law.law_update_socratic_answers", case_id=rendered_case_id
+                ),
+                "update_notes": url_for(
+                    "law.law_update_case_review_notes", case_id=rendered_case_id
+                ),
+            }
+            export_url = url_for(
+                "law.law_export_case_review_txt", case_id=rendered_case_id
+            )
         self.assertEqual(200, response.status_code)
         self.assertNotIn('id="segment20Injected"', body)
         self.assertIn("&lt;/textarea&gt;&lt;script", body)
@@ -122,16 +142,17 @@ class LawAnkiTemplateCharacterizationTests(unittest.TestCase):
             "update_socratic_answers",
             "update_notes",
         ):
-            self.assertIn(f'action="/law/cases/{escaped_case_id}/{suffix}"', body)
+            self.assertIn(f'action="{escape(action_urls[suffix])}"', body)
         for name in (
             "title", "course", "irac_issue", "irac_rule", "irac_analysis",
             "irac_conclusion", "answer_q1", "student_notes",
         ):
             self.assertIn(f'name="{name}"', body)
         self.assertIn(
-            f"location.href='/law/cases/{escaped_case_id}/export.txt'",
-            body,
+            f'data-law-navigation-url="{escape(export_url)}"', body
         )
+        self.assertNotIn("onclick=\"location.href='/law/cases/", body)
+        self.assertIn("control.dataset.lawNavigationUrl", body)
         self.assertIn('aria-label="Primary navigation"', body)
         self.assertIn('aria-label="Toggle navigation"', body)
         self.assertIn('fetch("/api/shutdown", { method: "POST" })', body)

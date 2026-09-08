@@ -12,6 +12,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -2160,7 +2161,8 @@ def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stac
         "deleteCsrf": True,
     }
 
-    folder = "DLMS_Study_browser_catalog"
+    folder = 'DLMS_Study_browser ?#% "double" \'single\' & Café'
+    encoded_folder = urllib.parse.quote(folder, safe="!$&'()*+,/:;=@")
     pack_name = "Browser <Pack> & Safe"
     description = 'Browser </script><img id="packInjected"> description & safe'
     pack_root = browser_stack.data_root / "content_packs" / folder
@@ -2222,8 +2224,8 @@ def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stac
         "count": "1 installed folder",
         "status": "Valid",
         "matching": "1 matching",
-        "details": f"/content-packs/details/{folder}",
-        "exportHref": f"/content-packs/export/{folder}",
+        "details": f"/content-packs/details/{encoded_folder}",
+        "exportHref": f"/content-packs/export/{encoded_folder}",
         "injected": False,
     }
 
@@ -2248,7 +2250,9 @@ def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stac
         "!document.querySelector('#deletePackDialog input[name=confirm_delete]').checked"
     ) is True
 
-    browser.navigate(f"{base_url}/content-packs/details/{folder}")
+    browser.evaluate(
+        "document.querySelector(\"a[href*='/content-packs/details/']\").click();true"
+    )
     browser.wait_for(
         "document.querySelector('[data-nav-key=content][aria-current=page]') && "
         "document.querySelector('.pack-detail-hero h2')?.textContent.includes('Browser <Pack>')"
@@ -2272,7 +2276,7 @@ def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stac
         "datasets": "1",
         "folder": folder,
         "backHref": "/content-packs",
-        "exportHref": f"/content-packs/export/{folder}",
+        "exportHref": f"/content-packs/export/{encoded_folder}",
         "injected": False,
     }
 
@@ -3252,14 +3256,16 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
     base_url = browser_stack.base_url
     data_root = browser_stack.data_root
 
-    import_name = 'browser & <import-id> "quoted" \'single\'.txt'
+    import_name = 'browser & <import-id> "quoted" \'single\' \\ \u2028\u2029.txt'
+    import_url_name = urllib.parse.quote(import_name, safe="!$&'()*+,/:;=@")
     (data_root / "law" / "imports" / import_name).write_text(
         "Browser catalog packet", encoding="utf-8"
     )
 
     registry_path = data_root / "config" / "law.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    case_id = 'browser & <case-id> "quoted" \'single\''
+    case_id = 'browser & <case-id> "quoted" \'single\' \\ \u2028\u2029'
+    case_url_id = urllib.parse.quote(case_id, safe="!$&'()*+,/:;=@")
     case_title = 'Catalog & <img id="lawCatalogInjected"> "Case"'
     registry["cases"].append({
         "id": case_id,
@@ -3285,7 +3291,8 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
         "const form=row.querySelector('form');const open=row.querySelector('.law-open-action');"
         "return {heading:document.querySelector('h1').textContent,count:document.querySelector('.law-count-pill').textContent,"
         "banner:document.querySelector('.law-notice').textContent,filename:row.querySelector('h3').textContent,"
-        "open:open.getAttribute('onclick'),method:form.method,action:form.getAttribute('action'),"
+        "open:open.getAttribute('data-law-navigation-url'),inlineOpen:open.getAttribute('onclick'),"
+        "method:form.method,action:form.getAttribute('action'),"
         "confirm:form.getAttribute('onsubmit'),csrf:!!form.querySelector('input[name=csrf_token][type=hidden]'),"
         "deleteLabel:form.querySelector('button').getAttribute('aria-label'),"
         "current:document.querySelector('[data-nav-key=law]').getAttribute('aria-current'),"
@@ -3297,9 +3304,10 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
         "count": "1 saved",
         "banner": "Saved import deleted.Structured case reviews were not changed.",
         "filename": import_name,
-        "open": f"location.href='/law/imports/{import_name}'",
+        "open": f"/law/imports/{import_url_name}",
+        "inlineOpen": None,
         "method": "post",
-        "action": f"/law/imports/{import_name}/delete",
+        "action": f"/law/imports/{import_url_name}/delete",
         "confirm": (
             "return confirm('Delete this saved raw import? This will not delete any "
             "structured case reviews already created from it.');"
@@ -3323,7 +3331,8 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
         "count:document.querySelector('.law-count-pill').textContent,banner:document.querySelector('.law-notice').textContent,"
         "firstTitle:rows[0].querySelector('h3').textContent,title:row.querySelector('h3').textContent,"
         "course:row.querySelector('.law-record-meta span').textContent,source:row.querySelector('.law-record-source').textContent,"
-        "open:row.querySelector('.law-open-action').getAttribute('onclick'),method:form.method,"
+        "open:row.querySelector('.law-open-action').getAttribute('data-law-navigation-url'),"
+        "inlineOpen:row.querySelector('.law-open-action').getAttribute('onclick'),method:form.method,"
         "action:form.getAttribute('action'),confirm:form.getAttribute('onsubmit'),"
         "csrf:!!form.querySelector('input[name=csrf_token][type=hidden]'),"
         "deleteLabel:form.querySelector('button').getAttribute('aria-label'),"
@@ -3342,9 +3351,10 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
         "title": case_title,
         "course": '<b id="lawCourseCatalogInjected">Procedure</b>',
         "source": 'Source: <svg id="lawSourceCatalogInjected">source.txt</svg>',
-        "open": f"location.href='/law/cases/{case_id}'",
+        "open": f"/law/cases/{case_url_id}",
+        "inlineOpen": None,
         "method": "post",
-        "action": f"/law/cases/{case_id}/delete",
+        "action": f"/law/cases/{case_url_id}/delete",
         "confirm": (
             "return confirm('Delete this Law Case Review? This will remove the saved "
             "case review JSON file, but it will not delete the original raw import.');"
@@ -3732,10 +3742,14 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     term_bank_root = data_root / "pdf_terminology_banks"
     question_bank_root.mkdir(exist_ok=True)
     term_bank_root.mkdir(exist_ok=True)
+    bank_title = (
+        'Browser bank "double" \'single\' <strong>& </script>'
+        '<img id="pdfBankTitleInjected"> \\ \u2028\u2029'
+    )
     (question_bank_root / "browser_question_bank.json").write_text(
         json.dumps({
             "id": "browser_question_bank",
-            "title": hostile,
+            "title": bank_title,
             "source_name": hostile,
             "default_exam_minutes": 60,
             "used_question_numbers": [1],
@@ -3750,7 +3764,7 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     (term_bank_root / "browser_term_bank.json").write_text(
         json.dumps({
             "id": "browser_term_bank",
-            "title": hostile,
+            "title": bank_title,
             "source_name": hostile,
             "default_exam_minutes": 60,
             "used_term_numbers": [1],
@@ -3776,6 +3790,28 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
             "injected:!!document.getElementById('segment19Injected')};})()"
         )
         assert bank_state == {"count": "1", "csrf": True, "excluded": True, "injected": False}
+
+    browser.navigate(f"{base_url}/pdf-import?browser-banks=1")
+    browser.wait_for(
+        "document.querySelectorAll('.pdf-bank-manage-action[data-pdf-bank-title]').length === 2"
+    )
+    confirmation_state = browser.evaluate(
+        "(() => {const forms=[...document.querySelectorAll('.pdf-bank-manage-action')];"
+        "const messages=[];window.confirm=message=>{messages.push(message);return false};"
+        "forms.forEach(form=>form.requestSubmit());return {messages,"
+        "titles:forms.map(form=>form.dataset.pdfBankTitle),"
+        "inline:forms.map(form=>form.getAttribute('onsubmit')),injected:"
+        "!!document.getElementById('pdfBankTitleInjected')};})()"
+    )
+    assert confirmation_state == {
+        "messages": [
+            f"Delete source question bank “{bank_title}”? Existing quizzes generated from it will remain available.",
+            f"Delete source terminology bank “{bank_title}”? Existing quizzes generated from it will remain available.",
+        ],
+        "titles": [bank_title, bank_title],
+        "inline": [None, None],
+        "injected": False,
+    }
 
     browser.navigate(f"{base_url}/study-packs/ai-builder?domain=Medical&from=medical")
     browser.wait_for(
@@ -3974,6 +4010,8 @@ def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
         "banners:['Case details updated.','Student notes updated.','Socratic answers updated.',"
         "'IRAC response updated.'].every(text=>document.body.textContent.includes(text)),"
         "exportAction:[...document.querySelectorAll('button')].find(button=>"
+        "button.textContent.includes('Export Case Review')).getAttribute('data-law-navigation-url'),"
+        "exportInline:[...document.querySelectorAll('button')].find(button=>"
         "button.textContent.includes('Export Case Review')).getAttribute('onclick'),"
         "injected:!!document.getElementById('segment20BrowserInjected'),"
         "current:document.querySelector('[data-nav-key=law]').getAttribute('aria-current'),"
@@ -3990,7 +4028,8 @@ def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
         "methods": ["post", "post", "post", "post"],
         "csrf": True,
         "banners": True,
-        "exportAction": f"location.href='/law/cases/{case_id}/export.txt'",
+        "exportAction": f"/law/cases/{case_id}/export.txt",
+        "exportInline": None,
         "injected": False,
         "current": "page",
         "menuLabel": "Toggle navigation",

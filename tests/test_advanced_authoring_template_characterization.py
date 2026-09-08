@@ -1,5 +1,7 @@
 import unittest
 import ast
+import html
+import re
 from pathlib import Path
 from unittest import mock
 
@@ -62,7 +64,10 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
         self.assertNotIn("IMAGE_QUIZ_BUILDER_TEMPLATE", combined_source)
 
     def test_pdf_landing_preserves_upload_contract_catalog_states_and_escaping(self):
-        marker = '</strong><script id="pdf-catalog-injection">bad()</script>&'
+        marker = (
+            'Bank "double" \'single\' <strong>& </script>'
+            '<script id="pdf-catalog-injection">bad()</script> \\ \u2028\u2029'
+        )
         question_banks = [{
             "id": "question_bank",
             "title": marker,
@@ -98,6 +103,24 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
         self.assertIn('action="/pdf-import/bank/question_bank/delete"', body)
         self.assertIn('action="/pdf-import/terms/term_bank/delete"', body)
         self.assertIn('aria-pressed="false"', body)
+        self.assertNotIn("onsubmit=\"return confirm('Delete source", body)
+        for action, kind in (
+            ("/pdf-import/bank/question_bank/delete", "question"),
+            ("/pdf-import/terms/term_bank/delete", "terminology"),
+        ):
+            form = re.search(
+                rf'<form class="pdf-bank-manage-action" method="POST" '
+                rf'action="{re.escape(action)}"([^>]*)>',
+                body,
+            )
+            self.assertIsNotNone(form)
+            attributes = form.group(1)
+            self.assertIn(f'data-pdf-bank-kind="{kind}"', attributes)
+            title = re.search(r'data-pdf-bank-title="([^"]*)"', attributes)
+            self.assertIsNotNone(title)
+            self.assertEqual(marker, html.unescape(title.group(1)))
+        self.assertIn("form.dataset.pdfBankTitle", body)
+        self.assertIn("window.confirm(message)", body)
 
     def test_pdf_review_branches_preserve_editable_fields_status_and_escaping(self):
         marker = '</textarea><script id="pdf-review-injection">bad()</script>&'
