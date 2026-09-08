@@ -1,4 +1,4 @@
-from flask import Flask, send_from_directory, request, redirect, render_template, jsonify, Response, flash, url_for, has_request_context
+from flask import Flask, send_from_directory, send_file, request, redirect, render_template, jsonify, Response, flash, url_for, has_request_context
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings, unicodedata, ipaddress, copy
 from datetime import datetime
@@ -96,58 +96,6 @@ def resource_path(relative_path: str) -> str:
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
-
-
-def purge_legacy_quizzes():
-    """
-    Permanently delete quizzes that lack a stored DB id (legacy test data).
-    """
-    registry = load_registry()
-    kept = []
-
-    conn = get_db()
-    conn.execute("PRAGMA foreign_keys = ON")
-
-    for q in registry:
-        if q.get("id") is None:
-            print("[PURGE] Removing legacy quiz:", q.get("title"))
-
-            # 🔥 DB cleanup (authoritative)
-            conn.execute(
-                "DELETE FROM quizzes WHERE source_file = ? OR title = ?",
-                (q.get("html"), q.get("title"))
-            )
-
-            # File cleanup
-            html = q.get("html")
-            logo = q.get("logo")
-
-            if html:
-                hp = os.path.join(QUIZ_FOLDER, html)
-                jp = os.path.join(DATA_FOLDER, html.replace(".html", ".json"))
-
-                if os.path.exists(hp):
-                    os.remove(hp)
-                if os.path.exists(jp):
-                    os.remove(jp)
-
-            if logo:
-                lp = os.path.join(LOGO_FOLDER, logo)
-                if os.path.exists(lp):
-                    os.remove(lp)
-
-        else:
-            kept.append(q)
-
-    conn.commit()
-    conn.close()
-
-    save_registry(kept)
-    print(f"[PURGE] Completed. Remaining quizzes: {len(kept)}")
-
-
-
-
 
 
 # =========================
@@ -359,8 +307,6 @@ TEMPLATE_ROOT = resource_path("templates")
 # =========================
 # FLASK APP
 # =========================
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
 app = Flask(
     __name__,
     static_folder=STATIC_ROOT,
@@ -569,8 +515,6 @@ def dlms_request_too_large(_error):
 
 
 
-import sys
-
 DEBUG_LOGS = False
 
 def dprint(*args, **kwargs):
@@ -584,40 +528,10 @@ def dprint(*args, **kwargs):
 
 
 
-def resource_path(relative_path: str) -> str:
-    """
-    Resolve paths correctly in dev and when bundled by PyInstaller.
-    """
-    if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
-
-
-def get_app_data_dir(app_name: str = "DLMS") -> str:
-    """
-    Return a user-writable directory for runtime data.
-    """
-    override = os.getenv("QUIZAPP_DATA_DIR")
-    if override:
-        path = os.path.abspath(os.path.expanduser(override))
-        _initialize_data_root_ownership(path, is_default=False)
-        return path
-
-    path = _default_app_data_path(app_name)
-    _initialize_data_root_ownership(path, is_default=True)
-    return path
-
-
-
-
 # =========================
 # PATH SETUP
 # =========================
-BASE_DIR = resource_path("")
 IS_BUNDLED = hasattr(sys, "_MEIPASS")
-
-APP_NAME = "DLMS"
-APP_DATA_DIR = get_app_data_dir(APP_NAME)
 
 # DEBUG - retained for troubleshooting packaged/dev data-directory issues
 # print("[BUILD CHECK] APP_DATA_DIR =", APP_DATA_DIR)
@@ -1140,12 +1054,6 @@ def _remove_quiz_publication_path(path):
         lexists=os.path.lexists,
         remove_file=os.remove,
         print_message=print,
-    )
-
-
-def _delete_published_quiz_rows(quiz_id):
-    return _quiz_publication_service.delete_published_quiz_rows(
-        quiz_id, get_db=get_db
     )
 
 
@@ -2398,15 +2306,6 @@ def reconcile_restore_operations():
         print_message=print,
     )
 
-# =========================
-# SERVE RUNTIME LOGOS
-# =========================
-#@app.route("/static/logos/<path:filename>")
-#def serve_runtime_logos(filename):
-    #return send_from_directory(LOGO_FOLDER, filename)
-
-
-
 def finalize_logo_from_request(app, ts, *, logo_file=None, temp_logo_name=None):
     """
     Finalizes a quiz logo from either:
@@ -3033,12 +2932,6 @@ def _delete_content_pack_folder(folder):
 
 
 
-# =========================
-# MEDICAL STUDY - CONTENT PACK
-# =========================
-def _is_medical_content_pack(pack_id, pack):
-    """True for any installed pack that declares medical study content."""
-    return _is_medical_pack_manifest(pack_id, pack)
 
 
 
@@ -4044,14 +3937,6 @@ def _pdf_split_glossary_line(line):
     return _smart_pdf_parser._pdf_split_glossary_line(line)
 
 
-def _pdf_styled_glossary_header(text):
-    return _smart_pdf_parser._pdf_styled_glossary_header(text)
-
-
-def _pdf_style_glossary_line(line):
-    return _smart_pdf_parser._pdf_style_glossary_line(line)
-
-
 def _pdf_parse_glossary_styled(pages):
     return _smart_pdf_parser._pdf_parse_glossary_styled(pages)
 
@@ -4108,188 +3993,6 @@ def _pdf_parse_question_bank(pages):
         question_chunk_structure=_pdf_question_chunk_structure,
         parse_question_chunk=_pdf_parse_question_chunk,
     )
-
-# =========================================================
-# SMART SUGGESTIONS ENGINE — FINAL CONSOLIDATED
-# =========================================================
-def build_smart_suggestions(original_text, cleaned_text):
-    suggestions = []
-    import re
-
-    # Normalize safely
-    o = (original_text or "").strip()
-    c = (cleaned_text or "").strip()
-
-    # ---------------------------------------
-    # 1️⃣ Detect numbered prefixes
-    # ---------------------------------------
-    if re.search(r"^\s*\d+\.\s+", o, re.MULTILINE):
-        suggestions.append({
-            "title": "Numbered Questions Detected",
-            "detail": "Questions appear to start with numbers like '1. 2. 3.'.",
-            "recommend": "Enable Number Prefix Removal preset"
-        })
-
-    # ---------------------------------------
-    # 2️⃣ PDF WRAP — warn ONLY if CLEANED TEXT still broken
-    # ---------------------------------------
-    pdf_wrap_detected = False
-
-    # hyphen wrap still present
-    if re.search(r"-\s*\n\s*", c):
-        pdf_wrap_detected = True
-
-    # mid-sentence linebreak still present
-    elif re.search(r"(?<![.!?:])\s*\n\s*[A-Za-z]", c):
-        pdf_wrap_detected = True
-
-    if pdf_wrap_detected:
-        suggestions.append({
-            "title": "Possible PDF Wrap Detected",
-            "detail": "Lines appear split mid-sentence.",
-            "recommend": "Enable PDF Line Wrapping Fix preset."
-        })
-
-    # ---------------------------------------
-    # 3️⃣ HEADER / FOOTER repetition detector
-    # ---------------------------------------
-    lines = [l.strip() for l in o.splitlines() if l.strip()]
-    repeats = [l for l in set(lines) if lines.count(l) >= 3]
-
-    if repeats:
-        suggestions.append({
-            "title": "Repeated Header/Footer Detected",
-            "detail": "Document contains repeating page headers or footers.",
-            "recommend": "Enable Header/Footer Cleanup preset"
-        })
-
-    # ---------------------------------------
-    # 4️⃣ MULTIPLE QUESTION COLLAPSE DETECTOR
-    # ---------------------------------------
-    answer_markers_pattern = re.compile(
-        r"(Correct\s*Answer[s]?|Suggested\s*Answer[s]?)",
-        re.IGNORECASE
-    )
-
-    total_markers = (
-        len(answer_markers_pattern.findall(o)) +
-        len(answer_markers_pattern.findall(c))
-    )
-
-    if total_markers >= 2:
-        suggestions.append({
-            "title": "Multiple Questions Detected in a Single Block",
-            "detail": (
-                "Detected multiple answer markers inside one block. "
-                "This usually means more than one question exists but "
-                "isn't clearly separated. The parser may merge them."
-            ),
-            "recommend": (
-                "Insert a BLANK LINE between each question, "
-                "or number them 1., 2., 3."
-            )
-        })
-
-    # ---------------------------------------
-    # 5️⃣ BOM / Unicode trouble detector
-    # ---------------------------------------
-    trouble_chars = ["\uFEFF", "\u200B", "\u200C", "\u200D", "\u2060"]
-
-    if any(t in o for t in trouble_chars):
-        suggestions.append({
-            "title": "Hidden Unicode Characters Present",
-            "detail": "Detected BOM or zero-width Unicode in source text.",
-            "recommend": "Keep Invisible Character Cleanup Enabled"
-        })
-
-    # ---------------------------------------
-    # 6️⃣ EVERYTHING LOOKS GOOD fallback
-    # ---------------------------------------
-    if not suggestions:
-        suggestions.append({
-            "title": "Formatting Looks Excellent",
-            "detail": "No structural or formatting problems detected.",
-            "recommend": "You can safely continue 👍"
-        })
-
-    return suggestions
-
-
-# =============================
-# 12A – STRUCTURAL VALIDATION
-# =============================
-def quick_structural_scan(text):
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-
-    issues = []
-    question_blocks = 0
-    current_block_has_answer = False
-    current_block_has_correct = False
-
-    for line in lines:
-
-        # Detect likely question
-        if re.match(r"^\d+[\).\-]?\s", line) or line.lower().startswith("question"):
-            question_blocks += 1
-
-            # if previous question existed but had no answer
-            if not current_block_has_answer and question_blocks > 1:
-                issues.append("A question appears without any A/B/C/D answer choices.")
-
-            current_block_has_answer = False
-            current_block_has_correct = False
-
-        # Detect answer choices (A–Z supported)
-        if re.match(r"^[A-Za-z][\).\-]?\s", line):
-            current_block_has_answer = True
-
-
-        # Detect correct answer
-        if "correct answer" in line.lower():
-            current_block_has_correct = True
-
-    # Final block sanity check
-    if question_blocks == 0:
-        issues.append("No recognizable questions were detected.")
-
-    if question_blocks > 0 and not current_block_has_answer:
-        issues.append("Last detected question has no answer choices.")
-
-    if question_blocks > 0 and not current_block_has_correct:
-        issues.append("No 'Correct Answer' lines were found — quiz may fail to grade.")
-
-    return {
-        "question_blocks": question_blocks,
-        "issues": issues
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-from flask import send_file
-
-
-
-
-
-
-
-
-
-
-
 
 # =====================================================
 # SETTINGS HUB + INCREMENTAL SETTINGS MIGRATION
@@ -4459,10 +4162,6 @@ def _attempt_timestamp(value, field):
 
 def _attempt_percent(score, total):
     return _attempt_service._attempt_percent(score, total)
-
-
-def _question_response_context(cur, quiz_id, question_number):
-    return _attempt_service._question_response_context(cur, quiz_id, question_number)
 
 
 def _question_response_context_by_ordinal(cur, quiz_id, ordinal):
@@ -4844,10 +4543,6 @@ def _clear_persistent_history():
 # =====================================================
 
 import genanki
-import random
-import os
-import tempfile
-import html
 
 
 def export_quiz_to_apkg(deck_name, deck_rows):
@@ -5191,7 +4886,6 @@ def export_anki_tsv_for_quiz(quiz_id: int) -> str:
     return _anki_service.export_anki_tsv_for_quiz(quiz_id, get_db=get_db)
 
 
-from flask import Response, request, send_file
 import logging
 
 logger = logging.getLogger(__name__)
@@ -5230,12 +4924,6 @@ def _format_anki_missed_tsv(rows):
 
 
 
-# Review loads a selected summary from /api/attempts/<attempt-id> and then
-# retrieves only that attempt's missed-question snapshot below.
-
-# @app.route("/api/missed_questions")
-# def api_missed_questions():
-#     return {"error": "Deprecated endpoint. Use /api/attempts."}, 410
 
 
 
@@ -5259,78 +4947,6 @@ def _format_anki_missed_tsv(rows):
 
 
 
-# =========================
-# CONFIDENCE ANALYSIS ENGINE
-# =========================
-def analyze_confidence(text):
-    import re
-
-    blocks = re.split(
-        r"(?=^\s*(?:Question\s*#?\s*\d+|\d+\s*[.) ]))",
-        text,
-        flags=re.IGNORECASE | re.MULTILINE
-    )
-
-    details = []
-    total = len(blocks)
-    high = medium = low = 0
-
-    for block in blocks:
-        b = block.strip()
-        if not b:
-            continue
-
-        score = 0
-        reasons = []
-
-        # --- Choices Check ---
-        choices = re.findall(r"^[A-Z][\.\)]", b, flags=re.MULTILINE)
-        if len(choices) >= 2:
-            score += 40
-            reasons.append("Detected multiple answer choices")
-        else:
-            reasons.append("Missing or too few answer choices")
-
-        # --- Has Correct Answer ---
-        if re.search(r"correct answer|suggested answer", b, re.IGNORECASE):
-            score += 40
-            reasons.append("Detected an answer key line")
-        else:
-            reasons.append("No clear answer key line found")
-
-        # --- Length / Structure ---
-        if len(b) > 120:
-            score += 20
-            reasons.append("Looks like full valid question text")
-        else:
-            reasons.append("Question block looks short/incomplete")
-
-        # ---------- Confidence Bucket ----------
-        if score >= 80:
-            level = "HIGH"
-            high += 1
-        elif score >= 40:
-            level = "MEDIUM"
-            medium += 1
-        else:
-            level = "LOW"
-            low += 1
-
-        details.append({
-            "confidence": level,
-            "score": score,
-            "preview": b[:400],
-            "reasons": reasons
-        })
-
-    summary = {
-        "total": total,
-        "high": high,
-        "medium": medium,
-        "low": low
-    }
-
-    return summary, details
 
 
 
@@ -5401,75 +5017,6 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
 
 
 
-def get_or_create_question(conn, quiz_id, q):
-    """
-    Returns canonical question_id for a question.
-    Creates it if it does not already exist.
-    Matches the ACTUAL questions table schema.
-    """
-    cur = conn.cursor()
-
-    number = q.get("number")
-    text = q.get("question")
-
-   # Look up / define canonical question values
-    question_number = q.get("number")
-    question_text = q.get("question") or q.get("text") or ""
-
-    cur.execute(
-        """
-        INSERT INTO questions (
-            quiz_id,
-            question_number,
-            question_text
-        )
-        VALUES (?, ?, ?)
-        """,
-        (quiz_id, question_number, question_text),
-    )
-
-
-
-    row = cur.fetchone()
-    if row:
-        return row[0]
-
-    # Insert canonical question (schema-aligned)
-    cur.execute("""
-        INSERT INTO questions (
-            quiz_id,
-            number,
-            text
-        ) VALUES (?, ?, ?)
-    """, (
-        quiz_id,
-        number,
-        text
-    ))
-
-    question_id = cur.lastrowid
-
-    # ---------- INSERT CHOICES ----------
-    for c in choices:
-        cur.execute("""
-            INSERT INTO choices (
-                question_id,
-                label,
-                text,
-                is_correct
-            ) VALUES (?, ?, ?, ?)
-        """, (
-            question_id,
-            c["label"],
-            c["text"],
-            1 if c.get("is_correct") else 0
-        ))
-
-    conn.commit()
-    return question_id
-
-
-
 # =========================
 # DATABASE HELPERS
 # =========================
@@ -5478,19 +5025,6 @@ def get_db():
     return _database.get_db(DB_PATH, sqlite_module=sqlite3)
 
 
-
-
-def db_execute(query, params=()):
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute(query, params)
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        print("DB ERROR:", e)
-        return False
 
 
 def _normalize_concept_names(value):
@@ -5997,7 +5531,7 @@ app.register_blueprint(create_study_packs_blueprint(StudyPackRouteDependencies(
 
 app.register_blueprint(create_medical_blueprint(MedicalRouteDependencies(
     discover_content_packs=lambda: discover_content_packs(),
-    is_medical_content_pack=lambda pack_id, pack: _is_medical_content_pack(pack_id, pack),
+    is_medical_content_pack=lambda pack_id, pack: _is_medical_pack_manifest(pack_id, pack),
     load_content_pack_dataset=lambda pack_id, dataset_id: load_content_pack_dataset(pack_id, dataset_id),
     load_content_pack_image_dataset=lambda pack_id, dataset_id: load_content_pack_image_dataset(pack_id, dataset_id),
     content_pack_folder=lambda: CONTENT_PACK_FOLDER,
@@ -6078,69 +5612,6 @@ app.register_blueprint(create_quiz_blueprint(
         debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
     ),
 ))
-
-
-
-
-
-# @app.route("/export/anki", methods=["POST"])
-# def export_anki():
-#     data = request.json or {}
-#     attempt_ids = data.get("attempt_ids", [])
-
-#     if not attempt_ids:
-#         return jsonify({"error": "No attempts selected"}), 400
-
-#     # 1️⃣ Pull attempts from DB
-#     conn = sqlite3.connect(DB_PATH)
-#     conn.row_factory = sqlite3.Row
-#     cur = conn.cursor()
-
-#     placeholders = ",".join("?" for _ in attempt_ids)
-#     cur.execute(
-#         f"SELECT * FROM attempts WHERE id IN ({placeholders})",
-#         attempt_ids
-#     )
-
-#     rows = cur.fetchall()
-#     conn.close()
-
-#     if not rows:
-#         return jsonify({"error": "No attempts found"}), 404
-
-#     # 2️⃣ Extract missed questions
-#     questions = []
-
-#     for row in rows:
-#         missed = json.loads(row["missedQuestions"] or "[]")
-
-#         for m in missed:
-#             questions.append({
-#                 "question": m.get("question", ""),
-#                 "choices": m.get("allChoices", []),
-#                 "correct": m.get("correctText", []),
-#                 "selected": m.get("selectedText", []),
-#                 "quiz_title": row["quiz_title"],
-#                 "attempt_id": row["id"],
-#             })
-
-#     if not questions:
-#         return jsonify({"error": "No missed questions to export"}), 400
-
-#     # 3️⃣ Generate deck
-#     from anki_deck import build_anki_deck
-
-#     filename = build_anki_deck(
-#         questions=questions,
-#         deck_name="Missed Questions"
-#     )
-
-#     return send_from_directory(
-#         directory=os.path.dirname(filename),
-#         path=os.path.basename(filename),
-#         as_attachment=True
-#     )
-
 
 
 
@@ -6239,8 +5710,6 @@ _run_quiz_publication_startup_reconciliation()
 
 
 if __name__ == "__main__":
-    #purge_legacy_quizzes()   # REMOVE after one run
-
     try:
         startup = _dlms_parse_startup_options()
     except ValueError as exc:

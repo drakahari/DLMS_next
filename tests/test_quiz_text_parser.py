@@ -173,14 +173,23 @@ No choices here
             dlms.analyze_confidence(source),
         )
 
-    def test_app_keeps_two_confidence_definitions_and_later_one_is_effective(self):
+    def test_app_keeps_one_service_backed_confidence_definition(self):
         tree = ast.parse(Path(dlms.__file__).read_text(encoding="utf-8"))
         definitions = [
             node for node in tree.body
             if isinstance(node, ast.FunctionDef) and node.name == "analyze_confidence"
         ]
 
-        self.assertEqual(2, len(definitions))
+        self.assertEqual(1, len(definitions))
+        implementation = definitions[0]
+        self.assertEqual(1, len(implementation.body))
+        returned = implementation.body[0]
+        self.assertIsInstance(returned, ast.Return)
+        self.assertIsInstance(returned.value, ast.Call)
+        self.assertEqual(
+            "_quiz_text_parser.analyze_confidence",
+            ast.unparse(returned.value.func),
+        )
         summary, details = dlms.analyze_confidence(
             "Question 1 Test\nA. Yes\nB. No\nCorrect Answer: A"
         )
