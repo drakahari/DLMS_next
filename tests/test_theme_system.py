@@ -305,6 +305,15 @@ class ThemeSystemTests(unittest.TestCase):
             "dashboard-success-surface": "light-dark(#d3eadf, rgba(15,98,55,.22))",
             "dashboard-success-badge-surface": "light-dark(#d5eadf, rgba(18,112,56,.20))",
             "dashboard-success-border": "light-dark(#78aa91, rgba(52,196,112,.36))",
+            "score-pill-good-text": "light-dark(#16784f, #86e8bb)",
+            "score-pill-good-surface": "light-dark(rgba(34,155,98,.10), rgba(27,114,81,.18))",
+            "score-pill-good-border": "light-dark(rgba(34,155,98,.27), rgba(75,212,154,.28))",
+            "score-pill-warn-text": "light-dark(#8a6300, #edd681)",
+            "score-pill-warn-surface": "light-dark(rgba(204,155,33,.12), rgba(112,87,20,.18))",
+            "score-pill-warn-border": "light-dark(rgba(204,155,33,.28), rgba(226,189,88,.28))",
+            "score-pill-bad-text": "light-dark(#b93d52, #ff9da3)",
+            "score-pill-bad-surface": "light-dark(rgba(198,63,82,.10), rgba(123,41,48,.20))",
+            "score-pill-bad-border": "light-dark(rgba(198,63,82,.28), rgba(239,119,127,.28))",
         }
         for name, value in expected_tokens.items():
             with self.subTest(token=name):
@@ -362,9 +371,9 @@ class ThemeSystemTests(unittest.TestCase):
                 "font-weight: 800",
             ),
             ".dashboard-score.score-good": (
-                "var(--dashboard-success-emphasis)",
-                "var(--dashboard-success-badge-surface)",
-                "light-dark(#83b39a, transparent)",
+                "var(--score-pill-good-text)",
+                "var(--score-pill-good-surface)",
+                "var(--score-pill-good-border)",
             ),
         }
         for selector, declarations in success_rules.items():
@@ -385,7 +394,6 @@ class ThemeSystemTests(unittest.TestCase):
             ("Shutdown pressed gradient end", "#681523", "#e1afb8"),
             ("Shutdown disabled", "#76636a", "#ece7e8"),
             ("Recent Activity check", "#105f3d", "#d3eadf"),
-            ("Recent Activity score", "#12613f", "#d5eadf"),
             ("Recent Activity heading", "#16784f", "#ffffff"),
         )
         for role, foreground, background in light_contrast_pairs:
@@ -394,6 +402,49 @@ class ThemeSystemTests(unittest.TestCase):
                 self.assertGreaterEqual(
                     ratio, 4.5, f"{role} contrast is only {ratio:.2f}:1",
                 )
+
+        score_contrast_pairs = (
+            ("Good score", "#16784f", "rgba(34,155,98,.10)"),
+            ("Intermediate score", "#8a6300", "rgba(204,155,33,.12)"),
+            ("Low score", "#b93d52", "rgba(198,63,82,.10)"),
+        )
+        for role, foreground, translucent_background in score_contrast_pairs:
+            with self.subTest(role=role):
+                background = self._composite(translucent_background, "#ffffff")
+                ratio = self._contrast(foreground, background)
+                self.assertGreaterEqual(
+                    ratio, 4.5, f"{role} contrast is only {ratio:.2f}:1",
+                )
+
+    def test_dashboard_and_history_score_pills_share_semantic_tokens(self):
+        css = self._style_css()
+        states = {
+            "good": ("good", "good"),
+            "warn": ("warn", "warn"),
+            "bad": ("bad", "bad"),
+        }
+        for state, (dashboard_state, history_state) in states.items():
+            with self.subTest(state=state):
+                dashboard_blocks = self._rule_blocks(
+                    css, f".dashboard-score.score-{dashboard_state}",
+                )
+                history_blocks = self._rule_blocks(
+                    css, f".history-score-badge.{history_state}",
+                )
+                expected = (
+                    f"color: var(--score-pill-{state}-text)",
+                    f"background: var(--score-pill-{state}-surface)",
+                )
+                self.assertTrue(any(
+                    all(declaration in block for declaration in expected)
+                    and f"var(--score-pill-{state}-border)" in block
+                    for block in dashboard_blocks
+                ))
+                self.assertTrue(any(
+                    all(declaration in block for declaration in expected)
+                    and f"var(--score-pill-{state}-border)" in block
+                    for block in history_blocks
+                ))
 
     def test_light_readability_colors_preserve_dark_component_colors(self):
         css = self._style_css()
@@ -404,9 +455,12 @@ class ThemeSystemTests(unittest.TestCase):
             ".analytics-score-pill.good": "color: light-dark(#16784f, #7ee5ab) !important",
             ".analytics-score-pill.warn": "color: light-dark(#8a6300, #ffd37a) !important",
             ".analytics-score-pill.bad": "color: light-dark(#b93d52, #ff9eaa) !important",
-            ".history-score-badge.good": "color: light-dark(#16784f, #86e8bb) !important",
-            ".history-score-badge.warn": "color: light-dark(#8a6300, #edd681) !important",
-            ".history-score-badge.bad": "color: light-dark(#b93d52, #ff9da3) !important",
+            ".history-score-badge.good": "color: var(--score-pill-good-text) !important",
+            ".history-score-badge.warn": "color: var(--score-pill-warn-text) !important",
+            ".history-score-badge.bad": "color: var(--score-pill-bad-text) !important",
+            ".dashboard-score.score-good": "color: var(--score-pill-good-text) !important",
+            ".dashboard-score.score-warn": "color: var(--score-pill-warn-text) !important",
+            ".dashboard-score.score-bad": "color: var(--score-pill-bad-text) !important",
             ".analytics-trend.good": "color:light-dark(#19764e, #7ee5ab) !important",
             ".analytics-trend.bad": "color:light-dark(#c43d52, #ff9eaa) !important",
             ".li-weak-score": "color: light-dark(#b5374d, #ff9ca7) !important",

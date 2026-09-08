@@ -327,8 +327,11 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
             "heading": "rgb(22, 120, 79)",
             "status": "rgb(16, 95, 61)",
             "status_background": "rgb(211, 234, 223)",
-            "score": "rgb(18, 97, 63)",
-            "score_background": "rgb(213, 234, 223)",
+            "scores": {
+                "good": ("rgb(22, 120, 79)", "rgba(34, 155, 98, 0.1)"),
+                "warn": ("rgb(138, 99, 0)", "rgba(204, 155, 33, 0.12)"),
+                "bad": ("rgb(185, 61, 82)", "rgba(198, 63, 82, 0.1)"),
+            },
         },
         "dark": {
             "normal": "rgb(255, 98, 98)",
@@ -342,8 +345,11 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
             "heading": "rgb(85, 228, 143)",
             "status": "rgb(78, 217, 138)",
             "status_background": "rgba(15, 98, 55, 0.22)",
-            "score": "rgb(90, 240, 141)",
-            "score_background": "rgba(18, 112, 56, 0.2)",
+            "scores": {
+                "good": ("rgb(134, 232, 187)", "rgba(27, 114, 81, 0.18)"),
+                "warn": ("rgb(237, 214, 129)", "rgba(112, 87, 20, 0.18)"),
+                "bad": ("rgb(255, 157, 163)", "rgba(123, 41, 48, 0.2)"),
+            },
         },
         "purple-gold": {},
         "maroon-gold": {},
@@ -359,6 +365,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
         assert status == 200
         browser.navigate(f"{browser_stack.base_url}/")
         browser.wait_for("document.querySelector('.dashboard-shutdown') !== null")
+        browser.wait_for("document.querySelector('.dashboard-activity-row .dashboard-score') !== null")
         assert browser.evaluate(
             "(() => {"
             "const source = document.querySelector('.dashboard-shutdown');"
@@ -369,7 +376,12 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
             "states.innerHTML = "
             "'<span id=\"activityHeadingProbe\" class=\"dashboard-heading-icon\">⌁</span>' +"
             "'<div id=\"activityStatusProbe\" class=\"dashboard-activity-status\">✓</div>' +"
-            "'<span id=\"activityScoreProbe\" class=\"dashboard-score score-good\">90%</span>';"
+            "'<span id=\"activityScoreGoodProbe\" class=\"dashboard-score score-good\">100%</span>' +"
+            "'<span id=\"activityScoreWarnProbe\" class=\"dashboard-score score-warn\">75%</span>' +"
+            "'<span id=\"activityScoreBadProbe\" class=\"dashboard-score score-bad\">40%</span>' +"
+            "'<span id=\"historyScoreGoodProbe\" class=\"history-score-badge good\">100%</span>' +"
+            "'<span id=\"historyScoreWarnProbe\" class=\"history-score-badge warn\">75%</span>' +"
+            "'<span id=\"historyScoreBadProbe\" class=\"history-score-badge bad\">40%</span>';"
             "document.querySelector('.dashboard-activity-panel').appendChild(states);"
             "return true; })()"
         ) is True
@@ -381,11 +393,19 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
             "const button = getComputedStyle(probe);"
             "const heading = getComputedStyle(document.getElementById('activityHeadingProbe'));"
             "const status = getComputedStyle(document.getElementById('activityStatusProbe'));"
-            "const score = getComputedStyle(document.getElementById('activityScoreProbe'));"
+            "const styles = id => { const value = getComputedStyle(document.getElementById(id));"
+            "return {color:value.color,background:value.backgroundColor}; };"
+            "const recent = document.querySelector('.dashboard-activity-row .dashboard-score');"
+            "const recentStyle = getComputedStyle(recent);"
             "return {buttonColor:button.color,buttonBackground:button.backgroundImage,"
             "headingColor:heading.color,"
             "statusColor:status.color,statusBackground:status.backgroundColor,"
-            "scoreColor:score.color,scoreBackground:score.backgroundColor}; })()"
+            "dashboardScores:{good:styles('activityScoreGoodProbe'),warn:styles('activityScoreWarnProbe'),"
+            "bad:styles('activityScoreBadProbe')},"
+            "historyScores:{good:styles('historyScoreGoodProbe'),warn:styles('historyScoreWarnProbe'),"
+            "bad:styles('historyScoreBadProbe')},"
+            "recentScore:{text:recent.textContent.trim(),className:recent.className,"
+            "color:recentStyle.color,background:recentStyle.backgroundColor}}; })()"
         )
 
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
@@ -400,8 +420,13 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
         assert normal["headingColor"] == palette["heading"]
         assert normal["statusColor"] == palette["status"]
         assert normal["statusBackground"] == palette["status_background"]
-        assert normal["scoreColor"] == palette["score"]
-        assert normal["scoreBackground"] == palette["score_background"]
+        for state, (color, background) in palette["scores"].items():
+            assert normal["dashboardScores"][state] == {"color": color, "background": background}
+            assert normal["historyScores"][state] == normal["dashboardScores"][state]
+        assert normal["recentScore"]["text"] == "0%"
+        assert "score-bad" in normal["recentScore"]["className"]
+        assert normal["recentScore"]["color"] == palette["scores"]["bad"][0]
+        assert normal["recentScore"]["background"] == palette["scores"]["bad"][1]
 
         coordinates = json.loads(browser.evaluate(
             "(() => { const rect = document.getElementById('shutdownStyleProbe').getBoundingClientRect();"
