@@ -2545,6 +2545,18 @@ def _atomic_write_json(path, payload, *, indent=2, ensure_ascii=True, expected_t
     )
 
 
+def _atomic_write_text(path, text, *, encoding="utf-8"):
+    """Durably replace one user-owned text file."""
+    return _json_files._atomic_write_text(
+        path,
+        text,
+        encoding=encoding,
+        os_module=os,
+        tempfile_module=tempfile,
+        fsync_directory=_fsync_json_directory,
+    )
+
+
 def load_portal_config():
     return _portal_repository.load_portal_config(
         PORTAL_CONFIG,
@@ -2700,6 +2712,7 @@ def _delete_law_case_and_registry(case_path, registry, case_id):
 # QUIZ REGISTRY
 # =========================
 registry_lock = threading.RLock()
+law_raw_import_lock = threading.Lock()
 
 def load_registry():
     return _registry_repository.load_registry(
@@ -3020,9 +3033,11 @@ def save_law_raw_packet(raw_packet, case_slug=""):
         imports_folder=LAW_IMPORTS_FOLDER,
         safe_law_import_filename=safe_law_import_filename,
         now=datetime.now,
+        raw_import_lock=law_raw_import_lock,
+        atomic_write_text=_atomic_write_text,
         makedirs=os.makedirs,
         join_path=os.path.join,
-        open_file=open,
+        lexists=os.path.lexists,
     )
 
 

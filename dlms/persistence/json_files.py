@@ -1,4 +1,4 @@
-"""Durable low-level JSON file operations for DLMS."""
+"""Durable low-level file operations for DLMS."""
 
 import json
 import os
@@ -18,6 +18,42 @@ def _fsync_json_directory(path, *, os_module=None):
     finally:
         if descriptor is not None:
             os_module.close(descriptor)
+
+
+def _atomic_write_text(
+    path,
+    text,
+    *,
+    encoding="utf-8",
+    os_module=None,
+    tempfile_module=None,
+    fsync_directory=None,
+):
+    """Durably replace one text file through a same-directory temporary file."""
+    os_module = os if os_module is None else os_module
+    tempfile_module = tempfile if tempfile_module is None else tempfile_module
+    if fsync_directory is None:
+        def fsync_directory(directory):
+            return _fsync_json_directory(directory, os_module=os_module)
+
+    directory = os_module.path.dirname(os_module.path.abspath(path))
+    os_module.makedirs(directory, exist_ok=True)
+    descriptor, temp_path = tempfile_module.mkstemp(
+        prefix=f".{os_module.path.basename(path)}.", suffix=".tmp", dir=directory
+    )
+    try:
+        with os_module.fdopen(descriptor, "w", encoding=encoding) as temporary:
+            descriptor = None
+            temporary.write(text)
+            temporary.flush()
+            os_module.fsync(temporary.fileno())
+        os_module.replace(temp_path, path)
+        fsync_directory(directory)
+    finally:
+        if descriptor is not None:
+            os_module.close(descriptor)
+        if os_module.path.exists(temp_path):
+            os_module.remove(temp_path)
 
 
 def _preserve_malformed_json(

@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _TEMP = tempfile.TemporaryDirectory(prefix="dlms-law-workflow-tests-")
 os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
@@ -203,6 +204,51 @@ class LawStudyWorkflowTests(unittest.TestCase):
         self.assertEqual(302, response.status_code)
         self.assertNotIn("pending_case_workflow", dlms.load_law_registry())
         self.assertEqual(RAW_PACKET, raw_file.read_text(encoding="utf-8"))
+
+    def test_successful_prompt_persists_once_then_remains_authoritative_until_cancel(self):
+        client = dlms.app.test_client()
+        with mock.patch.object(dlms, "save_law_registry", wraps=dlms.save_law_registry) as saver, \
+                mock.patch.object(dlms, "datetime") as datetime_mock:
+            datetime_mock.now.return_value.isoformat.return_value = (
+                "2026-09-08T15:30:00"
+            )
+            created = client.post(
+                "/law/create",
+                data={
+                    "csrf_token": csrf_token(client, "/law/create"),
+                    "case_name": "Authoritative Workflow",
+                    "course": "Contracts",
+                    "ai_provider": "chatgpt",
+                    "include_case_brief": "on",
+                },
+            )
+
+        self.assertEqual(200, created.status_code)
+        self.assertIn("Authoritative Workflow", created.get_data(as_text=True))
+        saver.assert_called_once()
+        self.assertEqual(
+            {
+                "case_name": "Authoritative Workflow",
+                "case_slug": "authoritative_workflow",
+                "course": "Contracts",
+                "created_at": "2026-09-08T15:30:00",
+            },
+            dlms.load_law_registry()["pending_case_workflow"],
+        )
+
+        imported = client.get(
+            "/law/import?case_name=Stale&case_slug=stale"
+        ).get_data(as_text=True)
+        self.assertIn("Authoritative Workflow", imported)
+        self.assertNotIn("<strong>Stale</strong>", imported)
+
+        cancelled = client.post(
+            "/law/workflow/cancel",
+            data={"csrf_token": csrf_token(client, "/law/import")},
+            follow_redirects=False,
+        )
+        self.assertEqual(302, cancelled.status_code)
+        self.assertNotIn("pending_case_workflow", dlms.load_law_registry())
 
     def test_repeated_create_submission_reopens_existing_case_without_duplicate(self):
         client = dlms.app.test_client()

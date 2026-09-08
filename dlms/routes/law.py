@@ -94,24 +94,12 @@ def law_create_case_review(dependencies):
 
         case_slug = dependencies.make_law_case_slug(case_name)
 
-        if case_name:
-            try:
-                dependencies.start_pending_case_workflow(
-                    law_registry,
-                    case_name=case_name,
-                    case_slug=case_slug,
-                    course=course,
-                    created_at=dependencies.now().isoformat(timespec="seconds"),
-                )
-            except Exception as exc:
-                print(f"[LAW WORKFLOW ERROR] Failed starting case workflow: {exc}")
-                return "Failed to start Law case workflow", 500
-
+        cfg = dependencies.load_portal_config()
         provider_urls = {
             "chatgpt": "https://chatgpt.com/",
             "claude": "https://claude.ai/",
             "gemini": "https://gemini.google.com/",
-            "local": dependencies.load_portal_config().get("ai_custom_url", ""),
+            "local": cfg.get("ai_custom_url", ""),
         }
 
         ai_provider_url = provider_urls.get(ai_provider, "")
@@ -181,7 +169,6 @@ def law_create_case_review(dependencies):
             )
 
         if case_name:
-            cfg = dependencies.load_portal_config()
             law_prompt_template = str(
                 cfg.get("law_ai_prompt_template")
                 or dependencies.default_law_ai_prompt()
@@ -191,6 +178,17 @@ def law_create_case_review(dependencies):
                 .replace("{{course}}", course)
                 .replace("{{study_sections}}", chr(10).join(requested_sections))
             )
+            try:
+                dependencies.start_pending_case_workflow(
+                    law_registry,
+                    case_name=case_name,
+                    case_slug=case_slug,
+                    course=course,
+                    created_at=dependencies.now().isoformat(timespec="seconds"),
+                )
+            except Exception as exc:
+                print(f"[LAW WORKFLOW ERROR] Failed starting case workflow: {exc}")
+                return "Failed to start Law case workflow", 500
         else:
             generated_prompt = "Please enter a case name before generating the AI prompt."
 

@@ -226,6 +226,96 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         self.assertNotIn('<script id="caseInjected">', page)
         self.assertNotIn('<b id="courseInjected">', page)
 
+    def test_create_prepares_configuration_and_prompt_before_pending_persistence(self):
+        events = []
+        registry = {"folders": ["Torts"]}
+
+        def load_config():
+            events.append("configuration")
+            return {
+                "ai_custom_url": "",
+                "law_ai_prompt_template": "CASE={{case_name}} COURSE={{course}}",
+            }
+
+        def start_pending(*_args, **_kwargs):
+            events.append("pending")
+
+        with mock.patch.object(
+            dlms, "load_law_registry", return_value=registry
+        ), mock.patch.object(
+            dlms, "get_portal_title", return_value="Law Workflow Portal"
+        ), mock.patch.object(
+            dlms, "load_portal_config", side_effect=load_config
+        ) as config_loader, mock.patch.object(
+            dlms._law_service,
+            "start_pending_case_workflow",
+            side_effect=start_pending,
+        ) as starter:
+            response = self.client.post(
+                "/law/create",
+                data={
+                    "csrf_token": self.csrf,
+                    "case_name": "Prepared Case",
+                    "course": "Torts",
+                    "ai_provider": "chatgpt",
+                },
+            )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(["configuration", "pending"], events)
+        config_loader.assert_called_once_with()
+        starter.assert_called_once()
+        self.assertIn("CASE=Prepared Case COURSE=Torts", response.get_data(as_text=True))
+
+    def test_create_preparation_failures_do_not_persist_pending_metadata(self):
+        class BrokenPrompt:
+            def __str__(self):
+                raise RuntimeError("prompt preparation failed")
+
+        scenarios = (
+            (
+                "configuration",
+                mock.Mock(side_effect=RuntimeError("configuration failed")),
+                dlms.DEFAULT_LAW_AI_PROMPT,
+            ),
+            (
+                "prompt",
+                mock.Mock(
+                    return_value={
+                        "ai_custom_url": "",
+                        "law_ai_prompt_template": "",
+                    }
+                ),
+                BrokenPrompt(),
+            ),
+        )
+
+        for name, config_loader, default_prompt in scenarios:
+            with self.subTest(name=name):
+                registry = {"folders": ["Torts"]}
+                with mock.patch.object(
+                    dlms, "load_law_registry", return_value=registry
+                ), mock.patch.object(
+                    dlms, "load_portal_config", config_loader
+                ), mock.patch.object(
+                    dlms, "DEFAULT_LAW_AI_PROMPT", default_prompt
+                ), mock.patch.object(
+                    dlms._law_service, "start_pending_case_workflow"
+                ) as starter:
+                    response = self.client.post(
+                        "/law/create",
+                        data={
+                            "csrf_token": self.csrf,
+                            "case_name": "Must Not Persist",
+                            "course": "Torts",
+                            "ai_provider": "local",
+                        },
+                    )
+
+                self.assertEqual(500, response.status_code)
+                starter.assert_not_called()
+                self.assertNotIn("pending_case_workflow", registry)
+
     def test_import_get_pending_metadata_authority_and_explicit_metadata_fallback(self):
         empty = self._import_get({})
         self.assert_law_shell(empty, "Import Case Packet")

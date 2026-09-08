@@ -4,6 +4,10 @@ import copy
 import json
 import os
 import re
+from datetime import timedelta
+
+
+LAW_RAW_IMPORT_COLLISION_LIMIT = 1000
 
 
 def _law_registry_case_for_mutation(registry, case_id):
@@ -95,29 +99,40 @@ def save_law_raw_packet(
     imports_folder,
     safe_law_import_filename,
     now,
+    raw_import_lock,
+    atomic_write_text,
     makedirs=os.makedirs,
     join_path=os.path.join,
-    open_file=open,
+    lexists=os.path.lexists,
 ):
-    """Save one raw Law packet using the durable import-file convention."""
-    timestamp = now().strftime("%Y%m%d_%H%M%S")
+    """Atomically save one raw Law packet without replacing an existing import."""
+    timestamp_value = now()
     slug = str(case_slug or "").strip()
-    saved_file = (
-        f"law_import_{timestamp}_{slug}.txt"
-        if slug else f"law_import_{timestamp}.txt"
+
+    with raw_import_lock:
+        makedirs(imports_folder, exist_ok=True)
+        for collision_offset in range(LAW_RAW_IMPORT_COLLISION_LIMIT):
+            timestamp = (
+                timestamp_value + timedelta(seconds=collision_offset)
+            ).strftime("%Y%m%d_%H%M%S")
+            saved_file = (
+                f"law_import_{timestamp}_{slug}.txt"
+                if slug else f"law_import_{timestamp}.txt"
+            )
+            safe_name = safe_law_import_filename(saved_file)
+            if not safe_name:
+                raise ValueError("Could not create a safe Law import filename.")
+
+            save_path = join_path(imports_folder, safe_name)
+            if lexists(save_path):
+                continue
+
+            atomic_write_text(save_path, raw_packet)
+            return safe_name
+
+    raise FileExistsError(
+        "Could not allocate a unique Law import filename within the collision limit"
     )
-    safe_name = safe_law_import_filename(saved_file)
-
-    if not safe_name:
-        raise ValueError("Could not create a safe Law import filename.")
-
-    makedirs(imports_folder, exist_ok=True)
-    save_path = join_path(imports_folder, safe_name)
-
-    with open_file(save_path, "w", encoding="utf-8") as f:
-        f.write(raw_packet)
-
-    return safe_name
 
 
 def list_law_raw_imports(
