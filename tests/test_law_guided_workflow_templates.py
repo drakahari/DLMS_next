@@ -106,7 +106,8 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
 
     def test_create_empty_folder_fallback_and_missing_case_validation_prompt(self):
         page = self._create_get({"folders": []})
-        self.assertNotIn('<option value="Torts"', page)
+        self.assertIn('<option value="Torts" selected>Torts</option>', page)
+        self.assertEqual(1, page.count('<option value="Torts"'))
         self.assertNotIn('id="lawPromptBox"', page)
 
         with mock.patch.object(
@@ -224,7 +225,7 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         self.assertNotIn('<script id="caseInjected">', page)
         self.assertNotIn('<b id="courseInjected">', page)
 
-    def test_import_get_empty_pending_and_query_override_states(self):
+    def test_import_get_pending_metadata_authority_and_explicit_metadata_fallback(self):
         empty = self._import_get({})
         self.assert_law_shell(empty, "Import Case Packet")
         self.assertIn("No active case workflow.", empty)
@@ -251,14 +252,31 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         )
         self.assertNotIn('<b id="pendingInjected">', page)
 
-        overridden = self._import_get(
+        protected = self._import_get(
             pending,
             "?case_name=Query%20Case&case_slug=query-slug&workflow_cancelled=1",
         )
-        self.assertIn("<strong>Query Case</strong>", overridden)
-        self.assertIn("<small>File slug: query-slug</small>", overridden)
-        self.assertIn("Active case workflow cancelled.", overridden)
-        self.assertIn("Pending case metadata has been cleared.", overridden)
+        self.assertIn(
+            f"<strong>{escape(pending['pending_case_workflow']['case_name'])}</strong>",
+            protected,
+        )
+        self.assertIn("<small>File slug: pending-case</small>", protected)
+        self.assertNotIn("<strong>Query Case</strong>", protected)
+        self.assertNotIn("<small>File slug: query-slug</small>", protected)
+        self.assertIn("Active case workflow cancelled.", protected)
+        self.assertIn("Pending case metadata has been cleared.", protected)
+
+        explicit = self._import_get(
+            {}, "?case_name=Query%20Case&case_slug=query-slug"
+        )
+        self.assertIn("<strong>Query Case</strong>", explicit)
+        self.assertIn("<small>File slug: query-slug</small>", explicit)
+        self.assertIn(
+            '<input type="hidden" name="case_name" value="Query Case">', explicit
+        )
+        self.assertIn(
+            '<input type="hidden" name="case_slug" value="query-slug">', explicit
+        )
 
     def test_import_form_contract_preview_counts_raw_escaping_and_unknown_action(self):
         raw = '  Sources Used\nRaw & </textarea><script id="rawInjected">bad()</script> \u2028\u2029  '
@@ -316,7 +334,13 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
             dlms, "save_law_raw_packet", return_value="saved-packet.txt"
         ) as saver:
             saved = self.client.post(
-                "/law/import", data={**common, "action": "save_raw"}
+                "/law/import",
+                data={
+                    **common,
+                    "action": "save_raw",
+                    "case_name": "Stale bookmarked case",
+                    "case_slug": "stale-bookmarked-slug",
+                },
             )
             redirected = self.client.post(
                 "/law/import", data={**common, "action": "save_and_preview"}
@@ -325,6 +349,11 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         self.assertEqual(200, saved.status_code)
         saved_page = saved.get_data(as_text=True)
         self.assertIn("Saved raw case packet as saved-packet.txt", saved_page)
+        self.assertIn(
+            '<div class="law-notice success"><strong>Saved raw case packet as '
+            "saved-packet.txt</strong></div>",
+            saved_page,
+        )
         self.assertIn("Import Summary", saved_page)
         self.assertEqual(302, redirected.status_code)
         self.assertEqual(
@@ -343,7 +372,14 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
             )
 
         self.assertEqual(200, failed.status_code)
-        self.assertIn("Error: failed to save raw case packet.", failed.get_data(as_text=True))
+        failed_page = failed.get_data(as_text=True)
+        self.assertIn("Error: failed to save raw case packet.", failed_page)
+        self.assertIn(
+            '<div class="law-notice error"><strong>Error: failed to save raw '
+            "case packet.</strong></div>",
+            failed_page,
+        )
+        self.assertNotIn('<div class="law-notice success">', failed_page)
         self.assertIn(
             mock.call("[LAW IMPORT ERROR] Failed saving raw packet: disk unavailable"),
             printer.call_args_list,
@@ -469,6 +505,7 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
             char_count=0,
             saved_file="",
             save_message="",
+            save_message_category="",
         )
         self.assertTrue((Path(dlms.TEMPLATE_ROOT) / "law" / "import.html").is_file())
 

@@ -5702,6 +5702,11 @@ a.settings-hub-card:active {
     border: 1px solid rgba(52, 185, 116, .34);
 }
 
+.law-notice.error {
+    background: rgba(132, 31, 39, .18);
+    border: 1px solid rgba(239, 83, 94, .38);
+}
+
 .law-notice.warning {
     background: rgba(121, 88, 12, .17);
     border: 1px solid rgba(221, 172, 43, .34);

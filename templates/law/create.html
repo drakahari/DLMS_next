@@ -90,9 +90,13 @@
                 <label class="law-field">
                     <span>Course / Folder</span>
                     <select name="course">
+                        {% if law_folders %}
                         {% for folder in law_folders %}
                         <option value="{{ folder }}" {% if folder == course %}selected{% endif %}>{{ folder }}</option>
                         {% endfor %}
+                        {% else %}
+                        <option value="{{ course }}" selected>{{ course }}</option>
+                        {% endif %}
                     </select>
                 </label>
 

@@ -230,14 +230,12 @@ def law_import_case_packet(dependencies):
     law_registry = dependencies.load_law_registry()
     pending_workflow = law_registry.get("pending_case_workflow", {}) or {}
 
-    case_name = request.values.get("case_name", "").strip()
-    case_slug = request.values.get("case_slug", "").strip()
-
-    if not case_name:
+    if pending_workflow:
         case_name = str(pending_workflow.get("case_name", "")).strip()
-
-    if not case_slug:
         case_slug = str(pending_workflow.get("case_slug", "")).strip()
+    else:
+        case_name = request.values.get("case_name", "").strip()
+        case_slug = request.values.get("case_slug", "").strip()
 
     if case_name and not case_slug:
         case_slug = dependencies.make_law_case_slug(case_name)
@@ -248,6 +246,7 @@ def law_import_case_packet(dependencies):
     char_count = 0
     saved_file = ""
     save_message = ""
+    save_message_category = ""
 
     if request.method == "POST":
         raw_packet = request.form.get("raw_packet", "").strip()
@@ -273,10 +272,12 @@ def law_import_case_packet(dependencies):
                         )
 
                     save_message = f"Saved raw case packet as {saved_file}"
+                    save_message_category = "success"
 
                 except Exception as exc:
                     print(f"[LAW IMPORT ERROR] Failed saving raw packet: {exc}")
                     save_message = "Error: failed to save raw case packet."
+                    save_message_category = "error"
 
     return render_template(
         "law/import.html",
@@ -289,6 +290,7 @@ def law_import_case_packet(dependencies):
         char_count=char_count,
         saved_file=saved_file,
         save_message=save_message,
+        save_message_category=save_message_category,
     )
 
 

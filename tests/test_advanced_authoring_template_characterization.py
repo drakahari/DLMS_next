@@ -350,6 +350,45 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
         self.assertIn('id="editorStatus"', body)
         self.assertIn('/static/nav-normalize.js', body)
 
+    def test_image_editor_empty_and_load_error_states_guard_editor_initialization(self):
+        with mock.patch.object(
+            admin_image_routes, "_hotspot_editor_catalog", return_value=[]
+        ):
+            empty = dlms.app.test_client().get("/admin/image-editor")
+
+        empty_body = empty.get_data(as_text=True)
+        self.assertEqual(200, empty.status_code)
+        self.assertIn("const EDITOR_DATA=null;", empty_body)
+        self.assertNotIn('id="editorImage"', empty_body)
+        self.assertIn(
+            "if(EDITOR_DATA&&Array.isArray(EDITOR_DATA.images)&&"
+            "EDITOR_DATA.images.length){",
+            empty_body,
+        )
+        self.assertLess(
+            empty_body.index("document.getElementById('datasetKey')?.addEventListener"),
+            empty_body.index("if(EDITOR_DATA&&Array.isArray(EDITOR_DATA.images)"),
+        )
+
+        with mock.patch.object(
+            admin_image_routes, "_hotspot_editor_catalog", return_value=[]
+        ), mock.patch.object(
+            dlms, "load_content_pack_image_dataset", side_effect=OSError("broken")
+        ):
+            failed = dlms.app.test_client().get(
+                "/admin/image-editor?pack=missing&dataset=broken&kind=hotspot"
+            )
+
+        failed_body = failed.get_data(as_text=True)
+        self.assertEqual(200, failed.status_code)
+        self.assertIn("const EDITOR_DATA=null;", failed_body)
+        self.assertIn(
+            "The selected image dataset could not be loaded. Check the local DLMS "
+            "log for details.",
+            failed_body,
+        )
+        self.assertNotIn('id="editorImage"', failed_body)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -240,11 +240,44 @@ class MedicalTemplateTests(unittest.TestCase):
         self.assertIn("<span>Study Banks</span><strong>2</strong>", page)
         self.assertIn("<span>Total Terms</span><strong>16</strong>", page)
         self.assertEqual(2, page.count('method="POST" action="/medical/generate"'))
-        self.assertIn(f'name="pack_id" value="{escape(dataset["pack_id"])}"', page)
-        self.assertIn(f'name="dataset_id" value="{escape(dataset["id"])}"', page)
-        self.assertIn('name="round_size" min="2" max="12" value="10"', page)
-        self.assertIn('name="round_size" min="2" max="4" value="4"', page)
-        self.assertIn('select name="direction"', page)
+        self.assertIn(
+            '<form id="medical-match-form-1" method="POST" '
+            'action="/medical/generate"></form>',
+            page,
+        )
+        self.assertIn(
+            f'form="medical-match-form-1" type="hidden" name="pack_id" '
+            f'value="{escape(dataset["pack_id"])}"',
+            page,
+        )
+        self.assertIn(
+            f'form="medical-match-form-1" type="hidden" name="dataset_id" '
+            f'value="{escape(dataset["id"])}"',
+            page,
+        )
+        self.assertIn(
+            'form="medical-match-form-1" type="number" name="round_size" '
+            'min="2" max="12" value="10"',
+            page,
+        )
+        self.assertIn(
+            'form="medical-match-form-2" type="number" name="round_size" '
+            'min="2" max="4" value="4"',
+            page,
+        )
+        self.assertIn(
+            '<select form="medical-match-form-1" name="direction">', page
+        )
+        self.assertIn(
+            '<button form="medical-match-form-1" '
+            'class="medical-primary-button study-table-primary" type="submit">',
+            page,
+        )
+        self.assertNotRegex(
+            page,
+            r'(?s)<form[^>]*action="/medical/generate"[^>]*>'
+            r'(?:(?!</form>).)*</td>',
+        )
         self.assertIn('<option value="random" selected>Random</option>', page)
         self.assertIn('<option value="term_to_definition">Term → Definition</option>', page)
         self.assertIn('<option value="definition_to_term">Definition → Term</option>', page)

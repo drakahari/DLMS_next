@@ -123,7 +123,7 @@
         </form>
 
         {% if save_message %}
-        <div class="law-notice success"><strong>{{ save_message }}</strong></div>
+        <div class="law-notice {{ save_message_category }}"><strong>{{ save_message }}</strong></div>
         {% endif %}
 
         {% if packet_submitted %}

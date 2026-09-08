@@ -2580,16 +2580,15 @@ def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(brow
     matching = browser.evaluate(
         "(() => {const form=document.querySelector(\"form[action='/medical/generate']\");"
         "const toggle=document.querySelector('.medical-dataset-toggle');"
+        "const control=name=>form.elements.namedItem(name);"
         "return {title:toggle.textContent.trim().replace(/^›\\s*/,''),"
         "description:document.querySelector('.medical-dataset-detail-content p').textContent,"
         "method:form.method,action:form.getAttribute('action'),"
-        "packId:form.querySelector('input[name=pack_id]').value,"
-        "datasetId:form.querySelector('input[name=dataset_id]').value,"
-        "roundMin:form.querySelector('input[name=round_size]').min,"
-        "roundMax:form.querySelector('input[name=round_size]').max,"
-        "roundValue:form.querySelector('input[name=round_size]').value,"
-        "direction:form.querySelector('select[name=direction]').value,"
+        "packId:control('pack_id').value,datasetId:control('dataset_id').value,"
+        "roundMin:control('round_size').min,roundMax:control('round_size').max,"
+        "roundValue:control('round_size').value,direction:control('direction').value,"
         "csrf:form.querySelector('input[name=csrf_token]').value.length>0,"
+        "associated:Array.from(document.querySelectorAll('[form='+form.id+']')).every(node=>node.form===form),"
         "expanded:toggle.getAttribute('aria-expanded'),"
         "detailHidden:document.getElementById(toggle.dataset.medicalDetail).hidden,"
         "navCurrent:document.querySelector('[data-nav-key=medical]').getAttribute('aria-current'),"
@@ -2607,6 +2606,7 @@ def test_medical_read_only_views_empty_populated_controls_csrf_and_escaping(brow
         "roundValue": "3",
         "direction": "random",
         "csrf": True,
+        "associated": True,
         "expanded": "false",
         "detailHidden": True,
         "navCurrent": "page",
@@ -3557,7 +3557,9 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
     assert pending["course"] == "Torts"
     assert pending["case_slug"] == "browser_guided_img_id_lawguidedcaseinjected_case"
 
-    browser.navigate(f"{base_url}/law/import")
+    browser.navigate(
+        f"{base_url}/law/import?case_name=Stale%20Bookmark&case_slug=stale-bookmark"
+    )
     browser.wait_for(
         "document.querySelector('.law-workflow-banner') && "
         "document.querySelectorAll('input[name=csrf_token]').length === 2"
@@ -3587,6 +3589,10 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
             "saved imports or case reviews.');"
         ),
     }
+    assert browser.evaluate(
+        "!document.body.textContent.includes('Stale Bookmark') && "
+        "!document.body.textContent.includes('stale-bookmark')"
+    ) is True
 
     browser.evaluate(
         "(() => {const field=document.querySelector('[name=raw_packet]');"
@@ -3631,12 +3637,75 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
         "document.querySelector('[name=case_name]').value === '' && "
         "document.querySelector('[name=case_slug]').value === ''"
     ) is True
+    browser.navigate(
+        f"{base_url}/law/import?case_name=Explicit%20Case&case_slug=explicit-case"
+    )
+    browser.wait_for(
+        "document.querySelector('[name=case_name]').value === 'Explicit Case' && "
+        "document.querySelector('[name=case_slug]').value === 'explicit-case'"
+    )
 
 
 def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     data_root = browser_stack.data_root
+
+    content_packs_root = data_root / "content_packs"
+    held_content_packs_root = data_root / "content_packs-segment19-held"
+    content_packs_root.rename(held_content_packs_root)
+    content_packs_root.mkdir()
+    browser.navigate(f"{base_url}/admin/image-editor")
+    browser.wait_for(
+        "EDITOR_DATA === null && "
+        "document.body.textContent.includes('No installed content pack currently declares an image dataset.')"
+    )
+    empty_picker = browser.evaluate(
+        "(() => {const select=document.getElementById('datasetKey');"
+        "const option=document.createElement('option');option.value='empty::quiz::selection';"
+        "select.appendChild(option);select.value=option.value;"
+        "select.dispatchEvent(new Event('change'));return {"
+        "pack:document.getElementById('packField').value,"
+        "kind:document.getElementById('kindField').value,"
+        "dataset:document.getElementById('datasetField').value,"
+        "workspace:!!document.getElementById('editorImage')};})()"
+    )
+    assert empty_picker == {
+        "pack": "empty",
+        "kind": "quiz",
+        "dataset": "selection",
+        "workspace": False,
+    }
+    content_packs_root.rmdir()
+    held_content_packs_root.rename(content_packs_root)
+
+    browser.navigate(
+        f"{base_url}/admin/image-editor?pack=missing&dataset=broken&kind=hotspot"
+    )
+    browser.wait_for(
+        "EDITOR_DATA === null && document.querySelector('.flash.error')"
+    )
+    empty_editor = browser.evaluate(
+        "(() => {const select=document.getElementById('datasetKey');"
+        "const option=document.createElement('option');option.value='pack::hotspot::dataset';"
+        "select.appendChild(option);select.value=option.value;"
+        "select.dispatchEvent(new Event('change'));return {"
+        "error:document.querySelector('.flash.error').textContent.trim(),"
+        "pack:document.getElementById('packField').value,"
+        "kind:document.getElementById('kindField').value,"
+        "dataset:document.getElementById('datasetField').value,"
+        "workspace:!!document.getElementById('editorImage')};})()"
+    )
+    assert empty_editor == {
+        "error": (
+            "The selected image dataset could not be loaded. Check the local DLMS "
+            "log for details."
+        ),
+        "pack": "pack",
+        "kind": "hotspot",
+        "dataset": "dataset",
+        "workspace": False,
+    }
 
     browser.navigate(f"{base_url}/pdf-import")
     browser.wait_for(

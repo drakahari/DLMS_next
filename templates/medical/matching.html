@@ -73,23 +73,24 @@
                             </td>
                             <td><strong>{{ dataset.term_count }}</strong><small>terms</small></td>
                             <td>
-                                <form method="POST" action="/medical/generate" class="study-table-inline-form medical-table-generator-form">
-                                    <input type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
-                                    <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                                <form id="medical-match-form-{{ loop.index }}" method="POST" action="/medical/generate"></form>
+                                <div class="study-table-inline-form medical-table-generator-form">
+                                    <input form="medical-match-form-{{ loop.index }}" type="hidden" name="pack_id" value="{{ dataset.pack_id }}">
+                                    <input form="medical-match-form-{{ loop.index }}" type="hidden" name="dataset_id" value="{{ dataset.id }}">
                                     <label><span>Pairs</span>
-                                        <input type="number" name="round_size" min="2" max="{{ dataset.term_count }}" value="{{ 10 if dataset.term_count >= 10 else dataset.term_count }}">
+                                        <input form="medical-match-form-{{ loop.index }}" type="number" name="round_size" min="2" max="{{ dataset.term_count }}" value="{{ 10 if dataset.term_count >= 10 else dataset.term_count }}">
                                     </label>
                                     <label><span>Direction</span>
-                                        <select name="direction">
+                                        <select form="medical-match-form-{{ loop.index }}" name="direction">
                                             <option value="random" selected>Random</option>
                                             <option value="term_to_definition">Term → Definition</option>
                                             <option value="definition_to_term">Definition → Term</option>
                                         </select>
                                     </label>
+                                </div>
                             </td>
                             <td class="study-dataset-action-col">
-                                    <button class="medical-primary-button study-table-primary" type="submit">Create Quiz</button>
-                                </form>
+                                <button form="medical-match-form-{{ loop.index }}" class="medical-primary-button study-table-primary" type="submit">Create Quiz</button>
                             </td>
                         </tr>
                         <tr id="matching-detail-{{ loop.index }}" class="study-dataset-detail-row medical-dataset-detail-row" hidden>
