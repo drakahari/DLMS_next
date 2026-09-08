@@ -628,6 +628,7 @@ def law_export_case_review_txt(dependencies, case_id):
         case_id,
         app_version=dependencies.app_version(),
         exported_on=dependencies.now().strftime("%Y-%m-%d %H:%M:%S"),
+        parse_socratic_questions=dependencies.parse_socratic_questions,
     )
 
     return Response(

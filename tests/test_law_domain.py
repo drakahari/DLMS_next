@@ -12,6 +12,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from dlms.services import law as law_service
 
 
 class _FrozenDateTime(datetime):
@@ -223,6 +224,7 @@ A: Rule.
             response = dlms.app.test_client().get(f"/law/cases/{case_id}/export.txt")
 
         self.assertEqual(200, response.status_code)
+        self.assertEqual("text/plain; charset=utf-8", response.content_type)
         self.assertEqual(
             "attachment; filename=dlms_law_case_Caf_Palsgraf.txt",
             response.headers["Content-Disposition"],
@@ -271,6 +273,137 @@ A: Rule.
             ),
             response.get_data(as_text=True),
         )
+
+    def test_law_text_export_includes_complete_authored_review_in_stable_order(self):
+        case_data = {
+            "title": "Unicode Review",
+            "course": "Torts",
+            "source_import": "source.txt",
+            "created_at": "2026-09-01T10:00:00",
+            "updated_at": "2026-09-02T11:00:00",
+            "sources_used": " Reporter Ω\nTreatise & notes ",
+            "sections": {
+                "case_brief": "Brief text.",
+                "socratic_review": (
+                    "2. **Second question?**\n"
+                    "1. First question?"
+                ),
+                "socratic_answer_key": "Answer key.",
+                "irac_drill": "IRAC drill.",
+                "rule_flashcards": "Flashcards.",
+            },
+            "socratic_student_answers": {
+                "z-orphan": " Last preserved response. ",
+                "q1": "First answer.",
+                "q2": "Réponse café.\nSecond line.",
+                "a-orphan": "First preserved response.",
+                "empty": "   ",
+            },
+            "irac_student_response": {
+                "conclusion": "Conclusion text.",
+                "analysis": "Analyse café.\nApplication line.",
+                "rule": "Rule text.",
+                "issue": "Issue text.",
+            },
+            "student_notes": "Student notes stay near the end.",
+        }
+
+        export_text, filename = law_service.build_law_case_export(
+            case_data,
+            "law-case-unicode",
+            app_version="test",
+            exported_on="2026-09-08 12:00:00",
+            parse_socratic_questions=dlms.parse_socratic_questions,
+        )
+
+        self.assertEqual("dlms_law_case_Unicode_Review.txt", filename)
+        sources_at = export_text.index("Sources Used\n------------")
+        imported_at = export_text.index("1. Case Brief\n-------------")
+        responses_at = export_text.index(
+            "Student Socratic Responses\n--------------------------"
+        )
+        irac_at = export_text.index(
+            "Student IRAC Response\n---------------------"
+        )
+        notes_at = export_text.index("Student Notes\n-------------")
+        reminder_at = export_text.index(
+            "Verification Reminder\n---------------------"
+        )
+        self.assertLess(sources_at, imported_at)
+        self.assertLess(imported_at, responses_at)
+        self.assertLess(responses_at, irac_at)
+        self.assertLess(irac_at, notes_at)
+        self.assertLess(notes_at, reminder_at)
+        self.assertIn("Reporter Ω\nTreatise & notes", export_text)
+
+        response_block = export_text[responses_at:irac_at]
+        expected_response_fragments = (
+            "Question 2: Second question?",
+            "Réponse café.\nSecond line.",
+            "Question 1: First question?",
+            "First answer.",
+            "Saved Response (a-orphan)",
+            "First preserved response.",
+            "Saved Response (z-orphan)",
+            "Last preserved response.",
+        )
+        response_positions = [
+            response_block.index(fragment) for fragment in expected_response_fragments
+        ]
+        self.assertEqual(sorted(response_positions), response_positions)
+        self.assertNotIn("Saved Response (empty)", response_block)
+
+        irac_block = export_text[irac_at:notes_at]
+        expected_irac_fragments = (
+            "Issue:\nIssue text.",
+            "Rule:\nRule text.",
+            "Analysis/Application:\nAnalyse café.\nApplication line.",
+            "Conclusion:\nConclusion text.",
+        )
+        irac_positions = [
+            irac_block.index(fragment) for fragment in expected_irac_fragments
+        ]
+        self.assertEqual(sorted(irac_positions), irac_positions)
+        self.assertTrue(
+            export_text.endswith(
+                "Verify citations, holdings, quotations, and procedural history "
+                "against the original opinion or an approved legal research source.\n"
+            )
+        )
+
+    def test_law_text_export_omits_empty_additional_sections(self):
+        case_data = {
+            "title": "Empty Review",
+            "sections": {},
+            "sources_used": "  \n ",
+            "socratic_student_answers": {"q1": "  "},
+            "irac_student_response": {
+                "issue": " ",
+                "rule": "",
+                "analysis": "\n",
+                "conclusion": "  ",
+            },
+        }
+
+        export_text, _filename = law_service.build_law_case_export(
+            case_data,
+            "empty-review",
+            app_version="test",
+            exported_on="2026-09-08 12:00:00",
+            parse_socratic_questions=dlms.parse_socratic_questions,
+        )
+        legacy_text, _legacy_filename = law_service.build_law_case_export(
+            {"title": "Empty Review", "sections": {}},
+            "empty-review",
+            app_version="test",
+            exported_on="2026-09-08 12:00:00",
+            parse_socratic_questions=dlms.parse_socratic_questions,
+        )
+
+        self.assertEqual(legacy_text, export_text)
+        self.assertNotIn("Sources Used\n------------", export_text)
+        self.assertNotIn("Student Socratic Responses", export_text)
+        self.assertNotIn("Student IRAC Response", export_text)
 
 
 if __name__ == "__main__":

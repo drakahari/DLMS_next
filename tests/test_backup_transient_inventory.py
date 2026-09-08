@@ -203,6 +203,39 @@ class BackupTransientInventoryTests(unittest.TestCase):
             report["members"],
         )
 
+    def test_portable_backup_preserves_complete_law_review_case_json(self):
+        law_case = {
+            "id": "law-case-1",
+            "sources_used": "Reporter Ω\nTreatise",
+            "socratic_student_answers": {
+                "q1": "Student answer\nwith a second line."
+            },
+            "irac_student_response": {
+                "issue": "Issue",
+                "rule": "Rule",
+                "analysis": "Application",
+                "conclusion": "Conclusion",
+            },
+        }
+        case_path = self.root / "law" / "cases" / "law-case-1.json"
+        case_path.parent.mkdir(parents=True)
+        original_bytes = json.dumps(
+            law_case,
+            ensure_ascii=False,
+            indent=2,
+        ).encode("utf-8")
+        case_path.write_bytes(original_bytes)
+
+        backup_path, manifest = self._create_backup("law-review-fields")
+
+        self.assertEqual(1, manifest["file_count"])
+        with zipfile.ZipFile(backup_path) as archive:
+            archived_bytes = archive.read(
+                "DLMS_DATA/law/cases/law-case-1.json"
+            )
+        self.assertEqual(original_bytes, archived_bytes)
+        self.assertEqual(law_case, json.loads(archived_bytes))
+
 
 if __name__ == "__main__":
     unittest.main()

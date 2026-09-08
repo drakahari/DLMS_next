@@ -441,8 +441,15 @@ def update_law_case_irac_response(
     )
 
 
-def build_law_case_export(case_data, case_id, *, app_version, exported_on):
-    """Build the exact legacy Law text export payload and download filename."""
+def build_law_case_export(
+    case_data,
+    case_id,
+    *,
+    app_version,
+    exported_on,
+    parse_socratic_questions,
+):
+    """Build the Law case-review text export payload and download filename."""
     sections = case_data.get("sections", {}) or {}
     title = case_data.get("title") or "Untitled Case Review"
     course = case_data.get("course") or "Uncategorized"
@@ -465,6 +472,15 @@ def build_law_case_export(case_data, case_id, *, app_version, exported_on):
     lines.append("=" * 60)
     lines.append("")
 
+    sources_used = case_data.get("sources_used", "")
+    sources_text = sources_used.strip() if isinstance(sources_used, str) else ""
+    if sources_text:
+        lines.append("Sources Used")
+        lines.append("------------")
+        lines.append(sources_text)
+        lines.append("")
+        lines.append("")
+
     section_order = [
         ("1. Case Brief", sections.get("case_brief", "")),
         ("2. Socratic Review", sections.get("socratic_review", "")),
@@ -480,6 +496,78 @@ def build_law_case_export(case_data, case_id, *, app_version, exported_on):
         lines.append("-" * len(heading))
         lines.append(content.strip())
         lines.append("")
+        lines.append("")
+
+    raw_socratic_answers = case_data.get("socratic_student_answers", {}) or {}
+    socratic_answers = {}
+    if isinstance(raw_socratic_answers, dict):
+        for response_id, response_text in raw_socratic_answers.items():
+            if not isinstance(response_text, str):
+                continue
+            normalized_text = response_text.strip()
+            if normalized_text:
+                socratic_answers[str(response_id)] = normalized_text
+
+    ordered_socratic_responses = []
+    consumed_response_ids = set()
+    socratic_review = sections.get("socratic_review", "")
+    if socratic_answers and isinstance(socratic_review, str):
+        for question in parse_socratic_questions(socratic_review):
+            response_id = str(question.get("id", ""))
+            if (
+                response_id not in socratic_answers
+                or response_id in consumed_response_ids
+            ):
+                continue
+            ordered_socratic_responses.append((response_id, question))
+            consumed_response_ids.add(response_id)
+
+    orphan_response_ids = sorted(
+        set(socratic_answers) - consumed_response_ids,
+        key=lambda response_id: (response_id.casefold(), response_id),
+    )
+    if ordered_socratic_responses or orphan_response_ids:
+        lines.append("Student Socratic Responses")
+        lines.append("--------------------------")
+        for response_id, question in ordered_socratic_responses:
+            lines.append(
+                f"Question {question.get('number', '')}: {question.get('text', '')}"
+            )
+            lines.append("Student Response:")
+            lines.append(socratic_answers[response_id])
+            lines.append("")
+        for response_id in orphan_response_ids:
+            lines.append(f"Saved Response ({response_id})")
+            lines.append("Student Response:")
+            lines.append(socratic_answers[response_id])
+            lines.append("")
+        lines.append("")
+
+    raw_irac_response = case_data.get("irac_student_response", {}) or {}
+    ordered_irac_response = []
+    if isinstance(raw_irac_response, dict):
+        for field_name, heading in (
+            ("issue", "Issue"),
+            ("rule", "Rule"),
+            ("analysis", "Analysis/Application"),
+            ("conclusion", "Conclusion"),
+        ):
+            raw_response_text = raw_irac_response.get(field_name, "")
+            response_text = (
+                raw_response_text.strip()
+                if isinstance(raw_response_text, str)
+                else ""
+            )
+            if response_text:
+                ordered_irac_response.append((heading, response_text))
+
+    if ordered_irac_response:
+        lines.append("Student IRAC Response")
+        lines.append("---------------------")
+        for heading, response_text in ordered_irac_response:
+            lines.append(f"{heading}:")
+            lines.append(response_text)
+            lines.append("")
         lines.append("")
 
     student_notes = case_data.get("student_notes", "")
