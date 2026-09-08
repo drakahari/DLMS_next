@@ -1,9 +1,93 @@
-"""Atomic edit and deletion coordination for existing quizzes."""
+"""Quiz Library identity plus atomic edit and deletion coordination."""
 
+from collections.abc import Mapping
 from copy import deepcopy
+from dataclasses import dataclass
 import os
 import shutil
 import tempfile
+from types import MappingProxyType
+
+
+UNCATEGORIZED_FOLDER = "Uncategorized"
+
+
+def quiz_folder_display_name(value):
+    """Return one stored display spelling, defaulting blank assignments."""
+    return str(value or "").strip() or UNCATEGORIZED_FOLDER
+
+
+def quiz_folder_identity_key(value):
+    """Return the backward-compatible case-insensitive folder identity key."""
+    return quiz_folder_display_name(value).lower()
+
+
+@dataclass(frozen=True)
+class QuizFolderIdentity:
+    """Canonical display spellings derived from configured and assigned state."""
+
+    configured_folders: tuple[str, ...]
+    folders: tuple[str, ...]
+    names_by_key: Mapping[str, str]
+    configured_keys: frozenset[str]
+
+    def key(self, value):
+        return quiz_folder_identity_key(value)
+
+    def resolve(self, value):
+        return self.names_by_key.get(self.key(value))
+
+    def is_configured(self, value):
+        return self.key(value) in self.configured_keys
+
+    def is_uncategorized(self, value):
+        return self.key(value) == self.key(UNCATEGORIZED_FOLDER)
+
+
+def build_quiz_folder_identity(configured_folders, registry):
+    """Build the canonical folder catalog without mutating either store.
+
+    Configured portal spelling and order are authoritative. Assignment-only
+    legacy folders follow in deterministic display order and remain unpromoted.
+    """
+    configured = []
+    names_by_key = {}
+    for value in configured_folders:
+        name = quiz_folder_display_name(value)
+        key = quiz_folder_identity_key(name)
+        if key in names_by_key:
+            continue
+        configured.append(name)
+        names_by_key[key] = name
+
+    uncategorized_key = quiz_folder_identity_key(UNCATEGORIZED_FOLDER)
+    if uncategorized_key not in names_by_key:
+        configured.insert(0, UNCATEGORIZED_FOLDER)
+        names_by_key[uncategorized_key] = UNCATEGORIZED_FOLDER
+
+    folders = list(configured)
+    assignment_names = sorted(
+        (
+            quiz_folder_display_name(quiz.get("folder"))
+            for quiz in registry
+        ),
+        key=lambda name: (quiz_folder_identity_key(name), name),
+    )
+    for name in assignment_names:
+        key = quiz_folder_identity_key(name)
+        if key in names_by_key:
+            continue
+        folders.append(name)
+        names_by_key[key] = name
+
+    return QuizFolderIdentity(
+        configured_folders=tuple(configured),
+        folders=tuple(folders),
+        names_by_key=MappingProxyType(names_by_key),
+        configured_keys=frozenset(
+            quiz_folder_identity_key(name) for name in configured
+        ),
+    )
 
 
 class FolderMetadataCoordinationError(RuntimeError):
@@ -27,7 +111,7 @@ def _normalized_quiz_folder_registry(registry):
     normalized = deepcopy(registry)
     for quiz in normalized:
         if not str(quiz.get("folder") or "").strip():
-            quiz["folder"] = "Uncategorized"
+            quiz["folder"] = UNCATEGORIZED_FOLDER
     return normalized
 
 
@@ -134,36 +218,51 @@ def rename_quiz_folder_metadata(
     print_message=print,
 ):
     """Coordinate a case-insensitive folder rename across both JSON stores."""
+    old_key = quiz_folder_identity_key(old_folder)
+    new_display = quiz_folder_display_name(new_folder)
+    new_key = quiz_folder_identity_key(new_display)
+    if old_key == quiz_folder_identity_key(UNCATEGORIZED_FOLDER):
+        return False
+
     with registry_lock:
         original_registry = _normalized_quiz_folder_registry(load_registry())
         original_folders = list(get_quiz_folders())
         original_hidden_folders = list(
             get_hidden_quiz_folders(original_folders)
         )
+        identity = build_quiz_folder_identity(
+            original_folders, original_registry
+        )
+        old_display = identity.resolve(old_folder)
 
-        existing = {
-            folder.lower()
-            for folder in original_folders
-            if folder.lower() != old_folder.lower()
-        }
-        if new_folder.lower() in existing:
+        if old_display is None:
+            return False
+        if new_key != old_key and identity.resolve(new_display) is not None:
             return False
 
         target_folders = [
-            new_folder if folder.lower() == old_folder.lower() else folder
+            new_display
+            if quiz_folder_identity_key(folder) == old_key
+            else folder
             for folder in original_folders
         ]
         target_hidden_folders = [
-            new_folder if folder.lower() == old_folder.lower() else folder
+            new_display
+            if quiz_folder_identity_key(folder) == old_key
+            else folder
             for folder in original_hidden_folders
         ]
         target_registry = deepcopy(original_registry)
         for quiz in target_registry:
-            current_folder = str(
-                quiz.get("folder") or "Uncategorized"
-            ).strip()
-            if current_folder.lower() == old_folder.lower():
-                quiz["folder"] = new_folder
+            if quiz_folder_identity_key(quiz.get("folder")) == old_key:
+                quiz["folder"] = new_display
+
+        if (
+            target_folders == original_folders
+            and target_hidden_folders == original_hidden_folders
+            and target_registry == original_registry
+        ):
+            return False
 
         _persist_quiz_folder_metadata(
             original_folders=original_folders,
@@ -194,30 +293,37 @@ def delete_quiz_folder_metadata(
     print_message=print,
 ):
     """Coordinate a folder deletion and quiz reassignment across both stores."""
+    folder_key = quiz_folder_identity_key(folder)
+    if folder_key == quiz_folder_identity_key(UNCATEGORIZED_FOLDER):
+        return False
+
     with registry_lock:
         original_registry = _normalized_quiz_folder_registry(load_registry())
         original_folders = list(get_quiz_folders())
         original_hidden_folders = list(
             get_hidden_quiz_folders(original_folders)
         )
+        identity = build_quiz_folder_identity(
+            original_folders, original_registry
+        )
+        folder_display = identity.resolve(folder)
+        if folder_display is None:
+            return False
 
         target_folders = [
             configured_folder
             for configured_folder in original_folders
-            if configured_folder.lower() != folder.lower()
+            if quiz_folder_identity_key(configured_folder) != folder_key
         ]
         target_hidden_folders = [
             hidden_folder
             for hidden_folder in original_hidden_folders
-            if hidden_folder.lower() != folder.lower()
+            if quiz_folder_identity_key(hidden_folder) != folder_key
         ]
         target_registry = deepcopy(original_registry)
         for quiz in target_registry:
-            current_folder = str(
-                quiz.get("folder") or "Uncategorized"
-            ).strip()
-            if current_folder.lower() == folder.lower():
-                quiz["folder"] = "Uncategorized"
+            if quiz_folder_identity_key(quiz.get("folder")) == folder_key:
+                quiz["folder"] = UNCATEGORIZED_FOLDER
 
         _persist_quiz_folder_metadata(
             original_folders=original_folders,
@@ -233,6 +339,7 @@ def delete_quiz_folder_metadata(
             save_quiz_folder_state=save_quiz_folder_state,
             print_message=print_message,
         )
+        return True
 
 
 def commit_quiz_mutation(conn):

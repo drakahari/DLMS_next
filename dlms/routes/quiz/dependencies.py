@@ -17,6 +17,7 @@ class QuizLibraryDependencies:
     load_registry: Dependency
     save_registry: Dependency
     normalize_quiz_folders: Dependency
+    build_quiz_folder_identity: Dependency
     get_quiz_folders: Dependency
     save_quiz_folders: Dependency
     get_hidden_quiz_folders: Dependency

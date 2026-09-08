@@ -5571,6 +5571,9 @@ app.register_blueprint(create_quiz_blueprint(
         load_registry=lambda: load_registry(),
         save_registry=lambda registry: save_registry(registry),
         normalize_quiz_folders=lambda registry: normalize_quiz_folders(registry),
+        build_quiz_folder_identity=lambda folders, registry: (
+            _quiz_mutation_service.build_quiz_folder_identity(folders, registry)
+        ),
         get_quiz_folders=lambda: get_quiz_folders(),
         save_quiz_folders=lambda folders: save_quiz_folders(folders),
         get_hidden_quiz_folders=lambda folders=None: get_hidden_quiz_folders(folders),

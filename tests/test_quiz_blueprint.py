@@ -58,7 +58,8 @@ class QuizBlueprintTests(unittest.TestCase):
     LIBRARY_DEPENDENCIES = {
         "app_version", "logo_folder", "quiz_registry_path", "registry_lock",
         "load_registry", "save_registry", "normalize_quiz_folders",
-        "get_quiz_folders", "save_quiz_folders", "get_hidden_quiz_folders",
+        "build_quiz_folder_identity", "get_quiz_folders",
+        "save_quiz_folders", "get_hidden_quiz_folders",
         "save_quiz_folder_state", "rename_quiz_folder_metadata",
         "delete_quiz_folder_metadata", "get_portal_title",
         "resolve_logo_filename", "debug_print", "get_db",
