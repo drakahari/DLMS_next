@@ -32,9 +32,9 @@ class LawImportDetailTemplateTests(unittest.TestCase):
 
     def _get(
         self,
-        requested_name="nested/packet.txt",
+        requested_name="saved-packet.txt",
         *,
-        safe_name="nested_packet.txt",
+        safe_name="saved-packet.txt",
         raw_packet="",
         parsed_sections=None,
         query="",
@@ -46,8 +46,10 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         with mock.patch.object(
             dlms, "get_portal_title", return_value="Law Detail Portal"
         ) as title_loader, mock.patch.object(
-            dlms, "safe_law_import_filename", return_value=safe_name
+            dlms, "canonical_law_import_filename", return_value=safe_name
         ) as filename_validator, mock.patch.object(
+            dlms.os, "listdir", return_value=[safe_name]
+        ), mock.patch.object(
             dlms.os.path, "exists", return_value=True
         ) as exists, mock.patch.object(
             dlms.os.path, "isfile", return_value=True
@@ -107,7 +109,7 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         page = self._get(raw_packet="", size=0)
 
         self.assert_detail_shell(page)
-        self.assertIn("<h2>nested_packet.txt</h2>", page)
+        self.assertIn("<h2>saved-packet.txt</h2>", page)
         self.assertIn("<span>Lines</span><strong>0</strong>", page)
         self.assertIn("<span>Characters</span><strong>0</strong>", page)
         self.assertIn("<span>Size</span><strong>0 bytes</strong>", page)
@@ -208,7 +210,7 @@ class LawImportDetailTemplateTests(unittest.TestCase):
 
     def test_filename_validation_missing_file_and_read_failure_responses(self):
         with mock.patch.object(
-            dlms, "safe_law_import_filename", return_value=""
+            dlms, "canonical_law_import_filename", return_value=""
         ) as validator, mock.patch.object(dlms.os.path, "exists") as exists:
             invalid = self.client.get("/law/imports/../../case.json")
 
@@ -218,8 +220,10 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         exists.assert_not_called()
 
         with mock.patch.object(
-            dlms, "safe_law_import_filename", return_value="missing.txt"
-        ), mock.patch.object(dlms.os.path, "exists", return_value=False), mock.patch.object(
+            dlms, "canonical_law_import_filename", return_value="missing.txt"
+        ), mock.patch.object(dlms.os, "listdir", return_value=[]), mock.patch.object(
+            dlms.os.path, "exists", return_value=False
+        ), mock.patch.object(
             dlms.os.path, "isfile"
         ) as isfile:
             missing = self.client.get("/law/imports/missing.txt")
@@ -229,8 +233,10 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         isfile.assert_not_called()
 
         with mock.patch.object(
-            dlms, "safe_law_import_filename", return_value="folder.txt"
-        ), mock.patch.object(dlms.os.path, "exists", return_value=True), mock.patch.object(
+            dlms, "canonical_law_import_filename", return_value="folder.txt"
+        ), mock.patch.object(dlms.os, "listdir", return_value=["folder.txt"]), mock.patch.object(
+            dlms.os.path, "exists", return_value=True
+        ), mock.patch.object(
             dlms.os.path, "isfile", return_value=False
         ):
             non_file = self.client.get("/law/imports/folder.txt")
@@ -239,8 +245,10 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         self.assertEqual("Saved import not found", non_file.get_data(as_text=True))
 
         with mock.patch.object(
-            dlms, "safe_law_import_filename", return_value="unreadable.txt"
-        ), mock.patch.object(dlms.os.path, "exists", return_value=True), mock.patch.object(
+            dlms, "canonical_law_import_filename", return_value="unreadable.txt"
+        ), mock.patch.object(dlms.os, "listdir", return_value=["unreadable.txt"]), mock.patch.object(
+            dlms.os.path, "exists", return_value=True
+        ), mock.patch.object(
             dlms.os.path, "isfile", return_value=True
         ), mock.patch.object(
             dlms._law_service,
@@ -278,8 +286,8 @@ class LawImportDetailTemplateTests(unittest.TestCase):
         with mock.patch.object(
             dlms, "get_portal_title", return_value="Law Portal"
         ), mock.patch.object(
-            dlms, "safe_law_import_filename", return_value=safe_name
-        ), mock.patch.object(
+            dlms, "canonical_law_import_filename", return_value=safe_name
+        ), mock.patch.object(dlms.os, "listdir", return_value=[safe_name]), mock.patch.object(
             dlms.os.path, "exists", return_value=True
         ), mock.patch.object(
             dlms.os.path, "isfile", return_value=True
@@ -295,7 +303,7 @@ class LawImportDetailTemplateTests(unittest.TestCase):
             datetime_mock.fromtimestamp.return_value.strftime.return_value = (
                 "2026-09-07 12:34:56"
             )
-            response = self.client.get("/law/imports/request/path.txt")
+            response = self.client.get(f"/law/imports/{safe_name}")
 
         self.assertEqual(200, response.status_code)
         self.assertEqual("rendered", response.get_data(as_text=True))

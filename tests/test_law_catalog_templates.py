@@ -32,6 +32,7 @@ class LawCatalogTemplateTests(unittest.TestCase):
         import_loader.assert_called_once_with(
             dlms.LAW_IMPORTS_FOLDER,
             from_timestamp=dlms.datetime.fromtimestamp,
+            canonical_law_import_filename=dlms.canonical_law_import_filename,
             imports=[],
             makedirs=dlms.os.makedirs,
             listdir=dlms.os.listdir,
@@ -165,7 +166,7 @@ class LawCatalogTemplateTests(unittest.TestCase):
             "source_import": "older.txt",
         }
         newer = {
-            "id": hostile,
+            "id": "newer-case",
             "title": hostile,
             "course": '<b id="courseInjected">Torts</b>',
             "created_at": '<svg id="createdInjected">2026-09-07</svg>',
@@ -177,8 +178,8 @@ class LawCatalogTemplateTests(unittest.TestCase):
         page = self._get_cases({"cases": [older, newer]})
         escaped_hostile = str(escape(hostile))
         with dlms.app.test_request_context():
-            open_url = url_for("law.law_view_case_review", case_id=hostile)
-            delete_url = url_for("law.law_delete_case_review", case_id=hostile)
+            open_url = url_for("law.law_view_case_review", case_id="newer-case")
+            delete_url = url_for("law.law_delete_case_review", case_id="newer-case")
 
         self.assertIn('<span class="law-count-pill">2 saved</span>', page)
         self.assertLess(page.index(escaped_hostile), page.index("Older Case"))

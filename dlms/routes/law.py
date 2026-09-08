@@ -22,9 +22,10 @@ class LawRouteDependencies:
     load_portal_config: Dependency
     load_law_registry: Dependency
     law_case_path: Dependency
-    law_import_path: Dependency
+    resolve_law_import_path: Dependency
     make_law_case_slug: Dependency
-    safe_law_import_filename: Dependency
+    canonical_law_import_filename: Dependency
+    canonical_law_case_id: Dependency
     save_law_raw_packet: Dependency
     parse_law_packet_sections: Dependency
     get_law_case_by_id: Dependency
@@ -58,7 +59,11 @@ def _bind_dependencies(view_func, dependencies):
 def law_study_home(dependencies):
     portal_title = dependencies.get_portal_title()
     law_registry = dependencies.load_law_registry()
-    saved_cases = len(law_registry.get("cases", []))
+    saved_cases = sum(
+        1 for case in law_registry.get("cases", [])
+        if isinstance(case, dict)
+        and dependencies.canonical_law_case_id(case.get("id")) == case.get("id")
+    )
     course_count = len(law_registry.get("folders", []))
 
     return render_template(
@@ -312,14 +317,14 @@ def law_saved_imports(dependencies):
 def law_view_saved_import(dependencies, filename):
     portal_title = dependencies.get_portal_title()
 
-    safe_name = dependencies.safe_law_import_filename(filename)
+    safe_name = dependencies.canonical_law_import_filename(filename)
 
     if not safe_name:
         return "Invalid import filename", 400
 
-    import_path = dependencies.law_import_path(safe_name)
+    import_path = dependencies.resolve_law_import_path(safe_name)
 
-    if not os.path.exists(import_path) or not os.path.isfile(import_path):
+    if not import_path or not os.path.exists(import_path) or not os.path.isfile(import_path):
         return "Saved import not found", 404
 
     try:
@@ -351,12 +356,15 @@ def law_view_saved_import(dependencies, filename):
 
 
 def law_delete_saved_import(dependencies, filename):
-    safe_name = dependencies.safe_law_import_filename(filename)
+    safe_name = dependencies.canonical_law_import_filename(filename)
 
     if not safe_name:
         return "Invalid import filename", 400
 
-    import_path = dependencies.law_import_path(safe_name)
+    import_path = dependencies.resolve_law_import_path(safe_name)
+
+    if not import_path:
+        return "Saved import not found", 404
 
     try:
         dependencies.delete_law_raw_packet(import_path)
@@ -368,14 +376,14 @@ def law_delete_saved_import(dependencies, filename):
 
 
 def law_create_case_from_import(dependencies, filename):
-    safe_name = dependencies.safe_law_import_filename(filename)
+    safe_name = dependencies.canonical_law_import_filename(filename)
 
     if not safe_name:
         return "Invalid import filename", 400
 
-    import_path = dependencies.law_import_path(safe_name)
+    import_path = dependencies.resolve_law_import_path(safe_name)
 
-    if not os.path.exists(import_path) or not os.path.isfile(import_path):
+    if not import_path or not os.path.exists(import_path) or not os.path.isfile(import_path):
         return "Saved import not found", 404
 
     try:
@@ -407,7 +415,11 @@ def law_case_reviews(dependencies):
     portal_title = dependencies.get_portal_title()
     registry = dependencies.load_law_registry()
 
-    cases = registry.get("cases", [])
+    cases = [
+        case for case in registry.get("cases", [])
+        if isinstance(case, dict)
+        and dependencies.canonical_law_case_id(case.get("id")) == case.get("id")
+    ]
     cases = sorted(
         cases, key=lambda candidate: str(candidate.get("created_at", "")), reverse=True
     )

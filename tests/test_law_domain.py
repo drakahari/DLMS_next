@@ -161,6 +161,63 @@ A: Rule.
             ),
         )
 
+    def test_canonical_import_and_case_id_contracts_are_exact_and_addressable(self):
+        canonical_imports = (
+            "law_import_20260906_140507_hadley_v_baxendale.txt",
+            "saved-packet.txt",
+        )
+        for filename in canonical_imports:
+            with self.subTest(canonical_import=filename):
+                self.assertEqual(filename, dlms.canonical_law_import_filename(filename))
+
+        for filename in (
+            "nested/name.txt",
+            "nested\\name.txt",
+            "nested name.txt",
+            "nested?name.txt",
+            "nested#name.txt",
+            "nested%name.txt",
+            'nested"name.txt',
+            "../nested_name.txt",
+            "résumé.txt",
+            " saved.txt",
+            "saved.txt ",
+            "saved.json",
+            "UPPER.TXT",
+            "",
+        ):
+            with self.subTest(noncanonical_import=filename):
+                self.assertEqual("", dlms.canonical_law_import_filename(filename))
+
+        self.assertEqual("Cafe_packet.txt", dlms.safe_law_import_filename("Café packet.txt"))
+        self.assertEqual(
+            "Cafe_packet.txt", dlms.canonical_law_import_filename("Cafe_packet.txt")
+        )
+
+        for case_id in (
+            "law_case_20260906_140507_hadley_v_baxendale",
+            "law-case-1",
+            "case_1",
+        ):
+            with self.subTest(canonical_case_id=case_id):
+                self.assertEqual(case_id, dlms.canonical_law_case_id(case_id))
+
+        for case_id in (
+            "nested/case",
+            "nested\\case",
+            "Case-1",
+            "case 1",
+            "case.1",
+            "case%2f1",
+            "résumé",
+            "-case",
+            "_case",
+            "",
+            None,
+        ):
+            with self.subTest(noncanonical_case_id=case_id):
+                self.assertEqual("", dlms.canonical_law_case_id(case_id))
+
     def test_raw_packet_save_uses_live_app_path_and_exact_filename_convention(self):
         with mock.patch.object(dlms, "datetime", _FrozenDateTime):
             saved = dlms.save_law_raw_packet("Law packet café", "hadley_v_baxendale")
@@ -172,6 +229,27 @@ A: Rule.
             "Law packet café", (self.imports / saved).read_text(encoding="utf-8")
         )
 
+    def test_raw_import_path_resolution_requires_exact_stored_spelling(self):
+        stored = self.imports / "Exact_Name.txt"
+        stored.write_text("packet", encoding="utf-8")
+
+        self.assertEqual(
+            str(stored),
+            law_service.resolve_law_raw_import_path(
+                str(self.imports), "Exact_Name.txt"
+            ),
+        )
+        self.assertIsNone(
+            law_service.resolve_law_raw_import_path(
+                str(self.imports), "exact_name.txt"
+            )
+        )
+        self.assertIsNone(
+            law_service.resolve_law_raw_import_path(
+                str(self.imports), "missing.txt"
+            )
+        )
+
     def test_case_lookup_resolves_live_app_registry_loader(self):
         expected = {"id": "target", "title": "Live patched case"}
         with mock.patch.object(
@@ -181,6 +259,13 @@ A: Rule.
         ) as loader:
             self.assertIs(expected, dlms.get_law_case_by_id("target"))
         loader.assert_called_once_with()
+
+        for invalid in ("nested/case", "Case-1", "case 1"):
+            with self.subTest(invalid=invalid), mock.patch.object(
+                dlms, "load_law_registry"
+            ) as invalid_loader:
+                self.assertIsNone(dlms.get_law_case_by_id(invalid))
+                invalid_loader.assert_not_called()
 
     def test_law_text_export_preserves_exact_content_and_filename(self):
         case_id = "law-case-1"

@@ -57,6 +57,50 @@ class BackupSemanticValidationTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def _write_law_restore(self, root, *, case_id="law-case-1", import_name="saved-packet.txt"):
+        config = root / "config"
+        imports = root / "law" / "imports"
+        cases = root / "law" / "cases"
+        config.mkdir(parents=True)
+        imports.mkdir(parents=True)
+        cases.mkdir(parents=True)
+        self._write_core_database(root / "results.db")
+        case_file = f"{case_id}.json"
+        (config / "law.json").write_text(
+            json.dumps(
+                {
+                    "version": "1",
+                    "folders": ["Torts"],
+                    "cases": [
+                        {
+                            "id": case_id,
+                            "title": "Restored Case",
+                            "course": "Torts",
+                            "file": case_file,
+                            "source_import": import_name,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (imports / import_name).write_text(
+            "1. Case Brief\nRestored facts.", encoding="utf-8"
+        )
+        (cases / case_file).write_text(
+            json.dumps(
+                {
+                    "id": case_id,
+                    "title": "Restored Case",
+                    "course": "Torts",
+                    "source_import": import_name,
+                    "sections": {"case_brief": "Restored facts."},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return imports / import_name, cases / case_file
+
     def test_valid_current_database_and_legacy_core_schema_pass(self):
         database = self.root / "results.db"
         self._write_core_database(database)
@@ -179,6 +223,68 @@ class BackupSemanticValidationTests(unittest.TestCase):
         (self.root / "results.db").unlink()
         with self.assertRaisesRegex(ValueError, "missing required DLMS database"):
             dlms._validate_staged_backup_semantics(self.root, self._manifest(self.root))
+
+    def test_valid_law_restore_identities_remain_route_addressable(self):
+        import_path, case_path = self._write_law_restore(self.root)
+
+        result = dlms._validate_staged_backup_semantics(
+            self.root, self._manifest(self.root)
+        )
+
+        self.assertEqual(["law/imports/saved-packet.txt"], result["law_imports"])
+        with mock.patch.multiple(
+            dlms,
+            LAW_REGISTRY=str(self.root / "config" / "law.json"),
+            LAW_IMPORTS_FOLDER=str(import_path.parent),
+            LAW_CASES_FOLDER=str(case_path.parent),
+        ):
+            client = dlms.app.test_client()
+            self.assertEqual(200, client.get("/law/imports/saved-packet.txt").status_code)
+            self.assertEqual(200, client.get("/law/cases/law-case-1").status_code)
+
+    def test_nested_and_noncanonical_law_imports_are_rejected(self):
+        self._write_law_restore(self.root)
+        canonical = self.root / "law" / "imports" / "saved-packet.txt"
+        canonical.unlink()
+        nested = canonical.parent / "nested"
+        nested.mkdir()
+        (nested / "saved-packet.txt").write_text("nested", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "only top-level files"):
+            dlms._validate_staged_backup_semantics(
+                self.root, self._manifest(self.root)
+            )
+
+        (nested / "saved-packet.txt").unlink()
+        nested.rmdir()
+        (canonical.parent / "saved packet.txt").write_text(
+            "noncanonical", encoding="utf-8"
+        )
+        with self.assertRaisesRegex(ValueError, "noncanonical filename"):
+            dlms._validate_staged_backup_semantics(
+                self.root, self._manifest(self.root)
+            )
+
+    def test_noncanonical_law_case_ids_are_rejected_in_registry_and_case_files(self):
+        self._write_law_restore(self.root)
+        registry_path = self.root / "config" / "law.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry["cases"][0]["id"] = "nested/case"
+        registry_path.write_text(json.dumps(registry), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "noncanonical Law case ID"):
+            dlms._validate_staged_backup_semantics(
+                self.root, self._manifest(self.root)
+            )
+
+        registry["cases"][0]["id"] = "law-case-1"
+        registry_path.write_text(json.dumps(registry), encoding="utf-8")
+        case_path = self.root / "law" / "cases" / "law-case-1.json"
+        case_data = json.loads(case_path.read_text(encoding="utf-8"))
+        case_data["id"] = "Case 1"
+        case_path.write_text(json.dumps(case_data), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "noncanonical Law case ID"):
+            dlms._validate_staged_backup_semantics(
+                self.root, self._manifest(self.root)
+            )
 
     def test_current_application_backup_passes_structural_and_semantic_validation(self):
         backup_path, manifest = dlms._create_dlms_backup("semantic-test")

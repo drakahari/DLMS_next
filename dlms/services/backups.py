@@ -454,6 +454,7 @@ def validate_restored_json(
     *,
     critical_json_types,
     raster_image_formats,
+    canonical_law_case_id,
 ):
     try:
         with open(path, "r", encoding="utf-8") as handle:
@@ -496,7 +497,51 @@ def validate_restored_json(
         for key in ("cases", "folders"):
             if key in value and not isinstance(value[key], list):
                 raise ValueError(f"config/law.json field {key} must be a list")
+        seen_case_ids = set()
+        for case in value.get("cases", []):
+            if not isinstance(case, dict):
+                raise ValueError("config/law.json case entries must be objects")
+            case_id = case.get("id")
+            if canonical_law_case_id(case_id) != case_id:
+                raise ValueError("config/law.json contains a noncanonical Law case ID")
+            if case_id in seen_case_ids:
+                raise ValueError("config/law.json contains a duplicate Law case ID")
+            seen_case_ids.add(case_id)
+    elif normalized.startswith("law/cases/") and normalized.endswith(".json"):
+        if not isinstance(value, dict):
+            raise ValueError(f"{relative_path} must contain a JSON object")
+        case_id = value.get("id")
+        if canonical_law_case_id(case_id) != case_id:
+            raise ValueError(f"{relative_path} contains a noncanonical Law case ID")
     return value
+
+
+def validate_restored_law_imports(
+    staged_data_root,
+    *,
+    canonical_law_import_filename,
+):
+    """Require restored raw Law imports to be canonical top-level files."""
+    imports_root = os.path.join(staged_data_root, "law", "imports")
+    if not os.path.lexists(imports_root):
+        return []
+    if os.path.islink(imports_root) or not os.path.isdir(imports_root):
+        raise ValueError("Restored Law imports path is not a safe directory")
+
+    validated = []
+    with os.scandir(imports_root) as entries:
+        for entry in entries:
+            relative_path = f"law/imports/{entry.name}"
+            if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
+                raise ValueError(
+                    "Restored Law imports must contain only top-level files"
+                )
+            if canonical_law_import_filename(entry.name) != entry.name:
+                raise ValueError(
+                    f"Restored Law import has a noncanonical filename: {relative_path}"
+                )
+            validated.append(relative_path)
+    return sorted(validated, key=str.casefold)
 
 
 def validate_restored_browser_data(
@@ -651,6 +696,7 @@ def validate_staged_backup_semantics(
     validate_restored_browser_data,
     normalize_restored_portal_custom_ai_url,
     validate_restored_assets,
+    validate_restored_law_imports,
 ):
     """Validate extracted backup data completely before any live-data mutation."""
     if not os.path.isdir(staged_data_root):
@@ -681,6 +727,7 @@ def validate_staged_backup_semantics(
     browser_data = validate_restored_browser_data(staged_data_root)
     portal_config = normalize_restored_portal_custom_ai_url(staged_data_root)
     assets = validate_restored_assets(staged_data_root)
+    law_imports = validate_restored_law_imports(staged_data_root)
     return {
         "status": "valid",
         "sqlite": sqlite_files,
@@ -688,6 +735,7 @@ def validate_staged_backup_semantics(
         "browser_data": browser_data,
         "portal_config": portal_config,
         "assets": assets,
+        "law_imports": law_imports,
         "compatibility": "schema-version-1; optional descriptive manifest fields may be absent",
     }
 

@@ -3488,7 +3488,7 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
     base_url = browser_stack.base_url
     data_root = browser_stack.data_root
 
-    import_name = 'browser & <import-id> "quoted" \'single\' \\ \u2028\u2029.txt'
+    import_name = "law_import_20990907_120000_browser_catalog.txt"
     import_url_name = urllib.parse.quote(import_name, safe="!$&'()*+,/:;=@")
     (data_root / "law" / "imports" / import_name).write_text(
         "Browser catalog packet", encoding="utf-8"
@@ -3496,7 +3496,7 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
 
     registry_path = data_root / "config" / "law.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    case_id = 'browser & <case-id> "quoted" \'single\' \\ \u2028\u2029'
+    case_id = "browser-catalog-case"
     case_url_id = urllib.parse.quote(case_id, safe="!$&'()*+,/:;=@")
     case_title = 'Catalog & <img id="lawCatalogInjected"> "Case"'
     registry["cases"].append({
@@ -3606,7 +3606,7 @@ def test_law_catalogs_render_records_banners_actions_and_runtime_csrf(browser_st
     browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open')")
 
 
-def test_law_import_detail_normalizes_path_escapes_raw_packet_and_protects_form(browser_stack):
+def test_law_import_detail_requires_exact_path_escapes_raw_packet_and_protects_form(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     normalized_name = "nested_browser-detail-packet.txt"
@@ -3623,7 +3623,10 @@ def test_law_import_detail_normalizes_path_escapes_raw_packet_and_protects_form(
     import_path.write_text(raw_packet, encoding="utf-8")
 
     browser.set_viewport(760, 1100)
-    browser.navigate(f"{base_url}/law/imports/nested/browser-detail-packet.txt?created_case=1")
+    browser.navigate(f"{base_url}/law/imports/nested/browser-detail-packet.txt")
+    browser.wait_for("document.body.textContent.trim()==='Invalid import filename'")
+
+    browser.navigate(f"{base_url}/law/imports/{normalized_name}?created_case=1")
     browser.wait_for(
         "document.querySelector('[data-nav-key=law][aria-current=page]') && "
         "document.querySelector('.law-detail-primary-form input[name=csrf_token]')"

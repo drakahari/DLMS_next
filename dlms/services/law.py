@@ -139,6 +139,7 @@ def list_law_raw_imports(
     imports_folder,
     *,
     from_timestamp,
+    canonical_law_import_filename,
     imports=None,
     makedirs=os.makedirs,
     listdir=os.listdir,
@@ -151,7 +152,7 @@ def list_law_raw_imports(
     makedirs(imports_folder, exist_ok=True)
 
     for name in sorted(listdir(imports_folder), reverse=True):
-        if not name.lower().endswith(".txt"):
+        if canonical_law_import_filename(name) != name:
             continue
 
         path = join_path(imports_folder, name)
@@ -168,6 +169,23 @@ def list_law_raw_imports(
     return imports
 
 
+def resolve_law_raw_import_path(
+    imports_folder,
+    canonical_name,
+    *,
+    listdir=os.listdir,
+    join_path=os.path.join,
+):
+    """Resolve only an exact stored basename, including on case-insensitive filesystems."""
+    try:
+        stored_names = listdir(imports_folder)
+    except OSError:
+        return None
+    if canonical_name not in stored_names:
+        return None
+    return join_path(imports_folder, canonical_name)
+
+
 def load_law_raw_packet(path, *, open_file=open):
     """Read one already-validated raw Law packet as UTF-8 text."""
     with open_file(path, "r", encoding="utf-8") as f:
@@ -182,16 +200,18 @@ def delete_law_raw_packet(
         remove_file(path)
 
 
-def get_law_case_by_id(case_id, *, load_law_registry):
+def get_law_case_by_id(
+    case_id, *, load_law_registry, canonical_law_case_id
+):
     """Look up a Law Study case review by ID from the live registry."""
-    case_id = str(case_id or "").strip()
+    case_id = canonical_law_case_id(case_id)
 
     if not case_id:
         return None
 
     registry = load_law_registry()
     for case in registry.get("cases", []):
-        if str(case.get("id")) == case_id:
+        if case.get("id") == case_id:
             return case
 
     return None
@@ -237,6 +257,7 @@ def create_law_case_from_import(
     extract_law_slug_from_import_filename,
     extract_law_case_title,
     secure_filename,
+    canonical_law_case_id,
     now,
     commit_law_case_and_registry,
     makedirs=os.makedirs,
@@ -250,7 +271,7 @@ def create_law_case_from_import(
         if str(existing_case.get("source_import", "")) != safe_name:
             continue
 
-        existing_id = str(existing_case.get("id", "")).strip()
+        existing_id = canonical_law_case_id(existing_case.get("id"))
         existing_file = secure_filename(str(existing_case.get("file", "")))
         existing_path = join_path(cases_folder, existing_file)
 
@@ -264,6 +285,9 @@ def create_law_case_from_import(
         case_id = f"law_case_{ts}_{case_slug}"
     else:
         case_id = f"law_case_{ts}"
+    case_id = canonical_law_case_id(case_id)
+    if not case_id:
+        raise ValueError("Could not create a canonical Law case ID.")
 
     case_file = f"{case_id}.json"
     case_path = join_path(cases_folder, case_file)

@@ -1884,6 +1884,7 @@ def _validate_restored_json(path, relative_path):
         relative_path,
         critical_json_types=DLMS_BACKUP_CRITICAL_JSON_TYPES,
         raster_image_formats=RASTER_IMAGE_FORMATS,
+        canonical_law_case_id=canonical_law_case_id,
     )
 
 
@@ -1915,6 +1916,13 @@ def _validate_restored_assets(staged_data_root):
     )
 
 
+def _validate_restored_law_imports(staged_data_root):
+    return _backup_service.validate_restored_law_imports(
+        staged_data_root,
+        canonical_law_import_filename=canonical_law_import_filename,
+    )
+
+
 def _validate_backup_manifest_semantics(manifest, staged_data_root):
     return _backup_service.validate_backup_manifest_semantics(
         manifest,
@@ -1934,6 +1942,7 @@ def _validate_staged_backup_semantics(staged_data_root, manifest):
         validate_restored_browser_data=_validate_restored_browser_data,
         normalize_restored_portal_custom_ai_url=_normalize_restored_portal_custom_ai_url,
         validate_restored_assets=_validate_restored_assets,
+        validate_restored_law_imports=_validate_restored_law_imports,
     )
 def _staged_restore_database_path(staged_data_root):
     return _restore_service.staged_restore_database_path(
@@ -3013,6 +3022,17 @@ def safe_law_import_filename(filename):
     )
 
 
+def canonical_law_import_filename(filename):
+    return _law_packet_parser.canonical_law_import_filename(
+        filename,
+        secure_filename=secure_filename,
+    )
+
+
+def canonical_law_case_id(case_id):
+    return _law_packet_parser.canonical_law_case_id(case_id)
+
+
 def save_law_raw_packet(raw_packet, case_slug=""):
     return _law_service.save_law_raw_packet(
         raw_packet,
@@ -3042,6 +3062,7 @@ def get_law_case_by_id(case_id):
     return _law_service.get_law_case_by_id(
         case_id,
         load_law_registry=load_law_registry,
+        canonical_law_case_id=canonical_law_case_id,
     )
 
 
@@ -5351,9 +5372,15 @@ app.register_blueprint(create_law_blueprint(LawRouteDependencies(
     load_portal_config=lambda: load_portal_config(),
     load_law_registry=lambda: load_law_registry(),
     law_case_path=lambda case_file: os.path.join(LAW_CASES_FOLDER, case_file),
-    law_import_path=lambda import_file: os.path.join(LAW_IMPORTS_FOLDER, import_file),
+    resolve_law_import_path=lambda import_file: _law_service.resolve_law_raw_import_path(
+        LAW_IMPORTS_FOLDER,
+        import_file,
+        listdir=os.listdir,
+        join_path=os.path.join,
+    ),
     make_law_case_slug=lambda case_name: make_law_case_slug(case_name),
-    safe_law_import_filename=lambda filename: safe_law_import_filename(filename),
+    canonical_law_import_filename=lambda filename: canonical_law_import_filename(filename),
+    canonical_law_case_id=lambda case_id: canonical_law_case_id(case_id),
     save_law_raw_packet=lambda raw_packet, case_slug="": save_law_raw_packet(raw_packet, case_slug),
     parse_law_packet_sections=lambda raw_text: parse_law_packet_sections(raw_text),
     get_law_case_by_id=lambda case_id: get_law_case_by_id(case_id),
@@ -5371,6 +5398,7 @@ app.register_blueprint(create_law_blueprint(LawRouteDependencies(
     list_law_raw_imports=lambda *, imports: _law_service.list_law_raw_imports(
         LAW_IMPORTS_FOLDER,
         from_timestamp=datetime.fromtimestamp,
+        canonical_law_import_filename=canonical_law_import_filename,
         imports=imports,
         makedirs=os.makedirs,
         listdir=os.listdir,
@@ -5397,6 +5425,7 @@ app.register_blueprint(create_law_blueprint(LawRouteDependencies(
         extract_law_slug_from_import_filename=extract_law_slug_from_import_filename,
         extract_law_case_title=extract_law_case_title,
         secure_filename=secure_filename,
+        canonical_law_case_id=canonical_law_case_id,
         now=datetime.now,
         commit_law_case_and_registry=_commit_law_case_and_registry,
         makedirs=os.makedirs,

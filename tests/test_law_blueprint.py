@@ -73,9 +73,10 @@ class LawBlueprintTests(unittest.TestCase):
         "load_portal_config",
         "load_law_registry",
         "law_case_path",
-        "law_import_path",
+        "resolve_law_import_path",
         "make_law_case_slug",
-        "safe_law_import_filename",
+        "canonical_law_import_filename",
+        "canonical_law_case_id",
         "save_law_raw_packet",
         "parse_law_packet_sections",
         "get_law_case_by_id",
@@ -138,9 +139,9 @@ class LawBlueprintTests(unittest.TestCase):
 
     def test_namespaced_endpoints_build_original_public_urls_without_aliases(self):
         values = {
-            "law.law_view_saved_import": {"filename": "nested/packet.txt"},
-            "law.law_delete_saved_import": {"filename": "nested/packet.txt"},
-            "law.law_create_case_from_import": {"filename": "nested/packet.txt"},
+            "law.law_view_saved_import": {"filename": "saved-packet.txt"},
+            "law.law_delete_saved_import": {"filename": "saved-packet.txt"},
+            "law.law_create_case_from_import": {"filename": "saved-packet.txt"},
             "law.law_view_case_review": {"case_id": "case-1"},
             "law.law_update_case_review_details": {"case_id": "case-1"},
             "law.law_delete_case_review": {"case_id": "case-1"},
@@ -230,6 +231,8 @@ class LawBlueprintTests(unittest.TestCase):
     def test_factory_uses_injected_landing_boundary(self):
         services = {name: mock.Mock() for name in self.EXPECTED_DEPENDENCIES}
         services["get_portal_title"].return_value = "Injected Law Portal"
+        services["canonical_law_case_id"].side_effect = lambda value: value
+        services["canonical_law_import_filename"].side_effect = lambda value: value
         services["load_law_registry"].return_value = {
             "cases": [{"id": "one"}],
             "folders": ["Torts", "Contracts"],

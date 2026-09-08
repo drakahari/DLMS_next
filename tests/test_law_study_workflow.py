@@ -125,6 +125,78 @@ class LawStudyWorkflowTests(unittest.TestCase):
         self.assertIn("Recognized Sections", preview.get_data(as_text=True))
         self.assertEqual([], dlms.load_law_registry()["cases"])
 
+        Path(dlms.LAW_IMPORTS_FOLDER, "noncanonical import.txt").write_text(
+            "not route-addressable", encoding="utf-8"
+        )
+        catalog = client.get("/law/imports").get_data(as_text=True)
+        self.assertIn(f'data-law-navigation-url="/law/imports/{filename}"', catalog)
+        self.assertIn(f'action="/law/imports/{filename}/delete"', catalog)
+        self.assertNotIn("noncanonical import.txt", catalog)
+
+    def test_noncanonical_import_aliases_cannot_read_delete_or_create_case(self):
+        canonical_name = "nested_name.txt"
+        import_path = Path(dlms.LAW_IMPORTS_FOLDER, canonical_name)
+        import_path.write_text(RAW_PACKET, encoding="utf-8")
+        client = dlms.app.test_client()
+        token = csrf_token(client, "/law/imports")
+
+        aliases = (
+            "nested/name.txt",
+            "nested%5Cname.txt",
+            "nested%20name.txt",
+        )
+        for alias in aliases:
+            with self.subTest(alias=alias):
+                detail = client.get(f"/law/imports/{alias}")
+                self.assertEqual(400, detail.status_code)
+                self.assertEqual("Invalid import filename", detail.get_data(as_text=True))
+
+                deleted = client.post(
+                    f"/law/imports/{alias}/delete",
+                    data={"csrf_token": token},
+                    follow_redirects=False,
+                )
+                self.assertEqual(400, deleted.status_code)
+
+                created = client.post(
+                    f"/law/imports/{alias}/create_case",
+                    data={"csrf_token": token},
+                    follow_redirects=False,
+                )
+                self.assertEqual(400, created.status_code)
+
+        self.assertEqual(RAW_PACKET, import_path.read_text(encoding="utf-8"))
+        self.assertEqual([], dlms.load_law_registry()["cases"])
+        self.assertEqual(200, client.get(f"/law/imports/{canonical_name}").status_code)
+
+    def test_invalid_case_ids_are_not_route_addressable_or_cataloged(self):
+        registry = dlms.load_law_registry()
+        registry["cases"] = [
+            {"id": "valid-case", "title": "Valid", "file": "valid-case.json"},
+            {"id": "Invalid Case", "title": "Invalid", "file": "invalid.json"},
+        ]
+        dlms.save_law_registry(registry)
+        Path(dlms.LAW_CASES_FOLDER, "valid-case.json").write_text(
+            json.dumps({"id": "valid-case", "title": "Valid", "sections": {}}),
+            encoding="utf-8",
+        )
+        client = dlms.app.test_client()
+
+        catalog = client.get("/law/cases").get_data(as_text=True)
+        self.assertIn("Valid", catalog)
+        self.assertNotIn("Invalid Case", catalog)
+        self.assertEqual(200, client.get("/law/cases/valid-case").status_code)
+        self.assertEqual(404, client.get("/law/cases/Invalid%20Case").status_code)
+        self.assertEqual(404, client.get("/law/cases/nested/case").status_code)
+        token = csrf_token(client, "/law/cases")
+        invalid_delete = client.post(
+            "/law/cases/Invalid%20Case/delete",
+            data={"csrf_token": token},
+            follow_redirects=False,
+        )
+        self.assertEqual(404, invalid_delete.status_code)
+        self.assertEqual(2, len(dlms.load_law_registry()["cases"]))
+
     def test_import_page_makes_durable_save_and_preview_the_primary_happy_path(self):
         client = dlms.app.test_client()
 

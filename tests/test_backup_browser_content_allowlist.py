@@ -221,6 +221,7 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
         ai_custom_url="https://example.com/assistant",
         active_data=None,
         include_hidden_folders=True,
+        include_law=False,
     ):
         self.archive_number += 1
         payload = self.root / f"payload-{self.archive_number}"
@@ -278,6 +279,47 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
         malicious = f"<!doctype html><script>window.{self.ATTACK_MARKER}=true</script>"
         (payload / "quizzes" / "restored_quiz.html").write_text(malicious, encoding="utf-8")
         (payload / "quizzes" / "unregistered.html").write_text(malicious, encoding="utf-8")
+        if include_law:
+            law_imports = payload / "law" / "imports"
+            law_cases = payload / "law" / "cases"
+            law_imports.mkdir(parents=True)
+            law_cases.mkdir(parents=True)
+            import_name = "law_import_20260908_120000_restored_case.txt"
+            case_id = "law-case-restored"
+            case_file = f"{case_id}.json"
+            (law_imports / import_name).write_text(
+                "1. Case Brief\nRestored facts.", encoding="utf-8"
+            )
+            (law_cases / case_file).write_text(
+                json.dumps(
+                    {
+                        "id": case_id,
+                        "title": "Restored Law Case",
+                        "course": "Torts",
+                        "source_import": import_name,
+                        "sections": {"case_brief": "Restored facts."},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (payload / "config" / "law.json").write_text(
+                json.dumps(
+                    {
+                        "version": "1",
+                        "folders": ["Torts"],
+                        "cases": [
+                            {
+                                "id": case_id,
+                                "title": "Restored Law Case",
+                                "course": "Torts",
+                                "file": case_file,
+                                "source_import": import_name,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
         if active_data:
             (payload / "data" / active_data).write_text(malicious, encoding="utf-8")
 
@@ -397,6 +439,25 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
         self.assertIn("<h2>Restored Empty Folder ", restored_library)
         self.assertIn("Hidden folder", restored_library)
         self.assertIn("No quizzes in this view.", restored_library)
+
+    def test_valid_canonical_law_import_and_case_restore_fully_addressable(self):
+        stage_response = self._stage(self._archive(include_law=True))
+        self.assertEqual(200, stage_response.status_code)
+        token = self._restore_token(stage_response)
+
+        confirm_response = self.client.post(
+            f"/settings/backup/restore/confirm/{token}",
+            headers=csrf_headers(self.client, "/settings/backup"),
+        )
+
+        self.assertEqual(200, confirm_response.status_code)
+        import_name = "law_import_20260908_120000_restored_case.txt"
+        import_catalog = self.client.get("/law/imports").get_data(as_text=True)
+        case_catalog = self.client.get("/law/cases").get_data(as_text=True)
+        self.assertIn(f'data-law-navigation-url="/law/imports/{import_name}"', import_catalog)
+        self.assertIn('data-law-navigation-url="/law/cases/law-case-restored"', case_catalog)
+        self.assertEqual(200, self.client.get(f"/law/imports/{import_name}").status_code)
+        self.assertEqual(200, self.client.get("/law/cases/law-case-restored").status_code)
 
     def test_older_backup_without_hidden_folder_field_restores_with_none_hidden(self):
         stage_response = self._stage(self._archive(include_hidden_folders=False))

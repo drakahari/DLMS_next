@@ -6,6 +6,9 @@ import re
 from werkzeug.utils import secure_filename as _secure_filename
 
 
+_CANONICAL_LAW_CASE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
 def make_law_case_slug(case_name):
     """
     Create a safe, readable slug from a case name for filenames.
@@ -47,8 +50,10 @@ def extract_law_slug_from_import_filename(filename, *, secure_filename=_secure_f
 
 def safe_law_import_filename(filename, *, secure_filename=_secure_filename):
     """
-    Restrict Law import filenames to saved .txt files in the Law imports folder.
-    Prevents path traversal.
+    Sanitize a generated Law import filename at the creation boundary.
+
+    Route lookups use canonical_law_import_filename() and never normalize a
+    requested identity into a different stored filename.
     """
     filename = secure_filename(filename or "")
 
@@ -56,6 +61,26 @@ def safe_law_import_filename(filename, *, secure_filename=_secure_filename):
         return ""
 
     return filename
+
+
+def canonical_law_import_filename(filename, *, secure_filename=_secure_filename):
+    """Return an exact, route-safe saved-import identity or an empty string."""
+    if not isinstance(filename, str) or not filename:
+        return ""
+    if filename != filename.strip() or "/" in filename or "\\" in filename:
+        return ""
+    if not filename.endswith(".txt"):
+        return ""
+    if secure_filename(filename) != filename:
+        return ""
+    return filename
+
+
+def canonical_law_case_id(case_id):
+    """Return a canonical addressable Law case ID or an empty string."""
+    if not isinstance(case_id, str) or not _CANONICAL_LAW_CASE_ID_RE.fullmatch(case_id):
+        return ""
+    return case_id
 
 
 def parse_law_packet_sections(raw_text):

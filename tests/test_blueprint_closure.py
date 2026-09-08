@@ -72,7 +72,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.core.CoreRouteDependencies": 14,
         "dlms.routes.history.HistoryRouteDependencies": 9,
         "dlms.routes.it.ITStudyDependencies": 5,
-        "dlms.routes.law.LawRouteDependencies": 29,
+        "dlms.routes.law.LawRouteDependencies": 30,
         "dlms.routes.learning.LearningRouteDependencies": 17,
         "dlms.routes.maintenance.MaintenanceRouteDependencies": 26,
         "dlms.routes.medical.MedicalRouteDependencies": 9,

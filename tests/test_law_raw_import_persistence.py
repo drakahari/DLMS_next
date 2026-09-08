@@ -177,6 +177,7 @@ class LawRawImportPersistenceTests(unittest.TestCase):
             with self.subTest(filename=filename):
                 self.assertEqual(filename, os.path.basename(filename))
                 self.assertEqual(filename, dlms.safe_law_import_filename(filename))
+                self.assertEqual(filename, dlms.canonical_law_import_filename(filename))
                 self.assertEqual(expected, (self.imports / filename).read_text())
                 self.assertEqual(self.imports, (self.imports / filename).parent)
 
