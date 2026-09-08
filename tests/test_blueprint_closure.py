@@ -79,7 +79,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.pdf_import.PDFImportRouteDependencies": 28,
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
-        "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 15,
+        "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 17,
         "dlms.routes.settings.SettingsRouteDependencies": 9,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 25,
     }

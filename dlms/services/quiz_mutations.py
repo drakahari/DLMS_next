@@ -1,8 +1,238 @@
 """Atomic edit and deletion coordination for existing quizzes."""
 
+from copy import deepcopy
 import os
 import shutil
 import tempfile
+
+
+class FolderMetadataCoordinationError(RuntimeError):
+    """Base error for an incomplete coordinated folder metadata mutation."""
+
+
+class FolderMetadataStateConflictError(FolderMetadataCoordinationError):
+    """The durable registry is neither the expected old nor target state."""
+
+
+class FolderMetadataStateUnknownError(FolderMetadataCoordinationError):
+    """The durable registry could not be inspected after a failed write."""
+
+
+class FolderMetadataRollbackIncompleteError(FolderMetadataCoordinationError):
+    """Portal compensation failed or could not be validated."""
+
+
+def _normalized_quiz_folder_registry(registry):
+    """Return a detached registry snapshot with legacy folder defaults applied."""
+    normalized = deepcopy(registry)
+    for quiz in normalized:
+        if not str(quiz.get("folder") or "").strip():
+            quiz["folder"] = "Uncategorized"
+    return normalized
+
+
+def _restore_quiz_folder_metadata(
+    folders,
+    hidden_folders,
+    *,
+    save_quiz_folder_state,
+    get_quiz_folders,
+    get_hidden_quiz_folders,
+):
+    """Restore and validate only portal fields owned by the Quiz Library."""
+    save_quiz_folder_state(folders, hidden_folders)
+    restored_folders = get_quiz_folders()
+    restored_hidden = get_hidden_quiz_folders(restored_folders)
+    if restored_folders != folders or restored_hidden != hidden_folders:
+        raise RuntimeError("Restored Quiz Library folder metadata did not validate")
+
+
+def _persist_quiz_folder_metadata(
+    *,
+    original_folders,
+    original_hidden_folders,
+    target_folders,
+    target_hidden_folders,
+    original_registry,
+    target_registry,
+    load_registry,
+    save_registry,
+    get_quiz_folders,
+    get_hidden_quiz_folders,
+    save_quiz_folder_state,
+    print_message=print,
+):
+    """Publish portal then registry state, compensating only a known-safe failure."""
+    save_quiz_folder_state(target_folders, target_hidden_folders)
+    try:
+        save_registry(target_registry)
+    except Exception as registry_error:
+        try:
+            durable_registry = _normalized_quiz_folder_registry(load_registry())
+        except Exception as state_error:
+            print_message(
+                "[FOLDER METADATA ERROR] Registry write failed and durable "
+                f"state could not be determined: {state_error}"
+            )
+            raise FolderMetadataStateUnknownError(
+                "Quiz folder metadata update failed; durable registry state "
+                "could not be determined and portal metadata was not rolled back"
+            ) from registry_error
+
+        # When a folder operation does not change any quiz assignment, the old
+        # and target registries are equal. A reported registry failure therefore
+        # cannot prove publication, so restore the portal snapshot.
+        registry_is_original = durable_registry == original_registry
+        registry_is_target = durable_registry == target_registry
+        if registry_is_original:
+            try:
+                _restore_quiz_folder_metadata(
+                    original_folders,
+                    original_hidden_folders,
+                    save_quiz_folder_state=save_quiz_folder_state,
+                    get_quiz_folders=get_quiz_folders,
+                    get_hidden_quiz_folders=get_hidden_quiz_folders,
+                )
+            except Exception as rollback_error:
+                print_message(
+                    "[FOLDER METADATA ERROR] Registry write failed and portal "
+                    f"compensation was incomplete: {rollback_error}"
+                )
+                raise FolderMetadataRollbackIncompleteError(
+                    "Quiz folder metadata update failed and portal rollback "
+                    "could not be completed"
+                ) from rollback_error
+            raise
+
+        if registry_is_target:
+            # os.replace may have completed before a persistence adapter reports
+            # failure. Keeping the target portal state avoids undoing a durable
+            # target registry and preserves cross-file consistency.
+            raise
+
+        print_message(
+            "[FOLDER METADATA ERROR] Registry write failed and durable state "
+            "does not match the original or intended registry; portal metadata "
+            "was not overwritten"
+        )
+        raise FolderMetadataStateConflictError(
+            "Quiz folder metadata update failed with an unexpected durable "
+            "registry state; portal metadata was not rolled back"
+        ) from registry_error
+
+
+def rename_quiz_folder_metadata(
+    old_folder,
+    new_folder,
+    *,
+    registry_lock,
+    load_registry,
+    save_registry,
+    get_quiz_folders,
+    get_hidden_quiz_folders,
+    save_quiz_folder_state,
+    print_message=print,
+):
+    """Coordinate a case-insensitive folder rename across both JSON stores."""
+    with registry_lock:
+        original_registry = _normalized_quiz_folder_registry(load_registry())
+        original_folders = list(get_quiz_folders())
+        original_hidden_folders = list(
+            get_hidden_quiz_folders(original_folders)
+        )
+
+        existing = {
+            folder.lower()
+            for folder in original_folders
+            if folder.lower() != old_folder.lower()
+        }
+        if new_folder.lower() in existing:
+            return False
+
+        target_folders = [
+            new_folder if folder.lower() == old_folder.lower() else folder
+            for folder in original_folders
+        ]
+        target_hidden_folders = [
+            new_folder if folder.lower() == old_folder.lower() else folder
+            for folder in original_hidden_folders
+        ]
+        target_registry = deepcopy(original_registry)
+        for quiz in target_registry:
+            current_folder = str(
+                quiz.get("folder") or "Uncategorized"
+            ).strip()
+            if current_folder.lower() == old_folder.lower():
+                quiz["folder"] = new_folder
+
+        _persist_quiz_folder_metadata(
+            original_folders=original_folders,
+            original_hidden_folders=original_hidden_folders,
+            target_folders=target_folders,
+            target_hidden_folders=target_hidden_folders,
+            original_registry=original_registry,
+            target_registry=target_registry,
+            load_registry=load_registry,
+            save_registry=save_registry,
+            get_quiz_folders=get_quiz_folders,
+            get_hidden_quiz_folders=get_hidden_quiz_folders,
+            save_quiz_folder_state=save_quiz_folder_state,
+            print_message=print_message,
+        )
+        return True
+
+
+def delete_quiz_folder_metadata(
+    folder,
+    *,
+    registry_lock,
+    load_registry,
+    save_registry,
+    get_quiz_folders,
+    get_hidden_quiz_folders,
+    save_quiz_folder_state,
+    print_message=print,
+):
+    """Coordinate a folder deletion and quiz reassignment across both stores."""
+    with registry_lock:
+        original_registry = _normalized_quiz_folder_registry(load_registry())
+        original_folders = list(get_quiz_folders())
+        original_hidden_folders = list(
+            get_hidden_quiz_folders(original_folders)
+        )
+
+        target_folders = [
+            configured_folder
+            for configured_folder in original_folders
+            if configured_folder.lower() != folder.lower()
+        ]
+        target_hidden_folders = [
+            hidden_folder
+            for hidden_folder in original_hidden_folders
+            if hidden_folder.lower() != folder.lower()
+        ]
+        target_registry = deepcopy(original_registry)
+        for quiz in target_registry:
+            current_folder = str(
+                quiz.get("folder") or "Uncategorized"
+            ).strip()
+            if current_folder.lower() == folder.lower():
+                quiz["folder"] = "Uncategorized"
+
+        _persist_quiz_folder_metadata(
+            original_folders=original_folders,
+            original_hidden_folders=original_hidden_folders,
+            target_folders=target_folders,
+            target_hidden_folders=target_hidden_folders,
+            original_registry=original_registry,
+            target_registry=target_registry,
+            load_registry=load_registry,
+            save_registry=save_registry,
+            get_quiz_folders=get_quiz_folders,
+            get_hidden_quiz_folders=get_hidden_quiz_folders,
+            save_quiz_folder_state=save_quiz_folder_state,
+            print_message=print_message,
+        )
 
 
 def commit_quiz_mutation(conn):

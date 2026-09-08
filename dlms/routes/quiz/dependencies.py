@@ -21,6 +21,8 @@ class QuizLibraryDependencies:
     save_quiz_folders: Dependency
     get_hidden_quiz_folders: Dependency
     save_quiz_folder_state: Dependency
+    rename_quiz_folder_metadata: Dependency
+    delete_quiz_folder_metadata: Dependency
     get_portal_title: Dependency
     resolve_logo_filename: Dependency
     debug_print: Dependency

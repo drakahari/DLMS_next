@@ -59,8 +59,9 @@ class QuizBlueprintTests(unittest.TestCase):
         "app_version", "logo_folder", "quiz_registry_path", "registry_lock",
         "load_registry", "save_registry", "normalize_quiz_folders",
         "get_quiz_folders", "save_quiz_folders", "get_hidden_quiz_folders",
-        "save_quiz_folder_state", "get_portal_title", "resolve_logo_filename",
-        "debug_print", "get_db",
+        "save_quiz_folder_state", "rename_quiz_folder_metadata",
+        "delete_quiz_folder_metadata", "get_portal_title",
+        "resolve_logo_filename", "debug_print", "get_db",
     }
     EDITOR_DEPENDENCIES = {
         "app_version", "data_folder", "browser_served_data_extensions",

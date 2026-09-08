@@ -82,6 +82,7 @@ def move_quiz_folder(dependencies):
     return redirect(f"/library?view={view}")
 
 def add_quiz_folder(dependencies):
+    registry_lock = dependencies.registry_lock()
     get_quiz_folders = dependencies.get_quiz_folders
     save_quiz_folders = dependencies.save_quiz_folders
 
@@ -91,17 +92,19 @@ def add_quiz_folder(dependencies):
     if not folder:
         return redirect(f"/library?view={view}")
 
-    folders = get_quiz_folders()
+    with registry_lock:
+        folders = get_quiz_folders()
 
-    existing = {f.lower() for f in folders}
+        existing = {f.lower() for f in folders}
 
-    if folder.lower() not in existing:
-        folders.append(folder)
-        save_quiz_folders(folders)
+        if folder.lower() not in existing:
+            folders.append(folder)
+            save_quiz_folders(folders)
 
     return redirect(f"/library?view={view}")
 
 def set_quiz_folder_hidden(dependencies):
+    registry_lock = dependencies.registry_lock()
     load_registry = dependencies.load_registry
     normalize_quiz_folders = dependencies.normalize_quiz_folders
     get_quiz_folders = dependencies.get_quiz_folders
@@ -120,51 +123,52 @@ def set_quiz_folder_hidden(dependencies):
         return redirect(f"/library?view={view}")
     hide_folder = requested_state == "1"
 
-    folders = get_quiz_folders()
-    configured_name = next(
-        (folder for folder in folders if folder.lower() == requested_folder.lower()),
-        None,
-    )
-
-    # A legacy assignment-only folder becomes explicitly persistent only when
-    # the user chooses to hide it. Page loads never promote legacy folders.
-    if configured_name is None and hide_folder:
-        registry = normalize_quiz_folders(load_registry())
+    with registry_lock:
+        folders = get_quiz_folders()
         configured_name = next(
             (
-                str(quiz.get("folder") or "Uncategorized").strip()
-                for quiz in registry
-                if str(quiz.get("folder") or "Uncategorized").strip().lower()
-                == requested_folder.lower()
+                folder
+                for folder in folders
+                if folder.lower() == requested_folder.lower()
             ),
             None,
         )
-        if configured_name:
-            folders.append(configured_name)
 
-    if configured_name is None:
-        return redirect(f"/library?view={view}")
+        # A legacy assignment-only folder becomes explicitly persistent only
+        # when the user chooses to hide it. Page loads never promote legacy
+        # folders.
+        if configured_name is None and hide_folder:
+            registry = normalize_quiz_folders(load_registry())
+            configured_name = next(
+                (
+                    str(quiz.get("folder") or "Uncategorized").strip()
+                    for quiz in registry
+                    if str(
+                        quiz.get("folder") or "Uncategorized"
+                    ).strip().lower() == requested_folder.lower()
+                ),
+                None,
+            )
+            if configured_name:
+                folders.append(configured_name)
 
-    hidden_folders = get_hidden_quiz_folders(folders)
-    hidden_folders = [
-        folder
-        for folder in hidden_folders
-        if folder.lower() != configured_name.lower()
-    ]
-    if hide_folder:
-        hidden_folders.append(configured_name)
+        if configured_name is None:
+            return redirect(f"/library?view={view}")
 
-    save_quiz_folder_state(folders, hidden_folders)
+        hidden_folders = get_hidden_quiz_folders(folders)
+        hidden_folders = [
+            folder
+            for folder in hidden_folders
+            if folder.lower() != configured_name.lower()
+        ]
+        if hide_folder:
+            hidden_folders.append(configured_name)
+
+        save_quiz_folder_state(folders, hidden_folders)
     return redirect(f"/library?view={view}")
 
 def rename_quiz_folder(dependencies):
-    registry_lock = dependencies.registry_lock()
-    load_registry = dependencies.load_registry
-    save_registry = dependencies.save_registry
-    normalize_quiz_folders = dependencies.normalize_quiz_folders
-    get_quiz_folders = dependencies.get_quiz_folders
-    get_hidden_quiz_folders = dependencies.get_hidden_quiz_folders
-    save_quiz_folder_state = dependencies.save_quiz_folder_state
+    rename_folder_metadata = dependencies.rename_quiz_folder_metadata
 
     old_folder = str(request.form.get("old_folder") or "").strip()
     new_folder = str(request.form.get("new_folder") or "").strip()
@@ -177,49 +181,12 @@ def rename_quiz_folder(dependencies):
     if old_folder.lower() == "uncategorized":
         return redirect(f"/library?view={view}")
 
-    folders = get_quiz_folders()
-    hidden_folders = get_hidden_quiz_folders(folders)
-
-    # Do not rename into an existing folder name
-    existing = {f.lower() for f in folders if f.lower() != old_folder.lower()}
-    if new_folder.lower() in existing:
-        return redirect(f"/library?view={view}")
-
-    renamed_folders = []
-    for folder in folders:
-        if folder.lower() == old_folder.lower():
-            renamed_folders.append(new_folder)
-        else:
-            renamed_folders.append(folder)
-
-    renamed_hidden_folders = [
-        new_folder if folder.lower() == old_folder.lower() else folder
-        for folder in hidden_folders
-    ]
-    save_quiz_folder_state(renamed_folders, renamed_hidden_folders)
-
-    # Update existing quizzes that were assigned to the old folder
-    with registry_lock:
-        registry = normalize_quiz_folders(load_registry())
-
-        for q in registry:
-            current_folder = str(q.get("folder") or "Uncategorized").strip()
-
-            if current_folder.lower() == old_folder.lower():
-                q["folder"] = new_folder
-
-        save_registry(registry)
+    rename_folder_metadata(old_folder, new_folder)
 
     return redirect(f"/library?view={view}")
 
 def delete_quiz_folder(dependencies):
-    registry_lock = dependencies.registry_lock()
-    load_registry = dependencies.load_registry
-    save_registry = dependencies.save_registry
-    normalize_quiz_folders = dependencies.normalize_quiz_folders
-    get_quiz_folders = dependencies.get_quiz_folders
-    get_hidden_quiz_folders = dependencies.get_hidden_quiz_folders
-    save_quiz_folder_state = dependencies.save_quiz_folder_state
+    delete_folder_metadata = dependencies.delete_quiz_folder_metadata
 
     folder = str(request.form.get("folder") or "").strip()
     view = request.form.get("view") or "visible"
@@ -231,35 +198,12 @@ def delete_quiz_folder(dependencies):
     if folder.lower() == "uncategorized":
         return redirect(f"/library?view={view}")
 
-    # Remove folder from saved folder list
-    folders = get_quiz_folders()
-    hidden_folders = get_hidden_quiz_folders(folders)
-    folders = [
-        f for f in folders
-        if f.lower() != folder.lower()
-    ]
-    hidden_folders = [
-        hidden_folder
-        for hidden_folder in hidden_folders
-        if hidden_folder.lower() != folder.lower()
-    ]
-    save_quiz_folder_state(folders, hidden_folders)
-
-    # Move quizzes from deleted folder back to Uncategorized
-    with registry_lock:
-        registry = normalize_quiz_folders(load_registry())
-
-        for q in registry:
-            current_folder = str(q.get("folder") or "Uncategorized").strip()
-
-            if current_folder.lower() == folder.lower():
-                q["folder"] = "Uncategorized"
-
-        save_registry(registry)
+    delete_folder_metadata(folder)
 
     return redirect(f"/library?view={view}")
 
 def save_folder_order(dependencies):
+    registry_lock = dependencies.registry_lock()
     get_quiz_folders = dependencies.get_quiz_folders
     save_quiz_folders = dependencies.save_quiz_folders
     get_hidden_quiz_folders = dependencies.get_hidden_quiz_folders
@@ -271,62 +215,65 @@ def save_folder_order(dependencies):
     if not isinstance(ordered_folders, list):
         return jsonify(status="error", error="Invalid folder order"), 400
 
-    current_folders = get_quiz_folders()
+    with registry_lock:
+        current_folders = get_quiz_folders()
 
-    # Keep only valid folder names from the request
-    cleaned_order = []
-    seen = set()
+        # Keep only valid folder names from the request
+        cleaned_order = []
+        seen = set()
 
-    for folder in ordered_folders:
-        name = str(folder or "").strip()
+        for folder in ordered_folders:
+            name = str(folder or "").strip()
 
-        if not name:
-            continue
+            if not name:
+                continue
 
-        key = name.lower()
+            key = name.lower()
 
-        if key in seen:
-            continue
+            if key in seen:
+                continue
 
-        cleaned_order.append(name)
-        seen.add(key)
+            cleaned_order.append(name)
+            seen.add(key)
 
-    hidden_keys = {
-        folder.lower()
-        for folder in get_hidden_quiz_folders(current_folders)
-    }
+        hidden_keys = {
+            folder.lower()
+            for folder in get_hidden_quiz_folders(current_folders)
+        }
 
-    if view == "visible" and hidden_keys:
-        # Visible omits hidden folders. Reorder only submitted folder slots so
-        # every omitted hidden folder retains its position in the saved order.
-        current_keys = {folder.lower() for folder in current_folders}
-        submitted = [
-            folder
-            for folder in cleaned_order
-            if folder.lower() in current_keys
-            and folder.lower() not in hidden_keys
-        ]
-        submitted_keys = {folder.lower() for folder in submitted}
-        submitted_iter = iter(submitted)
-        merged_order = [
-            next(submitted_iter) if folder.lower() in submitted_keys else folder
-            for folder in current_folders
-        ]
-        merged_keys = {folder.lower() for folder in merged_order}
-        merged_order.extend(
-            folder
-            for folder in cleaned_order
-            if folder.lower() not in merged_keys
-        )
-        cleaned_order = merged_order
-    else:
-        # Preserve the established behavior when the page submits its complete
-        # normal folder ordering.
-        for folder in current_folders:
-            if folder.lower() not in seen:
-                cleaned_order.append(folder)
+        if view == "visible" and hidden_keys:
+            # Visible omits hidden folders. Reorder only submitted folder slots
+            # so every omitted hidden folder retains its saved position.
+            current_keys = {folder.lower() for folder in current_folders}
+            submitted = [
+                folder
+                for folder in cleaned_order
+                if folder.lower() in current_keys
+                and folder.lower() not in hidden_keys
+            ]
+            submitted_keys = {folder.lower() for folder in submitted}
+            submitted_iter = iter(submitted)
+            merged_order = [
+                next(submitted_iter)
+                if folder.lower() in submitted_keys
+                else folder
+                for folder in current_folders
+            ]
+            merged_keys = {folder.lower() for folder in merged_order}
+            merged_order.extend(
+                folder
+                for folder in cleaned_order
+                if folder.lower() not in merged_keys
+            )
+            cleaned_order = merged_order
+        else:
+            # Preserve the established behavior when the page submits its
+            # complete normal folder ordering.
+            for folder in current_folders:
+                if folder.lower() not in seen:
+                    cleaned_order.append(folder)
 
-    save_quiz_folders(cleaned_order)
+        save_quiz_folders(cleaned_order)
 
     return jsonify(status="ok")
 
@@ -423,6 +370,7 @@ def save_order(dependencies):
 
 def export_all_quizzes_txt(dependencies):
     APP_VERSION = dependencies.app_version()
+    registry_lock = dependencies.registry_lock()
     load_registry = dependencies.load_registry
     normalize_quiz_folders = dependencies.normalize_quiz_folders
     get_db = dependencies.get_db
@@ -431,7 +379,8 @@ def export_all_quizzes_txt(dependencies):
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    registry = normalize_quiz_folders(load_registry())
+    with registry_lock:
+        registry = normalize_quiz_folders(load_registry())
     registry_by_id = {
         int(q.get("id")): q
         for q in registry
@@ -536,6 +485,7 @@ def export_all_quizzes_txt(dependencies):
 
 def export_single_quiz_txt(dependencies, quiz_id):
     APP_VERSION = dependencies.app_version()
+    registry_lock = dependencies.registry_lock()
     load_registry = dependencies.load_registry
     normalize_quiz_folders = dependencies.normalize_quiz_folders
     get_db = dependencies.get_db
@@ -544,7 +494,8 @@ def export_single_quiz_txt(dependencies, quiz_id):
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    registry = normalize_quiz_folders(load_registry())
+    with registry_lock:
+        registry = normalize_quiz_folders(load_registry())
     registry_by_id = {
         int(q.get("id")): q
         for q in registry
@@ -654,6 +605,7 @@ def quiz_library(dependencies):
     APP_VERSION = dependencies.app_version()
     LOGO_FOLDER = dependencies.logo_folder()
     QUIZ_REGISTRY = dependencies.quiz_registry_path()
+    registry_lock = dependencies.registry_lock()
     load_registry = dependencies.load_registry
     normalize_quiz_folders = dependencies.normalize_quiz_folders
     get_quiz_folders = dependencies.get_quiz_folders
@@ -662,7 +614,8 @@ def quiz_library(dependencies):
     resolve_logo_filename = dependencies.resolve_logo_filename
     dprint = dependencies.debug_print
 
-    registry = normalize_quiz_folders(load_registry())
+    with registry_lock:
+        registry = normalize_quiz_folders(load_registry())
 
     dprint("[REGISTRY DEBUG] Using registry file:", QUIZ_REGISTRY)
     dprint("[REGISTRY DEBUG] Registry size:", len(registry))

@@ -3264,6 +3264,33 @@ def _finish_quiz_mutation(
     )
 
 
+def _rename_quiz_folder_metadata(old_folder, new_folder):
+    return _quiz_mutation_service.rename_quiz_folder_metadata(
+        old_folder,
+        new_folder,
+        registry_lock=registry_lock,
+        load_registry=load_registry,
+        save_registry=save_registry,
+        get_quiz_folders=get_quiz_folders,
+        get_hidden_quiz_folders=get_hidden_quiz_folders,
+        save_quiz_folder_state=save_quiz_folder_state,
+        print_message=print,
+    )
+
+
+def _delete_quiz_folder_metadata(folder):
+    return _quiz_mutation_service.delete_quiz_folder_metadata(
+        folder,
+        registry_lock=registry_lock,
+        load_registry=load_registry,
+        save_registry=save_registry,
+        get_quiz_folders=get_quiz_folders,
+        get_hidden_quiz_folders=get_hidden_quiz_folders,
+        save_quiz_folder_state=save_quiz_folder_state,
+        print_message=print,
+    )
+
+
 
 
 
@@ -5564,6 +5591,12 @@ app.register_blueprint(create_quiz_blueprint(
         save_quiz_folders=lambda folders: save_quiz_folders(folders),
         get_hidden_quiz_folders=lambda folders=None: get_hidden_quiz_folders(folders),
         save_quiz_folder_state=lambda folders, hidden: save_quiz_folder_state(folders, hidden),
+        rename_quiz_folder_metadata=lambda old_folder, new_folder: (
+            _rename_quiz_folder_metadata(old_folder, new_folder)
+        ),
+        delete_quiz_folder_metadata=lambda folder: (
+            _delete_quiz_folder_metadata(folder)
+        ),
         get_portal_title=lambda: get_portal_title(),
         resolve_logo_filename=lambda filename: resolve_logo_filename(filename),
         debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
