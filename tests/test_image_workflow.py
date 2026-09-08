@@ -14,6 +14,7 @@ os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 from tests.csrf_test_utils import csrf_headers, csrf_token
 
 
@@ -122,7 +123,9 @@ class ImageWorkflowTests(unittest.TestCase):
         data = dlms.load_content_pack_quiz_dataset("study_images", "mixed")
         with dlms.app.test_request_context():
             runtime, db_questions = dlms._quiz_dataset_runtime("study_images", data)
-        quiz_id = dlms.save_quiz_to_db("Tagged mixed pack", "tagged-mixed.html", db_questions)
+        quiz_id = seed_current_quiz(
+            dlms.get_db, "Tagged mixed pack", "tagged-mixed.html", db_questions
+        )
         conn = dlms.get_db()
         rows = conn.execute("SELECT id, question_number FROM questions WHERE quiz_id=? ORDER BY question_number", (quiz_id,)).fetchall()
         concepts = [dlms._question_concepts(conn.cursor(), row[0]) for row in rows]

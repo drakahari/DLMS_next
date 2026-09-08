@@ -9,6 +9,7 @@ from unittest import mock
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import bootstrap_current_schema_database
 from tests.csrf_test_utils import csrf_headers
 
 
@@ -78,33 +79,24 @@ class QuizLibraryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-library-reference-") as directory:
             db_path = os.path.join(directory, "results.db")
             quiz_registry = os.path.join(directory, "quizzes.json")
-            conn = sqlite3.connect(db_path)
-            conn.executescript("""
-                CREATE TABLE quizzes (
-                    id INTEGER PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    source_file TEXT NOT NULL
-                );
-                CREATE TABLE questions (
-                    id INTEGER PRIMARY KEY,
-                    quiz_id INTEGER NOT NULL,
-                    question_number INTEGER NOT NULL,
-                    question_text TEXT NOT NULL
-                );
-                CREATE TABLE choices (
-                    id INTEGER PRIMARY KEY,
-                    question_id INTEGER NOT NULL,
-                    label TEXT NOT NULL,
-                    text TEXT NOT NULL,
-                    is_correct INTEGER NOT NULL
-                );
-                INSERT INTO quizzes VALUES (7, 'Network Basics', 'network.html');
-                INSERT INTO questions VALUES (11, 7, 1, 'Which protocol resolves names?');
-                INSERT INTO choices VALUES (21, 11, 'A', 'DNS', 1);
-                INSERT INTO choices VALUES (22, 11, 'B', 'SSH', 0);
-            """)
-            conn.commit()
-            conn.close()
+            database = bootstrap_current_schema_database(
+                db_path,
+                bootstrap_database=dlms.bootstrap_database,
+            )
+            database.seed_quiz(
+                "Network Basics",
+                "network.html",
+                [{
+                    "id": 11,
+                    "number": 1,
+                    "question": "Which protocol resolves names?",
+                    "choices": [
+                        {"label": "A", "text": "DNS", "is_correct": True},
+                        {"label": "B", "text": "SSH", "is_correct": False},
+                    ],
+                }],
+                quiz_id=7,
+            )
             with open(quiz_registry, "w", encoding="utf-8") as handle:
                 json.dump([
                     {

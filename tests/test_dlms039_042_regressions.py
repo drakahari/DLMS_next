@@ -13,6 +13,7 @@ os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 from tests.csrf_test_utils import csrf_token
 
 
@@ -64,7 +65,9 @@ class Dlms039To042RegressionTests(unittest.TestCase):
         }
 
     def _quiz(self, title, question):
-        quiz_id = dlms.save_quiz_to_db(title, f"{title}.html", [question])
+        quiz_id = seed_current_quiz(
+            dlms.get_db, title, f"{title}.html", [question]
+        )
         dlms.add_quiz_to_registry(quiz_id, f"{title}.html", title)
         return quiz_id
 

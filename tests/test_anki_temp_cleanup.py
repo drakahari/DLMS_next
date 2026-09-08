@@ -87,6 +87,8 @@ class AnkiTemporaryCleanupTests(unittest.TestCase):
         )
 
     def test_history_review_export_uses_registry_quiz_title_for_deck_and_file(self):
+        # Deliberately minimal projection fixture: this test isolates APKG
+        # response naming/cleanup and does not model the supported full schema.
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
         conn.executescript("""
@@ -96,9 +98,14 @@ class AnkiTemporaryCleanupTests(unittest.TestCase):
                 attempt_id TEXT, attempt_question_number INTEGER,
                 question_text TEXT, choices_text TEXT, correct_text TEXT
             );
-            INSERT INTO quizzes VALUES (7, 'Sample downloaded quiz');
-            INSERT INTO attempts VALUES ('history-attempt', 7);
-            INSERT INTO missed_questions VALUES (
+            INSERT INTO quizzes (id, title)
+                VALUES (7, 'Sample downloaded quiz');
+            INSERT INTO attempts (id, quiz_id)
+                VALUES ('history-attempt', 7);
+            INSERT INTO missed_questions (
+                attempt_id, attempt_question_number, question_text,
+                choices_text, correct_text
+            ) VALUES (
                 'history-attempt', 2, 'Which protocol?', 'A. HTTP\nB. DNS', 'B. DNS'
             );
         """)

@@ -6,11 +6,12 @@ os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 
 
 class LearningIntelligenceTests(unittest.TestCase):
     def _make_tagged_quiz(self, concept):
-        quiz_id = dlms.save_quiz_to_db(f"LI {uuid.uuid4()}", f"li-{uuid.uuid4()}.txt", [{
+        quiz_id = seed_current_quiz(dlms.get_db, f"LI {uuid.uuid4()}", f"li-{uuid.uuid4()}.txt", [{
             "number": 1,
             "question": "Test question",
             "choices": [

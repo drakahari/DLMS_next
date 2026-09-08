@@ -5,6 +5,7 @@ os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 
 
 class LearningFoundationTests(unittest.TestCase):
@@ -15,10 +16,8 @@ class LearningFoundationTests(unittest.TestCase):
         self.assertTrue({"concepts", "question_concepts", "learning_events"}.issubset(tables))
 
     def test_concept_normalization_and_assignment(self):
-        conn = dlms.get_db()
-        cur = conn.cursor()
         source = f"learning-{uuid.uuid4()}.txt"
-        quiz_id = dlms.save_quiz_to_db("Learning Test", source, [{
+        quiz_id = seed_current_quiz(dlms.get_db, "Learning Test", source, [{
             "number": 1,
             "question": "Which control limits access?",
             "choices": [
@@ -27,7 +26,6 @@ class LearningFoundationTests(unittest.TestCase):
             ],
             "concepts": ["IAM", "Authentication", "iam"],
         }])
-        conn.close()
         conn = dlms.get_db()
         cur = conn.cursor()
         qid = cur.execute("SELECT id FROM questions WHERE quiz_id=?", (quiz_id,)).fetchone()[0]

@@ -5,11 +5,12 @@ os.environ['QUIZAPP_DATA_DIR'] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 
 
 class LearningDiagnosticsTests(unittest.TestCase):
     def _quiz(self, concept=None, question='Which option is correct?'):
-        quiz_id = dlms.save_quiz_to_db(f'Diagnostics {uuid.uuid4()}', f'diagnostics-{uuid.uuid4()}.html', [{
+        quiz_id = seed_current_quiz(dlms.get_db, f'Diagnostics {uuid.uuid4()}', f'diagnostics-{uuid.uuid4()}.html', [{
             'number': 1,
             'question': question,
             'choices': [
@@ -51,7 +52,7 @@ class LearningDiagnosticsTests(unittest.TestCase):
     def test_review_clones_group_with_identical_source_question(self):
         question=f'Grouped diagnostic question {uuid.uuid4()}?'
         quiz_id,qid=self._quiz(f'Group-{uuid.uuid4()}',question=question)
-        clone=dlms.save_quiz_to_db('Smart Review — Diagnostics',f'smart_review_{uuid.uuid4()}.html',[{
+        clone=seed_current_quiz(dlms.get_db, 'Smart Review — Diagnostics',f'smart_review_{uuid.uuid4()}.html',[{
             'number':1,'question':question,
             'choices':[{'label':'A','text':'Correct answer','is_correct':True},{'label':'B','text':'Common distractor','is_correct':False},{'label':'C','text':'Unused distractor','is_correct':False}],
         }])

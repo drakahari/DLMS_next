@@ -11,6 +11,7 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 from tests.csrf_test_utils import csrf_token
 
 
@@ -39,37 +40,21 @@ class AnkiTsvCurrentSchemaTests(unittest.TestCase):
         self.assertNotIn("text", columns)
 
     def _insert_quiz_question(self):
-        conn = sqlite3.connect(self.db_path)
-        try:
-            conn.execute(
-                "INSERT INTO quizzes (id, title, source_file) VALUES (?, ?, ?)",
-                (3, "Quiz One", "quiz-one.html"),
-            )
-            conn.execute(
-                """
-                INSERT INTO questions (
-                    id, quiz_id, question_number, question_text
-                ) VALUES (?, ?, ?, ?)
-                """,
-                (31, 3, 9, "What\tis <x>?"),
-            )
-            conn.execute(
-                """
-                INSERT INTO choices (question_id, label, text, is_correct)
-                VALUES (?, ?, ?, ?)
-                """,
-                (31, "A", "Alpha\tvalue", 0),
-            )
-            conn.execute(
-                """
-                INSERT INTO choices (question_id, label, text, is_correct)
-                VALUES (?, ?, ?, ?)
-                """,
-                (31, "B", "Beta", 1),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        seed_current_quiz(
+            dlms.get_db,
+            "Quiz One",
+            "quiz-one.html",
+            [{
+                "id": 31,
+                "number": 9,
+                "question": "What\tis <x>?",
+                "choices": [
+                    {"label": "A", "text": "Alpha\tvalue", "is_correct": False},
+                    {"label": "B", "text": "Beta", "is_correct": True},
+                ],
+            }],
+            quiz_id=3,
+        )
 
     def _insert_missed_attempt(self):
         self._insert_quiz_question()

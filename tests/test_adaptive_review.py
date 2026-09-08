@@ -6,6 +6,7 @@ os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 
 
 class AdaptiveReviewTests(unittest.TestCase):
@@ -49,7 +50,7 @@ class AdaptiveReviewTests(unittest.TestCase):
             conn.close()
 
     def _tagged_quiz(self, concept, results=None):
-        quiz_id = dlms.save_quiz_to_db(f"Adaptive {uuid.uuid4()}", f"adaptive-{uuid.uuid4()}.html", [{
+        quiz_id = seed_current_quiz(dlms.get_db, f"Adaptive {uuid.uuid4()}", f"adaptive-{uuid.uuid4()}.html", [{
             "number": 1,
             "question": f"Adaptive question {uuid.uuid4()}?",
             "choices": [
@@ -134,7 +135,7 @@ class AdaptiveReviewTests(unittest.TestCase):
     def test_spaced_review_candidates_exclude_review_clones(self):
         concept = f"Clone-{uuid.uuid4()}"
         source_quiz, _ = self._tagged_quiz(concept, [True, True, True, True, True])
-        dlms.save_quiz_to_db("Spaced Review — Old", f"spaced_review_{uuid.uuid4()}.html", [{
+        seed_current_quiz(dlms.get_db, "Spaced Review — Old", f"spaced_review_{uuid.uuid4()}.html", [{
             "number": 1,
             "question": "Clone-only review question?",
             "choices": [{"label":"A","text":"Correct","is_correct":True},{"label":"B","text":"Wrong","is_correct":False}],

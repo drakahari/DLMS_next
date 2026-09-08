@@ -11,6 +11,7 @@ os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 
 
 class HistoryApiPaginationTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class HistoryApiPaginationTests(unittest.TestCase):
         self.client = dlms.app.test_client()
 
     def _quiz(self, title, source_type=None):
-        quiz_id = dlms.save_quiz_to_db(title, f"{title}.txt", [{
+        quiz_id = seed_current_quiz(dlms.get_db, title, f"{title}.txt", [{
             "number": 1,
             "question": "Question?",
             "choices": [
@@ -113,7 +114,7 @@ class HistoryApiPaginationTests(unittest.TestCase):
 
     def test_origin_filter_and_tied_ordering(self):
         quiz_id = self._quiz("IT Quiz", "it")
-        other_quiz_id = dlms.save_quiz_to_db("Manual Quiz", "manual.txt", [{
+        other_quiz_id = seed_current_quiz(dlms.get_db, "Manual Quiz", "manual.txt", [{
             "number": 1, "question": "Question?",
             "choices": [{"label": "A", "text": "Yes", "is_correct": True}, {"label": "B", "text": "No", "is_correct": False}],
         }])
@@ -215,6 +216,8 @@ class HistoryApiPaginationTests(unittest.TestCase):
         self.assertIsNone(attempt["source_dataset_id"])
 
     def test_legacy_attempt_schema_without_public_id_keeps_pk_fallback(self):
+        # Deliberately reduced historical projection for the legacy fallback;
+        # current-schema behavior is seeded through tests.current_schema above.
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
         try:

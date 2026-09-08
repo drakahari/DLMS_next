@@ -3682,24 +3682,6 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
     return quiz_id  # ✅ REQUIRED FOR REGISTRY + DELETE
 
 
-def save_quiz_to_db(quiz_title, source_file, quiz_data, logo_filename=None):
-    """Compatibility wrapper that owns and commits one quiz transaction."""
-    conn = get_db()
-    try:
-        conn.execute("BEGIN")
-        quiz_id = _insert_quiz_rows(
-            conn, quiz_title, source_file, quiz_data, logo_filename
-        )
-        conn.commit()
-        return quiz_id
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-
 # =========================
 # BUILD FROM IMAGES
 # =========================

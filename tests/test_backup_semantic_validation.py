@@ -37,6 +37,8 @@ class BackupSemanticValidationTests(unittest.TestCase):
         return manifest
 
     def _write_core_database(self, path, *, omit_table=None, omit_question_text=False):
+        # Deliberately minimal restore-inspector fixture. It models only the
+        # DLMS_BACKUP_CORE_DB_SCHEMA contract, not the full current schema.
         definitions = {
             "quizzes": "id INTEGER, title TEXT, source_file TEXT",
             "questions": "id INTEGER, quiz_id INTEGER, question_number INTEGER" +

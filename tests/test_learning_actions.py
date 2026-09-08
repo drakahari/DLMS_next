@@ -6,11 +6,12 @@ os.environ["QUIZAPP_DATA_DIR"] = _TEMP.name
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import seed_current_quiz
 
 
 class LearningActionsTests(unittest.TestCase):
     def _weak_quiz(self, concept):
-        quiz_id = dlms.save_quiz_to_db(f"Review {uuid.uuid4()}", f"review-{uuid.uuid4()}.txt", [{
+        quiz_id = seed_current_quiz(dlms.get_db, f"Review {uuid.uuid4()}", f"review-{uuid.uuid4()}.txt", [{
             "number": 1,
             "question": "Which answer is correct?",
             "choices": [
@@ -162,7 +163,7 @@ if __name__ == "__main__":
 
 class SmartReviewDiversityRegressionTests(unittest.TestCase):
     def _make_quiz(self, title, source_file, questions):
-        return dlms.save_quiz_to_db(title, source_file, questions)
+        return seed_current_quiz(dlms.get_db, title, source_file, questions)
 
     def _make_concept_weak(self, concept, quiz_id, question_id):
         conn = dlms.get_db(); cur = conn.cursor()

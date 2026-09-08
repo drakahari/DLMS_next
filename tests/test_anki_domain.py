@@ -1,7 +1,7 @@
 """Golden characterization coverage for the Anki domain/export helpers."""
 
 import os
-import sqlite3
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -11,42 +11,43 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
+from tests.current_schema import bootstrap_current_schema_database
 from tests.csrf_test_utils import csrf_token
 
 
-def _connection(schema, statements=()):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript(schema)
-    for statement, parameters in statements:
-        conn.execute(statement, parameters)
-    conn.commit()
-    return conn
-
-
 class AnkiDomainTests(unittest.TestCase):
-    def test_quiz_rows_preserve_schema_field_order_and_card_order(self):
-        conn = _connection(
-            """
-            CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT);
-            CREATE TABLE questions (
-                id INTEGER PRIMARY KEY, quiz_id INTEGER,
-                question_number INTEGER, question_text TEXT
-            );
-            CREATE TABLE choices (
-                question_id INTEGER, label TEXT, text TEXT, is_correct INTEGER
-            );
-            """,
-            (
-                ("INSERT INTO quizzes VALUES (?, ?)", (7, "Network Review")),
-                ("INSERT INTO questions VALUES (?, ?, ?, ?)", (72, 7, 2, " Second? ")),
-                ("INSERT INTO questions VALUES (?, ?, ?, ?)", (71, 7, 1, " First? ")),
-                ("INSERT INTO choices VALUES (?, ?, ?, ?)", (71, "B", " Beta ", 1)),
-                ("INSERT INTO choices VALUES (?, ?, ?, ?)", (71, "A", " Alpha ", 0)),
-            ),
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="dlms-anki-domain-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def _database(self, name):
+        return bootstrap_current_schema_database(
+            self.root / name,
+            bootstrap_database=dlms.bootstrap_database,
         )
 
-        with mock.patch.object(dlms, "get_db", return_value=conn):
+    def test_quiz_rows_preserve_schema_field_order_and_card_order(self):
+        database = self._database("quiz-rows.db")
+        database.seed_quiz(
+            "Network Review",
+            "network-review.html",
+            [
+                {"id": 72, "number": 2, "question": " Second? "},
+                {
+                    "id": 71,
+                    "number": 1,
+                    "question": " First? ",
+                    "choices": [
+                        {"label": "B", "text": " Beta ", "is_correct": True},
+                        {"label": "A", "text": " Alpha ", "is_correct": False},
+                    ],
+                },
+            ],
+            quiz_id=7,
+        )
+
+        with mock.patch.object(dlms, "get_db", side_effect=database.connect):
             title, rows = dlms.build_anki_rows_for_quiz("7")
 
         self.assertEqual("Network Review", title)
@@ -63,39 +64,48 @@ class AnkiDomainTests(unittest.TestCase):
         self.assertEqual((None, []), dlms.build_anki_rows_for_quiz("not-an-id"))
 
     def test_missed_rows_preserve_schema_status_text_and_sorting(self):
-        conn = _connection(
-            """
-            CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT);
-            CREATE TABLE attempts (
-                id TEXT PRIMARY KEY, quiz_id INTEGER, completed_at TEXT
-            );
-            CREATE TABLE missed_questions (
-                id INTEGER PRIMARY KEY, attempt_id TEXT, question_id INTEGER,
-                attempt_question_number INTEGER, question_text TEXT,
-                choices_text TEXT, correct_text TEXT, correct_letters TEXT
-            );
-            """,
-            (
-                ("INSERT INTO quizzes VALUES (?, ?)", (1, "Security Quiz")),
-                ("INSERT INTO attempts VALUES (?, ?, ?)", ("a1", 1, "2026-01-01T10:00:00")),
-                ("INSERT INTO attempts VALUES (?, ?, ?)", ("a2", 1, "2026-01-02T10:00:00")),
-                ("INSERT INTO attempts VALUES (?, ?, ?)", ("a3", 1, "2026-01-03T10:00:00")),
-                (
-                    "INSERT INTO missed_questions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (1, "a1", 11, 1, "Recovered?", "A. No\nB. Yes", "B. Yes", "B"),
-                ),
-                (
-                    "INSERT INTO missed_questions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (2, "a2", 12, 2, "Weak?", "A. No\nB. Yes", "B. Yes", "B"),
-                ),
-                (
-                    "INSERT INTO missed_questions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (3, "a3", 12, 2, "Weak?", "A. No\nB. Yes", "B. Yes", "B"),
-                ),
-            ),
+        database = self._database("missed-rows.db")
+        database.seed_quiz(
+            "Security Quiz",
+            "security-quiz.html",
+            [
+                {"id": 11, "number": 1, "question": "Recovered?"},
+                {"id": 12, "number": 2, "question": "Weak?"},
+            ],
+            quiz_id=1,
         )
+        connection = database.connect()
+        try:
+            connection.executemany(
+                """
+                INSERT INTO attempts (
+                    id, quiz_id, completed_at, score, total, percent, mode
+                ) VALUES (?, ?, ?, 0, 1, 0, 'Exam')
+                """,
+                [
+                    ("a1", 1, "2026-01-01T10:00:00"),
+                    ("a2", 1, "2026-01-02T10:00:00"),
+                    ("a3", 1, "2026-01-03T10:00:00"),
+                ],
+            )
+            connection.executemany(
+                """
+                INSERT INTO missed_questions (
+                    id, attempt_id, question_id, attempt_question_number,
+                    question_text, choices_text, correct_text, correct_letters
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (1, "a1", 11, 1, "Recovered?", "A. No\nB. Yes", "B. Yes", "B"),
+                    (2, "a2", 12, 2, "Weak?", "A. No\nB. Yes", "B. Yes", "B"),
+                    (3, "a3", 12, 2, "Weak?", "A. No\nB. Yes", "B. Yes", "B"),
+                ],
+            )
+            connection.commit()
+        finally:
+            connection.close()
 
-        with mock.patch.object(dlms, "get_db", return_value=conn):
+        with mock.patch.object(dlms, "get_db", side_effect=database.connect):
             rows = dlms.build_anki_rows_for_missed(None, 1, "all")
 
         self.assertEqual(["currently_weak", "recovered"], [row["recovery_status"] for row in rows])
@@ -196,24 +206,23 @@ class AnkiDomainTests(unittest.TestCase):
         self.assertEqual([], dlms.build_custom_anki_rows())
 
     def test_quiz_tsv_preserves_exact_html_tags_delimiters_and_newlines(self):
-        conn = _connection(
-            """
-            CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT);
-            CREATE TABLE questions (
-                id INTEGER PRIMARY KEY, quiz_id INTEGER,
-                question_number INTEGER, question_text TEXT
-            );
-            CREATE TABLE choices (question_id INTEGER, label TEXT, text TEXT, is_correct INTEGER);
-            """,
-            (
-                ("INSERT INTO quizzes VALUES (?, ?)", (3, "Quiz One")),
-                ("INSERT INTO questions VALUES (?, ?, ?, ?)", (31, 3, 1, "What\tis <x>?")),
-                ("INSERT INTO choices VALUES (?, ?, ?, ?)", (31, "A", "Alpha\tvalue", 0)),
-                ("INSERT INTO choices VALUES (?, ?, ?, ?)", (31, "B", "Beta", 1)),
-            ),
+        database = self._database("quiz-tsv.db")
+        database.seed_quiz(
+            "Quiz One",
+            "quiz-one.html",
+            [{
+                "id": 31,
+                "number": 1,
+                "question": "What\tis <x>?",
+                "choices": [
+                    {"label": "A", "text": "Alpha\tvalue", "is_correct": False},
+                    {"label": "B", "text": "Beta", "is_correct": True},
+                ],
+            }],
+            quiz_id=3,
         )
 
-        with mock.patch.object(dlms, "get_db", return_value=conn):
+        with mock.patch.object(dlms, "get_db", side_effect=database.connect):
             tsv = dlms.export_anki_tsv_for_quiz(3)
 
         self.assertEqual(
@@ -224,46 +233,54 @@ class AnkiDomainTests(unittest.TestCase):
         )
         self.assertFalse(tsv.endswith("\n"))
 
-        empty_conn = _connection(
-            """
-            CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT);
-            CREATE TABLE questions (
-                id INTEGER PRIMARY KEY, quiz_id INTEGER,
-                question_number INTEGER, question_text TEXT
-            );
-            CREATE TABLE choices (question_id INTEGER, label TEXT, text TEXT, is_correct INTEGER);
-            """
-        )
-        with mock.patch.object(dlms, "get_db", return_value=empty_conn):
-            self.assertEqual("Front\tBack\tTags", dlms.export_anki_tsv_for_quiz(99))
+        empty_database = self._database("empty-quiz-tsv.db")
+        with mock.patch.object(
+            dlms, "get_db", side_effect=empty_database.connect
+        ):
+            self.assertEqual(
+                "Front\tBack\tTags", dlms.export_anki_tsv_for_quiz(99)
+            )
 
     def test_missed_tsv_route_preserves_exact_rows_tags_encoding_and_filename(self):
-        conn = _connection(
-            """
-            CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT);
-            CREATE TABLE attempts (id TEXT PRIMARY KEY, quiz_id INTEGER);
-            CREATE TABLE questions (
-                id INTEGER PRIMARY KEY, quiz_id INTEGER,
-                question_number INTEGER, question_text TEXT
-            );
-            CREATE TABLE choices (question_id INTEGER, label TEXT, text TEXT, is_correct INTEGER);
-            CREATE TABLE missed_questions (
-                attempt_id TEXT, question_id INTEGER,
-                attempt_question_number INTEGER
-            );
-            """,
-            (
-                ("INSERT INTO quizzes VALUES (?, ?)", (4, "Café Quiz")),
-                ("INSERT INTO attempts VALUES (?, ?)", ("attempt", 4)),
-                ("INSERT INTO questions VALUES (?, ?, ?, ?)", (41, 4, 9, "Question\tüber?")),
-                ("INSERT INTO choices VALUES (?, ?, ?, ?)", (41, "B", "Beta", 1)),
-                ("INSERT INTO choices VALUES (?, ?, ?, ?)", (41, "A", "Alpha\tvalue", 0)),
-                ("INSERT INTO missed_questions VALUES (?, ?, ?)", ("attempt", 41, 1)),
-            ),
+        database = self._database("missed-tsv.db")
+        database.seed_quiz(
+            "Café Quiz",
+            "cafe-quiz.html",
+            [{
+                "id": 41,
+                "number": 9,
+                "question": "Question\tüber?",
+                "choices": [
+                    {"label": "B", "text": "Beta", "is_correct": True},
+                    {"label": "A", "text": "Alpha\tvalue", "is_correct": False},
+                ],
+            }],
+            quiz_id=4,
         )
+        connection = database.connect()
+        try:
+            connection.execute(
+                """
+                INSERT INTO attempts (
+                    id, quiz_id, score, total, percent, mode
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("attempt", 4, 0, 1, 0, "Exam"),
+            )
+            connection.execute(
+                """
+                INSERT INTO missed_questions (
+                    attempt_id, question_id, attempt_question_number
+                ) VALUES (?, ?, ?)
+                """,
+                ("attempt", 41, 1),
+            )
+            connection.commit()
+        finally:
+            connection.close()
         client = dlms.app.test_client()
 
-        with mock.patch.object(dlms, "get_db", return_value=conn):
+        with mock.patch.object(dlms, "get_db", side_effect=database.connect):
             response = client.post(
                 "/export/anki/missed",
                 json={"attempt_id": "attempt", "attempt_question_numbers": [1]},
