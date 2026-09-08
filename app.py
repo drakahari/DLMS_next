@@ -5121,8 +5121,8 @@ def _load_anki_missed_tsv_rows(attempt_id, attempt_qnums):
         f"""
         SELECT
             mq.attempt_question_number,
-            q.number AS question_number,
-            q.text AS question_text,
+            q.question_number AS question_number,
+            q.question_text AS question_text,
             (
                 SELECT GROUP_CONCAT(x, CHAR(10))
                 FROM (

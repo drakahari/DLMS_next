@@ -707,8 +707,8 @@ def export_anki_tsv_for_quiz(quiz_id, *, get_db):
 
     cur.execute("""
         SELECT
-            q.number AS question_number,
-            q.text   AS question_text,
+            q.question_number AS question_number,
+            q.question_text   AS question_text,
             qu.title AS quiz_title,
             GROUP_CONCAT(
                 c.label || '. ' || c.text,
@@ -727,7 +727,7 @@ def export_anki_tsv_for_quiz(quiz_id, *, get_db):
         JOIN choices c ON c.question_id = q.id
         WHERE q.quiz_id = ?
         GROUP BY q.id
-        ORDER BY q.number
+        ORDER BY q.question_number
     """, (quiz_id,))
 
     rows = cur.fetchall()

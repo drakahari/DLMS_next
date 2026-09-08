@@ -199,7 +199,10 @@ class AnkiDomainTests(unittest.TestCase):
         conn = _connection(
             """
             CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT);
-            CREATE TABLE questions (id INTEGER PRIMARY KEY, quiz_id INTEGER, number INTEGER, text TEXT);
+            CREATE TABLE questions (
+                id INTEGER PRIMARY KEY, quiz_id INTEGER,
+                question_number INTEGER, question_text TEXT
+            );
             CREATE TABLE choices (question_id INTEGER, label TEXT, text TEXT, is_correct INTEGER);
             """,
             (
@@ -224,7 +227,10 @@ class AnkiDomainTests(unittest.TestCase):
         empty_conn = _connection(
             """
             CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT);
-            CREATE TABLE questions (id INTEGER PRIMARY KEY, quiz_id INTEGER, number INTEGER, text TEXT);
+            CREATE TABLE questions (
+                id INTEGER PRIMARY KEY, quiz_id INTEGER,
+                question_number INTEGER, question_text TEXT
+            );
             CREATE TABLE choices (question_id INTEGER, label TEXT, text TEXT, is_correct INTEGER);
             """
         )
@@ -236,7 +242,10 @@ class AnkiDomainTests(unittest.TestCase):
             """
             CREATE TABLE quizzes (id INTEGER PRIMARY KEY, title TEXT);
             CREATE TABLE attempts (id TEXT PRIMARY KEY, quiz_id INTEGER);
-            CREATE TABLE questions (id INTEGER PRIMARY KEY, number INTEGER, text TEXT);
+            CREATE TABLE questions (
+                id INTEGER PRIMARY KEY, quiz_id INTEGER,
+                question_number INTEGER, question_text TEXT
+            );
             CREATE TABLE choices (question_id INTEGER, label TEXT, text TEXT, is_correct INTEGER);
             CREATE TABLE missed_questions (
                 attempt_id TEXT, question_id INTEGER,
@@ -246,7 +255,7 @@ class AnkiDomainTests(unittest.TestCase):
             (
                 ("INSERT INTO quizzes VALUES (?, ?)", (4, "Café Quiz")),
                 ("INSERT INTO attempts VALUES (?, ?)", ("attempt", 4)),
-                ("INSERT INTO questions VALUES (?, ?, ?)", (41, 9, "Question\tüber?")),
+                ("INSERT INTO questions VALUES (?, ?, ?, ?)", (41, 4, 9, "Question\tüber?")),
                 ("INSERT INTO choices VALUES (?, ?, ?, ?)", (41, "B", "Beta", 1)),
                 ("INSERT INTO choices VALUES (?, ?, ?, ?)", (41, "A", "Alpha\tvalue", 0)),
                 ("INSERT INTO missed_questions VALUES (?, ?, ?)", ("attempt", 41, 1)),
