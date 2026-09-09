@@ -106,9 +106,15 @@ class ServerStartupTests(unittest.TestCase):
         for host, expected in (
             ("localhost", True),
             ("LOCALHOST", True),
+            ("127.0.0.1", True),
             ("127.0.0.2", True),
             ("::1", True),
+            ("::ffff:127.0.0.1", True),
             ("0.0.0.0", False),
+            ("::", False),
+            ("192.168.1.40", False),
+            ("203.0.113.20", False),
+            ("2001:db8::20", False),
             ("study-host.local", False),
         ):
             with self.subTest(host=host):
@@ -129,6 +135,42 @@ class ServerStartupTests(unittest.TestCase):
         )
         self.assertEqual("::1", options["host"])
         self.assertFalse(options["open_browser"])
+
+    def test_browser_presence_runtime_eligibility_uses_bind_host_classifier(self):
+        manager = mock.Mock()
+        with mock.patch.object(dlms, "browser_presence_manager", manager):
+            for host, expected in (
+                ("127.0.0.1", True),
+                ("localhost", True),
+                ("::1", True),
+                ("0.0.0.0", False),
+                ("::", False),
+                ("10.20.30.40", False),
+                ("2001:db8::40", False),
+            ):
+                with self.subTest(host=host):
+                    self.assertIs(
+                        expected, dlms._configure_browser_presence_runtime(host)
+                    )
+                    manager.set_runtime_eligible.assert_called_with(expected)
+
+    def test_server_mode_presence_startup_applies_host_policy_before_preference(self):
+        manager = mock.Mock()
+        manager.start.return_value = True
+        with mock.patch.object(dlms, "browser_presence_manager", manager), mock.patch.object(
+            dlms,
+            "load_portal_config",
+            return_value={"automatic_browser_shutdown_enabled": True},
+        ):
+            self.assertTrue(dlms.start_browser_presence_monitor("0.0.0.0"))
+        self.assertEqual(
+            [
+                mock.call.set_runtime_eligible(False),
+                mock.call.set_enabled(True),
+                mock.call.start(),
+            ],
+            manager.method_calls,
+        )
 
     def test_desktop_detection_preserves_platform_display_and_ssh_rules(self):
         with mock.patch.dict(dlms.os.environ, {}, clear=True), mock.patch.object(

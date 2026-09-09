@@ -30,6 +30,7 @@ class BrowserPresenceManager:
         grace_seconds=BROWSER_PRESENCE_SHUTDOWN_GRACE_SECONDS,
         poll_seconds=BROWSER_PRESENCE_POLL_SECONDS,
         suspend_gap_seconds=BROWSER_PRESENCE_SUSPEND_GAP_SECONDS,
+        runtime_eligible=True,
     ):
         self._shutdown_callback = shutdown_callback
         self._clock = clock
@@ -39,7 +40,8 @@ class BrowserPresenceManager:
         self.poll_seconds = float(poll_seconds)
         self.suspend_gap_seconds = float(suspend_gap_seconds)
         self._lock = threading.RLock()
-        self._enabled = False
+        self._preference_enabled = False
+        self._runtime_eligible = bool(runtime_eligible)
         self._presences = {}
         self._absence_started_at = None
         self._critical_operations = 0
@@ -86,18 +88,44 @@ class BrowserPresenceManager:
         now = self._clock() if now is None else float(now)
         enabled = bool(enabled)
         with self._lock:
-            if enabled == self._enabled:
-                return
-            self._enabled = enabled
-            self._presences.clear()
-            self._shutdown_requested = False
-            self._absence_started_at = now if enabled else None
+            was_enabled = self._effective_enabled_locked()
+            self._preference_enabled = enabled
+            self._apply_effective_transition_locked(was_enabled, now)
+
+    def set_runtime_eligible(self, eligible, *, now=None):
+        """Apply bind-host policy without changing the saved preference."""
+        now = self._clock() if now is None else float(now)
+        with self._lock:
+            was_enabled = self._effective_enabled_locked()
+            self._runtime_eligible = bool(eligible)
+            self._apply_effective_transition_locked(was_enabled, now)
+
+    @property
+    def runtime_eligible(self):
+        with self._lock:
+            return self._runtime_eligible
+
+    @property
+    def preference_enabled(self):
+        with self._lock:
+            return self._preference_enabled
+
+    def _effective_enabled_locked(self):
+        return self._preference_enabled and self._runtime_eligible
+
+    def _apply_effective_transition_locked(self, was_enabled, now):
+        is_enabled = self._effective_enabled_locked()
+        if is_enabled == was_enabled:
+            return
+        self._presences.clear()
+        self._shutdown_requested = False
+        self._absence_started_at = now if is_enabled else None
 
     def heartbeat(self, token, *, now=None):
         token = self.validate_token(token)
         now = self._clock() if now is None else float(now)
         with self._lock:
-            if not self._enabled:
+            if not self._effective_enabled_locked():
                 return False
             self._presences[token] = now
             self._absence_started_at = None
@@ -108,7 +136,7 @@ class BrowserPresenceManager:
         token = self.validate_token(token)
         now = self._clock() if now is None else float(now)
         with self._lock:
-            if not self._enabled:
+            if not self._effective_enabled_locked():
                 return False
             removed = self._presences.pop(token, None) is not None
             self._expire_stale_locked(now)
@@ -167,7 +195,7 @@ class BrowserPresenceManager:
                 self._defer_for_clock_gap_locked(now - self._last_poll_at)
             self._last_poll_at = now
 
-            if not self._enabled or self._shutdown_requested:
+            if not self._effective_enabled_locked() or self._shutdown_requested:
                 return False
             self._expire_stale_locked(now)
             if self._presences:
@@ -194,7 +222,7 @@ class BrowserPresenceManager:
         with self._lock:
             self._expire_stale_locked(now)
             return {
-                "enabled": self._enabled,
+                "enabled": self._effective_enabled_locked(),
                 "active_clients": len(self._presences),
                 "grace_started": self._absence_started_at is not None,
                 "critical_operations": self._critical_operations,
@@ -207,7 +235,7 @@ class BrowserPresenceManager:
         with self._lock:
             self._expire_stale_locked(now)
             still_due = (
-                self._enabled
+                self._effective_enabled_locked()
                 and self._shutdown_requested
                 and not self._presences
                 and self._absence_started_at is not None

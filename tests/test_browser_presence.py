@@ -61,6 +61,25 @@ class BrowserPresenceManagerTests(unittest.TestCase):
         self.shutdown.assert_not_called()
         self.assertFalse(self.manager.heartbeat("page_disabled_123456"))
 
+    def test_enabled_preference_has_no_authority_when_runtime_is_ineligible(self):
+        self.manager.set_runtime_eligible(False)
+        self.manager.set_enabled(True)
+        self.clock.advance(1000)
+        self.assertFalse(self.manager.poll_once())
+        self.assertFalse(self.manager.heartbeat("page_server_mode_123456"))
+        self.assertFalse(self.manager.snapshot()["enabled"])
+        self.assertTrue(self.manager.preference_enabled)
+        self.shutdown.assert_not_called()
+
+    def test_saved_preference_reactivates_after_return_to_loopback_mode(self):
+        self.manager.set_runtime_eligible(False)
+        self.manager.set_enabled(True)
+        self.manager.set_runtime_eligible(True)
+        self.assertTrue(self.manager.snapshot()["enabled"])
+        self.clock.advance(300)
+        self.assertTrue(self.manager.poll_once())
+        self.shutdown.assert_called_once_with()
+
     def test_one_live_tab_stays_running_and_stale_token_eventually_expires(self):
         self.manager.set_enabled(True)
         self.assertTrue(self.manager.heartbeat("page_one_live_123456"))
@@ -134,6 +153,15 @@ class BrowserPresenceManagerTests(unittest.TestCase):
         self.assertFalse(self.manager.complete_automatic_shutdown(final_shutdown))
         final_shutdown.assert_not_called()
 
+    def test_final_shutdown_check_rejects_runtime_that_became_ineligible(self):
+        final_shutdown = mock.Mock()
+        self.manager.set_enabled(True)
+        self.clock.advance(300)
+        self.assertTrue(self.manager.poll_once())
+        self.manager.set_runtime_eligible(False)
+        self.assertFalse(self.manager.complete_automatic_shutdown(final_shutdown))
+        final_shutdown.assert_not_called()
+
     def test_suspend_gap_does_not_consume_presence_or_grace_time(self):
         self.manager.set_enabled(True)
         self.manager.poll_once()
@@ -177,6 +205,8 @@ class BrowserPresenceIntegrationTests(unittest.TestCase):
             self.assertNotIn(
                 'name="automatic_browser_shutdown_enabled" checked', page
             )
+            self.assertNotIn("Unavailable in LAN/server mode", page)
+            self.assertNotIn(" disabled", page)
 
             response = self.client.post(
                 "/settings/lifecycle/save",
@@ -209,6 +239,65 @@ class BrowserPresenceIntegrationTests(unittest.TestCase):
             saved = json.loads(self.portal_path.read_text(encoding="utf-8"))
             self.assertIs(False, saved["automatic_browser_shutdown_enabled"])
             manager.set_enabled.assert_called_with(False)
+
+    def test_server_mode_disables_control_and_preserves_saved_preference(self):
+        self.portal_path.write_text(
+            json.dumps({"automatic_browser_shutdown_enabled": True}),
+            encoding="utf-8",
+        )
+        manager = BrowserPresenceManager(mock.Mock(), clock=FakeClock())
+        manager.set_runtime_eligible(False)
+        manager.set_enabled(True)
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)), mock.patch.object(
+            dlms, "browser_presence_manager", manager
+        ):
+            page = self.client.get("/settings/lifecycle").get_data(as_text=True)
+            self.assertIn("Unavailable in LAN/server mode", page)
+            self.assertIn("Closing all remote browser tabs will not stop DLMS", page)
+            self.assertIn(
+                'name="automatic_browser_shutdown_enabled" checked disabled', page
+            )
+
+            response = self.client.post(
+                "/settings/lifecycle/save",
+                data={
+                    "csrf_token": csrf_token(self.client, "/settings/lifecycle"),
+                    "automatic_browser_shutdown_enabled": "on",
+                },
+                follow_redirects=False,
+            )
+        self.assertEqual(302, response.status_code)
+        self.assertEqual(
+            "/settings/lifecycle?unavailable=1", response.headers["Location"]
+        )
+        saved = json.loads(self.portal_path.read_text(encoding="utf-8"))
+        self.assertIs(True, saved["automatic_browser_shutdown_enabled"])
+        self.assertFalse(manager.snapshot()["enabled"])
+        self.assertTrue(manager.preference_enabled)
+
+    def test_forged_server_mode_enable_does_not_change_disabled_preference(self):
+        self.portal_path.write_text(
+            json.dumps({"automatic_browser_shutdown_enabled": False}),
+            encoding="utf-8",
+        )
+        manager = BrowserPresenceManager(mock.Mock(), clock=FakeClock())
+        manager.set_runtime_eligible(False)
+        with mock.patch.object(dlms, "PORTAL_CONFIG", str(self.portal_path)), mock.patch.object(
+            dlms, "browser_presence_manager", manager
+        ):
+            response = self.client.post(
+                "/settings/lifecycle/save",
+                data={
+                    "csrf_token": csrf_token(self.client, "/settings/lifecycle"),
+                    "automatic_browser_shutdown_enabled": "on",
+                },
+                follow_redirects=False,
+            )
+        self.assertEqual(302, response.status_code)
+        saved = json.loads(self.portal_path.read_text(encoding="utf-8"))
+        self.assertIs(False, saved["automatic_browser_shutdown_enabled"])
+        self.assertFalse(manager.preference_enabled)
+        self.assertFalse(manager.snapshot()["enabled"])
 
     def test_heartbeat_requires_csrf_and_same_origin_and_accepts_valid_token(self):
         self.assertEqual(400, self.client.post("/api/browser-presence", json={
@@ -253,8 +342,9 @@ class BrowserPresenceIntegrationTests(unittest.TestCase):
         manager.begin_critical_operation.assert_called_once_with()
         manager.end_critical_operation.assert_called_once_with()
 
-    def test_manual_shutdown_still_schedules_immediately(self):
+    def test_manual_shutdown_still_schedules_immediately_in_server_mode(self):
         manager = mock.Mock()
+        manager.runtime_eligible = False
         with mock.patch.object(dlms, "browser_presence_manager", manager), mock.patch.object(
             threading, "Timer"
         ) as timer:

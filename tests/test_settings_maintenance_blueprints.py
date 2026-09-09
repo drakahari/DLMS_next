@@ -198,6 +198,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
         "store_background_upload",
         "validate_custom_ai_url",
         "set_browser_presence_shutdown_enabled",
+        "browser_presence_shutdown_runtime_eligible",
         "print_message",
     }
     MAINTENANCE_DEPENDENCIES = {

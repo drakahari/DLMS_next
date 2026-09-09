@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import http.cookiejar
 import json
 import os
 import shutil
@@ -4488,7 +4489,14 @@ def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
     }
 
 
-def test_browser_presence_survives_navigation_then_stops_isolated_server(tmp_path):
+@pytest.mark.parametrize(
+    ("bind_host", "automatic_shutdown_expected"),
+    (("127.0.0.1", True), ("0.0.0.0", False)),
+    ids=("local-loopback", "lan-server"),
+)
+def test_browser_presence_runtime_mode_isolated_server(
+    tmp_path, bind_host, automatic_shutdown_expected
+):
     firefox = shutil.which("firefox") or shutil.which("firefox-esr")
     if not firefox:
         pytest.skip("Firefox is not installed")
@@ -4506,7 +4514,8 @@ def test_browser_presence_survives_navigation_then_stops_isolated_server(tmp_pat
         "QUIZAPP_DATA_DIR": str(data_root),
         "DLMS_NO_BROWSER": "1",
         "DLMS_BROWSER_TEST_PORT": str(server_port),
-        "DLMS_BROWSER_PRESENCE_TEST_GRACE_SECONDS": "8",
+        "DLMS_BROWSER_TEST_BIND_HOST": bind_host,
+        "DLMS_BROWSER_PRESENCE_TEST_GRACE_SECONDS": "3",
         "DLMS_BROWSER_PRESENCE_TEST_TOKEN_TTL_SECONDS": "0.8",
         "DLMS_BROWSER_PRESENCE_TEST_POLL_SECONDS": "0.05",
         "MOZ_CRASHREPORTER_DISABLE": "1",
@@ -4552,25 +4561,63 @@ def test_browser_presence_survives_navigation_then_stops_isolated_server(tmp_pat
         for path in ("/", "/library", "/library"):
             browser.navigate(base_url + path)
             browser.wait_for("window.dlmsBrowserPresence?.enabled === true")
-            browser.evaluate(
-                "window.__dlmsPresenceProbe=null;"
-                "window.dlmsBrowserPresence.heartbeat().then(value=>window.__dlmsPresenceProbe=value)"
+            accepted = browser.evaluate(
+                "fetch('/api/browser-presence',{method:'POST',"
+                "headers:{'Content-Type':'application/json'},"
+                "body:JSON.stringify({token:window.dlmsBrowserPresence.token,event:'present'})})"
+                ".then(response=>response.json()).then(value=>value.accepted)"
             )
-            browser.wait_for("window.__dlmsPresenceProbe === true")
+            assert accepted is automatic_shutdown_expected
             assert server_process.poll() is None
+
+        if not automatic_shutdown_expected:
+            browser.navigate(base_url + "/settings/lifecycle")
+            assert browser.evaluate(
+                "document.querySelector('[name=automatic_browser_shutdown_enabled]').disabled"
+            ) is True
+            assert "Unavailable in LAN/server mode" in browser.evaluate(
+                "document.body.innerText"
+            )
 
         browser.close()
         browser = None
         _terminate_process_tree(browser_process)
         browser_process = None
 
-        deadline = time.monotonic() + 12
-        while server_process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert server_process.poll() is not None, (
-            "presence-enabled server did not stop after its final browser page expired\n"
-            + server_log.read_text(encoding="utf-8", errors="replace")[-4000:]
-        )
+        if automatic_shutdown_expected:
+            deadline = time.monotonic() + 7
+            while server_process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert server_process.poll() is not None, (
+                "presence-enabled local server did not stop after its final page expired\n"
+                + server_log.read_text(encoding="utf-8", errors="replace")[-4000:]
+            )
+        else:
+            time.sleep(4)
+            assert server_process.poll() is None, (
+                "LAN/server-mode DLMS stopped because browser presence disappeared\n"
+                + server_log.read_text(encoding="utf-8", errors="replace")[-4000:]
+            )
+            cookie_jar = http.cookiejar.CookieJar()
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPCookieProcessor(cookie_jar),
+            )
+            with opener.open(base_url + "/settings/lifecycle", timeout=3):
+                pass
+            csrf_cookie = next(
+                cookie.value
+                for cookie in cookie_jar
+                if cookie.name == "dlms_csrf_token"
+            )
+            shutdown_request = urllib.request.Request(
+                base_url + "/api/shutdown",
+                data=b"",
+                headers={"X-CSRFToken": csrf_cookie},
+            )
+            with opener.open(shutdown_request, timeout=3) as response:
+                assert json.load(response) == {"status": "ok"}
+            server_process.wait(timeout=5)
     finally:
         if browser is not None:
             browser.close()

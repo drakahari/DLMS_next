@@ -27,6 +27,7 @@ class SettingsRouteDependencies:
     store_background_upload: Dependency
     validate_custom_ai_url: Dependency
     set_browser_presence_shutdown_enabled: Dependency
+    browser_presence_shutdown_runtime_eligible: Dependency
     print_message: Dependency
 
 
@@ -50,11 +51,18 @@ def settings_lifecycle_page(dependencies):
         automatic_browser_shutdown_enabled=bool(
             cfg.get("automatic_browser_shutdown_enabled", False)
         ),
+        browser_presence_shutdown_runtime_eligible=bool(
+            dependencies.browser_presence_shutdown_runtime_eligible()
+        ),
     )
 
 
 def save_lifecycle_settings(dependencies):
     cfg = dependencies.load_portal_config()
+    saved_enabled = bool(cfg.get("automatic_browser_shutdown_enabled", False))
+    if not dependencies.browser_presence_shutdown_runtime_eligible():
+        dependencies.set_browser_presence_shutdown_enabled(saved_enabled)
+        return redirect("/settings/lifecycle?unavailable=1")
     enabled = "automatic_browser_shutdown_enabled" in request.form
     cfg["automatic_browser_shutdown_enabled"] = enabled
     dependencies.write_portal_config(cfg)

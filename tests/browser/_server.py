@@ -143,6 +143,7 @@ def seed_browser_data():
 
 def main():
     seed_browser_data()
+    bind_host = os.environ.get("DLMS_BROWSER_TEST_BIND_HOST", "127.0.0.1")
     test_grace = os.environ.get("DLMS_BROWSER_PRESENCE_TEST_GRACE_SECONDS")
     if test_grace:
         cfg = dlms.load_portal_config()
@@ -158,9 +159,9 @@ def main():
             ),
             suspend_gap_seconds=60.0,
         )
-    dlms.start_browser_presence_monitor()
+    dlms.start_browser_presence_monitor(bind_host)
     port = int(os.environ["DLMS_BROWSER_TEST_PORT"])
-    server = make_server("127.0.0.1", port, dlms.app, threaded=True)
+    server = make_server(bind_host, port, dlms.app, threaded=True)
     print(f"DLMS browser test server listening on {port}", flush=True)
     server.serve_forever()
 

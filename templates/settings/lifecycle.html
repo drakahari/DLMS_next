@@ -27,6 +27,16 @@
     {% if request.args.get('saved') %}
     <div class="settings-success-banner" role="status" aria-live="polite">✓ Application lifecycle settings saved.</div>
     {% endif %}
+    {% if request.args.get('unavailable') %}
+    <div class="settings-warning-panel" role="status" aria-live="polite">No lifecycle setting was changed while DLMS is in LAN/server mode.</div>
+    {% endif %}
+
+    {% if not browser_presence_shutdown_runtime_eligible %}
+    <div class="settings-warning-panel">
+        <strong>Unavailable in LAN/server mode</strong>
+        <span>Browser-presence shutdown is intended for normal local desktop use and is disabled while DLMS is bound for LAN or server access. Closing all remote browser tabs will not stop DLMS. Manual shutdown remains available.</span>
+    </div>
+    {% endif %}
 
     <form class="settings-detail-card" action="/settings/lifecycle/save" method="POST">
         <section class="settings-form-section">
@@ -38,17 +48,21 @@
                 </div>
             </div>
 
-            <label class="settings-toggle-row">
-                <input type="checkbox" name="automatic_browser_shutdown_enabled" {% if automatic_browser_shutdown_enabled %}checked{% endif %}>
+            <label class="settings-toggle-row" {% if not browser_presence_shutdown_runtime_eligible %}aria-disabled="true"{% endif %}>
+                <input type="checkbox" name="automatic_browser_shutdown_enabled" {% if automatic_browser_shutdown_enabled %}checked{% endif %} {% if not browser_presence_shutdown_runtime_eligible %}disabled{% endif %}>
                 <span>
                     <strong>Automatically shut down when no DLMS browser pages remain</strong>
+                    {% if browser_presence_shutdown_runtime_eligible %}
                     <small>When enabled, each open DLMS tab reports its presence. DLMS shuts down approximately 5 minutes after the last DLMS browser window or tab closes. Reopening a DLMS page during that grace period keeps the application running.</small>
+                    {% else %}
+                    <small>The saved preference is shown above but has no runtime effect in LAN/server mode. Return to a loopback-only launch to use it again.</small>
+                    {% endif %}
                 </span>
             </label>
         </section>
 
         <div class="settings-form-actions">
-            <button type="submit" class="settings-primary-button">💾 Save Application Lifecycle</button>
+            <button type="submit" class="settings-primary-button" {% if not browser_presence_shutdown_runtime_eligible %}disabled{% endif %}>💾 Save Application Lifecycle</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
     </form>

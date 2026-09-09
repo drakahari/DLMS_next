@@ -80,7 +80,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 18,
-        "dlms.routes.settings.SettingsRouteDependencies": 10,
+        "dlms.routes.settings.SettingsRouteDependencies": 11,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 25,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (

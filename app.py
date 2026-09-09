@@ -2600,7 +2600,8 @@ def load_portal_config():
 
 
 browser_presence_manager = BrowserPresenceManager(
-    _schedule_automatic_browser_shutdown
+    _schedule_automatic_browser_shutdown,
+    runtime_eligible=_dlms_is_loopback_host(DLMS_SERVER_HOST),
 )
 
 
@@ -2616,8 +2617,20 @@ def _update_browser_presence(token, closed=False):
     return browser_presence_manager.heartbeat(token)
 
 
-def start_browser_presence_monitor():
+def _configure_browser_presence_runtime(host):
+    """Allow automatic shutdown only for an unambiguous loopback bind."""
+    eligible = _dlms_is_loopback_host(host)
+    browser_presence_manager.set_runtime_eligible(eligible)
+    return eligible
+
+
+def _browser_presence_runtime_eligible():
+    return browser_presence_manager.runtime_eligible
+
+
+def start_browser_presence_monitor(host=DLMS_SERVER_HOST):
     """Initialize runtime-only presence state and start its daemon monitor."""
+    _configure_browser_presence_runtime(host)
     _browser_presence_setting_loaded(load_portal_config())
     return browser_presence_manager.start()
 
@@ -5244,6 +5257,7 @@ app.register_blueprint(create_settings_blueprint(SettingsRouteDependencies(
     store_background_upload=lambda upload: _store_settings_background_upload(upload),
     validate_custom_ai_url=lambda value: _validate_custom_ai_url(value),
     set_browser_presence_shutdown_enabled=lambda enabled: browser_presence_manager.set_enabled(enabled),
+    browser_presence_shutdown_runtime_eligible=lambda: _browser_presence_runtime_eligible(),
     print_message=lambda *args, **kwargs: print(*args, **kwargs),
 )))
 
@@ -5853,7 +5867,7 @@ if __name__ == "__main__":
         raise SystemExit(2)
 
     server_host = startup["host"]
-    start_browser_presence_monitor()
+    start_browser_presence_monitor(server_host)
     _dlms_print_access_urls(server_host, DLMS_SERVER_PORT)
     if startup["disable_browser"]:
         print("[DLMS] Automatic browser launch disabled (--no-browser / DLMS_NO_BROWSER).")
