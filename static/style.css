@@ -1168,18 +1168,28 @@ body.blurred .blur-wrapper {
    PREVIEW PASTE DIFFS
 ======================= */
 .diff-removed {
-    color: #ff4c4c;
+    color: var(--semantic-error-text);
     font-weight: bold;
 }
 
 .diff-added {
-    color: #4cff4c;
+    color: var(--semantic-success-text);
     font-weight: bold;
 }
 
 .diff-unchanged {
-    color: #aaa;
+    color: var(--theme-muted-text, #b8c2cc);
     font-style: italic;
+}
+
+.diff-added-key {
+    color: var(--semantic-success-text);
+    font-weight: bold;
+}
+
+.diff-removed-key {
+    color: var(--semantic-error-text);
+    font-weight: bold;
 }
 
 /* =======================
@@ -13224,5 +13234,243 @@ body:not([class]) > .container > .hero-title {
         animation-iteration-count: 1 !important;
         scroll-behavior: auto !important;
         transition-duration: 0.01ms !important;
+    }
+}
+
+/* =========================================================
+   DLMS-120 BATCH 3 — LEGACY SHELL THEME CLOSURE
+   Standalone Regex Help and failure pages use the same live semantic
+   palette as the Dashboard without depending on theme marker classes.
+   ========================================================= */
+.regex-help-page {
+    min-height: 100vh;
+    color: var(--theme-page-text, #eaf2ff);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.6;
+}
+
+.regex-help-page *,
+.legacy-shell-page * {
+    box-sizing: border-box;
+}
+
+.regex-help-page .container {
+    max-width: 900px;
+    margin: auto;
+    padding: 32px 20px 60px;
+}
+
+.regex-help-page h1,
+.regex-help-page h2,
+.regex-help-page h3 {
+    color: var(--theme-heading, #fff) !important;
+    line-height: 1.3;
+    text-shadow: none !important;
+}
+
+.regex-help-page h1 {
+    font-size: 2.1em;
+}
+
+.regex-help-page h2 {
+    margin-top: 40px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--semantic-section-border);
+}
+
+.regex-help-page .container p {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+}
+
+.regex-help-page pre {
+    margin: 0;
+    overflow-x: auto;
+    padding: 12px;
+    border: 1px solid var(--semantic-inset-border);
+    border-radius: 8px;
+    color: var(--semantic-inset-text);
+    background: var(--semantic-inset-surface);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+}
+
+.regex-help-page .rule-block {
+    position: relative;
+    margin: 14px 0;
+}
+
+.regex-help-page button {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--semantic-secondary-control-border);
+    border-radius: 8px;
+    color: var(--semantic-secondary-control-text);
+    background: var(--semantic-secondary-control-surface);
+    box-shadow: none;
+    font-size: .9em;
+}
+
+.regex-help-page button:hover,
+.regex-help-page button:focus-visible {
+    color: var(--theme-heading, #fff);
+    background: var(--semantic-secondary-control-hover);
+    border-color: var(--theme-accent, #1b9ff2);
+}
+
+.regex-help-page .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    padding: 6px 10px;
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    border-color: var(--semantic-info-border);
+    font-size: .85em;
+}
+
+.regex-help-page .copy-btn.copied {
+    color: var(--semantic-success-text);
+    background: var(--semantic-success-surface);
+    border-color: var(--semantic-success-border);
+}
+
+.regex-help-page .example,
+.regex-help-page .tip,
+.regex-help-page .warning {
+    margin: 16px 0;
+    padding: 12px;
+    border: 1px solid var(--semantic-info-border);
+    border-left-width: 4px;
+    border-radius: 8px;
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+}
+
+.regex-help-page .tip {
+    color: var(--semantic-success-text);
+    background: var(--semantic-success-surface);
+    border-color: var(--semantic-success-border);
+}
+
+.regex-help-page .warning {
+    color: var(--semantic-warning-text);
+    background: var(--semantic-warning-surface);
+    border-color: var(--semantic-warning-border);
+}
+
+.regex-help-page footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--semantic-section-border);
+    color: var(--theme-muted-text, #b8c2cc);
+    font-size: .9em;
+}
+
+.legacy-shell-page {
+    min-height: 100vh;
+    color: var(--theme-page-text, #eaf2ff);
+}
+
+.legacy-shell-main {
+    width: min(820px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 48px 0;
+}
+
+.legacy-shell-heading {
+    margin: 0 0 18px;
+    color: var(--semantic-error-text) !important;
+    background: var(--semantic-error-surface) !important;
+    border-color: var(--semantic-error-border) !important;
+    box-shadow: 0 10px 28px var(--theme-shadow, rgba(0,0,0,.25)) !important;
+    text-shadow: none !important;
+}
+
+.legacy-shell-card {
+    margin: 0;
+    color: var(--theme-page-text, #eaf2ff);
+    background: var(--semantic-section-surface);
+    border-color: var(--semantic-section-border);
+    box-shadow: 0 10px 28px var(--theme-shadow, rgba(0,0,0,.25));
+}
+
+.legacy-shell-card h1 {
+    margin: 0 0 12px;
+    color: var(--theme-heading, #fff) !important;
+    text-shadow: none !important;
+}
+
+.legacy-shell-card p {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+}
+
+.request-rejected-card {
+    border-color: var(--semantic-error-border);
+}
+
+.request-rejected-card h1 {
+    color: var(--semantic-error-text) !important;
+}
+
+.legacy-shell-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 20px 0 0;
+}
+
+.legacy-shell-actions button,
+.legacy-shell-action,
+.legacy-shell-action:visited {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-height: 42px;
+    margin: 0;
+    padding: 9px 13px;
+    border: 1px solid var(--semantic-secondary-control-border);
+    border-radius: 9px;
+    color: var(--semantic-secondary-control-text);
+    background: var(--semantic-secondary-control-surface);
+    box-shadow: none;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.legacy-shell-actions button:hover,
+.legacy-shell-actions button:focus-visible,
+.legacy-shell-action:hover,
+.legacy-shell-action:focus-visible {
+    color: var(--theme-heading, #fff);
+    background: var(--semantic-secondary-control-hover);
+    border-color: var(--theme-accent, #1b9ff2);
+    text-decoration: none;
+}
+
+@media (max-width: 640px) {
+    .regex-help-page .container {
+        padding: 22px 14px 42px;
+    }
+
+    .regex-help-page .regex-help-actions,
+    .legacy-shell-actions {
+        display: grid !important;
+        grid-template-columns: 1fr;
+    }
+
+    .regex-help-page .regex-help-actions button,
+    .legacy-shell-actions button,
+    .legacy-shell-action {
+        width: 100%;
+    }
+
+    .legacy-shell-main {
+        width: min(100% - 24px, 820px);
+        padding: 24px 0;
     }
 }

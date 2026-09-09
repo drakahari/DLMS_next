@@ -2437,6 +2437,8 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
             "const reason = document.querySelector('.paste-preview-confidence-reason');"
             "const detail = document.querySelector('.paste-preview-suggestion-detail');"
             "const recommendation = document.querySelector('.paste-preview-suggestion-recommendation');"
+            "const addedKey = document.querySelector('.diff-added-key');"
+            "const removedKey = document.querySelector('.diff-removed-key');"
             "return {heroColor:getComputedStyle(hero).color,"
             "summaryColor:getComputedStyle(summary).color,"
             "summaryBackground:getComputedStyle(summary).backgroundColor,"
@@ -2447,8 +2449,12 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
             "detailColor:getComputedStyle(detail).color,detailOpacity:getComputedStyle(detail).opacity,"
             "recommendationColor:getComputedStyle(recommendation).color,"
             "recommendationOpacity:getComputedStyle(recommendation).opacity,"
+            "addedKeyColor:getComputedStyle(addedKey).color,"
+            "removedKeyColor:getComputedStyle(removedKey).color,"
             "pageText:resolve('--theme-page-text'),heading:resolve('--theme-heading'),"
-            "accentText:resolve('--theme-accent-text'),muted:resolve('--theme-muted-text')}; })()"
+            "accentText:resolve('--theme-accent-text'),muted:resolve('--theme-muted-text'),"
+            "successText:resolve('--semantic-success-text'),"
+            "errorText:resolve('--semantic-error-text')}; })()"
         )
         assert preview_styles["heroColor"] == preview_styles["heading"]
         assert preview_styles["summaryColor"] == preview_styles["pageText"]
@@ -2459,6 +2465,8 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
         for role in ("helper", "reason", "detail", "recommendation"):
             assert preview_styles[f"{role}Color"] == preview_styles["muted"]
             assert preview_styles[f"{role}Opacity"] == "1"
+        assert preview_styles["addedKeyColor"] == preview_styles["successText"]
+        assert preview_styles["removedKeyColor"] == preview_styles["errorText"]
 
         if theme == "light":
             browser.evaluate("window.scrollTo(0, 0); true")
@@ -5789,3 +5797,154 @@ def test_browser_presence_runtime_mode_isolated_server(
             browser.close()
         _terminate_process_tree(browser_process)
         _terminate_process_tree(server_process)
+
+
+def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    browser.set_viewport(1280, 1000)
+    browser.navigate(base_url + "/")
+
+    def set_theme(theme):
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+
+    probe_helpers = """
+        const parseColor=value=>{
+          const rgb=value.match(/^rgba?\\(([^)]+)\\)$/);
+          if(rgb){const parts=rgb[1].split(/[, ]+/).filter(Boolean).map(Number);
+            return [parts[0]/255,parts[1]/255,parts[2]/255,parts.length>3?parts[3]:1];}
+          const srgb=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);
+          if(srgb)return [+srgb[1],+srgb[2],+srgb[3],srgb[4]===undefined?1:+srgb[4]];
+          throw new Error('Unsupported computed color: '+value);
+        };
+        const resolveColor=value=>{const node=document.createElement('span');node.style.color=value;
+          document.body.appendChild(node);const result=getComputedStyle(node).color;node.remove();return parseColor(result);};
+        const composite=(foreground,background)=>foreground.slice(0,3).map((value,index)=>
+          value*foreground[3]+background[index]*(1-foreground[3]));
+        const luminance=rgb=>rgb.map(value=>value<=.04045?value/12.92:Math.pow((value+.055)/1.055,2.4))
+          .reduce((sum,value,index)=>sum+value*[.2126,.7152,.0722][index],0);
+        const contrast=(foreground,background)=>{const a=luminance(foreground.slice(0,3));const b=luminance(background);
+          return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
+        const root=getComputedStyle(document.documentElement);
+        const base=resolveColor(root.getPropertyValue('--theme-body-base')).slice(0,3);
+        const effectiveBackground=node=>{const layers=[];for(let item=node;item;item=item.parentElement){
+          layers.push(parseColor(getComputedStyle(item).backgroundColor));}
+          return layers.reverse().reduce((background,layer)=>composite(layer,background),base);};
+        const measure=node=>{const style=getComputedStyle(node),background=effectiveBackground(node);
+          const foreground=composite(parseColor(style.color),background);return {
+            background,backgroundCss:style.backgroundColor,colorCss:style.color,
+            borderCss:style.borderColor,borderStyle:style.borderStyle,
+            outlineStyle:style.outlineStyle,contrast:contrast(foreground,background),
+            text:node.textContent.trim()};};
+    """
+
+    surfaces = {}
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(base_url + "/")
+        set_theme(theme)
+        browser.navigate(base_url + "/")
+        browser.wait_for("document.querySelector('.dashboard-welcome')")
+        browser.wait_for(
+            "getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--theme-page-text').trim().length > 0"
+        )
+        dashboard = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "return {scheme:root.getPropertyValue('--theme-color-scheme').trim(),"
+            "panel:measure(document.querySelector('.dashboard-welcome'))};})()"
+        )
+
+        browser.navigate(base_url + "/regex-help")
+        browser.wait_for("document.body.classList.contains('regex-help-page')")
+        browser.wait_for(
+            "getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--theme-page-text').trim().length > 0"
+        )
+        regex_state = browser.evaluate(
+            "(() => {" + probe_helpers
+            + (
+                "const copy=document.querySelector('.copy-btn');copy.classList.add('copied');"
+                "return {scheme:root.getPropertyValue('--theme-color-scheme').trim(),"
+                "pre:measure(document.querySelector('pre')),"
+                "tip:measure(document.querySelector('.tip')),"
+                "warning:measure(document.querySelector('.warning')),"
+                "copied:measure(copy),nav:measure(document.querySelector('.help-topic-nav a'))};})()"
+            )
+        )
+        for role in ("pre", "tip", "warning", "copied", "nav"):
+            assert regex_state[role]["contrast"] >= 4.5, (theme, role, regex_state[role])
+            assert regex_state[role]["borderStyle"] != "none", (theme, role)
+
+        browser.navigate(base_url + "/paste")
+        browser.wait_for("document.querySelector('form[action=\"/preview_paste\"]')")
+        browser.evaluate(
+            "(() => {const form=document.createElement('form');form.method='POST';"
+            "form.action='/process_paste';document.body.appendChild(form);form.submit();return true;})()"
+        )
+        browser.wait_for("document.body.classList.contains('request-rejected-page')")
+        browser.wait_for(
+            "getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--theme-page-text').trim().length > 0"
+        )
+        rejected = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "return {heading:measure(document.querySelector('h1')),"
+            "message:measure(document.querySelector('.request-rejected-card p')),"
+            "action:measure(document.querySelector('.legacy-shell-action'))};})()"
+        )
+        assert "security token" in rejected["message"]["text"].lower()
+        for role in ("heading", "message", "action"):
+            assert rejected[role]["contrast"] >= 4.5, (theme, role, rejected[role])
+
+        browser.navigate(base_url + "/paste")
+        browser.wait_for(
+            "document.querySelector('form[action=\"/preview_paste\"] input[name=csrf_token]')"
+        )
+        browser.evaluate(
+            "(() => {const token=document.querySelector('input[name=csrf_token]').value;"
+            "const form=document.createElement('form');form.method='POST';form.action='/process_paste';"
+            "for(const [name,value] of Object.entries({csrf_token:token,quiz_title:'Theme closure',"
+            "quiz_text:'This text cannot be parsed as a quiz.'})){const input=document.createElement('input');"
+            "input.name=name;input.value=value;form.appendChild(input);}document.body.appendChild(form);"
+            "form.submit();return true;})()"
+        )
+        browser.wait_for("document.body.classList.contains('parse-failed-page')")
+        browser.wait_for(
+            "getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--theme-page-text').trim().length > 0"
+        )
+        parse_state = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "return {heading:measure(document.querySelector('.legacy-shell-heading')),"
+            "copy:measure(document.querySelector('.parse-failed-card p')),"
+            "action:measure(document.querySelector('.legacy-shell-actions button'))};})()"
+        )
+        for role in ("heading", "copy", "action"):
+            assert parse_state[role]["contrast"] >= 4.5, (theme, role, parse_state[role])
+        assert parse_state["heading"]["borderStyle"] != "none"
+
+        expected_scheme = "light" if theme == "light" else "dark"
+        assert dashboard["scheme"] == regex_state["scheme"] == expected_scheme
+        surfaces[theme] = {
+            "dashboard": dashboard["panel"]["backgroundCss"],
+            "regex": regex_state["pre"]["backgroundCss"],
+            "rejected": rejected["action"]["backgroundCss"],
+            "parse": parse_state["action"]["backgroundCss"],
+        }
+
+    assert len({state["regex"] for state in surfaces.values()}) == 4
+    assert len({state["rejected"] for state in surfaces.values()}) == 4
+    assert len({state["parse"] for state in surfaces.values()}) == 4
+
+    browser.set_viewport(390, 780)
+    for path, ready in (
+        ("/regex-help", "document.body.classList.contains('regex-help-page')"),
+        ("/paste", "document.querySelector('form[action=\"/preview_paste\"]')"),
+    ):
+        browser.navigate(base_url + path)
+        browser.wait_for(ready)
+        assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True

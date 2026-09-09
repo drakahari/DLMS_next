@@ -108,6 +108,8 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         self.assertIn(str(escape(marker)), body)
         self.assertNotIn('id="csrf-injection"', body)
         self.assertIn("javascript:history.back()", body)
+        self.assertIn('/static/style.css', body)
+        self.assertIn('class="legacy-shell-page request-rejected-page"', body)
 
         with dlms.app.test_request_context("/api/theme", method="POST", json={}):
             response, status = dlms._csrf_failure(marker, 400)
@@ -309,6 +311,8 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         self.assertIn("Could Not Parse Any Questions", body)
         self.assertIn("/upload", body)
         self.assertIn("/paste", body)
+        self.assertIn('/static/style.css', body)
+        self.assertIn('class="legacy-shell-page parse-failed-page"', body)
         self.assertIn("/data/parse&#34; onmouseover=&#34;bad&lt;script&gt;.txt", body)
         self.assertNotIn("bad<script>", body)
         self.assertIn('/static/nav-normalize.js', body)

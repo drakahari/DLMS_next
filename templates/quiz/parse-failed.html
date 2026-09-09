@@ -1,11 +1,14 @@
 
-        <html>
+        <!DOCTYPE html>
+        <html lang="en">
         <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
             <title>Parse Failed</title>
             <link rel="stylesheet" href="/static/style.css">
             <link rel="icon" href="/static/favicon.ico">
         </head>
-        <body>
+        <body class="legacy-shell-page parse-failed-page">
         <script>
         fetch("/config/portal.json")
         .then(r => r.json())
@@ -19,32 +22,32 @@
         });
         </script>
 
-        <div class="container">
-            <h1 class="hero-title">⚠️ Could Not Parse Any Questions</h1>
+        <main class="legacy-shell-main">
+            <h1 class="hero-title legacy-shell-heading">⚠️ Could Not Parse Any Questions</h1>
 
-            <div class="card">
+            <div class="card legacy-shell-card parse-failed-card">
                 <p>No valid questions were parsed. Please check the formatting.</p>
                 <p>You can download the parser log for troubleshooting:</p>
 
-                <button onclick="location.href='/data/{{log_filename}}'">
-                    📥 Download Parse Log
-                </button>
+                <div class="legacy-shell-actions">
+                    <button onclick="location.href='/data/{{log_filename}}'">
+                        📥 Download Parse Log
+                    </button>
 
-                <br><br>
+                    <button onclick="location.href='/upload'">
+                        ⬅ Back To Upload Page
+                    </button>
 
-                <button onclick="location.href='/upload'">
-                    ⬅ Back To Upload Page
-                </button>
+                    <button onclick="location.href='/paste'">
+                        📋 Try Paste Mode Instead
+                    </button>
 
-                <button onclick="location.href='/paste'">
-                    📋 Try Paste Mode Instead
-                </button>
-
-                <button onclick="location.href='/'">
-                    🏠 Return To Dashboard
-                </button>
+                    <button onclick="location.href='/'">
+                        🏠 Return To Dashboard
+                    </button>
+                </div>
             </div>
-        </div>
+        </main>
         <script src="/static/nav-normalize.js"></script>
 </body>
         </html>

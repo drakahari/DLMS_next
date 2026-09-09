@@ -1797,6 +1797,166 @@ class ThemeSystemTests(unittest.TestCase):
                     css, re.escape(marker) + r"[^,{]*" + re.escape(selector)
                 )
 
+    def test_legacy_shell_outliers_use_the_shared_theme_contract(self):
+        root = Path(dlms.__file__).resolve().parent
+        css = self._style_css()
+        regex_help = (root / "static" / "regex-help.html").read_text(encoding="utf-8")
+        request_rejected = (
+            root / "templates" / "errors" / "request-rejected.html"
+        ).read_text(encoding="utf-8")
+        parse_failed = (
+            root / "templates" / "quiz" / "parse-failed.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('href="/static/style.css"', regex_help)
+        self.assertIn('class="regex-help-page"', regex_help)
+        self.assertNotIn("<style>", regex_help.lower())
+        for old_literal in (
+            "#0f172a", "#020617", "#2563eb", "#1d4ed8", "#022c22",
+            "#1f2933", "#fecaca",
+        ):
+            with self.subTest(old_regex_literal=old_literal):
+                self.assertNotIn(old_literal, regex_help.lower())
+
+        self.assertIn('href="/static/style.css"', request_rejected)
+        self.assertIn('class="legacy-shell-page request-rejected-page"', request_rejected)
+        self.assertIn("request-rejected-card", request_rejected)
+        self.assertIn('href="/static/style.css"', parse_failed)
+        self.assertIn('class="legacy-shell-page parse-failed-page"', parse_failed)
+        self.assertIn("parse-failed-card", parse_failed)
+
+        expected = {
+            ".regex-help-page pre": (
+                "--semantic-inset-text", "--semantic-inset-surface",
+                "--semantic-inset-border",
+            ),
+            ".regex-help-page .copy-btn": (
+                "--semantic-info-text", "--semantic-info-surface",
+                "--semantic-info-border",
+            ),
+            ".regex-help-page .copy-btn.copied": (
+                "--semantic-success-text", "--semantic-success-surface",
+                "--semantic-success-border",
+            ),
+            ".regex-help-page .tip": (
+                "--semantic-success-text", "--semantic-success-surface",
+                "--semantic-success-border",
+            ),
+            ".regex-help-page .warning": (
+                "--semantic-warning-text", "--semantic-warning-surface",
+                "--semantic-warning-border",
+            ),
+            ".legacy-shell-heading": (
+                "--semantic-error-text", "--semantic-error-surface",
+                "--semantic-error-border",
+            ),
+            ".legacy-shell-card": (
+                "--semantic-section-surface", "--semantic-section-border",
+                "--theme-page-text",
+            ),
+            ".request-rejected-card": ("--semantic-error-border",),
+            ".legacy-shell-actions button": (
+                "--semantic-secondary-control-text",
+                "--semantic-secondary-control-surface",
+                "--semantic-secondary-control-border",
+            ),
+            ".diff-added": ("--semantic-success-text",),
+            ".diff-unchanged": ("--theme-muted-text",),
+            ".diff-added-key": ("--semantic-success-text",),
+            ".diff-removed-key": ("--semantic-error-text",),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing CSS rule for {selector}")
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must use the shared semantic theme tokens",
+                )
+        self.assertRegex(
+            css, r"\.diff-removed\s*\{[^}]*--semantic-error-text"
+        )
+
+        for marker in ('html[data-theme=', 'body[data-theme=', '.theme-light', '.theme-dark'):
+            for selector in (".regex-help-page", ".legacy-shell-page"):
+                self.assertNotRegex(
+                    css, re.escape(marker) + r"[^,{]*" + re.escape(selector)
+                )
+        for source in (regex_help, request_rejected, parse_failed):
+            self.assertNotIn("data-theme=", source)
+
+        paste_preview = (
+            root / "templates" / "quiz" / "paste-preview.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn('class="diff-added-key"', paste_preview)
+        self.assertIn('class="diff-removed-key"', paste_preview)
+        self.assertNotIn("color:#4cff4c", paste_preview.lower())
+        self.assertNotIn("color:#ff4c4c", paste_preview.lower())
+
+        glossary_review = (
+            root / "templates" / "pdf_import" / "review-glossary.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            ".pdf-term-page { color:var(--theme-muted-text,#b8c2cc);font-size:11px; }",
+            glossary_review,
+        )
+
+    def test_legacy_shell_semantic_text_contrast_across_all_palettes(self):
+        client = dlms.app.test_client()
+
+        def mix(foreground, background, amount):
+            fg = self._rgba(foreground)[:3]
+            return tuple(
+                fg[index] * amount + background[index] * (1 - amount)
+                for index in range(3)
+            )
+
+        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    dynamic_css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(dynamic_css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                section = self._composite(variables["theme-surface"], panel)
+                inset = self._composite(variables["theme-input-bg"], section)
+                secondary = self._composite(variables["theme-surface-2"], panel)
+                is_light = variables["theme-color-scheme"] == "light"
+                pairs = (
+                    ("page copy", variables["theme-muted-text"], body),
+                    ("panel copy", variables["theme-muted-text"], panel),
+                    ("preformatted content", variables["theme-input-text"], inset),
+                    ("secondary action", variables["theme-page-text"], secondary),
+                    (
+                        "information",
+                        variables["theme-accent-text"],
+                        mix(variables["theme-accent"], section, .10),
+                    ),
+                    (
+                        "success",
+                        "#105f3d" if is_light else "#86e8bb",
+                        mix("#2f9b6d", section, .11),
+                    ),
+                    (
+                        "warning",
+                        "#765511" if is_light else "#f4cf72",
+                        mix("#d69b21", section, .11),
+                    ),
+                    (
+                        "error",
+                        "#8f2435" if is_light else "#ff9eaa",
+                        mix("#c63f52", section, .10),
+                    ),
+                )
+                for role, foreground, background in pairs:
+                    ratio = self._contrast(foreground, background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"{theme} legacy-shell {role} contrast is only {ratio:.2f}:1",
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()
