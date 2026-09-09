@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from dlms.rendering.quiz_artifacts import build_quiz_html
 from tests.browser._bidi import FirefoxBidi
 
 
@@ -5061,6 +5062,340 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
             assert max(case_state["section"]["background"]) < .40
 
     assert len(set(observed_section_backgrounds.values())) == 4
+
+
+def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    data_root = browser_stack.data_root
+
+    review_root = data_root / "pdf_import_drafts"
+    review_root.mkdir(exist_ok=True)
+    draft_id = "dlms120_batch2_review"
+    (review_root / f"{draft_id}.json").write_text(json.dumps({
+        "id": draft_id,
+        "source_name": "DLMS-120 visual review.pdf",
+        "page_count": 2,
+        "document_type": "question_bank",
+        "detection": {"recovery_mode": True},
+        "recovery_mode": True,
+        "quiz_title": "DLMS-120 Visual Review",
+        "exam_minutes": 30,
+        "summary": {"detected": 2, "complete": 0, "review": 1, "incomplete": 1},
+        "questions": [
+            {
+                "number": 1,
+                "question": "Question needing review?",
+                "choices": [
+                    {"label": "A", "text": "First"},
+                    {"label": "B", "text": "Second"},
+                ],
+                "correct": "B",
+                "declared_answer_text": "Second",
+                "explanation": "Review explanation.",
+                "choice_feedback": {"A": "This choice needs review."},
+                "pages": [1],
+                "status": "review",
+                "issues": ["Answer confidence requires review."],
+            },
+            {
+                "number": 2,
+                "question": "Incomplete question?",
+                "choices": [{"label": "A", "text": "Only detected choice"}],
+                "correct": "",
+                "declared_answer_text": "",
+                "explanation": "",
+                "choice_feedback": {},
+                "pages": [2],
+                "status": "incomplete",
+                "issues": ["A correct answer was not detected."],
+            },
+        ],
+    }), encoding="utf-8")
+
+    matching_json = "dlms120_batch2_matching.json"
+    matching_html = "dlms120_batch2_matching.html"
+    matching_questions = [{
+        "number": 1,
+        "type": "matching",
+        "question": "Match each term to its definition.",
+        "round_size": 2,
+        "direction": "term_to_definition",
+        "pairs": [
+            {"left": "Alpha", "right": "First", "explanation": "Alpha is first."},
+            {"left": "Beta", "right": "Second", "explanation": "Beta is second."},
+        ],
+        "concepts": ["dlms-120-theme"],
+    }]
+    data_folder = data_root / "data"
+    quiz_folder = data_root / "quizzes"
+    data_folder.mkdir(exist_ok=True)
+    quiz_folder.mkdir(exist_ok=True)
+    (data_folder / matching_json).write_text(
+        json.dumps(matching_questions), encoding="utf-8"
+    )
+    build_quiz_html(
+        matching_html,
+        matching_json,
+        str(quiz_folder / matching_html),
+        "DLMS",
+        "DLMS-120 Matching Theme",
+        None,
+        browser_stack.metadata["critical_id"],
+        5,
+        normalize_exam_minutes=lambda value: int(value),
+    )
+
+    pack_root = data_root / "content_packs" / "DLMS_Study_dlms120_batch2_editor"
+    (pack_root / "data").mkdir(parents=True, exist_ok=True)
+    (pack_root / "images").mkdir(exist_ok=True)
+    image_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    (pack_root / "images" / "diagram.png").write_bytes(image_bytes)
+    (pack_root / "manifest.json").write_text(json.dumps({
+        "schema_version": 1,
+        "id": "dlms120_batch2_editor",
+        "name": "DLMS-120 Batch 2 Editor",
+        "version": "1.0.0",
+        "content_domain": "Science",
+        "datasets": [],
+        "image_datasets": [{
+            "id": "visuals", "title": "Visuals", "type": "hotspot",
+            "path": "data/visuals.json",
+        }],
+        "quiz_datasets": [],
+    }), encoding="utf-8")
+    (pack_root / "data" / "visuals.json").write_text(json.dumps({
+        "schema_version": 1,
+        "id": "visuals",
+        "title": "DLMS-120 Visuals",
+        "source": {"organization": "DLMS", "license": "CC0"},
+        "images": [{
+            "id": "diagram",
+            "file": "images/diagram.png",
+            "alt_text": "DLMS-120 diagram",
+            "source": {"organization": "DLMS", "license": "CC0"},
+            "edits": [],
+            "hotspots": [{
+                "id": "target", "label": "Target", "prompt": "Identify target.",
+                "shape": {"type": "circle", "x": .5, "y": .5, "radius": .1},
+            }],
+        }],
+    }), encoding="utf-8")
+
+    def set_theme(theme):
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+
+    probe_helpers = """
+        const parseColor=value=>{
+          const rgb=value.match(/^rgba?\\(([^)]+)\\)$/);
+          if(rgb){const parts=rgb[1].split(/[, ]+/).filter(Boolean).map(Number);
+            return [parts[0]/255,parts[1]/255,parts[2]/255,parts.length>3?parts[3]:1];}
+          const srgb=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);
+          if(srgb)return [+srgb[1],+srgb[2],+srgb[3],srgb[4]===undefined?1:+srgb[4]];
+          throw new Error('Unsupported computed color: '+value);
+        };
+        const resolveColor=value=>{const node=document.createElement('span');node.style.color=value;
+          document.body.appendChild(node);const result=getComputedStyle(node).color;node.remove();return parseColor(result);};
+        const composite=(foreground,background)=>foreground.slice(0,3).map((value,index)=>
+          value*foreground[3]+background[index]*(1-foreground[3]));
+        const luminance=rgb=>rgb.map(value=>value<=.04045?value/12.92:Math.pow((value+.055)/1.055,2.4))
+          .reduce((sum,value,index)=>sum+value*[.2126,.7152,.0722][index],0);
+        const contrast=(foreground,background)=>{const a=luminance(foreground.slice(0,3));const b=luminance(background);
+          return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
+        const root=getComputedStyle(document.documentElement);
+        const base=resolveColor(root.getPropertyValue('--theme-body-base')).slice(0,3);
+        const effectiveBackground=node=>{const layers=[];for(let item=node;item;item=item.parentElement){
+          layers.push(parseColor(getComputedStyle(item).backgroundColor));}
+          return layers.reverse().reduce((background,layer)=>composite(layer,background),base);};
+        const measure=node=>{const style=getComputedStyle(node),background=effectiveBackground(node);
+          const foreground=composite(parseColor(style.color),background);return {
+            background,backgroundCss:style.backgroundColor,colorCss:style.color,
+            borderCss:style.borderColor,borderStyle:style.borderStyle,
+            outlineStyle:style.outlineStyle,opacity:style.opacity,cursor:style.cursor,
+            contrast:contrast(foreground,background),text:node.textContent.trim()};};
+    """
+
+    surfaces_by_theme = {}
+    quiz_url = f"{base_url}/quizzes/{matching_html}"
+    editor_url = (
+        f"{base_url}/admin/image-editor?pack=dlms120_batch2_editor&dataset=visuals&kind=hotspot"
+    )
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{base_url}/pdf-import/review/{draft_id}")
+        set_theme(theme)
+        browser.navigate(f"{base_url}/pdf-import/review/{draft_id}")
+        browser.wait_for(
+            "document.querySelector('.pdf-status.review') && "
+            "document.querySelector('.pdf-status.incomplete') && "
+            "document.querySelector('.pdf-feedback-details summary')"
+        )
+        pdf_state = browser.evaluate(
+            "(() => {" + probe_helpers
+            + (
+                "return {scheme:root.getPropertyValue('--theme-color-scheme').trim(),"
+                "review:measure(document.querySelector('.pdf-status.review')),"
+                "incomplete:measure(document.querySelector('.pdf-status.incomplete')),"
+                "issue:measure(document.querySelector('.pdf-import-issues')),"
+                "feedback:measure(document.querySelector('.pdf-feedback-details summary')),"
+                "deleteToggle:measure(document.querySelector('.pdf-delete-toggle')),"
+                "muted:measure(document.querySelector('.dashboard-header p'))};})()"
+            )
+        )
+        for role in ("review", "incomplete", "issue", "feedback", "deleteToggle", "muted"):
+            assert pdf_state[role]["contrast"] >= 4.5, (theme, role, pdf_state[role])
+        assert "REVIEW" in pdf_state["review"]["text"]
+        assert "INCOMPLETE" in pdf_state["incomplete"]["text"]
+        assert pdf_state["review"]["borderStyle"] != "none"
+        assert pdf_state["incomplete"]["borderStyle"] != "none"
+
+        browser.navigate(quiz_url)
+        browser.evaluate(
+            "Object.keys(localStorage).filter(key=>key.startsWith('dlms.quiz-progress.v1:'))"
+            ".forEach(key=>localStorage.removeItem(key));true"
+        )
+        browser.navigate(quiz_url)
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 1")
+        browser.click(".study-mode-btn")
+        browser.wait_for("document.querySelector('.matching-answer-chip')")
+        initial_matching = browser.evaluate(
+            "(() => {" + probe_helpers
+            + (
+                "const chip=document.querySelector('.matching-answer-chip');"
+                "const target=document.querySelector('.matching-drop-target');"
+                "const mode=document.querySelector('.matching-mode-button.active');"
+                "chip.focus();return {pool:measure(document.querySelector('.matching-answer-pool')),"
+                "chip:measure(chip),target:measure(target),mode:measure(mode)};})()"
+            )
+        )
+        for role in ("chip", "target", "mode"):
+            assert initial_matching[role]["contrast"] >= 4.5, (
+                theme, role, initial_matching[role]
+            )
+        assert initial_matching["pool"]["borderStyle"] != "none"
+
+        browser.evaluate("document.querySelector('.matching-answer-chip').click();true")
+        browser.wait_for("document.querySelector('.matching-answer-chip.selected')")
+        selected = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "return measure(document.querySelector('.matching-answer-chip.selected'));})()"
+        )
+        assert selected["contrast"] >= 4.5
+        assert selected["outlineStyle"] != "none"
+
+        drag_over = browser.evaluate(
+            "(() => {const target=document.querySelector('.matching-drop-target');"
+            "const event=new Event('dragover',{bubbles:true,cancelable:true});"
+            "Object.defineProperty(event,'dataTransfer',{value:{dropEffect:'none'}});"
+            "target.dispatchEvent(event);" + probe_helpers
+            + "return measure(target);})()"
+        )
+        assert drag_over["contrast"] >= 4.5
+        assert drag_over["outlineStyle"] != "none"
+        browser.evaluate(
+            "document.querySelector('.matching-drop-target')"
+            ".dispatchEvent(new Event('dragleave',{bubbles:true}));true"
+        )
+
+        browser.evaluate(
+            "(() => {const chip=document.querySelector('.matching-answer-chip.selected');"
+            "const right=Number(chip.dataset.matchAnswer);const left=right===0?1:0;"
+            "document.querySelector(`[data-match-target='${left}']`).click();return true;})()"
+        )
+        browser.wait_for("document.querySelector('.matching-drag-row.matching-wrong')")
+        wrong = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "return measure(document.querySelector('.matching-study-feedback.is-wrong'));})()"
+        )
+        assert wrong["contrast"] >= 4.5
+        assert "Not quite" in wrong["text"]
+        browser.click(".matching-clear-match")
+        browser.wait_for("!document.querySelector('.matching-clear-match')")
+        assert browser.evaluate(
+            "!document.querySelector('.matching-drag-row.matching-wrong') && "
+            "document.querySelectorAll('.matching-answer-chip').length === 2"
+        ) is True
+
+        browser.evaluate(
+            "document.querySelector('[data-match-answer=\"0\"]').click();"
+            "document.querySelector('[data-match-target=\"0\"]').click();true"
+        )
+        browser.wait_for("document.querySelector('.matching-drag-row.matching-correct')")
+        correct = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "const feedback=measure(document.querySelector('.matching-study-feedback.is-correct'));"
+            "const clear=document.querySelector('.matching-clear-match');clear.disabled=true;"
+            "const disabled=measure(clear);return {feedback,disabled};})()"
+        )
+        assert correct["feedback"]["contrast"] >= 4.5
+        assert "Correct" in correct["feedback"]["text"]
+        assert float(correct["disabled"]["opacity"]) < 1
+        assert correct["disabled"]["cursor"] == "not-allowed"
+
+        browser.navigate(f"{base_url}/admin/image-editor?pack=missing&dataset=broken&kind=hotspot")
+        browser.wait_for("document.querySelector('.flash.error') && EDITOR_DATA === null")
+        load_error = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "const error=measure(document.querySelector('.flash.error'));return {error,"
+            "empty:!document.querySelector('.hotspot-editor-workspace')};})()"
+        )
+        assert load_error["empty"] is True
+        assert "could not be loaded" in load_error["error"]["text"]
+        assert load_error["error"]["contrast"] >= 4.5
+
+        browser.navigate(editor_url)
+        browser.wait_for(
+            "typeof setStatus === 'function' && document.querySelector('.image-editor-mode-tabs .active')"
+        )
+        editor_info = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "document.querySelector('.hotspot-editor-json').open=true;"
+            "const active=measure(document.querySelector('.image-editor-mode-tabs .active'));"
+            "const inactive=measure(document.querySelector('.image-editor-mode-tabs button:not(.active)'));"
+            "const status=measure(document.getElementById('editorStatus'));"
+            "const metadata=measure(document.getElementById('geometryPreview'));"
+            "return {active,inactive,status,metadata};})()"
+        )
+        for role in ("active", "inactive", "status", "metadata"):
+            assert editor_info[role]["contrast"] >= 4.5, (
+                theme, role, editor_info[role]
+            )
+        assert editor_info["metadata"]["borderStyle"] != "none"
+
+        editor_states = browser.evaluate(
+            "(() => {" + probe_helpers
+            + "setStatus('Saved editor state.','success');const success=measure(document.getElementById('editorStatus'));"
+            "setStatus('Editor state failed.','error');const error=measure(document.getElementById('editorStatus'));"
+            "const inactive=document.querySelector('.image-editor-mode-tabs button:not(.active)');"
+            "inactive.disabled=true;const disabled=measure(inactive);return {success,error,disabled};})()"
+        )
+        assert editor_states["success"]["contrast"] >= 4.5
+        assert editor_states["error"]["contrast"] >= 4.5
+        assert "Saved" in editor_states["success"]["text"]
+        assert "failed" in editor_states["error"]["text"]
+        assert float(editor_states["disabled"]["opacity"]) < 1
+        assert editor_states["disabled"]["cursor"] == "not-allowed"
+
+        surfaces_by_theme[theme] = (
+            pdf_state["review"]["backgroundCss"],
+            initial_matching["pool"]["backgroundCss"],
+            editor_info["status"]["backgroundCss"],
+        )
+        if theme == "light":
+            assert pdf_state["scheme"] == "light"
+            assert min(pdf_state["review"]["background"]) > .70
+            assert min(initial_matching["pool"]["background"]) > .70
+            assert min(editor_info["status"]["background"]) > .70
+        else:
+            assert pdf_state["scheme"] == "dark"
+            assert max(initial_matching["pool"]["background"]) < .45
+
+    assert len(set(surfaces_by_theme.values())) == 4
 
 
 def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):

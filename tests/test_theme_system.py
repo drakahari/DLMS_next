@@ -850,25 +850,33 @@ class ThemeSystemTests(unittest.TestCase):
                         f"Content Pack Delete {state} {scheme} contrast is only {ratio:.2f}:1",
                     )
 
-    def test_smart_pdf_complete_status_and_exclusion_controls_are_theme_aware(self):
+    def test_smart_pdf_statuses_and_exclusion_controls_are_theme_aware(self):
         css = self._style_css()
-        complete = self._rule_blocks(css, ".pdf-status.complete")
-        self.assertTrue(complete)
-        self.assertTrue(any(
-            "color:light-dark(#115d3f,#9af0c5)" in block
-            and "background:light-dark(#dcefe5,#123b2d)" in block
-            and "border-color:light-dark(#6fa98b,#3d8061)" in block
-            for block in complete
-        ))
-        for foreground, background, scheme in (
-            ("#115d3f", "#dcefe5", "light"),
-            ("#9af0c5", "#123b2d", "dark"),
+        for status, semantic in (
+            ("complete", "success"),
+            ("review", "warning"),
+            ("incomplete", "error"),
         ):
-            with self.subTest(scheme=scheme):
-                ratio = self._contrast(foreground, self._rgba(background)[:3])
-                self.assertGreaterEqual(
-                    ratio, 4.5, f"{scheme} COMPLETE pill contrast is only {ratio:.2f}:1",
-                )
+            with self.subTest(status=status):
+                blocks = self._rule_blocks(css, f".pdf-status.{status}")
+                self.assertTrue(blocks)
+                self.assertTrue(any(
+                    f"color:var(--semantic-{semantic}-text)" in block
+                    and f"background:var(--semantic-{semantic}-surface)" in block
+                    and f"border-color:var(--semantic-{semantic}-border)" in block
+                    for block in blocks
+                ))
+
+        issues = self._rule_blocks(css, ".pdf-import-issues")
+        self.assertTrue(any(
+            all(f"--semantic-warning-{part}" in block for part in ("text", "surface", "border"))
+            for block in issues
+        ))
+        feedback = self._rule_blocks(css, ".pdf-feedback-details")
+        self.assertTrue(any(
+            "--semantic-info-surface" in block and "--semantic-info-border" in block
+            for block in feedback
+        ))
 
         row_toggle = self._rule_blocks(
             css, ".pdf-import-page .pdf-term-review-card .pdf-delete-toggle"
@@ -1681,6 +1689,113 @@ class ThemeSystemTests(unittest.TestCase):
                         ratio, 4.5,
                         f"{theme} Law {role} contrast is only {ratio:.2f}:1",
                     )
+
+    def test_stateful_learning_and_editor_surfaces_reuse_semantic_tokens(self):
+        css = self._style_css()
+        expected = {
+            ".pdf-status.review": (
+                "--semantic-warning-text", "--semantic-warning-surface",
+                "--semantic-warning-border",
+            ),
+            ".pdf-status.incomplete": (
+                "--semantic-error-text", "--semantic-error-surface",
+                "--semantic-error-border",
+            ),
+            ".pdf-import-issues": (
+                "--semantic-warning-text", "--semantic-warning-surface",
+                "--semantic-warning-border",
+            ),
+            ".pdf-feedback-details": (
+                "--semantic-info-surface", "--semantic-info-border",
+            ),
+            ".pdf-delete-toggle": ("--semantic-error-text",),
+            ".matching-answer-pool": (
+                "--semantic-section-surface", "--semantic-section-border",
+            ),
+            ".matching-left-number": (
+                "--semantic-info-text", "--semantic-info-surface",
+                "--semantic-info-border",
+            ),
+            ".matching-answer-chip": (
+                "--semantic-secondary-control-text",
+                "--semantic-secondary-control-surface",
+                "--semantic-secondary-control-border",
+            ),
+            ".matching-answer-chip.selected": (
+                "--semantic-info-text", "--semantic-info-surface",
+                "--semantic-info-border", "--theme-accent",
+            ),
+            ".matching-drop-target": (
+                "--semantic-inset-surface", "--semantic-inset-border",
+                "--theme-muted-text",
+            ),
+            ".matching-drop-target.drag-over": (
+                "--semantic-warning-text", "--semantic-warning-surface",
+                "--semantic-warning-border",
+            ),
+            ".matching-study-feedback.is-correct": (
+                "--semantic-success-text", "--semantic-success-surface",
+                "--semantic-success-border",
+            ),
+            ".matching-study-feedback.is-wrong": (
+                "--semantic-error-text", "--semantic-error-surface",
+                "--semantic-error-border",
+            ),
+            ".hotspot-editor-page .hotspot-editor-status": (
+                "--semantic-info-text", "--semantic-info-surface",
+                "--semantic-info-border",
+            ),
+            ".hotspot-editor-page .hotspot-editor-status.success": (
+                "--semantic-success-text", "--semantic-success-surface",
+                "--semantic-success-border",
+            ),
+            ".hotspot-editor-page .hotspot-editor-status.error": (
+                "--semantic-error-text", "--semantic-error-surface",
+                "--semantic-error-border",
+            ),
+            ".hotspot-editor-page .flash.error": (
+                "--semantic-error-text", "--semantic-error-surface",
+                "--semantic-error-border",
+            ),
+            ".hotspot-editor-page .hotspot-editor-json pre": (
+                "--semantic-inset-text", "--semantic-inset-surface",
+                "--semantic-inset-border",
+            ),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing CSS rule for {selector}")
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must use shared semantic tokens",
+                )
+
+        disabled = self._rule_blocks(css, ".matching-mode-button:disabled")
+        self.assertTrue(any(
+            "opacity:.68" in block and "cursor:not-allowed" in block
+            and "--theme-muted-text" in block
+            for block in disabled
+        ))
+        editor_disabled = self._rule_blocks(
+            css, ".hotspot-editor-page .image-editor-mode-tabs button:disabled"
+        )
+        self.assertTrue(any(
+            "opacity: .68" in block and "cursor: not-allowed" in block
+            for block in editor_disabled
+        ))
+
+        targeted_selectors = (
+            ".pdf-status", ".pdf-import-issues", ".pdf-feedback-details",
+            ".matching-answer", ".matching-drop", ".matching-mode",
+            ".matching-study-feedback", ".hotspot-editor-status",
+            ".hotspot-editor-json", ".image-editor-mode-tabs",
+        )
+        for marker in ('html[data-theme=', 'body[data-theme=', '.theme-light', '.theme-dark'):
+            for selector in targeted_selectors:
+                self.assertNotRegex(
+                    css, re.escape(marker) + r"[^,{]*" + re.escape(selector)
+                )
 
 
 if __name__ == "__main__":
