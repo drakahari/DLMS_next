@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#f7f9fc"/>
+  <rect x="70" y="55" width="1060" height="590" rx="24" fill="#ffffff" stroke="#315f91" stroke-width="4"/>
+  <text x="120" y="125" font-family="Liberation Sans, sans-serif" font-size="30" font-weight="700" fill="#24486f">DLMS OCR PACKAGING PROBE</text>
+  <text x="120" y="205" font-family="Liberation Sans, sans-serif" font-size="38" font-weight="700" fill="#17283a">Which protocol secures web traffic?</text>
+  <text x="145" y="300" font-family="Liberation Sans, sans-serif" font-size="34" fill="#17283a">A. FTP</text>
+  <text x="145" y="380" font-family="Liberation Sans, sans-serif" font-size="34" fill="#17283a">B. HTTPS</text>
+  <text x="145" y="460" font-family="Liberation Sans, sans-serif" font-size="34" fill="#17283a">C. Telnet</text>
+  <text x="145" y="540" font-family="Liberation Sans, sans-serif" font-size="34" fill="#17283a">D. HTTP</text>
+</svg>

@@ -4880,6 +4880,42 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
             "csrf": True,
             "injected": False,
         }
+        if draft_id == "browser_question_review":
+            editor_state = browser.evaluate(
+                "(() => {const card=document.querySelector('.pdf-import-question-card');"
+                "card.querySelector('[data-pdf-action=choice-add]').click();"
+                "let rows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
+                "rows[2].querySelector('[data-pdf-role=choice]').value='Third answer';"
+                "rows[2].querySelector('[data-pdf-action=choice-up]').click();"
+                "const mode=card.querySelector('[data-pdf-role=answer-mode]');"
+                "mode.value='multiple';mode.dispatchEvent(new Event('change'));"
+                "rows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
+                "const retained=rows.find(row=>row.querySelector('[data-pdf-role=choice]').value==='Safe').querySelector('[data-pdf-role=multiple-correct]').checked;"
+                "rows[0].querySelector('[data-pdf-role=multiple-correct]').checked=true;"
+                "rows[1].querySelector('[data-pdf-role=multiple-correct]').checked=true;"
+                "mode.value='single';mode.dispatchEvent(new Event('change'));"
+                "const safeguardMessage=card.querySelector('[data-pdf-role=choice-message]').textContent;"
+                "const beforeDelete=rows.map(row=>row.dataset.choiceLabel);"
+                "rows[2].querySelector('[data-pdf-action=choice-delete]').click();"
+                "return {count:card.querySelectorAll('[data-pdf-role=choice-row]').length,"
+                "labels:[...card.querySelectorAll('[data-pdf-role=choice-row]')].map(row=>row.dataset.choiceLabel),"
+                "beforeDelete,mode:mode.value,safeguardMessage,retained,"
+                "addDisabled:card.querySelector('[data-pdf-action=choice-add]').disabled};})()"
+            )
+            assert editor_state == {
+                "count": 2,
+                "labels": ["A", "B"],
+                "beforeDelete": ["A", "B", "C"],
+                "mode": "multiple",
+                "safeguardMessage": "Choose one correct answer before switching to single-answer mode.",
+                "retained": True,
+                "addDisabled": False,
+            }
+            browser.set_viewport(390, 820)
+            assert browser.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth + 1"
+            ) is True
+            browser.set_viewport(1280, 1000)
 
     question_bank_root = data_root / "pdf_question_banks"
     term_bank_root = data_root / "pdf_terminology_banks"

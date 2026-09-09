@@ -160,22 +160,32 @@
 <section class="dashboard-panel pdf-import-finalize"><div class="build-two-column-fields"><label class="build-field"><span>Question bank title</span><input name="quiz_title" value="{{ draft.quiz_title }}" required form="pdfReviewForm"></label><label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ draft.exam_minutes }}" form="pdfReviewForm"></label></div><div class="pdf-import-source-note">Source: user-provided PDF · redistribution status: not cleared for redistribution</div></section>
 <div class="pdf-import-question-list">
 {% for q in draft.questions %}
+{% set question_index = loop.index0 %}
 <article class="dashboard-panel pdf-import-question-card status-{{ q.status }}" data-status="{{ q.status }}" data-question-index="{{ loop.index0 }}" data-question-number="{{ q.number }}">
 <div class="pdf-import-question-head"><div><label class="pdf-review-select-toggle"><input type="checkbox" data-pdf-role="select"><span>Select</span></label><span class="pdf-status {{ q.status }}">{{ q.status|replace("_"," ")|upper }}</span><strong>Question {{ q.number }}</strong><small>PDF page{% if q.pages|length != 1 %}s{% endif %} {{ q.pages|join(", ") }}</small></div><label class="pdf-delete-toggle"><input type="checkbox" name="delete_{{ loop.index0 }}" value="1" form="pdfReviewForm" data-pdf-role="delete"><span>Delete question</span></label></div>
 {% if q.issues %}<div class="pdf-import-issues">{% for issue in q.issues %}<div>⚠ {{ issue }}</div>{% endfor %}</div>{% endif %}
 <input type="hidden" name="original_number_{{ loop.index0 }}" value="{{ q.number }}" form="pdfReviewForm">
 <label class="build-field"><span>Question text</span><textarea name="question_{{ loop.index0 }}" rows="4" form="pdfReviewForm" data-pdf-role="question">{{ q.question }}</textarea></label>
-<div class="pdf-import-choice-grid">
-{% for choice in q.choices %}
-<label class="build-field pdf-choice-field"><span>{{ choice.label }}{% if choice.label == q.correct %} · detected correct{% endif %}</span><input name="choice_{{ loop.index0 }}_{{ choice.label }}" value="{{ choice.text }}" form="pdfReviewForm" data-pdf-role="choice" data-choice-label="{{ choice.label }}"></label>
-{% endfor %}
-</div>
 <div class="build-two-column-fields">
-<label class="build-field"><span>Correct answer</span><select name="correct_{{ loop.index0 }}" form="pdfReviewForm" data-pdf-role="correct"><option value="" {% if not q.correct %}selected{% endif %}>Choose a correct answer</option>{% for choice in q.choices %}<option value="{{ choice.label }}" {% if choice.label == q.correct %}selected{% endif %}>{{ choice.label }} — {{ choice.text }}</option>{% endfor %}</select></label>
+<label class="build-field"><span>Answer mode</span><select form="pdfReviewForm" data-pdf-role="answer-mode"><option value="single" {% if q.answer_mode == "single" %}selected{% endif %}>Single answer</option><option value="multiple" {% if q.answer_mode == "multiple" %}selected{% endif %}>Multiple answers</option></select></label>
 <label class="build-field"><span>Detected answer text</span><input value="{{ q.declared_answer_text }}" readonly></label>
 </div>
+<div class="pdf-choice-editor" data-pdf-role="choice-editor">
+<div class="pdf-import-choice-grid" data-pdf-role="choice-list">
+{% for choice in q.choices %}
+<div class="pdf-choice-editor-row" data-pdf-role="choice-row" data-choice-key="choice-{{ question_index }}-{{ loop.index0 }}" data-choice-label="{{ choice.label }}">
+<label class="build-field pdf-choice-field"><span><span data-pdf-role="choice-label">{{ choice.label }}</span> · answer text</span><input name="choice_{{ question_index }}_{{ choice.label }}" value="{{ choice.text }}" form="pdfReviewForm" data-pdf-role="choice" data-choice-label="{{ choice.label }}"></label>
+<fieldset class="pdf-correctness-controls"><legend>Correctness</legend><label data-pdf-role="single-correct-control"><input type="radio" name="correct_{{ question_index }}" value="{{ choice.label }}" {% if choice.label in q.correct_answers %}checked{% endif %} data-pdf-role="single-correct" data-choice-label="{{ choice.label }}"><span>Correct</span></label><label data-pdf-role="multiple-correct-control"><input type="checkbox" value="{{ choice.label }}" {% if choice.label in q.correct_answers %}checked{% endif %} data-pdf-role="multiple-correct" data-choice-label="{{ choice.label }}"><span>Correct</span></label></fieldset>
+<div class="pdf-choice-order-controls"><button type="button" class="build-secondary-link" data-pdf-action="choice-up" aria-label="Move choice {{ choice.label }} up">↑</button><button type="button" class="build-secondary-link" data-pdf-action="choice-down" aria-label="Move choice {{ choice.label }} down">↓</button><button type="button" class="build-secondary-link pdf-review-danger-action" data-pdf-action="choice-delete" aria-label="Delete choice {{ choice.label }}">Delete</button></div>
+</div>
+{% endfor %}
+</div>
+<div class="pdf-choice-editor-actions"><button type="button" class="build-secondary-link" data-pdf-action="choice-add">Add choice</button><span>2–26 choices · labels are reassigned A–Z after reordering.</span></div>
+<p class="pdf-choice-editor-message" data-pdf-role="choice-message" aria-live="polite"></p>
+</div>
+{% if q.correctness_confirmation_required %}<label class="pdf-correctness-confirmation"><input type="checkbox" data-pdf-role="correctness-confirmed" {% if q.correctness_confirmed %}checked{% endif %}><span>I reviewed and confirm the complete set of correct answers.</span></label>{% endif %}
 <label class="build-field"><span>Study Mode explanation</span><textarea name="explanation_{{ loop.index0 }}" rows="4" form="pdfReviewForm" data-pdf-role="explanation">{{ q.explanation }}</textarea></label>
-{% if q.choice_feedback %}<details class="pdf-feedback-details"><summary>Detected incorrect-choice explanations</summary><div class="pdf-feedback-grid">{% for label, text in q.choice_feedback.items() %}<label class="build-field"><span>{{ label }} feedback</span><textarea name="feedback_{{ loop.index0 }}_{{ label }}" rows="2" form="pdfReviewForm" data-pdf-role="feedback" data-choice-label="{{ label }}">{{ text }}</textarea></label>{% endfor %}</div></details>{% endif %}
+{% if q.choice_feedback %}<details class="pdf-feedback-details"><summary>Detected incorrect-choice explanations</summary><div class="pdf-feedback-grid">{% for choice in q.choices %}{% if q.choice_feedback.get(choice.label) %}<label class="build-field" data-feedback-choice-key="choice-{{ question_index }}-{{ loop.index0 }}"><span data-pdf-role="feedback-label">{{ choice.label }} feedback</span><textarea name="feedback_{{ question_index }}_{{ choice.label }}" rows="2" form="pdfReviewForm" data-pdf-role="feedback" data-choice-label="{{ choice.label }}">{{ q.choice_feedback.get(choice.label) }}</textarea></label>{% endif %}{% endfor %}</div></details>{% endif %}
 </article>
 {% endfor %}
 </div>
@@ -199,6 +209,62 @@ document.getElementById("pdfSelectAllVisible")?.addEventListener("click",()=>{pd
 document.getElementById("pdfClearSelection")?.addEventListener("click",()=>{pdfQuestionCards.forEach(card=>{const box=card.querySelector('[data-pdf-role="select"]');if(box) box.checked=false;});pdfUpdateSelectionCount();});
 document.getElementById("pdfDeleteSelected")?.addEventListener("click",()=>{const cards=pdfSelectedCards();if(!cards.length)return;if(!confirm(`Mark ${cards.length} selected question(s) for deletion/exclusion?`))return;cards.forEach(card=>{const box=card.querySelector('[data-pdf-role="delete"]');if(box) box.checked=true;});});
 document.getElementById("pdfKeepSelected")?.addEventListener("click",()=>{pdfSelectedCards().forEach(card=>{const box=card.querySelector('[data-pdf-role="delete"]');if(box) box.checked=false;});});
+const pdfChoiceLabels="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+function pdfChoiceRows(card){return [...card.querySelectorAll('[data-pdf-role="choice-row"]')];}
+function pdfSetChoiceMessage(card,message){const status=card.querySelector('[data-pdf-role="choice-message"]');if(status)status.textContent=message;}
+function pdfSyncChoiceEditor(card){
+ const rows=pdfChoiceRows(card);const mode=card.querySelector('[data-pdf-role="answer-mode"]')?.value||"single";
+ rows.forEach((row,index)=>{
+  const label=pdfChoiceLabels[index];row.dataset.choiceLabel=label;
+  const feedback=card.querySelector(`[data-feedback-choice-key="${row.dataset.choiceKey}"] [data-pdf-role="feedback"]`);
+  if(feedback){feedback.dataset.choiceLabel=label;const feedbackLabel=feedback.closest("label")?.querySelector('[data-pdf-role="feedback-label"]');if(feedbackLabel)feedbackLabel.textContent=`${label} feedback`;}
+  const labelText=row.querySelector('[data-pdf-role="choice-label"]');if(labelText)labelText.textContent=label;
+  const textInput=row.querySelector('[data-pdf-role="choice"]');if(textInput)textInput.dataset.choiceLabel=label;
+  row.querySelectorAll('[data-pdf-role="single-correct"],[data-pdf-role="multiple-correct"]').forEach(input=>{input.value=label;input.dataset.choiceLabel=label;});
+  row.querySelectorAll('[data-pdf-action]').forEach(button=>{button.setAttribute("aria-label",`${button.dataset.pdfAction==="choice-up"?"Move":button.dataset.pdfAction==="choice-down"?"Move":"Delete"} choice ${label}${button.dataset.pdfAction==="choice-up"?" up":button.dataset.pdfAction==="choice-down"?" down":""}`);});
+  row.querySelector('[data-pdf-role="single-correct-control"]')?.toggleAttribute("hidden",mode!=="single");
+  row.querySelector('[data-pdf-role="multiple-correct-control"]')?.toggleAttribute("hidden",mode!=="multiple");
+  const up=row.querySelector('[data-pdf-action="choice-up"]');const down=row.querySelector('[data-pdf-action="choice-down"]');const del=row.querySelector('[data-pdf-action="choice-delete"]');
+  if(up)up.disabled=index===0;if(down)down.disabled=index===rows.length-1;if(del)del.disabled=rows.length<=2;
+ });
+ const feedbackGrid=card.querySelector('.pdf-feedback-grid');if(feedbackGrid){rows.forEach(row=>{const feedbackRow=card.querySelector(`[data-feedback-choice-key="${row.dataset.choiceKey}"]`);if(feedbackRow)feedbackGrid.appendChild(feedbackRow);});}
+ const add=card.querySelector('[data-pdf-action="choice-add"]');if(add)add.disabled=rows.length>=26;
+}
+function pdfCreateChoiceRow(card){
+ const rows=pdfChoiceRows(card);if(rows.length>=26)return null;
+ const row=rows[0]?.cloneNode(true);if(!row)return null;
+ row.dataset.choiceKey=`choice-new-${Date.now()}-${rows.length}`;
+ const input=row.querySelector('[data-pdf-role="choice"]');if(input)input.value="";
+ row.querySelectorAll('input[type="radio"],input[type="checkbox"]').forEach(control=>control.checked=false);
+ return row;
+}
+pdfQuestionCards.forEach(card=>{
+ const modeSelect=card.querySelector('[data-pdf-role="answer-mode"]');
+ let previousMode=modeSelect?.value||"single";
+ modeSelect?.addEventListener("change",()=>{
+  if(modeSelect.value==="multiple"){
+   const selected=card.querySelector('[data-pdf-role="single-correct"]:checked');
+   card.querySelectorAll('[data-pdf-role="multiple-correct"]').forEach(input=>input.checked=false);
+   if(selected){const matching=[...card.querySelectorAll('[data-pdf-role="multiple-correct"]')].find(input=>input.dataset.choiceLabel===selected.dataset.choiceLabel);if(matching)matching.checked=true;}
+  }else{
+   const selected=[...card.querySelectorAll('[data-pdf-role="multiple-correct"]:checked')];
+   if(selected.length>1){modeSelect.value=previousMode;pdfSetChoiceMessage(card,"Choose one correct answer before switching to single-answer mode.");pdfSyncChoiceEditor(card);return;}
+   if(selected.length===1){const matching=[...card.querySelectorAll('[data-pdf-role="single-correct"]')].find(input=>input.dataset.choiceLabel===selected[0].dataset.choiceLabel);if(matching)matching.checked=true;}
+  }
+  previousMode=modeSelect.value;pdfSetChoiceMessage(card,"");pdfSyncChoiceEditor(card);
+ });
+ card.addEventListener("click",event=>{
+  const button=event.target.closest('[data-pdf-action]');if(!button)return;
+  const action=button.dataset.pdfAction;const row=button.closest('[data-pdf-role="choice-row"]');const list=card.querySelector('[data-pdf-role="choice-list"]');
+  if(action==="choice-add"){
+   const added=pdfCreateChoiceRow(card);if(added&&list){list.appendChild(added);added.querySelector('[data-pdf-role="choice"]')?.focus();}
+  }else if(action==="choice-delete"&&row&&pdfChoiceRows(card).length>2){card.querySelector(`[data-feedback-choice-key="${row.dataset.choiceKey}"]`)?.remove();row.remove();}
+  else if(action==="choice-up"&&row&&row.previousElementSibling){list.insertBefore(row,row.previousElementSibling);}
+  else if(action==="choice-down"&&row&&row.nextElementSibling){list.insertBefore(row.nextElementSibling,row);}
+  pdfSetChoiceMessage(card,"");pdfSyncChoiceEditor(card);
+ });
+ pdfSyncChoiceEditor(card);
+});
 pdfUpdateSelectionCount();
 const pdfReviewForm=document.getElementById("pdfReviewForm");
 if(pdfReviewForm){
@@ -206,8 +272,9 @@ if(pdfReviewForm){
   const payload=[];
   document.querySelectorAll(".pdf-import-question-card").forEach(card=>{
    const choices=[];
-   card.querySelectorAll('[data-pdf-role="choice"]').forEach(input=>{
-    choices.push({label:input.dataset.choiceLabel||"",text:input.value||""});
+   card.querySelectorAll('[data-pdf-role="choice-row"]').forEach(row=>{
+    const input=row.querySelector('[data-pdf-role="choice"]');
+    choices.push({label:row.dataset.choiceLabel||"",text:input?.value||""});
    });
    const feedback={};
    card.querySelectorAll('[data-pdf-role="feedback"]').forEach(input=>{
@@ -219,7 +286,9 @@ if(pdfReviewForm){
     delete:!!card.querySelector('[data-pdf-role="delete"]')?.checked,
     question:card.querySelector('[data-pdf-role="question"]')?.value||"",
     choices,
-    correct:card.querySelector('[data-pdf-role="correct"]')?.value||"",
+    answer_mode:card.querySelector('[data-pdf-role="answer-mode"]')?.value||"single",
+    correct_answers:[...card.querySelectorAll((card.querySelector('[data-pdf-role="answer-mode"]')?.value||"single")==="multiple"?'[data-pdf-role="multiple-correct"]:checked':'[data-pdf-role="single-correct"]:checked')].map(input=>input.dataset.choiceLabel||""),
+    correctness_confirmed:!card.querySelector('[data-pdf-role="correctness-confirmed"]')||!!card.querySelector('[data-pdf-role="correctness-confirmed"]')?.checked,
     explanation:card.querySelector('[data-pdf-role="explanation"]')?.value||"",
     feedback
    });

@@ -13,6 +13,8 @@ from pathlib import Path
 
 
 project_root = Path(SPEC).resolve().parent
+sys.path.insert(0, str(project_root))
+from tools.pyinstaller_ocr import collect_tesseract_bundle
 app_source = (project_root / "app.py").read_text(encoding="utf-8")
 app_version_match = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
 if app_version_match is None:
@@ -39,13 +41,15 @@ bundle_data = [
     (str(project_root / "templates"), "templates"),
     (str(project_root / "init.sql"), "."),
 ]
+ocr_binaries, ocr_data = collect_tesseract_bundle()
+bundle_data.extend(ocr_data)
 
 analysis = Analysis(
     [str(project_root / "app.py")],
     pathex=[str(project_root)],
-    binaries=[],
+    binaries=ocr_binaries,
     datas=bundle_data,
-    hiddenimports=[],
+    hiddenimports=["dlms.services.ocr"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

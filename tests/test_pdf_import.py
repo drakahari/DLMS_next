@@ -370,7 +370,8 @@ class PDFImportParserTests(unittest.TestCase):
         dlms._save_pdf_import_draft(draft)
         response = dlms.app.test_client().get("/pdf-import/review/blank_correct_review")
         html = response.get_data(as_text=True)
-        self.assertIn('<option value="" selected>Choose a correct answer</option>', html)
+        self.assertIn('data-pdf-role="answer-mode"', html)
+        self.assertNotIn('checked data-pdf-role="single-correct"', html)
         self.assertNotIn('<option value="A" selected>', html)
 
     def test_review_pages_explain_bulk_selection_scope_and_commit_timing(self):

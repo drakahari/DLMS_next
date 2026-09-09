@@ -5,6 +5,7 @@ import os
 import random
 import re
 import secrets
+from copy import deepcopy
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
@@ -14,6 +15,9 @@ from flask import Blueprint, flash, redirect, render_template, request
 
 
 Dependency = Callable[..., Any]
+PDF_QUESTION_MIN_CHOICES = 2
+PDF_QUESTION_MAX_CHOICES = 26
+PDF_CHOICE_LABELS = tuple(chr(ord("A") + index) for index in range(26))
 
 
 @dataclass(frozen=True)
@@ -71,6 +75,106 @@ def _pdf_bank_active_questions(bank):
             int(question.get("number") or 0),
         ),
     )
+
+
+def _pdf_question_correct_answers(question):
+    """Return canonical answer labels from list-capable or legacy scalar data."""
+
+    raw_answers = question.get("correct_answers")
+    if not isinstance(raw_answers, list):
+        raw_answers = [question.get("correct")]
+    answers = []
+    for raw_answer in raw_answers:
+        answer = str(raw_answer or "").strip().upper()
+        if answer in PDF_CHOICE_LABELS and answer not in answers:
+            answers.append(answer)
+    return answers
+
+
+def _normalize_pdf_question_for_review(question):
+    """Build the bounded, editable Smart PDF review representation."""
+
+    normalized = deepcopy(question) if isinstance(question, dict) else {}
+    raw_choices = normalized.get("choices") or []
+    if not isinstance(raw_choices, list):
+        raw_choices = []
+    if len(raw_choices) > PDF_QUESTION_MAX_CHOICES:
+        raise ValueError(
+            f"Question {normalized.get('number') or ''} has more than "
+            f"{PDF_QUESTION_MAX_CHOICES} choices."
+        )
+
+    original_answers = set(_pdf_question_correct_answers(normalized))
+    original_feedback = (
+        normalized.get("choice_feedback")
+        if isinstance(normalized.get("choice_feedback"), dict)
+        else {}
+    )
+    choices = []
+    answers = []
+    feedback = {}
+    for index, raw_choice in enumerate(raw_choices):
+        if not isinstance(raw_choice, dict):
+            raw_choice = {}
+        old_label = str(raw_choice.get("label") or "").strip().upper()
+        label = PDF_CHOICE_LABELS[index]
+        choices.append({"label": label, "text": str(raw_choice.get("text") or "")})
+        if old_label in original_answers:
+            answers.append(label)
+        note = str(original_feedback.get(old_label) or "")
+        if note:
+            feedback[label] = note
+
+    while len(choices) < PDF_QUESTION_MIN_CHOICES:
+        label = PDF_CHOICE_LABELS[len(choices)]
+        choices.append({"label": label, "text": ""})
+
+    explicit_mode = str(normalized.get("answer_mode") or "").strip().lower()
+    answer_mode = (
+        explicit_mode
+        if explicit_mode in {"single", "multiple"}
+        else ("multiple" if len(answers) > 1 else "single")
+    )
+    confirmation_required = bool(
+        normalized.get("correctness_confirmation_required", False)
+    )
+    normalized.update(
+        {
+            "choices": choices,
+            "correct_answers": answers,
+            "answer_mode": answer_mode,
+            "choice_feedback": feedback,
+            "correctness_confirmation_required": confirmation_required,
+            "correctness_confirmed": bool(
+                normalized.get("correctness_confirmed", not confirmation_required)
+            ),
+        }
+    )
+    return normalized
+
+
+def _normalize_pdf_draft_for_review(draft):
+    normalized = deepcopy(draft)
+    questions = normalized.get("questions") or []
+    if not isinstance(questions, list):
+        raise ValueError("The PDF question review data is malformed.")
+    normalized["questions"] = [
+        _normalize_pdf_question_for_review(question) for question in questions
+    ]
+    return normalized
+
+
+def _pdf_submitted_question_at_index(submitted_items, index):
+    for item in submitted_items or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            submitted_index = int(item.get("index", -1))
+        except (TypeError, ValueError):
+            continue
+        if submitted_index == index:
+            return item
+    return None
 
 
 def _select_pdf_bank_questions(
@@ -149,7 +253,8 @@ def _select_pdf_bank_questions(
 
 def _pdf_bank_question_to_quiz(question, number, bank):
     choices = []
-    correct = str(question.get("correct") or "").strip().upper()
+    correct_answers = _pdf_question_correct_answers(question)
+    correct_set = set(correct_answers)
     for raw in question.get("choices") or []:
         if not isinstance(raw, dict):
             continue
@@ -157,9 +262,14 @@ def _pdf_bank_question_to_quiz(question, number, bank):
         text = str(raw.get("text") or "").strip()
         if label and text:
             choices.append(
-                {"label": label, "text": text, "is_correct": label == correct}
+                {"label": label, "text": text, "is_correct": label in correct_set}
             )
-    if len(choices) < 2 or correct not in {choice["label"] for choice in choices}:
+    labels = {choice["label"] for choice in choices}
+    if (
+        not PDF_QUESTION_MIN_CHOICES <= len(choices) <= PDF_QUESTION_MAX_CHOICES
+        or not correct_answers
+        or not correct_set.issubset(labels)
+    ):
         raise ValueError(
             f"Bank question {question.get('original_number') or question.get('number')} is incomplete."
         )
@@ -168,7 +278,7 @@ def _pdf_bank_question_to_quiz(question, number, bank):
         "type": "choice",
         "question": str(question.get("question") or "").strip(),
         "choices": choices,
-        "correct": [correct],
+        "correct": correct_answers,
         "explanation": str(question.get("explanation") or "").strip(),
         "source": {
             "organization": "User-provided document",
@@ -561,7 +671,12 @@ def pdf_import_review(dependencies, draft_id):
 
     if draft.get("document_type") == "glossary":
         return _render_pdf_glossary_review(draft)
-    return render_template("pdf_import/review-question-bank.html", draft=draft)
+    try:
+        review_draft = _normalize_pdf_draft_for_review(draft)
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect("/pdf-import")
+    return render_template("pdf_import/review-question-bank.html", draft=review_draft)
 
 
 def _save_pdf_glossary_draft(dependencies, draft, draft_id):
@@ -686,35 +801,65 @@ def _save_pdf_question_draft(dependencies, draft, draft_id):
     for index, original in enumerate(originals):
         submitted = None
         if submitted_items is not None:
-            submitted = next(
-                (
-                    item
-                    for item in submitted_items
-                    if isinstance(item, dict)
-                    and int(item.get("index", -1)) == index
-                ),
-                None,
-            )
+            submitted = _pdf_submitted_question_at_index(submitted_items, index)
 
         if submitted is not None:
             excluded = bool(submitted.get("delete"))
             question = str(submitted.get("question") or "").strip()
+            raw_choices = submitted.get("choices") or []
+            if not isinstance(raw_choices, list):
+                raw_choices = []
+            if len(raw_choices) > PDF_QUESTION_MAX_CHOICES:
+                flash(
+                    f"Question {original.get('number')} has more than "
+                    f"{PDF_QUESTION_MAX_CHOICES} answer choices. Delete choices before saving.",
+                    "error",
+                )
+                return redirect(f"/pdf-import/review/{draft_id}")
             choices = []
-            for raw_choice in submitted.get("choices") or []:
+            original_labels = []
+            for raw_choice in raw_choices:
                 if not isinstance(raw_choice, dict):
                     continue
-                label = str(raw_choice.get("label") or "").strip().upper()
+                original_label = str(raw_choice.get("label") or "").strip().upper()
                 text = str(raw_choice.get("text") or "").strip()
-                if label and text:
+                if text:
+                    label = PDF_CHOICE_LABELS[len(choices)]
                     choices.append({"label": label, "text": text})
-            correct = str(submitted.get("correct") or "").strip().upper()
+                    original_labels.append(original_label)
+            submitted_answers = submitted.get("correct_answers")
+            if not isinstance(submitted_answers, list):
+                submitted_answers = [submitted.get("correct")]
+            submitted_answers = {
+                str(answer or "").strip().upper() for answer in submitted_answers
+            }
+            correct_answers = [
+                choice["label"]
+                for choice, original_label in zip(choices, original_labels)
+                if original_label in submitted_answers
+            ]
+            answer_mode = str(submitted.get("answer_mode") or "").strip().lower()
+            if answer_mode not in {"single", "multiple"}:
+                answer_mode = "multiple" if len(correct_answers) > 1 else "single"
             explanation = str(submitted.get("explanation") or "").strip()
-            feedback = (
+            submitted_feedback = (
                 submitted.get("feedback")
                 if isinstance(submitted.get("feedback"), dict)
                 else {}
             )
+            feedback = {
+                choice["label"]: str(submitted_feedback.get(original_label) or "")
+                for choice, original_label in zip(choices, original_labels)
+                if str(submitted_feedback.get(original_label) or "").strip()
+            }
+            confirmation_required = bool(
+                original.get("correctness_confirmation_required", False)
+            )
+            correctness_confirmed = bool(
+                submitted.get("correctness_confirmed", not confirmation_required)
+            )
         else:
+            normalized_original = _normalize_pdf_question_for_review(original)
             excluded = bool(request.form.get(f"delete_{index}"))
             question = (
                 request.form.get(f"question_{index}")
@@ -722,7 +867,7 @@ def _save_pdf_question_draft(dependencies, draft, draft_id):
                 or ""
             ).strip()
             choices = []
-            for choice in original.get("choices") or []:
+            for choice in normalized_original.get("choices") or []:
                 label = str(choice.get("label") or "").strip().upper()
                 text = (
                     request.form.get(f"choice_{index}_{label}")
@@ -731,38 +876,63 @@ def _save_pdf_question_draft(dependencies, draft, draft_id):
                 ).strip()
                 if label and text:
                     choices.append({"label": label, "text": text})
-            correct = (
-                request.form.get(f"correct_{index}")
-                or original.get("correct")
-                or ""
-            ).strip().upper()
+            requested_correct = request.form.get(f"correct_{index}")
+            correct_answers = (
+                [str(requested_correct).strip().upper()]
+                if requested_correct is not None
+                else normalized_original.get("correct_answers") or []
+            )
+            answer_mode = normalized_original.get("answer_mode") or "single"
             explanation = (
                 request.form.get(f"explanation_{index}")
                 or original.get("explanation")
                 or ""
             ).strip()
             feedback = (
-                original.get("choice_feedback")
-                if isinstance(original.get("choice_feedback"), dict)
+                normalized_original.get("choice_feedback")
+                if isinstance(normalized_original.get("choice_feedback"), dict)
                 else {}
+            )
+            confirmation_required = bool(
+                normalized_original.get("correctness_confirmation_required", False)
+            )
+            correctness_confirmed = bool(
+                normalized_original.get("correctness_confirmed", not confirmation_required)
             )
 
         labels = {choice["label"] for choice in choices}
-        valid = bool(question and len(choices) >= 2 and correct in labels)
+        correct_answers = [
+            answer
+            for answer in correct_answers
+            if answer in PDF_CHOICE_LABELS and answer in labels
+        ]
+        correct_answers = list(dict.fromkeys(correct_answers))
+        valid = bool(
+            question
+            and PDF_QUESTION_MIN_CHOICES <= len(choices) <= PDF_QUESTION_MAX_CHOICES
+            and correct_answers
+            and (answer_mode != "single" or len(correct_answers) == 1)
+            and (answer_mode != "multiple" or len(correct_answers) >= 2)
+            and (not confirmation_required or correctness_confirmed)
+        )
         if not excluded and not valid:
             missing = []
             if not question:
                 missing.append("question text")
-            if len(choices) < 2:
+            if len(choices) < PDF_QUESTION_MIN_CHOICES:
                 missing.append(
                     f"answer choices ({len(choices)} detected/submitted)"
                 )
-            if not correct:
-                missing.append("correct answer")
-            elif correct not in labels:
-                missing.append(
-                    f"correct answer {correct} does not match submitted choices"
-                )
+            if len(choices) > PDF_QUESTION_MAX_CHOICES:
+                missing.append(f"no more than {PDF_QUESTION_MAX_CHOICES} answer choices")
+            if not correct_answers:
+                missing.append("at least one correct answer")
+            elif answer_mode == "single" and len(correct_answers) != 1:
+                missing.append("exactly one correct answer in single-answer mode")
+            elif answer_mode == "multiple" and len(correct_answers) < 2:
+                missing.append("at least two correct answers in multiple-answer mode")
+            if confirmation_required and not correctness_confirmed:
+                missing.append("explicit confirmation of the complete correct-answer set")
             flash(
                 f"Question {original.get('number')} cannot be active in the bank: "
                 f"{', '.join(missing)}. Repair it or mark it for deletion/exclusion.",
@@ -788,7 +958,9 @@ def _save_pdf_question_draft(dependencies, draft, draft_id):
                 "original_number": int(original.get("number") or index + 1),
                 "question": question,
                 "choices": choices,
-                "correct": correct,
+                "correct_answers": correct_answers,
+                "answer_mode": answer_mode,
+                "correctness_confirmed": correctness_confirmed,
                 "explanation": stored_explanation,
                 "choice_feedback": feedback or {},
                 "pages": original.get("pages") or [],
@@ -808,7 +980,7 @@ def _save_pdf_question_draft(dependencies, draft, draft_id):
         + secrets.token_urlsafe(9).replace("-", "").replace("_", "")[:14]
     )
     bank = {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": bank_id,
         "title": bank_title,
         "source_name": draft.get("source_name") or "PDF import",
