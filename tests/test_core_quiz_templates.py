@@ -180,6 +180,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
             "view_quiz_count": 1,
             "view": "visible",
             "app_version": dlms.APP_VERSION,
+            "active_quiz_ids": [str(quiz["id"])],
         }
         with dlms.app.test_request_context("/library"):
             body = dlms.render_template("quiz/library.html", **context)
@@ -199,6 +200,8 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         self.assertIn('aria-live="polite"', body)
         self.assertIn("Sortable.create", body)
         self.assertIn("JSON.stringify(payload)", body)
+        self.assertIn('id="libraryQuizIdentityData"', body)
+        self.assertIn('src="/static/quiz-recovery.js"', body)
         self.assertIn('/static/nav-normalize.js', body)
 
     def test_classic_builder_templates_preserve_form_and_script_contracts(self):

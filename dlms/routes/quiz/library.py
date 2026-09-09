@@ -761,13 +761,19 @@ def quiz_library(dependencies):
     )
     hidden_count = len(registry) - visible_count
     view_quiz_count = len(normal_filtered)
+    active_quiz_ids = [
+        str(quiz.get("id"))
+        for quiz in registry
+        if quiz.get("id") is not None
+    ]
 
     return render_template("quiz/library.html", quizzes=quizzes, grouped_quizzes=grouped_quizzes, folder_names=folder_names,
        display_folder_names=display_folder_names,
        normal_display_folder_names=normal_display_folder_names,
        hidden_folder_keys=hidden_folder_keys, portal_title=portal_title,
        visible_count=visible_count, hidden_count=hidden_count,
-       view_quiz_count=view_quiz_count, view=view, app_version=APP_VERSION)
+       view_quiz_count=view_quiz_count, view=view, app_version=APP_VERSION,
+       active_quiz_ids=active_quiz_ids)
 
 def register_library_routes(
     blueprint: Blueprint, dependencies: QuizLibraryDependencies

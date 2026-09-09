@@ -5,6 +5,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "static" / "script.js").read_text(encoding="utf-8")
 RECOVERY = (ROOT / "static" / "quiz-recovery.js").read_text(encoding="utf-8")
+LIBRARY_TEMPLATE = (ROOT / "templates" / "quiz" / "library.html").read_text(encoding="utf-8")
+RESET_TEMPLATE = (ROOT / "templates" / "settings" / "reset-remove.html").read_text(encoding="utf-8")
+RESTORE_COMPLETE_TEMPLATE = (ROOT / "templates" / "settings" / "restore-complete.html").read_text(encoding="utf-8")
+RESTORE_CONFIRM_TEMPLATE = (ROOT / "templates" / "settings" / "restore-confirm.html").read_text(encoding="utf-8")
+RESTORE_FAILED_TEMPLATE = (ROOT / "templates" / "settings" / "restore-failed.html").read_text(encoding="utf-8")
 
 
 def test_recovery_is_a_dedicated_compatibility_loaded_runtime():
@@ -22,6 +27,40 @@ def test_recovery_namespace_fingerprint_and_limits_are_versioned_and_bounded():
     assert "EXPIRY_MS = 30 * 24 * 60 * 60 * 1000" in RECOVERY
     assert "removeStored()" in RECOVERY
     assert "`${STORAGE_PREFIX}${encodeURIComponent(context.quizId)}`" in RECOVERY
+
+
+def test_lifecycle_cleanup_is_scoped_and_best_effort():
+    assert "function pruneStoredRecords" in RECOVERY
+    assert "function clearAllStoredRecords" in RECOVERY
+    assert "function removeStoredQuiz" in RECOVERY
+    assert "key.startsWith(STORAGE_PREFIX)" in RECOVERY
+    assert "localStorage.clear(" not in RECOVERY
+    assert "validateRecordEnvelope(record, now)" in RECOVERY
+    assert "active.has(quizId)" in RECOVERY
+    assert "pruneStoredRecords();" in RECOVERY
+    assert "!current && savedRecord !== null && !allowTakeover" in RECOVERY
+
+
+def test_fingerprint_tracks_playable_artifact_not_display_title():
+    fingerprint_start = RECOVERY.index("async function quizFingerprint")
+    fingerprint_end = RECOVERY.index("function questionDescriptors", fingerprint_start)
+    fingerprint = RECOVERY[fingerprint_start:fingerprint_end]
+    assert "rawQuizText" in fingerprint
+    assert "quizId" in fingerprint
+    assert "quizFile" in fingerprint
+    assert "examMinutes" in fingerprint
+    assert "quizTitle" not in fingerprint
+
+
+def test_lifecycle_pages_clear_only_after_successful_destructive_operations():
+    assert 'id="libraryQuizIdentityData"' in LIBRARY_TEMPLATE
+    assert "pruneStoredRecords({activeQuizIds})" in LIBRARY_TEMPLATE
+    assert '"/api/reset_quiz_library","/api/reset_all_data"' in RESET_TEMPLATE
+    assert "quizRecoveryClearingResetEndpoints.has(btn.dataset.endpoint)" in RESET_TEMPLATE
+    assert "window.DLMSQuizRecovery?.clearAllStoredRecords();" in RESET_TEMPLATE
+    assert "window.DLMSQuizRecovery?.clearAllStoredRecords();" in RESTORE_COMPLETE_TEMPLATE
+    assert "clearAllStoredRecords" not in RESTORE_CONFIRM_TEMPLATE
+    assert "clearAllStoredRecords" not in RESTORE_FAILED_TEMPLATE
 
 
 def test_recovery_record_does_not_embed_quiz_content_or_scoring_results():

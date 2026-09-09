@@ -1442,7 +1442,7 @@ def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(b
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
-    identity = "\0".join(["quiz-recovery-v1", "1", "7", "/data/example.json", "Example", "5", "abc"])
+    identity = "\0".join(["quiz-recovery-v1", "1", "7", "/data/example.json", "5", "abc"])
     expected_fingerprint = "sha256:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
     assert browser.evaluate(
         "(async () => { const prototype=Object.getPrototypeOf(window.crypto);"
@@ -1626,11 +1626,14 @@ def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement
         "window.__recoveryFetch = window.fetch.bind(window);"
         "window.fetch = (...args) => {"
         "if (String(args[0]).includes('/record_attempt')) window.__recoveryRetryPayload = args[1].body;"
-        "return window.__recoveryFetch(...args); }; true"
+        "return window.__recoveryFetch(...args).then(async response=>{"
+        "if(String(args[0]).includes('/record_attempt'))"
+        "window.__recoveryRetryResponse=await response.clone().json();return response}); }; true"
     ) is True
     browser.click(".quiz-recovery-resume")
     browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
     assert browser.evaluate("JSON.parse(window.__recoveryRetryPayload)") == original_payload
+    assert browser.evaluate("window.__recoveryRetryResponse.already_recorded") is True
     assert _database_value(
         browser_stack.data_root / "results.db", "SELECT COUNT(*) FROM attempts WHERE id = ?", (attempt_id,)
     ) == 1
@@ -1823,6 +1826,189 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
             close(first_process, first_output, first_browser)
         if second_browser is not None:
             close(second_process, second_output, second_browser)
+
+
+def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
+    firefox = shutil.which("firefox") or shutil.which("firefox-esr")
+    if not firefox:
+        pytest.skip("Firefox is not installed")
+    data_root = tmp_path / "recovery-presence-data"
+    profile = tmp_path / "recovery-presence-profile"
+    profile.mkdir()
+    server_port = _free_loopback_port()
+    base_url = f"http://127.0.0.1:{server_port}"
+    process_options = {"start_new_session": True} if os.name == "posix" else {}
+    env = os.environ.copy()
+    env.update({
+        "QUIZAPP_DATA_DIR": str(data_root),
+        "DLMS_NO_BROWSER": "1",
+        "DLMS_BROWSER_TEST_PORT": str(server_port),
+        "DLMS_BROWSER_REUSE_DATA": "1",
+        "DLMS_BROWSER_PRESENCE_TEST_GRACE_SECONDS": "2",
+        "DLMS_BROWSER_PRESENCE_TEST_TOKEN_TTL_SECONDS": "0.5",
+        "DLMS_BROWSER_PRESENCE_TEST_POLL_SECONDS": "0.05",
+        "MOZ_CRASHREPORTER_DISABLE": "1",
+        "MOZ_DISABLE_AUTO_SAFE_MODE": "1",
+        "PYTHONUNBUFFERED": "1",
+    })
+    server_process = browser_process = browser = None
+    server_output = browser_output = None
+
+    def start_server(label):
+        log_path = tmp_path / f"recovery-presence-server-{label}.log"
+        output = log_path.open("w", encoding="utf-8")
+        process = subprocess.Popen(
+            [sys.executable, str(ROOT / "tests" / "browser" / "_server.py")],
+            cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT,
+            **process_options,
+        )
+        _wait_for_server(f"{base_url}/library", process, log_path)
+        return process, output
+
+    def start_browser(label):
+        port = _free_loopback_port()
+        log_path = tmp_path / f"recovery-presence-firefox-{label}.log"
+        output = log_path.open("w", encoding="utf-8")
+        process = subprocess.Popen(
+            [firefox, "--headless", "--no-remote", "--profile", str(profile),
+             "--remote-debugging-port", str(port), "about:blank"],
+            cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT,
+            **process_options,
+        )
+        return process, output, _connect_firefox(port, process, log_path)
+
+    def close_browser():
+        nonlocal browser, browser_process, browser_output
+        if browser is not None:
+            try:
+                browser.command("browser.close", {}, timeout=3.0)
+            except Exception:
+                browser.close()
+            browser = None
+        if browser_process is not None:
+            try:
+                browser_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                _terminate_process_tree(browser_process)
+        browser_process = None
+        if browser_output is not None:
+            browser_output.close()
+            browser_output = None
+
+    try:
+        server_process, server_output = start_server("first")
+        metadata = json.loads((data_root / "browser_fixture.json").read_text(encoding="utf-8"))
+        quiz_url = f"{base_url}/quizzes/{metadata['critical_html']}"
+        browser_process, browser_output, browser = start_browser("first")
+        browser.navigate(quiz_url)
+        browser.wait_for("quizRecoveryReady === true && window.dlmsBrowserPresence?.enabled === true")
+        browser.click(".study-mode-btn")
+        browser.click("#choices .choice[data-index='0']")
+        recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+        browser.navigate(f"{base_url}/library")
+        browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
+        close_browser()
+
+        deadline = time.monotonic() + 6
+        while server_process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert server_process.poll() is not None
+        server_output.close()
+        server_output = None
+
+        server_process, server_output = start_server("second")
+        browser_process, browser_output, browser = start_browser("second")
+        browser.navigate(quiz_url)
+        browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    finally:
+        close_browser()
+        _terminate_process_tree(server_process)
+        if server_output is not None:
+            server_output.close()
+
+
+def test_quiz_recovery_library_prunes_only_expired_malformed_and_orphaned_records(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    current_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("window.dlmsCsrfToken !== undefined")
+    seeded = browser.evaluate(
+        f"(() => {{ const prefix=window.DLMSQuizRecovery?.STORAGE_PREFIX || 'dlms.quiz-progress.v1:';"
+        f"const current=JSON.parse(localStorage.getItem({json.dumps(current_key)}));"
+        "const put=(id,value)=>localStorage.setItem(prefix+encodeURIComponent(id),JSON.stringify(value));"
+        "const orphan=structuredClone(current);orphan.quiz.id='orphan-118';put('orphan-118',orphan);"
+        "const expired=structuredClone(current);expired.quiz.id='expired-118';"
+        "expired.session.createdAt=1;expired.session.updatedAt=2;"
+        "expired.session.expiresAt=2+(30*24*60*60*1000);put('expired-118',expired);"
+        "const future=structuredClone(current);future.quiz.id='future-118';future.schemaVersion=999;put('future-118',future);"
+        "localStorage.setItem(prefix+'malformed-118','{bad');"
+        "localStorage.setItem('dlmsCollapsedLibraryFolders','[\"Browser Regression\"]');"
+        "localStorage.setItem('unrelated.segment118','preserve');"
+        "return {prefix,currentKey:" + json.dumps(current_key) + "}; })()"
+    )
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for(
+        "window.DLMSQuizRecovery && "
+        "localStorage.getItem('dlms.quiz-progress.v1:orphan-118') === null && "
+        "localStorage.getItem('dlms.quiz-progress.v1:expired-118') === null && "
+        "localStorage.getItem('dlms.quiz-progress.v1:future-118') === null && "
+        "localStorage.getItem('dlms.quiz-progress.v1:malformed-118') === null"
+    )
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(current_key)}) !== null") is True
+    assert browser.evaluate("localStorage.getItem('unrelated.segment118')") == "preserve"
+    assert browser.evaluate("localStorage.getItem('dlmsCollapsedLibraryFolders')") == '["Browser Regression"]'
+    assert seeded["prefix"] == "dlms.quiz-progress.v1:"
+
+
+def test_quiz_recovery_fingerprint_invalidation_tracks_playable_content_not_title(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("window.dlmsCsrfToken !== undefined")
+    browser.evaluate(
+        "new Promise((resolve,reject)=>{const script=document.createElement('script');"
+        "script.src='/static/quiz-recovery.js';script.onload=resolve;script.onerror=reject;"
+        "document.head.appendChild(script)})"
+    )
+    fingerprints = browser.evaluate(
+        "(async()=>{const make=(raw,minutes=5,title='One')=>DLMSQuizRecovery.quizFingerprint({"
+        "rawQuizText:raw,quizId:'fingerprint-118',quizFile:'/data/fingerprint.json',"
+        "quizTitle:title,examMinutes:minutes});"
+        "const base='[{\"type\":\"choice\",\"choices\":[\"A\",\"B\"]}]';"
+        "return {base:await make(base),identical:await make(base),title:await make(base,5,'Two'),"
+        "question:await make('[{\"type\":\"choice\",\"choices\":[\"A\",\"C\"]}]'),"
+        "reorder:await make('[{\"n\":2},{\"n\":1}]'),"
+        "matching:await make('[{\"type\":\"matching\",\"pairs\":[[\"A\",\"B\"]]}]'),"
+        "hotspot:await make('[{\"type\":\"hotspot\",\"x\":0.7,\"y\":0.2}]'),"
+        "timer:await make(base,6)};})()"
+    )
+    assert fingerprints["base"] == fingerprints["identical"] == fingerprints["title"]
+    assert len({fingerprints[name] for name in ("base", "question", "reorder", "matching", "hotspot", "timer")}) == 6
+
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
+    artifact = browser_stack.data_root / "data" / browser_stack.metadata["recovery_json"]
+    original_bytes = artifact.read_bytes()
+    try:
+        browser.navigate(quiz_url)
+        browser.wait_for("quizRecoveryReady === true")
+        browser.click(".study-mode-btn")
+        browser.click("#choices .choice[data-index='0']")
+        storage_key = browser.evaluate("quizRecoveryController.storageKey")
+        browser.navigate(f"{browser_stack.base_url}/")
+        changed = json.loads(original_bytes.decode("utf-8"))
+        changed[0]["question"] = "Materially changed recovery question"
+        artifact.write_text(json.dumps(changed), encoding="utf-8")
+        browser.navigate(quiz_url)
+        browser.wait_for("quizRecoveryReady === true")
+        assert browser.evaluate("document.querySelector('.quiz-recovery-panel')") is None
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+    finally:
+        artifact.write_bytes(original_bytes)
 
 
 def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack):
@@ -2044,6 +2230,13 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     changed_question = "Browser restore mutation question?"
     database = browser_stack.data_root / "results.db"
 
+    browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.evaluate("localStorage.setItem('unrelated.restore-segment118','preserve'); true")
+
     browser.navigate(f"{browser_stack.base_url}/edit_quiz/{quiz_id}")
     browser.wait_for("document.querySelector('[name=quiz_title]') !== null")
     browser.evaluate(
@@ -2082,9 +2275,12 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
         "document.body.textContent.includes('2 quizzes') && "
         "document.body.textContent.includes('Nothing has been restored yet')"
     ) is True
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
 
     browser.click("form[action*='/restore/confirm/'] button[type='submit']")
     browser.wait_for("document.querySelector('h1')?.textContent.includes('Restore complete')", timeout=12.0)
+    browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
+    assert browser.evaluate("localStorage.getItem('unrelated.restore-segment118')") == "preserve"
     _wait_for_database_value(
         database,
         "SELECT title FROM quizzes WHERE id = %d" % quiz_id,
@@ -2101,6 +2297,27 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     assert browser.evaluate("document.title") == original_title
     assert browser.evaluate("quiz[0].question") == original_question
+
+
+def test_cancelled_and_invalid_restore_preserve_quiz_recovery(browser_stack, tmp_path):
+    browser = browser_stack.browser
+    recovery_key = "dlms.quiz-progress.v1:restore-preserved-118"
+    browser.navigate(f"{browser_stack.base_url}/settings/backup")
+    browser.wait_for("document.getElementById('backupFile') !== null")
+    browser.evaluate(f"localStorage.setItem({json.dumps(recovery_key)}, '{{preserve}}'); true")
+    browser.set_files("#backupFile", [browser_stack.metadata["restore_path"]])
+    browser.click("form[action='/settings/backup/restore/stage'] button[type='submit']")
+    browser.wait_for("document.querySelector('h1')?.textContent.includes('Review backup before restore')")
+    browser.click("form[action*='/restore/cancel/'] button[type='submit']")
+    browser.wait_for("location.pathname === '/settings/backup' && location.search.includes('restore_cancelled=1')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)})") == "{preserve}"
+
+    invalid = tmp_path / "invalid-segment118.zip"
+    invalid.write_bytes(b"not a portable backup")
+    browser.set_files("#backupFile", [str(invalid)])
+    browser.click("form[action='/settings/backup/restore/stage'] button[type='submit']")
+    browser.wait_for("document.querySelector('h1')?.textContent.includes('Backup rejected')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)})") == "{preserve}"
 
 
 def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_path):
@@ -2480,6 +2697,8 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
 
     assert browser.evaluate(
         "(() => { sessionStorage.removeItem('dlms-reset-alert'); window.__resetCalls=[];"
+        "localStorage.setItem('dlms.quiz-progress.v1:reset-success-118','preserve');"
+        "localStorage.setItem('unrelated.reset-segment118','preserve');"
         "window.confirm=()=>true;"
         "window.alert=message=>sessionStorage.setItem('dlms-reset-alert',message);"
         "window.fetch=(input,init={})=>{window.__resetCalls.push({url:String(input),method:init.method});"
@@ -2505,8 +2724,11 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         "Safety backup: browser-safety.zip"
     )
     assert browser.evaluate("location.pathname") == "/settings/reset-remove"
+    assert browser.evaluate("localStorage.getItem('dlms.quiz-progress.v1:reset-success-118')") is None
+    assert browser.evaluate("localStorage.getItem('unrelated.reset-segment118')") == "preserve"
 
     browser.wait_for("window.dlmsCsrfToken && document.getElementById('resetStatus')")
+    browser.evaluate("localStorage.setItem('dlms.quiz-progress.v1:failed-reset-118','preserve'); true")
     protected_fetch_setup = (
         "(() => { const protectedFetch=window.fetch.bind(window); window.__resetCalls=[];"
         "window.__resetConfirms=[]; window.confirm=message=>{window.__resetConfirms.push(message);return true};"
@@ -2542,6 +2764,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         assert "not verified" in reset_failure["status"]
         assert reset_failure["role"] == "alert"
         assert reset_failure["live"] == "assertive"
+        assert browser.evaluate("localStorage.getItem('dlms.quiz-progress.v1:failed-reset-118')") == "preserve"
         assert len(list((browser_stack.data_root / "backups").glob("*.zip"))) == backup_count
 
         cancel_result = browser.evaluate(
@@ -2592,11 +2815,40 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         assert "not verified" in removal_failure["status"]
         assert removal_failure["role"] == "alert"
         assert removal_failure["live"] == "assertive"
+        assert browser.evaluate("localStorage.getItem('dlms.quiz-progress.v1:failed-reset-118')") == "preserve"
         assert browser_stack.data_root.is_dir()
         assert disabled_marker.is_file()
     finally:
         if disabled_marker.exists():
             disabled_marker.rename(marker)
+
+    assert browser.evaluate(
+        "(() => {localStorage.setItem('dlms.quiz-progress.v1:remove-success-118','preserve');"
+        "const input=document.getElementById('removeDlmsConfirmation');input.value='REMOVE DLMS DATA';"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));window.confirm=()=>true;window.alert=()=>{};"
+        "window.fetch=()=>Promise.resolve(new Response(JSON.stringify({status:'ok'}),"
+        "{status:200,headers:{'Content-Type':'application/json'}}));return true})()"
+    ) is True
+    browser.click("#removeAllDlmsDataBtn")
+    browser.wait_for("document.getElementById('resetStatus').textContent.includes('runtime data removed')")
+    assert browser.evaluate("localStorage.getItem('dlms.quiz-progress.v1:remove-success-118')") is None
+    assert browser.evaluate("localStorage.getItem('unrelated.reset-segment118')") == "preserve"
+
+    browser.navigate(f"{base_url}/settings/reset-remove")
+    browser.wait_for("window.DLMSQuizRecovery && document.getElementById('resetStatus')")
+    assert browser.evaluate(
+        "(() => {localStorage.setItem('dlms.quiz-progress.v1:storage-failure-118','preserve');"
+        "const original=Storage.prototype.removeItem;Storage.prototype.removeItem=function(){throw new Error('blocked')};"
+        "window.confirm=()=>true;window.alert=message=>sessionStorage.setItem('dlms-storage-failure-alert',message);"
+        "window.fetch=()=>Promise.resolve(new Response(JSON.stringify({status:'ok',backup:'safe.zip'}),"
+        "{status:200,headers:{'Content-Type':'application/json'}}));return true})()"
+    ) is True
+    browser.click(".resetAction[data-endpoint='/api/reset_all_data']")
+    browser.wait_for(
+        "document.readyState === 'complete' && "
+        "sessionStorage.getItem('dlms-storage-failure-alert') !== null"
+    )
+    assert "reset completed" in browser.evaluate("sessionStorage.getItem('dlms-storage-failure-alert')")
 
 
 def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_stack):
@@ -4876,6 +5128,57 @@ def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
         "message": "",
         "current": "Law Study Anki",
     }
+
+
+def test_quiz_deletion_prunes_only_deleted_progress_and_stops_former_owner(browser_stack):
+    browser = browser_stack.browser
+    critical_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    companion_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['companion_html']}"
+    browser.navigate(critical_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    critical_key = browser.evaluate("quizRecoveryController.storageKey")
+    first_context = browser.context
+    created = browser.command("browsingContext.create", {"type": "tab"})
+    companion_context = created["context"]
+    try:
+        browser.context = companion_context
+        browser.navigate(companion_url)
+        browser.wait_for("quizRecoveryReady === true")
+        browser.click(".study-mode-btn")
+        browser.click("#choices .choice[data-index='0']")
+        companion_key = browser.evaluate("quizRecoveryController.storageKey")
+
+        browser.context = first_context
+        browser.navigate(f"{browser_stack.base_url}/library")
+        browser.wait_for("window.DLMSQuizRecovery !== undefined")
+        failed_status = browser.evaluate(
+            f"fetch('/delete_quiz/{browser_stack.metadata['companion_id']}',"
+            "{method:'POST',headers:{'X-CSRFToken':'intentionally-invalid'}}).then(response=>response.status)"
+        )
+        assert failed_status == 400
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(companion_key)}) !== null") is True
+
+        browser.evaluate("window.confirm=()=>true; true")
+        browser.click(
+            f"form[action='/delete_quiz/{browser_stack.metadata['companion_id']}'] button[type='submit']"
+        )
+        browser.wait_for("location.pathname === '/library' && window.DLMSQuizRecovery !== undefined")
+        browser.wait_for(f"localStorage.getItem({json.dumps(companion_key)}) === null")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(critical_key)}) !== null") is True
+
+        browser.context = companion_context
+        browser.wait_for("quizRecoveryController.ownsState === false")
+        assert "was cleared" in browser.evaluate(
+            "document.getElementById('quizRecoveryNotice').textContent"
+        )
+        browser.evaluate("checkpointQuizRecovery(); true")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(companion_key)})") is None
+    finally:
+        browser.context = companion_context
+        browser.command("browsingContext.close", {"context": companion_context})
+        browser.context = first_context
 
 
 @pytest.mark.parametrize(

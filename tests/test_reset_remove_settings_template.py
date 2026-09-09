@@ -202,7 +202,7 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
         self.assertIn(str(escape(hostile)), page)
         self.assertNotIn(hostile, page)
         self.assertNotIn('<img src=x onerror="attack()">', page)
-        self.assertEqual(2, page.count("</script>"))
+        self.assertEqual(3, page.count("</script>"))
         self.assertIn("\u2028\u2029", page)
         self.assertNotIn("{{ app_data_dir }}", page)
 

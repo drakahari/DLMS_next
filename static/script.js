@@ -294,7 +294,6 @@ async function loadQuiz() {
                 rawQuizText,
                 quizId: window.QUIZ_ID,
                 quizFile: file,
-                quizTitle: window.quiz_title || "",
                 examMinutes: examDurationMinutes,
             });
             quizRecoveryController = recovery.createController({

@@ -283,6 +283,8 @@
     </main>
 </div>
 
+<script src="/static/quiz-recovery.js"></script>
+<script id="libraryQuizIdentityData" type="application/json">{{ active_quiz_ids|tojson }}</script>
 <script id="libraryFolderIdentityData" type="application/json">{{ folder_names|tojson }}</script>
 <script>
 const collapsedLibraryFoldersStorageKey = "dlmsCollapsedLibraryFolders";
@@ -639,6 +641,15 @@ function moveLibraryQuiz(event, button, direction) {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
+    let activeQuizIds = [];
+    try {
+        const parsed = JSON.parse(
+            document.getElementById("libraryQuizIdentityData")?.textContent || "[]"
+        );
+        if (Array.isArray(parsed)) activeQuizIds = parsed;
+    } catch { /* Malformed page data must not affect the Quiz Library. */ }
+    window.DLMSQuizRecovery?.pruneStoredRecords({activeQuizIds});
+
     const collapsedFolders = reconcileCollapsedLibraryFolders();
     trackLibraryFolderMutations();
     document.querySelectorAll(".library-folder").forEach(folder => {

@@ -44,7 +44,7 @@ def seed_browser_data():
         filename_prefix="browser_critical",
         exam_minutes=5,
     )
-    _, companion_html = dlms._publish_quiz(
+    companion_id, companion_html = dlms._publish_quiz(
         "Browser Companion",
         [_choice_question(1, "Companion question?", 0)],
         filename_prefix="browser_companion",
@@ -190,6 +190,7 @@ def seed_browser_data():
     metadata = {
         "critical_id": critical_id,
         "critical_html": critical_html,
+        "companion_id": companion_id,
         "companion_html": companion_html,
         "recovery_html": recovery_html,
         "recovery_json": recovery_json,
@@ -201,7 +202,9 @@ def seed_browser_data():
 
 
 def main():
-    seed_browser_data()
+    fixture_path = Path(dlms.APP_DATA_DIR, "browser_fixture.json")
+    if os.environ.get("DLMS_BROWSER_REUSE_DATA") != "1" or not fixture_path.is_file():
+        seed_browser_data()
     bind_host = os.environ.get("DLMS_BROWSER_TEST_BIND_HOST", "127.0.0.1")
     test_grace = os.environ.get("DLMS_BROWSER_PRESENCE_TEST_GRACE_SECONDS")
     if test_grace:
