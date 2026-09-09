@@ -198,7 +198,19 @@
 <label class="pdf-import-rights"><input type="checkbox" name="rights_ok" required><span>I have permission to use this document for my own study. DLMS will treat the imported material as user-provided and not cleared for redistribution.</span></label>
 <div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Quiz</a><button class="build-primary-button" type="submit">Analyze PDF</button></div>
 </form></section>
-<section class="dashboard-panel pdf-import-note"><strong>Current Smart PDF scope</strong><p>DLMS handles selectable-text multiple-choice question banks and glossary/terminology layouts. Ambiguous records are flagged for review instead of being guessed. OCR and arbitrary textbook/chapter interpretation are intentionally out of scope for this release candidate.</p></section>
+<section class="dashboard-panel pdf-ocr-import-panel" aria-labelledby="pdfOcrImportHeading">
+<div class="pdf-bank-panel-heading"><div><span class="build-method-label">LOCAL / OFFLINE OCR</span><h2 id="pdfOcrImportHeading">Import Quiz Screenshots</h2><p>Import up to {{ ocr_max_files }} clear PNG, JPG/JPEG, or WebP screenshots in one ordered batch. DLMS extracts draft questions locally, then requires Review &amp; Repair before saving.</p></div>{% if ocr_available %}<span class="pdf-status complete">Tesseract {{ ocr_version }}</span>{% else %}<span class="pdf-status incomplete">OCR unavailable</span>{% endif %}</div>
+<form action="/pdf-import/screenshots" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form" id="pdfOcrUploadForm">
+<label class="build-field"><span>Quiz screenshots</span><input type="file" name="screenshots" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple required {% if not ocr_available %}disabled{% endif %}><small>Maximum {{ ocr_max_file_mib }} MiB each and {{ ocr_max_batch_mib }} MiB total. Upload order is preserved.</small></label>
+<label class="build-field"><span>Source bank title</span><input type="text" name="quiz_title" placeholder="Example: Network Security Screenshots" {% if not ocr_available %}disabled{% endif %}><small>You can change this again during review.</small></label>
+<label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90" {% if not ocr_available %}disabled{% endif %}></label>
+<div class="pdf-ocr-guidance semantic-info-surface"><strong>OCR creates reviewable drafts, not trusted answers.</strong><span>Labels A–Z may be inferred; 2–26 choices and multiple correct answers are supported. A selected or highlighted answer in a screenshot is never treated as proof of correctness. Confirm the complete correct-answer set before saving.</span></div>
+<label class="pdf-import-rights"><input type="checkbox" name="rights_ok" required {% if not ocr_available %}disabled{% endif %}><span>I have permission to use these screenshots for my own study. Validated images are retained temporarily for review, then removed after save or cancellation.</span></label>
+<div class="build-submit-row"><span class="pdf-ocr-local-note">Processing stays on this device. Clear, upright screenshots work best.</span><button class="build-primary-button" type="submit" {% if not ocr_available %}disabled{% endif %}>Import Quiz Screenshots</button></div>
+</form>
+{% if not ocr_available %}<div class="semantic-warning-surface pdf-ocr-unavailable" role="status">Screenshot OCR is unavailable in this runtime. Normal selectable-text PDF import remains fully available.</div>{% endif %}
+</section>
+<section class="dashboard-panel pdf-import-note"><strong>Current Smart PDF scope</strong><p>DLMS handles selectable-text PDF question banks and glossary/terminology layouts, plus screenshot OCR for choice questions. Ambiguous records are preserved and flagged for review instead of being guessed. Scanned-PDF OCR and arbitrary textbook/chapter interpretation are not enabled yet.</p></section>
 {% if banks or term_banks %}
 <div class="pdf-bank-toolbar">
 <div><strong>Saved PDF source banks</strong><span>Collapse large collections or enable management controls when you need them.</span></div>

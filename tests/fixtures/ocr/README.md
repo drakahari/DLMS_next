@@ -1,9 +1,13 @@
-# OCR probe fixtures
+# OCR fixture corpus
 
-`dlms-question.svg` is a synthetic, project-created screenshot-like source and
-`dlms-question.png` is its rasterized probe image. They contain no third-party
-quiz content and are distributed under the repository's license.
+These images are synthetic, project-created, redistribution-safe fixtures with no third-party quiz
+content or interface branding. They exercise the screenshot OCR import safety
+and packaging boundaries; normalized-observation unit tests provide the stable
+layout-inference assertions because OCR engine output can vary slightly by
+native Tesseract build.
 
-`dlms-question.expected.tsv` is synthetic word-level Tesseract-style output
-used to test bounded coordinate and confidence parsing. These fixtures are a
-packaging/service contract check, not an OCR accuracy benchmark.
+The corpus covers explicit and inferred labels, six/eight choices, two/three
+correct answers, unrelated interface chrome, ambiguous text, low resolution,
+rotation, and Unicode. `screenshot-explicit-abcd.png` was generated with the
+built-in image-generation tool from an original DLMS fixture prompt. The other
+fixtures were rendered locally from original text with Pillow.

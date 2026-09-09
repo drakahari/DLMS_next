@@ -4,7 +4,7 @@ import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, ran
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
-from PIL import Image, ImageSequence, UnidentifiedImageError
+from PIL import Image, ImageOps, ImageSequence, UnidentifiedImageError
 from werkzeug.utils import secure_filename
 
 from dlms.rendering.safety import (
@@ -39,6 +39,7 @@ from dlms.persistence import pdf_banks as _pdf_bank_repository
 from dlms.parsing import law_packet as _law_packet_parser
 from dlms.parsing import quiz_text as _quiz_text_parser
 from dlms.parsing import smart_pdf as _smart_pdf_parser
+from dlms.parsing import ocr_questions as _ocr_question_parser
 from dlms.rendering import quiz_artifacts as _quiz_artifact_renderer
 from dlms.services import anki as _anki_service
 from dlms.services import attempts as _attempt_service
@@ -51,6 +52,8 @@ from dlms.services import quiz_publication as _quiz_publication_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
+from dlms.services import ocr as _ocr_service
+from dlms.services import ocr_screenshots as _ocr_screenshot_service
 from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
 from dlms.routes.it import ITStudyDependencies, create_it_blueprint
@@ -444,6 +447,7 @@ def reject_declared_oversized_workflow_upload():
         return None
     route_limits = {
         "/pdf-import/analyze": PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/pdf-import/screenshots": OCR_SCREENSHOT_MAX_BATCH_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/content-packs/import": CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES,
         "/settings/data/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/settings/backup/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
@@ -564,6 +568,7 @@ CONTENT_PACK_FOLDER = os.path.join(APP_DATA_DIR, "content_packs")
 QUIZ_ASSET_FOLDER = os.path.join(APP_DATA_DIR, "quiz_assets")
 IMAGE_BUILDER_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "image_builder_drafts")
 PDF_IMPORT_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "pdf_import_drafts")
+OCR_IMPORT_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_screenshots")
 PDF_QUESTION_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_question_banks")
 PDF_TERMINOLOGY_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_terminology_banks")
 CONTENT_PACK_STAGING_FOLDER = os.path.join(APP_DATA_DIR, "content_pack_staging")
@@ -581,6 +586,7 @@ for d in [
     QUIZ_ASSET_FOLDER,
     IMAGE_BUILDER_DRAFT_FOLDER,
     PDF_IMPORT_DRAFT_FOLDER,
+    OCR_IMPORT_STAGING_FOLDER,
     PDF_QUESTION_BANK_FOLDER,
     PDF_TERMINOLOGY_BANK_FOLDER,
     CONTENT_PACK_STAGING_FOLDER,
@@ -681,9 +687,11 @@ def _bounded_save_upload(upload, destination_path, max_bytes, label="Uploaded fi
                 if not chunk:
                     break
                 total += len(chunk)
+                upload._dlms_consumed_bytes = total
                 if total > max_bytes:
                     raise UploadTooLargeError(f"{label} exceeds the {_format_bytes(max_bytes)} limit.")
                 destination.write(chunk)
+        upload._dlms_consumed_bytes = total
         return total
     except Exception:
         try:
@@ -710,7 +718,15 @@ def _read_bounded_upload(upload, max_bytes, label="Uploaded file"):
         output.write(chunk)
 
 
-def _decode_raster_image(path, allowed_extensions=None):
+def _decode_raster_image(
+    path,
+    allowed_extensions=None,
+    *,
+    max_pixels=IMAGE_MAX_PIXELS,
+    max_width=IMAGE_MAX_WIDTH,
+    max_height=IMAGE_MAX_HEIGHT,
+    max_frames=IMAGE_MAX_FRAMES,
+):
     """Fully decode a raster and ensure its bytes match its declared extension."""
     extension = os.path.splitext(path)[1].lower()
     allowed = set(allowed_extensions or RASTER_IMAGE_FORMATS)
@@ -724,13 +740,15 @@ def _decode_raster_image(path, allowed_extensions=None):
                 if actual_format != RASTER_IMAGE_FORMATS[extension]:
                     raise ValueError("image bytes do not match the filename extension")
                 width, height = image.size
-                if width > IMAGE_MAX_WIDTH or height > IMAGE_MAX_HEIGHT or width * height > IMAGE_MAX_PIXELS:
+                if width > max_width or height > max_height or width * height > max_pixels:
                     raise ValueError(
-                        f"image dimensions exceed {IMAGE_MAX_WIDTH}×{IMAGE_MAX_HEIGHT} or {IMAGE_MAX_PIXELS:,} pixels"
+                        f"image dimensions exceed {max_width}×{max_height} or {max_pixels:,} pixels"
                     )
                 frame_count = int(getattr(image, "n_frames", 1) or 1)
-                if frame_count > IMAGE_MAX_FRAMES:
-                    raise ValueError(f"animated image exceeds the {IMAGE_MAX_FRAMES}-frame limit")
+                if frame_count > max_frames:
+                    if max_frames == 1:
+                        raise ValueError("animated images are not accepted by this workflow")
+                    raise ValueError(f"animated image exceeds the {max_frames}-frame limit")
                 frames = [frame.copy() for frame in ImageSequence.Iterator(image)]
                 if not frames:
                     raise ValueError("image contains no decodable frames")
@@ -745,15 +763,35 @@ def _decode_raster_image(path, allowed_extensions=None):
         raise ValueError("file is not a valid supported raster image") from exc
 
 
-def _reencode_raster_file(source_path, destination_path, allowed_extensions=None):
+def _reencode_raster_file(
+    source_path,
+    destination_path,
+    allowed_extensions=None,
+    *,
+    max_pixels=IMAGE_MAX_PIXELS,
+    max_width=IMAGE_MAX_WIDTH,
+    max_height=IMAGE_MAX_HEIGHT,
+    max_frames=IMAGE_MAX_FRAMES,
+    orient_from_exif=False,
+    normalize_mode=False,
+):
     """Decode and atomically re-encode a raster, stripping non-image trailing data."""
-    frames, metadata = _decode_raster_image(source_path, allowed_extensions)
+    frames, metadata = _decode_raster_image(
+        source_path,
+        allowed_extensions,
+        max_pixels=max_pixels,
+        max_width=max_width,
+        max_height=max_height,
+        max_frames=max_frames,
+    )
     extension = os.path.splitext(destination_path)[1].lower()
     output_format = RASTER_IMAGE_FORMATS[extension]
     descriptor, temporary_path = tempfile.mkstemp(prefix=".dlms-image-", suffix=extension, dir=os.path.dirname(destination_path))
     os.close(descriptor)
     try:
-        first = frames[0]
+        first = ImageOps.exif_transpose(frames[0]) if orient_from_exif else frames[0]
+        if normalize_mode and first.mode not in {"RGB", "L"}:
+            first = first.convert("RGB")
         options = {}
         if output_format == "JPEG":
             if first.mode not in {"RGB", "L"}:
@@ -766,7 +804,14 @@ def _reencode_raster_file(source_path, destination_path, allowed_extensions=None
             if metadata["duration"] is not None:
                 options["duration"] = metadata["duration"]
         first.save(temporary_path, format=output_format, **options)
-        _decode_raster_image(temporary_path, allowed_extensions)
+        _decode_raster_image(
+            temporary_path,
+            allowed_extensions,
+            max_pixels=max_pixels,
+            max_width=max_width,
+            max_height=max_height,
+            max_frames=max_frames,
+        )
         os.replace(temporary_path, destination_path)
     finally:
         try:
@@ -775,7 +820,20 @@ def _reencode_raster_file(source_path, destination_path, allowed_extensions=None
             pass
 
 
-def _store_raster_upload(upload, destination_dir, filename, allowed_extensions=None, max_bytes=RASTER_UPLOAD_MAX_BYTES):
+def _store_raster_upload(
+    upload,
+    destination_dir,
+    filename,
+    allowed_extensions=None,
+    max_bytes=RASTER_UPLOAD_MAX_BYTES,
+    *,
+    max_pixels=IMAGE_MAX_PIXELS,
+    max_width=IMAGE_MAX_WIDTH,
+    max_height=IMAGE_MAX_HEIGHT,
+    max_frames=IMAGE_MAX_FRAMES,
+    orient_from_exif=False,
+    normalize_mode=False,
+):
     """Store an uploaded image only after full decode and safe raster re-encoding."""
     filename = secure_filename(filename or "")
     extension = os.path.splitext(filename)[1].lower()
@@ -789,7 +847,17 @@ def _store_raster_upload(upload, destination_dir, filename, allowed_extensions=N
     try:
         consumed_bytes = _bounded_save_upload(upload, raw_path, max_bytes, "Image upload")
         upload._dlms_consumed_bytes = consumed_bytes
-        _reencode_raster_file(raw_path, destination_path, allowed)
+        _reencode_raster_file(
+            raw_path,
+            destination_path,
+            allowed,
+            max_pixels=max_pixels,
+            max_width=max_width,
+            max_height=max_height,
+            max_frames=max_frames,
+            orient_from_exif=orient_from_exif,
+            normalize_mode=normalize_mode,
+        )
     finally:
         try:
             os.remove(raw_path)
@@ -3966,6 +4034,11 @@ def _delete_pdf_terminology_bank(bank_id):
 # Isolated from the existing text/paste/CSV parsers.
 # =========================================================
 PDF_IMPORT_MAX_BYTES = 64 * 1024 * 1024
+OCR_SCREENSHOT_MAX_BATCH_BYTES = _ocr_screenshot_service.OCR_SCREENSHOT_MAX_BATCH_BYTES
+OCR_SCREENSHOT_MAX_FILE_BYTES = _ocr_screenshot_service.OCR_SCREENSHOT_MAX_FILE_BYTES
+OCR_SCREENSHOT_MAX_FILES = _ocr_screenshot_service.OCR_SCREENSHOT_MAX_FILES
+OCR_SCREENSHOT_ALLOWED_EXTENSIONS = _ocr_screenshot_service.OCR_SCREENSHOT_ALLOWED_EXTENSIONS
+OCR_SCREENSHOT_CANCELLATIONS = _ocr_screenshot_service.OCRTaskCancellationRegistry()
 # Two thousand pages covers unusually large study manuals/question banks while
 # placing a deterministic bound on per-request PDF work.
 PDF_IMPORT_MAX_PAGES = _smart_pdf_parser.PDF_IMPORT_MAX_PAGES
@@ -4026,6 +4099,99 @@ def _remove_pdf_import_upload(temp_pdf):
         os.remove(temp_pdf)
     except OSError:
         pass
+
+
+def _store_pdf_ocr_screenshot(
+    upload,
+    destination_dir,
+    source_id,
+    *,
+    max_bytes,
+    max_pixels,
+    max_side,
+):
+    """Store one OCR source through DLMS's trusted raster decode boundary."""
+    original = secure_filename(getattr(upload, "filename", "") or "")
+    extension = os.path.splitext(original)[1].lower()
+    if extension not in OCR_SCREENSHOT_ALLOWED_EXTENSIONS:
+        raise ValueError("unsupported screenshot type; use PNG, JPG/JPEG, or WebP")
+    filename = f"{source_id}{extension}"
+    _store_raster_upload(
+        upload,
+        destination_dir,
+        filename,
+        OCR_SCREENSHOT_ALLOWED_EXTENSIONS,
+        max_bytes=max_bytes,
+        max_pixels=max_pixels,
+        max_width=max_side,
+        max_height=max_side,
+        max_frames=1,
+        orient_from_exif=True,
+        normalize_mode=True,
+    )
+    path = os.path.join(destination_dir, filename)
+    _frames, metadata = _decode_raster_image(
+        path,
+        OCR_SCREENSHOT_ALLOWED_EXTENSIONS,
+        max_pixels=max_pixels,
+        max_width=max_side,
+        max_height=max_side,
+        max_frames=1,
+    )
+    mime_type = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }[extension]
+    return {
+        "filename": filename,
+        "mime_type": mime_type,
+        "width": int(metadata["size"][0]),
+        "height": int(metadata["size"][1]),
+        "consumed_bytes": int(getattr(upload, "_dlms_consumed_bytes", 0)),
+    }
+
+
+def _stage_pdf_ocr_screenshots(uploads, draft_id):
+    return _ocr_screenshot_service.stage_screenshot_batch(
+        OCR_IMPORT_STAGING_FOLDER,
+        draft_id,
+        uploads,
+        store_validated_upload=_store_pdf_ocr_screenshot,
+        atomic_write_json=_atomic_write_json,
+    )
+
+
+def _pdf_ocr_staged_source_path(draft_id, source):
+    return _ocr_screenshot_service.staged_source_path(
+        OCR_IMPORT_STAGING_FOLDER, draft_id, source
+    )
+
+
+def _cleanup_pdf_ocr_staging(draft_id):
+    return _ocr_screenshot_service.cleanup_screenshot_task(
+        OCR_IMPORT_STAGING_FOLDER, draft_id
+    )
+
+
+def _prune_pdf_ocr_staging():
+    return _ocr_screenshot_service.prune_stale_screenshot_tasks(
+        OCR_IMPORT_STAGING_FOLDER
+    )
+
+
+def _recognize_pdf_ocr_source(draft_id, source, cancel_requested):
+    path = _pdf_ocr_staged_source_path(draft_id, source)
+    return _ocr_service.recognize_image_bytes(
+        path.read_bytes(),
+        source_id=source["id"],
+        source_width=int(source["width"]),
+        source_height=int(source["height"]),
+        page_index=int(source["index"]) - 1,
+        cancel_requested=cancel_requested,
+        image_suffix=path.suffix,
+    )
 
 
 def _delete_pdf_import_draft_file(draft_id):
@@ -5627,6 +5793,25 @@ app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(
     timestamp_now=lambda: datetime.now().isoformat(timespec="seconds"),
     publish_quiz=lambda *args, **kwargs: _publish_quiz(*args, **kwargs),
     create_quiz_from_runtime=lambda *args, **kwargs: _create_quiz_from_runtime(*args, **kwargs),
+    ocr_screenshot_max_files=lambda: OCR_SCREENSHOT_MAX_FILES,
+    ocr_screenshot_max_file_bytes=lambda: OCR_SCREENSHOT_MAX_FILE_BYTES,
+    ocr_screenshot_max_batch_bytes=lambda: OCR_SCREENSHOT_MAX_BATCH_BYTES,
+    detect_ocr_runtime=lambda: _ocr_service.detect_tesseract_runtime(),
+    prune_ocr_staging=lambda: _prune_pdf_ocr_staging(),
+    stage_ocr_screenshots=lambda uploads, draft_id: _stage_pdf_ocr_screenshots(
+        uploads, draft_id
+    ),
+    recognize_ocr_source=lambda draft_id, source, cancel_requested: _recognize_pdf_ocr_source(
+        draft_id, source, cancel_requested
+    ),
+    infer_ocr_questions=lambda observations, **kwargs: _ocr_question_parser.infer_screenshot_questions(
+        observations, **kwargs
+    ),
+    ocr_staged_source_path=lambda draft_id, source: _pdf_ocr_staged_source_path(
+        draft_id, source
+    ),
+    cleanup_ocr_staging=lambda draft_id: _cleanup_pdf_ocr_staging(draft_id),
+    ocr_cancellations=OCR_SCREENSHOT_CANCELLATIONS,
 )))
 
 

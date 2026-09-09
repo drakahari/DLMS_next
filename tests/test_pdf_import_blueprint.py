@@ -35,6 +35,26 @@ class PDFImportBlueprintTests(unittest.TestCase):
             {"POST"},
         ),
         "pdf_import.pdf_import_analyze": ("/pdf-import/analyze", {"POST"}),
+        "pdf_import.pdf_import_screenshots": (
+            "/pdf-import/screenshots",
+            {"POST"},
+        ),
+        "pdf_import.pdf_import_screenshot_processing": (
+            "/pdf-import/screenshots/process/<draft_id>",
+            {"GET"},
+        ),
+        "pdf_import.pdf_import_screenshot_process_next": (
+            "/pdf-import/screenshots/process/<draft_id>/next",
+            {"POST"},
+        ),
+        "pdf_import.pdf_import_screenshot_cancel": (
+            "/pdf-import/screenshots/cancel/<draft_id>",
+            {"POST"},
+        ),
+        "pdf_import.pdf_import_screenshot_source": (
+            "/pdf-import/screenshots/source/<draft_id>/<source_id>",
+            {"GET"},
+        ),
         "pdf_import.pdf_import_review": (
             "/pdf-import/review/<draft_id>",
             {"GET"},
@@ -94,6 +114,17 @@ class PDFImportBlueprintTests(unittest.TestCase):
         "timestamp_now",
         "publish_quiz",
         "create_quiz_from_runtime",
+        "ocr_screenshot_max_files",
+        "ocr_screenshot_max_file_bytes",
+        "ocr_screenshot_max_batch_bytes",
+        "detect_ocr_runtime",
+        "prune_ocr_staging",
+        "stage_ocr_screenshots",
+        "recognize_ocr_source",
+        "infer_ocr_questions",
+        "ocr_staged_source_path",
+        "cleanup_ocr_staging",
+        "ocr_cancellations",
     }
 
     def test_blueprint_is_registered_once_and_owns_exact_reconciled_rules(self):
@@ -141,6 +172,13 @@ class PDFImportBlueprintTests(unittest.TestCase):
             "pdf_import.pdf_terminology_bank_delete": {"bank_id": "term_bank"},
             "pdf_import.pdf_import_review": {"draft_id": "draft"},
             "pdf_import.pdf_import_save": {"draft_id": "draft"},
+            "pdf_import.pdf_import_screenshot_processing": {"draft_id": "draft"},
+            "pdf_import.pdf_import_screenshot_process_next": {"draft_id": "draft"},
+            "pdf_import.pdf_import_screenshot_cancel": {"draft_id": "draft"},
+            "pdf_import.pdf_import_screenshot_source": {
+                "draft_id": "draft",
+                "source_id": "source",
+            },
             "pdf_import.pdf_question_bank_page": {"bank_id": "question_bank"},
             "pdf_import.pdf_question_bank_generate": {"bank_id": "question_bank"},
             "pdf_import.pdf_terminology_bank_page": {"bank_id": "term_bank"},
@@ -149,6 +187,7 @@ class PDFImportBlueprintTests(unittest.TestCase):
         expected_paths = {
             endpoint: path.replace("<bank_id>", values.get(endpoint, {}).get("bank_id", ""))
             .replace("<draft_id>", values.get(endpoint, {}).get("draft_id", ""))
+            .replace("<source_id>", values.get(endpoint, {}).get("source_id", ""))
             for endpoint, (path, _methods) in self.EXPECTED_RULES.items()
         }
         with dlms.app.test_request_context():
@@ -249,6 +288,10 @@ class PDFImportBlueprintTests(unittest.TestCase):
         }
         services["list_pdf_question_banks"].return_value = [{"id": "questions"}]
         services["list_pdf_terminology_banks"].return_value = [{"id": "terms"}]
+        services["detect_ocr_runtime"].return_value = None
+        services["ocr_screenshot_max_files"].return_value = 10
+        services["ocr_screenshot_max_file_bytes"].return_value = 16 * 1024 * 1024
+        services["ocr_screenshot_max_batch_bytes"].return_value = 64 * 1024 * 1024
         dependencies = pdf_import_routes.PDFImportRouteDependencies(**services)
         application = Flask(__name__)
         application.register_blueprint(
@@ -266,6 +309,11 @@ class PDFImportBlueprintTests(unittest.TestCase):
             "pdf_import/index.html",
             banks=[{"id": "questions"}],
             term_banks=[{"id": "terms"}],
+            ocr_available=False,
+            ocr_version="",
+            ocr_max_files=10,
+            ocr_max_file_mib=16,
+            ocr_max_batch_mib=64,
         )
 
     def test_global_security_and_strict_slash_behavior_are_preserved(self):

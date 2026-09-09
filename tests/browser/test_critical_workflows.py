@@ -141,6 +141,34 @@ def browser_server(tmp_path_factory):
     server_port = _free_loopback_port()
     base_url = f"http://127.0.0.1:{server_port}"
     server_log = work_root / "server.log"
+    ocr_test_root = work_root / "ocr-runtime"
+    ocr_tessdata = ocr_test_root / "tessdata"
+    ocr_tessdata.mkdir(parents=True)
+    (ocr_tessdata / "eng.traineddata").write_bytes(b"browser fixture language data")
+    (ocr_tessdata / "configs").mkdir()
+    (ocr_tessdata / "configs" / "tsv").write_text(
+        "tessedit_create_tsv 1\n", encoding="utf-8"
+    )
+    ocr_executable = ocr_test_root / "tesseract"
+    ocr_executable.write_text(
+        "#!" + sys.executable + "\n"
+        "import sys\n"
+        "if '--version' in sys.argv:\n"
+        " print('tesseract 5.5.3')\n"
+        " raise SystemExit(0)\n"
+        "lines=['Which controls apply? Select all that apply','A. First option','B. Second option','C. Third option','D. Fourth option','Correct answers: B and D','Explanation: The second and fourth options apply.']\n"
+        "print('level\\tpage_num\\tblock_num\\tpar_num\\tline_num\\tword_num\\tleft\\ttop\\twidth\\theight\\tconf\\ttext')\n"
+        "top=30\n"
+        "for line_no,line in enumerate(lines,1):\n"
+        " left=70\n"
+        " for word_no,word in enumerate(line.split(),1):\n"
+        "  width=max(15,len(word)*9)\n"
+        "  print(f'5\\t1\\t1\\t1\\t{line_no}\\t{word_no}\\t{left}\\t{top}\\t{width}\\t24\\t94.0\\t{word}')\n"
+        "  left+=width+8\n"
+        " top+=48\n",
+        encoding="utf-8",
+    )
+    ocr_executable.chmod(0o755)
     env = os.environ.copy()
     env.update({
         "QUIZAPP_DATA_DIR": str(data_root),
@@ -149,6 +177,8 @@ def browser_server(tmp_path_factory):
         "MOZ_CRASHREPORTER_DISABLE": "1",
         "MOZ_DISABLE_AUTO_SAFE_MODE": "1",
         "PYTHONUNBUFFERED": "1",
+        "DLMS_TESSERACT_EXECUTABLE": str(ocr_executable),
+        "DLMS_TESSDATA_PREFIX": str(ocr_tessdata),
     })
     process_options = {"start_new_session": True} if os.name == "posix" else {}
     server_process = None
@@ -5128,6 +5158,119 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     assert saved_editor_data["images"][0]["edits"] == [
         {"type": "mask", "x": .1, "y": .1, "w": .2, "h": .2, "style": "blur"}
     ]
+
+
+def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    fixture = ROOT / "tests" / "fixtures" / "ocr" / "screenshot-explicit-abcd.png"
+
+    browser.navigate(f"{base_url}/pdf-import")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector('form[action=\"/pdf-import/screenshots\"] input[name=csrf_token]')"
+    )
+    entry = browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/screenshots\"]');"
+        "return {method:form.method,enctype:form.enctype,multiple:form.querySelector('[name=screenshots]').multiple,"
+        "disabled:form.querySelector('[name=screenshots]').disabled,rights:form.querySelector('[name=rights_ok]').required,"
+        "help:form.closest('section').innerText.includes('selected or highlighted answer')};})()"
+    )
+    assert entry == {
+        "method": "post",
+        "enctype": "multipart/form-data",
+        "multiple": True,
+        "disabled": False,
+        "rights": True,
+        "help": True,
+    }
+    browser.set_files("form[action=\"/pdf-import/screenshots\"] [name=screenshots]", [str(fixture), str(fixture)])
+    browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/screenshots\"]');"
+        "form.querySelector('[name=quiz_title]').value='Browser OCR Review';"
+        "form.querySelector('[name=rights_ok]').checked=true;return true;})()"
+    )
+    browser.click("form[action=\"/pdf-import/screenshots\"] button[type=submit]")
+    browser.wait_for(
+        "location.pathname.startsWith('/pdf-import/review/') && "
+        "document.querySelectorAll('.pdf-import-question-card').length === 2",
+        timeout=20,
+    )
+
+    state = browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
+        "return {cards:cards.length,previews:document.querySelectorAll('.pdf-ocr-preview-frame img').length,"
+        "duplicate:document.body.innerText.includes('exactly duplicates an earlier image'),"
+        "modes:cards.map(card=>card.querySelector('[data-pdf-role=answer-mode]').value),"
+        "answers:cards.map(card=>[...card.querySelectorAll('[data-pdf-role=multiple-correct]:checked')].map(input=>input.value)),"
+        "confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
+        "labels:[...cards[0].querySelectorAll('[data-pdf-role=choice-label]')].map(node=>node.textContent)};})()"
+    )
+    assert state == {
+        "cards": 2,
+        "previews": 2,
+        "duplicate": True,
+        "modes": ["multiple", "multiple"],
+        "answers": [["B", "D"], ["B", "D"]],
+        "confirmations": [False, False],
+        "labels": ["A", "B", "C", "D"],
+    }
+
+    surfaces = {}
+    review_url = browser.evaluate("location.href")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken")
+        status = browser.evaluate(
+            f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        )
+        assert status == 200
+        browser.navigate(review_url)
+        browser.wait_for("document.querySelector('.pdf-ocr-review-source')")
+        theme_state = browser.evaluate(
+            "(() => {const source=document.querySelector('.pdf-ocr-review-source');"
+            "const field=source.querySelector('.pdf-ocr-confidence-list span');"
+            "const button=document.querySelector('[data-pdf-action=choice-add]');"
+            "const parse=value=>{value=value.trim();if(value.startsWith('#')){let h=value.slice(1);if(h.length===3)h=[...h].map(c=>c+c).join('');return [parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255,1];}const m=value.match(/^rgba?\\(([^)]+)\\)$/);if(m){const p=m[1].split(/[, ]+/).filter(Boolean).map(Number);return [p[0]/255,p[1]/255,p[2]/255,p.length>3?p[3]:1];}"
+            "const s=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);if(s)return [+s[1],+s[2],+s[3],s[4]===undefined?1:+s[4]];throw new Error(value);};"
+            "const mix=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));"
+            "const base=parse(getComputedStyle(document.documentElement).getPropertyValue('--theme-body-base')).slice(0,3);"
+            "const layers=[];for(let node=field;node;node=node.parentElement)layers.push(parse(getComputedStyle(node).backgroundColor));"
+            "const background=layers.reverse().reduce((bg,layer)=>mix(layer,bg),base);"
+            "const foreground=mix(parse(getComputedStyle(field).color),background);"
+            "const lum=rgb=>rgb.map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4)).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);"
+            "const ratio=(Math.max(lum(foreground),lum(background))+.05)/(Math.min(lum(foreground),lum(background))+.05);"
+            "return {source:getComputedStyle(source).backgroundColor,field:getComputedStyle(field).backgroundColor,"
+            "contrast:ratio,focusable:button.tabIndex===0&&!button.disabled,overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert theme_state["contrast"] >= 4.5, (theme, theme_state)
+        assert theme_state["focusable"] is True
+        assert theme_state["overflow"] is True
+        surfaces[theme] = theme_state["source"]
+    assert len(set(surfaces.values())) == 4
+
+    browser.set_viewport(390, 820)
+    assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
+    browser.set_viewport(1280, 1000)
+    browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
+        "cards[0].querySelector('[data-pdf-role=question]').value='Which controls should be selected?';"
+        "cards[0].querySelector('[data-pdf-action=choice-add]').click();"
+        "const added=[...cards[0].querySelectorAll('[data-pdf-role=choice-row]')].at(-1);"
+        "added.querySelector('[data-pdf-role=choice]').value='Manual fifth option';"
+        "cards.forEach(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked=true);"
+        "return true;})()"
+    )
+    browser.click("#pdfReviewForm button[type=submit]:not([formaction])")
+    browser.wait_for("location.pathname.startsWith('/pdf-import/bank/')")
+    saved = browser.evaluate(
+        "(() => ({title:document.querySelector('h1').textContent.trim(),"
+        "source:document.body.innerText.includes('Browser OCR Review'),"
+        "rows:document.querySelectorAll('.pdf-bank-question-table tbody tr').length}))()"
+    )
+    assert saved["source"] is True
+    assert saved["rows"] == 2
 
 
 def test_law_semantic_surfaces_follow_all_themes(browser_stack):

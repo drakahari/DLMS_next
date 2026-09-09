@@ -320,6 +320,7 @@ def recognize_image_bytes(
     timeout_seconds: float = OCR_DEFAULT_TIMEOUT_SECONDS,
     cancel_requested: Callable[[], bool] | None = None,
     max_output_bytes: int = OCR_MAX_TSV_BYTES,
+    image_suffix: str = ".png",
 ) -> tuple[OCRObservation, ...]:
     """Run bounded OCR over bytes staged under a service-owned filename."""
 
@@ -329,11 +330,14 @@ def recognize_image_bytes(
         raise OCRError("OCR image input exceeds the service limit.")
     if timeout_seconds <= 0:
         raise ValueError("OCR timeout must be positive.")
+    image_suffix = str(image_suffix or "").lower()
+    if image_suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise ValueError("OCR image suffix is unsupported.")
     runtime = runtime or resolve_tesseract_runtime()
     environment = _restricted_environment(runtime.tessdata_dir)
 
     with tempfile.TemporaryDirectory(prefix="dlms-ocr-") as temp_dir:
-        image_path = Path(temp_dir) / "input-image.png"
+        image_path = Path(temp_dir) / f"input-image{image_suffix}"
         image_path.write_bytes(image_bytes)
         with tempfile.TemporaryFile(mode="w+b") as output, tempfile.TemporaryFile(
             mode="w+b"

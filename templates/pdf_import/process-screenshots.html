@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Processing Quiz Screenshots - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home pdf-import-page"><div class="dashboard-shell">
+<aside class="dashboard-sidebar" id="dashboardSidebar"><div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div><nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav><div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a></nav><div class="dashboard-sidebar-version">Screenshot OCR</div></aside>
+<main class="dashboard-main pdf-import-main">
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT · LOCAL OCR</div><h1>Processing Quiz Screenshots</h1><p>DLMS processes one validated screenshot at a time. Individual failures do not discard successful results.</p></div></header>
+<section class="dashboard-panel pdf-ocr-progress-panel" aria-labelledby="ocrProgressHeading">
+<div class="pdf-bank-panel-heading"><div><span class="build-method-label">ORDERED BATCH</span><h2 id="ocrProgressHeading">{{ draft.source_name }}</h2><p id="ocrProgressText" role="status" aria-live="polite">{% if processed < sources|length %}Ready to process screenshot {{ processed + 1 }} of {{ sources|length }}.{% else %}Processing complete.{% endif %}</p></div><span class="pdf-status review" id="ocrProgressCount">{{ processed }} / {{ sources|length }}</span></div>
+<progress id="ocrProgressBar" max="{{ sources|length }}" value="{{ processed }}">{{ processed }} of {{ sources|length }}</progress>
+<ol class="pdf-ocr-source-list" id="ocrSourceList">
+{% for source in sources %}<li data-source-index="{{ source.index }}" data-source-status="{{ source.status }}"><span><strong>Screenshot {{ source.index }}</strong> · {{ source.original_name }}</span><span class="pdf-ocr-source-state">{% if source.status == "pending" %}Queued{% elif source.status == "processed" %}Ready for review{% else %}{{ source.error or source.status|replace("_", " ") }}{% endif %}</span>{% if source.duplicate_of %}<small>Exact duplicate of an earlier batch image; retained for review.</small>{% endif %}</li>{% endfor %}
+</ol>
+<div class="semantic-error-surface pdf-ocr-process-error" id="ocrProcessError" role="alert" hidden></div>
+<div class="build-submit-row"><a class="build-secondary-link" href="/pdf-import">Leave processing page</a><form method="POST" action="{{ url_for('pdf_import.pdf_import_screenshot_cancel', draft_id=draft.id) }}" id="ocrCancelForm"><button type="submit" class="build-secondary-link pdf-review-danger-action" id="ocrCancelButton">Cancel and Remove Temporary Images</button></form><a class="build-primary-button" id="ocrReviewButton" href="{{ url_for('pdf_import.pdf_import_review', draft_id=draft.id) }}" {% if not draft.questions %}hidden{% endif %}>Review Successful Questions</a></div>
+</section>
+</main></div>
+<script src="/static/nav-normalize.js"></script>
+<script>
+(() => {
+ const processUrl={{ url_for('pdf_import.pdf_import_screenshot_process_next', draft_id=draft.id)|tojson }};
+ const cancelUrl={{ url_for('pdf_import.pdf_import_screenshot_cancel', draft_id=draft.id)|tojson }};
+ const progress=document.getElementById('ocrProgressBar');
+ const progressText=document.getElementById('ocrProgressText');
+ const progressCount=document.getElementById('ocrProgressCount');
+ const errorBox=document.getElementById('ocrProcessError');
+ const reviewButton=document.getElementById('ocrReviewButton');
+ let cancelled=false;
+ function renderState(state){
+  progress.value=state.processed;progressCount.textContent=`${state.processed} / ${state.total}`;
+  for(const source of state.sources){
+   const row=document.querySelector(`[data-source-index="${source.index}"]`);if(!row)continue;
+   row.dataset.sourceStatus=source.status;
+   const status=row.querySelector('.pdf-ocr-source-state');
+   if(status)status.textContent=source.status==='pending'?'Queued':source.status==='processed'?'Ready for review':source.error||source.status.replaceAll('_',' ');
+  }
+  if(state.review_url){reviewButton.href=state.review_url;reviewButton.hidden=false;}
+ }
+ async function processNext(){
+  if(cancelled)return;
+  progressText.textContent=`Processing screenshot ${Math.min(Number(progress.value)+1,Number(progress.max))} of ${progress.max}…`;
+  try{
+   const response=await fetch(processUrl,{method:'POST',headers:{Accept:'application/json'}});
+   const state=await response.json();
+   if(response.status===409&&state.status==='busy'){window.setTimeout(processNext,250);return;}
+   if(!response.ok)throw new Error(state.error||'Screenshot OCR could not continue.');
+   if(state.status==='cancelled'){window.location.assign(state.redirect_url||'/pdf-import');return;}
+   renderState(state);
+   if(state.status==='complete'){
+    progressText.textContent=state.has_results?`Processing complete. ${state.failed} screenshot(s) need attention or failed.`:'Processing complete, but no reviewable questions were detected.';
+    if(state.review_url)window.location.assign(state.review_url);
+    return;
+   }
+   window.setTimeout(processNext,0);
+  }catch(error){errorBox.hidden=false;errorBox.textContent=error.message;progressText.textContent='Processing paused. Reload this page to resume the remaining screenshots.';}
+ }
+ document.getElementById('ocrCancelForm')?.addEventListener('submit',async event=>{
+  event.preventDefault();cancelled=true;progressText.textContent='Stopping screenshot OCR…';
+  try{const response=await fetch(cancelUrl,{method:'POST',headers:{Accept:'application/json'}});const state=await response.json();if(state.redirect_url)window.location.assign(state.redirect_url);else progressText.textContent='Stopping the active OCR process…';}
+  catch(_error){event.target.submit();}
+ });
+ if(Number(progress.value)<Number(progress.max))processNext();
+ else if(reviewButton&&!reviewButton.hidden)window.location.assign(reviewButton.href);
+})();
+</script>
+</body></html>

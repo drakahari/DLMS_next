@@ -11,7 +11,19 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any
 
-from flask import Blueprint, flash, redirect, render_template, request
+from flask import (
+    Blueprint,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
+
+from dlms.services.ocr import OCRCancelledError
+from dlms.services.ocr_screenshots import OCRTaskBusyError
 
 
 Dependency = Callable[..., Any]
@@ -52,6 +64,17 @@ class PDFImportRouteDependencies:
     timestamp_now: Dependency
     publish_quiz: Dependency
     create_quiz_from_runtime: Dependency
+    ocr_screenshot_max_files: Dependency
+    ocr_screenshot_max_file_bytes: Dependency
+    ocr_screenshot_max_batch_bytes: Dependency
+    detect_ocr_runtime: Dependency
+    prune_ocr_staging: Dependency
+    stage_ocr_screenshots: Dependency
+    recognize_ocr_source: Dependency
+    infer_ocr_questions: Dependency
+    ocr_staged_source_path: Dependency
+    cleanup_ocr_staging: Dependency
+    ocr_cancellations: Any
 
 
 def _bind_dependencies(view_func, dependencies):
@@ -118,7 +141,11 @@ def _normalize_pdf_question_for_review(question):
             raw_choice = {}
         old_label = str(raw_choice.get("label") or "").strip().upper()
         label = PDF_CHOICE_LABELS[index]
-        choices.append({"label": label, "text": str(raw_choice.get("text") or "")})
+        choice = {"label": label, "text": str(raw_choice.get("text") or "")}
+        label_origin = str(raw_choice.get("label_origin") or "").strip().lower()
+        if label_origin in {"source", "inferred", "manual"}:
+            choice["label_origin"] = label_origin
+        choices.append(choice)
         if old_label in original_answers:
             answers.append(label)
         note = str(original_feedback.get(old_label) or "")
@@ -471,10 +498,20 @@ def _pdf_terms_mc_questions(bank, selected, direction="definition_to_term"):
 
 
 def pdf_import_page(dependencies):
+    try:
+        dependencies.prune_ocr_staging()
+    except Exception as exc:
+        print(f"[OCR STAGING CLEANUP ERROR] {type(exc).__name__}: {exc}")
+    runtime = dependencies.detect_ocr_runtime()
     return render_template(
         "pdf_import/index.html",
         banks=dependencies.list_pdf_question_banks(),
         term_banks=dependencies.list_pdf_terminology_banks(),
+        ocr_available=runtime is not None,
+        ocr_version=getattr(runtime, "version", "") if runtime is not None else "",
+        ocr_max_files=dependencies.ocr_screenshot_max_files(),
+        ocr_max_file_mib=dependencies.ocr_screenshot_max_file_bytes() // (1024 * 1024),
+        ocr_max_batch_mib=dependencies.ocr_screenshot_max_batch_bytes() // (1024 * 1024),
     )
 
 
@@ -657,6 +694,271 @@ def pdf_import_analyze(dependencies):
     return redirect(f"/pdf-import/review/{draft_id}")
 
 
+def _ocr_batch_progress(draft):
+    batch = draft.get("ocr_batch") if isinstance(draft.get("ocr_batch"), dict) else {}
+    sources = batch.get("sources") if isinstance(batch.get("sources"), list) else []
+    processed = sum(1 for source in sources if source.get("status") != "pending")
+    failed = sum(
+        1
+        for source in sources
+        if source.get("status") in {"validation_failed", "ocr_failed"}
+    )
+    return batch, sources, processed, failed
+
+
+def _refresh_ocr_draft_summary(draft):
+    questions = draft.get("questions") if isinstance(draft.get("questions"), list) else []
+    statuses = [str(question.get("status") or "incomplete") for question in questions]
+    draft["summary"] = {
+        "detected": len(questions),
+        "complete": statuses.count("complete"),
+        "review": statuses.count("review"),
+        "incomplete": statuses.count("incomplete"),
+    }
+
+
+def pdf_import_screenshots(dependencies):
+    uploads = [upload for upload in request.files.getlist("screenshots") if upload.filename]
+    if not request.form.get("rights_ok"):
+        flash(
+            "Confirm that you have permission to use the screenshots for your own study.",
+            "error",
+        )
+        return redirect("/pdf-import")
+    if dependencies.detect_ocr_runtime() is None:
+        flash(
+            "Screenshot OCR is unavailable because the local Tesseract runtime could not be found.",
+            "error",
+        )
+        return redirect("/pdf-import")
+
+    draft_id = secrets.token_urlsafe(12).replace("-", "").replace("_", "")[:20]
+    try:
+        sources = dependencies.stage_ocr_screenshots(uploads, draft_id)
+        source_names = [source.get("original_name") for source in sources]
+        title = (request.form.get("quiz_title") or "").strip()
+        draft = {
+            "id": draft_id,
+            "created_at": dependencies.timestamp_now(),
+            "source_name": (
+                title
+                or (source_names[0] if len(source_names) == 1 else f"Screenshot OCR batch ({len(source_names)} images)")
+            ),
+            "source_kind": "user-provided-screenshot-ocr",
+            "redistribution_status": "not-cleared-for-redistribution",
+            "document_type": "question_bank",
+            "detection": {"ocr": True, "recovery_mode": True},
+            "quiz_title": title or "Screenshot Question Bank",
+            "exam_minutes": dependencies.normalize_exam_minutes(
+                request.form.get("exam_minutes")
+            ),
+            "page_count": len(sources),
+            "removed_margin_text": [],
+            "questions": [],
+            "summary": {"detected": 0, "complete": 0, "review": 0, "incomplete": 0},
+            "ocr_batch": {
+                "status": "processing",
+                "total": len(sources),
+                "sources": sources,
+            },
+        }
+        dependencies.save_pdf_import_draft(draft)
+    except Exception as exc:
+        dependencies.cleanup_ocr_staging(draft_id)
+        print(f"[OCR SCREENSHOT STAGING ERROR] {type(exc).__name__}: {exc}")
+        public_error = (
+            str(exc)
+            if isinstance(exc, ValueError)
+            else "The screenshot batch could not be staged safely."
+        )
+        flash(public_error or "The screenshot batch could not be staged safely.", "error")
+        return redirect("/pdf-import")
+    return redirect(url_for("pdf_import.pdf_import_screenshot_processing", draft_id=draft_id))
+
+
+def pdf_import_screenshot_processing(dependencies, draft_id):
+    try:
+        draft = dependencies.load_pdf_import_draft(draft_id)
+        if draft.get("source_kind") != "user-provided-screenshot-ocr":
+            raise ValueError("Not a screenshot OCR draft")
+    except Exception as exc:
+        print(f"[OCR PROCESSING LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("The screenshot OCR review session is unavailable or expired.", "error")
+        return redirect("/pdf-import")
+    _batch, sources, processed, failed = _ocr_batch_progress(draft)
+    return render_template(
+        "pdf_import/process-screenshots.html",
+        draft=draft,
+        sources=sources,
+        processed=processed,
+        failed=failed,
+    )
+
+
+def _ocr_process_response(draft):
+    batch, sources, processed, failed = _ocr_batch_progress(draft)
+    pending = [source for source in sources if source.get("status") == "pending"]
+    complete = not pending
+    review_url = (
+        url_for("pdf_import.pdf_import_review", draft_id=draft["id"])
+        if complete and draft.get("questions")
+        else None
+    )
+    return {
+        "status": "complete" if complete else "processing",
+        "processed": processed,
+        "total": len(sources),
+        "failed": failed,
+        "next_number": processed + 1 if pending else None,
+        "review_url": review_url,
+        "has_results": bool(draft.get("questions")),
+        "sources": [
+            {
+                "index": source.get("index"),
+                "name": source.get("original_name"),
+                "status": source.get("status"),
+                "error": source.get("error"),
+                "duplicate_of": source.get("duplicate_of"),
+            }
+            for source in sources
+        ],
+        "batch_status": batch.get("status"),
+    }
+
+
+def pdf_import_screenshot_process_next(dependencies, draft_id):
+    try:
+        draft = dependencies.load_pdf_import_draft(draft_id)
+        if draft.get("source_kind") != "user-provided-screenshot-ocr":
+            raise ValueError("Not a screenshot OCR draft")
+        _batch, sources, _processed, _failed = _ocr_batch_progress(draft)
+        source = next(
+            (item for item in sources if item.get("status") == "pending"), None
+        )
+        if source is None:
+            return jsonify(_ocr_process_response(draft))
+
+        with dependencies.ocr_cancellations.active(draft_id) as cancel_requested:
+            try:
+                observations = dependencies.recognize_ocr_source(
+                    draft_id, source, cancel_requested
+                )
+                if cancel_requested():
+                    raise OCRCancelledError("OCR was cancelled.")
+                result = dependencies.infer_ocr_questions(
+                    observations,
+                    source_id=source["id"],
+                    source_index=int(source["index"]),
+                )
+                if cancel_requested():
+                    raise OCRCancelledError("OCR was cancelled.")
+                questions = result.get("questions") or []
+                if not questions:
+                    source.update(
+                        {"status": "ocr_failed", "error": "No readable quiz content was detected."}
+                    )
+                else:
+                    for question in questions:
+                        metadata = question.setdefault("ocr_metadata", {})
+                        metadata.update(
+                            {
+                                "source_id": source["id"],
+                                "source_index": source["index"],
+                                "source_name": source["original_name"],
+                                "duplicate_of": source.get("duplicate_of"),
+                            }
+                        )
+                        if source.get("duplicate_of"):
+                            question.setdefault("issues", []).append(
+                                "This screenshot exactly duplicates an earlier image in this batch."
+                            )
+                        draft.setdefault("questions", []).append(question)
+                    source["status"] = "processed"
+            except OCRCancelledError:
+                dependencies.cleanup_ocr_staging(draft_id)
+                dependencies.delete_pdf_import_draft(draft_id)
+                dependencies.ocr_cancellations.clear(draft_id)
+                return jsonify({"status": "cancelled", "redirect_url": "/pdf-import"})
+            except Exception as exc:
+                print(
+                    f"[OCR SCREENSHOT ERROR] Source {source.get('index')}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                source.update(
+                    {
+                        "status": "ocr_failed",
+                        "error": "OCR or layout analysis failed for this screenshot.",
+                    }
+                )
+
+            for number, question in enumerate(draft.get("questions") or [], 1):
+                question["number"] = number
+            _refresh_ocr_draft_summary(draft)
+            _batch, pending_sources, _processed, _failed = _ocr_batch_progress(draft)
+            if not any(item.get("status") == "pending" for item in pending_sources):
+                draft["ocr_batch"]["status"] = "complete"
+            dependencies.save_pdf_import_draft(draft)
+        return jsonify(_ocr_process_response(draft))
+    except OCRTaskBusyError:
+        return jsonify({"status": "busy"}), 409
+    except Exception as exc:
+        print(f"[OCR PROCESSING ERROR] {type(exc).__name__}: {exc}")
+        return jsonify({"error": "The screenshot OCR session could not be processed."}), 400
+
+
+def pdf_import_screenshot_cancel(dependencies, draft_id):
+    try:
+        draft = dependencies.load_pdf_import_draft(draft_id)
+        if draft.get("source_kind") != "user-provided-screenshot-ocr":
+            raise ValueError("Not a screenshot OCR draft")
+    except Exception as exc:
+        print(f"[OCR CANCELLATION LOAD ERROR] {type(exc).__name__}: {exc}")
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"error": "The screenshot OCR session is unavailable."}), 404
+        flash("The screenshot OCR review session is unavailable or expired.", "error")
+        return redirect("/pdf-import")
+    active = dependencies.ocr_cancellations.request_cancel(draft_id)
+    if active:
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"status": "cancelling"}), 202
+        flash("Stopping screenshot OCR…", "info")
+        return redirect("/pdf-import")
+    dependencies.cleanup_ocr_staging(draft_id)
+    dependencies.delete_pdf_import_draft(draft_id)
+    dependencies.ocr_cancellations.clear(draft_id)
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify({"status": "cancelled", "redirect_url": "/pdf-import"})
+    flash("Screenshot OCR import cancelled. Temporary source images were removed.", "info")
+    return redirect("/pdf-import")
+
+
+def pdf_import_screenshot_source(dependencies, draft_id, source_id):
+    try:
+        draft = dependencies.load_pdf_import_draft(draft_id)
+        if draft.get("source_kind") != "user-provided-screenshot-ocr":
+            raise FileNotFoundError
+        _batch, sources, _processed, _failed = _ocr_batch_progress(draft)
+        source = next(
+            (item for item in sources if item.get("id") == source_id), None
+        )
+        if source is None:
+            raise FileNotFoundError
+        path = dependencies.ocr_staged_source_path(draft_id, source)
+        mime_type = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }.get(path.suffix.lower())
+        if mime_type is None:
+            raise FileNotFoundError
+        response = send_file(path, mimetype=mime_type, conditional=True)
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+    except (FileNotFoundError, ValueError, OSError):
+        return "Source preview no longer available", 404
+
+
 def _render_pdf_glossary_review(draft):
     return render_template("pdf_import/review-glossary.html", draft=draft)
 
@@ -676,6 +978,31 @@ def pdf_import_review(dependencies, draft_id):
     except ValueError as exc:
         flash(str(exc), "error")
         return redirect("/pdf-import")
+    if review_draft.get("source_kind") == "user-provided-screenshot-ocr":
+        for question in review_draft.get("questions") or []:
+            metadata = question.get("ocr_metadata")
+            if not isinstance(metadata, dict):
+                continue
+            source_id = metadata.get("source_id")
+            metadata["preview_available"] = False
+            if not source_id:
+                continue
+            _batch, sources, _processed, _failed = _ocr_batch_progress(review_draft)
+            source = next(
+                (item for item in sources if item.get("id") == source_id), None
+            )
+            if source is None:
+                continue
+            try:
+                dependencies.ocr_staged_source_path(draft_id, source)
+                metadata["preview_available"] = True
+                metadata["preview_url"] = url_for(
+                    "pdf_import.pdf_import_screenshot_source",
+                    draft_id=draft_id,
+                    source_id=source_id,
+                )
+            except (FileNotFoundError, ValueError, OSError):
+                pass
     return render_template("pdf_import/review-question-bank.html", draft=review_draft)
 
 
@@ -749,7 +1076,7 @@ def _save_pdf_glossary_draft(dependencies, draft, draft_id):
         "kind": "terminology",
         "title": bank_title,
         "source_name": draft.get("source_name") or "PDF import",
-        "source_kind": "user-provided-pdf",
+        "source_kind": draft.get("source_kind") or "user-provided-pdf",
         "redistribution_status": "not-cleared-for-redistribution",
         "created_at": dependencies.timestamp_now(),
         "default_exam_minutes": dependencies.normalize_exam_minutes(
@@ -984,7 +1311,7 @@ def _save_pdf_question_draft(dependencies, draft, draft_id):
         "id": bank_id,
         "title": bank_title,
         "source_name": draft.get("source_name") or "PDF import",
-        "source_kind": "user-provided-pdf",
+        "source_kind": draft.get("source_kind") or "user-provided-pdf",
         "redistribution_status": "not-cleared-for-redistribution",
         "created_at": dependencies.timestamp_now(),
         "default_exam_minutes": exam_minutes,
@@ -994,6 +1321,11 @@ def _save_pdf_question_draft(dependencies, draft, draft_id):
         "generated_quizzes": [],
     }
     dependencies.save_pdf_question_bank(bank)
+    if draft.get("source_kind") == "user-provided-screenshot-ocr":
+        try:
+            dependencies.cleanup_ocr_staging(draft_id)
+        except Exception as exc:
+            print(f"[OCR STAGING CLEANUP ERROR] {type(exc).__name__}: {exc}")
     dependencies.delete_pdf_import_draft(draft_id)
 
     active_count = len(_pdf_bank_active_questions(bank))
@@ -1296,6 +1628,36 @@ def create_pdf_import_blueprint(
             "pdf_import_analyze",
             pdf_import_analyze,
             ["POST"],
+        ),
+        (
+            "/pdf-import/screenshots",
+            "pdf_import_screenshots",
+            pdf_import_screenshots,
+            ["POST"],
+        ),
+        (
+            "/pdf-import/screenshots/process/<draft_id>",
+            "pdf_import_screenshot_processing",
+            pdf_import_screenshot_processing,
+            ["GET"],
+        ),
+        (
+            "/pdf-import/screenshots/process/<draft_id>/next",
+            "pdf_import_screenshot_process_next",
+            pdf_import_screenshot_process_next,
+            ["POST"],
+        ),
+        (
+            "/pdf-import/screenshots/cancel/<draft_id>",
+            "pdf_import_screenshot_cancel",
+            pdf_import_screenshot_cancel,
+            ["POST"],
+        ),
+        (
+            "/pdf-import/screenshots/source/<draft_id>/<source_id>",
+            "pdf_import_screenshot_source",
+            pdf_import_screenshot_source,
+            ["GET"],
         ),
         (
             "/pdf-import/review/<draft_id>",
