@@ -58,7 +58,7 @@
 
     <section class="dashboard-panel law-detail-panel law-case-detail-shell">
 
-        <div style="
+        <div class="law-case-summary" style="
             display:flex;
             justify-content:space-between;
             align-items:flex-start;
@@ -69,23 +69,17 @@
             <div>
                 <h2 style="margin-bottom:6px;">{{ case_data.title }}</h2>
 
-                <p style="opacity:.85; margin-top:0;">
+                <p class="law-case-metadata" style="margin-top:0;">
                     <strong>Course:</strong> {{ case_data.course or "Uncategorized" }}<br>
                     <strong>Created:</strong> {{ case_data.created_at }}<br>
                     <strong>Source Import:</strong> {{ case_data.source_import }}
                 </p>
 
         {% if sources_used %}
-        <div style="
-            margin-top:12px;
-            padding:12px;
-            border-radius:12px;
-            background:rgba(0,120,255,.08);
-            border:1px solid rgba(0,120,255,.25);
-        ">
+        <div class="law-case-sources">
             <strong>Sources Used:</strong>
 
-            <pre style="
+            <pre class="law-case-readonly" style="
                 white-space:pre-wrap;
                 word-wrap:break-word;
                 font-family:inherit;
@@ -97,80 +91,41 @@
                                                                              
             </div>
 
-            <span style="
-                display:inline-block;
-                padding:7px 12px;
-                border-radius:999px;
-                background:rgba(0,120,255,.12);
-                border:1px solid rgba(0,120,255,.35);
-                font-size:13px;
-                font-weight:700;
-                white-space:nowrap;
-            ">
+            <span class="law-status-pill info">
                 Structured case review
             </span>
         </div>
 
         {% if request.args.get('updated') %}
-        <div role="status" aria-live="polite" style="
-            margin-bottom:18px;
-            padding:14px;
-            border-radius:12px;
-            background:rgba(0,180,100,.12);
-            border:1px solid rgba(0,180,100,.35);
-        ">
+        <div class="law-message success law-case-update-notice" role="status" aria-live="polite">
             <strong>Case details updated.</strong>
             The title and course were saved successfully.
         </div>
         {% endif %}
 
         {% if request.args.get('notes_updated') %}
-        <div role="status" aria-live="polite" style="
-            margin-bottom:18px;
-            padding:14px;
-            border-radius:12px;
-            background:rgba(0,180,100,.12);
-            border:1px solid rgba(0,180,100,.35);
-        ">
+        <div class="law-message success law-case-update-notice" role="status" aria-live="polite">
             <strong>Student notes updated.</strong>
             Your notes were saved successfully.
         </div>
         {% endif %}   
 
           {% if request.args.get('socratic_answers_updated') %}
-        <div role="status" aria-live="polite" style="
-            margin-bottom:18px;
-            padding:14px;
-            border-radius:12px;
-            background:rgba(0,180,100,.12);
-            border:1px solid rgba(0,180,100,.35);
-        ">
+        <div class="law-message success law-case-update-notice" role="status" aria-live="polite">
             <strong>Socratic answers updated.</strong>
             Your practice answers were saved successfully.
         </div>
         {% endif %}                     
 
         {% if request.args.get('irac_updated') %}
-        <div role="status" aria-live="polite" style="
-            margin-bottom:18px;
-            padding:14px;
-            border-radius:12px;
-            background:rgba(0,180,100,.12);
-            border:1px solid rgba(0,180,100,.35);
-        ">
+        <div class="law-message success law-case-update-notice" role="status" aria-live="polite">
             <strong>IRAC response updated.</strong>
             Your practice response was saved successfully.
         </div>
         {% endif %}                       
 
 
-        <div style="
-            margin-bottom:18px;
-            padding:14px;
-            border-radius:12px;
-            background:rgba(255,180,0,.10);
-            border:1px solid rgba(255,180,0,.35);
-        ">
+        <div class="law-message warning law-case-reminder">
             <strong>Reminder:</strong>
             Verify citations, holdings, quotations, and procedural history against the original opinion or an approved legal research source.
         </div>
@@ -204,7 +159,7 @@
 
         <br><br>
 
-        <button type="submit">
+        <button type="submit" class="law-primary-action">
             💾 Save Case Details
         </button>
     </form>
@@ -215,7 +170,7 @@
             <div class="portal-card law-case-section">
                 <h2 style="margin-top:0;">{{ section.icon }} {{ section.title }}</h2>
 
-                <pre style="
+                <pre class="law-case-readonly" style="
                     white-space:pre-wrap;
                     word-wrap:break-word;
                     font-family:inherit;
@@ -267,7 +222,7 @@
 
             <br><br>
 
-            <button type="submit">
+            <button type="submit" class="law-primary-action">
                 💾 Save IRAC Response
             </button>
         </form>
@@ -280,12 +235,12 @@
             Hidden by default for active recall. Try writing your own IRAC response first, then reveal the imported drill guidance.
         </p>
 
-        <button type="button" aria-expanded="false" aria-controls="iracDrillBox" onclick="toggleIracDrill(this)">
+        <button type="button" class="law-secondary-action" aria-expanded="false" aria-controls="iracDrillBox" onclick="toggleIracDrill(this)">
             👁 Reveal / Hide IRAC Drill
         </button>
 
         <div id="iracDrillBox" style="display:none; margin-top:14px;">
-            <pre style="
+            <pre class="law-case-readonly" style="
                 white-space:pre-wrap;
                 word-wrap:break-word;
                 font-family:inherit;
@@ -316,16 +271,7 @@
             </p>
         </div>
 
-        <span style="
-            display:inline-block;
-            padding:7px 12px;
-            border-radius:999px;
-            background:rgba(0,120,255,.12);
-            border:1px solid rgba(0,120,255,.35);
-            font-size:13px;
-            font-weight:700;
-            white-space:nowrap;
-        ">
+        <span class="law-status-pill info">
             {{ socratic_progress_text }}
         </span>
     </div>
@@ -335,15 +281,10 @@
       action="{{ url_for('law.law_update_socratic_answers', case_id=case_data.id) }}">
         <div style="display:grid; gap:12px;">
             {% for question in socratic_questions %}
-            <div style="
-                padding:14px;
-                border-radius:12px;
-                background:rgba(255,255,255,.06);
-                border:1px solid rgba(255,255,255,.16);
-            ">
+            <div class="law-case-question-card">
                 <h3 style="margin-top:0;">Question {{ question.number }}</h3>
 
-                <pre style="
+                <pre class="law-case-readonly" style="
                     white-space:pre-wrap;
                     word-wrap:break-word;
                     font-family:inherit;
@@ -362,7 +303,7 @@
 
         <br>
 
-        <button type="submit" form="socraticAnswersForm">
+        <button type="submit" form="socraticAnswersForm" class="law-primary-action">
             💾 Save Socratic Answers
         </button>
     </form>
@@ -379,12 +320,12 @@
                 Hidden by default for active recall. Try answering the Socratic questions first, then reveal the guidance.
             </p>
 
-            <button type="button" aria-expanded="false" aria-controls="socraticAnswerKey" onclick="toggleSocraticAnswerKey(this)">
+            <button type="button" class="law-secondary-action" aria-expanded="false" aria-controls="socraticAnswerKey" onclick="toggleSocraticAnswerKey(this)">
                 👁 Reveal / Hide Answer Key
             </button>
 
             <div id="socraticAnswerKey" style="display:none; margin-top:14px;">
-                <pre style="
+                <pre class="law-case-readonly" style="
                     white-space:pre-wrap;
                     word-wrap:break-word;
                     font-family:inherit;
@@ -399,7 +340,7 @@
         <div class="portal-card law-case-section">
             <h2 style="margin-top:0;">🃏 Rule Flashcards</h2>
 
-            <pre style="
+            <pre class="law-case-readonly" style="
                 white-space:pre-wrap;
                 word-wrap:break-word;
                 font-family:inherit;
@@ -424,7 +365,7 @@
 
                 <br><br>
 
-                <button type="submit">
+                <button type="submit" class="law-primary-action">
                     💾 Save Student Notes
                 </button>
             </form>
@@ -432,19 +373,19 @@
 
         <br>
 
-        <button type="button" data-law-navigation-url="{{ url_for('law.law_export_case_review_txt', case_id=case_data.id) }}">
+        <button type="button" class="law-primary-action" data-law-navigation-url="{{ url_for('law.law_export_case_review_txt', case_id=case_data.id) }}">
             ⬇️ Export Case Review
         </button>
 
-        <button type="button" onclick="location.href='/law/cases'">
+        <button type="button" class="law-secondary-action" onclick="location.href='/law/cases'">
             ⬅ Back To My Case Reviews
         </button>
 
-        <button type="button" onclick="location.href='/law/imports'">
+        <button type="button" class="law-secondary-action" onclick="location.href='/law/imports'">
             📁 Saved Imports
         </button>
 
-        <button type="button" onclick="location.href='/law'">
+        <button type="button" class="law-quiet-action" onclick="location.href='/law'">
             ⚖️ Law Study Hub
         </button>
 

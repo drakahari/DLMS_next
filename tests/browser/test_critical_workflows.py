@@ -4924,6 +4924,145 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     ]
 
 
+def test_law_semantic_surfaces_follow_all_themes(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    data_root = browser_stack.data_root
+    case_id = "dlms120-theme-case"
+    case_file = f"{case_id}.json"
+    case_path = data_root / "law" / "cases" / case_file
+    case_path.write_text(json.dumps({
+        "id": case_id,
+        "type": "law_case_review",
+        "title": "DLMS-120 Theme Case",
+        "course": "Theme Review",
+        "created_at": "2026-09-09T12:00:00",
+        "source_import": "dlms120-theme-case.txt",
+        "sources_used": "Theme source one\nTheme source two",
+        "student_notes": "Readable student notes.",
+        "socratic_student_answers": {"question_1": "A saved answer."},
+        "irac_student_response": {
+            "issue": "Issue", "rule": "Rule", "analysis": "Analysis",
+            "conclusion": "Conclusion",
+        },
+        "sections": {
+            "case_brief": "Facts, issue, rule, holding, and reasoning.",
+            "socratic_review": "1. What rule controls?",
+            "socratic_answer_key": "1. The governing rule controls.",
+            "irac_drill": "Apply the rule to the facts.",
+            "rule_flashcards": "Q: What rule applies?\nA: The governing rule.",
+        },
+    }), encoding="utf-8")
+    registry_path = data_root / "config" / "law.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry.pop("pending_case_workflow", None)
+    registry.setdefault("folders", []).append("Theme Review")
+    registry["cases"].append({
+        "id": case_id, "title": "DLMS-120 Theme Case",
+        "course": "Theme Review", "file": case_file, "hidden": False,
+    })
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    def set_theme(theme):
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+
+    probe_helpers = """
+        const parseColor=value=>{
+          const rgb=value.match(/^rgba?\\(([^)]+)\\)$/);
+          if(rgb){const parts=rgb[1].split(/[, ]+/).filter(Boolean).map(Number);
+            return [parts[0]/255,parts[1]/255,parts[2]/255,parts.length>3?parts[3]:1];}
+          const srgb=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);
+          if(srgb)return [+srgb[1],+srgb[2],+srgb[3],srgb[4]===undefined?1:+srgb[4]];
+          throw new Error('Unsupported computed color: '+value);
+        };
+        const resolveColor=value=>{const node=document.createElement('span');node.style.color=value;
+          document.body.appendChild(node);const result=getComputedStyle(node).color;node.remove();return parseColor(result);};
+        const composite=(foreground,background)=>foreground.slice(0,3).map((value,index)=>
+          value*foreground[3]+background[index]*(1-foreground[3]));
+        const luminance=rgb=>rgb.map(value=>value<=.04045?value/12.92:Math.pow((value+.055)/1.055,2.4))
+          .reduce((sum,value,index)=>sum+value*[.2126,.7152,.0722][index],0);
+        const contrast=(foreground,background)=>{const a=luminance(foreground.slice(0,3));const b=luminance(background);
+          return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
+        const root=getComputedStyle(document.documentElement);
+        const bodyBase=resolveColor(root.getPropertyValue('--theme-body-base'));
+        const panel=composite(resolveColor(root.getPropertyValue('--theme-panel-1')),bodyBase.slice(0,3));
+        const evaluateOn=(node,parentBackground)=>{const style=getComputedStyle(node);
+          const background=composite(parseColor(style.backgroundColor),parentBackground);
+          return {background,backgroundCss:style.backgroundColor,colorCss:style.color,
+            borderCss:style.borderColor,borderStyle:style.borderStyle,
+            contrast:contrast(parseColor(style.color),background)};};
+    """
+
+    observed_section_backgrounds = {}
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{base_url}/law/import")
+        set_theme(theme)
+        browser.navigate(f"{base_url}/law/import")
+        browser.wait_for("document.querySelector('.law-notice.warning .law-secondary-action')")
+        empty_state = browser.evaluate(
+            "(() => {" + probe_helpers + "const notice=evaluateOn(document.querySelector('.law-notice.warning'),panel);"
+            "const action=evaluateOn(document.querySelector('.law-notice.warning .law-secondary-action'),notice.background);"
+            "const focus=document.querySelector('.law-notice.warning .law-secondary-action');"
+            "focus.disabled=true;const disabled=getComputedStyle(focus);"
+            "return {notice,action,"
+            "disabledOpacity:disabled.opacity,disabledCursor:disabled.cursor};})()"
+        )
+        assert empty_state["notice"]["contrast"] >= 4.5
+        assert empty_state["action"]["contrast"] >= 4.5
+        assert empty_state["notice"]["borderStyle"] != "none"
+        assert empty_state["action"]["borderStyle"] != "none"
+        assert float(empty_state["disabledOpacity"]) < 1
+        assert empty_state["disabledCursor"] == "not-allowed"
+
+        browser.navigate(
+            f"{base_url}/law/cases/{case_id}?updated=1&notes_updated=1&"
+            "socratic_answers_updated=1&irac_updated=1"
+        )
+        browser.wait_for(
+            "document.querySelector('.law-case-sources .law-case-readonly') && "
+            "document.querySelector('.law-case-question-card') && "
+            "document.querySelectorAll('.law-case-update-notice').length === 4"
+        )
+        case_state = browser.evaluate(
+            "(() => {" + probe_helpers +
+            "const section=evaluateOn(document.querySelector('.law-case-section'),panel);"
+            "const heading=evaluateOn(document.querySelector('.law-case-section h2'),section.background);"
+            "const muted=evaluateOn(document.querySelector('.law-case-section > p'),section.background);"
+            "const inset=evaluateOn(document.querySelector('.law-case-section .law-case-readonly'),section.background);"
+            "const sources=evaluateOn(document.querySelector('.law-case-sources'),panel);"
+            "const sourceText=evaluateOn(document.querySelector('.law-case-sources > strong'),sources.background);"
+            "const success=evaluateOn(document.querySelector('.law-case-update-notice'),panel);"
+            "const warning=evaluateOn(document.querySelector('.law-case-reminder'),panel);"
+            "const info=evaluateOn(document.querySelector('.law-status-pill.info'),panel);"
+            "const secondary=evaluateOn(document.querySelector('.law-case-section .law-secondary-action'),section.background);"
+            "return {scheme:root.getPropertyValue('--theme-color-scheme').trim(),accent:root.getPropertyValue('--theme-accent').trim(),"
+            "section,heading,muted,inset,sources,sourceText,success,warning,info,secondary};})()"
+        )
+        for role in (
+            "heading", "muted", "inset", "sourceText", "success", "warning",
+            "info", "secondary",
+        ):
+            assert case_state[role]["contrast"] >= 4.5, (theme, role, case_state[role])
+        assert case_state["section"]["borderStyle"] != "none"
+        assert case_state["inset"]["borderStyle"] != "none"
+        assert case_state["section"]["backgroundCss"] != case_state["inset"]["backgroundCss"]
+        observed_section_backgrounds[theme] = case_state["section"]["backgroundCss"]
+
+        if theme == "light":
+            assert case_state["scheme"] == "light"
+            assert min(case_state["section"]["background"]) > .80
+            assert min(case_state["inset"]["background"]) > .88
+        else:
+            assert case_state["scheme"] == "dark"
+            assert max(case_state["section"]["background"]) < .40
+
+    assert len(set(observed_section_backgrounds.values())) == 4
+
+
 def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url

@@ -42,6 +42,35 @@
     --dashboard-success-badge-surface: light-dark(#d5eadf, rgba(18,112,56,.20));
     --dashboard-success-border: light-dark(#78aa91, rgba(52,196,112,.36));
 
+    /* Shared semantic component surfaces. These follow the live color-scheme
+       and palette variables supplied by /dynamic.css; no theme marker is
+       required. */
+    --semantic-success-text: light-dark(#105f3d, #86e8bb);
+    --semantic-success-surface: color-mix(in srgb, #2f9b6d 11%, var(--theme-surface, rgba(5,18,39,.58)));
+    --semantic-success-border: color-mix(in srgb, #2f9b6d 45%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    --semantic-warning-text: light-dark(#765511, #f4cf72);
+    --semantic-warning-surface: color-mix(in srgb, #d69b21 11%, var(--theme-surface, rgba(5,18,39,.58)));
+    --semantic-warning-border: color-mix(in srgb, #c58b19 45%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    --semantic-error-text: light-dark(#8f2435, #ff9eaa);
+    --semantic-error-surface: color-mix(in srgb, #c63f52 10%, var(--theme-surface, rgba(5,18,39,.58)));
+    --semantic-error-border: color-mix(in srgb, #c63f52 44%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    --semantic-info-text: var(--theme-accent-text, #78bfff);
+    --semantic-info-surface: color-mix(in srgb, var(--theme-accent, #1b9ff2) 10%, var(--theme-surface, rgba(5,18,39,.58)));
+    --semantic-info-border: color-mix(in srgb, var(--theme-accent, #1b9ff2) 40%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    --semantic-secondary-control-text: var(--theme-page-text, #eaf2ff);
+    --semantic-secondary-control-surface: var(--theme-surface-2, rgba(17,31,56,.78));
+    --semantic-secondary-control-border: var(--theme-border-soft, rgba(98,155,255,.24));
+    --semantic-secondary-control-hover: color-mix(in srgb, var(--theme-accent, #1b9ff2) 12%, var(--theme-surface-2, rgba(17,31,56,.78)));
+    --semantic-quiet-control-text: var(--theme-muted-text, #b8c2cc);
+    --semantic-quiet-control-surface: color-mix(in srgb, var(--theme-accent, #1b9ff2) 4%, var(--theme-surface, rgba(5,18,39,.58)));
+    --semantic-quiet-control-border: var(--theme-border-soft, rgba(98,155,255,.24));
+    --semantic-section-surface: var(--theme-surface, rgba(5,18,39,.58));
+    --semantic-section-border: var(--theme-border-soft, rgba(98,155,255,.24));
+    --semantic-section-shadow: 0 8px 22px color-mix(in srgb, var(--theme-shadow, rgba(0,0,0,.42)) 58%, transparent);
+    --semantic-inset-text: var(--theme-input-text, #eaf3ff);
+    --semantic-inset-surface: var(--theme-input-bg, rgba(3,13,30,.78));
+    --semantic-inset-border: var(--theme-border-soft, rgba(98,155,255,.24));
+
     /* Shared score-pill semantics for Dashboard activity and History. */
     --score-pill-good-text: light-dark(#16784f, #86e8bb);
     --score-pill-good-surface: light-dark(rgba(34,155,98,.10), rgba(27,114,81,.18));
@@ -5021,12 +5050,12 @@ a.settings-hub-card:active {
 
 .law-hub-coming-badge {
     padding: 6px 10px;
-    color: #a9b7c9;
+    color: var(--semantic-quiet-control-text);
     font-size: 11px;
     font-weight: 700;
-    border: 1px solid rgba(129, 151, 180, .25);
+    border: 1px solid var(--semantic-quiet-control-border);
     border-radius: 999px;
-    background: rgba(80, 98, 121, .12);
+    background: var(--semantic-quiet-control-surface);
 }
 
 .law-hub-coming-grid {
@@ -5534,16 +5563,16 @@ a.settings-hub-card:active {
 }
 
 .law-status-pill.success {
-    color: #8bf0bd;
-    background: rgba(14, 112, 70, .20);
-    border: 1px solid rgba(64, 210, 139, .35);
+    color: var(--semantic-success-text);
+    background: var(--semantic-success-surface);
+    border: 1px solid var(--semantic-success-border);
 }
 
 .law-status-pill.info,
 .law-count-pill {
-    color: #a9d5ff;
-    background: rgba(21, 89, 158, .22);
-    border: 1px solid rgba(70, 155, 245, .35);
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    border: 1px solid var(--semantic-info-border);
 }
 
 .law-form-grid {
@@ -5599,9 +5628,9 @@ a.settings-hub-card:active {
 .law-field textarea:focus,
 .law-prompt-box:focus,
 .law-import-textarea:focus {
-    border-color: rgba(86, 170, 255, .75);
-    box-shadow: 0 0 0 3px rgba(48, 135, 255, .12);
-    background: rgba(7, 22, 47, .88);
+    border-color: var(--theme-accent, #1b9ff2);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent, #1b9ff2) 18%, transparent);
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 5%, var(--theme-input-bg, rgba(3,13,30,.78)));
 }
 
 .law-options-heading {
@@ -5686,15 +5715,36 @@ a.settings-hub-card:active {
 }
 
 .law-secondary-action {
-    background: linear-gradient(180deg, rgba(30, 56, 91, .96), rgba(22, 43, 73, .96));
-    border-color: rgba(120, 165, 220, .30);
+    color: var(--semantic-secondary-control-text);
+    background: var(--semantic-secondary-control-surface);
+    border-color: var(--semantic-secondary-control-border);
 }
 
 .law-quiet-action {
-    color: #d4e3f6;
-    background: rgba(7, 20, 42, .66);
-    border-color: rgba(105, 150, 205, .28);
+    color: var(--semantic-quiet-control-text);
+    background: var(--semantic-quiet-control-surface);
+    border-color: var(--semantic-quiet-control-border);
     box-shadow: none;
+}
+
+.law-secondary-action:hover,
+.law-secondary-action:active,
+.law-secondary-action:focus-visible,
+.law-quiet-action:hover,
+.law-quiet-action:active,
+.law-quiet-action:focus-visible {
+    color: var(--theme-heading, #fff);
+    background: var(--semantic-secondary-control-hover);
+    border-color: var(--theme-accent, #1b9ff2);
+}
+
+.law-secondary-action:disabled,
+.law-quiet-action:disabled {
+    color: var(--theme-muted-text, #b8c2cc);
+    background: var(--theme-surface, rgba(5,18,39,.58));
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24));
+    opacity: .68;
+    cursor: not-allowed;
 }
 
 .law-generated-panel,
@@ -5751,18 +5801,21 @@ a.settings-hub-card:active {
 }
 
 .law-notice.success {
-    background: rgba(12, 96, 61, .18);
-    border: 1px solid rgba(52, 185, 116, .34);
+    color: var(--semantic-success-text);
+    background: var(--semantic-success-surface);
+    border: 1px solid var(--semantic-success-border);
 }
 
 .law-notice.error {
-    background: rgba(132, 31, 39, .18);
-    border: 1px solid rgba(239, 83, 94, .38);
+    color: var(--semantic-error-text);
+    background: var(--semantic-error-surface);
+    border: 1px solid var(--semantic-error-border);
 }
 
 .law-notice.warning {
-    background: rgba(121, 88, 12, .17);
-    border: 1px solid rgba(221, 172, 43, .34);
+    color: var(--semantic-warning-text);
+    background: var(--semantic-warning-surface);
+    border: 1px solid var(--semantic-warning-border);
 }
 
 .law-workflow-banner {
@@ -5770,8 +5823,9 @@ a.settings-hub-card:active {
     align-items: center;
     justify-content: space-between;
     gap: 18px;
-    background: rgba(14, 61, 113, .20);
-    border: 1px solid rgba(65, 142, 224, .34);
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    border: 1px solid var(--semantic-info-border);
 }
 
 .law-workflow-banner strong,
@@ -5901,15 +5955,15 @@ a.settings-hub-card:active {
     padding: 0;
     display: grid;
     place-items: center;
-    color: #ff8b96 !important;
-    background: rgba(94, 18, 31, .24) !important;
-    border: 1px solid rgba(222, 68, 88, .42) !important;
+    color: var(--semantic-error-text) !important;
+    background: var(--semantic-error-surface) !important;
+    border: 1px solid var(--semantic-error-border) !important;
     box-shadow: none !important;
 }
 
 .law-trash-action:hover {
-    background: rgba(145, 29, 44, .52) !important;
-    border-color: rgba(255, 95, 111, .72) !important;
+    background: color-mix(in srgb, #c63f52 18%, var(--theme-surface, rgba(5,18,39,.58))) !important;
+    border-color: color-mix(in srgb, #c63f52 62%, var(--theme-border-soft, rgba(98,155,255,.24))) !important;
 }
 
 .law-empty-state {
@@ -6106,9 +6160,9 @@ a.settings-hub-card:active {
     display: grid;
     place-items: center;
     border-radius: 50%;
-    color: #69e7a0;
-    background: rgba(36, 156, 91, .15);
-    border: 1px solid rgba(66, 206, 126, .30);
+    color: var(--semantic-success-text);
+    background: var(--semantic-success-surface);
+    border: 1px solid var(--semantic-success-border);
     font-weight: 900;
 }
 
@@ -6134,47 +6188,57 @@ a.settings-hub-card:active {
 }
 
 .law-message.success {
-    color: #d9ffea;
-    background: rgba(12, 115, 65, .16);
-    border: 1px solid rgba(43, 196, 112, .34);
+    color: var(--semantic-success-text);
+    background: var(--semantic-success-surface);
+    border: 1px solid var(--semantic-success-border);
 }
 
 .law-message.warning {
-    color: #ffeab7;
-    background: rgba(120, 82, 5, .18);
-    border: 1px solid rgba(232, 172, 38, .38);
+    color: var(--semantic-warning-text);
+    background: var(--semantic-warning-surface);
+    border: 1px solid var(--semantic-warning-border);
 }
 
 .law-detail-primary-form {
     margin: 0 0 20px;
 }
 
-.law-raw-packet,
 .law-detail-textarea,
 .law-case-detail-page textarea {
     width: 100%;
     box-sizing: border-box;
     padding: 14px 15px;
-    color: #e4edf8;
-    background: rgba(1, 8, 18, .86);
-    border: 1px solid rgba(104, 157, 224, .34);
+    color: var(--theme-input-text, #eaf3ff);
+    background: var(--theme-input-bg, rgba(3,13,30,.78));
+    border: 1px solid var(--theme-border-soft, rgba(98,155,255,.24));
     border-radius: 12px;
     outline: none;
     line-height: 1.5;
     resize: vertical;
-    box-shadow: inset 0 1px 8px rgba(0,0,0,.32);
+    box-shadow: inset 0 1px 8px color-mix(in srgb, var(--theme-shadow, rgba(0,0,0,.42)) 48%, transparent);
 }
 
 .law-raw-packet {
+    width: 100%;
+    box-sizing: border-box;
     min-height: 370px;
+    padding: 14px 15px;
+    color: var(--semantic-inset-text);
+    background: var(--semantic-inset-surface);
+    border: 1px solid var(--semantic-inset-border);
+    border-radius: 12px;
+    outline: none;
+    line-height: 1.5;
+    resize: vertical;
+    box-shadow: inset 0 1px 8px color-mix(in srgb, var(--theme-shadow, rgba(0,0,0,.42)) 48%, transparent);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 13px;
 }
 
 .law-case-detail-page textarea:focus,
 .law-raw-packet:focus {
-    border-color: rgba(75, 168, 255, .72);
-    box-shadow: 0 0 0 3px rgba(49, 137, 245, .10), inset 0 1px 8px rgba(0,0,0,.32);
+    border-color: var(--theme-accent, #1b9ff2);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent, #1b9ff2) 18%, transparent), inset 0 1px 8px color-mix(in srgb, var(--theme-shadow, rgba(0,0,0,.42)) 48%, transparent);
 }
 
 .law-detail-actions {
@@ -6204,16 +6268,16 @@ a.settings-hub-card:active {
 }
 
 .law-case-detail-page .law-case-detail-shell > div:first-child p {
-    color: #b6c4d5;
+    color: var(--theme-muted-text, #b8c2cc);
     line-height: 1.55;
 }
 
 .law-case-detail-page .law-case-detail-shell > div:first-child pre {
     margin-top: 10px !important;
     padding: 13px 14px;
-    color: #d9e5f3;
-    background: rgba(1, 8, 18, .70);
-    border: 1px solid rgba(86, 148, 225, .22);
+    color: var(--semantic-inset-text);
+    background: var(--semantic-inset-surface);
+    border: 1px solid var(--semantic-inset-border);
     border-radius: 10px;
 }
 
@@ -6223,17 +6287,18 @@ a.settings-hub-card:active {
     padding: 18px !important;
     text-align: left !important;
     cursor: default !important;
-    background: linear-gradient(180deg, rgba(4, 15, 34, .78), rgba(3, 12, 27, .72)) !important;
-    border: 1px solid rgba(87, 151, 232, .25) !important;
+    color: var(--theme-page-text, #eaf2ff) !important;
+    background: var(--semantic-section-surface) !important;
+    border: 1px solid var(--semantic-section-border) !important;
     border-radius: 15px !important;
-    box-shadow: 0 8px 22px rgba(0,0,0,.22) !important;
+    box-shadow: var(--semantic-section-shadow) !important;
     transform: none !important;
 }
 
 .law-case-detail-page .portal-card:hover,
 .law-case-detail-page .portal-card:active {
     transform: none !important;
-    box-shadow: 0 8px 22px rgba(0,0,0,.22) !important;
+    box-shadow: var(--semantic-section-shadow) !important;
 }
 
 .law-case-detail-page .portal-card h2,
@@ -6245,9 +6310,9 @@ a.settings-hub-card:active {
 .law-case-detail-page .portal-card pre,
 .law-case-detail-page .law-case-section pre {
     padding: 14px;
-    color: #dbe6f4;
-    background: rgba(1, 8, 18, .70);
-    border: 1px solid rgba(89, 145, 211, .20);
+    color: var(--semantic-inset-text);
+    background: var(--semantic-inset-surface);
+    border: 1px solid var(--semantic-inset-border);
     border-radius: 10px;
     line-height: 1.55 !important;
 }
@@ -6258,9 +6323,9 @@ a.settings-hub-card:active {
     box-sizing: border-box;
     min-height: 44px;
     padding: 10px 12px;
-    color: #e9f2ff;
-    background: rgba(5, 17, 37, .90);
-    border: 1px solid rgba(102, 158, 226, .32);
+    color: var(--theme-input-text, #eaf3ff);
+    background: var(--theme-input-bg, rgba(3,13,30,.78));
+    border: 1px solid var(--theme-border-soft, rgba(98,155,255,.24));
     border-radius: 10px;
 }
 
@@ -6271,6 +6336,54 @@ a.settings-hub-card:active {
 .law-case-detail-page .law-case-detail-shell > button,
 .law-case-detail-page .law-case-detail-shell > form + button {
     margin-top: 8px;
+}
+
+.law-case-detail-page .law-case-summary {
+    color: var(--theme-page-text, #eaf2ff);
+}
+
+.law-case-detail-page .law-case-metadata,
+.law-case-detail-page .law-case-section > p {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    opacity: 1 !important;
+}
+
+.law-case-detail-page .law-case-sources {
+    margin-top: 12px;
+    padding: 12px;
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    border: 1px solid var(--semantic-info-border);
+    border-radius: 12px;
+}
+
+.law-case-detail-page .law-case-sources > strong {
+    color: var(--semantic-info-text);
+}
+
+.law-case-detail-page .law-case-readonly {
+    color: var(--semantic-inset-text);
+    background: var(--semantic-inset-surface);
+    border-color: var(--semantic-inset-border);
+}
+
+.law-case-detail-page .law-case-question-card {
+    padding: 14px;
+    color: var(--theme-page-text, #eaf2ff);
+    background: var(--theme-surface-2, rgba(17,31,56,.78));
+    border: 1px solid var(--theme-border-soft, rgba(98,155,255,.24));
+    border-radius: 12px;
+}
+
+.law-case-detail-page .law-case-question-card h3,
+.law-case-detail-page .law-case-section label,
+.law-case-detail-page .law-case-section strong {
+    color: var(--theme-heading, #fff);
+}
+
+.law-case-detail-page .law-case-update-notice,
+.law-case-detail-page .law-case-reminder {
+    margin-bottom: 18px;
 }
 
 @media (max-width: 1100px) {
@@ -11527,8 +11640,9 @@ body[data-theme="light"] .medical-table-page .dashboard-panel,
     border-color: var(--theme-accent,#1b9ff2) !important;
 }
 .law-subpage .law-workflow-banner {
-    background: color-mix(in srgb,var(--theme-accent,#1b9ff2) 9%,var(--theme-surface,rgba(5,18,39,.58))) !important;
-    border-color: color-mix(in srgb,var(--theme-accent,#1b9ff2) 35%,transparent) !important;
+    color: var(--semantic-info-text) !important;
+    background: var(--semantic-info-surface) !important;
+    border-color: var(--semantic-info-border) !important;
 }
 .law-subpage .law-workflow-banner strong {
     color: var(--theme-heading,#fff) !important;
@@ -11561,21 +11675,21 @@ body[data-theme="light"] .medical-table-page .dashboard-panel,
 }
 .law-import-detail-page .law-message.success,
 .law-case-detail-page .law-message.success {
-    color: #14633d !important;
-    background: rgba(41,173,102,.12) !important;
-    border-color: rgba(31,148,84,.35) !important;
+    color: var(--semantic-success-text) !important;
+    background: var(--semantic-success-surface) !important;
+    border-color: var(--semantic-success-border) !important;
 }
 .law-import-detail-page .law-message.warning,
 .law-case-detail-page .law-message.warning {
-    color: #745000 !important;
-    background: rgba(223,171,42,.14) !important;
-    border-color: rgba(190,134,12,.36) !important;
+    color: var(--semantic-warning-text) !important;
+    background: var(--semantic-warning-surface) !important;
+    border-color: var(--semantic-warning-border) !important;
 }
 .law-import-detail-page .law-raw-packet,
 .law-case-detail-page .law-raw-packet {
-    color: var(--theme-input-text,#e4edf8) !important;
-    background: var(--theme-input-bg,rgba(1,8,18,.86)) !important;
-    border-color: var(--theme-border-soft,rgba(104,157,224,.34)) !important;
+    color: var(--semantic-inset-text) !important;
+    background: var(--semantic-inset-surface) !important;
+    border-color: var(--semantic-inset-border) !important;
 }
 
 /* ---------- Semantic links everywhere in audited study areas ---------- */
@@ -11631,40 +11745,17 @@ body[data-theme="dark"] .study-packs-page .pack-count-pill,
 .law-hub-page .law-count-pill,
 .law-subpage .law-count-pill,
 .law-subpage .law-status-pill.info {
-    color: #35597f !important;
-    background: rgba(48, 103, 170, 0.18) !important;
-    border: 1px solid rgba(69, 124, 191, 0.42) !important;
+    color: var(--semantic-info-text) !important;
+    background: var(--semantic-info-surface) !important;
+    border: 1px solid var(--semantic-info-border) !important;
 }
 .law-subpage .law-status-pill.success,
 .law-hub-page .law-status-pill.success,
 .law-import-detail-page .law-status-pill.success,
 .law-case-detail-page .law-status-pill.success {
-    color: #0f6a49 !important;
-    background: rgba(38, 160, 98, 0.14) !important;
-    border: 1px solid rgba(35, 141, 87, 0.34) !important;
-}
-html[data-theme="dark"] .law-hub-page .law-count-pill,
-html[data-theme="dark"] .law-subpage .law-count-pill,
-html[data-theme="dark"] .law-subpage .law-status-pill.info,
-body[data-theme="dark"] .law-hub-page .law-count-pill,
-body[data-theme="dark"] .law-subpage .law-count-pill,
-body[data-theme="dark"] .law-subpage .law-status-pill.info,
-.theme-dark .law-hub-page .law-count-pill,
-.theme-dark .law-subpage .law-count-pill,
-.theme-dark .law-subpage .law-status-pill.info {
-    color: #d6ebff !important;
-    background: rgba(18, 60, 108, 0.74) !important;
-    border-color: rgba(101, 172, 245, 0.36) !important;
-}
-html[data-theme="dark"] .law-subpage .law-status-pill.success,
-body[data-theme="dark"] .law-subpage .law-status-pill.success,
-.theme-dark .law-subpage .law-status-pill.success,
-html[data-theme="dark"] .law-hub-page .law-status-pill.success,
-body[data-theme="dark"] .law-hub-page .law-status-pill.success,
-.theme-dark .law-hub-page .law-status-pill.success {
-    color: #9cf2c8 !important;
-    background: rgba(15, 112, 70, 0.24) !important;
-    border-color: rgba(64, 210, 139, 0.35) !important;
+    color: var(--semantic-success-text) !important;
+    background: var(--semantic-success-surface) !important;
+    border: 1px solid var(--semantic-success-border) !important;
 }
 
 /* ---------- Law hub: make primary card match the others ---------- */

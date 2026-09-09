@@ -1539,6 +1539,149 @@ class ThemeSystemTests(unittest.TestCase):
             css,
         )
 
+    def test_law_uses_shared_semantic_surface_tokens_without_theme_markers(self):
+        css = self._style_css()
+        for token in (
+            "--semantic-success-text", "--semantic-success-surface",
+            "--semantic-success-border", "--semantic-warning-text",
+            "--semantic-warning-surface", "--semantic-warning-border",
+            "--semantic-error-text", "--semantic-error-surface",
+            "--semantic-error-border", "--semantic-info-text",
+            "--semantic-info-surface", "--semantic-info-border",
+            "--semantic-secondary-control-surface",
+            "--semantic-quiet-control-surface", "--semantic-section-surface",
+            "--semantic-inset-surface",
+        ):
+            self.assertIn(f"{token}:", css)
+
+        expected = {
+            ".law-secondary-action": (
+                "--semantic-secondary-control-text",
+                "--semantic-secondary-control-surface",
+                "--semantic-secondary-control-border",
+            ),
+            ".law-quiet-action": (
+                "--semantic-quiet-control-text",
+                "--semantic-quiet-control-surface",
+                "--semantic-quiet-control-border",
+            ),
+            ".law-secondary-action:focus-visible": (
+                "--semantic-secondary-control-hover", "--theme-accent",
+            ),
+            ".law-notice.success": (
+                "--semantic-success-text", "--semantic-success-surface",
+                "--semantic-success-border",
+            ),
+            ".law-notice.warning": (
+                "--semantic-warning-text", "--semantic-warning-surface",
+                "--semantic-warning-border",
+            ),
+            ".law-notice.error": (
+                "--semantic-error-text", "--semantic-error-surface",
+                "--semantic-error-border",
+            ),
+            ".law-workflow-banner": (
+                "--semantic-info-text", "--semantic-info-surface",
+                "--semantic-info-border",
+            ),
+            ".law-case-detail-page .portal-card": (
+                "--semantic-section-surface", "--semantic-section-border",
+                "--semantic-section-shadow",
+            ),
+            ".law-case-detail-page .portal-card pre": (
+                "--semantic-inset-text", "--semantic-inset-surface",
+                "--semantic-inset-border",
+            ),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must use the shared semantic tokens",
+                )
+
+        for marker in ('html[data-theme=', 'body[data-theme=', '.theme-light', '.theme-dark'):
+            self.assertNotRegex(
+                css,
+                re.escape(marker) + r"[^,{]*(?:\.law-subpage|\.law-hub-page|\.law-case-detail-page)",
+            )
+
+    def test_law_case_review_template_uses_named_semantic_visual_classes(self):
+        template = (
+            Path(dlms.TEMPLATE_ROOT) / "law" / "case-detail.html"
+        ).read_text(encoding="utf-8")
+        for class_name in (
+            "law-case-summary", "law-case-metadata", "law-case-sources",
+            "law-case-readonly", "law-case-update-notice",
+            "law-case-reminder", "law-case-question-card",
+        ):
+            self.assertIn(class_name, template)
+
+        visual_property = re.compile(
+            r"(?:^|;)\s*(?:color|background(?:-color)?|border|border-color|box-shadow)\s*:",
+            re.IGNORECASE,
+        )
+        inline_styles = re.findall(r'style="([^"]*)"', template, re.DOTALL)
+        self.assertFalse(
+            [style for style in inline_styles if visual_property.search(style)],
+            "Law templates must not bypass semantic colors with inline visual CSS",
+        )
+
+    def test_law_semantic_text_contrast_across_all_palettes(self):
+        client = dlms.app.test_client()
+
+        def mix(foreground, background, amount):
+            fg = self._rgba(foreground)[:3]
+            return tuple(
+                fg[index] * amount + background[index] * (1 - amount)
+                for index in range(3)
+            )
+
+        semantic_text = {
+            "success": ("#105f3d", "#86e8bb", "#2f9b6d", .11),
+            "warning": ("#765511", "#f4cf72", "#d69b21", .11),
+            "error": ("#8f2435", "#ff9eaa", "#c63f52", .10),
+        }
+        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    dynamic_css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(dynamic_css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                section = self._composite(variables["theme-surface"], panel)
+                inset = self._composite(variables["theme-input-bg"], section)
+                secondary = self._composite(variables["theme-surface-2"], panel)
+                is_light = variables["theme-color-scheme"] == "light"
+
+                pairs = [
+                    ("section text", variables["theme-page-text"], section),
+                    ("section muted text", variables["theme-muted-text"], section),
+                    ("inset text", variables["theme-input-text"], inset),
+                    ("secondary control", variables["theme-page-text"], secondary),
+                    (
+                        "information",
+                        variables["theme-accent-text"],
+                        mix(variables["theme-accent"], section, .10),
+                    ),
+                ]
+                for name, (light_text, dark_text, hue, amount) in semantic_text.items():
+                    pairs.append((
+                        name,
+                        light_text if is_light else dark_text,
+                        mix(hue, section, amount),
+                    ))
+
+                for role, foreground, background in pairs:
+                    ratio = self._contrast(foreground, background)
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"{theme} Law {role} contrast is only {ratio:.2f}:1",
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()
