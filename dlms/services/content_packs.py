@@ -1313,6 +1313,31 @@ def _is_it_pack_manifest(
     return domain in {"it", "it_cybersecurity", "cybersecurity", "information_technology"}
 
 
+def _study_pack_catalog_domain_group(
+    pack_id,
+    pack,
+    *,
+    is_it_pack_manifest=_is_it_pack_manifest,
+    is_medical_pack_manifest=_is_medical_pack_manifest,
+    normalized_content_domain=_normalized_content_domain,
+):
+    """Return the fixed catalog group for an installed Study Pack manifest."""
+    if isinstance(pack, dict):
+        declared_domains = {
+            normalized_content_domain(pack.get(field))
+            for field in ("content_domain", "extends")
+        }
+        if declared_domains.intersection({"law", "legal"}):
+            # Law content remains visible in the complete catalog for legacy
+            # compatibility, but it is not part of the Study Packs taxonomy.
+            return "law"
+    if is_medical_pack_manifest(pack_id, pack):
+        return "medical"
+    if is_it_pack_manifest(pack_id, pack):
+        return "it"
+    return "other"
+
+
 def _it_content_available(
     packs=None, *, discover_content_packs, is_it_pack_manifest
 ):

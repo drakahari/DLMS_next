@@ -8157,6 +8157,45 @@ a.settings-hub-card:active {
     color: #eaf3ff;
     font-size: 16px;
 }
+.study-pack-toolbar-overview {
+    min-width: 0;
+}
+.study-pack-domain-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+}
+.study-pack-domain-filter {
+    width: auto;
+    margin: 0;
+    padding: 7px 11px;
+    border: 1px solid var(--semantic-secondary-control-border);
+    border-radius: 999px;
+    color: var(--semantic-secondary-control-text);
+    background: var(--semantic-secondary-control-surface);
+    box-shadow: none;
+    font-size: 13px;
+    font-weight: 700;
+}
+.study-pack-domain-filter:hover,
+.study-pack-domain-filter:focus-visible {
+    border-color: var(--theme-accent, #1b9ff2);
+    background: var(--semantic-secondary-control-hover);
+}
+.study-pack-domain-filter:focus-visible {
+    outline: 2px solid var(--theme-accent, #1b9ff2);
+    outline-offset: 2px;
+}
+.study-pack-domain-filter[aria-pressed="true"] {
+    border-color: var(--semantic-info-border);
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    box-shadow: inset 0 -2px 0 var(--theme-accent, #1b9ff2);
+}
+.study-pack-domain-filter span {
+    font-variant-numeric: tabular-nums;
+}
 .study-pack-toolbar-actions {
     display: flex;
     flex-wrap: wrap;

@@ -1597,6 +1597,16 @@ def _is_it_pack_manifest(pack_id, pack):
     )
 
 
+def _study_pack_catalog_domain_group(pack_id, pack):
+    return _content_pack_service._study_pack_catalog_domain_group(
+        pack_id,
+        pack,
+        is_it_pack_manifest=_is_it_pack_manifest,
+        is_medical_pack_manifest=_is_medical_pack_manifest,
+        normalized_content_domain=_normalized_content_domain,
+    )
+
+
 def _it_content_available(packs=None):
     return _content_pack_service._it_content_available(
         packs,
@@ -5646,6 +5656,7 @@ app.register_blueprint(create_study_packs_blueprint(StudyPackRouteDependencies(
     content_pack_ai_workflow=lambda: CONTENT_PACK_AI_WORKFLOW,
     stage_content_pack_upload=lambda *args, **kwargs: _stage_content_pack_upload(*args, **kwargs),
     discover_content_packs=lambda: discover_content_packs(),
+    study_pack_catalog_domain_group=lambda pack_id, pack: _study_pack_catalog_domain_group(pack_id, pack),
     load_content_pack_dataset=lambda pack_id, dataset_id: load_content_pack_dataset(pack_id, dataset_id),
     load_content_pack_image_dataset=lambda pack_id, dataset_id: load_content_pack_image_dataset(pack_id, dataset_id),
     load_content_pack_quiz_dataset=lambda pack_id, dataset_id: load_content_pack_quiz_dataset(pack_id, dataset_id),

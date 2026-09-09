@@ -76,7 +76,8 @@ class Batch3BlueprintTests(unittest.TestCase):
         },
         study_pack_routes.StudyPackRouteDependencies: {
             "content_pack_ai_workflow", "stage_content_pack_upload",
-            "discover_content_packs", "load_content_pack_dataset",
+            "discover_content_packs", "study_pack_catalog_domain_group",
+            "load_content_pack_dataset",
             "load_content_pack_image_dataset", "load_content_pack_quiz_dataset",
             "get_content_pack", "quiz_dataset_runtime", "create_quiz_from_runtime",
             "publish_quiz", "standalone_matching_concepts", "hotspot_concepts",

@@ -79,9 +79,17 @@
 
     {% if packs %}
     <div class="study-pack-toolbar">
-        <div>
+        <div class="study-pack-toolbar-overview">
             <span class="medical-eyebrow">INSTALLED CONTENT</span>
-            <strong>{{ packs|length }} study pack{{ '' if packs|length == 1 else 's' }}</strong>
+            <strong id="studyPackResultCount" role="status" aria-live="polite" aria-atomic="true">{{ total_pack_count }} study pack{{ '' if total_pack_count == 1 else 's' }}</strong>
+            {% if not other_mode %}
+            <div class="study-pack-domain-filters" role="group" aria-label="Filter installed content by domain">
+                <button type="button" class="study-pack-domain-filter" data-domain-filter="all" aria-pressed="true">All <span>{{ total_pack_count }}</span></button>
+                {% if domain_filter_counts.get('it') %}<button type="button" class="study-pack-domain-filter" data-domain-filter="it" aria-pressed="false">IT <span>{{ domain_filter_counts.it }}</span></button>{% endif %}
+                {% if domain_filter_counts.get('medical') %}<button type="button" class="study-pack-domain-filter" data-domain-filter="medical" aria-pressed="false">Medical <span>{{ domain_filter_counts.medical }}</span></button>{% endif %}
+                {% if domain_filter_counts.get('other') %}<button type="button" class="study-pack-domain-filter" data-domain-filter="other" aria-pressed="false">Other <span>{{ domain_filter_counts.other }}</span></button>{% endif %}
+            </div>
+            {% endif %}
         </div>
         <div class="study-pack-toolbar-actions">
             <a class="medical-ai-secondary-button study-pack-manage-link" href="/content-packs">Manage Packs</a>
@@ -91,7 +99,7 @@
     </div>
 
     {% for pack in packs %}
-    <details id="{{ 'installed-study-pack' if pack.id == installed_pack_id else '' }}" class="dashboard-panel study-pack-section study-pack-collapsible {% if pack.id == installed_pack_id %}is-newly-installed{% endif %}" data-pack-id="{{ pack.id }}" {% if loop.first or pack.id == installed_pack_id %}open{% endif %}>
+    <details id="{{ 'installed-study-pack' if pack.id == installed_pack_id else '' }}" class="dashboard-panel study-pack-section study-pack-collapsible {% if pack.id == installed_pack_id %}is-newly-installed{% endif %}" data-pack-id="{{ pack.id }}" data-domain-group="{{ pack.domain_group }}" {% if loop.first or pack.id == installed_pack_id %}open{% endif %}>
         <summary class="study-pack-summary">
             <div class="study-pack-summary-main">
                 <span class="study-pack-chevron" aria-hidden="true">›</span>
@@ -218,18 +226,33 @@ const sidebar=document.getElementById('dashboardSidebar');
 document.getElementById('menuButton')?.addEventListener('click',()=>sidebar?.classList.toggle('open'));
 
 const packDetails=[...document.querySelectorAll('.study-pack-collapsible')];
+const domainFilterButtons=[...document.querySelectorAll('.study-pack-domain-filter')];
+const packResultCount=document.getElementById('studyPackResultCount');
 const stateKey='dlms.studyPacks.openState.v1';
 function readPackState(){try{return JSON.parse(localStorage.getItem(stateKey)||'{}')||{}}catch(e){return {}}}
 function savePackState(){const state={};packDetails.forEach(el=>state[el.dataset.packId]=el.open);try{localStorage.setItem(stateKey,JSON.stringify(state))}catch(e){}}
+function visiblePackDetails(){return packDetails.filter(el=>!el.hidden)}
+function filterPackCatalog(group){
+    domainFilterButtons.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.domainFilter===group)));
+    packDetails.forEach(pack=>{pack.hidden=group!=='all'&&pack.dataset.domainGroup!==group});
+    if(packResultCount){
+        const visibleCount=visiblePackDetails().length;
+        const totalCount=packDetails.length;
+        packResultCount.textContent=group==='all'
+            ? `${totalCount} study pack${totalCount===1?'':'s'}`
+            : `Showing ${visibleCount} of ${totalCount} study pack${totalCount===1?'':'s'}`;
+    }
+}
 const savedState=readPackState();
 packDetails.forEach(el=>{if(Object.prototype.hasOwnProperty.call(savedState,el.dataset.packId))el.open=!!savedState[el.dataset.packId];el.addEventListener('toggle',savePackState)});
+domainFilterButtons.forEach(button=>button.addEventListener('click',()=>filterPackCatalog(button.dataset.domainFilter)));
 const installedPack=document.getElementById('installed-study-pack');
 if(installedPack){
     installedPack.open=true;
     requestAnimationFrame(()=>installedPack.scrollIntoView({block:'start',behavior:'smooth'}));
 }
-document.getElementById('expandAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=true);savePackState()});
-document.getElementById('collapseAllPacks')?.addEventListener('click',()=>{packDetails.forEach(el=>el.open=false);savePackState()});
+document.getElementById('expandAllPacks')?.addEventListener('click',()=>{visiblePackDetails().forEach(el=>el.open=true);savePackState()});
+document.getElementById('collapseAllPacks')?.addEventListener('click',()=>{visiblePackDetails().forEach(el=>el.open=false);savePackState()});
 function toggleDatasetDetails(toggle){
     const row=document.getElementById(toggle.getAttribute('aria-controls'));
     if(!row) return;

@@ -2,6 +2,7 @@
 
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from markupsafe import escape
@@ -12,6 +13,101 @@ from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
 from dlms.routes import study_packs as study_pack_routes
+from dlms.services import content_packs as content_pack_service
+
+
+class StudyPackDomainGroupTests(unittest.TestCase):
+    def test_canonical_it_aliases_and_extends_are_classified_as_it(self):
+        for value in (
+            "IT",
+            "IT / Cybersecurity",
+            "it_cybersecurity",
+            "cybersecurity",
+            "information_technology",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    "it",
+                    content_pack_service._study_pack_catalog_domain_group(
+                        "pack", {"content_domain": value}
+                    ),
+                )
+        self.assertEqual(
+            "it",
+            content_pack_service._study_pack_catalog_domain_group(
+                "pack", {"extends": "IT / Cybersecurity"}
+            ),
+        )
+
+    def test_medical_current_legacy_and_extends_forms_are_classified_as_medical(self):
+        for pack_id, manifest in (
+            ("pack", {"content_domain": "Medical"}),
+            ("pack", {"extends": "medical"}),
+            ("medical", {}),
+        ):
+            with self.subTest(pack_id=pack_id, manifest=manifest):
+                self.assertEqual(
+                    "medical",
+                    content_pack_service._study_pack_catalog_domain_group(
+                        pack_id, manifest
+                    ),
+                )
+
+    def test_other_product_domains_custom_and_missing_values_share_other_group(self):
+        for value in ("General", "Science", "History", "Language", "Other", "Astronomy", ""):
+            with self.subTest(value=value):
+                manifest = {"content_domain": value} if value else {}
+                self.assertEqual(
+                    "other",
+                    content_pack_service._study_pack_catalog_domain_group(
+                        "pack", manifest
+                    ),
+                )
+
+    def test_law_and_legal_use_internal_exclusion_group(self):
+        for field in ("content_domain", "extends"):
+            for value in ("Law", "Legal"):
+                with self.subTest(field=field, value=value):
+                    self.assertEqual(
+                        "law",
+                        content_pack_service._study_pack_catalog_domain_group(
+                            "pack", {field: value}
+                        ),
+                    )
+        self.assertEqual(
+            "law",
+            content_pack_service._study_pack_catalog_domain_group(
+                "pack", {"content_domain": "General", "extends": "Legal"}
+            ),
+        )
+
+    def test_catalog_uses_injected_classifier_for_every_rendered_pack(self):
+        manifests = {
+            "it": {"name": "IT", "extends": "information_technology"},
+            "medical": {"name": "Medical", "extends": "Medical"},
+            "custom": {"name": "Custom", "content_domain": "Astronomy"},
+            "law": {"name": "Law", "content_domain": "Legal"},
+        }
+        for manifest in manifests.values():
+            manifest["datasets"] = [{"id": "terms"}]
+        dependencies = SimpleNamespace(
+            discover_content_packs=lambda: manifests,
+            study_pack_catalog_domain_group=(
+                content_pack_service._study_pack_catalog_domain_group
+            ),
+            load_content_pack_dataset=lambda pack_id, dataset_id: {
+                "title": f"{pack_id} terms", "terms": []
+            },
+            load_content_pack_image_dataset=lambda *args: {},
+            load_content_pack_quiz_dataset=lambda *args: {},
+        )
+
+        catalog = study_pack_routes._study_pack_catalog(dependencies)
+
+        self.assertEqual(
+            {"custom": "other", "it": "it", "law": "law", "medical": "medical"},
+            {pack["id"]: pack["domain_group"] for pack in catalog},
+        )
 
 
 class StudyPacksCatalogTemplateTests(unittest.TestCase):
@@ -26,6 +122,7 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
             "version": "2.0",
             "description": "Networking fundamentals.",
             "domain": "IT / Cybersecurity",
+            "domain_group": "it",
             "datasets": [],
             "image_datasets": [],
             "quiz_datasets": [],
@@ -57,11 +154,11 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
 
     def test_other_mode_filters_dedicated_domains_and_changes_copy_and_links(self):
         packs = [
-            self._pack(id="science", name="Science", domain="Science"),
-            self._pack(id="general", name="General", domain="General"),
-            self._pack(id="medical", name="Medical", domain="Medical"),
-            self._pack(id="it", name="IT", domain="IT / Cybersecurity"),
-            self._pack(id="law", name="Law", domain="Legal"),
+            self._pack(id="science", name="Science", domain="Science", domain_group="other"),
+            self._pack(id="general", name="General", domain="General", domain_group="other"),
+            self._pack(id="medical", name="Medical", domain="Medical", domain_group="medical"),
+            self._pack(id="it", name="IT", domain="IT / Cybersecurity", domain_group="it"),
+            self._pack(id="law", name="Law", domain="Legal", domain_group="law"),
         ]
         page = self._get(packs, "?domain_group=other")
 
@@ -79,7 +176,7 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
         )
 
         empty = self._get(
-            [self._pack(id="medical", domain="Medical")],
+            [self._pack(id="medical", domain="Medical", domain_group="medical")],
             "?domain_group=other",
         )
         self.assertIn("No Other Studies packs installed yet", empty)
@@ -146,6 +243,44 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
         self.assertIn('id="expandAllPacks"', page)
         self.assertIn('id="collapseAllPacks"', page)
         self.assertIn('href="/content-packs">Manage Packs</a>', page)
+
+    def test_normal_catalog_renders_fixed_domain_groups_counts_and_default_filter(self):
+        packs = [
+            self._pack(id="it-one", domain_group="it"),
+            self._pack(id="it-two", domain="information_technology", domain_group="it"),
+            self._pack(id="medical", domain="Medical", domain_group="medical"),
+            self._pack(id="science", domain="Science", domain_group="other"),
+            self._pack(id="legal", domain="Legal", domain_group="law"),
+        ]
+        page = self._get(packs)
+
+        self.assertIn('role="group" aria-label="Filter installed content by domain"', page)
+        self.assertIn('data-domain-filter="all" aria-pressed="true">All <span>5</span>', page)
+        self.assertIn('data-domain-filter="it" aria-pressed="false">IT <span>2</span>', page)
+        self.assertIn('data-domain-filter="medical" aria-pressed="false">Medical <span>1</span>', page)
+        self.assertIn('data-domain-filter="other" aria-pressed="false">Other <span>1</span>', page)
+        for group in ("it", "medical", "other", "law"):
+            self.assertIn(f'data-domain-group="{group}"', page)
+        self.assertNotIn('data-domain-filter="law"', page)
+        self.assertIn(
+            'id="studyPackResultCount" role="status" aria-live="polite" '
+            'aria-atomic="true">5 study packs</strong>',
+            page,
+        )
+
+    def test_zero_count_domain_filters_are_omitted_and_other_mode_has_no_strip(self):
+        only_it = self._get([self._pack(domain_group="it")])
+        self.assertIn('data-domain-filter="all"', only_it)
+        self.assertIn('data-domain-filter="it"', only_it)
+        self.assertNotIn('data-domain-filter="medical"', only_it)
+        self.assertNotIn('data-domain-filter="other"', only_it)
+
+        other_page = self._get(
+            [self._pack(id="science", domain="Science", domain_group="other")],
+            "?domain_group=other",
+        )
+        self.assertNotIn("study-pack-domain-filters", other_page)
+        self.assertNotIn("data-domain-filter", other_page)
 
     def test_installed_banner_flash_and_requested_pack_state(self):
         packs = [self._pack(id="first"), self._pack(id="installed_pack")]
@@ -219,14 +354,19 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
         self.assertIn("installedPack.scrollIntoView", inline_script)
         self.assertIn("expandAllPacks", inline_script)
         self.assertIn("collapseAllPacks", inline_script)
+        self.assertIn("function filterPackCatalog(group)", inline_script)
+        self.assertIn("pack.hidden=group!=='all'&&pack.dataset.domainGroup!==group", inline_script)
+        self.assertIn("visiblePackDetails().forEach(el=>el.open=true)", inline_script)
+        self.assertIn("visiblePackDetails().forEach(el=>el.open=false)", inline_script)
+        self.assertEqual(1, inline_script.count("localStorage.setItem("))
         self.assertIn("function toggleDatasetDetails(toggle)", inline_script)
         self.assertIn("toggle.setAttribute('aria-expanded',String(open))", inline_script)
         self.assertIn('<script src="/static/nav-normalize.js"></script>', page)
 
     def test_route_uses_external_template_with_unchanged_context(self):
         packs = [
-            self._pack(id="science", domain="Science"),
-            self._pack(id="medical", domain="Medical"),
+            self._pack(id="science", domain="Science", domain_group="other"),
+            self._pack(id="medical", domain="Medical", domain_group="medical"),
         ]
         with mock.patch.object(
             study_pack_routes, "_study_pack_catalog", return_value=packs
@@ -245,6 +385,8 @@ class StudyPacksCatalogTemplateTests(unittest.TestCase):
             medical_pack_installed=True,
             other_mode=True,
             installed_pack_id="science",
+            total_pack_count=1,
+            domain_filter_counts={"other": 1},
         )
         self.assertTrue(
             (Path(dlms.TEMPLATE_ROOT) / "study_packs" / "catalog.html").is_file()

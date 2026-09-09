@@ -1992,6 +1992,55 @@ class ThemeSystemTests(unittest.TestCase):
                         f"{theme} legacy-shell {role} contrast is only {ratio:.2f}:1",
                     )
 
+    def test_study_pack_domain_filters_use_shared_semantics_across_all_palettes(self):
+        css = self._style_css()
+        inactive = self._rule_blocks(css, ".study-pack-domain-filter")
+        active = self._rule_blocks(
+            css, '.study-pack-domain-filter[aria-pressed="true"]'
+        )
+        focus = self._rule_blocks(css, ".study-pack-domain-filter:focus-visible")
+        self.assertTrue(any(all(token in block for token in (
+            "--semantic-secondary-control-text",
+            "--semantic-secondary-control-surface",
+            "--semantic-secondary-control-border",
+        )) for block in inactive))
+        self.assertTrue(any(all(token in block for token in (
+            "--semantic-info-text", "--semantic-info-surface",
+            "--semantic-info-border", "--theme-accent",
+        )) for block in active))
+        self.assertTrue(any("outline" in block and "--theme-accent" in block for block in focus))
+        for marker in ('html[data-theme=', 'body[data-theme=', '.theme-light', '.theme-dark'):
+            self.assertNotRegex(
+                css,
+                re.escape(marker) + r"[^,{]*\.study-pack-domain-filter",
+            )
+
+        client = dlms.app.test_client()
+        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    dynamic_css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(dynamic_css)
+                body = self._rgba(variables["theme-body-base"])[:3]
+                panel = self._composite(variables["theme-panel-1"], body)
+                secondary = self._composite(variables["theme-surface-2"], panel)
+                surface = self._composite(variables["theme-surface"], panel)
+                accent = self._rgba(variables["theme-accent"])[:3]
+                information = tuple(
+                    accent[index] * .10 + surface[index] * .90
+                    for index in range(3)
+                )
+                self.assertGreaterEqual(
+                    self._contrast(variables["theme-page-text"], secondary),
+                    4.5,
+                )
+                self.assertGreaterEqual(
+                    self._contrast(variables["theme-accent-text"], information),
+                    4.5,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

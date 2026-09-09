@@ -24,6 +24,7 @@ class StudyPackRouteDependencies:
     content_pack_ai_workflow: Dependency
     stage_content_pack_upload: Dependency
     discover_content_packs: Dependency
+    study_pack_catalog_domain_group: Dependency
     load_content_pack_dataset: Dependency
     load_content_pack_image_dataset: Dependency
     load_content_pack_quiz_dataset: Dependency
@@ -72,6 +73,7 @@ def study_pack_ai_builder_import(dependencies):
 
 def _study_pack_catalog(dependencies):
     discover_content_packs = dependencies.discover_content_packs
+    study_pack_catalog_domain_group = dependencies.study_pack_catalog_domain_group
     load_content_pack_dataset = dependencies.load_content_pack_dataset
     load_content_pack_image_dataset = dependencies.load_content_pack_image_dataset
     load_content_pack_quiz_dataset = dependencies.load_content_pack_quiz_dataset
@@ -108,7 +110,7 @@ def _study_pack_catalog(dependencies):
             except Exception as exc:
                 print(f"[STUDY PACKS] Skipping questions {pack_id}/{did}: {exc}")
         if datasets or image_datasets or quiz_datasets:
-            result.append({"id": pack_id, "name": pack.get("name") or pack_id, "version": pack.get("version") or "", "description": pack.get("description") or "", "domain": pack.get("content_domain") or ("medical" if pack_id == "medical" else "general"), "datasets": datasets, "image_datasets": image_datasets, "quiz_datasets": quiz_datasets})
+            result.append({"id": pack_id, "name": pack.get("name") or pack_id, "version": pack.get("version") or "", "description": pack.get("description") or "", "domain": pack.get("content_domain") or ("medical" if pack_id == "medical" else "general"), "domain_group": study_pack_catalog_domain_group(pack_id, pack), "datasets": datasets, "image_datasets": image_datasets, "quiz_datasets": quiz_datasets})
     return sorted(result, key=lambda p: p["name"].casefold())
 
 def study_packs_home(dependencies):
@@ -117,11 +119,15 @@ def study_packs_home(dependencies):
     requested_installed_id = str(request.args.get("installed") or "").strip().lower()
     other_mode = domain_group == "other"
     if other_mode:
-        def _is_other_pack(pack):
-            raw = str(pack.get("domain") or "").strip().lower()
-            normalized = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
-            return normalized not in {"medical", "it", "it_cybersecurity", "cybersecurity", "law", "legal"}
-        packs = [pack for pack in packs if _is_other_pack(pack)]
+        packs = [pack for pack in packs if pack.get("domain_group") == "other"]
+    total_pack_count = len(packs)
+    domain_filter_counts = {
+        group: sum(1 for pack in packs if pack.get("domain_group") == group)
+        for group in ("it", "medical", "other")
+    }
+    domain_filter_counts = {
+        group: count for group, count in domain_filter_counts.items() if count
+    }
     installed_pack_id = next(
         (pack["id"] for pack in packs if pack["id"] == requested_installed_id), ""
     )
@@ -131,6 +137,8 @@ def study_packs_home(dependencies):
         medical_pack_installed=True,
         other_mode=other_mode,
         installed_pack_id=installed_pack_id,
+        total_pack_count=total_pack_count,
+        domain_filter_counts=domain_filter_counts,
     )
 
 def study_pack_generate_quiz_dataset(dependencies):

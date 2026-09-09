@@ -3962,6 +3962,44 @@ def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_
         )
     )
 
+    for folder_name, pack_id, pack_domain in (
+        ("DLMS_Study_dlms121_it", "dlms121_it_filter", "information_technology"),
+        ("DLMS_Study_dlms121_medical", "dlms121_medical_filter", "Medical"),
+    ):
+        filter_pack_root = browser_stack.data_root / "content_packs" / folder_name
+        filter_data_root = filter_pack_root / "data"
+        filter_data_root.mkdir(parents=True)
+        (filter_pack_root / "manifest.json").write_text(
+            json.dumps({
+                "schema_version": 1,
+                "id": pack_id,
+                "name": f"DLMS-121 {pack_domain}",
+                "version": "1.0",
+                "description": "Domain filtering browser fixture.",
+                "content_domain": pack_domain,
+                "datasets": [{
+                    "id": "terms",
+                    "title": "Filter Terms",
+                    "type": "matching",
+                    "path": "data/terms.json",
+                }],
+            }),
+            encoding="utf-8",
+        )
+        (filter_data_root / "terms.json").write_text(
+            json.dumps({
+                "schema_version": 1,
+                "id": "terms",
+                "title": "Filter Terms",
+                "source": {"organization": "DLMS Browser", "license": "CC0"},
+                "terms": [
+                    {"term": "One", "definition": "First."},
+                    {"term": "Two", "definition": "Second."},
+                ],
+            }),
+            encoding="utf-8",
+        )
+
     browser.navigate(f"{base_url}/study-packs")
     browser.evaluate("localStorage.removeItem('dlms.studyPacks.openState.v1')")
     browser.navigate(f"{base_url}/study-packs?installed=browser_catalog")
@@ -4023,6 +4061,129 @@ def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_
         "menuLabel": "Toggle navigation",
         "injected": False,
     }
+
+    filters = browser.evaluate(
+        "(() => {const buttons=Array.from(document.querySelectorAll('.study-pack-domain-filter'));"
+        "const cards=Array.from(document.querySelectorAll('.study-pack-collapsible'));"
+        "return {label:document.querySelector('.study-pack-domain-filters').getAttribute('aria-label'),"
+        "buttons:buttons.map(button=>({group:button.dataset.domainFilter,pressed:button.getAttribute('aria-pressed'),text:button.textContent.trim()})),"
+        "groups:cards.map(card=>card.dataset.domainGroup),allVisible:cards.every(card=>!card.hidden),"
+        "result:document.getElementById('studyPackResultCount').textContent.trim(),"
+        "manage:document.querySelector('.study-pack-manage-link').getAttribute('href')};})()"
+    )
+    assert filters["label"] == "Filter installed content by domain"
+    assert filters["buttons"][0]["group"] == "all"
+    assert filters["buttons"][0]["pressed"] == "true"
+    assert {button["group"] for button in filters["buttons"]} >= {
+        "all", "it", "medical", "other",
+    }
+    assert "it" in filters["groups"]
+    assert "medical" in filters["groups"]
+    assert "other" in filters["groups"]
+    assert filters["allVisible"] is True
+    assert filters["result"].endswith("study packs")
+    assert filters["manage"] == "/content-packs"
+
+    # Native buttons remain keyboard-focusable; activation updates the
+    # single-select pressed state and removes nonmatching cards from visual and
+    # accessibility navigation.
+    browser.activate()
+    assert browser.evaluate(
+        "(() => {const button=document.querySelector(\"[data-domain-filter='it']\");"
+        "button.focus();return button.tagName==='BUTTON'&&button.type==='button'&&document.activeElement===button;})()"
+    ) is True
+    browser.click("[data-domain-filter='it']")
+    browser.wait_for(
+        "document.querySelector(\"[data-domain-filter='it']\").getAttribute('aria-pressed')==='true' && "
+        "document.querySelector(\"[data-pack-id='dlms121_medical_filter']\").hidden"
+    )
+    it_filter = browser.evaluate(
+        "(() => {const cards=Array.from(document.querySelectorAll('.study-pack-collapsible'));"
+        "return {visible:cards.filter(card=>!card.hidden).map(card=>card.dataset.domainGroup),"
+        "itHidden:document.querySelector(\"[data-pack-id='dlms121_it_filter']\").hidden,"
+        "otherHidden:document.querySelector(\"[data-pack-id='browser_catalog']\").hidden,"
+        "pressed:Array.from(document.querySelectorAll('.study-pack-domain-filter')).filter(button=>button.getAttribute('aria-pressed')==='true').map(button=>button.dataset.domainFilter),"
+        "result:document.getElementById('studyPackResultCount').textContent.trim(),"
+        "focused:document.activeElement.dataset.domainFilter};})()"
+    )
+    assert set(it_filter["visible"]) == {"it"}
+    assert it_filter["itHidden"] is False
+    assert it_filter["otherHidden"] is True
+    assert it_filter["pressed"] == ["it"]
+    assert it_filter["result"].startswith("Showing ")
+    assert it_filter["focused"] == "it"
+
+    # Hidden cards keep their disclosure state while bulk controls operate on
+    # only the currently visible filter result.
+    browser.evaluate(
+        "document.querySelector(\"[data-pack-id='dlms121_it_filter']\").open=true;"
+        "document.querySelector(\"[data-pack-id='dlms121_medical_filter']\").open=false;"
+        "document.querySelector(\"[data-pack-id='browser_catalog']\").open=true; true"
+    )
+    browser.click("#collapseAllPacks")
+    browser.wait_for(
+        "!document.querySelector(\"[data-pack-id='dlms121_it_filter']\").open"
+    )
+    assert browser.evaluate(
+        "document.querySelector(\"[data-pack-id='browser_catalog']\").open"
+    ) is True
+    browser.click("[data-domain-filter='medical']")
+    browser.click("#expandAllPacks")
+    browser.wait_for(
+        "document.querySelector(\"[data-pack-id='dlms121_medical_filter']\").open"
+    )
+    hidden_state = browser.evaluate(
+        "(() => ({it:document.querySelector(\"[data-pack-id='dlms121_it_filter']\").open,"
+        "other:document.querySelector(\"[data-pack-id='browser_catalog']\").open,"
+        "stored:JSON.parse(localStorage.getItem('dlms.studyPacks.openState.v1'))}))()"
+    )
+    assert hidden_state["it"] is False
+    assert hidden_state["other"] is True
+    assert hidden_state["stored"]["browser_catalog"] is True
+
+    browser.navigate(f"{base_url}/study-packs")
+    browser.wait_for(
+        "document.querySelector(\"[data-domain-filter='all']\").getAttribute('aria-pressed')==='true'"
+    )
+    assert browser.evaluate(
+        "Array.from(document.querySelectorAll('.study-pack-collapsible')).every(card=>!card.hidden)"
+    ) is True
+
+    browser.set_viewport(540, 900)
+    narrow = browser.evaluate(
+        "(() => {const toolbar=document.querySelector('.study-pack-toolbar');"
+        "const filters=document.querySelector('.study-pack-domain-filters');"
+        "return {overflow:toolbar.scrollWidth>toolbar.clientWidth,wrap:getComputedStyle(filters).flexWrap};})()"
+    )
+    assert narrow == {"overflow": False, "wrap": "wrap"}
+    browser.set_viewport(1280, 900)
+
+    filter_palettes = {}
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+        browser.navigate(f"{base_url}/study-packs")
+        browser.wait_for("document.querySelector(\"[data-domain-filter='it']\")")
+        filter_palettes[theme] = browser.evaluate(
+            "(() => {const active=document.querySelector(\"[data-domain-filter='all']\");"
+            "const inactive=document.querySelector(\"[data-domain-filter='it']\");inactive.focus();"
+            "const activeStyle=getComputedStyle(active);const inactiveStyle=getComputedStyle(inactive);"
+            "return {active:[activeStyle.color,activeStyle.backgroundColor,activeStyle.borderColor],"
+            "inactive:[inactiveStyle.color,inactiveStyle.backgroundColor,inactiveStyle.borderColor],"
+            "pressed:active.getAttribute('aria-pressed')};})()"
+        )
+        assert filter_palettes[theme]["active"] != filter_palettes[theme]["inactive"]
+        assert filter_palettes[theme]["pressed"] == "true"
+    assert len({tuple(value["active"]) for value in filter_palettes.values()}) == 4
+
+    status = browser.evaluate(
+        "fetch('/api/theme', {method:'POST', headers:{'Content-Type':'application/json'}, "
+        "body:JSON.stringify({theme:'purple-gold'})}).then(response => response.status)"
+    )
+    assert status == 200
 
     browser.click("#collapseAllPacks")
     browser.wait_for("!document.querySelector(\"[data-pack-id='browser_catalog']\").open")
