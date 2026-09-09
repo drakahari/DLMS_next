@@ -28,13 +28,14 @@ def _bind_paths():
     dlms.DB_PATH = str(root / "results.db")
     dlms.QUIZ_ASSET_FOLDER = str(root / "quiz_assets")
     dlms.CONTENT_PACK_FOLDER = str(root / "content_packs")
+    dlms.CONTENT_PACK_STAGING_FOLDER = str(root / "content_pack_staging")
     dlms.IMAGE_BUILDER_DRAFT_FOLDER = str(root / "image_builder_drafts")
     dlms.LOGO_FOLDER = str(root / "static" / "logos")
     dlms.LOGO_TEMP_FOLDER = str(root / "static" / "logos" / "_temp")
     for path in (
         dlms.DATA_FOLDER, dlms.QUIZ_FOLDER, dlms.CONFIG_FOLDER,
         dlms.QUIZ_ASSET_FOLDER, dlms.CONTENT_PACK_FOLDER,
-        dlms.IMAGE_BUILDER_DRAFT_FOLDER, dlms.LOGO_FOLDER,
+        dlms.CONTENT_PACK_STAGING_FOLDER, dlms.IMAGE_BUILDER_DRAFT_FOLDER, dlms.LOGO_FOLDER,
         dlms.LOGO_TEMP_FOLDER,
     ):
         os.makedirs(path, exist_ok=True)
@@ -98,6 +99,8 @@ class AtomicQuizPublicationTests(unittest.TestCase):
         self.assertEqual([], list(Path(dlms.QUIZ_ASSET_FOLDER).iterdir()))
         staging = Path(dlms._quiz_publication_staging_root())
         self.assertFalse(staging.exists() and any(staging.iterdir()))
+        image_staging = Path(dlms.CONTENT_PACK_STAGING_FOLDER)
+        self.assertFalse(image_staging.exists() and any(image_staging.iterdir()))
 
     def _publish_with_failure(self, target, side_effect):
         with mock.patch.object(dlms, target, side_effect=side_effect):
@@ -561,6 +564,51 @@ class AtomicQuizPublicationTests(unittest.TestCase):
         self.assertEqual([], list(Path(dlms.CONTENT_PACK_FOLDER).iterdir()))
         self._assert_clean_failure()
 
+    def test_build_from_images_promotes_valid_pack_and_then_publishes_quiz(self):
+        draft_id = "draft_success_123"
+        draft = Path(dlms.IMAGE_BUILDER_DRAFT_FOLDER) / draft_id
+        draft.mkdir(parents=True)
+        Image.new("RGB", (8, 8), (30, 90, 150)).save(draft / "diagram.png")
+        payload = {
+            "images": [{
+                "id": "image_1", "filename": "diagram.png",
+                "original_name": "diagram.png",
+            }],
+            "questions": [{
+                "type": "choice", "question": "Which?", "image_id": "image_1",
+                "choices": [
+                    {"text": "One", "is_correct": True},
+                    {"text": "Two", "is_correct": False},
+                ],
+            }],
+        }
+
+        client = dlms.app.test_client()
+        response = client.post("/study-packs/image-builder/save", data={
+            "csrf_token": csrf_token(client, "/study-packs/image-builder"),
+            "draft_id": draft_id,
+            "pack_title": "Staged Images",
+            "subject": "General",
+            "rights_ok": "on",
+            "builder_payload": json.dumps(payload),
+        })
+
+        self.assertEqual(302, response.status_code, response.get_data(as_text=True))
+        self.assertIn("/quizzes/", response.headers["Location"])
+        self.assertFalse(draft.exists())
+        self.assertEqual([], list(Path(dlms.CONTENT_PACK_STAGING_FOLDER).iterdir()))
+        installed = list(Path(dlms.CONTENT_PACK_FOLDER).iterdir())
+        self.assertEqual(1, len(installed))
+        self.assertTrue((installed[0] / "manifest.json").is_file())
+        self.assertTrue((installed[0] / "data" / "staged_images.json").is_file())
+        packs = dlms.discover_content_packs()
+        self.assertEqual(1, len(packs))
+        pack_id = next(iter(packs))
+        registry = dlms.load_registry()
+        self.assertEqual(1, len(registry))
+        self.assertEqual(pack_id, registry[0]["source_pack_id"])
+        self.assertEqual("staged_images", registry[0]["source_dataset_id"])
+
     def test_build_from_images_cleans_pack_when_directory_setup_fails(self):
         draft_id = "draft_setup_failure_123"
         draft = Path(dlms.IMAGE_BUILDER_DRAFT_FOLDER) / draft_id
@@ -582,7 +630,7 @@ class AtomicQuizPublicationTests(unittest.TestCase):
         real_makedirs = dlms.os.makedirs
 
         def fail_data_directory(path, *args, **kwargs):
-            if os.path.basename(path) == "data" and "DLMS_Study_" in path:
+            if os.path.basename(path) == "data" and "content_pack_staging" in path:
                 raise OSError("simulated data-directory failure")
             return real_makedirs(path, *args, **kwargs)
 

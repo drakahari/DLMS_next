@@ -30,6 +30,12 @@ class ProtectedContentPackError(ValueError):
     pass
 
 
+def _fsync_regular_file(path, *, open_file=open, fsync=os.fsync):
+    """Make one completed staged file durable before directory publication."""
+    with open_file(path, "rb") as staged_file:
+        fsync(staged_file.fileno())
+
+
 def _snapshot_one_pack_asset(
     pack_id,
     asset_url,
@@ -676,24 +682,46 @@ def create_image_study_pack(
     artifact_identity,
     exam_minutes,
     content_pack_folder,
+    staging_folder,
     safe_pack_child,
     secure_filename,
     validate_hotspot_shape,
     now,
+    atomic_write_json,
+    validate_staged_content_pack,
     load_content_pack_quiz_dataset,
     quiz_dataset_runtime,
     publish_quiz,
     copy_file=shutil.copy2,
     remove_tree=shutil.rmtree,
+    make_staging_directory=tempfile.mkdtemp,
+    promote_directory=os.rename,
+    fsync_directory=None,
+    fsync_file=_fsync_regular_file,
 ):
-    """Create a user image Study Pack and publish its generated quiz atomically."""
+    """Stage, validate, and publish a user image Study Pack and generated quiz."""
     title_slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_")[:60] or "Image_Study"
     pack_id = f"user_{title_slug.lower()}_{artifact_identity}"
     pack_root = os.path.join(
         content_pack_folder, f"DLMS_Study_{title_slug}_{artifact_identity}"
     )
-    images_root = os.path.join(pack_root, "images")
-    data_root = os.path.join(pack_root, "data")
+    staged_pack_root = None
+    promoted = False
+
+    os.makedirs(content_pack_folder, exist_ok=True)
+    os.makedirs(staging_folder, exist_ok=True)
+    if os.stat(content_pack_folder).st_dev != os.stat(staging_folder).st_dev:
+        raise OSError(
+            "Image Study Pack staging must share a filesystem with installed Content Packs"
+        )
+    if os.path.lexists(pack_root):
+        raise FileExistsError(f"Content Pack destination already exists: {pack_root}")
+
+    staged_pack_root = make_staging_directory(
+        prefix=".image-builder-", dir=staging_folder
+    )
+    images_root = os.path.join(staged_pack_root, "images")
+    data_root = os.path.join(staged_pack_root, "data")
 
     try:
         os.makedirs(images_root, exist_ok=False)
@@ -705,7 +733,9 @@ def create_image_study_pack(
             src = safe_pack_child(draft_root, filename)
             if not filename or not os.path.isfile(src):
                 raise FileNotFoundError(f"Draft image missing: {filename}")
-            copy_file(src, os.path.join(images_root, filename))
+            staged_image = os.path.join(images_root, filename)
+            copy_file(src, staged_image)
+            fsync_file(staged_image)
             record = {
                 "id": image_id,
                 "file": f"images/{filename}",
@@ -724,6 +754,8 @@ def create_image_study_pack(
             }
             image_records.append(record)
             image_map[image_id] = record
+        if fsync_directory is not None:
+            fsync_directory(images_root)
 
         cleaned, question_number = [], 1
         for raw in questions_payload:
@@ -836,9 +868,13 @@ def create_image_study_pack(
             "questions": cleaned,
         }
         dataset_rel = f"data/{dataset_id}.json"
-        with open(os.path.join(pack_root, dataset_rel), "w", encoding="utf-8") as f:
-            json.dump(dataset, f, indent=2, ensure_ascii=False)
-            f.write("\n")
+        atomic_write_json(
+            os.path.join(staged_pack_root, dataset_rel),
+            dataset,
+            indent=2,
+            ensure_ascii=False,
+            expected_type=dict,
+        )
         manifest = {
             "schema_version": 1,
             "id": pack_id,
@@ -859,9 +895,34 @@ def create_image_study_pack(
             "user_supplied_assets": True,
             "redistribution_status": "not-cleared-for-redistribution",
         }
-        with open(os.path.join(pack_root, "manifest.json"), "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=2, ensure_ascii=False)
-            f.write("\n")
+        atomic_write_json(
+            os.path.join(staged_pack_root, "manifest.json"),
+            manifest,
+            indent=2,
+            ensure_ascii=False,
+            expected_type=dict,
+        )
+
+        validation = validate_staged_content_pack(staged_pack_root)
+        if not validation.get("valid"):
+            detail = next(
+                iter(validation.get("errors") or []),
+                "staged Image Study Pack failed validation",
+            )
+            raise ValueError(f"Image Study Pack validation failed: {detail}")
+        if str(validation.get("pack_id") or "").strip().lower() != pack_id:
+            raise ValueError("Image Study Pack validation returned an unexpected pack ID")
+
+        # Check again immediately before publication. Under DLMS's supported
+        # single-process model this prevents an existing pack from being
+        # replaced while keeping the directory rename itself atomic.
+        if os.path.lexists(pack_root):
+            raise FileExistsError(f"Content Pack destination already exists: {pack_root}")
+        promote_directory(staged_pack_root, pack_root)
+        promoted = True
+        staged_pack_root = None
+        if fsync_directory is not None:
+            fsync_directory(content_pack_folder)
 
         data = load_content_pack_quiz_dataset(pack_id, dataset_id)
         runtime, db_questions = quiz_dataset_runtime(pack_id, data)
@@ -882,5 +943,8 @@ def create_image_study_pack(
             "html_name": html_name,
         }
     except Exception:
-        remove_tree(pack_root, ignore_errors=True)
+        if promoted:
+            remove_tree(pack_root, ignore_errors=True)
+        elif staged_pack_root:
+            remove_tree(staged_pack_root, ignore_errors=True)
         raise

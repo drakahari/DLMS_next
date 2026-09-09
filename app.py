@@ -3732,15 +3732,20 @@ def _create_image_study_pack(
         artifact_identity=artifact_identity,
         exam_minutes=exam_minutes,
         content_pack_folder=CONTENT_PACK_FOLDER,
+        staging_folder=CONTENT_PACK_STAGING_FOLDER,
         safe_pack_child=_safe_pack_child,
         secure_filename=secure_filename,
         validate_hotspot_shape=_validate_hotspot_shape,
         now=datetime.now,
+        atomic_write_json=_atomic_write_json,
+        validate_staged_content_pack=_validate_staged_content_pack,
         load_content_pack_quiz_dataset=load_content_pack_quiz_dataset,
         quiz_dataset_runtime=_quiz_dataset_runtime,
         publish_quiz=_create_quiz_from_runtime,
         copy_file=shutil.copy2,
         remove_tree=shutil.rmtree,
+        promote_directory=os.rename,
+        fsync_directory=_fsync_json_directory,
     )
 
 
