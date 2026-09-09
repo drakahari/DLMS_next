@@ -75,25 +75,25 @@
                     <strong>Source Import:</strong> {{ case_data.source_import }}
                 </p>
 
-        {% if sources_used %}
-        <div class="law-case-sources">
-            <strong>Sources Used:</strong>
-
-            <pre class="law-case-readonly" style="
-                white-space:pre-wrap;
-                word-wrap:break-word;
-                font-family:inherit;
-                line-height:1.45;
-                margin:8px 0 0 0;
-            ">{{ sources_used }}</pre>
-        </div>
-        {% endif %}
-                                                                             
             </div>
 
             <span class="law-status-pill info">
                 Structured case review
             </span>
+
+            {% if sources_used %}
+            <div class="law-case-sources">
+                <strong>Sources Used:</strong>
+
+                <pre class="law-case-readonly" style="
+                    white-space:pre-wrap;
+                    word-wrap:break-word;
+                    font-family:inherit;
+                    line-height:1.45;
+                    margin:8px 0 0 0;
+                ">{{ sources_used }}</pre>
+            </div>
+            {% endif %}
         </div>
 
         {% if request.args.get('updated') %}

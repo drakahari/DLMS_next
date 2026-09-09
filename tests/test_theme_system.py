@@ -1636,6 +1636,41 @@ class ThemeSystemTests(unittest.TestCase):
             "Law templates must not bypass semantic colors with inline visual CSS",
         )
 
+    def test_law_visual_polish_uses_shared_summary_and_full_width_sources(self):
+        css = self._style_css()
+        law_index = (
+            Path(dlms.TEMPLATE_ROOT) / "law" / "index.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(
+            law_index.count('class="dashboard-stat-card law-hub-stat'), 3,
+            "Every Law summary metric must use the same stat-card component as IT/Medical",
+        )
+        shared_summary_rules = self._rule_blocks(
+            css, ".law-hub-summary .dashboard-stat-card",
+        )
+        self.assertTrue(
+            any("grid-template-columns: minmax(0, 1fr)" in rule
+                for rule in shared_summary_rules),
+        )
+        self.assertFalse(
+            any("background:" in rule or "box-shadow:" in rule
+                for rule in self._rule_blocks(css, ".law-hub-stat")),
+            "Law summary cards must not override the shared component surface or shadow",
+        )
+
+        source_rules = self._rule_blocks(
+            css, ".law-case-detail-page .law-case-sources",
+        )
+        self.assertTrue(any(
+            all(declaration in rule for declaration in (
+                "flex: 1 0 100%", "width: 100%", "min-width: 0",
+                "box-sizing: border-box", "padding: 18px",
+                "border-radius: 15px",
+            ))
+            for rule in source_rules
+        ))
+
     def test_law_semantic_text_contrast_across_all_palettes(self):
         client = dlms.app.test_client()
 

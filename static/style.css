@@ -4923,47 +4923,6 @@ a.settings-hub-card:active {
     margin-bottom: 16px;
 }
 
-.law-hub-stat {
-    min-height: 102px;
-    padding: 17px 20px;
-    border: 1px solid rgba(84, 151, 236, .30);
-    border-radius: 15px;
-    background: linear-gradient(180deg, rgba(7, 23, 49, .78), rgba(5, 17, 36, .70));
-    box-shadow: 0 9px 24px rgba(0, 0, 0, .24), inset 0 1px 0 rgba(255, 255, 255, .03);
-}
-
-.law-hub-stat span,
-.law-hub-stat small {
-    display: block;
-}
-
-.law-hub-stat span {
-    margin-bottom: 6px;
-    color: #a9bad0;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: .8px;
-    text-transform: uppercase;
-}
-
-.law-hub-stat strong {
-    display: block;
-    margin-bottom: 3px;
-    color: #f4f8ff;
-    font-size: 29px;
-    line-height: 1.05;
-}
-
-.law-hub-stat small {
-    color: #7f93aa;
-    font-size: 12px;
-}
-
-.law-hub-stat-ai strong {
-    color: #69dfa0;
-    font-size: 22px;
-}
-
 .law-hub-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6359,12 +6318,16 @@ a.settings-hub-card:active {
 }
 
 .law-case-detail-page .law-case-sources {
+    flex: 1 0 100%;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     margin-top: 12px;
-    padding: 12px;
+    padding: 18px;
     color: var(--semantic-info-text);
     background: var(--semantic-info-surface);
     border: 1px solid var(--semantic-info-border);
-    border-radius: 12px;
+    border-radius: 15px;
 }
 
 .law-case-detail-page .law-case-sources > strong {
@@ -7206,7 +7169,8 @@ a.settings-hub-card:active {
 /* Summary metrics contain label/value/supporting copy rather than an icon and
    a copy wrapper. Give all three rows the card's full width instead of placing
    the supporting text in the generic stat card's 56px icon column. */
-.medical-summary-grid .dashboard-stat-card {
+.medical-summary-grid .dashboard-stat-card,
+.law-hub-summary .dashboard-stat-card {
     grid-template-columns: minmax(0, 1fr);
     align-content: center;
     align-items: start;
@@ -7215,13 +7179,17 @@ a.settings-hub-card:active {
 
 .medical-summary-grid .dashboard-stat-card > span,
 .medical-summary-grid .dashboard-stat-card > strong,
-.medical-summary-grid .dashboard-stat-card > small {
+.medical-summary-grid .dashboard-stat-card > small,
+.law-hub-summary .dashboard-stat-card > span,
+.law-hub-summary .dashboard-stat-card > strong,
+.law-hub-summary .dashboard-stat-card > small {
     width: 100%;
     min-width: 0;
     max-width: 100%;
 }
 
-.medical-summary-grid .dashboard-stat-card > small {
+.medical-summary-grid .dashboard-stat-card > small,
+.law-hub-summary .dashboard-stat-card > small {
     white-space: normal;
     overflow-wrap: break-word;
     word-break: normal;
@@ -11630,21 +11598,10 @@ body[data-theme="light"] .medical-table-page .dashboard-panel,
 }
 
 /* ---------- Law Hub: fully theme-aware cards and planned blocks ---------- */
-.law-hub-stat,
 .law-hub-card,
 .law-hub-coming,
 .law-hub-coming-item {
     border-color: var(--theme-border,rgba(86,158,255,.35)) !important;
-}
-.law-hub-stat {
-    background: linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74))) !important;
-}
-.law-hub-stat span,
-.law-hub-stat small {
-    color: var(--theme-muted-text,#aebdd1) !important;
-}
-.law-hub-stat strong {
-    color: var(--theme-heading,#fff) !important;
 }
 .law-hub-card {
     background: linear-gradient(180deg,var(--theme-panel-1,rgba(6,20,45,.82)),var(--theme-panel-2,rgba(5,17,38,.74))) !important;

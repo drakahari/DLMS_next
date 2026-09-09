@@ -5006,10 +5006,58 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
             contrast:contrast(parseColor(style.color),background)};};
     """
 
+    def summary_card_style(selector):
+        return browser.evaluate(
+            "(() => {" + probe_helpers +
+            f"const card=document.querySelector({json.dumps(selector)});"
+            "const style=getComputedStyle(card);const surface=evaluateOn(card,panel);"
+            "const label=evaluateOn(card.querySelector('span'),surface.background);"
+            "const value=evaluateOn(card.querySelector('strong'),surface.background);"
+            "const support=evaluateOn(card.querySelector('small'),surface.background);"
+            "return {background:style.backgroundColor,border:style.borderColor,"
+            "radius:style.borderRadius,shadow:style.boxShadow,padding:style.padding,"
+            "minHeight:style.minHeight,labelSize:getComputedStyle(card.querySelector('span')).fontSize,"
+            "valueSize:getComputedStyle(card.querySelector('strong')).fontSize,"
+            "supportSize:getComputedStyle(card.querySelector('small')).fontSize,"
+            "labelContrast:label.contrast,valueContrast:value.contrast,"
+            "supportContrast:support.contrast};})()"
+        )
+
     observed_section_backgrounds = {}
+    observed_law_summary_backgrounds = {}
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
         browser.navigate(f"{base_url}/law/import")
         set_theme(theme)
+
+        browser.navigate(f"{base_url}/it")
+        browser.wait_for("document.querySelector('.medical-summary-grid .dashboard-stat-card')")
+        it_summary = summary_card_style(
+            ".medical-summary-grid .dashboard-stat-card",
+        )
+        browser.navigate(f"{base_url}/medical")
+        browser.wait_for("document.querySelector('.medical-summary-grid .dashboard-stat-card')")
+        medical_summary = summary_card_style(
+            ".medical-summary-grid .dashboard-stat-card",
+        )
+        browser.navigate(f"{base_url}/law")
+        browser.wait_for("document.querySelectorAll('.law-hub-summary .dashboard-stat-card').length === 3")
+        law_summary = summary_card_style(
+            ".law-hub-summary .dashboard-stat-card",
+        )
+        for property_name in (
+            "background", "border", "radius", "shadow", "padding", "minHeight",
+            "labelSize", "valueSize", "supportSize",
+        ):
+            assert law_summary[property_name] == it_summary[property_name], (
+                theme, property_name, law_summary, it_summary,
+            )
+            assert law_summary[property_name] == medical_summary[property_name], (
+                theme, property_name, law_summary, medical_summary,
+            )
+        for role in ("labelContrast", "valueContrast", "supportContrast"):
+            assert law_summary[role] >= 4.5, (theme, role, law_summary)
+        observed_law_summary_backgrounds[theme] = law_summary["background"]
+
         browser.navigate(f"{base_url}/law/import")
         browser.wait_for("document.querySelector('.law-notice.warning .law-secondary-action')")
         empty_state = browser.evaluate(
@@ -5038,18 +5086,26 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
         )
         case_state = browser.evaluate(
             "(() => {" + probe_helpers +
-            "const section=evaluateOn(document.querySelector('.law-case-section'),panel);"
+            "const sectionNode=document.querySelector('.law-case-section');"
+            "const sourceNode=document.querySelector('.law-case-sources');"
+            "const section=evaluateOn(sectionNode,panel);"
             "const heading=evaluateOn(document.querySelector('.law-case-section h2'),section.background);"
             "const muted=evaluateOn(document.querySelector('.law-case-section > p'),section.background);"
             "const inset=evaluateOn(document.querySelector('.law-case-section .law-case-readonly'),section.background);"
-            "const sources=evaluateOn(document.querySelector('.law-case-sources'),panel);"
+            "const sources=evaluateOn(sourceNode,panel);"
             "const sourceText=evaluateOn(document.querySelector('.law-case-sources > strong'),sources.background);"
             "const success=evaluateOn(document.querySelector('.law-case-update-notice'),panel);"
             "const warning=evaluateOn(document.querySelector('.law-case-reminder'),panel);"
             "const info=evaluateOn(document.querySelector('.law-status-pill.info'),panel);"
             "const secondary=evaluateOn(document.querySelector('.law-case-section .law-secondary-action'),section.background);"
+            "const sectionRect=sectionNode.getBoundingClientRect();const sourceRect=sourceNode.getBoundingClientRect();"
+            "const sectionStyle=getComputedStyle(sectionNode);const sourceStyle=getComputedStyle(sourceNode);"
             "return {scheme:root.getPropertyValue('--theme-color-scheme').trim(),accent:root.getPropertyValue('--theme-accent').trim(),"
-            "section,heading,muted,inset,sources,sourceText,success,warning,info,secondary};})()"
+            "section,heading,muted,inset,sources,sourceText,success,warning,info,secondary,"
+            "geometry:{sectionWidth:sectionRect.width,sourceWidth:sourceRect.width,sectionLeft:sectionRect.left,"
+            "sourceLeft:sourceRect.left,sectionRadius:sectionStyle.borderRadius,sourceRadius:sourceStyle.borderRadius,"
+            "sectionPadding:sectionStyle.padding,sourcePadding:sourceStyle.padding,"
+            "sourceOverflow:sourceRect.right-document.documentElement.clientWidth}};})()"
         )
         for role in (
             "heading", "muted", "inset", "sourceText", "success", "warning",
@@ -5059,6 +5115,11 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
         assert case_state["section"]["borderStyle"] != "none"
         assert case_state["inset"]["borderStyle"] != "none"
         assert case_state["section"]["backgroundCss"] != case_state["inset"]["backgroundCss"]
+        assert abs(case_state["geometry"]["sectionWidth"] - case_state["geometry"]["sourceWidth"]) <= 1
+        assert abs(case_state["geometry"]["sectionLeft"] - case_state["geometry"]["sourceLeft"]) <= 1
+        assert case_state["geometry"]["sectionRadius"] == case_state["geometry"]["sourceRadius"]
+        assert case_state["geometry"]["sectionPadding"] == case_state["geometry"]["sourcePadding"]
+        assert case_state["geometry"]["sourceOverflow"] <= 0
         observed_section_backgrounds[theme] = case_state["section"]["backgroundCss"]
 
         if theme == "light":
@@ -5070,6 +5131,21 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
             assert max(case_state["section"]["background"]) < .40
 
     assert len(set(observed_section_backgrounds.values())) == 4
+    assert len(set(observed_law_summary_backgrounds.values())) == 4
+
+    browser.set_viewport(390, 820)
+    browser.navigate(f"{base_url}/law/cases/{case_id}")
+    browser.wait_for("document.querySelector('.law-case-sources')")
+    narrow_geometry = browser.evaluate(
+        "(() => {const sources=document.querySelector('.law-case-sources').getBoundingClientRect();"
+        "const section=document.querySelector('.law-case-section').getBoundingClientRect();"
+        "return {sourceWidth:sources.width,sectionWidth:section.width,sourceLeft:sources.left,"
+        "sectionLeft:section.left,documentWidth:document.documentElement.scrollWidth,"
+        "viewportWidth:document.documentElement.clientWidth};})()"
+    )
+    assert abs(narrow_geometry["sourceWidth"] - narrow_geometry["sectionWidth"]) <= 1
+    assert abs(narrow_geometry["sourceLeft"] - narrow_geometry["sectionLeft"]) <= 1
+    assert narrow_geometry["documentWidth"] <= narrow_geometry["viewportWidth"]
 
 
 def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):

@@ -306,22 +306,29 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("overflow-wrap: anywhere", css)
         self.assertIn("var(--theme-muted-text", css)
 
-    def test_it_summary_supporting_text_uses_full_card_width_and_normal_words(self):
+    def test_study_summary_supporting_text_uses_shared_full_width_treatment(self):
         pack = {"name": "IT Study", "version": "1"}
         with mock.patch.object(it_routes, "_it_pack_page_data", return_value=(pack, [], [], [])):
             page = self.client.get("/it").get_data(as_text=True)
         css = self._static("style.css")
 
         self.assertIn("IT / Cybersecurity packs", page)
-        rule = re.search(
-            r"\.medical-summary-grid\s+\.dashboard-stat-card\s*\{([^}]*)\}", css
-        )
-        self.assertIsNotNone(rule)
-        self.assertIn("grid-template-columns: minmax(0, 1fr)", rule.group(1))
-        support_rules = re.findall(
-            r"\.medical-summary-grid\s+\.dashboard-stat-card\s*>\s*small\s*\{([^}]*)\}",
-            css,
-        )
+        blocks = re.findall(r"([^{}]+)\{([^}]*)\}", css)
+        summary_rules = [
+            body for prelude, body in blocks
+            if ".medical-summary-grid .dashboard-stat-card" in prelude
+            and ".law-hub-summary .dashboard-stat-card" in prelude
+        ]
+        self.assertTrue(summary_rules)
+        self.assertTrue(any(
+            "grid-template-columns: minmax(0, 1fr)" in rule
+            for rule in summary_rules
+        ))
+        support_rules = [
+            body for prelude, body in blocks
+            if ".medical-summary-grid .dashboard-stat-card > small" in prelude
+            and ".law-hub-summary .dashboard-stat-card > small" in prelude
+        ]
         self.assertTrue(support_rules)
         self.assertTrue(any("overflow-wrap: break-word" in rule for rule in support_rules))
         self.assertTrue(any("word-break: normal" in rule for rule in support_rules))
