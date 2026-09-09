@@ -2,6 +2,7 @@
    GLOBAL STATE
 ===================================================== */
 let quiz = [];
+let rawQuiz = [];
 let index = 0;
 let examMode = false;
 let userAnswers = {};
@@ -25,6 +26,9 @@ let studyAIConfig = null;
 let studyAIConfigRequest = null;
 let pendingExamAttempt = null;
 let examAttemptSaveInProgress = false;
+let recoverySessionId = null;
+let quizRecoveryController = null;
+let quizRecoveryReady = false;
 let studyLearningEventSequence = 0;
 const studyLearningEventSaves = new Map();
 
@@ -122,12 +126,13 @@ function updateStudyLearningEventStatus() {
 }
 
 async function saveStudyLearningEvent(record, retrying = false) {
-    const current = studyLearningEventSaves.get(record.questionKey);
+    const current = studyLearningEventSaves.get(record.eventId);
     if (!current || current.eventId !== record.eventId) return false;
 
     record.state = "saving";
     record.retrying = retrying;
     updateStudyLearningEventStatus();
+    checkpointQuizRecovery();
     try {
         const response = await fetch("/api/learning-events/study-response", {
             method: "POST",
@@ -149,18 +154,20 @@ async function saveStudyLearningEvent(record, retrying = false) {
             throw new Error(`Learning event acknowledgement failed (HTTP ${response.status})`);
         }
 
-        const latest = studyLearningEventSaves.get(record.questionKey);
+        const latest = studyLearningEventSaves.get(record.eventId);
         if (latest && latest.eventId === record.eventId) {
-            studyLearningEventSaves.delete(record.questionKey);
+            studyLearningEventSaves.delete(record.eventId);
             updateStudyLearningEventStatus();
+            checkpointQuizRecovery();
         }
         return true;
     } catch (error) {
-        const latest = studyLearningEventSaves.get(record.questionKey);
+        const latest = studyLearningEventSaves.get(record.eventId);
         if (latest && latest.eventId === record.eventId) {
             record.state = "failed";
             record.retrying = false;
             updateStudyLearningEventStatus();
+            checkpointQuizRecovery();
         }
         console.warn("Learning event save failed (quiz remains usable):", error);
         return false;
@@ -198,7 +205,8 @@ async function recordStudyLearningEvent(q, wasCorrect, selected) {
         state: "saving",
         retrying: false
     };
-    studyLearningEventSaves.set(record.questionKey, record);
+    studyLearningEventSaves.set(record.eventId, record);
+    checkpointQuizRecovery();
     await saveStudyLearningEvent(record);
 }
 
@@ -230,15 +238,86 @@ document.addEventListener("DOMContentLoaded", () => {
 /* =====================================================
    LOAD QUIZ JSON
 ===================================================== */
+function setQuizModeButtonsEnabled(enabled) {
+    document.querySelectorAll(".study-mode-btn, .exam-mode-btn, #studyModeBtn, #examModeBtn").forEach(button => {
+        button.disabled = !enabled;
+        button.setAttribute("aria-disabled", String(!enabled));
+    });
+}
+
+function showQuizRecoveryNotice(message) {
+    let notice = document.getElementById("quizRecoveryNotice");
+    const modeSelect = document.getElementById("modeSelect");
+    const quizPanel = document.getElementById("quiz");
+    const host = modeSelect && !modeSelect.classList.contains("hidden") ? modeSelect : quizPanel;
+    if (!notice) {
+        if (!host) return;
+        notice = document.createElement("p");
+        notice.id = "quizRecoveryNotice";
+        notice.className = "quiz-recovery-notice";
+        notice.setAttribute("role", "status");
+        notice.setAttribute("aria-live", "polite");
+        host.prepend(notice);
+    }
+    if (host && notice.parentElement !== host) host.prepend(notice);
+    notice.textContent = String(message);
+}
+
+function loadQuizRecoveryRuntime() {
+    if (window.DLMSQuizRecovery) return Promise.resolve(window.DLMSQuizRecovery);
+    return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "/static/quiz-recovery.js";
+        script.async = true;
+        script.addEventListener("load", () => resolve(window.DLMSQuizRecovery));
+        script.addEventListener("error", () => reject(new Error("Quiz recovery module failed to load")));
+        document.head.appendChild(script);
+    });
+}
+
 async function loadQuiz() {
+    setQuizModeButtonsEnabled(false);
     try {
         const file = (typeof QUIZ_FILE !== "undefined") ? QUIZ_FILE : "quiz.json";
         console.log("Loading quiz:", file);
-        const res = await fetch(file);
+        const res = await fetch(file, {cache: "no-store"});
         if (!res.ok) throw new Error("HTTP " + res.status);
-        quiz = await res.json();
-        quiz = quiz.map(q => prepareQuestionForAttempt({ ...q, type: (q.type || "choice").toLowerCase() }));
+        const rawQuizText = await res.text();
+        const parsed = JSON.parse(rawQuizText);
+        if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Quiz has no questions");
+        rawQuiz = parsed.map(q => ({...q, type: (q.type || "choice").toLowerCase()}));
+        quiz = [];
+        try {
+            const recovery = await loadQuizRecoveryRuntime();
+            if (!recovery) throw new Error("Quiz recovery module did not initialize");
+            const fingerprint = await recovery.quizFingerprint({
+                rawQuizText,
+                quizId: window.QUIZ_ID,
+                quizFile: file,
+                quizTitle: window.quiz_title || "",
+                examMinutes: examDurationMinutes,
+            });
+            quizRecoveryController = recovery.createController({
+                quizId: window.QUIZ_ID,
+                quizFile: file,
+                examMinutes: examDurationMinutes,
+                fingerprint,
+                rawQuiz,
+                capture: captureQuizRecoveryState,
+                restore: restoreQuizRecoveryState,
+                finishSubmission: recoveredAttempt => { void submitQuiz(true, recoveredAttempt); },
+                startOver: () => {},
+                notify: showQuizRecoveryNotice,
+            });
+            quizRecoveryController.initialize();
+            quizRecoveryReady = true;
+        } catch (recoveryError) {
+            console.warn("Quiz recovery unavailable; continuing without it:", recoveryError);
+            showQuizRecoveryNotice("Quiz recovery is unavailable in this browser. The quiz will continue normally.");
+        }
+        quiz = prepareQuizForAttempt();
         console.log("Quiz loaded. Questions:", quiz.length);
+        setQuizModeButtonsEnabled(true);
     } catch (err) {
         console.error("Failed to load quiz:", err);
         alert("Failed to load quiz questions.");
@@ -309,24 +388,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-function prepareQuestionForAttempt(q) {
+function prepareQuestionForAttempt(q, savedVariant = null) {
     if (q.type !== "matching" || !Array.isArray(q.pairs)) return q;
-    let pairs = q.pairs.map(pair => ({
+    const allPairs = q.pairs.map(pair => ({
         ...pair,
         verification: (pair && typeof pair.verification === "object" && pair.verification) ? {...pair.verification} : {},
         source: (pair && typeof pair.source === "object" && pair.source) ? {...pair.source} : {}
     }));
-    const requested = Number(q.round_size);
-    if (Number.isFinite(requested) && requested >= 2 && requested < pairs.length) {
-        const order = shuffledIndexes(pairs.length).slice(0, Math.floor(requested));
-        pairs = order.map(i => pairs[i]);
+    let sourcePairIndexes;
+    if (savedVariant) {
+        sourcePairIndexes = savedVariant.sourcePairIndexes.slice();
+    } else {
+        sourcePairIndexes = allPairs.map((_, pairIndex) => pairIndex);
+        const requested = Number(q.round_size);
+        if (Number.isFinite(requested) && requested >= 2 && requested < allPairs.length) {
+            sourcePairIndexes = shuffledIndexes(allPairs.length).slice(0, Math.floor(requested));
+        }
     }
+    let pairs = sourcePairIndexes.map(pairIndex => allPairs[pairIndex]);
     let direction = q.direction || "term_to_definition";
-    if (direction === "random") direction = Math.random() < 0.5 ? "term_to_definition" : "definition_to_term";
-    if (direction === "definition_to_term") {
-        pairs = pairs.map(pair => ({ left: pair.right, right: pair.left }));
+    if (savedVariant) {
+        direction = savedVariant.direction;
+    } else if (direction === "random") {
+        direction = Math.random() < 0.5 ? "term_to_definition" : "definition_to_term";
     }
-    return { ...q, pairs, active_direction: direction };
+    if (direction === "definition_to_term") {
+        pairs = pairs.map(pair => ({...pair, left: pair.right, right: pair.left}));
+    }
+    return {
+        ...q,
+        pairs,
+        active_direction: direction,
+        _matching_variant: {sourcePairIndexes, direction},
+    };
+}
+
+function prepareQuizForAttempt(savedVariants = null) {
+    return rawQuiz.map((question, questionIndex) => prepareQuestionForAttempt(
+        {...question},
+        savedVariants ? savedVariants[String(questionIndex)] : null
+    ));
 }
 
 /* =====================================================
@@ -615,6 +716,7 @@ function selectHotspot(event) {
     }
 
     userAnswers[`q${index}`] = {x, y};
+    checkpointQuizRecovery();
     if (!examMode) {
         void recordStudyLearningEvent(q, pointInHotspot(x, y, q.target), {x, y});
     }
@@ -716,6 +818,7 @@ function renderMatchingQuestion(q, key, selected, choicesEl) {
 function setMatchingInteractionMode(mode) {
     matchingInteractionMode = mode === "select" ? "select" : "drag";
     matchingPendingRightIndex = null;
+    checkpointQuizRecovery();
     renderQuestion();
 }
 
@@ -731,6 +834,7 @@ function commitMatchingAnswer(leftIndex, rightIndex) {
     answers[leftIndex] = Number(rightIndex);
     userAnswers[key] = answers;
     matchingPendingRightIndex = null;
+    checkpointQuizRecovery();
     if (!examMode) {
         const pairs = Array.isArray(q.pairs) ? q.pairs : [];
         const complete = pairs.length >= 2 && pairs.every((_, pairIndex) => answers[pairIndex] !== undefined);
@@ -746,6 +850,7 @@ function clearMatch(leftIndex) {
     delete answers[leftIndex];
     userAnswers[key] = answers;
     matchingPendingRightIndex = null;
+    checkpointQuizRecovery();
     renderQuestion();
 }
 
@@ -873,6 +978,7 @@ function selectChoice(i) {
         }
 
         userAnswers[key] = arr;
+        checkpointQuizRecovery();
         const state = choiceStudyState(q, arr);
         void recordStudyLearningEvent(q, state.isCorrect, arr.map(idx => String.fromCharCode(65 + idx)));
         renderQuestion();
@@ -892,6 +998,7 @@ function selectChoice(i) {
     }
 
     userAnswers[key] = arr;
+    checkpointQuizRecovery();
     renderQuestion();
 }
 
@@ -905,6 +1012,7 @@ function next() {
     if (index < quiz.length - 1) {
         index++;
         renderQuestion();
+        checkpointQuizRecovery();
     }
 }
 
@@ -913,6 +1021,7 @@ function prev() {
     if (index > 0) {
         index--;
         renderQuestion();
+        checkpointQuizRecovery();
     }
 }
 
@@ -1110,6 +1219,7 @@ function toggleCurrentQuestionForAnki() {
 
     updateStudyAnkiButton();
     updateStudyAnkiExportButton();
+    checkpointQuizRecovery();
 }
 
 function updateStudyAnkiButton() {
@@ -1206,60 +1316,170 @@ function updateProgressBar() {
     bar.style.width = pct + "%";
 }
 
-/* =====================================================
-   START QUIZ (Study or Exam)
-===================================================== */
-function startQuiz(isExam) {
-    examMode = isExam;
-    index = 0;
-    userAnswers = {};
-    matchingOptionOrders = {};
-    matchingPendingRightIndex = null;
-    studyAnkiSelections.clear();
-    learningSessionId = createLearningSessionId();
-    studyLearningEventSequence = 0;
-    studyLearningEventSaves.clear();
-    updateStudyLearningEventStatus();
+function cloneRecoveryValue(value) {
+    return JSON.parse(JSON.stringify(value));
+}
 
-    if (examMode) {
-        examStartTime = new Date().toISOString();
-    } else {
-        examStartTime = null;
+function checkpointQuizRecovery() {
+    if (quizRecoveryController?.ownsState) quizRecoveryController.checkpoint();
+}
+
+function recoverySelectedForQuestion(questionIndex) {
+    const question = quiz[questionIndex];
+    const answer = userAnswers[`q${questionIndex}`];
+    if (question.type === "hotspot") {
+        return answer && typeof answer === "object" && !Array.isArray(answer)
+            ? {x: Number(answer.x), y: Number(answer.y)} : null;
     }
+    if (question.type === "matching") {
+        return answer && typeof answer === "object" && !Array.isArray(answer)
+            ? cloneRecoveryValue(answer) : {};
+    }
+    return Array.isArray(answer) ? answer.slice() : [];
+}
 
+function captureQuizRecoveryState() {
+    const answers = {};
+    Object.keys(userAnswers).forEach(key => {
+        const questionIndex = Number(key.replace(/^q/, ""));
+        const question = quiz[questionIndex];
+        if (!question || !Number.isInteger(questionIndex)) return;
+        answers[String(questionIndex)] = {
+            type: ["hotspot", "matching"].includes(question.type) ? question.type : "choice",
+            selected: cloneRecoveryValue(userAnswers[key]),
+        };
+    });
+    const matchingVariants = {};
+    quiz.forEach((question, questionIndex) => {
+        if (question.type !== "matching") return;
+        matchingVariants[String(questionIndex)] = {
+            sourcePairIndexes: question._matching_variant.sourcePairIndexes.slice(),
+            direction: question._matching_variant.direction,
+            optionOrder: matchingOptionOrders[`q${questionIndex}`]?.slice() || null,
+        };
+    });
+    return {
+        recoverySessionId,
+        mode: examMode ? "Exam" : "Study",
+        phase: pendingExamAttempt ? "submitting" : "active",
+        view: {
+            questionIndex: index,
+            ankiQuestionIndexes: Array.from(studyAnkiSelections).sort((a, b) => a - b),
+            matchingInteractionMode,
+        },
+        answers,
+        matchingVariants,
+        timer: examMode ? {
+            remainingSeconds: Math.max(0, Math.floor(timeRemaining)),
+            paused,
+            startedAt: examStartTime,
+        } : null,
+        learningSessionId,
+        unacknowledgedStudyEvents: Array.from(studyLearningEventSaves.values()).map(record => ({
+            eventId: record.eventId,
+            questionKey: record.questionKey,
+            payload: cloneRecoveryValue(record.payload),
+            state: record.state === "failed" ? "failed" : "saving",
+        })),
+        pendingAttempt: pendingExamAttempt?.recovery || null,
+    };
+}
+
+function showActiveQuizUI() {
     const studyAiBtn = document.getElementById("studyAiBtn");
-    if (studyAiBtn) {
-        studyAiBtn.style.display = examMode ? "none" : "inline-block";
-    }
-
+    if (studyAiBtn) studyAiBtn.style.display = examMode ? "none" : "inline-block";
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
-    if (studyAnkiBtn) {
-        studyAnkiBtn.style.display = examMode ? "none" : "inline-block";
-    }
-
-
-
-    console.log("START QUIZ. examMode =", examMode);
-
-    // Show Submit ONLY in Exam Mode
+    if (studyAnkiBtn) studyAnkiBtn.style.display = examMode ? "none" : "inline-block";
     const submitBtn = document.querySelector("button[onclick='submitQuiz()']");
     if (submitBtn) submitBtn.style.display = examMode ? "inline-block" : "none";
-
     const modeSelect = document.getElementById("modeSelect");
     const quizDiv = document.getElementById("quiz");
     const resultDiv = document.getElementById("result");
     const timerDiv = document.getElementById("timer");
-
     if (modeSelect) modeSelect.classList.add("hidden");
     if (quizDiv) quizDiv.classList.remove("hidden");
     if (resultDiv) {
         resultDiv.classList.add("hidden");
         resultDiv.style.display = "none";
     }
-
-    updatePauseButtonUI(); // 👈 ADD THIS LINE EXACTLY HERE
+    if (timerDiv) timerDiv.classList.toggle("hidden", !examMode);
+    updatePauseButtonUI();
     updateTimerLabelUI();
     updateStudyModeBadge();
+}
+
+function restoreQuizRecoveryState(record) {
+    stopExamTimer();
+    quiz = prepareQuizForAttempt(record.matchingVariants);
+    index = record.view.questionIndex;
+    examMode = record.session.mode === "Exam";
+    userAnswers = {};
+    Object.entries(record.answers).forEach(([questionIndex, answer]) => {
+        userAnswers[`q${questionIndex}`] = cloneRecoveryValue(answer.selected);
+    });
+    matchingOptionOrders = {};
+    Object.entries(record.matchingVariants).forEach(([questionIndex, variant]) => {
+        if (variant.optionOrder) matchingOptionOrders[`q${questionIndex}`] = variant.optionOrder.slice();
+    });
+    matchingInteractionMode = record.view.matchingInteractionMode;
+    matchingPendingRightIndex = null;
+    studyAnkiSelections = new Set(record.view.ankiQuestionIndexes);
+    recoverySessionId = record.session.id;
+    learningSessionId = record.learningSessionId;
+    studyLearningEventSequence = 0;
+    studyLearningEventSaves.clear();
+    record.unacknowledgedStudyEvents.forEach(saved => {
+        studyLearningEventSaves.set(saved.eventId, {
+            eventId: saved.eventId,
+            questionKey: saved.questionKey,
+            payload: cloneRecoveryValue(saved.payload),
+            state: "failed",
+            retrying: false,
+        });
+    });
+    updateStudyLearningEventStatus();
+    pendingExamAttempt = null;
+    if (examMode) {
+        timeRemaining = record.timer.remainingSeconds;
+        paused = record.timer.paused;
+        examStartTime = record.timer.startedAt;
+    } else {
+        paused = false;
+        examStartTime = null;
+    }
+    showActiveQuizUI();
+    const overlay = document.getElementById("pauseOverlay");
+    if (overlay) overlay.classList.toggle("show", paused);
+    document.body.classList.toggle("blurred", paused);
+    renderQuestion();
+    if (record.session.phase === "submitting") {
+        stopExamTimer();
+    } else if (examMode) {
+        startExamTimer();
+    }
+}
+
+/* =====================================================
+   START QUIZ (Study or Exam)
+===================================================== */
+function startQuiz(isExam) {
+    if (!quiz.length) return;
+    examMode = isExam;
+    quiz = prepareQuizForAttempt();
+    index = 0;
+    userAnswers = {};
+    matchingOptionOrders = {};
+    matchingPendingRightIndex = null;
+    studyAnkiSelections.clear();
+    recoverySessionId = createLearningSessionId();
+    learningSessionId = createLearningSessionId();
+    studyLearningEventSequence = 0;
+    studyLearningEventSaves.clear();
+    updateStudyLearningEventStatus();
+
+    console.log("START QUIZ. examMode =", examMode);
+    const timerDiv = document.getElementById("timer");
+    showActiveQuizUI();
 
     // Reset pause overlay / blur
     const overlay = document.getElementById("pauseOverlay");
@@ -1278,11 +1498,9 @@ function startQuiz(isExam) {
         timeRemaining = examDurationMinutes * 60;
         startExamTimer();
     }
-    // NEW: record start time
     examStartTime = new Date().toISOString();
-
-
     renderQuestion();
+    if (quizRecoveryReady) quizRecoveryController.claimNew();
 }
 
 
@@ -1293,6 +1511,12 @@ function startExamTimer() {
     console.log("TIMER START");
     const display = document.getElementById("timeDisplay");
 
+    if (display) {
+        const minutes = Math.floor(timeRemaining / 60);
+        const seconds = timeRemaining % 60;
+        display.innerText = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+    }
+
     if (examTimer) {
         clearInterval(examTimer);
         examTimer = null;
@@ -1302,6 +1526,7 @@ function startExamTimer() {
         if (paused) return;
 
         timeRemaining--;
+        if (timeRemaining % 5 === 0) checkpointQuizRecovery();
 
         const m = Math.floor(timeRemaining / 60);
         const s = timeRemaining % 60;
@@ -1324,6 +1549,7 @@ function pauseExam() {
     console.log("PAUSE CLICKED");
 
     paused = true;
+    checkpointQuizRecovery();
 
     const overlay = document.getElementById("pauseOverlay");
     if (overlay) {
@@ -1339,6 +1565,7 @@ function resumeExam() {
     console.log("RESUME CLICKED");
 
     paused = false;
+    checkpointQuizRecovery();
 
     const overlay = document.getElementById("pauseOverlay");
     if (overlay) {
@@ -1404,6 +1631,7 @@ async function savePendingExamAttempt() {
     if (!pending || examAttemptSaveInProgress) return;
 
     examAttemptSaveInProgress = true;
+    checkpointQuizRecovery();
     renderExamResult(pending, "saving");
     try {
         const response = await fetch("/record_attempt", {
@@ -1432,11 +1660,13 @@ async function savePendingExamAttempt() {
             console.warn("Local history mirror could not be updated:", historyError);
         }
         pendingExamAttempt = null;
+        quizRecoveryController?.complete();
         renderExamResult(pending, "saved");
         console.log("RESULT UI RENDERED. Attempt ID:", pending.attemptId);
     } catch (error) {
         console.error("Attempt persistence failed:", error);
         renderExamResult(pending, "failed");
+        checkpointQuizRecovery();
     } finally {
         examAttemptSaveInProgress = false;
     }
@@ -1452,7 +1682,7 @@ function retryExamAttemptSave() {
 /* =====================================================
    SUBMIT — EXAM ONLY
 ===================================================== */
-async function submitQuiz(force = false) {
+async function submitQuiz(force = false, recoveredAttempt = null) {
 
     // Do nothing in Study Mode
     if (!examMode) {
@@ -1658,9 +1888,12 @@ async function submitQuiz(force = false) {
 
     stopExamTimer();
 
-    const attemptId = (window.crypto && crypto.randomUUID)
+    const attemptId = recoveredAttempt?.attemptId || ((window.crypto && crypto.randomUUID)
         ? crypto.randomUUID()
-        : String(Date.now());
+        : String(Date.now()));
+    const completedAt = recoveredAttempt?.completedAt || new Date().toISOString();
+    const submittedStartedAt = recoveredAttempt?.startedAt || examStartTime;
+    const submittedTimeRemaining = recoveredAttempt?.timeRemaining ?? timeRemaining;
 
     const attemptPayload = {
             quizTitle: window.quiz_title || QUIZ_FILE || "Unknown Quiz",
@@ -1670,9 +1903,9 @@ async function submitQuiz(force = false) {
             total: total,
             percent: percent,
             attemptId: attemptId,
-            startedAt: examStartTime,
-            completedAt: new Date().toISOString(),
-            timeRemaining: timeRemaining,
+            startedAt: submittedStartedAt,
+            completedAt: completedAt,
+            timeRemaining: submittedTimeRemaining,
 
             mode: "Exam",
             sessionId: learningSessionId,
@@ -1686,8 +1919,21 @@ async function submitQuiz(force = false) {
         total: total,
         percent: percent,
         missed: missed,
-        payload: attemptPayload
+        payload: attemptPayload,
+        recovery: recoveredAttempt || {
+            attemptId,
+            quizId: String(window.QUIZ_ID),
+            startedAt: submittedStartedAt,
+            completedAt,
+            timeRemaining: submittedTimeRemaining,
+            responses: quiz.map((question, questionIndex) => ({
+                questionIndex,
+                type: ["matching", "hotspot"].includes(question.type) ? question.type : "choice",
+                selected: recoverySelectedForQuestion(questionIndex),
+            })),
+        },
     };
+    checkpointQuizRecovery();
     await savePendingExamAttempt();
 }
 
@@ -1735,6 +1981,10 @@ function saveHistory(percent, correct, total, missed, attemptId) {
 
     if (!store[quizKey]) {
         store[quizKey] = [];
+    }
+
+    if (store[quizKey].some(entry => String(entry?.id || "") === String(attemptId))) {
+        return;
     }
 
     store[quizKey].push({

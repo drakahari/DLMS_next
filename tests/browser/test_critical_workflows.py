@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import http.cookiejar
 import json
 import os
@@ -1434,6 +1435,394 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser.click("#result button[onclick*='/history']")
     browser.wait_for("location.pathname === '/history'")
     browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
+
+
+def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    identity = "\0".join(["quiz-recovery-v1", "1", "7", "/data/example.json", "Example", "5", "abc"])
+    expected_fingerprint = "sha256:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    assert browser.evaluate(
+        "(async () => { const prototype=Object.getPrototypeOf(window.crypto);"
+        "const descriptor=Object.getOwnPropertyDescriptor(prototype, 'subtle');"
+        "Object.defineProperty(prototype, 'subtle', {configurable:true,get:()=>undefined});"
+        "try { return await DLMSQuizRecovery.quizFingerprint({rawQuizText:'abc',quizId:7,"
+        "quizFile:'/data/example.json',quizTitle:'Example',examMinutes:5}); }"
+        "finally { Object.defineProperty(prototype, 'subtle', descriptor); } })()"
+    ) == expected_fingerprint
+    browser.click(".exam-mode-btn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#choices .choice[data-index='2']")
+    browser.click("#nextBtn")
+    assert browser.evaluate("setMatchingInteractionMode('select'); true") is True
+    browser.wait_for("document.querySelector('.matching-select') !== null")
+    assert browser.evaluate(
+        "(() => { const select = document.querySelector('.matching-select');"
+        "select.value = String(matchingOptionOrders.q2[0]);"
+        "select.dispatchEvent(new Event('change', {bubbles:true})); return true; })()"
+    ) is True
+    browser.click("#nextBtn")
+    browser.wait_for("document.querySelector('.hotspot-image-wrap') !== null")
+    browser.click(".hotspot-image-wrap")
+    browser.wait_for("document.querySelector('.hotspot-click-marker') !== null")
+
+    storage_key = browser.evaluate("quizRecoveryController.storageKey")
+    before = browser.evaluate(f"JSON.parse(localStorage.getItem({json.dumps(storage_key)}))")
+    assert before["session"]["mode"] == "Exam"
+    assert before["view"]["questionIndex"] == 3
+    assert before["answers"]["0"]["selected"] == [1]
+    assert before["answers"]["1"]["selected"] == [0, 2]
+    assert before["answers"]["2"]["selected"]
+    hotspot = before["answers"]["3"]["selected"]
+    assert 0 <= hotspot["x"] <= 1
+    assert 0 <= hotspot["y"] <= 1
+    assert before["matchingVariants"]["2"]["optionOrder"] is not None
+    serialized = json.dumps(before)
+    assert "Recovery single-choice question?" not in serialized
+    assert '"correct"' not in serialized
+    assert '"score"' not in serialized
+
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    assert "Question 4 of 4" in browser.evaluate("document.querySelector('.quiz-recovery-panel p').textContent")
+    saved_remaining = browser.evaluate(
+        f"JSON.parse(localStorage.getItem({json.dumps(storage_key)})).timer.remainingSeconds"
+    )
+    time.sleep(1.1)
+    assert browser.evaluate(
+        f"JSON.parse(localStorage.getItem({json.dumps(storage_key)})).timer.remainingSeconds"
+    ) == saved_remaining
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("index === 3 && document.querySelector('.hotspot-click-marker') !== null")
+    browser.evaluate("prev(); true")
+    browser.wait_for("index === 2 && document.querySelector('.matching-select') !== null")
+    restored = browser.evaluate(
+        "({mode:matchingInteractionMode, answer:userAnswers.q2,"
+        "variant:quiz[2]._matching_variant, order:matchingOptionOrders.q2})"
+    )
+    assert restored["mode"] == "select"
+    assert restored["answer"] == before["answers"]["2"]["selected"]
+    assert restored["variant"]["sourcePairIndexes"] == before["matchingVariants"]["2"]["sourcePairIndexes"]
+    assert restored["variant"]["direction"] == before["matchingVariants"]["2"]["direction"]
+    assert restored["order"] == before["matchingVariants"]["2"]["optionOrder"]
+    browser.evaluate("prev(); true")
+    browser.wait_for("index === 1")
+    assert browser.evaluate("userAnswers.q1") == [0, 2]
+    assert browser.evaluate(
+        "[...document.querySelectorAll('#choices .choice')].filter(button => button.getAttribute('aria-pressed') === 'true').map(button => Number(button.dataset.index))"
+    ) == [0, 2]
+    browser.evaluate("pauseExam(); true")
+    browser.wait_for("paused === true && document.getElementById('pauseOverlay').classList.contains('show')")
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("paused === true && document.getElementById('pauseOverlay').classList.contains('show')")
+    browser.evaluate("resumeExam(); true")
+    browser.wait_for("paused === false && !document.getElementById('pauseOverlay').classList.contains('show')")
+
+
+def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retry(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    before_count = _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'",
+        (quiz_id,),
+    )
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    assert browser.evaluate(
+        "window.__recoveryFetch = window.fetch.bind(window);"
+        "window.fetch = (...args) => String(args[0]).includes('/api/learning-events/study-response')"
+        " ? Promise.reject(new Error('simulated lost acknowledgement')) : window.__recoveryFetch(...args); true"
+    ) is True
+    browser.click(".study-mode-btn")
+    browser.click("#studyAnkiBtn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
+    storage_key = browser.evaluate("quizRecoveryController.storageKey")
+    saved = browser.evaluate(f"JSON.parse(localStorage.getItem({json.dumps(storage_key)}))")
+    event = saved["unacknowledgedStudyEvents"][0]
+    session_id = saved["learningSessionId"]
+    assert _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'",
+        (quiz_id,),
+    ) == before_count
+
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
+    browser.wait_for("document.querySelector('#choices .correct-choice') !== null")
+    assert browser.evaluate("studyAnkiSelections.has(0)") is True
+    assert browser.evaluate("learningSessionId") == session_id
+    assert _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'",
+        (quiz_id,),
+    ) == before_count
+    browser.click(".study-learning-save-retry")
+    _wait_for_database_value(
+        browser_stack.data_root / "results.db",
+        f"SELECT COUNT(*) FROM learning_events WHERE quiz_id = {int(quiz_id)} AND event_type = 'study_answer'",
+        before_count + 1,
+    )
+    assert _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM learning_events WHERE attempt_id = ?",
+        (event["eventId"],),
+    ) == 1
+    browser.wait_for(
+        f"JSON.parse(localStorage.getItem({json.dumps(storage_key)})).unacknowledgedStudyEvents.length === 0"
+    )
+
+
+def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    attempts_before = _database_value(
+        browser_stack.data_root / "results.db", "SELECT COUNT(*) FROM attempts WHERE quiz_id = ?", (quiz_id,)
+    )
+    missed_before = _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM missed_questions WHERE attempt_id IN (SELECT id FROM attempts WHERE quiz_id = ?)",
+        (quiz_id,),
+    )
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    assert browser.evaluate(
+        "window.__recoveryFetch = window.fetch.bind(window);"
+        "window.fetch = async (...args) => { const response = await window.__recoveryFetch(...args);"
+        "if (String(args[0]).includes('/record_attempt')) throw new Error('simulated lost acknowledgement');"
+        "return response; }; true"
+    ) is True
+    browser.click(".exam-mode-btn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.evaluate("window.confirm = () => true; true")
+    browser.click("#submitBtn")
+    browser.wait_for("document.getElementById('result').textContent.includes('was not saved')")
+    storage_key = browser.evaluate("quizRecoveryController.storageKey")
+    pending = browser.evaluate(f"JSON.parse(localStorage.getItem({json.dumps(storage_key)})).pendingAttempt")
+    original_payload = browser.evaluate("pendingExamAttempt.payload")
+    attempt_id = pending["attemptId"]
+    _wait_for_database_value(
+        browser_stack.data_root / "results.db",
+        f"SELECT COUNT(*) FROM attempts WHERE quiz_id = {int(quiz_id)}",
+        attempts_before + 1,
+    )
+
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume')?.textContent.includes('Finish Saving')")
+    assert browser.evaluate(
+        "window.__recoveryFetch = window.fetch.bind(window);"
+        "window.fetch = (...args) => {"
+        "if (String(args[0]).includes('/record_attempt')) window.__recoveryRetryPayload = args[1].body;"
+        "return window.__recoveryFetch(...args); }; true"
+    ) is True
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
+    assert browser.evaluate("JSON.parse(window.__recoveryRetryPayload)") == original_payload
+    assert _database_value(
+        browser_stack.data_root / "results.db", "SELECT COUNT(*) FROM attempts WHERE id = ?", (attempt_id,)
+    ) == 1
+    assert _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM learning_events WHERE attempt_id = ? AND event_type = 'exam_answer'",
+        (attempt_id,),
+    ) == 2
+    assert _database_value(
+        browser_stack.data_root / "results.db", "SELECT COUNT(*) FROM attempts WHERE quiz_id = ?", (quiz_id,)
+    ) == attempts_before + 1
+    assert _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM missed_questions WHERE attempt_id IN (SELECT id FROM attempts WHERE quiz_id = ?)",
+        (quiz_id,),
+    ) == missed_before + 1
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+
+
+def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".exam-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    storage_key = browser.evaluate("quizRecoveryController.storageKey")
+    first_context = browser.context
+    created = browser.command("browsingContext.create", {"type": "tab"})
+    second_context = created["context"]
+    try:
+        browser.context = second_context
+        browser.navigate(quiz_url)
+        browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+        assert browser.evaluate("quizRecoveryController.ownsState") is False
+        browser.click(".quiz-recovery-resume")
+        browser.wait_for("quizRecoveryController.ownsState === true")
+        browser.context = first_context
+        browser.wait_for("quizRecoveryController.ownsState === false")
+        assert "another tab" in browser.evaluate("document.getElementById('quizRecoveryNotice').textContent")
+    finally:
+        browser.context = second_context
+        browser.command("browsingContext.close", {"context": second_context})
+        browser.context = first_context
+
+    assert browser.evaluate(
+        f"(() => {{ const saved=JSON.parse(localStorage.getItem({json.dumps(storage_key)}));"
+        "saved.schemaVersion=999; localStorage.setItem("
+        f"{json.dumps(storage_key)}, JSON.stringify(saved)); return true; }})()"
+    ) is True
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-panel')") is None
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+
+    assert browser.evaluate(
+        f"localStorage.setItem({json.dumps(storage_key)}, '{{malformed'); true"
+    ) is True
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+
+    assert browser.evaluate(
+        f"localStorage.setItem({json.dumps(storage_key)}, 'x'.repeat(524289)); true"
+    ) is True
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+
+    browser.click(".exam-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.navigate(f"{browser_stack.base_url}/library")
+    assert browser.evaluate(
+        f"(() => {{ const saved=JSON.parse(localStorage.getItem({json.dumps(storage_key)}));"
+        "saved.quiz.fingerprint='sha256:' + '0'.repeat(64); localStorage.setItem("
+        f"{json.dumps(storage_key)}, JSON.stringify(saved)); return true; }})()"
+    ) is True
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-panel')") is None
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+
+    browser.click(".exam-mode-btn")
+    browser.navigate(f"{browser_stack.base_url}/library")
+    assert browser.evaluate(
+        f"(() => {{ const saved=JSON.parse(localStorage.getItem({json.dumps(storage_key)}));"
+        "saved.view.questionIndex=99; localStorage.setItem("
+        f"{json.dumps(storage_key)}, JSON.stringify(saved)); return true; }})()"
+    ) is True
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+
+    browser.click(".exam-mode-btn")
+    browser.navigate(f"{browser_stack.base_url}/library")
+    assert browser.evaluate(
+        f"(() => {{ const saved=JSON.parse(localStorage.getItem({json.dumps(storage_key)}));"
+        "saved.session.createdAt=1; saved.session.updatedAt=2;"
+        "saved.session.expiresAt=2 + (30 * 24 * 60 * 60 * 1000); localStorage.setItem("
+        f"{json.dumps(storage_key)}, JSON.stringify(saved)); return true; }})()"
+    ) is True
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-start-over') !== null")
+    browser.click(".quiz-recovery-start-over")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
+    assert browser.evaluate(
+        "!document.getElementById('modeSelect').classList.contains('hidden') && "
+        "document.getElementById('quiz').classList.contains('hidden')"
+    ) is True
+
+    assert browser.evaluate(
+        "(() => { const original = Storage.prototype.setItem;"
+        "Storage.prototype.setItem = function(){ throw new DOMException('full', 'QuotaExceededError'); };"
+        "window.__restoreRecoveryStorage = () => { Storage.prototype.setItem = original; }; return true; })()"
+    ) is True
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    assert browser.evaluate("index === 0 && userAnswers.q0[0] === 0") is True
+    assert "recovery is unavailable" in browser.evaluate("document.getElementById('quizRecoveryNotice').textContent")
+    browser.evaluate("window.__restoreRecoveryStorage(); true")
+
+
+def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(browser_server):
+    profile = browser_server.work_root / "firefox-recovery-reopen-profile"
+    profile.mkdir()
+    quiz_url = f"{browser_server.base_url}/quizzes/{browser_server.metadata['critical_html']}"
+
+    def launch(label):
+        port = _free_loopback_port()
+        log_path = browser_server.work_root / f"firefox-recovery-reopen-{label}.log"
+        output = log_path.open("w", encoding="utf-8")
+        process = subprocess.Popen(
+            [browser_server.firefox, "--headless", "--no-remote", "--profile", str(profile),
+             "--remote-debugging-port", str(port), "about:blank"],
+            cwd=ROOT,
+            env=browser_server.env,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            **browser_server.process_options,
+        )
+        try:
+            return process, output, _connect_firefox(port, process, log_path)
+        except Exception:
+            _terminate_process_tree(process)
+            output.close()
+            raise
+
+    def close(process, output, browser):
+        try:
+            browser.command("browser.close", {}, timeout=3.0)
+        except Exception:
+            browser.close()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+        output.close()
+
+    first_process = first_output = first_browser = None
+    second_process = second_output = second_browser = None
+    try:
+        first_process, first_output, first_browser = launch("first")
+        first_browser.navigate(quiz_url)
+        first_browser.wait_for("quizRecoveryReady === true")
+        first_browser.click(".exam-mode-btn")
+        first_browser.click("#choices .choice[data-index='1']")
+        first_browser.click("#nextBtn")
+        first_browser.wait_for("index === 1")
+        first_browser.navigate(f"{browser_server.base_url}/library")
+        time.sleep(0.5)
+        close(first_process, first_output, first_browser)
+        first_process = first_output = first_browser = None
+
+        second_process, second_output, second_browser = launch("second")
+        second_browser.navigate(quiz_url)
+        second_browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+        assert "Question 2 of 2" in second_browser.evaluate(
+            "document.querySelector('.quiz-recovery-panel p').textContent"
+        )
+        second_browser.click(".quiz-recovery-resume")
+        second_browser.wait_for("index === 1 && userAnswers.q0[0] === 1")
+    finally:
+        if first_browser is not None:
+            close(first_process, first_output, first_browser)
+        if second_browser is not None:
+            close(second_process, second_output, second_browser)
 
 
 def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack):

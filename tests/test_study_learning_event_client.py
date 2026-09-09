@@ -55,7 +55,7 @@ def test_retry_reuses_failed_event_identity_and_success_clears_the_warning_state
 
     assert "failed.map(record => saveStudyLearningEvent(record, true))" in retry
     assert "body: JSON.stringify(record.payload)" in save
-    assert "studyLearningEventSaves.delete(record.questionKey)" in save
+    assert "studyLearningEventSaves.delete(record.eventId)" in save
     assert "updateStudyLearningEventStatus()" in save
     assert "eventId: eventId" in record
     assert "await saveStudyLearningEvent(record)" in record

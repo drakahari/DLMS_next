@@ -563,6 +563,46 @@ body.home .quiz-card img {
     background: linear-gradient(135deg, #087f9f, #12b6d0);
 }
 
+.quiz-recovery-panel {
+    margin: 18px auto 0;
+    padding: 16px 18px;
+    max-width: 620px;
+    border: 1px solid color-mix(in srgb, var(--theme-accent, #1b9ff2) 45%, var(--theme-border, #607d9c));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 8%, var(--theme-panel-1, #fff));
+}
+
+.quiz-recovery-panel h3 {
+    margin: 0 0 8px;
+}
+
+.quiz-recovery-panel p {
+    margin: 0;
+}
+
+.quiz-recovery-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+
+.quiz-recovery-start-over {
+    background: var(--theme-panel-2, #eef3f8);
+    color: var(--theme-text, #172433);
+    border-color: var(--theme-border, #607d9c);
+}
+
+.quiz-recovery-notice {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--theme-border, #607d9c);
+    border-radius: 8px;
+    background: var(--theme-panel-2, #eef3f8);
+    color: var(--theme-text, #172433);
+}
+
 /* =======================
    GENERATED QUIZ: ACTIVE QUIZ PAGE
 ======================= */

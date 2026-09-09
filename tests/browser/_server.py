@@ -51,6 +51,63 @@ def seed_browser_data():
         exam_minutes=5,
     )
 
+    recovery_json = "browser_recovery_mixed.json"
+    recovery_html = "browser_recovery_mixed.html"
+    recovery_quiz = [
+        _choice_question(1, "Recovery single-choice question?", 0),
+        {
+            "number": 2,
+            "type": "choice",
+            "question": "Recovery multi-answer question?",
+            "choices": [
+                {"label": "A", "text": "First", "is_correct": True},
+                {"label": "B", "text": "Second", "is_correct": False},
+                {"label": "C", "text": "Third", "is_correct": True},
+            ],
+            "correct": ["A", "C"],
+            "explanation": "Select the first and third answers.",
+            "concepts": ["browser-recovery-multi"],
+        },
+        {
+            "number": 3,
+            "type": "matching",
+            "question": "Recovery matching question?",
+            "round_size": 2,
+            "direction": "random",
+            "pairs": [
+                {"left": "Alpha", "right": "One"},
+                {"left": "Beta", "right": "Two"},
+                {"left": "Gamma", "right": "Three"},
+            ],
+            "concepts": ["browser-recovery-matching"],
+        },
+        {
+            "number": 4,
+            "type": "hotspot",
+            "question": "Recovery hotspot question?",
+            "image_url": "/static/favicon.ico",
+            "image_alt": "Recovery test target",
+            "target": {"type": "circle", "x": 0.5, "y": 0.5, "radius": 0.2},
+            "target_label": "Center",
+            "concepts": ["browser-recovery-hotspot"],
+        },
+    ]
+    dlms._atomic_write_json(
+        str(Path(dlms.DATA_FOLDER, recovery_json)),
+        recovery_quiz,
+        expected_type=list,
+    )
+    dlms.build_quiz_html(
+        recovery_html,
+        recovery_json,
+        str(Path(dlms.QUIZ_FOLDER, recovery_html)),
+        "DLMS",
+        "Browser Recovery Mixed Types",
+        None,
+        "browser-recovery-mixed",
+        5,
+    )
+
     connection = dlms.get_db()
     question_rows = connection.execute(
         "SELECT id, question_number, question_text FROM questions WHERE quiz_id = ? ORDER BY question_number",
@@ -134,6 +191,8 @@ def seed_browser_data():
         "critical_id": critical_id,
         "critical_html": critical_html,
         "companion_html": companion_html,
+        "recovery_html": recovery_html,
+        "recovery_json": recovery_json,
         "restore_path": restore_path,
     }
     Path(dlms.APP_DATA_DIR, "browser_fixture.json").write_text(
