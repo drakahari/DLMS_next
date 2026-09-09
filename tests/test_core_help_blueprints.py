@@ -26,6 +26,7 @@ HELP_ROUTE_PATH = ROOT / "dlms" / "routes" / "help.py"
 class CoreHelpBlueprintTests(unittest.TestCase):
     EXPECTED_RULES = {
         "/": "core.home",
+        "/api/browser-presence": "core.browser_presence",
         "/config/portal.json": "core.serve_portal_config",
         "/content-packs/<pack_id>/assets/<path:asset_path>": "core.content_pack_asset",
         "/dynamic.css": "core.dynamic_css",
@@ -55,6 +56,8 @@ class CoreHelpBlueprintTests(unittest.TestCase):
         "passive_pack_image_extensions",
         "raster_image_formats",
         "quiz_asset_folder",
+        "browser_presence_update",
+        "browser_presence_setting_loaded",
     }
     OLD_ENDPOINTS = {
         "home",
@@ -112,7 +115,12 @@ class CoreHelpBlueprintTests(unittest.TestCase):
             with self.subTest(path=path):
                 rule = rules[path]
                 self.assertEqual(endpoint, rule.endpoint)
-                self.assertEqual({"GET", "HEAD", "OPTIONS"}, rule.methods)
+                expected_methods = (
+                    {"POST", "OPTIONS"}
+                    if path == "/api/browser-presence"
+                    else {"GET", "HEAD", "OPTIONS"}
+                )
+                self.assertEqual(expected_methods, rule.methods)
                 self.assertTrue(rule.strict_slashes)
 
         for old_endpoint in self.OLD_ENDPOINTS:
@@ -122,6 +130,7 @@ class CoreHelpBlueprintTests(unittest.TestCase):
         with dlms.app.test_request_context():
             expected = {
                 "core.home": ("/", {}),
+                "core.browser_presence": ("/api/browser-presence", {}),
                 "core.serve_portal_config": ("/config/portal.json", {}),
                 "core.dynamic_css": ("/dynamic.css", {}),
                 "core.content_pack_asset": (

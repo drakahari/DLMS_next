@@ -1,4 +1,4 @@
-from flask import Flask, send_from_directory, send_file, request, redirect, render_template, jsonify, Response, flash, url_for, has_request_context
+from flask import Flask, send_from_directory, send_file, request, redirect, render_template, jsonify, Response, flash, url_for, has_request_context, g
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 import os, re, json, time, sqlite3, sys, shutil, signal, threading, csv, io, random, secrets, zipfile, tempfile, html, warnings, unicodedata, ipaddress, copy
 from datetime import datetime
@@ -30,6 +30,7 @@ from dlms.runtime import (
     _dlms_url_host,
     _dlms_validate_server_host,
 )
+from dlms.browser_presence import BrowserPresenceManager
 from dlms.persistence import json_files as _json_files
 from dlms.persistence import portal as _portal_repository
 from dlms.persistence import registries as _registry_repository
@@ -2450,19 +2451,38 @@ def _validate_hotspot_shape(shape):
 # =========================
 # CONTENT PACKS - STATUS
 # =========================
-@app.route("/api/shutdown", methods=["POST"])
-def shutdown_app():
-    print("[SYSTEM] Shutdown requested via UI")
-
+def _schedule_dlms_shutdown(*, automatic=False):
+    """Schedule the existing graceful process shutdown after a response can flush."""
     pid = os.getpid()
 
     def shutdown():
+        if automatic and not browser_presence_manager.complete_automatic_shutdown(
+            _send_shutdown_signal
+        ):
+            print("[SYSTEM] Automatic shutdown deferred because browser presence or a critical operation returned")
+            return
+        if automatic:
+            return
+        _send_shutdown_signal()
+
+    def _send_shutdown_signal():
         print("[SYSTEM] Sending SIGINT to self")
         os.kill(pid, signal.SIGINT)
 
     # Delay lets Flask return HTTP 200 before dying
     from threading import Timer
     Timer(0.5, shutdown).start()
+
+
+def _schedule_automatic_browser_shutdown():
+    print("[SYSTEM] No live DLMS browser pages remain; automatic shutdown requested")
+    _schedule_dlms_shutdown(automatic=True)
+
+
+@app.route("/api/shutdown", methods=["POST"])
+def shutdown_app():
+    print("[SYSTEM] Shutdown requested via UI")
+    _schedule_dlms_shutdown()
 
     return jsonify(status="ok")
 
@@ -2577,6 +2597,65 @@ def load_portal_config():
         atomic_write_json=_atomic_write_json,
         preserve_malformed_json=_preserve_malformed_json,
     )
+
+
+browser_presence_manager = BrowserPresenceManager(
+    _schedule_automatic_browser_shutdown
+)
+
+
+def _browser_presence_setting_loaded(config):
+    browser_presence_manager.set_enabled(
+        bool((config or {}).get("automatic_browser_shutdown_enabled", False))
+    )
+
+
+def _update_browser_presence(token, closed=False):
+    if closed:
+        return browser_presence_manager.close(token)
+    return browser_presence_manager.heartbeat(token)
+
+
+def start_browser_presence_monitor():
+    """Initialize runtime-only presence state and start its daemon monitor."""
+    _browser_presence_setting_loaded(load_portal_config())
+    return browser_presence_manager.start()
+
+
+@app.before_request
+def protect_critical_operation_from_automatic_shutdown():
+    """Keep automatic shutdown outside all accepted state-changing requests."""
+    if request.method not in app.config["WTF_CSRF_METHODS"]:
+        return None
+    if request.endpoint == "core.browser_presence":
+        return None
+    browser_presence_manager.begin_critical_operation()
+    g._dlms_browser_presence_critical_operation = True
+    return None
+
+
+@app.teardown_request
+def finish_critical_operation_for_automatic_shutdown(_error):
+    if getattr(g, "_dlms_browser_presence_critical_operation", False):
+        browser_presence_manager.end_critical_operation()
+
+
+@app.after_request
+def sync_browser_presence_after_portal_replacement(response):
+    """Apply restored/reset lifecycle settings before releasing mutation guard."""
+    if request.endpoint in {
+        "maintenance.settings_confirm_restore",
+        "maintenance.reset_app_settings",
+        "maintenance.reset_all_data",
+    } and response.status_code < 500:
+        try:
+            _browser_presence_setting_loaded(load_portal_config())
+        except Exception as exc:
+            print(
+                "[BROWSER PRESENCE ERROR] Could not refresh restored lifecycle "
+                f"setting: {type(exc).__name__}: {exc}"
+            )
+    return response
 
 
 def _write_settings_portal_config(config):
@@ -2839,6 +2918,8 @@ app.register_blueprint(create_core_blueprint(CoreRouteDependencies(
     passive_pack_image_extensions=lambda: PASSIVE_PACK_IMAGE_EXTENSIONS,
     raster_image_formats=lambda: RASTER_IMAGE_FORMATS,
     quiz_asset_folder=lambda: QUIZ_ASSET_FOLDER,
+    browser_presence_update=lambda token, closed: _update_browser_presence(token, closed),
+    browser_presence_setting_loaded=lambda config: _browser_presence_setting_loaded(config),
 )))
 app.register_blueprint(create_help_blueprint())
 
@@ -5162,6 +5243,7 @@ app.register_blueprint(create_settings_blueprint(SettingsRouteDependencies(
     write_portal_config=lambda config: _write_settings_portal_config(config),
     store_background_upload=lambda upload: _store_settings_background_upload(upload),
     validate_custom_ai_url=lambda value: _validate_custom_ai_url(value),
+    set_browser_presence_shutdown_enabled=lambda enabled: browser_presence_manager.set_enabled(enabled),
     print_message=lambda *args, **kwargs: print(*args, **kwargs),
 )))
 
@@ -5771,6 +5853,7 @@ if __name__ == "__main__":
         raise SystemExit(2)
 
     server_host = startup["host"]
+    start_browser_presence_monitor()
     _dlms_print_access_urls(server_host, DLMS_SERVER_PORT)
     if startup["disable_browser"]:
         print("[DLMS] Automatic browser launch disabled (--no-browser / DLMS_NO_BROWSER).")

@@ -37,6 +37,49 @@
     return originalFetch(input, {...init, headers});
   };
 
+  const portalConfigPromise = fetch('/config/portal.json', {cache:'no-store'})
+    .then(response => response.ok ? response.json() : null)
+    .catch(() => null);
+  const makePresenceToken = () => {
+    if (window.crypto?.randomUUID) return `page_${window.crypto.randomUUID().replaceAll('-', '_')}`;
+    const random = Math.random().toString(36).slice(2);
+    return `page_${Date.now().toString(36)}_${random}_${random}`;
+  };
+  const browserPresenceToken = makePresenceToken();
+  let browserPresenceEnabled = false;
+  let browserPresenceTimer = null;
+  const reportBrowserPresence = (eventName = 'present') => {
+    if (!browserPresenceEnabled) return Promise.resolve(false);
+    return fetch('/api/browser-presence', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({token: browserPresenceToken, event: eventName}),
+      keepalive: eventName === 'closed'
+    }).then(response => response.ok).catch(() => false);
+  };
+  const startBrowserPresence = () => {
+    if (!browserPresenceEnabled) return;
+    if (browserPresenceTimer !== null) clearInterval(browserPresenceTimer);
+    reportBrowserPresence();
+    browserPresenceTimer = window.setInterval(reportBrowserPresence, 30000);
+  };
+  const stopBrowserPresence = () => {
+    if (browserPresenceTimer !== null) clearInterval(browserPresenceTimer);
+    browserPresenceTimer = null;
+    reportBrowserPresence('closed');
+  };
+  window.dlmsBrowserPresence = {
+    get enabled() { return browserPresenceEnabled; },
+    token: browserPresenceToken,
+    heartbeat: () => reportBrowserPresence()
+  };
+  window.addEventListener('pagehide', stopBrowserPresence);
+  window.addEventListener('pageshow', () => startBrowserPresence());
+  portalConfigPromise.then(config => {
+    browserPresenceEnabled = config?.automatic_browser_shutdown_enabled === true;
+    if (browserPresenceEnabled) startBrowserPresence();
+  });
+
   const sidebar = document.querySelector('.dashboard-sidebar');
   if (!sidebar) return;
 
@@ -230,12 +273,12 @@
   navigationCustomize.textContent = 'Customize navigation';
   themeQuick.after(navigationCustomize);
   const themeSelect = themeQuick.querySelector('select');
-  fetch('/config/portal.json', {cache:'no-store'}).then(r => r.ok ? r.json() : null).then(cfg => {
+  portalConfigPromise.then(cfg => {
     if (cfg?.theme) themeSelect.value = cfg.theme;
     const visibility = normalizeStudyAreaVisibility(cfg?.study_area_visibility);
     applyStudyAreaVisibility(visibility);
     cacheStudyAreaVisibility(visibility);
-  }).catch(()=>{}).finally(() => { themeQuick.hidden = false; });
+  }).finally(() => { themeQuick.hidden = false; });
   document.querySelector('form[action="/settings/navigation/save"]')?.addEventListener('submit', event => {
     const form = event.currentTarget;
     cacheStudyAreaVisibility({

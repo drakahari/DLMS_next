@@ -28,6 +28,7 @@ def _portal_defaults(
             "medical": True,
             "other": True,
         },
+        "automatic_browser_shutdown_enabled": False,
 
         # AI Explanation Helper
         "ai_helper_enabled": True,
@@ -143,6 +144,9 @@ def load_portal_config(
     # Normalize booleans (checkbox safety)
     cfg["show_confidence"] = bool(cfg.get("show_confidence", False))
     cfg["enable_regex_replace"] = bool(cfg.get("enable_regex_replace", False))
+    cfg["automatic_browser_shutdown_enabled"] = bool(
+        cfg.get("automatic_browser_shutdown_enabled", False)
+    )
 
     # Normalize title
     cfg["title"] = str(cfg.get("title") or default["title"]).strip()

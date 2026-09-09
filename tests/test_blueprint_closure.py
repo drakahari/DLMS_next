@@ -35,7 +35,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "admin_images": 5,
         "anki": 12,
         "content_packs": 8,
-        "core": 7,
+        "core": 8,
         "help": 7,
         "history": 13,
         "it": 3,
@@ -45,7 +45,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "medical": 6,
         "pdf_import": 12,
         "quiz": 31,
-        "settings": 13,
+        "settings": 15,
         "study_packs": 9,
     }
     EXPECTED_FACTORY_NAMES = {
@@ -69,7 +69,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.admin_images.AdminImageRouteDependencies": 6,
         "dlms.routes.anki.AnkiRouteDependencies": 22,
         "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
-        "dlms.routes.core.CoreRouteDependencies": 14,
+        "dlms.routes.core.CoreRouteDependencies": 16,
         "dlms.routes.history.HistoryRouteDependencies": 9,
         "dlms.routes.it.ITStudyDependencies": 5,
         "dlms.routes.law.LawRouteDependencies": 30,
@@ -80,11 +80,11 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 18,
-        "dlms.routes.settings.SettingsRouteDependencies": 9,
+        "dlms.routes.settings.SettingsRouteDependencies": 10,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 25,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "43622e2af75b32145b25e49b9a1e3e60deaf02d3db512ac115c1f036442f0f72"
+        "86677c3f11a5f4d17015154a05f731ab5ebdcd5864bc562c0f9bb3eb2c5955ac"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -135,13 +135,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_178_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_181_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(178, len(rules))
+        self.assertEqual(181, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(177, len(blueprint_rules))
+        self.assertEqual(180, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -328,6 +328,7 @@ class BlueprintClosureTests(unittest.TestCase):
                 "validate_unsafe_request_origin",
                 "reject_declared_oversized_workflow_upload",
                 "csrf_protect",
+                "protect_critical_operation_from_automatic_shutdown",
             ],
             [
                 function.__name__
@@ -335,10 +336,17 @@ class BlueprintClosureTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            ["deliver_csrf_token"],
+            ["deliver_csrf_token", "sync_browser_presence_after_portal_replacement"],
             [
                 function.__name__
                 for function in dlms.app.after_request_funcs.get(None, [])
+            ],
+        )
+        self.assertEqual(
+            ["finish_critical_operation_for_automatic_shutdown"],
+            [
+                function.__name__
+                for function in dlms.app.teardown_request_funcs.get(None, [])
             ],
         )
         context_processors = dlms.app.template_context_processors.get(None, [])

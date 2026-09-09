@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from flask import Blueprint, jsonify, render_template, send_from_directory
+from flask import Blueprint, jsonify, render_template, request, send_from_directory
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,8 @@ class CoreRouteDependencies:
     passive_pack_image_extensions: Callable[[], set[str]]
     raster_image_formats: Callable[[], set[str]]
     quiz_asset_folder: Callable[[], str]
+    browser_presence_update: Callable[[str, bool], bool]
+    browser_presence_setting_loaded: Callable[[dict[str, Any]], None]
 
 
 def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
@@ -125,6 +127,7 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
         )
 
         cfg = dependencies.load_portal_config()
+        dependencies.browser_presence_setting_loaded(cfg)
 
         dependencies.debug_print("[PORTAL CONFIG] Loaded config:", cfg)
         dependencies.debug_print(
@@ -132,6 +135,22 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
         )
 
         return jsonify(cfg)
+
+    @blueprint.post("/api/browser-presence")
+    def browser_presence():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"ok": False, "error": "Invalid presence payload"}), 400
+        token = payload.get("token")
+        event = payload.get("event", "present")
+        if event not in {"present", "closed"}:
+            return jsonify({"ok": False, "error": "Invalid presence event"}), 400
+        closed = event == "closed"
+        try:
+            accepted = dependencies.browser_presence_update(token, closed)
+        except ValueError:
+            return jsonify({"ok": False, "error": "Invalid presence token"}), 400
+        return jsonify({"ok": True, "accepted": bool(accepted)})
 
     @blueprint.get("/dynamic.css")
     def dynamic_css():

@@ -4486,3 +4486,93 @@ def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
         "message": "",
         "current": "Law Study Anki",
     }
+
+
+def test_browser_presence_survives_navigation_then_stops_isolated_server(tmp_path):
+    firefox = shutil.which("firefox") or shutil.which("firefox-esr")
+    if not firefox:
+        pytest.skip("Firefox is not installed")
+
+    data_root = tmp_path / "presence-data"
+    server_port = _free_loopback_port()
+    browser_port = _free_loopback_port()
+    base_url = f"http://127.0.0.1:{server_port}"
+    server_log = tmp_path / "presence-server.log"
+    browser_log = tmp_path / "presence-firefox.log"
+    profile = tmp_path / "presence-profile"
+    profile.mkdir()
+    env = os.environ.copy()
+    env.update({
+        "QUIZAPP_DATA_DIR": str(data_root),
+        "DLMS_NO_BROWSER": "1",
+        "DLMS_BROWSER_TEST_PORT": str(server_port),
+        "DLMS_BROWSER_PRESENCE_TEST_GRACE_SECONDS": "8",
+        "DLMS_BROWSER_PRESENCE_TEST_TOKEN_TTL_SECONDS": "0.8",
+        "DLMS_BROWSER_PRESENCE_TEST_POLL_SECONDS": "0.05",
+        "MOZ_CRASHREPORTER_DISABLE": "1",
+        "MOZ_DISABLE_AUTO_SAFE_MODE": "1",
+        "PYTHONUNBUFFERED": "1",
+    })
+    process_options = {"start_new_session": True} if os.name == "posix" else {}
+    server_process = None
+    browser_process = None
+    browser = None
+    try:
+        with server_log.open("w", encoding="utf-8") as server_output:
+            server_process = subprocess.Popen(
+                [sys.executable, str(ROOT / "tests" / "browser" / "_server.py")],
+                cwd=ROOT,
+                env=env,
+                stdout=server_output,
+                stderr=subprocess.STDOUT,
+                **process_options,
+            )
+            _wait_for_server(f"{base_url}/library", server_process, server_log)
+
+        with browser_log.open("w", encoding="utf-8") as browser_output:
+            browser_process = subprocess.Popen(
+                [
+                    firefox,
+                    "--headless",
+                    "--no-remote",
+                    "--profile",
+                    str(profile),
+                    "--remote-debugging-port",
+                    str(browser_port),
+                    "about:blank",
+                ],
+                cwd=ROOT,
+                env=env,
+                stdout=browser_output,
+                stderr=subprocess.STDOUT,
+                **process_options,
+            )
+            browser = _connect_firefox(browser_port, browser_process, browser_log)
+
+        for path in ("/", "/library", "/library"):
+            browser.navigate(base_url + path)
+            browser.wait_for("window.dlmsBrowserPresence?.enabled === true")
+            browser.evaluate(
+                "window.__dlmsPresenceProbe=null;"
+                "window.dlmsBrowserPresence.heartbeat().then(value=>window.__dlmsPresenceProbe=value)"
+            )
+            browser.wait_for("window.__dlmsPresenceProbe === true")
+            assert server_process.poll() is None
+
+        browser.close()
+        browser = None
+        _terminate_process_tree(browser_process)
+        browser_process = None
+
+        deadline = time.monotonic() + 12
+        while server_process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert server_process.poll() is not None, (
+            "presence-enabled server did not stop after its final browser page expired\n"
+            + server_log.read_text(encoding="utf-8", errors="replace")[-4000:]
+        )
+    finally:
+        if browser is not None:
+            browser.close()
+        _terminate_process_tree(browser_process)
+        _terminate_process_tree(server_process)

@@ -30,6 +30,16 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
     EXPECTED_RULES = {
         ("settings.settings_page", "/settings", frozenset({"GET"})),
         (
+            "settings.settings_lifecycle_page",
+            "/settings/lifecycle",
+            frozenset({"GET"}),
+        ),
+        (
+            "settings.save_lifecycle_settings",
+            "/settings/lifecycle/save",
+            frozenset({"POST"}),
+        ),
+        (
             "settings.settings_navigation_page",
             "/settings/navigation",
             frozenset({"GET"}),
@@ -187,6 +197,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
         "write_portal_config",
         "store_background_upload",
         "validate_custom_ai_url",
+        "set_browser_presence_shutdown_enabled",
         "print_message",
     }
     MAINTENANCE_DEPENDENCIES = {
@@ -255,7 +266,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
             for rule in rules
         }
         self.assertEqual(self.EXPECTED_RULES, actual)
-        self.assertEqual(33, len(rules))
+        self.assertEqual(35, len(rules))
         for rule in rules:
             with self.subTest(endpoint=rule.endpoint, rule=rule.rule):
                 self.assertTrue(rule.strict_slashes)
@@ -267,6 +278,8 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
     def test_namespaced_endpoints_build_canonical_urls_and_aliases_remain(self):
         canonical = {
             "settings.settings_page": "/settings",
+            "settings.settings_lifecycle_page": "/settings/lifecycle",
+            "settings.save_lifecycle_settings": "/settings/lifecycle/save",
             "settings.settings_navigation_page": "/settings/navigation",
             "settings.save_navigation_settings": "/settings/navigation/save",
             "settings.settings_appearance_page": "/settings/appearance",
@@ -407,6 +420,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
             'href="/settings/backup"',
             'href="/settings/reset-remove"',
             'action="/settings/navigation/save"',
+            'action="/settings/lifecycle/save"',
             'action="/settings/appearance/save"',
             'action="/settings/ai/save"',
             'action="/settings/parsing/save"',

@@ -26,6 +26,7 @@ class SettingsRouteDependencies:
     write_portal_config: Dependency
     store_background_upload: Dependency
     validate_custom_ai_url: Dependency
+    set_browser_presence_shutdown_enabled: Dependency
     print_message: Dependency
 
 
@@ -40,6 +41,25 @@ def _bind_dependencies(view_func, dependencies):
 def settings_page(_dependencies):
     """Settings landing page for the completed category-based settings UI."""
     return render_template("settings/index.html")
+
+
+def settings_lifecycle_page(dependencies):
+    cfg = dependencies.load_portal_config()
+    return render_template(
+        "settings/lifecycle.html",
+        automatic_browser_shutdown_enabled=bool(
+            cfg.get("automatic_browser_shutdown_enabled", False)
+        ),
+    )
+
+
+def save_lifecycle_settings(dependencies):
+    cfg = dependencies.load_portal_config()
+    enabled = "automatic_browser_shutdown_enabled" in request.form
+    cfg["automatic_browser_shutdown_enabled"] = enabled
+    dependencies.write_portal_config(cfg)
+    dependencies.set_browser_presence_shutdown_enabled(enabled)
+    return redirect("/settings/lifecycle?saved=1")
 
 
 def settings_navigation_page(dependencies):
@@ -201,6 +221,18 @@ def create_settings_blueprint(dependencies):
     blueprint = Blueprint("settings", __name__)
     rules = (
         ("/settings", "settings_page", settings_page, ["GET"]),
+        (
+            "/settings/lifecycle",
+            "settings_lifecycle_page",
+            settings_lifecycle_page,
+            ["GET"],
+        ),
+        (
+            "/settings/lifecycle/save",
+            "save_lifecycle_settings",
+            save_lifecycle_settings,
+            ["POST"],
+        ),
         (
             "/settings/navigation",
             "settings_navigation_page",

@@ -266,7 +266,7 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("if (navItem) navItem.hidden = !visible", source)
         self.assertIn("form[action=\"/settings/navigation/save\"]", source)
 
-        configuration_sync = source[source.index("fetch('/config/portal.json'"):source.index("themeSelect.addEventListener('change'")]
+        configuration_sync = source[source.rindex("portalConfigPromise.then(cfg =>"):source.index("themeSelect.addEventListener('change'")]
         self.assertIn("applyStudyAreaVisibility(visibility)", configuration_sync)
         self.assertIn("cacheStudyAreaVisibility(visibility)", configuration_sync)
         self.assertNotIn("mountNavigation(", configuration_sync)
