@@ -340,7 +340,12 @@ class CsrfProtectionTests(unittest.TestCase):
 
     def test_multipart_pdf_backup_and_content_pack_requests_pass_csrf_layer(self):
         token = csrf_token(self.client)
-        pages = [{"page": 1, "lines": ["1. Which?", "A. One", "B. Two", "Correct Answer: A"]}]
+        pages = [{"page": 1, "lines": [
+            "1. Which security protocol should be used for protected remote administration?",
+            "A. Use the encrypted protocol with authenticated transport for this connection.",
+            "B. Use the legacy clear-text protocol without transport protection.",
+            "Correct Answer: A",
+        ]}]
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
             dlms, "PDF_IMPORT_DRAFT_FOLDER", directory
         ), mock.patch.object(dlms, "_pdf_extract_pages", return_value=pages), mock.patch.object(

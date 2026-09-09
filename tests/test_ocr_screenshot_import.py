@@ -384,14 +384,16 @@ class OCRScreenshotImportTests(unittest.TestCase):
         manager.begin_critical_operation.assert_called_once_with()
         manager.end_critical_operation.assert_called_once_with()
 
-    def test_smart_pdf_help_documents_screenshot_ocr_without_claiming_pdf_ocr(self):
+    def test_smart_pdf_help_documents_screenshot_and_selective_pdf_ocr(self):
         html = (Path(__file__).parents[1] / "static" / "help-smart-pdf.html").read_text(
             encoding="utf-8"
         )
         self.assertIn("Quiz screenshot OCR", html)
         self.assertIn("OCR runs locally on this device", html)
         self.assertIn("2–26 choices and multiple correct answers", html)
-        self.assertIn("Screenshot OCR does not OCR scanned PDF pages yet", html)
+        self.assertIn("Selective scanned-page OCR", html)
+        self.assertIn("choose up to 25", html)
+        self.assertIn("not glossary extraction", html)
 
     def test_cancellation_registry_signals_active_owner_without_cross_task_effects(self):
         registry = ocr_screenshots.OCRTaskCancellationRegistry()

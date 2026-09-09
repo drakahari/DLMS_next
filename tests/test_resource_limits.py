@@ -166,7 +166,10 @@ class PdfResourceLimitTests(unittest.TestCase):
 
         pages = self._extract_with_reader(FakeReader([page]))
 
-        self.assertEqual({"page": 1, "lines": ["Question 1", "A. One"]}, pages[0])
+        self.assertEqual(
+            {"page": 1, "lines": ["Question 1", "A. One"], "has_images": False},
+            pages[0],
+        )
         self.assertEqual([mock.call(visitor_text=mock.ANY), mock.call()], page.extract_text.call_args_list)
 
     def test_missing_optional_pdf_dependency_preserves_runtime_error(self):

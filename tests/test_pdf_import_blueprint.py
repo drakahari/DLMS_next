@@ -35,6 +35,13 @@ class PDFImportBlueprintTests(unittest.TestCase):
             {"POST"},
         ),
         "pdf_import.pdf_import_analyze": ("/pdf-import/analyze", {"POST"}),
+        "pdf_import.pdf_import_ocr_offer": ("/pdf-import/ocr/<draft_id>", {"GET"}),
+        "pdf_import.pdf_import_ocr_start": ("/pdf-import/ocr/<draft_id>/start", {"POST"}),
+        "pdf_import.pdf_import_ocr_continue_without": ("/pdf-import/ocr/<draft_id>/continue", {"POST"}),
+        "pdf_import.pdf_import_ocr_processing": ("/pdf-import/ocr/<draft_id>/process", {"GET"}),
+        "pdf_import.pdf_import_ocr_process_next": ("/pdf-import/ocr/<draft_id>/process/next", {"POST"}),
+        "pdf_import.pdf_import_ocr_cancel": ("/pdf-import/ocr/<draft_id>/cancel", {"POST"}),
+        "pdf_import.pdf_import_ocr_page_preview": ("/pdf-import/ocr/<draft_id>/page/<int:page_number>", {"GET"}),
         "pdf_import.pdf_import_screenshots": (
             "/pdf-import/screenshots",
             {"POST"},
@@ -124,6 +131,14 @@ class PDFImportBlueprintTests(unittest.TestCase):
         "infer_ocr_questions",
         "ocr_staged_source_path",
         "cleanup_ocr_staging",
+        "pdf_ocr_max_selected_pages",
+        "analyze_pdf_text_usefulness",
+        "stage_pdf_ocr_document",
+        "validate_pdf_ocr_selection",
+        "render_pdf_ocr_page",
+        "recognize_pdf_ocr_page",
+        "pdf_ocr_page_preview_path",
+        "cleanup_pdf_ocr_staging",
         "ocr_cancellations",
     }
 
@@ -179,6 +194,13 @@ class PDFImportBlueprintTests(unittest.TestCase):
                 "draft_id": "draft",
                 "source_id": "source",
             },
+            "pdf_import.pdf_import_ocr_offer": {"draft_id": "draft"},
+            "pdf_import.pdf_import_ocr_start": {"draft_id": "draft"},
+            "pdf_import.pdf_import_ocr_continue_without": {"draft_id": "draft"},
+            "pdf_import.pdf_import_ocr_processing": {"draft_id": "draft"},
+            "pdf_import.pdf_import_ocr_process_next": {"draft_id": "draft"},
+            "pdf_import.pdf_import_ocr_cancel": {"draft_id": "draft"},
+            "pdf_import.pdf_import_ocr_page_preview": {"draft_id": "draft", "page_number": 2},
             "pdf_import.pdf_question_bank_page": {"bank_id": "question_bank"},
             "pdf_import.pdf_question_bank_generate": {"bank_id": "question_bank"},
             "pdf_import.pdf_terminology_bank_page": {"bank_id": "term_bank"},
@@ -188,6 +210,7 @@ class PDFImportBlueprintTests(unittest.TestCase):
             endpoint: path.replace("<bank_id>", values.get(endpoint, {}).get("bank_id", ""))
             .replace("<draft_id>", values.get(endpoint, {}).get("draft_id", ""))
             .replace("<source_id>", values.get(endpoint, {}).get("source_id", ""))
+            .replace("<int:page_number>", str(values.get(endpoint, {}).get("page_number", "")))
             for endpoint, (path, _methods) in self.EXPECTED_RULES.items()
         }
         with dlms.app.test_request_context():

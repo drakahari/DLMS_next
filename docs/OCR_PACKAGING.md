@@ -29,6 +29,12 @@ must supply and validate its own native executable, dependent libraries,
 language data, and licenses; validation on one operating system does not prove
 the other targets.
 
+Selective scanned-PDF OCR also requires `pypdfium2`. It remains a normal locked
+Python dependency rather than part of the Tesseract bundle. The canonical
+PyInstaller manifest includes its native `pypdfium2_raw` library and package
+license metadata; every release target must prove PDF-page rasterization in its
+own native build before scanned-PDF OCR is claimed for that target.
+
 Smart PDF question banks now save list-capable `correct_answers` values. At
 load/conversion boundaries, legacy scalar `correct` values remain supported and
 are normalized in memory without rewriting existing user files.

@@ -276,7 +276,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
             self.assertRegex(requirement, r">=[^,]+,<")
 
         locked = (ROOT / "requirements-lock.txt").read_text(encoding="utf-8")
-        for package in ("Flask", "Flask-WTF", "genanki", "Werkzeug", "pypdf", "Pillow"):
+        for package in ("Flask", "Flask-WTF", "genanki", "Werkzeug", "pypdf", "pypdfium2", "Pillow"):
             self.assertRegex(locked, rf"(?im)^{re.escape(package)}==[^\s]+$")
 
     def test_common_local_and_generated_artifacts_are_ignored(self):

@@ -17,6 +17,7 @@ Jinja2==3.1.6
 MarkupSafe==3.0.3
 Pillow==12.3.0
 pypdf==6.16.2
+pypdfium2==5.13.0
 PyYAML==6.0.3
 Werkzeug==3.1.8
 WTForms==3.2.2

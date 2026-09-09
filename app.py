@@ -54,6 +54,7 @@ from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
 from dlms.services import ocr as _ocr_service
 from dlms.services import ocr_screenshots as _ocr_screenshot_service
+from dlms.services import pdf_ocr as _pdf_ocr_service
 from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
 from dlms.routes.it import ITStudyDependencies, create_it_blueprint
@@ -569,6 +570,7 @@ QUIZ_ASSET_FOLDER = os.path.join(APP_DATA_DIR, "quiz_assets")
 IMAGE_BUILDER_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "image_builder_drafts")
 PDF_IMPORT_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "pdf_import_drafts")
 OCR_IMPORT_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_screenshots")
+PDF_OCR_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_pdfs")
 PDF_QUESTION_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_question_banks")
 PDF_TERMINOLOGY_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_terminology_banks")
 CONTENT_PACK_STAGING_FOLDER = os.path.join(APP_DATA_DIR, "content_pack_staging")
@@ -587,6 +589,7 @@ for d in [
     IMAGE_BUILDER_DRAFT_FOLDER,
     PDF_IMPORT_DRAFT_FOLDER,
     OCR_IMPORT_STAGING_FOLDER,
+    PDF_OCR_STAGING_FOLDER,
     PDF_QUESTION_BANK_FOLDER,
     PDF_TERMINOLOGY_BANK_FOLDER,
     CONTENT_PACK_STAGING_FOLDER,
@@ -4039,6 +4042,8 @@ OCR_SCREENSHOT_MAX_FILE_BYTES = _ocr_screenshot_service.OCR_SCREENSHOT_MAX_FILE_
 OCR_SCREENSHOT_MAX_FILES = _ocr_screenshot_service.OCR_SCREENSHOT_MAX_FILES
 OCR_SCREENSHOT_ALLOWED_EXTENSIONS = _ocr_screenshot_service.OCR_SCREENSHOT_ALLOWED_EXTENSIONS
 OCR_SCREENSHOT_CANCELLATIONS = _ocr_screenshot_service.OCRTaskCancellationRegistry()
+PDF_OCR_RENDER_LOCK = threading.RLock()
+PDF_OCR_MAX_SELECTED_PAGES = _pdf_ocr_service.PDF_OCR_MAX_SELECTED_PAGES
 # Two thousand pages covers unusually large study manuals/question banks while
 # placing a deterministic bound on per-request PDF work.
 PDF_IMPORT_MAX_PAGES = _smart_pdf_parser.PDF_IMPORT_MAX_PAGES
@@ -4176,9 +4181,11 @@ def _cleanup_pdf_ocr_staging(draft_id):
 
 
 def _prune_pdf_ocr_staging():
-    return _ocr_screenshot_service.prune_stale_screenshot_tasks(
+    screenshot_count = _ocr_screenshot_service.prune_stale_screenshot_tasks(
         OCR_IMPORT_STAGING_FOLDER
     )
+    pdf_count = _pdf_ocr_service.prune_stale_pdf_ocr_tasks(PDF_OCR_STAGING_FOLDER)
+    return screenshot_count + pdf_count
 
 
 def _recognize_pdf_ocr_source(draft_id, source, cancel_requested):
@@ -4192,6 +4199,54 @@ def _recognize_pdf_ocr_source(draft_id, source, cancel_requested):
         cancel_requested=cancel_requested,
         image_suffix=path.suffix,
     )
+
+
+def _analyze_pdf_text_usefulness(pages):
+    return _pdf_ocr_service.analyze_pdf_text_usefulness(pages)
+
+
+def _stage_pdf_ocr_document(draft_id, pdf_path):
+    return _pdf_ocr_service.stage_pdf_ocr_task(
+        PDF_OCR_STAGING_FOLDER,
+        draft_id,
+        pdf_path,
+        atomic_write_json=_atomic_write_json,
+    )
+
+
+def _render_pdf_ocr_page(draft_id, page_number, cancel_requested):
+    return _pdf_ocr_service.render_pdf_page(
+        PDF_OCR_STAGING_FOLDER,
+        draft_id,
+        page_number,
+        render_lock=PDF_OCR_RENDER_LOCK,
+        cancel_requested=cancel_requested,
+    )
+
+
+def _recognize_rendered_pdf_page(draft_id, source, cancel_requested):
+    path = _pdf_ocr_service.staged_page_path(
+        PDF_OCR_STAGING_FOLDER, draft_id, source["page"]
+    )
+    return _ocr_service.recognize_image_bytes(
+        path.read_bytes(),
+        source_id=source["id"],
+        source_width=int(source["width"]),
+        source_height=int(source["height"]),
+        page_index=int(source["page"]) - 1,
+        cancel_requested=cancel_requested,
+        image_suffix=".png",
+    )
+
+
+def _pdf_ocr_page_preview_path(draft_id, page_number):
+    return _pdf_ocr_service.staged_page_path(
+        PDF_OCR_STAGING_FOLDER, draft_id, page_number
+    )
+
+
+def _cleanup_pdf_document_ocr_staging(draft_id):
+    return _pdf_ocr_service.cleanup_pdf_ocr_task(PDF_OCR_STAGING_FOLDER, draft_id)
 
 
 def _delete_pdf_import_draft_file(draft_id):
@@ -5811,6 +5866,26 @@ app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(
         draft_id, source
     ),
     cleanup_ocr_staging=lambda draft_id: _cleanup_pdf_ocr_staging(draft_id),
+    pdf_ocr_max_selected_pages=lambda: PDF_OCR_MAX_SELECTED_PAGES,
+    analyze_pdf_text_usefulness=lambda pages: _analyze_pdf_text_usefulness(pages),
+    stage_pdf_ocr_document=lambda draft_id, pdf_path: _stage_pdf_ocr_document(
+        draft_id, pdf_path
+    ),
+    validate_pdf_ocr_selection=lambda selected, candidates: _pdf_ocr_service.validate_selected_pages(
+        selected, candidates
+    ),
+    render_pdf_ocr_page=lambda draft_id, page_number, cancel_requested: _render_pdf_ocr_page(
+        draft_id, page_number, cancel_requested
+    ),
+    recognize_pdf_ocr_page=lambda draft_id, source, cancel_requested: _recognize_rendered_pdf_page(
+        draft_id, source, cancel_requested
+    ),
+    pdf_ocr_page_preview_path=lambda draft_id, page_number: _pdf_ocr_page_preview_path(
+        draft_id, page_number
+    ),
+    cleanup_pdf_ocr_staging=lambda draft_id: _cleanup_pdf_document_ocr_staging(
+        draft_id
+    ),
     ocr_cancellations=OCR_SCREENSHOT_CANCELLATIONS,
 )))
 

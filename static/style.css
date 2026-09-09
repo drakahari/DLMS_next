@@ -9640,6 +9640,15 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .pdf-ocr-confidence-list { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
 .pdf-ocr-confidence-list span { padding:8px 10px;border:1px solid var(--semantic-section-border);border-radius:8px;background:var(--semantic-section-surface);color:var(--theme-muted-text,#b8c2cc);font-size:12px; }
 .pdf-ocr-confidence-list strong { display:block;margin-top:2px;color:var(--theme-page-text,#eaf2ff); }
+.pdf-ocr-page-selection fieldset { margin:18px 0 0;padding:0;border:0;min-width:0; }
+.pdf-ocr-page-selection legend { margin-bottom:10px;color:var(--theme-page-text,#eaf2ff);font-weight:800; }
+.pdf-ocr-page-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px; }
+.pdf-ocr-page-option { display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--semantic-section-border);border-radius:10px;background:var(--semantic-section-surface);color:var(--theme-page-text,#eaf2ff);cursor:pointer; }
+.pdf-ocr-page-option input { width:auto;margin-top:3px;accent-color:var(--accent,#38bdf8); }
+.pdf-ocr-page-option span,.pdf-ocr-page-option small { display:block;min-width:0;overflow-wrap:anywhere; }
+.pdf-ocr-page-option small { margin-top:3px;color:var(--theme-muted-text,#b8c2cc); }
+.pdf-ocr-offer-actions { display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px; }
+.pdf-ocr-offer-actions form { margin:0; }
 .pdf-ocr-unassigned,.pdf-ocr-failure-list { padding:9px 11px;border:1px solid var(--semantic-warning-border);border-radius:9px;background:var(--semantic-warning-surface);color:var(--semantic-warning-text); }
 .pdf-ocr-unassigned summary,.pdf-ocr-failure-list summary { cursor:pointer;font-weight:800; }
 .pdf-ocr-unassigned p { color:var(--theme-page-text,#eaf2ff)!important;font-size:12px; }

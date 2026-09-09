@@ -90,7 +90,10 @@ class PDFImportParserTests(unittest.TestCase):
 
         self.assertEqual(["Course Header"], removed)
         self.assertEqual(
-            [{"page": 4, "lines": []}, {"page": 9, "lines": []}],
+            [
+                {"page": 4, "lines": [], "has_images": False},
+                {"page": 9, "lines": [], "has_images": False},
+            ],
             cleaned,
         )
         self.assertEqual([], dlms._pdf_question_recovery_result(cleaned)["questions"])

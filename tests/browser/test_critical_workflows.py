@@ -5273,6 +5273,106 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
     assert saved["rows"] == 2
 
 
+def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    fixture = ROOT / "tests" / "fixtures" / "ocr" / "pdf" / "mixed-text-and-scan.pdf"
+
+    browser.navigate(f"{base_url}/pdf-import")
+    browser.wait_for(
+        "window.dlmsCsrfToken && document.querySelector('form[action=\"/pdf-import/analyze\"] input[name=csrf_token]')"
+    )
+    browser.set_files("form[action=\"/pdf-import/analyze\"] [name=pdf_file]", [str(fixture)])
+    browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/analyze\"]');"
+        "form.querySelector('[name=quiz_title]').value='Browser Mixed PDF OCR';"
+        "form.querySelector('[name=pdf_content_type]').value='question_bank';"
+        "form.querySelector('[name=rights_ok]').checked=true;return true;})()"
+    )
+    browser.click("form[action=\"/pdf-import/analyze\"] button[type=submit]")
+    browser.wait_for("location.pathname.startsWith('/pdf-import/ocr/')", timeout=15)
+    browser.wait_for("document.querySelectorAll('[name=ocr_pages]').length>0")
+    offer = browser.evaluate(
+        "(() => {const choices=[...document.querySelectorAll('[name=ocr_pages]')];"
+        "const group=document.querySelector('.pdf-ocr-page-selection');return {pages:choices.map(input=>input.value),"
+        "checked:choices.map(input=>input.checked),optional:document.body.innerText.includes('OCR is optional'),"
+        "limit:document.body.innerText.includes('maximum 25'),overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert offer == {
+        "pages": ["2"],
+        "checked": [False],
+        "optional": True,
+        "limit": True,
+        "overflow": True,
+    }
+
+    offer_url = browser.evaluate("location.href")
+    surfaces = {}
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        status = browser.evaluate(
+            f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        )
+        assert status == 200
+        browser.navigate(offer_url)
+        browser.wait_for("document.querySelector('.pdf-ocr-page-option')")
+        state = browser.evaluate(
+            "(() => {const card=document.querySelector('.pdf-ocr-page-option'),style=getComputedStyle(card);"
+            "return {background:style.backgroundColor,color:style.color,border:style.borderColor,"
+            "focusable:card.querySelector('input').tabIndex===0,overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert state["focusable"] is True
+        assert state["overflow"] is True
+        surfaces[theme] = state["background"]
+    assert len(set(surfaces.values())) == 4
+
+    browser.set_viewport(390, 820)
+    assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
+    browser.set_viewport(1280, 1000)
+    browser.click("[name=ocr_pages][value='2']")
+    browser.click(".pdf-ocr-page-selection button[type=submit]")
+    browser.wait_for(
+        "location.pathname.startsWith('/pdf-import/review/') && document.querySelectorAll('.pdf-import-question-card').length===2",
+        timeout=25,
+    )
+    review = browser.evaluate(
+        "(() => ({cards:document.querySelectorAll('.pdf-import-question-card').length,"
+        "ocrCards:document.querySelectorAll('.pdf-ocr-review-source').length,"
+        "preview:!!document.querySelector('.pdf-ocr-preview-frame img[src*=\"/page/2\"]'),"
+        "pageLabel:document.body.innerText.includes('PDF page 2'),"
+        "confirmation:!!document.querySelector('[data-pdf-role=correctness-confirmed]')}))()"
+    )
+    assert review == {
+        "cards": 2,
+        "ocrCards": 1,
+        "preview": True,
+        "pageLabel": True,
+        "confirmation": True,
+    }
+    draft_id = browser.evaluate("location.pathname.split('/').pop()")
+    browser.evaluate(
+        "document.querySelector('[data-pdf-role=correctness-confirmed]').checked=true"
+    )
+    browser.evaluate(
+        "document.getElementById('pdfReviewForm').requestSubmit("
+        "document.querySelector('#pdfReviewForm button[type=submit]:not([formaction])'))"
+    )
+    browser.wait_for(
+        "location.pathname.startsWith('/pdf-import/bank/') || "
+        "document.querySelector('.pdf-import-flash-stack .flash')"
+    )
+    save_state = browser.evaluate(
+        "({path:location.pathname,flash:document.querySelector('.pdf-import-flash-stack .flash')?.textContent||''})"
+    )
+    assert save_state["path"].startswith("/pdf-import/bank/"), save_state
+    saved = browser.evaluate(
+        "(() => ({rows:document.querySelectorAll('.pdf-bank-question-table tbody tr').length,"
+        "source:document.body.innerText.includes('Browser Mixed PDF OCR')}))()"
+    )
+    assert saved == {"rows": 2, "source": True}
+    assert not (browser_stack.data_root / "uploads" / "ocr_pdfs" / draft_id).exists()
+
+
 def test_law_semantic_surfaces_follow_all_themes(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url

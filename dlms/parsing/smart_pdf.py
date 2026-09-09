@@ -26,6 +26,35 @@ def _pdf_clean_line(line):
     line = re.sub(r"[ \t]+", " ", line).strip()
     return line
 
+
+def _pdf_page_has_images(page, *, max_depth=4):
+    """Inspect direct and form-nested XObjects without decoding image data."""
+
+    visited = set()
+
+    def _resolve(value):
+        return value.get_object() if hasattr(value, "get_object") else value
+
+    def _contains_image(value, depth):
+        if depth > max_depth:
+            return False
+        value = _resolve(value)
+        identity = id(value)
+        if identity in visited:
+            return False
+        visited.add(identity)
+        if not hasattr(value, "get"):
+            return False
+        if str(value.get("/Subtype")) == "/Image":
+            return True
+        resources = _resolve(value.get("/Resources") or {})
+        xobjects = _resolve(resources.get("/XObject") or {})
+        return bool(hasattr(xobjects, "values")) and any(
+            _contains_image(item, depth + 1) for item in xobjects.values()
+        )
+
+    return _contains_image(page, 0)
+
 def _pdf_extract_pages(
     pdf_path,
     *,
@@ -117,6 +146,13 @@ def _pdf_extract_pages(
 
         lines = [clean_line(line) for line in text.splitlines()]
         page_record = {"page": page_number, "lines": [line for line in lines if line]}
+        # This is only a preflight signal.  Inspect the page resource dictionary
+        # without decoding images so normal selectable-text extraction stays
+        # lightweight and the OCR offer can distinguish obvious blank pages.
+        try:
+            page_record["has_images"] = _pdf_page_has_images(page)
+        except Exception:
+            page_record["has_images"] = False
         try:
             styled_lines = []
             for fragment in fragments:
@@ -222,7 +258,8 @@ def _pdf_suppress_repeated_margins(pages):
             "lines": [
                 line for line in page["lines"]
                 if re.sub(r"\s+", " ", line).strip().casefold() not in repeated
-            ]
+            ],
+            "has_images": bool(page.get("has_images")),
         }
         if isinstance(page.get("styled_lines"), list):
             item["styled_lines"] = [

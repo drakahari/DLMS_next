@@ -191,7 +191,7 @@
 <div class="pdf-import-badges"><span>Question banks</span><span>Glossary / terminology</span><span>Automatic detection</span><span>Cross-page content</span><span>Inline repair</span></div></section>
 <section class="dashboard-panel">
 <form action="/pdf-import/analyze" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form">
-<label class="build-field"><span>PDF file</span><input type="file" name="pdf_file" accept=".pdf,application/pdf" required><small>Selectable-text PDFs work best. This preview does not perform OCR.</small></label>
+<label class="build-field"><span>PDF file</span><input type="file" name="pdf_file" accept=".pdf,application/pdf" required><small>Selectable text is always used first. If question-bank pages have little or no usable text, DLMS can offer optional local OCR for selected pages.</small></label>
 <label class="build-field"><span>Source bank title</span><input type="text" name="quiz_title" placeholder="Example: CISM Glossary or PenTest+ Practice"><small>You can change this again on the review screen.</small></label>
 <label class="build-field"><span>Content type</span><select name="pdf_content_type"><option value="auto">Auto-detect</option><option value="question_bank">Question bank</option><option value="glossary">Glossary / terminology</option></select><small>Choose manually if the PDF has an unusual layout.</small></label>
 <label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label>
@@ -210,7 +210,7 @@
 </form>
 {% if not ocr_available %}<div class="semantic-warning-surface pdf-ocr-unavailable" role="status">Screenshot OCR is unavailable in this runtime. Normal selectable-text PDF import remains fully available.</div>{% endif %}
 </section>
-<section class="dashboard-panel pdf-import-note"><strong>Current Smart PDF scope</strong><p>DLMS handles selectable-text PDF question banks and glossary/terminology layouts, plus screenshot OCR for choice questions. Ambiguous records are preserved and flagged for review instead of being guessed. Scanned-PDF OCR and arbitrary textbook/chapter interpretation are not enabled yet.</p></section>
+<section class="dashboard-panel pdf-import-note"><strong>Current Smart PDF scope</strong><p>DLMS handles selectable-text PDF question banks and glossary/terminology layouts, screenshot OCR, and optional OCR of explicitly selected low-text question-bank PDF pages. OCR runs locally and never trusts selected or highlighted answers as proof of correctness. It supports 2–26 choices and multiple correct answers, and every OCR draft requires Review &amp; Repair. Temporary source previews are removed after save, cancellation, or expiration. Glossary OCR and arbitrary textbook/chapter interpretation are not enabled.</p></section>
 {% if banks or term_banks %}
 <div class="pdf-bank-toolbar">
 <div><strong>Saved PDF source banks</strong><span>Collapse large collections or enable management controls when you need them.</span></div>
