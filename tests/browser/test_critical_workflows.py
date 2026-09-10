@@ -3241,8 +3241,11 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "probe.style.color=`var(${name})`;document.body.appendChild(probe);"
             "const value=getComputedStyle(probe).color;probe.remove();return value};"
             "const hero=document.querySelector('.pack-detail-hero');"
+            "const stats=document.querySelector('.pack-detail-stat-grid');"
+            "const validation=document.querySelector('.pack-validation-panel');"
             "const description=hero.querySelector('p');"
             "const meta=document.querySelector('.pack-detail-meta');"
+            "const actions=document.querySelector('.pack-detail-actions');"
             "const label=meta.querySelector('strong');const value=meta.querySelector('span');"
             "const back=document.querySelector('.pack-detail-actions .medical-ai-secondary-button');"
             "const exportAction=document.querySelector('.pack-detail-actions .medical-primary-button');"
@@ -3250,6 +3253,8 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "const resolveBackground = name => {const probe=document.createElement('span');"
             "probe.style.backgroundColor=`var(${name})`;document.body.appendChild(probe);"
             "const result=getComputedStyle(probe).backgroundColor;probe.remove();return result};"
+            "const blockGap=(before,after)=>Math.round(after.getBoundingClientRect().top-"
+            "before.getBoundingClientRect().bottom);"
             "return {pageText:resolve('--theme-page-text'),muted:resolve('--theme-muted-text'),"
             "secondaryText:resolve('--semantic-secondary-control-text'),"
             "secondarySurface:resolveBackground('--semantic-secondary-control-surface'),"
@@ -3263,6 +3268,8 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "exportPadding:exportStyle.padding,exportMinHeight:exportStyle.minHeight,"
             "exportWeight:exportStyle.fontWeight,exportSize:exportStyle.fontSize,"
             "exportAlign:exportStyle.alignItems,"
+            "heroStatsGap:blockGap(hero,stats),statsValidationGap:blockGap(stats,validation),"
+            "validationMetaGap:blockGap(validation,meta),metaActionsGap:blockGap(meta,actions),"
             "actionsDistinct:backStyle.backgroundImage!==exportStyle.backgroundImage,"
             "descriptionWrap:getComputedStyle(description).overflowWrap,"
             "valueWrap:getComputedStyle(value).overflowWrap,"
@@ -3295,6 +3302,10 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "exportWeight": "800",
             "exportSize": "14px",
             "exportAlign": "center",
+            "heroStatsGap": 18,
+            "statsValidationGap": 18,
+            "validationMetaGap": 18,
+            "metaActionsGap": 18,
             "actionsDistinct": True,
             "descriptionWrap": "anywhere",
             "valueWrap": "anywhere",

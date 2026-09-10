@@ -983,6 +983,15 @@ class ThemeSystemTests(unittest.TestCase):
         start = css.index("CONTENT PACK DETAILS + QUIZ LIBRARY CONSISTENCY")
         rules = css[start:]
 
+        detail_spacing = re.search(
+            r"\.content-packs-page \.pack-detail-hero \+ \.pack-detail-stat-grid,"
+            r"[\s\S]*?\.content-packs-page \.pack-detail-meta \+ \.pack-detail-actions "
+            r"\{([^}]*)\}",
+            rules,
+        )
+        self.assertIsNotNone(detail_spacing)
+        self.assertIn("margin-top: var(--dlms-space-lg)", detail_spacing.group(1))
+
         detail_expectations = {
             ".content-packs-page .pack-detail-hero p": (
                 "--theme-page-text", "opacity: 1",
