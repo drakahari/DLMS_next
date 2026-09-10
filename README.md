@@ -190,8 +190,22 @@ environment:
 
 ```bash
 python -m pip install -r requirements-build.txt
+export DLMS_TESSERACT_BUNDLE_ROOT=/absolute/path/to/native-tesseract-bundle
 pyinstaller --clean --noconfirm DLMS.spec
 ```
+
+On Windows PowerShell, set the equivalent variable before the build:
+
+```powershell
+$env:DLMS_TESSERACT_BUNDLE_ROOT = (Resolve-Path C:\path\to\native-tesseract-bundle).Path
+python -m PyInstaller --clean --noconfirm DLMS.spec
+```
+
+The bundle must be for the target operating system and architecture and must
+contain Tesseract, its native dependencies, English trained data, TSV config,
+and the required Tesseract/tessdata/Leptonica licenses. See
+[`docs/OCR_PACKAGING.md`](docs/OCR_PACKAGING.md) for the exact layout and
+clean-machine screenshot/scanned-PDF OCR validation checklist.
 
 `DLMS.spec` is the canonical platform-aware build manifest. Windows and Linux
 retain one-file executables. On macOS it creates a windowed, onedir-style native

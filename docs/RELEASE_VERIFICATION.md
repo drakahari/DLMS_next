@@ -39,18 +39,21 @@ system and architecture.
 ## OCR-specific native gate
 
 OCR-enabled release artifacts have an additional platform-native gate described
-in `docs/OCR_PACKAGING.md`. Fedora x86-64 has passed the bundled DLMS-119 OCR
-probe, archive inspection, screenshot OCR, and scanned-PDF OCR smoke. OCR has
-not yet been proven in the Ubuntu, Omarchy/Arch, Windows 11 x86-64, or macOS
-ARM64 frozen artifacts; those targets remain pending even where general DLMS
-packaging was validated previously.
+in `docs/OCR_PACKAGING.md`. The DLMS 3.1.0 artifacts for Ubuntu 24.04 x86-64
+and Windows 11 x86-64 have passed clean-system bundled screenshot OCR and
+scanned-PDF OCR validation. Fedora x86-64 passed the earlier bundled DLMS-119
+probe and workflow validation. Ubuntu 26.04, Omarchy/Arch x86-64, and macOS
+ARM64 still require current target-native OCR validation.
 
-For each target, stage a platform-native Tesseract bundle with
-`DLMS_TESSERACT_BUNDLE_ROOT`, build the canonical spec, and verify that the
-exact artifact contains the executable, native dependencies, English tessdata,
+For each target, stage a platform-native Tesseract bundle, set the absolute
+`DLMS_TESSERACT_BUNDLE_ROOT` path in the same shell that runs PyInstaller, build
+the canonical spec, and verify that the exact artifact contains the executable,
+native dependencies, English tessdata,
 TSV config, PDFium, and required licenses. Then prove screenshot OCR,
 scanned-PDF OCR, timeout/cancellation, and no dependence on a system Tesseract.
-Do not infer cross-platform OCR support from the Fedora result.
+Run the final OCR smoke on a clean machine where `command -v tesseract` (Linux)
+or `Get-Command tesseract.exe -ErrorAction SilentlyContinue` (Windows) finds no
+system executable. Do not infer cross-platform OCR support from another target.
 
 ## Windows 11 x86_64
 

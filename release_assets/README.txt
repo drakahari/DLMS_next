@@ -65,6 +65,12 @@ DLMS opens a local address in your default browser. Keep the DLMS application
 running while using that browser page. Closing the browser tab or window does
 not stop DLMS; use Shutdown DLMS in the application when you are finished.
 
+Screenshot OCR and selected scanned-PDF OCR use Tesseract and PDFium bundled
+inside the native DLMS package. Users of an OCR-enabled frozen package do not
+need to install system Tesseract. If either OCR workflow is unavailable in a
+packaged build, report the package/target rather than installing Tesseract as a
+workaround.
+
 To try the included sample:
 
 1. Open Build Quiz > Quiz Builder > Create from Pasted Text.

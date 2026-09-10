@@ -111,6 +111,28 @@ version detection, timeout termination, cancellation termination, TSV output,
 and OCR of the repository-created probe fixture. Missing executable, English
 data, TSV config, or required license files is a build-contract failure.
 
+Set the variable in the same shell that invokes PyInstaller. Use an absolute
+path so the build does not depend on its working directory:
+
+```bash
+# Linux/macOS builder
+export DLMS_TESSERACT_BUNDLE_ROOT=/absolute/path/to/native-tesseract-bundle
+python -m PyInstaller --clean --noconfirm DLMS.spec
+```
+
+```powershell
+# Windows builder
+$env:DLMS_TESSERACT_BUNDLE_ROOT = (Resolve-Path C:\path\to\native-tesseract-bundle).Path
+python -m PyInstaller --clean --noconfirm DLMS.spec
+```
+
+The bundle must match the build target. A Linux bundle uses `bin/tesseract`
+and Linux shared libraries; a Windows bundle uses `bin/tesseract.exe` and its
+required DLLs. Put bundle-supplied `.so`, `.dylib`, or `.dll` dependencies
+beside the executable in `bin/`; the packaging helper collects native libraries
+from that directory. Do not reuse a bundle prepared for another operating
+system or architecture.
+
 `pypdfium2>=5.13.0,<6` is declared in `requirements.txt` and version 5.13.0 is
 locked in `requirements-lock.txt`, which was exercised with Python 3.14.7 on
 the current Fedora validation host. The canonical PyInstaller manifest includes
@@ -120,10 +142,22 @@ one operating system cannot prove another target's binary compatibility.
 
 ## OCR-specific native release gate
 
-Fedora x86-64 is the only frozen OCR target proven during DLMS-119 repository
-implementation. Ubuntu, Omarchy/Arch, Windows 11 x86-64, and macOS ARM64 remain
-target-native release gates. Do not advertise OCR in a platform package until
-that exact native artifact proves all of the following:
+Current validation status is deliberately target-specific:
+
+- **Ubuntu 24.04 x86-64:** the DLMS 3.1.0 single-file artifact has passed build,
+  clean/production-system launch, bundled screenshot OCR, and bundled
+  scanned-PDF OCR validation.
+- **Windows 11 x86-64:** the DLMS 3.1.0 self-contained artifact has passed
+  build, clean-system launch, bundled screenshot OCR, and bundled scanned-PDF
+  OCR validation.
+- **Fedora x86-64:** the bundled DLMS-119 OCR probe and OCR workflows were
+  proven during implementation; each current release artifact still requires
+  its normal target-native release gate.
+- **Ubuntu 26.04 x86-64, Omarchy/Arch x86-64, and macOS ARM64:** current 3.1.0
+  artifacts still require target-native OCR validation.
+
+Do not advertise OCR in any platform package until that exact native artifact
+proves all of the following:
 
 - the native build succeeds;
 - bundled Tesseract and its dependent libraries are present;
@@ -134,6 +168,22 @@ that exact native artifact proves all of the following:
 - selected scanned-PDF rasterization and OCR succeed;
 - timeout and cancellation terminate the bundled process;
 - frozen resource/archive inspection passes.
+
+Perform the final OCR smoke on a clean target machine that has no system
+Tesseract available. On Linux, `command -v tesseract` must return no executable;
+on Windows, `Get-Command tesseract.exe -ErrorAction SilentlyContinue` must return
+nothing. Then launch the staged/final DLMS artifact and verify both workflows:
+
+1. Import a repository-created neutral screenshot fixture, wait for local OCR,
+   compare the draft with its preview, and reach Review & Repair.
+2. Import the scanned-PDF regression fixture, select a low-text page for OCR,
+   and verify PDFium rasterization, OCR, preview, and Review & Repair.
+3. Confirm the OCR availability UI identifies bundled Tesseract and does not
+   ask for a system installation.
+
+A successful OCR run under these conditions is the proof that the packaged
+application is using its bundle. Installing Tesseract to make a frozen artifact
+pass invalidates this check; fix the staged bundle or build instead.
 
 The general native release procedure remains in
 `docs/RELEASE_VERIFICATION.md`.

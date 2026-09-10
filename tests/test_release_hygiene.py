@@ -305,17 +305,39 @@ class ReleaseDocumentationTests(unittest.TestCase):
             "brew install tesseract",
             "DLMS_TESSERACT_EXECUTABLE",
             "DLMS_TESSDATA_PREFIX",
+            "DLMS_TESSERACT_BUNDLE_ROOT",
+            "eng.traineddata",
             "tessdata/configs/tsv",
             "normal selectable-text Smart PDF",
+            "never falls back",
+            "bin/tesseract.exe",
+            "pypdfium2_raw",
+            "PDFium",
+            "tesseract-LICENSE.txt",
+            "tessdata-LICENSE.txt",
+            "leptonica-LICENSE.txt",
+            "command -v tesseract",
+            "Get-Command tesseract.exe -ErrorAction SilentlyContinue",
         ):
             with self.subTest(documented=text):
                 self.assertIn(text, ocr_doc)
-        self.assertIn("Fedora x86-64 is the only frozen OCR target proven", ocr_doc)
-        for pending in ("Ubuntu", "Omarchy/Arch", "Windows 11 x86-64", "macOS ARM64"):
+        for proven in ("Ubuntu 24.04 x86-64", "Windows 11 x86-64"):
+            with self.subTest(proven=proven):
+                self.assertIn(proven, ocr_doc)
+                self.assertIn(proven, release_doc)
+        for pending in (
+            "Ubuntu 26.04 x86-64",
+            "Omarchy/Arch x86-64",
+            "macOS ARM64",
+        ):
             with self.subTest(pending=pending):
                 self.assertIn(pending, ocr_doc)
         self.assertIn("OCR-specific native gate", release_doc)
         self.assertIn("Do not infer cross-platform OCR support", release_doc)
+        package_readme = (ROOT / "release_assets" / "README.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("do not\nneed to install system Tesseract", package_readme)
 
     def test_common_local_and_generated_artifacts_are_ignored(self):
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
