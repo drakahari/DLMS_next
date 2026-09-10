@@ -152,14 +152,14 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
         self.assertEqual(TEMPLATE_ROOT.resolve(), Path(dlms.app.template_folder).resolve())
 
         templates = sorted(TEMPLATE_ROOT.rglob("*.html"))
-        self.assertEqual(63, len(templates))
+        self.assertEqual(64, len(templates))
         self.assertTrue((TEMPLATE_ROOT / "dashboard/index.html").is_file())
         self.assertFalse((ROOT / "static/index.html").exists())
         self.assertNotIn("static/index.html", self.app_source)
         self.assertNotIn("static/index.html", (ROOT / "DLMS.spec").read_text(encoding="utf-8"))
 
         static_pages = sorted((ROOT / "static").glob("*.html"))
-        self.assertEqual(25, len(static_pages))
+        self.assertEqual(26, len(static_pages))
         for page in static_pages:
             source = page.read_text(encoding="utf-8")
             with self.subTest(static_page=page.name):

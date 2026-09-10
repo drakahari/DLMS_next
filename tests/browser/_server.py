@@ -185,32 +185,6 @@ def seed_browser_data():
     dlms.save_registry(registry)
     dlms.save_quiz_folders(["Uncategorized", "Browser Regression"])
 
-    external_ai_response = json.dumps({
-        "schema_version": 1,
-        "content_type": "quiz",
-        "title": "Browser External AI Review",
-        "source": {
-            "organization": "Neutral Browser Source",
-            "dataset": "Review Regression",
-            "version": "1",
-            "url": "https://example.test/review",
-            "license": "Test-only neutral content",
-        },
-        "questions": [{
-            "question": "Which neutral browser option is first?",
-            "answer_mode": "single",
-            "choices": [
-                {"text": "First neutral option", "is_correct": True},
-                {"text": "Second neutral option", "is_correct": False},
-            ],
-            "explanation": "The first option is designated by the neutral fixture.",
-            "concepts": ["browser-review"],
-        }],
-    })
-    external_ai_draft_id, _ = dlms._stage_external_ai_quiz_response(
-        external_ai_response
-    )
-
     restore_path, _ = dlms._create_dlms_backup("browser-restore-fixture")
 
     metadata = {
@@ -221,7 +195,6 @@ def seed_browser_data():
         "recovery_html": recovery_html,
         "recovery_json": recovery_json,
         "restore_path": restore_path,
-        "external_ai_draft_id": external_ai_draft_id,
     }
     Path(dlms.APP_DATA_DIR, "browser_fixture.json").write_text(
         json.dumps(metadata), encoding="utf-8"

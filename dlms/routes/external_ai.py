@@ -1,4 +1,4 @@
-"""Source-specific routes for External AI quiz review and publication."""
+"""Source-specific routes for External AI quiz building, review, and publication."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ Dependency = Callable[..., Any]
 class ExternalAIRouteDependencies:
     """Application services used by the additive External AI route family."""
 
+    build_prompt: Dependency
+    stage_response: Dependency
     load_draft: Dependency
     update_review_draft: Dependency
     delete_draft: Dependency
@@ -33,6 +35,110 @@ def _bind_dependencies(view_func, dependencies):
         return view_func(dependencies, **view_args)
 
     return bound_view
+
+
+def _builder_values(form=None):
+    values = form if form is not None else {}
+    return {
+        "topic": str(values.get("topic") or ""),
+        "audience": str(values.get("audience") or "General learner"),
+        "difficulty": str(values.get("difficulty") or "Mixed"),
+        "question_count": str(values.get("question_count") or "10"),
+        "source_expectations": str(
+            values.get("source_expectations")
+            or "Use reliable sources appropriate to the topic."
+        ),
+        "source": {
+            name: str(values.get(f"source_{name}") or "")
+            for name in external_ai_structured.EXTERNAL_AI_PROMPT_SOURCE_FIELDS
+        },
+        "ai_response": str(values.get("ai_response") or ""),
+    }
+
+
+def _build_prompt(dependencies, values):
+    try:
+        question_count = int(values["question_count"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "Question count must be a whole number between 1 and 100."
+        ) from exc
+    return dependencies.build_prompt(
+        values["topic"],
+        question_count,
+        audience=values["audience"],
+        difficulty=values["difficulty"],
+        source_expectations=values["source_expectations"],
+        requested_source=values["source"],
+    )
+
+
+def _builder_response_bound_error(values):
+    try:
+        response_bytes = len(values["ai_response"].encode("utf-8"))
+    except UnicodeEncodeError:
+        values["ai_response"] = ""
+        return "The AI response contains invalid Unicode and was not retained."
+    if response_bytes > external_ai_structured.EXTERNAL_AI_MAX_INPUT_BYTES:
+        values["ai_response"] = ""
+        return (
+            "The AI response exceeds the 1 MiB paste limit and was not retained."
+        )
+    return None
+
+
+def _render_builder(values, *, prompt="", errors=(), status=200):
+    return render_template(
+        "external_ai/builder.html",
+        builder=values,
+        generated_prompt=prompt,
+        errors=list(errors),
+        max_questions=external_ai_structured.EXTERNAL_AI_MAX_QUESTIONS,
+        max_response_bytes=external_ai_structured.EXTERNAL_AI_MAX_INPUT_BYTES,
+    ), status
+
+
+def external_ai_builder(_dependencies):
+    return _render_builder(_builder_values(), status=200)
+
+
+def external_ai_builder_prompt(dependencies):
+    values = _builder_values(request.form)
+    response_error = _builder_response_bound_error(values)
+    if response_error:
+        return _render_builder(values, errors=[response_error], status=413)
+    try:
+        prompt = _build_prompt(dependencies, values)
+    except ValueError as exc:
+        return _render_builder(values, errors=[str(exc)], status=400)
+    return _render_builder(values, prompt=prompt, status=200)
+
+
+def external_ai_builder_validate(dependencies):
+    values = _builder_values(request.form)
+    response_error = _builder_response_bound_error(values)
+    if response_error:
+        return _render_builder(values, errors=[response_error], status=413)
+    try:
+        prompt = _build_prompt(dependencies, values)
+    except ValueError as exc:
+        return _render_builder(values, errors=[str(exc)], status=400)
+
+    try:
+        draft_id, _review = dependencies.stage_response(values["ai_response"])
+    except external_ai_structured.ExternalAIStructuredError as exc:
+        return _render_builder(values, prompt=prompt, errors=[str(exc)], status=400)
+    except Exception as exc:
+        dependencies.print_message(
+            f"[EXTERNAL AI RESPONSE STAGING ERROR] {type(exc).__name__}"
+        )
+        return _render_builder(
+            values,
+            prompt=prompt,
+            errors=["The response could not be staged safely. Try again."],
+            status=500,
+        )
+    return redirect(url_for("external_ai.external_ai_review", draft_id=draft_id))
 
 
 def _load_review_or_redirect(dependencies, draft_id):
@@ -159,6 +265,24 @@ def create_external_ai_blueprint(
 ) -> Blueprint:
     blueprint = Blueprint("external_ai", __name__)
     routes = (
+        (
+            "/external-ai/quiz-builder",
+            "external_ai_builder",
+            external_ai_builder,
+            ["GET"],
+        ),
+        (
+            "/external-ai/quiz-builder/prompt",
+            "external_ai_builder_prompt",
+            external_ai_builder_prompt,
+            ["POST"],
+        ),
+        (
+            "/external-ai/quiz-builder/validate",
+            "external_ai_builder_validate",
+            external_ai_builder_validate,
+            ["POST"],
+        ),
         (
             "/external-ai/review/<draft_id>",
             "external_ai_review",

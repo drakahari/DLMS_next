@@ -6,8 +6,12 @@ import json
 from copy import deepcopy
 
 from dlms.parsing.external_ai_structured import (
+    EXTERNAL_AI_MAX_INPUT_BYTES,
+    EXTERNAL_AI_MAX_SOURCE_CHARS,
     EXTERNAL_AI_MAX_QUESTIONS,
+    EXTERNAL_AI_MAX_URL_CHARS,
     ExternalAIStructuredError,
+    external_ai_source_url_is_safe,
     parse_external_ai_quiz_response,
 )
 from dlms.persistence.external_ai_drafts import (
@@ -19,6 +23,9 @@ from dlms.services import question_review
 
 EXTERNAL_AI_PROMPT_MAX_TOPIC_CHARS = 500
 EXTERNAL_AI_PROMPT_MAX_CONTEXT_CHARS = 2_000
+EXTERNAL_AI_PROMPT_SOURCE_FIELDS = (
+    "organization", "dataset", "version", "url", "license",
+)
 
 
 def _prompt_text(value, *, name, limit, required=False):
@@ -39,6 +46,7 @@ def build_external_ai_quiz_prompt(
     audience="General learner",
     difficulty="Mixed",
     source_expectations="Use reliable sources appropriate to the topic.",
+    requested_source=None,
 ):
     """Build the standalone JSON prompt without touching archive prompts."""
     topic = _prompt_text(
@@ -74,6 +82,30 @@ def build_external_ai_quiz_prompt(
             f"Question count must be between 1 and {EXTERNAL_AI_MAX_QUESTIONS}."
         )
 
+    if requested_source is None:
+        requested_source = {}
+    if not isinstance(requested_source, dict):
+        raise ValueError("Requested source metadata must be an object")
+    normalized_source = {}
+    for field in EXTERNAL_AI_PROMPT_SOURCE_FIELDS:
+        limit = (
+            EXTERNAL_AI_MAX_URL_CHARS
+            if field == "url"
+            else EXTERNAL_AI_MAX_SOURCE_CHARS
+        )
+        normalized_source[field] = _prompt_text(
+            requested_source.get(field, ""),
+            name=f"Source {field}",
+            limit=limit,
+        )
+    if (
+        normalized_source["url"]
+        and not external_ai_source_url_is_safe(normalized_source["url"])
+    ):
+        raise ValueError(
+            "Source URL must be an absolute HTTP or HTTPS URL without credentials."
+        )
+
     request_data = json.dumps(
         {
             "topic": topic,
@@ -81,6 +113,7 @@ def build_external_ai_quiz_prompt(
             "audience": audience,
             "difficulty": difficulty,
             "source_expectations": source_expectations,
+            "requested_source": normalized_source,
         },
         ensure_ascii=False,
         indent=2,
@@ -133,6 +166,7 @@ def build_external_ai_quiz_prompt(
             }
         ],
     }
+    question_word = "question" if question_count == 1 else "questions"
 
     return f"""Create quiz content for DLMS from the request data below.
 
@@ -149,7 +183,7 @@ NEUTRAL FORMAT EXAMPLE
 {json.dumps(example, ensure_ascii=False, indent=2)}
 
 Rules:
-- Return exactly {question_count} questions.
+- Return exactly {question_count} {question_word}.
 - Use only the fields shown in the required schema. Do not use aliases such as correct_answer.
 - Do not add A, B, C, or other positional labels to choice text; DLMS assigns A-Z labels.
 - Every question must have 2-26 distinct, non-empty choices.
@@ -158,6 +192,7 @@ Rules:
 - answer_mode "multiple" requires at least two true choices.
 - Provide a non-empty explanation and a concepts array for every question.
 - Provide all source fields. Use an empty string for unavailable provenance; omit facts rather than guess.
+- Copy non-empty requested_source values exactly into the corresponding source fields.
 - Use an absolute HTTP/HTTPS source URL without credentials, or an empty string.
 - Keep educational HTML- or script-like text literal; never provide executable markup.
 - DLMS independently parses and validates this response. A user must review and explicitly confirm correctness before publication.

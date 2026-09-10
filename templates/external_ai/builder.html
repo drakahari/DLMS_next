@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>External AI Quiz Builder - DLMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home build-modern-page external-ai-builder-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/help/external-ai"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        </nav>
+        <div class="dashboard-sidebar-version">External AI Quiz Builder</div>
+    </aside>
+
+    <main class="dashboard-main build-modern-main external-ai-builder-main">
+        <header class="dashboard-header build-page-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div><div class="build-eyebrow">AI STRUCTURED TEXT</div><h1>External AI Quiz Builder</h1><p>Generate a structured prompt, use it with a conversational AI, then paste the JSON response back into DLMS to create a normal quiz.</p></div>
+        </header>
+
+        {% if errors %}
+        <div class="external-ai-builder-errors" id="externalAiErrors" role="alert" tabindex="-1">
+            <strong>DLMS could not continue.</strong>
+            <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+
+        <ol class="external-ai-builder-steps" aria-label="External AI Quiz Builder workflow">
+            <li>Generate the prompt.</li><li>Copy it into ChatGPT, Claude, Gemini, a local AI, or another conversational AI.</li><li>Copy the structured JSON response.</li><li>Paste it into DLMS.</li><li>Validate and Review &amp; Repair.</li><li>Publish the quiz.</li>
+        </ol>
+
+        <form method="POST" action="{{ url_for('external_ai.external_ai_builder_validate') }}" id="externalAiBuilderForm">
+            <section class="dashboard-panel external-ai-builder-card" aria-labelledby="externalAiConfigureHeading">
+                <div class="build-section-heading"><span class="build-method-label">1 · CONFIGURE</span><h2 id="externalAiConfigureHeading">Describe the quiz</h2><p>DLMS places these values into a provider-neutral prompt. It does not send anything to an AI service.</p></div>
+                <div class="external-ai-builder-grid">
+                    <label class="build-field external-ai-builder-wide"><span>Topic or domain</span><input type="text" name="topic" value="{{ builder.topic }}" maxlength="500" required placeholder="Example: introductory network troubleshooting"></label>
+                    <label class="build-field"><span>Audience</span><input type="text" name="audience" value="{{ builder.audience }}" maxlength="2000" required></label>
+                    <label class="build-field"><span>Difficulty</span><select name="difficulty" required>{% for value in ["Introductory", "Intermediate", "Advanced", "Mixed"] %}<option value="{{ value }}" {% if builder.difficulty == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+                    <label class="build-field"><span>Question count</span><input type="number" name="question_count" value="{{ builder.question_count }}" min="1" max="{{ max_questions }}" required inputmode="numeric"><small>Between 1 and {{ max_questions }} questions.</small></label>
+                    <label class="build-field external-ai-builder-wide"><span>Source expectations</span><textarea name="source_expectations" rows="3" maxlength="2000" required>{{ builder.source_expectations }}</textarea><small>Tell the AI what kinds of sources or source discipline to use.</small></label>
+                </div>
+                <details class="build-optional-source external-ai-source-request">
+                    <summary><span class="build-optional-source-title">Requested source metadata</span><span class="build-optional-source-hint">Optional</span></summary>
+                    <div class="build-optional-source-body external-ai-builder-grid">
+                        <label class="build-field"><span>Organization</span><input type="text" name="source_organization" value="{{ builder.source.organization }}" maxlength="1000"></label>
+                        <label class="build-field"><span>Dataset</span><input type="text" name="source_dataset" value="{{ builder.source.dataset }}" maxlength="1000"></label>
+                        <label class="build-field"><span>Version</span><input type="text" name="source_version" value="{{ builder.source.version }}" maxlength="1000"></label>
+                        <label class="build-field"><span>Source URL</span><input type="url" name="source_url" value="{{ builder.source.url }}" maxlength="2048" placeholder="https://example.org/source"></label>
+                        <label class="build-field external-ai-builder-wide"><span>License</span><input type="text" name="source_license" value="{{ builder.source.license }}" maxlength="1000"></label>
+                    </div>
+                </details>
+                <div class="build-submit-row"><button class="build-secondary-link" type="submit" formaction="{{ url_for('external_ai.external_ai_builder_prompt') }}" formnovalidate>{{ "Refresh Prompt" if generated_prompt else "Generate Prompt" }}</button></div>
+            </section>
+
+            <section class="dashboard-panel external-ai-builder-card" aria-labelledby="externalAiPromptHeading">
+                <div class="build-section-heading"><span class="build-method-label">2 · COPY</span><h2 id="externalAiPromptHeading">Generated prompt</h2><p>Copy this prompt into any conversational AI. No API key or direct DLMS connection is required.</p></div>
+                <label class="build-field" for="externalAiPrompt"><span>Structured quiz prompt</span></label>
+                <textarea id="externalAiPrompt" class="external-ai-prompt-output" rows="18" readonly aria-describedby="externalAiCopyStatus" placeholder="Configure the quiz and choose Generate Prompt.">{{ generated_prompt }}</textarea>
+                <div class="external-ai-copy-row"><button class="build-secondary-link" id="externalAiCopyPrompt" type="button" {% if not generated_prompt %}disabled{% endif %}>Copy Prompt</button><span id="externalAiCopyStatus" role="status" aria-live="polite">{% if generated_prompt %}Prompt ready to copy.{% else %}Generate a prompt first.{% endif %}</span></div>
+            </section>
+
+            <section class="dashboard-panel external-ai-builder-card" aria-labelledby="externalAiResponseHeading">
+                <div class="build-section-heading"><span class="build-method-label">3 · PASTE</span><h2 id="externalAiResponseHeading">AI Response</h2><p>Paste bare JSON or one fenced JSON block. DLMS validates it before opening Review &amp; Repair.</p></div>
+                <label class="build-field" for="externalAiResponse"><span>AI Response</span><small>Maximum {{ (max_response_bytes // 1024 // 1024) }} MiB. Pasted text is temporary and is never executed.</small></label>
+                <textarea id="externalAiResponse" name="ai_response" rows="18" required spellcheck="false" placeholder='Paste the JSON response here.'>{{ builder.ai_response }}</textarea>
+                <div class="external-ai-builder-actions"><a class="build-secondary-link" href="/upload">Back to Build Quiz</a><button class="build-primary-button" type="submit">Validate &amp; Review</button></div>
+            </section>
+        </form>
+
+        <aside class="dashboard-panel external-ai-workflow-distinction" aria-labelledby="externalAiDistinctionHeading">
+            <h2 id="externalAiDistinctionHeading">Quiz text and Study Pack archives are separate workflows</h2>
+            <p><strong>External AI Quiz Builder:</strong> the AI returns structured text, you paste it into DLMS, and DLMS creates a normal quiz.</p>
+            <p><strong>AI Study Pack Builder:</strong> the AI returns a downloadable DLMS Study Pack archive for the existing import and install workflow. <a href="/study-packs/ai-builder">Open AI Study Pack Builder</a>.</p>
+            <p><a href="/help/external-ai">Read External AI Quiz Builder Help</a>.</p>
+        </aside>
+    </main>
+</div>
+<script src="/static/external-ai-builder.js"></script><script src="/static/nav-normalize.js"></script>
+</body>
+</html>

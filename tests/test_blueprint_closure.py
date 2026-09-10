@@ -36,7 +36,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "anki": 12,
         "content_packs": 8,
         "core": 8,
-        "external_ai": 3,
+        "external_ai": 6,
         "help": 7,
         "history": 13,
         "it": 3,
@@ -72,7 +72,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.anki.AnkiRouteDependencies": 22,
         "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
         "dlms.routes.core.CoreRouteDependencies": 16,
-        "dlms.routes.external_ai.ExternalAIRouteDependencies": 6,
+        "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
         "dlms.routes.history.HistoryRouteDependencies": 9,
         "dlms.routes.it.ITStudyDependencies": 5,
         "dlms.routes.law.LawRouteDependencies": 30,
@@ -87,7 +87,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "3a3b86e7f350f35a2f189bde7c0e174eadb4cb702f306906a94ed9ce6d04c2dc"
+        "66878fbc2fa8613c4374b69febfd32e16a8e4781f67226c41640ddd6ea133fb4"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -138,13 +138,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_196_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_199_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(196, len(rules))
+        self.assertEqual(199, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(195, len(blueprint_rules))
+        self.assertEqual(198, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])

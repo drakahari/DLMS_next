@@ -5916,6 +5916,10 @@ app.register_blueprint(create_law_blueprint(LawRouteDependencies(
 
 
 app.register_blueprint(create_external_ai_blueprint(ExternalAIRouteDependencies(
+    build_prompt=lambda topic, question_count, **kwargs: _build_external_ai_quiz_prompt(
+        topic, question_count, **kwargs
+    ),
+    stage_response=lambda raw_response: _stage_external_ai_quiz_response(raw_response),
     load_draft=lambda draft_id: _load_external_ai_draft(draft_id),
     update_review_draft=lambda draft_id, review_draft: _update_external_ai_review_draft(
         draft_id, review_draft

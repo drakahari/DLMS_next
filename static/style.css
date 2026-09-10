@@ -9776,9 +9776,151 @@ body.it-study-page .medical-ai-builder-teaser-icon {
     max-width: 360px;
 }
 
+.external-ai-builder-main {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+}
+
+.external-ai-builder-main form {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+}
+
+.external-ai-builder-card,
+.external-ai-workflow-distinction,
+.external-ai-builder-errors {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.external-ai-builder-card {
+    display: grid;
+    gap: 18px;
+}
+
+.external-ai-builder-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.external-ai-builder-wide {
+    grid-column: 1 / -1;
+}
+
+.external-ai-builder-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: external-ai-step;
+}
+
+.external-ai-builder-steps li {
+    position: relative;
+    min-width: 0;
+    padding: 13px 14px 13px 44px;
+    color: var(--theme-page-text);
+    background: var(--theme-surface-2);
+    border: 1px solid var(--theme-border-soft);
+    border-radius: 12px;
+    line-height: 1.4;
+}
+
+.external-ai-builder-steps li::before {
+    position: absolute;
+    left: 13px;
+    top: 12px;
+    display: grid;
+    place-items: center;
+    width: 23px;
+    height: 23px;
+    color: var(--theme-accent-text);
+    background: var(--semantic-info-surface);
+    border: 1px solid var(--semantic-info-border);
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 800;
+    counter-increment: external-ai-step;
+    content: counter(external-ai-step);
+}
+
+.external-ai-builder-errors {
+    padding: 14px 16px;
+    color: var(--semantic-error-text);
+    background: var(--semantic-error-surface);
+    border: 1px solid var(--semantic-error-border);
+    border-radius: 12px;
+}
+
+.external-ai-builder-errors ul {
+    margin: 7px 0 0;
+    padding-left: 21px;
+}
+
+.external-ai-source-request {
+    padding-top: 4px;
+}
+
+.external-ai-prompt-output {
+    min-height: 300px;
+    overflow: auto;
+    white-space: pre;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 13px;
+}
+
+.external-ai-copy-row,
+.external-ai-builder-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.external-ai-copy-row span,
+.external-ai-workflow-distinction p {
+    color: var(--theme-muted-text);
+}
+
+.external-ai-copy-row .build-secondary-link:disabled {
+    color: var(--theme-muted-text);
+    background: var(--theme-surface);
+    border-color: var(--theme-border-soft);
+    opacity: .68;
+    cursor: not-allowed;
+}
+
+.external-ai-workflow-distinction h2 {
+    margin-top: 0;
+    color: var(--theme-heading);
+}
+
+.external-ai-workflow-distinction p:last-child {
+    margin-bottom: 0;
+}
+
 @media (max-width: 650px) {
     .external-ai-review-page .external-ai-source-grid {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .external-ai-builder-grid,
+    .external-ai-builder-steps {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .external-ai-builder-wide {
+        grid-column: auto;
+    }
+
+    .external-ai-prompt-output {
+        min-height: 240px;
     }
 }
 

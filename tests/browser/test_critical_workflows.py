@@ -5348,9 +5348,103 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
 def test_external_ai_shared_review_editor_and_publication(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
-    draft_id = browser_stack.metadata["external_ai_draft_id"]
+    browser.navigate(f"{base_url}/upload")
+    browser.wait_for(
+        "document.querySelector('a[href=\"/external-ai/quiz-builder\"]')"
+    )
+    browser.click('a[href="/external-ai/quiz-builder"]')
+    browser.wait_for(
+        "location.pathname === '/external-ai/quiz-builder' && "
+        "document.getElementById('externalAiBuilderForm')"
+    )
+    builder_initial = browser.evaluate(
+        "(() => ({copyDisabled:document.getElementById('externalAiCopyPrompt').disabled,"
+        "responseLabel:document.querySelector('label[for=externalAiResponse] span').textContent,"
+        "topNav:!!document.querySelector('.dashboard-nav-item[href=\"/external-ai/quiz-builder\"]'),"
+        "csrf:document.querySelector('#externalAiBuilderForm input[name=csrf_token]').value.length>0}))()"
+    )
+    assert builder_initial == {
+        "copyDisabled": True,
+        "responseLabel": "AI Response",
+        "topNav": False,
+        "csrf": True,
+    }
+    browser.evaluate(
+        "document.querySelector('[name=topic]').value='Neutral browser systems';"
+        "document.querySelector('[name=question_count]').value='1';true"
+    )
+    browser.click('button[formaction="/external-ai/quiz-builder/prompt"]')
+    browser.wait_for(
+        "document.getElementById('externalAiPrompt').value.includes('Return exactly 1 question.') && "
+        "!document.getElementById('externalAiCopyPrompt').disabled"
+    )
+    browser.click("#externalAiCopyPrompt")
+    browser.wait_for(
+        "document.getElementById('externalAiCopyStatus').textContent.includes('Prompt copied') || "
+        "document.getElementById('externalAiCopyStatus').textContent.includes('copy it manually')"
+    )
 
-    browser.navigate(f"{base_url}/external-ai/review/{draft_id}")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        )
+        assert status == 200
+        browser.navigate(f"{base_url}/external-ai/quiz-builder")
+        browser.wait_for(
+            f"getComputedStyle(document.documentElement).getPropertyValue('--theme-color-scheme').trim() === "
+            f"{json.dumps('light' if theme == 'light' else 'dark')}"
+        )
+        theme_state = browser.evaluate(
+            "(() => {const card=document.querySelector('.external-ai-builder-card');"
+            "const input=document.querySelector('[name=topic]');const cs=getComputedStyle(card);"
+            "const is=getComputedStyle(input);return {cardBg:cs.backgroundImage,inputBg:is.backgroundColor,"
+            "inputColor:is.color,overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert theme_state["cardBg"] != "none"
+        assert theme_state["inputBg"] != "rgba(0, 0, 0, 0)"
+        assert theme_state["inputColor"] != theme_state["inputBg"]
+        assert theme_state["overflow"] is True
+
+    browser.set_viewport(390, 820)
+    browser.navigate(f"{base_url}/external-ai/quiz-builder")
+    browser.wait_for("document.getElementById('externalAiBuilderForm')")
+    assert browser.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth + 1"
+    ) is True
+    browser.set_viewport(1280, 1000)
+
+    browser.navigate(f"{base_url}/external-ai/quiz-builder")
+    raw_response = json.dumps({
+        "schema_version": 1,
+        "content_type": "quiz",
+        "title": "Browser External AI Review",
+        "source": {
+            "organization": "Neutral Browser Source",
+            "dataset": "Review Regression",
+            "version": "1",
+            "url": "https://example.test/review",
+            "license": "Test-only neutral content",
+        },
+        "questions": [{
+            "question": "Which neutral browser option is first?",
+            "answer_mode": "single",
+            "choices": [
+                {"text": "First neutral option", "is_correct": True},
+                {"text": "Second neutral option", "is_correct": False},
+            ],
+            "explanation": "The first option is designated by the neutral fixture.",
+            "concepts": ["browser-review"],
+        }],
+    })
+    browser.evaluate(
+        "document.querySelector('[name=topic]').value='Neutral browser systems';"
+        "document.querySelector('[name=question_count]').value='1';"
+        f"document.getElementById('externalAiResponse').value={json.dumps(raw_response)};true"
+    )
+    browser.click("#externalAiBuilderForm .build-primary-button")
+    browser.wait_for("location.pathname.startsWith('/external-ai/review/')")
+    draft_id = browser.evaluate("location.pathname.split('/').pop()")
     browser.wait_for(
         "window.dlmsCsrfToken && document.querySelector('.external-ai-review-page') && "
         "document.querySelector('[data-pdf-action=choice-add]')"
@@ -5433,6 +5527,13 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     assert not (
         browser_stack.data_root / "external_ai_drafts" / f"{draft_id}.json"
     ).exists()
+    browser.navigate(f"{base_url}/quizzes/{entry['html']}")
+    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 1")
+    browser.click(".study-mode-btn")
+    browser.wait_for("document.querySelectorAll('#choices .choice').length === 3")
+    assert browser.evaluate(
+        "document.getElementById('qText').textContent.includes('neutral browser option')"
+    ) is True
 
 
 def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):

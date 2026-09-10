@@ -7,6 +7,7 @@ HELP_TOPIC_FILES = {
     "getting-started": "help-getting-started.html",
     "quizzes": "help-quizzes.html",
     "build-quiz": "help-build-quiz.html",
+    "external-ai": "help-external-ai.html",
     "smart-pdf": "help-smart-pdf.html",
     "study-packs": "help-study-packs.html",
     "study-modules": "help-study-modules.html",

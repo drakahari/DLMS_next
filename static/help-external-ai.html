@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>External AI Quiz Builder — DLMS Help</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/help-docs.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home help-page" data-help-topic="external-ai">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+        <nav class="dashboard-nav" aria-label="Primary navigation"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/it"><span class="dashboard-nav-icon">⌘</span><span>IT Study</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item active" href="/help" aria-current="page"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav>
+        <div class="dashboard-sidebar-version">DLMS Help Center</div>
+    </aside>
+    <main class="dashboard-main">
+        <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">DLMS HELP CENTER</div><h1>External AI Quiz Builder</h1><p>Use a conversational AI to produce structured text, then let DLMS validate, review, and publish it as a normal quiz.</p></div></header>
+        <div class="help-layout">
+            <nav class="help-toc"><strong>Help topics</strong><a href="/help/getting-started">Getting Started</a><a href="/help/quizzes">Taking Quizzes</a><a href="/help/build-quiz">Building Quizzes</a><a class="active" href="/help/external-ai">External AI Quiz Builder</a><a href="/help/smart-pdf">PDF &amp; Image Import</a><a href="/help/study-packs">Study Packs</a><a href="/help/troubleshooting">Troubleshooting</a></nav>
+            <article class="help-doc">
+                <section class="help-panel"><h2>What it does</h2><p>External AI Quiz Builder generates a provider-neutral prompt for ChatGPT, Claude, Gemini, a local AI, or another conversational AI. No API key is required. DLMS does not connect to an AI, send the prompt, or retrieve a response automatically; you copy and paste the text manually.</p></section>
+                <section class="help-panel"><h2>Workflow</h2><div class="help-steps"><div><strong>Generate and copy the prompt.</strong> Configure the topic, audience, difficulty, question count, and source expectations.</div><div><strong>Paste and validate the response.</strong> Copy the AI's structured JSON response into DLMS. It is treated as untrusted text and validated before use.</div><div><strong>Review and publish.</strong> AI answers may be wrong. Repair every kept question and explicitly confirm the complete correct-answer set before publishing.</div></div><p>Single- and multiple-answer questions are supported. Each question may have 2–26 choices, with DLMS assigning A–Z labels.</p></section>
+                <section class="help-panel"><h2>How it differs from AI Study Pack Builder</h2><div class="help-table-wrap"><table class="help-table"><thead><tr><th>Workflow</th><th>AI returns</th><th>DLMS creates</th></tr></thead><tbody><tr><td>External AI Quiz Builder</td><td>Structured JSON text that you paste into DLMS</td><td>A normal quiz after validation and Review &amp; Repair</td></tr><tr><td>AI Study Pack Builder</td><td>A downloadable DLMS Study Pack archive</td><td>A Study Pack through the existing archive import/install workflow</td></tr></tbody></table></div><p>Neither workflow replaces the other.</p></section>
+                <section class="help-panel"><h2>Privacy and temporary data</h2><p>The raw AI response is retained only in the temporary review draft. Start Over or successful publication removes the draft; abandoned drafts expire automatically. Raw response text is not stored in the published quiz.</p></section>
+                <div class="help-topic-nav"><a href="/help">← Help Center</a><a href="/external-ai/quiz-builder">Open External AI Quiz Builder</a></div>
+                <div class="help-version">Documentation for DLMS 3.0.2.</div>
+            </article>
+        </div>
+    </main>
+</div>
+<script>document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));</script><script src="/static/nav-normalize.js"></script><script src="/static/help-navigation.js"></script>
+</body>
+</html>
