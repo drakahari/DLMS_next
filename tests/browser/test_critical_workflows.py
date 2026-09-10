@@ -3175,6 +3175,145 @@ def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stac
     }
 
 
+def test_content_pack_detail_and_library_consistency_across_themes(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    portal_path = browser_stack.data_root / "config" / "portal.json"
+    original_theme = json.loads(portal_path.read_text(encoding="utf-8")).get(
+        "theme", "purple-gold"
+    )
+
+    folder = "DLMS_Study_theme_" + "long-folder-segment-" * 8
+    pack_root = browser_stack.data_root / "content_packs" / folder
+    data_root = pack_root / "data"
+    data_root.mkdir(parents=True)
+    (pack_root / "manifest.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "browser_theme_consistency",
+            "name": "Browser theme consistency pack with a deliberately long readable title",
+            "version": "1.0",
+            "description": "Long descriptive metadata " + "continuous-description-value-" * 8,
+            "content_domain": "Browser testing",
+            "datasets": [{
+                "id": "terms",
+                "title": "Theme terms",
+                "type": "matching",
+                "path": "data/terms.json",
+            }],
+            "image_datasets": [],
+            "quiz_datasets": [],
+        }),
+        encoding="utf-8",
+    )
+    (data_root / "terms.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "id": "terms",
+            "title": "Theme terms",
+            "source": {"organization": "DLMS Browser Test", "license": "CC0"},
+            "terms": [
+                {"term": "Surface", "definition": "A semantic card layer."},
+                {"term": "Contrast", "definition": "A readable foreground relationship."},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    encoded_folder = urllib.parse.quote(folder, safe="!$&'()*+,/:;=@")
+
+    def set_theme(theme):
+        browser.navigate(f"{base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken && document.getElementById('dlmsQuickTheme')")
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+        )
+        assert status == 200
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        set_theme(theme)
+        browser.set_viewport(420, 900)
+        browser.navigate(f"{base_url}/content-packs/details/{encoded_folder}")
+        browser.wait_for("document.querySelector('.pack-detail-meta span') !== null")
+        detail = browser.evaluate(
+            "(() => {"
+            "const resolve = name => {const probe=document.createElement('span');"
+            "probe.style.color=`var(${name})`;document.body.appendChild(probe);"
+            "const value=getComputedStyle(probe).color;probe.remove();return value};"
+            "const hero=document.querySelector('.pack-detail-hero');"
+            "const description=hero.querySelector('p');"
+            "const meta=document.querySelector('.pack-detail-meta');"
+            "const label=meta.querySelector('strong');const value=meta.querySelector('span');"
+            "return {pageText:resolve('--theme-page-text'),muted:resolve('--theme-muted-text'),"
+            "description:getComputedStyle(description).color,"
+            "label:getComputedStyle(label).color,value:getComputedStyle(value).color,"
+            "descriptionWrap:getComputedStyle(description).overflowWrap,"
+            "valueWrap:getComputedStyle(value).overflowWrap,"
+            "documentContained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,"
+            "heroContained:hero.scrollWidth<=hero.clientWidth+1,"
+            "metaContained:meta.scrollWidth<=meta.clientWidth+1,"
+            "itemsContained:[...meta.children].every(item=>item.scrollWidth<=item.clientWidth+1)}"
+            "})()"
+        )
+        assert detail == {
+            "pageText": detail["pageText"],
+            "muted": detail["muted"],
+            "description": detail["pageText"],
+            "label": detail["muted"],
+            "value": detail["pageText"],
+            "descriptionWrap": "anywhere",
+            "valueWrap": "anywhere",
+            "documentContained": True,
+            "heroContained": True,
+            "metaContained": True,
+            "itemsContained": True,
+        }
+
+        browser.navigate(f"{base_url}/library?theme-consistency={theme}")
+        browser.wait_for("document.querySelector('.library-folder') !== null")
+        library = browser.evaluate(
+            "(() => {"
+            "const resolve = name => {const probe=document.createElement('span');"
+            "probe.style.color=`var(${name})`;document.body.appendChild(probe);"
+            "const value=getComputedStyle(probe).color;probe.remove();return value};"
+            "const hero=document.querySelector('.library-hero');"
+            "const toolbar=document.querySelector('.library-toolbar');"
+            "const folder=document.querySelector('.library-folder');"
+            "const header=folder.querySelector('.library-folder-header');"
+            "const body=folder.querySelector('.library-folder-body');"
+            "const title=folder.querySelector('h2');"
+            "title.textContent='Folder-'+'unbroken-value-'.repeat(18);"
+            "const selected=document.querySelector('.library-view-option.selected');"
+            "return {"
+            "pageText:resolve('--theme-page-text'),muted:resolve('--theme-muted-text'),"
+            "accent:resolve('--theme-accent'),heading:resolve('--theme-heading'),"
+            "heroImage:getComputedStyle(hero).backgroundImage,"
+            "toolbarImage:getComputedStyle(toolbar).backgroundImage,"
+            "toolbarColor:getComputedStyle(toolbar).backgroundColor,"
+            "folderColor:getComputedStyle(folder).backgroundColor,"
+            "headerColor:getComputedStyle(header).backgroundColor,"
+            "bodyColor:getComputedStyle(body).backgroundColor,"
+            "titleColor:getComputedStyle(title).color,titleWrap:getComputedStyle(title).overflowWrap,"
+            "selectedBorder:getComputedStyle(selected).borderTopColor,"
+            "focusVisibleSupported:CSS.supports('selector(:focus-visible)'),"
+            "documentContained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,"
+            "folderContained:folder.scrollWidth<=folder.clientWidth+1}"
+            "})()"
+        )
+        assert library["heroImage"] != "none"
+        assert library["toolbarImage"] == "none"
+        assert library["toolbarColor"] != library["folderColor"]
+        assert library["headerColor"] != library["bodyColor"]
+        assert library["titleColor"] == library["heading"]
+        assert library["titleWrap"] == "anywhere"
+        assert library["selectedBorder"] == library["accent"]
+        assert library["focusVisibleSupported"] is True
+        assert library["documentContained"] is True
+        assert library["folderContained"] is True
+
+    set_theme(original_theme)
+
+
 def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url

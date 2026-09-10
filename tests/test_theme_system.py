@@ -978,6 +978,94 @@ class ThemeSystemTests(unittest.TestCase):
                 self.assertTrue(blocks, f"Missing CSS rule for {selector}")
                 self.assertTrue(any(token in block for block in blocks))
 
+    def test_content_pack_detail_and_library_consistency_rules_are_semantic(self):
+        css = self._style_css()
+        start = css.index("CONTENT PACK DETAILS + QUIZ LIBRARY CONSISTENCY")
+        rules = css[start:]
+
+        detail_expectations = {
+            ".content-packs-page .pack-detail-hero p": (
+                "--theme-page-text", "opacity: 1",
+            ),
+            ".content-packs-page .pack-detail-meta": (
+                "--theme-panel-1", "--theme-border", "--semantic-section-shadow",
+            ),
+            ".content-packs-page .pack-detail-meta > div": (
+                "min-width: 0", "--theme-surface", "--theme-border-soft",
+            ),
+            ".content-packs-page .pack-detail-meta strong": (
+                "--theme-muted-text", "opacity: 1",
+            ),
+            ".content-packs-page .pack-detail-meta span": (
+                "--theme-page-text", "overflow-wrap: anywhere", "word-break: break-word",
+            ),
+        }
+        library_expectations = {
+            ".library-page .library-hero": (
+                "--theme-accent", "--theme-panel-1", "--theme-panel-2",
+            ),
+            ".library-page .library-toolbar": (
+                "--theme-surface", "--theme-border-soft",
+            ),
+            ".library-page .library-folder": (
+                "--theme-panel-1", "--theme-border", "--theme-shadow",
+            ),
+            ".library-page .library-folder-header": (
+                "--theme-accent", "--theme-panel-1", "--theme-border-soft",
+            ),
+            ".library-page .library-folder-empty": (
+                "--theme-muted-text", "--semantic-quiet-control-surface",
+            ),
+            ".library-page .library-folder-actions .library-reorder-button:disabled": (
+                "--theme-muted-text", "--semantic-quiet-control-surface",
+                "cursor: not-allowed", "transform: none",
+            ),
+            ".library-page .library-danger-icon": (
+                "--semantic-error-text", "--semantic-error-surface",
+                "--semantic-error-border",
+            ),
+        }
+        for selector, tokens in {**detail_expectations, **library_expectations}.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(rules, selector)
+                self.assertTrue(blocks, f"Missing consistency rule for {selector}")
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must use {tokens}",
+                )
+
+        self.assertIn("@media (max-width: 700px)", rules)
+        self.assertIn("@media (max-width: 480px)", rules)
+        self.assertIn("overflow-wrap: anywhere", rules)
+        self.assertIn("min-width: 0", rules)
+
+    def test_content_pack_detail_and_library_text_contrast_across_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme), mock.patch.object(
+                dlms,
+                "load_portal_config",
+                return_value={
+                    "title": "DLMS",
+                    "theme": theme,
+                    "background_image": None,
+                },
+            ):
+                css = client.get("/dynamic.css").get_data(as_text=True).lower()
+            variables = self._css_variables(css)
+            body = self._rgba(variables["theme-body-base"])[:3]
+            for surface in (
+                "theme-panel-1", "theme-panel-2", "theme-surface", "theme-surface-2",
+            ):
+                background = self._composite(variables[surface], body)
+                for foreground in ("theme-page-text", "theme-muted-text"):
+                    ratio = self._contrast(variables[foreground], background)
+                    self.assertGreaterEqual(
+                        ratio,
+                        4.5,
+                        f"{theme} {foreground} on {surface} is only {ratio:.2f}:1",
+                    )
+
     def test_review_small_text_uses_accessible_accent_foreground_token(self):
         css = self._style_css()
         match = re.search(
