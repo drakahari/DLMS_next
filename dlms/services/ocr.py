@@ -16,7 +16,9 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, Iterable
+
+from PIL import Image, UnidentifiedImageError
 
 
 OCR_ENGINE = "tesseract"
@@ -468,3 +470,109 @@ def recognize_image_bytes(
         source_height=source_height,
         engine_version=runtime.version,
     )
+
+
+def recognize_image_regions(
+    image_bytes: bytes,
+    regions: Iterable[dict[str, Any]],
+    *,
+    source_id: str,
+    source_width: int,
+    source_height: int,
+    page_index: int = 0,
+    runtime: OCRRuntime | None = None,
+    timeout_seconds: float = OCR_DEFAULT_TIMEOUT_SECONDS,
+    cancel_requested: Callable[[], bool] | None = None,
+) -> tuple[OCRObservation, ...]:
+    """Retry OCR once over a bounded composite of likely answer-row regions."""
+
+    regions = tuple(regions)
+    if not 2 <= len(regions) <= 26:
+        raise ValueError("OCR row retry requires between 2 and 26 regions.")
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as source:
+            source.load()
+            image = source.convert("RGB")
+    except (OSError, ValueError, UnidentifiedImageError) as exc:
+        raise OCRError("OCR row retry input is not a readable image.") from exc
+    if image.size != (source_width, source_height):
+        raise ValueError("OCR row retry dimensions do not match the source image.")
+
+    validated = []
+    composite_height = 8
+    composite_width = 0
+    for index, region in enumerate(regions):
+        left = int(region.get("ocr_left", region.get("left", 0)))
+        top = int(region.get("top", 0)) + 3
+        right = int(region.get("ocr_right", region.get("right", source_width)))
+        bottom = int(region.get("bottom", 0)) - 3
+        if not (0 <= left < right <= source_width and 0 <= top < bottom <= source_height):
+            raise ValueError("OCR row retry region is outside the source image.")
+        width = right - left
+        height = bottom - top
+        validated.append((index, left, top, right, bottom, composite_height))
+        composite_width = max(composite_width, width + 8)
+        composite_height += height + 12
+
+    composite = Image.new("RGB", (composite_width, composite_height), "white")
+    for _index, left, top, right, bottom, target_top in validated:
+        composite.paste(image.crop((left, top, right, bottom)), (4, target_top))
+    encoded = io.BytesIO()
+    composite.save(encoded, format="PNG")
+
+    runtime = runtime or resolve_tesseract_runtime()
+    retried = recognize_image_bytes(
+        encoded.getvalue(),
+        source_id=source_id,
+        source_width=composite.width,
+        source_height=composite.height,
+        page_index=page_index,
+        runtime=runtime,
+        timeout_seconds=timeout_seconds,
+        cancel_requested=cancel_requested,
+        image_suffix=".png",
+    )
+
+    restored = []
+    for observation in retried:
+        box = observation.bounding_box
+        center_y = box.top + box.height / 2
+        mapping = next(
+            (
+                item
+                for item in validated
+                if item[5] <= center_y < item[5] + (item[4] - item[2])
+            ),
+            None,
+        )
+        if mapping is None:
+            continue
+        index, left, top, _right, _bottom, target_top = mapping
+        restored_left = left + max(0, box.left - 4)
+        restored_top = top + max(0, box.top - target_top)
+        restored_width = min(box.width, source_width - restored_left)
+        restored_height = min(box.height, source_height - restored_top)
+        if restored_width <= 0 or restored_height <= 0:
+            continue
+        restored.append(
+            OCRObservation(
+                source_id=source_id,
+                page_index=page_index,
+                source_width=source_width,
+                source_height=source_height,
+                text=observation.text,
+                bounding_box=OCRBoundingBox(
+                    restored_left,
+                    restored_top,
+                    restored_width,
+                    restored_height,
+                ),
+                confidence=observation.confidence,
+                block_id=10_000 + index,
+                paragraph_id=1,
+                line_id=observation.line_id,
+                engine=observation.engine,
+                engine_version=observation.engine_version,
+            )
+        )
+    return tuple(restored)

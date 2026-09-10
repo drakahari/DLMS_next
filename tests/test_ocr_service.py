@@ -203,6 +203,45 @@ class OCRServiceTests(unittest.TestCase):
         self.assertNotIn("PATH", kwargs["env"])
         self.assertEqual(kwargs["env"]["TESSDATA_PREFIX"], str(self.tessdata))
 
+    def test_region_retry_is_one_bounded_composite_and_restores_source_coordinates(self):
+        source_bytes = (FIXTURES / "dlms-question.png").read_bytes()
+        retry_word = ocr.OCRObservation(
+            source_id="retry",
+            page_index=0,
+            source_width=258,
+            source_height=140,
+            text="Quartz",
+            bounding_box=ocr.OCRBoundingBox(24, 12, 60, 18),
+            confidence=92.0,
+            block_id=1,
+            paragraph_id=1,
+            line_id=1,
+            engine="tesseract",
+            engine_version="5.5.3",
+        )
+        regions = (
+            {"left": 0, "top": 100, "right": 1200, "bottom": 160, "ocr_left": 50, "ocr_right": 300},
+            {"left": 0, "top": 200, "right": 1200, "bottom": 260, "ocr_left": 50, "ocr_right": 300},
+        )
+        with mock.patch.object(
+            ocr, "recognize_image_bytes", return_value=(retry_word,)
+        ) as recognize:
+            recovered = ocr.recognize_image_regions(
+                source_bytes,
+                regions,
+                source_id="source",
+                source_width=1200,
+                source_height=700,
+                runtime=mock.Mock(),
+            )
+
+        self.assertEqual(recognize.call_count, 1)
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(recovered[0].source_id, "source")
+        self.assertEqual(recovered[0].source_width, 1200)
+        self.assertEqual(recovered[0].bounding_box.left, 70)
+        self.assertEqual(recovered[0].bounding_box.top, 107)
+
     def test_timeout_terminates_child(self):
         script = self._script("import time\ntime.sleep(30)\n")
         with self.assertRaises(ocr.OCRTimeoutError):

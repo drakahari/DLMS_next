@@ -57,7 +57,7 @@ _MULTIPLE_MODE_RE = re.compile(
     re.IGNORECASE,
 )
 _EXPLANATION_HEADING_RE = re.compile(
-    r"^\s*(explanation|rationale|feedback|why\s+this\s+is\s+correct|"
+    r"^\s*(overall\s+explanation|explanation|rationale|feedback|why\s+this\s+is\s+correct|"
     r"why\s+the\s+other\s+options\s+are\s+incorrect)\s*[:\-]?\s*(.*)$",
     re.IGNORECASE,
 )
@@ -73,6 +73,19 @@ _OBVIOUS_CHROME_RE = re.compile(
 _RESULT_BANNER_RE = re.compile(r"^\s*(correct|incorrect)\s*[!.]?\s*$", re.IGNORECASE)
 _CONTROL_GLYPH_PREFIX_RE = re.compile(
     r"^\s*(?:[@©®Oo0QØ○◯◉●□☐☑()]|\|)\s+(.+?)\s*$", re.IGNORECASE
+)
+_COMBINED_RESULT_HEADER_RE = re.compile(
+    r"^\s*(?:[@©®Oo0QØ○◯◉●□☐☑()]|\|)*\s*question(?:\s+\d+)?\s+"
+    r"(correct|incorrect)\b.*$",
+    re.IGNORECASE,
+)
+_DOMAIN_HEADING_RE = re.compile(
+    r"^\s*(?:(?:[@©®Oo0QØ○◯◉●□☐☑()]|\|)\s*)?domain\s*$", re.IGNORECASE
+)
+_CARD_FEEDBACK_RE = re.compile(
+    r"^\s*(?:your\s+(?:answer|selection)\s+is\s+(correct|incorrect)|"
+    r"(correct)\s+(?:answer|selection))\s*[!.]?\s*$",
+    re.IGNORECASE,
 )
 
 
@@ -352,9 +365,140 @@ def _row_search_bounds(
     return max(0, int(top)), min(image_height, int(bottom) + 1), typical_spacing
 
 
+def detect_answer_row_regions(
+    image_bytes: bytes, observations: Iterable[Any]
+) -> tuple[dict[str, int], ...]:
+    """Locate a bounded set of bordered answer rows for an optional OCR retry."""
+
+    observations = tuple(observations)
+    if not observations:
+        return ()
+    lines = observations_to_lines(observations)
+    if len(_segment_lines(lines)) != 1:
+        return ()
+    explanation_tops = [line.top for line in lines if _explanation_heading(line.text)]
+    if not explanation_tops:
+        return ()
+    explanation_top = min(explanation_tops)
+    question_lines = [
+        line for line in lines if line.top < explanation_top and "?" in line.text
+    ]
+    if not question_lines:
+        return ()
+    question_bottom = max(line.bottom for line in question_lines)
+    if explanation_top - question_bottom < 90:
+        return ()
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            source.load()
+            image = source.convert("RGB")
+    except (OSError, ValueError, UnidentifiedImageError):
+        return ()
+    source_width = int(_field(observations[0], "source_width", image.width))
+    source_height = int(_field(observations[0], "source_height", image.height))
+    if image.size != (source_width, source_height):
+        return ()
+
+    pixels = image.load()
+    sample_left = min(10, max(0, image.width - 1))
+    sample_right = max(sample_left + 1, image.width - 10)
+    sample_count = len(range(sample_left, sample_right, 2))
+    horizontal = []
+    for y in range(max(0, question_bottom + 4), min(image.height, explanation_top - 4)):
+        strong = 0
+        for x in range(sample_left, sample_right, 2):
+            pixel = pixels[x, y]
+            if max(pixel) < 225 or max(pixel) - min(pixel) > 70:
+                strong += 1
+        if strong >= sample_count * 0.62:
+            horizontal.append(y)
+
+    runs: list[list[int]] = []
+    for y in horizontal:
+        if not runs or y > runs[-1][-1] + 1:
+            runs.append([y])
+        else:
+            runs[-1].append(y)
+    edges = [int(round((run[0] + run[-1]) / 2)) for run in runs if len(run) <= 8]
+
+    regions = []
+    index = 0
+    while index + 1 < len(edges):
+        height = edges[index + 1] - edges[index]
+        if 42 <= height <= 135:
+            regions.append(
+                {
+                    "left": 0,
+                    "top": edges[index],
+                    "right": image.width,
+                    "bottom": edges[index + 1],
+                    "ocr_left": 0,
+                    "ocr_right": min(
+                        image.width,
+                        max(700, min(900, int(image.width * 0.48))),
+                    ),
+                }
+            )
+            index += 2
+        else:
+            index += 1
+    if not 2 <= len(regions) <= OCR_QUESTION_MAX_CHOICES:
+        return ()
+
+    current_rows = _choice_row_sequence(
+        lines, source_width=source_width, result_context=True
+    )
+    current_complete = (
+        len(current_rows) == len(regions)
+        and _labels_are_contiguous(current_rows)
+        and all(
+            region["top"]
+            <= row.line.top + row.line.height / 2
+            <= region["bottom"]
+            for row, region in zip(current_rows, regions)
+        )
+    )
+    return () if current_complete else tuple(regions)
+
+
+def merge_answer_row_observations(
+    observations: Iterable[Any],
+    recovered: Iterable[Any],
+    regions: Iterable[dict[str, int]],
+) -> tuple[Any, ...]:
+    """Replace only row regions that produced usable bounded retry observations."""
+
+    observations = tuple(observations)
+    recovered = tuple(recovered)
+    regions = tuple(regions)
+    recovered_indexes = set()
+    for observation in recovered:
+        center = _box_field(observation, "top") + _box_field(observation, "height") / 2
+        for index, region in enumerate(regions):
+            if region["top"] <= center <= region["bottom"]:
+                recovered_indexes.add(index)
+                break
+    if not recovered_indexes:
+        return observations
+
+    retained = []
+    for observation in observations:
+        center = _box_field(observation, "top") + _box_field(observation, "height") / 2
+        if any(
+            index in recovered_indexes and region["top"] <= center <= region["bottom"]
+            for index, region in enumerate(regions)
+        ):
+            continue
+        retained.append(observation)
+    return tuple(retained) + recovered
+
+
 def detect_visual_result_markers(
     image_bytes: bytes,
     observations: Iterable[Any],
+    *,
+    answer_regions: Iterable[dict[str, int]] = (),
 ) -> tuple[dict[str, Any], ...]:
     """Find dedicated row-level check/X icons in a reviewed-result screenshot.
 
@@ -378,6 +522,7 @@ def detect_visual_result_markers(
     if image.size != (source_width, source_height):
         return ()
 
+    answer_regions = tuple(answer_regions)
     markers = []
     for segment in _segment_lines(lines):
         first_question_top = min(
@@ -391,27 +536,49 @@ def detect_visual_result_markers(
         answer_rows = _choice_row_sequence(
             segment, source_width=source_width, result_context=True
         )
-        if not answer_rows:
+        use_regions = bool(answer_regions)
+        if not answer_rows and not use_regions:
             continue
         if not result_banner:
             question_before = any(
                 _looks_like_question(line.text)
-                and line.top < answer_rows[0].line.top
+                and line.top
+                < (answer_regions[0]["top"] if use_regions else answer_rows[0].line.top)
                 for line in segment
             )
             explanation_after = any(
                 _explanation_heading(line.text)
-                and line.top > answer_rows[-1].line.top
+                and line.top
+                > (answer_regions[-1]["bottom"] if use_regions else answer_rows[-1].line.top)
                 for line in segment
             )
             if not (question_before and explanation_after):
                 continue
-        answer_centers = [row.line.top + row.line.height / 2 for row in answer_rows]
-        for row_index, row in enumerate(answer_rows):
+        answer_centers = (
+            [(region["top"] + region["bottom"]) / 2 for region in answer_regions]
+            if use_regions
+            else [row.line.top + row.line.height / 2 for row in answer_rows]
+        )
+        spacings = [
+            later - earlier
+            for earlier, later in zip(answer_centers, answer_centers[1:])
+        ]
+        region_spacing = median(spacings) if spacings else 64
+        for row_index in range(len(answer_centers)):
             row_center = answer_centers[row_index]
-            search_top, search_bottom, typical_spacing = _row_search_bounds(
-                answer_rows, row_index, image.height
-            )
+            if use_regions:
+                search_top = max(0, answer_regions[row_index]["top"])
+                search_bottom = min(image.height, answer_regions[row_index]["bottom"] + 1)
+                typical_spacing = region_spacing
+                row_left = answer_regions[row_index]["left"]
+                row_top = answer_regions[row_index]["top"]
+            else:
+                row = answer_rows[row_index]
+                search_top, search_bottom, typical_spacing = _row_search_bounds(
+                    answer_rows, row_index, image.height
+                )
+                row_left = row.line.left
+                row_top = row.line.top
             search_left = int(image.width * 0.67)
             search_box = (
                 min(image.width - 1, search_left),
@@ -454,8 +621,9 @@ def detect_visual_result_markers(
             markers.append(
                 {
                     "kind": kind,
-                    "row_left": row.line.left,
-                    "row_top": row.line.top,
+                    "row_left": row_left,
+                    "row_top": row_top,
+                    **({"row_index": row_index} if use_regions else {}),
                     "bounding_box": {
                         "left": left,
                         "top": top,
@@ -617,6 +785,8 @@ def _choice_row_candidate(line: OCRLine, *, result_context: bool) -> OCRChoiceRo
 
 
 def _labels_are_contiguous(rows: list[OCRChoiceRow]) -> bool:
+    if len(rows) > len(OCR_LABELS):
+        return False
     for index, row in enumerate(rows):
         expected = OCR_LABELS[index]
         observed = row.raw_label.upper()
@@ -738,6 +908,377 @@ def _normalize_result_choice_text(text: str) -> str:
     return text
 
 
+def _card_feedback_state(text: str) -> str | None:
+    match = _CARD_FEEDBACK_RE.match(text)
+    if not match:
+        return None
+    return "incorrect" if (match.group(1) or "").lower() == "incorrect" else "correct"
+
+
+def _clean_unlabelled_choice_text(text: str) -> str:
+    text = _TRAILING_RESULT_GLYPH_RE.sub("", str(text or "")).strip()
+    text = re.sub(r"^\s*\|\s*", "", text)
+    text = re.sub(r"^\s*(?:[&@]%?|%&?)\s+", "", text)
+    text = re.sub(r"^\s*(?:[_|]+|C[EO0]|[O0Q]C)\s+", "", text)
+    text = re.sub(r"^\s*\([C0OQ1_]+\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^\s*\(\s*", "", text)
+    text = re.sub(
+        r"^\s*(?:[@©®Oo0QØ○◯◉●□☐☑])(?:[.):_-]?\s+|(?=[^A-Za-z]))",
+        "",
+        text,
+        count=1,
+    )
+    text = text.strip(" |")
+    return _normalize_result_choice_text(text)
+
+
+def _card_choice_group_text(group: list[OCRLine]) -> str:
+    parts = []
+    for index, line in enumerate(sorted(group, key=lambda item: (item.top, item.left))):
+        if index == 0:
+            parts.append(_clean_unlabelled_choice_text(line.text))
+        else:
+            parts.append(line.text.lstrip(" _|\"“”").strip())
+    return " ".join(part for part in parts if part).strip()
+
+
+def _joined_line(lines: list[OCRLine]) -> OCRLine:
+    left = min(line.left for line in lines)
+    top = min(line.top for line in lines)
+    right = max(line.left + line.width for line in lines)
+    bottom = max(line.bottom for line in lines)
+    return OCRLine(
+        text=" ".join(line.text for line in lines).strip(),
+        left=left,
+        top=top,
+        width=right - left,
+        height=bottom - top,
+        confidence=sum(line.confidence for line in lines) / len(lines),
+    )
+
+
+def _trailing_card_choice(lines: list[OCRLine]) -> tuple[int, list[OCRLine]] | None:
+    usable = [
+        (index, line)
+        for index, line in enumerate(lines)
+        if not _card_feedback_state(line.text)
+    ]
+    if not usable:
+        return None
+    selected = [usable[-1]]
+    for item in reversed(usable[:-1]):
+        later = selected[0][1]
+        if later.top - item[1].bottom > 36:
+            break
+        selected.insert(0, item)
+    return selected[0][0], [item[1] for item in selected]
+
+
+def _expected_multiple_count(text: str) -> int | None:
+    match = re.search(r"\b(?:select|choose)\s+(two|three|\d+)\b", text, re.IGNORECASE)
+    if not match:
+        return None
+    value = match.group(1).lower()
+    if value == "two":
+        return 2
+    if value == "three":
+        return 3
+    return int(value)
+
+
+def _explicit_feedback_choice_indexes(
+    explanation: str, choice_texts: list[str]
+) -> list[int]:
+    match = re.search(r"\b(?:is|are)\s+correct\b", explanation, re.IGNORECASE)
+    if not match:
+        return []
+    identifying_text = explanation[: match.start()].casefold()
+    indexes = []
+    for index, choice in enumerate(choice_texts):
+        normalized = re.sub(r"\s+", " ", choice).strip().casefold()
+        if normalized and normalized in identifying_text:
+            indexes.append(index)
+    return indexes
+
+
+def _infer_unlabelled_card_question(
+    content_lines: list[OCRLine],
+    *,
+    source_id: str,
+    source_index: int,
+    result_banner: str | None,
+    initial_unassigned: list[str],
+) -> dict[str, Any] | None:
+    """Recover reviewed answer cards without treating their controls as labels."""
+
+    if not result_banner:
+        return None
+    question_start = next(
+        (index for index, line in enumerate(content_lines) if _looks_like_question(line.text)),
+        None,
+    )
+    if question_start is None:
+        return None
+    question_end = next(
+        (
+            index
+            for index in range(question_start, len(content_lines))
+            if content_lines[index].text.rstrip().endswith("?")
+        ),
+        question_start,
+    )
+    body = content_lines[question_end + 1 :]
+    footer_index = next(
+        (index for index, line in enumerate(body) if _DOMAIN_HEADING_RE.match(line.text)),
+        len(body),
+    )
+    footer = body[footer_index:]
+    body = body[:footer_index]
+    heading_indexes = [
+        index for index, line in enumerate(body) if _explanation_heading(line.text)
+    ]
+    overall_index = next(
+        (
+            index
+            for index in heading_indexes
+            if (_explanation_heading(body[index].text).group(1) or "").lower().startswith("overall")
+        ),
+        None,
+    )
+    repeated_indexes = [
+        index
+        for index in heading_indexes
+        if not (_explanation_heading(body[index].text).group(1) or "").lower().startswith("overall")
+    ]
+    if overall_index is None and len(repeated_indexes) < 2:
+        return None
+
+    choice_groups: list[list[OCRLine]] = []
+    choice_states: list[str | None] = []
+    feedback_groups: list[list[OCRLine]] = []
+    overall_explanation: list[OCRLine] = []
+    if overall_index is not None:
+        answer_lines = body[:overall_index]
+        current: list[OCRLine] = []
+        current_state: str | None = None
+        pending_state: str | None = None
+
+        def finish_group():
+            nonlocal current, current_state
+            if current:
+                choice_groups.append(current)
+                choice_states.append(current_state)
+            current = []
+            current_state = None
+
+        for line in answer_lines:
+            state = _card_feedback_state(line.text)
+            if state:
+                finish_group()
+                pending_state = state
+                continue
+            if current and line.top - current[-1].bottom > 36:
+                finish_group()
+            if not current:
+                current_state = pending_state
+                pending_state = None
+            current.append(line)
+        finish_group()
+        heading = _explanation_heading(body[overall_index].text)
+        if heading and heading.group(2).strip():
+            line = body[overall_index]
+            overall_explanation.append(
+                OCRLine(
+                    heading.group(2).strip(),
+                    line.left,
+                    line.top,
+                    line.width,
+                    line.height,
+                    line.confidence,
+                )
+            )
+        overall_explanation.extend(body[overall_index + 1 :])
+        feedback_groups = [[] for _choice in choice_groups]
+    else:
+        previous_heading = -1
+        for heading_index in repeated_indexes:
+            interval = body[previous_heading + 1 : heading_index]
+            trailing = _trailing_card_choice(interval)
+            if trailing is None:
+                return None
+            choice_start, choice_group = trailing
+            prefix = interval[:choice_start]
+            if choice_groups:
+                feedback_groups[-1].extend(
+                    line for line in prefix if not _card_feedback_state(line.text)
+                )
+            state = next(
+                (
+                    value
+                    for line in reversed(prefix)
+                    if (value := _card_feedback_state(line.text))
+                ),
+                None,
+            )
+            choice_groups.append(choice_group)
+            choice_states.append(state)
+            feedback_groups.append([])
+            previous_heading = heading_index
+        feedback_groups[-1].extend(
+            line
+            for line in body[repeated_indexes[-1] + 1 :]
+            if not _card_feedback_state(line.text)
+        )
+
+    choice_texts = [_card_choice_group_text(group) for group in choice_groups]
+    if not 2 <= len(choice_texts) <= OCR_QUESTION_MAX_CHOICES or any(
+        not text for text in choice_texts
+    ):
+        return None
+
+    question_text = " ".join(
+        line.text for line in content_lines[question_start : question_end + 1]
+    ).strip()
+    all_text = "\n".join(line.text for line in content_lines)
+    explanation = "\n".join(line.text for line in overall_explanation).strip()
+    multiple_wording = bool(_MULTIPLE_MODE_RE.search(all_text))
+    expected_multiple = _expected_multiple_count(all_text)
+    positive_indexes = [
+        index for index, state in enumerate(choice_states) if state == "correct"
+    ]
+    if not positive_indexes and explanation:
+        positive_indexes = _explicit_feedback_choice_indexes(explanation, choice_texts)
+    complete_feedback = (
+        len(positive_indexes) == expected_multiple
+        if multiple_wording and expected_multiple is not None
+        else (not multiple_wording and len(positive_indexes) == 1)
+    )
+    correct_answers = (
+        [OCR_LABELS[index] for index in positive_indexes] if complete_feedback else []
+    )
+    correctness_evidence = "explicit_feedback" if correct_answers else "unknown"
+    issues = ["Answer labels were inferred from unlabeled answer cards and require review."]
+    if positive_indexes and not complete_feedback:
+        issues.append(
+            "Textual result feedback did not establish the complete correct-answer set."
+        )
+    if not correct_answers and not multiple_wording:
+        issues.append(
+            "Answer mode was not explicit; verify single-answer or multiple-answer mode."
+        )
+
+    choice_feedback = {
+        OCR_LABELS[index]: " ".join(line.text for line in group).strip()
+        for index, group in enumerate(feedback_groups)
+        if group
+    }
+    confidence_lines = content_lines[question_start:]
+    text_confidence = _confidence_label(
+        sum(line.confidence for line in confidence_lines) / len(confidence_lines)
+    )
+    if text_confidence == "low":
+        issues.append("OCR text confidence is low; compare every field with the source image.")
+    unassigned = list(initial_unassigned)
+    unassigned.extend(line.text for line in content_lines[:question_start])
+    unassigned.extend(line.text for line in footer)
+    return {
+        "number": source_index,
+        "question": question_text,
+        "choices": [
+            {"label": OCR_LABELS[index], "text": text, "label_origin": "inferred"}
+            for index, text in enumerate(choice_texts)
+        ],
+        "correct_answers": correct_answers,
+        "answer_mode": "multiple" if multiple_wording else "single",
+        "answer_mode_evidence": (
+            "explicit_instruction"
+            if multiple_wording
+            else correctness_evidence if correct_answers else "unknown"
+        ),
+        "correctness_confirmation_required": True,
+        "correctness_confirmed": False,
+        "correctness_evidence": correctness_evidence,
+        "declared_answer_text": "",
+        "explanation": explanation,
+        "choice_feedback": choice_feedback,
+        "pages": [source_index],
+        "status": "review",
+        "issues": list(dict.fromkeys(issues)),
+        "ocr_metadata": {
+            "source_id": source_id,
+            "source_index": source_index,
+            "label_origin": "inferred",
+            "text_confidence": text_confidence,
+            "structure_confidence": "medium",
+            "correctness_evidence": correctness_evidence,
+            "unassigned_text": "\n".join(dict.fromkeys(unassigned)).strip(),
+            "result_banner": result_banner,
+            "visual_result_markers": [],
+        },
+    }
+
+
+def _geometry_choice_text(line: OCRLine, index: int) -> tuple[str, bool]:
+    expected = OCR_LABELS[index]
+    candidate = _choice_row_candidate(line, result_context=True)
+    allow_fused_label = candidate is None or not candidate.strict
+    if candidate:
+        if _row_has_expected_label(candidate, index):
+            return candidate.text, True
+        text = candidate.text
+    else:
+        text = _TRAILING_RESULT_GLYPH_RE.sub("", line.text).strip(" |").strip()
+
+    direct_confusion = "©" if expected == "C" else "8" if expected == "B" else None
+    fused_lookahead = r"|(?=[a-z])" if allow_fused_label else ""
+    label_pattern = re.compile(
+        rf"^(?:{re.escape(expected)}|{re.escape(direct_confusion) if direct_confusion else '(?!)'})"
+        rf"(?:[.)\]:-]\s*|\s+|(?=\d)|(?=[$€£]){fused_lookahead})",
+        re.IGNORECASE,
+    )
+    match = label_pattern.match(text)
+    if match:
+        remainder = text[match.end() :].strip()
+        if remainder.startswith(expected.lower() + "."):
+            remainder = remainder[2:].strip()
+        return _normalize_result_choice_text(remainder), True
+
+    control = re.match(r"^(?:[|]\s*)?(?:[@©®Oo0QØ○◯◉●□☐☑()]\s*)", text)
+    if control:
+        text = text[control.end() :].strip()
+    match = label_pattern.match(text)
+    if match:
+        remainder = text[match.end() :].strip()
+        if remainder.startswith(expected.lower() + "."):
+            remainder = remainder[2:].strip()
+        return _normalize_result_choice_text(remainder), True
+
+    unexpected = re.match(r"^[A-Za-z©8](?:[.)\]:-]\s*|\s+)", text)
+    if unexpected:
+        text = text[unexpected.end() :].strip()
+    return _clean_unlabelled_choice_text(text), False
+
+
+def _region_choice_rows(
+    body_lines: list[OCRLine], answer_regions: Iterable[dict[str, int]]
+) -> list[tuple[OCRLine, str, bool]]:
+    rows = []
+    for index, region in enumerate(answer_regions):
+        region_lines = [
+            line
+            for line in body_lines
+            if region["top"] <= line.top + line.height / 2 <= region["bottom"]
+        ]
+        if not region_lines:
+            return []
+        line = _joined_line(sorted(region_lines, key=lambda item: (item.top, item.left)))
+        text, source_label = _geometry_choice_text(line, index)
+        if not text:
+            return []
+        rows.append((line, text, source_label))
+    return rows
+
+
 def _infer_one_question(
     lines: list[OCRLine],
     *,
@@ -745,10 +1286,12 @@ def _infer_one_question(
     source_index: int,
     source_width: int,
     visual_markers: Iterable[Any] = (),
+    answer_regions: Iterable[dict[str, int]] = (),
 ) -> dict[str, Any] | None:
     if not lines:
         return None
     visual_markers = tuple(visual_markers)
+    answer_regions = tuple(answer_regions)
     issues: list[str] = []
     unassigned: list[str] = []
     content_lines: list[OCRLine] = []
@@ -776,12 +1319,14 @@ def _infer_one_question(
     without_banner = []
     for line in content_lines:
         banner_match = _RESULT_BANNER_RE.match(line.text)
+        combined_match = _COMBINED_RESULT_HEADER_RE.match(line.text)
         if (
             result_banner is None
-            and banner_match
+            and (banner_match or combined_match)
             and line.top < min(first_question_top, first_explicit_top)
         ):
-            result_banner = banner_match.group(1).lower()
+            result_banner = (banner_match or combined_match).group(1).lower()
+            unassigned.append(line.text)
             continue
         without_banner.append(line)
     content_lines = without_banner
@@ -802,6 +1347,32 @@ def _infer_one_question(
             )
         else:
             unassigned.append(content_lines.pop(0).text)
+
+    domain_index = next(
+        (
+            index
+            for index, line in enumerate(content_lines)
+            if result_banner
+            and _DOMAIN_HEADING_RE.match(line.text)
+            and any(_explanation_heading(previous.text) for previous in content_lines[:index])
+        ),
+        None,
+    )
+    if domain_index is not None:
+        unassigned.extend(line.text for line in content_lines[domain_index:])
+        content_lines = content_lines[:domain_index]
+    if not content_lines:
+        return None
+
+    card_question = _infer_unlabelled_card_question(
+        content_lines,
+        source_id=source_id,
+        source_index=source_index,
+        result_banner=result_banner,
+        initial_unassigned=unassigned,
+    )
+    if card_question:
+        return card_question
 
     result_context = bool(result_banner or visual_markers)
     key_texts: list[str] = []
@@ -848,12 +1419,36 @@ def _infer_one_question(
         result_context=result_context,
     )
     explicit = [(row.line, row.raw_label, row.text) for row in choice_rows]
+    geometry_rows = (
+        _region_choice_rows(body_lines, answer_regions) if answer_regions else []
+    )
 
     question_lines: list[OCRLine] = []
     choice_texts: list[str] = []
     label_origin = "unknown"
     structure_confidence = "low"
-    if len(explicit) >= 2:
+    source_sequence_integrity = False
+    if len(geometry_rows) == len(answer_regions) and geometry_rows:
+        first_region_top = answer_regions[0]["top"]
+        question_lines = [line for line in body_lines if line.bottom < first_region_top]
+        geometry_line_ids = {id(item[0]) for item in geometry_rows}
+        choice_texts = [item[1] for item in geometry_rows]
+        source_sequence_integrity = all(item[2] for item in geometry_rows)
+        label_origin = "source" if source_sequence_integrity else "inferred"
+        structure_confidence = "high" if source_sequence_integrity else "medium"
+        if not source_sequence_integrity:
+            issues.append(
+                "Answer labels were inferred from complete bordered answer rows and require review."
+            )
+        for line in body_lines:
+            if line.bottom < first_region_top or id(line) in geometry_line_ids:
+                continue
+            if not any(
+                region["top"] <= line.top + line.height / 2 <= region["bottom"]
+                for region in answer_regions
+            ):
+                unassigned.append(line.text)
+    elif len(explicit) >= 2:
         first_choice = body_lines.index(explicit[0][0])
         explicit_lines = {id(item[0]) for item in explicit}
         question_lines = body_lines[:first_choice]
@@ -869,6 +1464,11 @@ def _infer_one_question(
                 unassigned.append(line.text)
         label_origin = "source"
         structure_confidence = "high" if not issues else "medium"
+        source_sequence_integrity = _labels_are_contiguous(
+            choice_rows
+        ) and _aligned_choice_block(
+            [row.line for row in choice_rows], source_width
+        )
     else:
         question_end = next(
             (index for index, line in enumerate(body_lines) if _looks_like_question(line.text)),
@@ -926,22 +1526,42 @@ def _infer_one_question(
         issues.append("The detected answer key referenced a label outside the detected choices.")
 
     detected_markers = []
-    if result_context and explicit:
-        for index, (line, _raw_label, _text) in enumerate(explicit):
-            row_markers = [
-                marker
-                for marker in visual_markers
-                if abs(int(_field(marker, "row_top", -10_000)) - line.top) <= 2
-                and abs(int(_field(marker, "row_left", -10_000)) - line.left) <= 2
-                and str(_field(marker, "kind", "")) in {"check", "x"}
-            ]
-            if len(row_markers) == 1:
-                detected_markers.append(
-                    {
-                        "label": OCR_LABELS[index],
-                        "kind": str(_field(row_markers[0], "kind")),
-                    }
-                )
+    if result_context and source_sequence_integrity:
+        if geometry_rows:
+            for index in range(len(geometry_rows)):
+                row_markers = [
+                    marker
+                    for marker in visual_markers
+                    if int(_field(marker, "row_index", -1)) == index
+                    and str(_field(marker, "kind", "")) in {"check", "x"}
+                ]
+                if len(row_markers) == 1:
+                    detected_markers.append(
+                        {
+                            "label": OCR_LABELS[index],
+                            "kind": str(_field(row_markers[0], "kind")),
+                        }
+                    )
+        elif explicit:
+            for index, (line, _raw_label, _text) in enumerate(explicit):
+                row_markers = [
+                    marker
+                    for marker in visual_markers
+                    if abs(int(_field(marker, "row_top", -10_000)) - line.top) <= 2
+                    and abs(int(_field(marker, "row_left", -10_000)) - line.left) <= 2
+                    and str(_field(marker, "kind", "")) in {"check", "x"}
+                ]
+                if len(row_markers) == 1:
+                    detected_markers.append(
+                        {
+                            "label": OCR_LABELS[index],
+                            "kind": str(_field(row_markers[0], "kind")),
+                        }
+                    )
+    elif any(str(_field(marker, "kind", "")) == "check" for marker in visual_markers):
+        issues.append(
+            "A result check was detected but ignored because the source-label sequence was incomplete."
+        )
     visual_answers = [
         marker["label"] for marker in detected_markers if marker["kind"] == "check"
     ]
@@ -1016,8 +1636,10 @@ def infer_screenshot_questions(
     """Return bounded Smart PDF review records for one screenshot."""
 
     visual_markers: Iterable[Any] = ()
+    answer_regions: Iterable[dict[str, int]] = ()
     if isinstance(observations, dict):
         visual_markers = observations.get("visual_markers") or ()
+        answer_regions = observations.get("answer_regions") or ()
         observations = observations.get("observations") or ()
     observations = tuple(observations)
     if not observations:
@@ -1037,6 +1659,7 @@ def infer_screenshot_questions(
             source_index=source_index,
             source_width=source_width,
             visual_markers=visual_markers,
+            answer_regions=answer_regions,
         )
         if question:
             question["number"] = len(questions) + 1

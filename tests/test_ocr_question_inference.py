@@ -597,6 +597,199 @@ class OCRQuestionInferenceTests(unittest.TestCase):
         self.assertEqual(question["ocr_metadata"]["label_origin"], "source")
         self.assertIn("ordinary prose", question["ocr_metadata"]["unassigned_text"])
 
+    def test_incomplete_source_label_sequence_cannot_translate_a_marker_by_position(self):
+        source = positioned_observations(
+            [
+                ("Which neutral option applies?", 55, 125),
+                ("O C. Third sample", 72, 374),
+                ("O D. Fourth sample", 72, 449),
+                ("Q Explanation", 55, 520),
+                ("Review the recovered sequence.", 55, 558),
+            ]
+        )
+        question = ocr_questions.infer_screenshot_questions(
+            {
+                "observations": source,
+                "visual_markers": (
+                    {"kind": "check", "row_left": 72, "row_top": 449},
+                ),
+            },
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+
+        self.assertEqual(question["correct_answers"], [])
+        self.assertEqual(question["correctness_evidence"], "unknown")
+        self.assertEqual(question["ocr_metadata"]["visual_result_markers"], [])
+        self.assertTrue(any("source-label sequence" in issue for issue in question["issues"]))
+
+    def test_geometrically_inconsistent_source_rows_cannot_translate_a_marker(self):
+        source = positioned_observations(
+            [
+                ("Which neutral option applies?", 55, 125),
+                ("A. First sample", 72, 224),
+                ("B. Second sample", 280, 299),
+                ("C. Third sample", 72, 374),
+                ("D. Fourth sample", 72, 449),
+                ("Explanation", 55, 520),
+                ("Review the recovered geometry.", 55, 558),
+            ]
+        )
+        question = ocr_questions.infer_screenshot_questions(
+            {
+                "observations": source,
+                "visual_markers": (
+                    {"kind": "check", "row_left": 280, "row_top": 299},
+                ),
+            },
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+
+        self.assertEqual(question["correct_answers"], [])
+        self.assertEqual(question["correctness_evidence"], "unknown")
+        self.assertEqual(question["ocr_metadata"]["visual_result_markers"], [])
+        self.assertTrue(any("source-label sequence" in issue for issue in question["issues"]))
+
+    def test_bordered_row_geometry_recovers_early_rows_without_trusting_geometry(self):
+        image_bytes = result_marker_image(checks={3}, selected={3})
+        incomplete = positioned_observations(
+            [
+                ("Correct", 68, 44),
+                ("Which neutral option applies?", 55, 125),
+                ("O B. Cobalt sample", 72, 299),
+                ("© C. Amber sample", 72, 374),
+                ("O D. Violet sample", 72, 449),
+                ("Q Explanation", 55, 520),
+                ("A bounded retry supplies the missing row.", 55, 558),
+            ]
+        )
+        regions = ocr_questions.detect_answer_row_regions(image_bytes, incomplete)
+        self.assertEqual(len(regions), 4)
+
+        recovered = positioned_observations(
+            [
+                ("O A. Quartz sample", 72, 224),
+                ("O B. Cobalt sample", 72, 299),
+                ("© C. Amber sample", 72, 374),
+                ("O D. Violet sample", 72, 449),
+            ]
+        )
+        for item in recovered:
+            item["block_id"] = 10_000 + item["line_id"]
+        merged = ocr_questions.merge_answer_row_observations(
+            incomplete, recovered, regions
+        )
+        markers = ocr_questions.detect_visual_result_markers(
+            image_bytes, merged, answer_regions=regions
+        )
+        question = ocr_questions.infer_screenshot_questions(
+            {
+                "observations": merged,
+                "visual_markers": markers,
+                "answer_regions": regions,
+            },
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+
+        self.assertEqual(
+            [choice["text"] for choice in question["choices"]],
+            ["Quartz sample", "Cobalt sample", "Amber sample", "Violet sample"],
+        )
+        self.assertEqual(question["ocr_metadata"]["label_origin"], "source")
+        self.assertEqual(question["correct_answers"], ["D"])
+        self.assertTrue(question["correctness_confirmation_required"])
+        self.assertFalse(question["correctness_confirmed"])
+
+    def test_repeated_unlabelled_cards_preserve_feedback_and_explicit_correct_row(self):
+        source = positioned_observations(
+            [
+                ("© Question 8 Incorrect + Explain this further", 30, 24),
+                ("Which neutral material matches the sample?", 55, 70),
+                ("Your answer is incorrect", 55, 150),
+                ("@ Quartz tile", 55, 190),
+                ("Explanation", 55, 250),
+                ("Quartz is not the requested material.", 55, 285),
+                ("Correct answer", 55, 350),
+                ("O Cobalt tile", 55, 390),
+                ("Explanation", 55, 450),
+                ("Cobalt matches the requested material.", 55, 485),
+                ("O Amber tile", 55, 550),
+                ("Explanation", 55, 610),
+                ("Amber is a distractor.", 55, 645),
+                ("O Violet tile", 55, 710),
+                ("Explanation", 55, 770),
+                ("Violet is a distractor.", 55, 805),
+                ("Domain", 55, 900),
+                ("Neutral Studies", 55, 940),
+            ],
+            width=900,
+            height=1000,
+        )
+        question = ocr_questions.infer_screenshot_questions(
+            source, source_id="source", source_index=1
+        )["questions"][0]
+
+        self.assertEqual(question["question"], "Which neutral material matches the sample?")
+        self.assertEqual(
+            [choice["text"] for choice in question["choices"]],
+            ["Quartz tile", "Cobalt tile", "Amber tile", "Violet tile"],
+        )
+        self.assertEqual(question["ocr_metadata"]["label_origin"], "inferred")
+        self.assertEqual(question["correct_answers"], ["B"])
+        self.assertEqual(question["correctness_evidence"], "explicit_feedback")
+        self.assertEqual(set(question["choice_feedback"]), set("ABCD"))
+        self.assertNotIn("Domain", question["question"])
+        self.assertNotIn("Domain", question["explanation"])
+        self.assertIn("Domain", question["ocr_metadata"]["unassigned_text"])
+
+    def test_overall_explanation_maps_complete_multi_answer_set_but_boxes_alone_do_not(self):
+        base = [
+            ("@ Question 4 Correct + Explain this further", 30, 24),
+            ("Which neutral samples apply? Choose two.", 55, 70),
+            ("(C1 Quartz arc", 55, 150),
+            ("(C_ Cobalt arc", 55, 230),
+            ("(1 Amber arc", 55, 310),
+            ("( Violet arc", 55, 390),
+            ("Overall explanation", 55, 500),
+        ]
+        explicit = positioned_observations(
+            base
+            + [
+                ("Correct answers:", 55, 540),
+                ("Quartz arc and Cobalt arc are correct.", 55, 580),
+                ("Domain", 55, 680),
+                ("Neutral Studies", 55, 720),
+            ],
+            width=900,
+            height=800,
+        )
+        question = ocr_questions.infer_screenshot_questions(
+            explicit, source_id="source", source_index=1
+        )["questions"][0]
+        self.assertEqual(question["answer_mode"], "multiple")
+        self.assertEqual(question["correct_answers"], ["A", "B"])
+        self.assertEqual(question["correctness_evidence"], "explicit_feedback")
+        self.assertIn("Correct answers", question["explanation"])
+
+        controls_only = positioned_observations(
+            base
+            + [
+                ("Review all choices manually.", 55, 540),
+                ("Domain", 55, 680),
+                ("Neutral Studies", 55, 720),
+            ],
+            width=900,
+            height=800,
+        )
+        unknown = ocr_questions.infer_screenshot_questions(
+            controls_only, source_id="source", source_index=1
+        )["questions"][0]
+        self.assertEqual(unknown["answer_mode"], "multiple")
+        self.assertEqual(unknown["correct_answers"], [])
+        self.assertEqual(unknown["correctness_evidence"], "unknown")
+
     def test_relaxed_label_sequence_is_limited_to_reviewed_result_context(self):
         question = self.infer(
             [

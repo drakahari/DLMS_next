@@ -510,6 +510,38 @@ class OCRScreenshotImportTests(unittest.TestCase):
         self.assertTrue(question["correctness_confirmation_required"])
         self.assertFalse(question["correctness_confirmed"])
 
+    def test_bounded_row_retry_flows_through_route_without_confirming_correctness(self):
+        response = self.upload(
+            [("neutral-row-retry.png", result_image_bytes(checks={3}, selected={3}))]
+        )
+        draft_id = self.draft_id(response)
+        source = dlms._load_pdf_import_draft(draft_id)["ocr_batch"]["sources"][0]
+        complete = reviewed_result_observations(source["id"], source["index"])
+        primary = tuple(item for item in complete if item["line_id"] != 3)
+        recovered = tuple(
+            {**item, "block_id": 10_000 + item["line_id"]}
+            for item in complete
+            if 3 <= item["line_id"] <= 6
+        )
+        with mock.patch.object(
+            dlms._ocr_service, "recognize_image_bytes", return_value=primary
+        ), mock.patch.object(
+            dlms._ocr_service, "recognize_image_regions", return_value=recovered
+        ) as retry:
+            result = self.client.post(
+                f"/pdf-import/screenshots/process/{draft_id}/next",
+                headers={"X-CSRFToken": csrf_token(self.client), "Accept": "application/json"},
+            )
+
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(retry.call_count, 1)
+        question = dlms._load_pdf_import_draft(draft_id)["questions"][0]
+        self.assertEqual(len(question["choices"]), 4)
+        self.assertEqual(question["correct_answers"], ["D"])
+        self.assertEqual(question["correctness_evidence"], "visual_result_marker")
+        self.assertTrue(question["correctness_confirmation_required"])
+        self.assertFalse(question["correctness_confirmed"])
+
     def test_successful_review_save_removes_sources_and_never_persists_temporary_metadata(self):
         response = self.upload([("question.png", image_bytes("PNG"))])
         draft_id = self.draft_id(response)

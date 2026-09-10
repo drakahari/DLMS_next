@@ -4200,11 +4200,37 @@ def _recognize_pdf_ocr_source(draft_id, source, cancel_requested):
         cancel_requested=cancel_requested,
         image_suffix=path.suffix,
     )
+    answer_regions = _ocr_question_parser.detect_answer_row_regions(
+        image_bytes, observations
+    )
+    if answer_regions:
+        try:
+            recovered = _ocr_service.recognize_image_regions(
+                image_bytes,
+                answer_regions,
+                source_id=source["id"],
+                source_width=int(source["width"]),
+                source_height=int(source["height"]),
+                page_index=int(source["index"]) - 1,
+                cancel_requested=cancel_requested,
+            )
+        except _ocr_service.OCRCancelledError:
+            raise
+        except _ocr_service.OCRError:
+            answer_regions = ()
+        else:
+            if recovered:
+                observations = _ocr_question_parser.merge_answer_row_observations(
+                    observations, recovered, answer_regions
+                )
+            else:
+                answer_regions = ()
     return {
         "observations": observations,
         "visual_markers": _ocr_question_parser.detect_visual_result_markers(
-            image_bytes, observations
+            image_bytes, observations, answer_regions=answer_regions
         ),
+        "answer_regions": answer_regions,
     }
 
 
