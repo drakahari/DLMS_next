@@ -11334,6 +11334,19 @@ h1,h2,h3,
 .pdf-import-page .pdf-import-rights {
     color:var(--theme-page-text,#eaf2ff)!important;
 }
+.build-modern-page .build-choice-heading > span,
+.build-modern-page .build-choice-list > li,
+.build-modern-page .build-correct-toggle {
+    color:var(--theme-page-text,#eaf2ff)!important;
+    opacity:1!important;
+}
+.build-modern-page .build-correct-toggle input:disabled + span {
+    color:var(--theme-muted-text,#b8c2cc)!important;
+    opacity:.62!important;
+}
+.build-modern-page .build-correct-toggle:has(input:disabled) {
+    cursor:not-allowed;
+}
 .build-modern-page .build-field em,
 .build-modern-page .build-method-label,
 .build-modern-page .build-eyebrow,

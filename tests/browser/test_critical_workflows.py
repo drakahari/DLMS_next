@@ -2351,6 +2351,80 @@ def test_cancelled_and_invalid_restore_preserve_quiz_recovery(browser_stack, tmp
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)})") == "{preserve}"
 
 
+def test_manual_quiz_choice_labels_are_readable_across_themes(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    original_theme = json.loads(
+        (browser_stack.data_root / "config" / "portal.json").read_text(encoding="utf-8")
+    ).get("theme", "purple-gold")
+
+    contrast_helpers = (
+        "const parse=value=>{value=value.trim();if(value.startsWith('#')){let h=value.slice(1);"
+        "if(h.length===3)h=[...h].map(c=>c+c).join('');return [parseInt(h.slice(0,2),16)/255,"
+        "parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255,1];}"
+        "const m=value.match(/^rgba?\\(([^)]+)\\)$/);if(m){const p=m[1].split(/[, ]+/).filter(Boolean).map(Number);"
+        "return [p[0]/255,p[1]/255,p[2]/255,p.length>3?p[3]:1];}"
+        "const s=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);"
+        "if(s)return [+s[1],+s[2],+s[3],s[4]===undefined?1:+s[4]];throw new Error(value);};"
+        "const mix=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));"
+        "const base=parse(getComputedStyle(document.documentElement).getPropertyValue('--theme-body-base')).slice(0,3);"
+        "const effective=node=>{const layers=[];for(let item=node;item;item=item.parentElement)"
+        "layers.push(parse(getComputedStyle(item).backgroundColor));"
+        "return layers.reverse().reduce((bg,layer)=>mix(layer,bg),base);};"
+        "const lum=rgb=>rgb.map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4))"
+        ".reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);"
+        "const measure=node=>{const background=effective(node);"
+        "const foreground=mix(parse(getComputedStyle(node).color),background);"
+        "return {color:getComputedStyle(node).color,opacity:getComputedStyle(node).opacity,"
+        "contrast:(Math.max(lum(foreground),lum(background))+.05)/(Math.min(lum(foreground),lum(background))+.05)};};"
+    )
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken")
+        assert browser.evaluate(
+            f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        ) == 200
+        for width in (1280, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(f"{base_url}/create_short_quiz?count=1&theme={theme}&width={width}")
+            browser.wait_for("document.querySelector('.build-correct-toggle .choice-correct')")
+            state = browser.evaluate(
+                "(() => {" + contrast_helpers
+                + "const heading=document.querySelector('.build-choice-heading > span');"
+                "const toggle=document.querySelector('.build-correct-toggle');"
+                "const correct=toggle.querySelector('span');const checkbox=toggle.querySelector('input');"
+                "const answerLabel=document.querySelector('.build-choice-list .choice-label');"
+                "const pageText=getComputedStyle(document.documentElement).getPropertyValue('--theme-page-text').trim();"
+                "const enabled=measure(correct);const headingMeasure=measure(heading);"
+                "checkbox.focus();const focusable=document.activeElement===checkbox;checkbox.disabled=true;checkbox.blur();checkbox.focus();"
+                "const disabled=measure(correct);"
+                "return {heading:headingMeasure,enabled,disabled,focusable,"
+                "disabledUnfocusable:document.activeElement!==checkbox,disabledFlag:checkbox.disabled,"
+                "answerLabel:getComputedStyle(answerLabel).color,pageText,"
+                "contained:document.documentElement.scrollWidth<=innerWidth+1};})()"
+            )
+            assert state["heading"]["contrast"] >= 4.5, (theme, width, state)
+            assert state["enabled"]["contrast"] >= 4.5, (theme, width, state)
+            assert state["heading"]["opacity"] == "1"
+            assert state["enabled"]["opacity"] == "1"
+            assert state["disabled"]["opacity"] == "0.62"
+            assert state["disabled"]["color"] != state["enabled"]["color"]
+            assert state["focusable"] is True
+            assert state["disabledUnfocusable"] is True
+            assert state["disabledFlag"] is True
+            assert state["answerLabel"] != state["enabled"]["color"]
+            assert state["contained"] is True
+
+    browser.navigate(f"{base_url}/settings")
+    browser.wait_for("window.dlmsCsrfToken")
+    assert browser.evaluate(
+        f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
+        f"body:JSON.stringify({{theme:{json.dumps(original_theme)}}})}}).then(response=>response.status)"
+    ) == 200
+
+
 def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_path):
     browser = browser_stack.browser
     base_url = browser_stack.base_url

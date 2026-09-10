@@ -736,6 +736,28 @@ class ThemeSystemTests(unittest.TestCase):
                         f"{theme} Paste workflow {role} is only {ratio:.2f}:1",
                     )
 
+    def test_manual_quiz_choice_labels_use_enabled_and_disabled_semantics(self):
+        css = self._style_css()
+        enabled = re.search(
+            r"\.build-modern-page \.build-choice-heading > span,"
+            r"[\s\S]*?\.build-modern-page \.build-correct-toggle\s*\{([^}]*)\}",
+            css,
+        )
+        disabled = re.search(
+            r"\.build-modern-page \.build-correct-toggle input:disabled \+ span\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(enabled)
+        self.assertIn("var(--theme-page-text", enabled.group(1))
+        self.assertIn("opacity:1", enabled.group(1))
+        self.assertIsNotNone(disabled)
+        self.assertIn("var(--theme-muted-text", disabled.group(1))
+        self.assertIn("opacity:.62", disabled.group(1))
+
+        accent = self._rule_blocks(css, ".build-choice-list .choice-label")
+        self.assertTrue(accent)
+        self.assertFalse(any("--theme-page-text" in block for block in accent))
+
     def test_study_icon_tiles_use_theme_aware_contrast_across_palettes(self):
         css = self._style_css()
         expected = {
