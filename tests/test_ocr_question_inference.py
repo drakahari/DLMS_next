@@ -87,6 +87,16 @@ def result_layout_observations(banner, question, choices, explanation):
     return positioned_observations(lines)
 
 
+def scaled_result_observations(banner, question, answer_lines, explanation):
+    lines = [(banner, 72, 47), (question, 58, 132)]
+    lines.extend(
+        (answer_line, 73, top)
+        for answer_line, top in zip(answer_lines, (245, 327, 409, 491))
+    )
+    lines.extend((("O Explanation", 58, 590), (explanation, 58, 632)))
+    return positioned_observations(lines, width=1120, height=840)
+
+
 class OCRQuestionInferenceTests(unittest.TestCase):
     def infer(self, lines, **kwargs):
         return ocr_questions.infer_screenshot_questions(
@@ -303,6 +313,81 @@ class OCRQuestionInferenceTests(unittest.TestCase):
                 self.assertTrue(inferred["correctness_confirmation_required"])
                 self.assertFalse(inferred["correctness_confirmed"])
 
+    def test_sequence_recovers_noisy_early_labels_and_dedicated_d_marker(self):
+        source = scaled_result_observations(
+            "Correct",
+            "Which synthetic group best demonstrates civic advocacy?",
+            (
+                "O A Alpha service",
+                "O B Beta office",
+                "C. Gamma circle",
+                "D. Delta advocates (/)",
+            ),
+            "The dedicated result marker identifies Delta advocates.",
+        )
+        fixture = RESULT_FIXTURE_ROOT / "screenshot-result-sequence-recovery-d-correct.png"
+        markers = ocr_questions.detect_visual_result_markers(fixture.read_bytes(), source)
+        question = ocr_questions.infer_screenshot_questions(
+            {"observations": source, "visual_markers": markers},
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+
+        self.assertEqual(
+            question["question"],
+            "Which synthetic group best demonstrates civic advocacy?",
+        )
+        self.assertEqual(
+            [choice["text"] for choice in question["choices"]],
+            ["Alpha service", "Beta office", "Gamma circle", "Delta advocates"],
+        )
+        self.assertEqual(
+            [choice["label_origin"] for choice in question["choices"]],
+            ["source"] * 4,
+        )
+        self.assertEqual(question["correct_answers"], ["D"])
+        self.assertEqual(question["correctness_evidence"], "visual_result_marker")
+        self.assertEqual(question["explanation"], "The dedicated result marker identifies Delta advocates.")
+        self.assertTrue(question["correctness_confirmation_required"])
+
+    def test_result_row_artifacts_are_removed_and_x_never_becomes_correct(self):
+        source = scaled_result_observations(
+            "Incorrect",
+            "Which assessment best identifies an internal risk?",
+            (
+                "| O A Behavioral (/)",
+                "O B.Instinctual |",
+                "© C.Habitual (x)",
+                "O D. IOCs",
+            ),
+            "Behavioral evidence is the intended answer in this synthetic example.",
+        )
+        fixture = RESULT_FIXTURE_ROOT / "screenshot-result-artifact-cleanup-a-correct-c-wrong.png"
+        markers = ocr_questions.detect_visual_result_markers(fixture.read_bytes(), source)
+        question = ocr_questions.infer_screenshot_questions(
+            {"observations": source, "visual_markers": markers},
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+
+        self.assertEqual(
+            [choice["text"] for choice in question["choices"]],
+            ["Behavioral", "Instinctual", "Habitual", "IOCs"],
+        )
+        self.assertEqual(question["ocr_metadata"]["label_origin"], "source")
+        self.assertEqual(question["correct_answers"], ["A"])
+        self.assertEqual(question["correctness_evidence"], "visual_result_marker")
+        self.assertEqual(
+            question["ocr_metadata"]["visual_result_markers"],
+            [{"label": "A", "kind": "check"}, {"label": "C", "kind": "x"}],
+        )
+        self.assertEqual(
+            question["explanation"],
+            "Behavioral evidence is the intended answer in this synthetic example.",
+        )
+        self.assertNotIn("Explanation", [choice["text"] for choice in question["choices"]])
+        self.assertTrue(question["correctness_confirmation_required"])
+
     def test_control_glyph_noise_is_bounded_to_a_real_following_source_label(self):
         question = self.infer(
             [
@@ -318,10 +403,25 @@ class OCRQuestionInferenceTests(unittest.TestCase):
         self.assertEqual(question["ocr_metadata"]["label_origin"], "source")
         self.assertIn("ordinary prose", question["ocr_metadata"]["unassigned_text"])
 
+    def test_relaxed_label_sequence_is_limited_to_reviewed_result_context(self):
+        question = self.infer(
+            [
+                "Which option?",
+                "O A First",
+                "O B Second",
+                "O C Third",
+                "O D Fourth",
+            ]
+        )["questions"][0]
+        self.assertEqual(question["ocr_metadata"]["label_origin"], "inferred")
+        self.assertEqual(question["choices"][0]["text"], "O A First")
+
     def test_visual_selection_or_row_color_without_a_dedicated_marker_stays_unknown(self):
         image = Image.new("RGB", (900, 690), "#f4f7fb")
         draw = ImageDraw.Draw(image)
         draw.rectangle((52, 210, 848, 268), fill="#d9f6df")
+        draw.ellipse((72, 228, 92, 248), fill="white", outline="#53657c", width=2)
+        draw.ellipse((77, 233, 87, 243), fill="#315fa8")
         output = BytesIO()
         image.save(output, format="PNG")
         source = result_layout_observations(

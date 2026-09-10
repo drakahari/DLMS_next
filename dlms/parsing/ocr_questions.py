@@ -31,6 +31,15 @@ _EXPLICIT_CHOICE_RE = re.compile(
     r"([A-Z]|\d{1,2})\s*[.)\]:-]\s+(.+?)\s*$",
     re.IGNORECASE,
 )
+_RELAXED_CHOICE_RE = re.compile(
+    r"^\s*(?P<control>(?:(?:[@©®Oo0QØ○◯◉●□☐☑()]|\|)\s*){0,2})"
+    r"(?P<label>[A-Z]|8)(?:(?P<separator>[.)\]:-])\s*|\s+)"
+    r"(?P<text>.+?)\s*$",
+    re.IGNORECASE,
+)
+_TRAILING_RESULT_GLYPH_RE = re.compile(
+    r"(?:\s+(?:\((?:x|/|v|✓|✔|✕|×)\)|[|])\s*)+$", re.IGNORECASE
+)
 _ANSWER_KEY_RE = re.compile(
     r"\bcorrect\s+answers?\s*[:\-]\s*([^\n]+)", re.IGNORECASE
 )
@@ -75,6 +84,16 @@ class OCRLine:
     @property
     def bottom(self) -> int:
         return self.top + self.height
+
+
+@dataclass(frozen=True)
+class OCRChoiceRow:
+    line: OCRLine
+    raw_label: str
+    text: str
+    strict: bool
+    control_prefix: bool
+    trailing_result_glyph: bool
 
 
 def _explanation_heading(text: str):
@@ -135,6 +154,8 @@ def _marker_template_score(
 def _classify_marker_component(
     image: Image.Image,
     component: list[tuple[int, int]],
+    *,
+    max_icon_size: int = 72,
 ) -> str | None:
     left = min(point[0] for point in component)
     top = min(point[1] for point in component)
@@ -142,7 +163,11 @@ def _classify_marker_component(
     bottom = max(point[1] for point in component) + 1
     width = right - left
     height = bottom - top
-    if not (12 <= width <= 72 and 12 <= height <= 72 and 0.65 <= width / height <= 1.5):
+    if not (
+        12 <= width <= max_icon_size
+        and 12 <= height <= max_icon_size
+        and 0.65 <= width / height <= 1.5
+    ):
         return None
 
     active = set(component)
@@ -250,7 +275,7 @@ def _marker_components(image: Image.Image, box: tuple[int, int, int, int]):
     return components
 
 
-def _merge_nested_marker_components(components):
+def _merge_nested_marker_components(components, *, max_icon_size: int = 72):
     """Join an outlined circle and its disconnected interior glyph."""
 
     remaining = sorted(components, key=len, reverse=True)
@@ -276,7 +301,11 @@ def _merge_nested_marker_components(components):
             center_x = (component_left + component_right) / 2
             center_y = (component_top + component_bottom) / 2
             nested = left <= center_x <= right and top <= center_y <= bottom
-            if nested and combined[2] - combined[0] <= 72 and combined[3] - combined[1] <= 72:
+            if (
+                nested
+                and combined[2] - combined[0] <= max_icon_size
+                and combined[3] - combined[1] <= max_icon_size
+            ):
                 group.extend(component)
                 left, top, right, bottom = combined
             else:
@@ -284,6 +313,36 @@ def _merge_nested_marker_components(components):
         remaining = retained
         merged.append(group)
     return merged
+
+
+def _row_search_bounds(
+    rows: list[OCRChoiceRow], row_index: int, image_height: int
+) -> tuple[int, int, float]:
+    """Return a row's unique vertical territory and typical center spacing."""
+
+    centers = [row.line.top + row.line.height / 2 for row in rows]
+    center = centers[row_index]
+    spacings = [
+        later - earlier
+        for earlier, later in zip(centers, centers[1:])
+        if later > earlier
+    ]
+    typical_spacing = (
+        median(spacings)
+        if spacings
+        else max(rows[row_index].line.height * 2, 32)
+    )
+    top = (
+        (centers[row_index - 1] + center) / 2
+        if row_index
+        else center - typical_spacing / 2
+    )
+    bottom = (
+        (center + centers[row_index + 1]) / 2
+        if row_index + 1 < len(centers)
+        else center + typical_spacing / 2
+    )
+    return max(0, int(top)), min(image_height, int(bottom) + 1), typical_spacing
 
 
 def detect_visual_result_markers(
@@ -299,20 +358,6 @@ def detect_visual_result_markers(
 
     observations = tuple(observations)
     lines = observations_to_lines(observations)
-    answer_rows = [line for line in lines if _EXPLICIT_CHOICE_RE.match(line.text)]
-    if not answer_rows:
-        return ()
-    first_answer_top = min(line.top for line in answer_rows)
-    first_question_top = min(
-        (line.top for line in lines if _looks_like_question(line.text)),
-        default=first_answer_top,
-    )
-    if not any(
-        line.top < min(first_question_top, first_answer_top)
-        and _RESULT_BANNER_RE.match(line.text)
-        for line in lines
-    ):
-        return ()
     try:
         with Image.open(BytesIO(image_bytes)) as source:
             source.load()
@@ -326,46 +371,80 @@ def detect_visual_result_markers(
         return ()
 
     markers = []
-    for row in answer_rows:
-        row_center = row.top + row.height / 2
-        vertical_radius = max(14, min(36, int(row.height * 1.25)))
-        search_left = int(image.width * 0.67)
-        search_box = (
-            min(image.width - 1, search_left),
-            max(0, int(row_center - vertical_radius)),
-            image.width,
-            min(image.height, int(row_center + vertical_radius + 1)),
+    for segment in _segment_lines(lines):
+        first_question_top = min(
+            (line.top for line in segment if _looks_like_question(line.text)),
+            default=float("inf"),
         )
-        candidates = []
-        components = _merge_nested_marker_components(_marker_components(image, search_box))
-        for component in components:
-            kind = _classify_marker_component(image, component)
-            if kind is None:
-                continue
-            left = min(point[0] for point in component)
-            top = min(point[1] for point in component)
-            right = max(point[0] for point in component) + 1
-            bottom = max(point[1] for point in component) + 1
-            marker_center = top + (bottom - top) / 2
-            if abs(marker_center - row_center) > max(10, row.height * 0.8):
-                continue
-            candidates.append((kind, left, top, right - left, bottom - top))
-        if len(candidates) != 1:
+        result_banner = any(
+            line.top < first_question_top and _RESULT_BANNER_RE.match(line.text)
+            for line in segment
+        )
+        if not result_banner:
             continue
-        kind, left, top, width, height = candidates[0]
-        markers.append(
-            {
-                "kind": kind,
-                "row_left": row.left,
-                "row_top": row.top,
-                "bounding_box": {
-                    "left": left,
-                    "top": top,
-                    "width": width,
-                    "height": height,
-                },
-            }
+        answer_rows = _choice_row_sequence(
+            segment, source_width=source_width, result_context=True
         )
+        if not answer_rows:
+            continue
+        answer_centers = [row.line.top + row.line.height / 2 for row in answer_rows]
+        for row_index, row in enumerate(answer_rows):
+            row_center = answer_centers[row_index]
+            search_top, search_bottom, typical_spacing = _row_search_bounds(
+                answer_rows, row_index, image.height
+            )
+            search_left = int(image.width * 0.67)
+            search_box = (
+                min(image.width - 1, search_left),
+                search_top,
+                image.width,
+                search_bottom,
+            )
+            candidates = []
+            max_icon_size = min(112, max(72, int(typical_spacing * 0.9)))
+            components = _merge_nested_marker_components(
+                _marker_components(image, search_box), max_icon_size=max_icon_size
+            )
+            for component in components:
+                kind = _classify_marker_component(
+                    image, component, max_icon_size=max_icon_size
+                )
+                if kind is None:
+                    continue
+                left = min(point[0] for point in component)
+                top = min(point[1] for point in component)
+                right = max(point[0] for point in component) + 1
+                bottom = max(point[1] for point in component) + 1
+                marker_center = top + (bottom - top) / 2
+                center_distances = [
+                    abs(marker_center - answer_center)
+                    for answer_center in answer_centers
+                ]
+                nearest_distance = min(center_distances)
+                if (
+                    center_distances[row_index] != nearest_distance
+                    or center_distances.count(nearest_distance) != 1
+                ):
+                    continue
+                if abs(marker_center - row_center) > typical_spacing * 0.45:
+                    continue
+                candidates.append((kind, left, top, right - left, bottom - top))
+            if len(candidates) != 1:
+                continue
+            kind, left, top, width, height = candidates[0]
+            markers.append(
+                {
+                    "kind": kind,
+                    "row_left": row.line.left,
+                    "row_top": row.line.top,
+                    "bounding_box": {
+                        "left": left,
+                        "top": top,
+                        "width": width,
+                        "height": height,
+                    },
+                }
+            )
     marker_counts = {}
     for marker in markers:
         box = marker["bounding_box"]
@@ -474,6 +553,124 @@ def _looks_like_question(text: str) -> bool:
         or normalized.startswith(("which ", "what ", "who ", "when ", "where ", "why ", "how "))
         or bool(_MULTIPLE_MODE_RE.search(normalized))
     )
+
+
+def _choice_row_candidate(line: OCRLine, *, result_context: bool) -> OCRChoiceRow | None:
+    strict_match = _EXPLICIT_CHOICE_RE.match(line.text)
+    if strict_match:
+        text = strict_match.group(2).strip()
+        trailing_result_glyph = bool(
+            result_context and _TRAILING_RESULT_GLYPH_RE.search(text)
+        )
+        if trailing_result_glyph:
+            text = _TRAILING_RESULT_GLYPH_RE.sub("", text).strip()
+        return OCRChoiceRow(
+            line=line,
+            raw_label=strict_match.group(1),
+            text=text,
+            strict=True,
+            control_prefix=line.text.lstrip()[:1] in "@©®Oo0QØ○◯◉●□☐☑()|",
+            trailing_result_glyph=trailing_result_glyph,
+        )
+
+    if not result_context:
+        return None
+    relaxed_match = _RELAXED_CHOICE_RE.match(line.text)
+    if not relaxed_match:
+        return None
+    text = relaxed_match.group("text").strip()
+    trailing_result_glyph = bool(
+        result_context and _TRAILING_RESULT_GLYPH_RE.search(text)
+    )
+    if trailing_result_glyph:
+        text = _TRAILING_RESULT_GLYPH_RE.sub("", text).strip()
+    return OCRChoiceRow(
+        line=line,
+        raw_label=relaxed_match.group("label"),
+        text=text,
+        strict=False,
+        control_prefix=bool(relaxed_match.group("control").strip()),
+        trailing_result_glyph=trailing_result_glyph,
+    )
+
+
+def _labels_are_contiguous(rows: list[OCRChoiceRow]) -> bool:
+    for index, row in enumerate(rows):
+        expected = OCR_LABELS[index]
+        observed = row.raw_label.upper()
+        if observed == "8" and expected == "B":
+            continue
+        if observed != expected:
+            return False
+    return True
+
+
+def _row_has_expected_label(row: OCRChoiceRow, index: int) -> bool:
+    if index >= len(OCR_LABELS):
+        return False
+    observed = row.raw_label.upper()
+    expected = OCR_LABELS[index]
+    return observed == expected or (observed == "8" and expected == "B")
+
+
+def _choice_row_sequence(
+    lines: list[OCRLine], *, source_width: int, result_context: bool
+) -> list[OCRChoiceRow]:
+    """Recover one bounded A–Z row sequence without promoting unrelated lists."""
+
+    candidates = {
+        index: candidate
+        for index, line in enumerate(lines)
+        if (candidate := _choice_row_candidate(line, result_context=result_context))
+    }
+    strict_rows = [candidate for candidate in candidates.values() if candidate.strict]
+    if len(strict_rows) >= 2 and len(strict_rows) == len(candidates):
+        return strict_rows
+    runs: list[list[tuple[int, OCRChoiceRow]]] = []
+    current: list[tuple[int, OCRChoiceRow]] = []
+    for index in range(len(lines)):
+        candidate = candidates.get(index)
+        if candidate is None:
+            if current:
+                runs.append(current)
+                current = []
+            continue
+        if current and not _row_has_expected_label(candidate, len(current)):
+            runs.append(current)
+            current = []
+        if not current and not _row_has_expected_label(candidate, 0):
+            continue
+        current.append((index, candidate))
+    if current:
+        runs.append(current)
+
+    plausible = []
+    for run in runs:
+        rows = [item[1] for item in run]
+        if not 2 <= len(rows) <= OCR_QUESTION_MAX_CHOICES:
+            continue
+        if not _labels_are_contiguous(rows):
+            continue
+        if not _aligned_choice_block([row.line for row in rows], source_width):
+            continue
+        start = run[0][0]
+        preceding = lines[:start]
+        question_before = any(_looks_like_question(line.text) for line in preceding)
+        strict_count = sum(row.strict for row in rows)
+        control_count = sum(row.control_prefix for row in rows)
+        relaxed_supported = (
+            len(rows) >= 3
+            and question_before
+            and (strict_count >= 2 or control_count >= 2)
+        )
+        if all(row.strict for row in rows) or relaxed_supported:
+            plausible.append((start, rows))
+
+    if plausible:
+        plausible.sort(key=lambda item: (-len(item[1]), item[0]))
+        return plausible[0][1]
+
+    return strict_rows if len(strict_rows) >= 2 else []
 
 
 def _aligned_choice_block(lines: list[OCRLine], source_width: int) -> bool:
@@ -597,18 +794,19 @@ def _infer_one_question(
             explanation_lines.append(line.text)
         else:
             body_lines.append(line)
-            if _EXPLICIT_CHOICE_RE.match(line.text):
+            if _choice_row_candidate(line, result_context=bool(result_banner)):
                 explicit_rows_seen += 1
             elif question_seen:
                 post_question_unlabelled_lines += 1
             if _looks_like_question(line.text):
                 question_seen = True
 
-    explicit: list[tuple[OCRLine, str, str]] = []
-    for line in body_lines:
-        match = _EXPLICIT_CHOICE_RE.match(line.text)
-        if match:
-            explicit.append((line, match.group(1), match.group(2).strip()))
+    choice_rows = _choice_row_sequence(
+        body_lines,
+        source_width=source_width,
+        result_context=bool(result_banner),
+    )
+    explicit = [(row.line, row.raw_label, row.text) for row in choice_rows]
 
     question_lines: list[OCRLine] = []
     choice_texts: list[str] = []

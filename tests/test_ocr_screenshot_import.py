@@ -95,6 +95,49 @@ def reviewed_result_observations(source_id, source_index):
     return tuple(output)
 
 
+def noisy_reviewed_result_observations(source_id, source_index):
+    lines = [
+        ("Incorrect", 72, 47),
+        ("Which assessment best identifies an internal risk?", 58, 132),
+        ("| O A Behavioral (/)", 73, 245),
+        ("O B.Instinctual |", 73, 327),
+        ("© C.Habitual (x)", 73, 409),
+        ("O D. IOCs", 73, 491),
+        ("O Explanation", 58, 590),
+        (
+            "Behavioral evidence is the intended answer in this synthetic example.",
+            58,
+            632,
+        ),
+    ]
+    output = []
+    for line_number, (line, left, top) in enumerate(lines, 1):
+        cursor = left
+        for word in line.split():
+            width = max(16, len(word) * 12)
+            output.append(
+                {
+                    "source_id": source_id,
+                    "page_index": source_index - 1,
+                    "source_width": 1120,
+                    "source_height": 840,
+                    "text": word,
+                    "bounding_box": {
+                        "left": cursor,
+                        "top": top,
+                        "width": width,
+                        "height": 28,
+                    },
+                    "confidence": 94.0,
+                    "block_id": 1,
+                    "paragraph_id": 1,
+                    "line_id": line_number,
+                }
+            )
+            cursor += width + 8
+    return tuple(output)
+
+
 class OCRScreenshotImportTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="dlms-ocr-screenshots-")
@@ -296,7 +339,10 @@ class OCRScreenshotImportTests(unittest.TestCase):
         with mock.patch.object(dlms, "_recognize_pdf_ocr_source", side_effect=partial):
             first = self.client.post(
                 f"/pdf-import/screenshots/process/{draft_id}/next",
-                headers={"X-CSRFToken": csrf_token(self.client), "Accept": "application/json"},
+                headers={
+                    "X-CSRFToken": csrf_token(self.client),
+                    "Accept": "application/json",
+                },
             )
             second = self.client.post(
                 f"/pdf-import/screenshots/process/{draft_id}/next",
@@ -341,6 +387,42 @@ class OCRScreenshotImportTests(unittest.TestCase):
         self.assertIn("Detected from result marker", html)
         self.assertIn("Source-derived, normalized by position", html)
         self.assertIn("I compared this draft with the source", html)
+
+    def test_noisy_result_rows_flow_through_route_as_clean_source_choices(self):
+        fixture = (
+            Path(__file__).parent
+            / "fixtures"
+            / "ocr"
+            / "screenshot-result-artifact-cleanup-a-correct-c-wrong.png"
+        )
+        response = self.upload([(fixture.name, fixture.read_bytes())])
+        draft_id = self.draft_id(response)
+        draft = dlms._load_pdf_import_draft(draft_id)
+        source = draft["ocr_batch"]["sources"][0]
+        observations = noisy_reviewed_result_observations(source["id"], source["index"])
+        with mock.patch.object(
+            dlms._ocr_service, "recognize_image_bytes", return_value=observations
+        ):
+            result = self.client.post(
+                f"/pdf-import/screenshots/process/{draft_id}/next",
+                headers={"X-CSRFToken": csrf_token(self.client), "Accept": "application/json"},
+            )
+
+        self.assertEqual(result.status_code, 200)
+        question = dlms._load_pdf_import_draft(draft_id)["questions"][0]
+        self.assertEqual(
+            [choice["text"] for choice in question["choices"]],
+            ["Behavioral", "Instinctual", "Habitual", "IOCs"],
+        )
+        self.assertEqual(question["ocr_metadata"]["label_origin"], "source")
+        self.assertEqual(question["correct_answers"], ["A"])
+        self.assertEqual(question["correctness_evidence"], "visual_result_marker")
+        self.assertEqual(
+            question["explanation"],
+            "Behavioral evidence is the intended answer in this synthetic example.",
+        )
+        self.assertTrue(question["correctness_confirmation_required"])
+        self.assertFalse(question["correctness_confirmed"])
 
     def test_successful_review_save_removes_sources_and_never_persists_temporary_metadata(self):
         response = self.upload([("question.png", image_bytes("PNG"))])
@@ -567,6 +649,8 @@ class OCRScreenshotStagingTests(unittest.TestCase):
             "screenshot-result-a-wrong-b-correct.png",
             "screenshot-result-d-correct.png",
             "screenshot-result-a-correct-c-wrong.png",
+            "screenshot-result-sequence-recovery-d-correct.png",
+            "screenshot-result-artifact-cleanup-a-correct-c-wrong.png",
         }
         self.assertEqual(
             {path.name for path in fixture_root.glob("screenshot-*.png")}, expected
