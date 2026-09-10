@@ -18,7 +18,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
 
         version = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
         self.assertIsNotNone(version)
-        self.assertEqual(version.group(1), "3.0.2")
+        self.assertEqual(version.group(1), "3.1.0")
         self.assertIn(f"Current release: DLMS {version.group(1)}", readme)
         self.assertNotIn("DLMS v2.1.0 is now available", readme)
         for setting in ("--browser", "--no-browser", "DLMS_NO_BROWSER"):
@@ -34,7 +34,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("GitHub's automatic source archives", readme)
 
     def test_release_metadata_and_help_use_the_final_display_version(self):
-        version = "3.0.2"
+        version = "3.1.0"
         self.assertIn(f"Reproducible DLMS {version} runtime environment.", (ROOT / "requirements-lock.txt").read_text(encoding="utf-8"))
         self.assertIn(f"Canonical DLMS {version} build tools.", (ROOT / "requirements-build.txt").read_text(encoding="utf-8"))
         for path in (ROOT / "static").glob("*.html"):
@@ -89,7 +89,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertTrue(script.is_file())
         with tempfile.TemporaryDirectory(prefix="dlms-checksums-") as directory:
             root = Path(directory)
-            artifacts = [root / "DLMS-3.0.2-RC4-windows-x86_64.zip"]
+            artifacts = [root / "DLMS-3.1.0-RC4-windows-x86_64.zip"]
             manifest = root / "SHA256SUMS.txt"
             for artifact in artifacts:
                 artifact.write_bytes(f"release artifact: {artifact.name}".encode())
@@ -121,18 +121,18 @@ class ReleaseDocumentationTests(unittest.TestCase):
             with self.subTest(target=target):
                 self.assertIn(f"verify_release_artifact.py {target}", procedure)
         for artifact_name in (
-            "DLMS-3.0.2-fedora44-x86_64",
-            "DLMS-3.0.2-ubuntu24.04-x86_64",
-            "DLMS-3.0.2-ubuntu26.04-x86_64",
-            "DLMS-3.0.2-windows11-x86_64.exe",
-            "DLMS-3.0.2-macos-arm64.zip",
-            "DLMS-3.0.2-omarchy-quattro-x86_64",
+            "DLMS-3.1.0-fedora44-x86_64",
+            "DLMS-3.1.0-ubuntu24.04-x86_64",
+            "DLMS-3.1.0-ubuntu26.04-x86_64",
+            "DLMS-3.1.0-windows11-x86_64.exe",
+            "DLMS-3.1.0-macos-arm64.zip",
+            "DLMS-3.1.0-omarchy-quattro-x86_64",
         ):
             with self.subTest(artifact_name=artifact_name):
                 self.assertIn(artifact_name, readme)
                 self.assertIn(artifact_name, procedure)
-        self.assertNotIn("DLMS-3.0.2-linux-x86_64", readme + procedure)
-        self.assertNotIn("DLMS-3.0.2-windows-x86_64.exe", readme + procedure)
+        self.assertNotIn("DLMS-3.1.0-linux-x86_64", readme + procedure)
+        self.assertNotIn("DLMS-3.1.0-windows-x86_64.exe", readme + procedure)
         self.assertIn("verify_release_package.py --complete-set", procedure)
         self.assertIn('--checksums "$PACKAGE_DIR/SHA256SUMS.txt"', procedure)
         self.assertIn("--smoke", procedure)
@@ -149,12 +149,12 @@ class ReleaseDocumentationTests(unittest.TestCase):
         package_verifier = ROOT / "tools" / "verify_release_package.py"
         packager = ROOT / "tools" / "package_release.py"
         final_packages = (
-            "DLMS-3.0.2-fedora44-x86_64.tar.gz",
-            "DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz",
-            "DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz",
-            "DLMS-3.0.2-windows11-x86_64.zip",
-            "DLMS-3.0.2-macos-arm64.zip",
-            "DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz",
+            "DLMS-3.1.0-fedora44-x86_64.tar.gz",
+            "DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz",
+            "DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz",
+            "DLMS-3.1.0-windows11-x86_64.zip",
+            "DLMS-3.1.0-macos-arm64.zip",
+            "DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz",
         )
 
         self.assertTrue(package_verifier.is_file())
@@ -173,7 +173,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("promotes that ZIP byte-for-byte", procedure)
         self.assertIn("only root-level `DLMS.app`", procedure)
         self.assertNotIn(
-            "DLMS-3.0.2-macos-arm64.zip\n└── DLMS-3.0.2-macos-arm64/",
+            "DLMS-3.1.0-macos-arm64.zip\n└── DLMS-3.1.0-macos-arm64/",
             procedure,
         )
         self.assertIn(
@@ -185,7 +185,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
             package_readme,
         )
         self.assertIn("GitHub automatically supplies repository source", procedure)
-        self.assertIn("Do not\ncreate or upload `DLMS-3.0.2-source.zip`", procedure)
+        self.assertIn("Do not\ncreate or upload `DLMS-3.1.0-source.zip`", procedure)
         self.assertNotRegex(
             package_readme, re.compile(r"(?i)(?:\brc[._ -]?4\b|\bfc4\b)")
         )
@@ -232,7 +232,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("console=False", spec)
         self.assertIn('codesign_identity=None', spec)
 
-        macos_zip = "DLMS-3.0.2-macos-arm64.zip"
+        macos_zip = "DLMS-3.1.0-macos-arm64.zip"
         for document in (readme, getting_started):
             self.assertIn(macos_zip, document)
             self.assertIn("DLMS.app", document)
@@ -243,7 +243,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("Privacy &amp; Security", getting_started)
         self.assertIn("ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app", readme)
         self.assertIn("Contents/MacOS/DLMS", readme)
-        self.assertNotIn("* macOS: `DLMS-3.0.2-macos-arm64`", readme)
+        self.assertNotIn("* macOS: `DLMS-3.1.0-macos-arm64`", readme)
         self.assertIn("not part of the normal installation", readme)
         self.assertGreater(
             readme.index("xattr -dr com.apple.quarantine /Applications/DLMS.app"),
@@ -258,9 +258,9 @@ class ReleaseDocumentationTests(unittest.TestCase):
         metadata = {"SPEC": str(ROOT / "DLMS.spec")}
         exec(compile(metadata_source, "DLMS.spec metadata", "exec"), metadata)
 
-        self.assertEqual(metadata["app_release_version"], "3.0.2")
-        self.assertEqual(metadata["app_bundle_version"], "3.0.2")
-        self.assertEqual(metadata["app_bundle_build_version"], "3.0.2")
+        self.assertEqual(metadata["app_release_version"], "3.1.0")
+        self.assertEqual(metadata["app_bundle_version"], "3.1.0")
+        self.assertEqual(metadata["app_bundle_build_version"], "3.1.0")
         self.assertIn("version=app_bundle_version", spec)
         self.assertIn('"CFBundleVersion": app_bundle_build_version', spec)
         self.assertIn('bundle_identifier="io.github.drakahari.DLMS"', spec)

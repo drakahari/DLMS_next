@@ -57,13 +57,13 @@ Do not infer cross-platform OCR support from the Fedora result.
 Build with native 64-bit Windows Python. Stage:
 
 ```powershell
-Copy-Item dist\DLMS.exe releases\DLMS-3.0.2-windows11-x86_64.exe
-python tools\verify_release_artifact.py windows-x86_64 releases\DLMS-3.0.2-windows11-x86_64.exe --smoke
+Copy-Item dist\DLMS.exe releases\DLMS-3.1.0-windows11-x86_64.exe
+python tools\verify_release_artifact.py windows-x86_64 releases\DLMS-3.1.0-windows11-x86_64.exe --smoke
 ```
 
 The generic PyInstaller output name `dist\DLMS.exe` is an intermediate build
 name only. Copying it to the stable native-input name is required; the final ZIP
-later contains exactly `DLMS-3.0.2-windows11-x86_64.exe` inside the matching
+later contains exactly `DLMS-3.1.0-windows11-x86_64.exe` inside the matching
 versioned wrapper. The command validates the PE architecture, native-input name, controlled data-root
 initialization, server availability, root/static/Help/Settings/Library routes,
 clean Shutdown DLMS, and a successful restart.
@@ -88,21 +88,21 @@ named in its filename. Stage each build under its exact final name, make it
 executable, and run the same internal `linux-x86_64` verification target:
 
 ```bash
-cp dist/DLMS releases/DLMS-3.0.2-fedora44-x86_64
-chmod +x releases/DLMS-3.0.2-fedora44-x86_64
-python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-fedora44-x86_64 --smoke
+cp dist/DLMS releases/DLMS-3.1.0-fedora44-x86_64
+chmod +x releases/DLMS-3.1.0-fedora44-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.1.0-fedora44-x86_64 --smoke
 
-cp dist/DLMS releases/DLMS-3.0.2-ubuntu24.04-x86_64
-chmod +x releases/DLMS-3.0.2-ubuntu24.04-x86_64
-python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-ubuntu24.04-x86_64 --smoke
+cp dist/DLMS releases/DLMS-3.1.0-ubuntu24.04-x86_64
+chmod +x releases/DLMS-3.1.0-ubuntu24.04-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.1.0-ubuntu24.04-x86_64 --smoke
 
-cp dist/DLMS releases/DLMS-3.0.2-ubuntu26.04-x86_64
-chmod +x releases/DLMS-3.0.2-ubuntu26.04-x86_64
-python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-ubuntu26.04-x86_64 --smoke
+cp dist/DLMS releases/DLMS-3.1.0-ubuntu26.04-x86_64
+chmod +x releases/DLMS-3.1.0-ubuntu26.04-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.1.0-ubuntu26.04-x86_64 --smoke
 
-cp dist/DLMS releases/DLMS-3.0.2-omarchy-quattro-x86_64
-chmod +x releases/DLMS-3.0.2-omarchy-quattro-x86_64
-python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.0.2-omarchy-quattro-x86_64 --smoke
+cp dist/DLMS releases/DLMS-3.1.0-omarchy-quattro-x86_64
+chmod +x releases/DLMS-3.1.0-omarchy-quattro-x86_64
+python tools/verify_release_artifact.py linux-x86_64 releases/DLMS-3.1.0-omarchy-quattro-x86_64 --smoke
 ```
 
 Native UAT still required: launch the staged file from the intended desktop
@@ -121,8 +121,8 @@ application bundle ZIP:
 python -c "import platform; assert platform.machine() == 'arm64', platform.machine()"
 python -m PyInstaller --clean --noconfirm DLMS.spec
 mkdir -p releases
-ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.0.2-macos-arm64.zip
-python tools/verify_release_artifact.py macos-arm64 releases/DLMS-3.0.2-macos-arm64.zip --smoke
+ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.1.0-macos-arm64.zip
+python tools/verify_release_artifact.py macos-arm64 releases/DLMS-3.1.0-macos-arm64.zip --smoke
 ```
 
 The verifier requires exactly one top-level `DLMS.app`, validates
@@ -146,7 +146,7 @@ overridden.
 ## Intel macOS
 
 Intel macOS is not a default release target. Only publish
-`DLMS-3.0.2-macos-x86_64.zip` after building with native `x86_64` macOS
+`DLMS-3.1.0-macos-x86_64.zip` after building with native `x86_64` macOS
 Python and completing the same command/UAT flow with `macos-x86_64`. Do not
 label the Apple Silicon archive as Intel-compatible.
 
@@ -158,8 +158,8 @@ in `release_assets/` by writing to a **different** output directory:
 
 ```bash
 python tools/package_release.py \
-  /home/drak/DLMS_builds/DLMS-3.0.2 \
-  /home/drak/DLMS_builds/DLMS-3.0.2-packages
+  /home/drak/DLMS_builds/DLMS-3.1.0 \
+  /home/drak/DLMS_builds/DLMS-3.1.0-packages
 ```
 
 The helper validates all six native inputs before writing anything. It refuses
@@ -172,36 +172,36 @@ final distributable set; do not create a second upload archive by hand.
 The final archives and their exact payload layouts are platform-specific:
 
 ```text
-DLMS-3.0.2-fedora44-x86_64.tar.gz
-└── DLMS-3.0.2-fedora44-x86_64/
-    ├── DLMS-3.0.2-fedora44-x86_64
+DLMS-3.1.0-fedora44-x86_64.tar.gz
+└── DLMS-3.1.0-fedora44-x86_64/
+    ├── DLMS-3.1.0-fedora44-x86_64
     ├── README.txt
     └── sample_quiz.txt
 
-DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz
-└── DLMS-3.0.2-ubuntu24.04-x86_64/
-    ├── DLMS-3.0.2-ubuntu24.04-x86_64
+DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz
+└── DLMS-3.1.0-ubuntu24.04-x86_64/
+    ├── DLMS-3.1.0-ubuntu24.04-x86_64
     ├── README.txt
     └── sample_quiz.txt
 
-DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz
-└── DLMS-3.0.2-ubuntu26.04-x86_64/
-    ├── DLMS-3.0.2-ubuntu26.04-x86_64
+DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz
+└── DLMS-3.1.0-ubuntu26.04-x86_64/
+    ├── DLMS-3.1.0-ubuntu26.04-x86_64
     ├── README.txt
     └── sample_quiz.txt
 
-DLMS-3.0.2-windows11-x86_64.zip
-└── DLMS-3.0.2-windows11-x86_64/
-    ├── DLMS-3.0.2-windows11-x86_64.exe
+DLMS-3.1.0-windows11-x86_64.zip
+└── DLMS-3.1.0-windows11-x86_64/
+    ├── DLMS-3.1.0-windows11-x86_64.exe
     ├── README.txt
     └── sample_quiz.txt
 
-DLMS-3.0.2-macos-arm64.zip
+DLMS-3.1.0-macos-arm64.zip
 └── DLMS.app/
 
-DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz
-└── DLMS-3.0.2-omarchy-quattro-x86_64/
-    ├── DLMS-3.0.2-omarchy-quattro-x86_64
+DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz
+└── DLMS-3.1.0-omarchy-quattro-x86_64/
+    ├── DLMS-3.1.0-omarchy-quattro-x86_64
     ├── README.txt
     └── sample_quiz.txt
 ```
@@ -231,7 +231,7 @@ development/runtime content such as `build/`, `dist/`, virtual environments,
 ## Clean-extract and smoke the exact final distributables
 
 Portable member inspection is necessary but is not the final gate. Return each
-archive from `DLMS-3.0.2-packages` to its named native build host and run
+archive from `DLMS-3.1.0-packages` to its named native build host and run
 `verify_release_package.py --smoke` against that exact file. The command first
 checks the archive contract, extracts into a new temporary directory, rechecks
 the resulting filesystem layout and executable, and only then runs the existing
@@ -242,10 +242,10 @@ the commands below.
 Run the four Linux packages on their individually named systems:
 
 ```bash
-python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-fedora44-x86_64.tar.gz" --smoke
-python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz" --smoke
-python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz" --smoke
-python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz" --smoke
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.1.0-fedora44-x86_64.tar.gz" --smoke
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz" --smoke
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz" --smoke
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz" --smoke
 ```
 
 Each Linux run uses the exact final `.tar.gz`, requires the matching versioned
@@ -255,11 +255,11 @@ bit, reconfirms x86-64 ELF after extraction, and launches that extracted file.
 Run the Windows package on native 64-bit Windows:
 
 ```powershell
-python tools\verify_release_package.py "$env:PACKAGE_DIR\DLMS-3.0.2-windows11-x86_64.zip" --smoke
+python tools\verify_release_package.py "$env:PACKAGE_DIR\DLMS-3.1.0-windows11-x86_64.zip" --smoke
 ```
 
 The Windows flow uses PowerShell `Expand-Archive`, requires the exact versioned
-wrapper and stable-named `DLMS-3.0.2-windows11-x86_64.exe`, requires the two
+wrapper and stable-named `DLMS-3.1.0-windows11-x86_64.exe`, requires the two
 release documents, reconfirms x86-64 PE after extraction, and launches the
 extracted `.exe`. A stray `DLMS.exe`, obsolete platform name, second executable,
 or incorrect wrapper is a failure. SmartScreen or Smart App Control warnings
@@ -269,7 +269,7 @@ are not structural validation failures.
 Run the macOS package on Apple Silicon macOS:
 
 ```bash
-python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.0.2-macos-arm64.zip" --smoke
+python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.1.0-macos-arm64.zip" --smoke
 ```
 
 The macOS flow uses `ditto -x -k`, requires `<temp>/DLMS.app` with no versioned
@@ -279,8 +279,8 @@ version metadata, resources, and archived bundle symlinks, then launches
 part of the macOS archive contract.
 
 The final archive that passes this gate is the artifact that must be checksummed
-and uploaded. Native inputs remain clearly separated in `DLMS-3.0.2`; final
-distributables remain in `DLMS-3.0.2-packages`. Never substitute a smoke-tested
+and uploaded. Native inputs remain clearly separated in `DLMS-3.1.0`; final
+distributables remain in `DLMS-3.1.0-packages`. Never substitute a smoke-tested
 native input for a later repackaged upload, or repackage a passing final archive.
 
 The canonical release handoff is therefore:
@@ -307,14 +307,14 @@ canonical six filenames from the repository release version, requires exactly
 that set, structurally validates each file again, and hashes those same bytes:
 
 ```bash
-PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.0.2-packages
+PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.1.0-packages
 python tools/generate_sha256sums.py --output "$PACKAGE_DIR/SHA256SUMS.txt" \
-  "$PACKAGE_DIR/DLMS-3.0.2-fedora44-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-windows11-x86_64.zip" \
-  "$PACKAGE_DIR/DLMS-3.0.2-macos-arm64.zip" \
-  "$PACKAGE_DIR/DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz"
+  "$PACKAGE_DIR/DLMS-3.1.0-fedora44-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-windows11-x86_64.zip" \
+  "$PACKAGE_DIR/DLMS-3.1.0-macos-arm64.zip" \
+  "$PACKAGE_DIR/DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz"
 ```
 
 The helper sorts entries by basename and writes conventional
@@ -324,30 +324,30 @@ archives, or `SHA256SUMS.txt` itself. Verify package contents, the exact six-fil
 set, and every checksum:
 
 ```bash
-PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.0.2-packages
+PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.1.0-packages
 python tools/verify_release_package.py --complete-set \
   --checksums "$PACKAGE_DIR/SHA256SUMS.txt" \
-  "$PACKAGE_DIR/DLMS-3.0.2-fedora44-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-windows11-x86_64.zip" \
-  "$PACKAGE_DIR/DLMS-3.0.2-macos-arm64.zip" \
-  "$PACKAGE_DIR/DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz"
+  "$PACKAGE_DIR/DLMS-3.1.0-fedora44-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-windows11-x86_64.zip" \
+  "$PACKAGE_DIR/DLMS-3.1.0-macos-arm64.zip" \
+  "$PACKAGE_DIR/DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz"
 (cd "$PACKAGE_DIR" && sha256sum --check SHA256SUMS.txt)
 ```
 
 Upload exactly these seven manually prepared assets:
 
-1. `DLMS-3.0.2-fedora44-x86_64.tar.gz`
-2. `DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz`
-3. `DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz`
-4. `DLMS-3.0.2-windows11-x86_64.zip`
-5. `DLMS-3.0.2-macos-arm64.zip`
-6. `DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz`
+1. `DLMS-3.1.0-fedora44-x86_64.tar.gz`
+2. `DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz`
+3. `DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz`
+4. `DLMS-3.1.0-windows11-x86_64.zip`
+5. `DLMS-3.1.0-macos-arm64.zip`
+6. `DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz`
 7. `SHA256SUMS.txt`
 
 GitHub automatically supplies repository source ZIP and tarball links. Do not
-create or upload `DLMS-3.0.2-source.zip` or another manual source archive.
+create or upload `DLMS-3.1.0-source.zip` or another manual source archive.
 
 ## Post-upload byte verification and normal-user UAT
 

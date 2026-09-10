@@ -1,6 +1,6 @@
 # DLMS – Digital Learning & Management System
 
-**Current release: DLMS 3.0.2**
+**Current release: DLMS 3.1.0**
 
 👉 Download packaged releases from the [Releases page](../../releases).
 
@@ -134,7 +134,7 @@ inside it, and allow it to open the browser. You can also open
 
 #### macOS on Apple Silicon
 
-1. Download and extract `DLMS-3.0.2-macos-arm64.zip` from **Releases**.
+1. Download and extract `DLMS-3.1.0-macos-arm64.zip` from **Releases**.
 2. Confirm `DLMS.app` appears directly in the extraction location, then drag it
    into `/Applications`.
 3. Open DLMS from Finder or Applications. DLMS starts locally and normally opens
@@ -169,7 +169,7 @@ python app.py
 
 On Windows, activate the environment with `.venv\Scripts\activate`.
 
-`requirements-lock.txt` records the dependency set used for the verified 3.0.2
+`requirements-lock.txt` records the dependency set used for the verified 3.1.0
 environment. Contributors who intentionally need compatible dependency updates can
 instead install the supported ranges in `requirements.txt`, run the full test suite,
 and then deliberately refresh the lock file.
@@ -204,12 +204,12 @@ perform the release smoke tests before distribution.
 Build natively for each target architecture; PyInstaller does not produce
 cross-platform binaries. Stage the verified native inputs with these names:
 
-* Fedora 44: `DLMS-3.0.2-fedora44-x86_64`
-* Ubuntu 24.04: `DLMS-3.0.2-ubuntu24.04-x86_64`
-* Ubuntu 26.04: `DLMS-3.0.2-ubuntu26.04-x86_64`
-* Windows 11: `DLMS-3.0.2-windows11-x86_64.exe`
-* macOS Apple Silicon: `DLMS-3.0.2-macos-arm64.zip`
-* Omarchy Quattro: `DLMS-3.0.2-omarchy-quattro-x86_64`
+* Fedora 44: `DLMS-3.1.0-fedora44-x86_64`
+* Ubuntu 24.04: `DLMS-3.1.0-ubuntu24.04-x86_64`
+* Ubuntu 26.04: `DLMS-3.1.0-ubuntu26.04-x86_64`
+* Windows 11: `DLMS-3.1.0-windows11-x86_64.exe`
+* macOS Apple Silicon: `DLMS-3.1.0-macos-arm64.zip`
+* Omarchy Quattro: `DLMS-3.1.0-omarchy-quattro-x86_64`
 
 For the Apple Silicon build, use a native `arm64` Python environment on an Apple
 Silicon Mac, verify its architecture, build the canonical spec, and archive only
@@ -221,7 +221,7 @@ python -m pip install -r requirements-build.txt
 python -m PyInstaller --clean --noconfirm DLMS.spec
 test -d dist/DLMS.app
 mkdir -p releases
-ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.0.2-macos-arm64.zip
+ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.1.0-macos-arm64.zip
 ```
 
 The ZIP should expose one top-level `DLMS.app`. The bundle contains
@@ -229,19 +229,19 @@ The ZIP should expose one top-level `DLMS.app`. The bundle contains
 frameworks. Do not include the `build/` directory, runtime data, or an additional
 raw DLMS executable in the release ZIP. If an Intel build is intentionally
 produced and tested from an `x86_64` Python environment, use the distinct name
-`DLMS-3.0.2-macos-x86_64.zip`.
+`DLMS-3.1.0-macos-x86_64.zip`.
 
 After native verification and UAT, create these six final download packages.
 The repository-maintained `release_assets/README.txt` and
 `release_assets/sample_quiz.txt` are added to Linux and Windows packages only;
 the verified app-only macOS ZIP is promoted unchanged:
 
-* Fedora 44: `DLMS-3.0.2-fedora44-x86_64.tar.gz`
-* Ubuntu 24.04: `DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz`
-* Ubuntu 26.04: `DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz`
-* Windows 11: `DLMS-3.0.2-windows11-x86_64.zip`
-* macOS Apple Silicon: `DLMS-3.0.2-macos-arm64.zip`
-* Omarchy Quattro: `DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz`
+* Fedora 44: `DLMS-3.1.0-fedora44-x86_64.tar.gz`
+* Ubuntu 24.04: `DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz`
+* Ubuntu 26.04: `DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz`
+* Windows 11: `DLMS-3.1.0-windows11-x86_64.zip`
+* macOS Apple Silicon: `DLMS-3.1.0-macos-arm64.zip`
+* Omarchy Quattro: `DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz`
 
 Clean-extract and smoke-test each exact final archive on its named native
 platform before generating the shared checksum manifest from those same six
@@ -251,18 +251,18 @@ final-distributable verification, checksum, and post-upload commands are in
 [Native Release Verification](docs/RELEASE_VERIFICATION.md).
 
 ```bash
-PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.0.2-packages
+PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.1.0-packages
 python tools/generate_sha256sums.py --output "$PACKAGE_DIR/SHA256SUMS.txt" \
-  "$PACKAGE_DIR/DLMS-3.0.2-fedora44-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.0.2-windows11-x86_64.zip" \
-  "$PACKAGE_DIR/DLMS-3.0.2-macos-arm64.zip" \
-  "$PACKAGE_DIR/DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz"
+  "$PACKAGE_DIR/DLMS-3.1.0-fedora44-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz" \
+  "$PACKAGE_DIR/DLMS-3.1.0-windows11-x86_64.zip" \
+  "$PACKAGE_DIR/DLMS-3.1.0-macos-arm64.zip" \
+  "$PACKAGE_DIR/DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz"
 ```
 
-The user-facing release name is `DLMS 3.0.2`; the matching Git tag convention
-is `v3.0.2`.
+The user-facing release name is `DLMS 3.1.0`; the matching Git tag convention
+is `v3.1.0`.
 
 ### Native artifact verification
 

@@ -17,7 +17,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools" / "verify_release_artifact.py"
-VERSION = "3.0.2"
+VERSION = "3.1.0"
 SPEC = importlib.util.spec_from_file_location("release_artifact_verifier", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 VERIFIER = importlib.util.module_from_spec(SPEC)
@@ -84,7 +84,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-windows11-x86_64.exe"
+            artifact = root / "DLMS-3.1.0-windows11-x86_64.exe"
             _write_pe(artifact)
             manifest = root / "SHA256SUMS.txt"
             manifest.write_text(
@@ -98,14 +98,14 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Verified DLMS-3.0.2-windows11-x86_64.exe", result.stdout)
+            self.assertIn("Verified DLMS-3.1.0-windows11-x86_64.exe", result.stdout)
 
     def test_verifier_rejects_obsolete_generic_final_artifact_names(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            windows = root / "DLMS-3.0.2-windows-x86_64.exe"
-            linux = root / "DLMS-3.0.2-linux-x86_64"
+            windows = root / "DLMS-3.1.0-windows-x86_64.exe"
+            linux = root / "DLMS-3.1.0-linux-x86_64"
             _write_pe(windows)
             _write_elf(linux)
             linux.chmod(0o755)
@@ -141,7 +141,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-macos-arm64.zip"
+            artifact = root / "DLMS-3.1.0-macos-arm64.zip"
             _write_macos_zip(artifact)
 
             good = self._run("macos-arm64", str(artifact), "--source-root", str(root))
@@ -160,7 +160,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
     def test_macos_smoke_uses_ditto_to_preserve_the_bundled_app_structure(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
-            artifact = root / "DLMS-3.0.2-macos-arm64.zip"
+            artifact = root / "DLMS-3.1.0-macos-arm64.zip"
             _write_macos_zip(artifact)
             work_root = root / "smoke"
             executable = work_root / "macos-artifact" / "DLMS.app" / "Contents" / "MacOS" / "DLMS"
@@ -220,7 +220,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
                 "omarchy-quattro-x86_64",
             ):
                 with self.subTest(suffix=suffix):
-                    artifact = root / f"DLMS-3.0.2-{suffix}"
+                    artifact = root / f"DLMS-3.1.0-{suffix}"
                     _write_elf(artifact)
                     artifact.chmod(0o755)
                     passed = self._run("linux-x86_64", str(artifact), "--source-root", str(root))
@@ -266,7 +266,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
     def test_linux_native_permission_failure_is_enforced_but_windows_cross_check_is_portable(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
-            artifact = root / "DLMS-3.0.2-fedora44-x86_64"
+            artifact = root / "DLMS-3.1.0-fedora44-x86_64"
             _write_elf(artifact)
 
             with mock.patch.object(VERIFIER, "_host_posix_executable", return_value=False):
@@ -281,7 +281,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
             _write_source_root(root)
-            artifact = root / "DLMS-3.0.2-fedora44-x86_64"
+            artifact = root / "DLMS-3.1.0-fedora44-x86_64"
             _write_elf(artifact)
             artifact.chmod(0o644)
 
@@ -298,7 +298,7 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
     def test_macos_native_smoke_rejects_non_executable_extracted_bundle(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
-            artifact = root / "DLMS-3.0.2-macos-arm64.zip"
+            artifact = root / "DLMS-3.1.0-macos-arm64.zip"
             artifact.write_bytes(b"test archive")
             extraction_root = root / "extracted"
             executable = extraction_root / "DLMS.app" / "Contents" / "MacOS" / "DLMS"

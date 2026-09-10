@@ -1,4 +1,4 @@
-DLMS 3.0.2
+DLMS 3.1.0
 ==========
 
 DLMS is a local-first learning, quiz, study, analytics, and content-import
@@ -7,12 +7,12 @@ browser.
 
 CHOOSE THE PACKAGE FOR YOUR SYSTEM
 
-- Fedora 44: DLMS-3.0.2-fedora44-x86_64.tar.gz
-- Ubuntu 24.04: DLMS-3.0.2-ubuntu24.04-x86_64.tar.gz
-- Ubuntu 26.04: DLMS-3.0.2-ubuntu26.04-x86_64.tar.gz
-- Windows 11: DLMS-3.0.2-windows11-x86_64.zip
-- macOS Apple Silicon: DLMS-3.0.2-macos-arm64.zip
-- Omarchy Quattro: DLMS-3.0.2-omarchy-quattro-x86_64.tar.gz
+- Fedora 44: DLMS-3.1.0-fedora44-x86_64.tar.gz
+- Ubuntu 24.04: DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz
+- Ubuntu 26.04: DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz
+- Windows 11: DLMS-3.1.0-windows11-x86_64.zip
+- macOS Apple Silicon: DLMS-3.1.0-macos-arm64.zip
+- Omarchy Quattro: DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz
 
 The Linux packages are built and tested separately for the named operating
 system. Do not assume that one Linux build is universal across distributions.
@@ -31,18 +31,18 @@ Linux
 2. Open a terminal in the extracted package folder.
 3. Run the executable, for example:
 
-   ./DLMS-3.0.2-fedora44-x86_64
+   ./DLMS-3.1.0-fedora44-x86_64
 
 The executable permission is preserved by the archive. If another transfer
 method removed it, restore it with:
 
-   chmod +x DLMS-3.0.2-<platform>-x86_64
+   chmod +x DLMS-3.1.0-<platform>-x86_64
 
 Windows 11
 
 1. Extract the ZIP package.
 2. Open the extracted package folder.
-3. Double-click DLMS-3.0.2-windows11-x86_64.exe.
+3. Double-click DLMS-3.1.0-windows11-x86_64.exe.
 
 Windows may display Microsoft Defender SmartScreen for an unsigned download.
 Verify the published SHA-256 checksum and that the file came from the official
@@ -55,7 +55,7 @@ macOS Apple Silicon
    to Applications.
 3. Control-click DLMS.app, choose Open, and then choose Open again.
 
-DLMS 3.0.2 is not notarized, so macOS may require approval in System Settings >
+DLMS 3.1.0 is not notarized, so macOS may require approval in System Settings >
 Privacy & Security. Use Open Anyway only after verifying the published SHA-256
 checksum and the download source.
 
