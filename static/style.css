@@ -13734,27 +13734,36 @@ body:not([class]) > .container > .hero-title {
 }
 
 .content-packs-page .pack-detail-actions > a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     box-sizing: border-box;
+    min-height: 43px;
     min-width: 0;
     max-width: 100%;
+    padding: 10px 15px;
+    border-radius: 9px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.2;
     white-space: normal;
     text-align: center;
     overflow-wrap: anywhere;
 }
 
+.content-packs-page .pack-detail-actions > a:focus-visible {
+    outline: 3px solid var(--theme-accent-text) !important;
+    outline-offset: 3px;
+}
+
 .content-packs-page .pack-detail-actions > .medical-ai-secondary-button,
 .content-packs-page .pack-detail-actions > .medical-ai-secondary-button:link,
 .content-packs-page .pack-detail-actions > .medical-ai-secondary-button:visited {
-    min-height: 43px;
-    padding: 10px 15px;
     border: 1px solid var(--semantic-secondary-control-border);
-    border-radius: 9px;
     color: var(--semantic-secondary-control-text) !important;
     background: var(--semantic-secondary-control-surface) !important;
     box-shadow: none;
-    font: inherit;
-    font-size: 14px;
-    font-weight: 700;
     transition: background .15s ease, border-color .15s ease, color .15s ease,
         box-shadow .15s ease, transform .15s ease;
 }

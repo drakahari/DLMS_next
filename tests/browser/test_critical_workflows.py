@@ -3258,7 +3258,11 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "backText:back.textContent.trim(),backColor:backStyle.color,"
             "backBackground:backStyle.backgroundColor,backRadius:backStyle.borderRadius,"
             "backPadding:backStyle.padding,backMinHeight:backStyle.minHeight,"
-            "backWeight:backStyle.fontWeight,"
+            "backWeight:backStyle.fontWeight,backSize:backStyle.fontSize,"
+            "backAlign:backStyle.alignItems,exportRadius:exportStyle.borderRadius,"
+            "exportPadding:exportStyle.padding,exportMinHeight:exportStyle.minHeight,"
+            "exportWeight:exportStyle.fontWeight,exportSize:exportStyle.fontSize,"
+            "exportAlign:exportStyle.alignItems,"
             "actionsDistinct:backStyle.backgroundImage!==exportStyle.backgroundImage,"
             "descriptionWrap:getComputedStyle(description).overflowWrap,"
             "valueWrap:getComputedStyle(value).overflowWrap,"
@@ -3282,7 +3286,15 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "backRadius": "9px",
             "backPadding": "10px 15px",
             "backMinHeight": "43px",
-            "backWeight": "700",
+            "backWeight": "800",
+            "backSize": "14px",
+            "backAlign": "center",
+            "exportRadius": "9px",
+            "exportPadding": "10px 15px",
+            "exportMinHeight": "43px",
+            "exportWeight": "800",
+            "exportSize": "14px",
+            "exportAlign": "center",
             "actionsDistinct": True,
             "descriptionWrap": "anywhere",
             "valueWrap": "anywhere",

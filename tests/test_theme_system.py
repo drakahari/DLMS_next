@@ -1068,23 +1068,36 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_content_pack_back_action_uses_secondary_control_semantics(self):
         css = self._style_css()
+        shared_selector = ".content-packs-page .pack-detail-actions > a"
         selector = (
             ".content-packs-page .pack-detail-actions > "
             ".medical-ai-secondary-button"
         )
+        shared = self._rule_blocks(css, shared_selector)
+        shared_focus = self._rule_blocks(css, f"{shared_selector}:focus-visible")
         normal = self._rule_blocks(css, selector)
         hover = self._rule_blocks(css, f"{selector}:hover")
         focus = self._rule_blocks(css, f"{selector}:focus-visible")
         active = self._rule_blocks(css, f"{selector}:active")
 
         self.assertTrue(any(all(token in block for token in (
-            "--semantic-secondary-control-text",
-            "--semantic-secondary-control-surface",
-            "--semantic-secondary-control-border",
+            "align-items: center",
+            "justify-content: center",
             "min-height: 43px",
             "padding: 10px 15px",
             "border-radius: 9px",
-            "font-weight: 700",
+            "font-size: 14px",
+            "font-weight: 800",
+            "line-height: 1.2",
+        )) for block in shared))
+        self.assertTrue(any(all(token in block for token in (
+            "outline: 3px solid var(--theme-accent-text)",
+            "outline-offset: 3px",
+        )) for block in shared_focus))
+        self.assertTrue(any(all(token in block for token in (
+            "--semantic-secondary-control-text",
+            "--semantic-secondary-control-surface",
+            "--semantic-secondary-control-border",
         )) for block in normal))
         for state, blocks in (("hover", hover), ("focus", focus)):
             with self.subTest(state=state):
