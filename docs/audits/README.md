@@ -16,6 +16,8 @@ software.
 * [DLMS 3.0.2 Native Packaging Audit](2026-09-05-native-packaging-audit.md)
 * [September 8, 2026 Post-Modularization Product Quality
   Assessment](2026-09-08-product-quality-assessment.md)
+* [September 10, 2026 Product Quality
+  Assessment](2026-09-10-product-quality-assessment.md)
 
 ## Product-quality history
 
@@ -25,9 +27,11 @@ software.
   rounding).
 * September 8, 2026: weighted score **9.40/10** (`9.398/10` before
   rounding), with readiness classified as **READY WITH NON-BLOCKING DEBT**.
+* September 10, 2026: weighted score **9.58/10** (`9.584/10` before
+  rounding), with readiness classified as **READY WITH NON-BLOCKING DEBT**.
 * The September 3 and September 5 assessments rated Overall Product Quality at
   **9.1/10**. The post-modularization September 8 assessment rated it at
-  **9.4/10**.
+  **9.4/10**; the September 10 DLMS 3.1.0 assessment rated it at **9.6/10**.
 
 The results provide a longitudinal record across separately performed
 assessments. Each remains its own historical record; none replaces an earlier
