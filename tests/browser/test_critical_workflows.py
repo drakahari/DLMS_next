@@ -5968,6 +5968,9 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "answers:cards.map(card=>[...card.querySelectorAll('[data-pdf-role=multiple-correct]:checked')].map(input=>input.value)),"
         "multipleOnly:cards.every(card=>[...card.querySelectorAll('[data-pdf-role=choice-row]')].every(row=>{const single=row.querySelector('[data-pdf-role=single-correct]'),multiple=row.querySelector('[data-pdf-role=multiple-correct]');return getComputedStyle(single.closest('label')).display==='none'&&single.disabled&&getComputedStyle(multiple.closest('label')).display!=='none'&&!multiple.disabled;})),"
         "confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
+        "bulkConfirm:!!document.getElementById('questionReviewConfirmSelected'),"
+        "bulkDisabled:document.getElementById('questionReviewConfirmSelected').disabled,"
+        "bulkStatusLive:document.getElementById('questionReviewBulkConfirmationStatus').getAttribute('aria-live'),"
         "labels:[...cards[0].querySelectorAll('[data-pdf-role=choice-label]')].map(node=>node.textContent)};})()"
     )
     assert state == {
@@ -5978,6 +5981,9 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "answers": [["B", "D"], ["B", "D"]],
         "multipleOnly": True,
         "confirmations": [False, False],
+        "bulkConfirm": True,
+        "bulkDisabled": True,
+        "bulkStatusLive": "polite",
         "labels": ["A", "B", "C", "D"],
     }
 
@@ -6035,36 +6041,83 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
             + "const source=document.querySelector('.pdf-ocr-review-source');"
             "const field=source.querySelector('.pdf-ocr-confidence-list span');"
             "const button=document.querySelector('[data-pdf-action=choice-add]');"
+            "const bulk=document.getElementById('questionReviewConfirmSelected');"
+            "const selected=document.querySelector('[data-pdf-role=select]');selected.click();bulk.focus();"
             "return {source:getComputedStyle(source).backgroundColor,field:measure(field),"
             "provenance:measure(document.querySelector('.pdf-import-source-note')) ,"
             "confirmation:measure(document.querySelector('.pdf-correctness-confirmation span')) ,"
-            "control:measure(button),eyebrow:getComputedStyle(document.querySelector('.build-eyebrow')).color,"
+            "control:measure(button),bulk:measure(bulk),eyebrow:getComputedStyle(document.querySelector('.build-eyebrow')).color,"
             "focusable:button.tabIndex===0&&!button.disabled,"
+            "bulkEnabled:!bulk.disabled,bulkFocused:document.activeElement===bulk,"
             "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
         )
-        for role in ("field", "provenance", "confirmation", "control"):
+        for role in ("field", "provenance", "confirmation", "control", "bulk"):
             assert theme_state[role]["contrast"] >= 4.5, (
                 theme, role, theme_state[role]
             )
         if theme in {"purple-gold", "maroon-gold"}:
             assert theme_state["confirmation"]["color"] != theme_state["eyebrow"]
         assert theme_state["focusable"] is True
+        assert theme_state["bulkEnabled"] is True
+        assert theme_state["bulkFocused"] is True
         assert theme_state["overflow"] is True
         surfaces[theme] = theme_state["source"]
     assert len(set(surfaces.values())) == 4
 
-    browser.set_viewport(390, 820)
-    assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
+    for width in (420, 390):
+        browser.set_viewport(width, 820)
+        assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
     browser.set_viewport(1280, 1000)
-    browser.evaluate(
+    bulk_single = browser.evaluate(
         "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
+        "document.getElementById('pdfClearSelection').click();"
+        "const select=cards[0].querySelector('[data-pdf-role=select]');select.checked=true;"
+        "select.dispatchEvent(new Event('change',{bubbles:true}));"
+        "document.getElementById('questionReviewConfirmSelected').click();"
+        "return {confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
+        "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
+    )
+    assert bulk_single["confirmations"] == [True, False], bulk_single
+    assert bulk_single["status"] == "1 selected question confirmed as reviewed."
+
+    bulk_mixed = browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
+        "const invalidChoice=cards[1].querySelector('[data-pdf-role=choice]');invalidChoice.value='';"
+        "invalidChoice.dispatchEvent(new Event('input',{bubbles:true}));"
+        "cards[1].querySelector('[data-pdf-role=select]').click();"
+        "document.getElementById('questionReviewConfirmSelected').click();"
+        "return {confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
+        "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
+    )
+    assert bulk_mixed["confirmations"] == [True, False]
+    assert "1 selected question confirmed as reviewed" in bulk_mixed["status"]
+    assert "question 2 (has an empty choice)" in bulk_mixed["status"]
+
+    bulk_excluded = browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
+        "cards[1].querySelector('[data-pdf-role=choice]').value='What is a control family?';"
+        "cards[1].querySelector('[data-pdf-role=delete]').checked=true;"
+        "document.getElementById('questionReviewConfirmSelected').click();"
+        "return {confirmed:cards[1].querySelector('[data-pdf-role=correctness-confirmed]').checked,"
+        "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
+    )
+    assert bulk_excluded["confirmed"] is False
+    assert "question 2 (excluded)" in bulk_excluded["status"]
+
+    bulk_ready = browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
+        "cards[1].querySelector('[data-pdf-role=delete]').checked=false;"
         "cards[0].querySelector('[data-pdf-role=question]').value='Which controls should be selected?';"
+        "cards[0].querySelector('[data-pdf-role=question]').dispatchEvent(new Event('input',{bubbles:true}));"
         "cards[0].querySelector('[data-pdf-action=choice-add]').click();"
         "const added=[...cards[0].querySelectorAll('[data-pdf-role=choice-row]')].at(-1);"
         "added.querySelector('[data-pdf-role=choice]').value='Manual fifth option';"
-        "cards.forEach(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked=true);"
-        "return true;})()"
+        "document.getElementById('questionReviewConfirmSelected').click();"
+        "return {confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
+        "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
     )
+    assert bulk_ready["confirmations"] == [True, True]
+    assert bulk_ready["status"] == "2 selected questions confirmed as reviewed."
     browser.click("#pdfReviewForm button[type=submit]:not([formaction])")
     browser.wait_for("location.pathname.startsWith('/pdf-import/bank/')")
     saved = browser.evaluate(
@@ -6224,7 +6277,8 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
         "ocrCards:document.querySelectorAll('.pdf-ocr-review-source').length,"
         "preview:!!document.querySelector('.pdf-ocr-preview-frame img[src*=\"/page/2\"]'),"
         "pageLabel:document.body.innerText.includes('PDF page 2'),"
-        "confirmation:!!document.querySelector('[data-pdf-role=correctness-confirmed]')}))()"
+        "confirmation:!!document.querySelector('[data-pdf-role=correctness-confirmed]'),"
+        "bulkConfirm:!!document.getElementById('questionReviewConfirmSelected')}))()"
     )
     assert review == {
         "cards": 2,
@@ -6232,11 +6286,19 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
         "preview": True,
         "pageLabel": True,
         "confirmation": True,
+        "bulkConfirm": True,
     }
     draft_id = browser.evaluate("location.pathname.split('/').pop()")
-    browser.evaluate(
-        "document.querySelector('[data-pdf-role=correctness-confirmed]').checked=true"
+    scanned_bulk = browser.evaluate(
+        "(() => {const card=document.querySelector('[data-pdf-role=correctness-confirmed]').closest('.pdf-import-question-card');"
+        "const select=card.querySelector('[data-pdf-role=select]');select.checked=true;"
+        "select.dispatchEvent(new Event('change',{bubbles:true}));"
+        "document.getElementById('questionReviewConfirmSelected').click();"
+        "return {confirmed:card.querySelector('[data-pdf-role=correctness-confirmed]').checked,"
+        "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
     )
+    assert scanned_bulk["confirmed"] is True, scanned_bulk
+    assert "1 selected question confirmed as reviewed" in scanned_bulk["status"]
     browser.evaluate(
         "document.getElementById('pdfReviewForm').requestSubmit("
         "document.querySelector('#pdfReviewForm button[type=submit]:not([formaction])'))"

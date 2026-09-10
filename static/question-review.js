@@ -69,7 +69,9 @@
     if (!String(card.querySelector('[data-pdf-role="question"]')?.value || "").trim()) {
       return { valid: false, reason: "needs repair" };
     }
-    if (currentQuestionTextIsDuplicated(card)) {
+    const rejectDuplicateQuestions =
+      reviewForm?.dataset.reviewRejectDuplicateQuestions !== "false";
+    if (rejectDuplicateQuestions && currentQuestionTextIsDuplicated(card)) {
       return { valid: false, reason: "duplicates another included question" };
     }
     const rows = choiceRows(card);
@@ -98,7 +100,12 @@
     ) {
       return { valid: false, reason: "has an invalid correct-answer set" };
     }
-    if (!String(card.querySelector('[data-pdf-role="explanation"]')?.value || "").trim()) {
+    const requireExplanation =
+      reviewForm?.dataset.reviewRequireExplanation !== "false";
+    if (
+      requireExplanation &&
+      !String(card.querySelector('[data-pdf-role="explanation"]')?.value || "").trim()
+    ) {
       return { valid: false, reason: "needs an explanation" };
     }
     const concepts = String(
@@ -275,7 +282,9 @@
         if (confirmation) confirmation.checked = false;
         skipped.push({
           number: card.dataset.questionNumber || "?",
-          reason: eligibility.reason || "cannot be confirmed",
+          reason:
+            eligibility.reason ||
+            (confirmation ? "cannot be confirmed" : "does not require confirmation"),
         });
         return;
       }

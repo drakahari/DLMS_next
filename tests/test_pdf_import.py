@@ -425,11 +425,19 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertIn("How filters and bulk actions work", question_html)
         self.assertIn("selects only cards in the current filtered view", question_html)
         self.assertIn("Mark Selected for Deletion", question_html)
+        self.assertIn("Confirm Selected as Reviewed", question_html)
+        self.assertIn("only after comparing each selected draft with its source", question_html)
         self.assertIn("Save Reviewed Question Bank", question_html)
         self.assertIn('class="pdf-review-bulk-actions"', question_html)
         self.assertIn('id="pdfSelectionCount" aria-live="polite"', question_html)
-        self.assertNotIn("questionReviewConfirmSelected", question_html)
-        self.assertNotIn("Confirm Selected as Reviewed", question_html)
+        self.assertIn('id="questionReviewConfirmSelected" disabled', question_html)
+        self.assertIn(
+            'id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite" hidden',
+            question_html,
+        )
+        self.assertIn('data-review-reset-confirmation-on-edit="true"', question_html)
+        self.assertIn('data-review-require-explanation="false"', question_html)
+        self.assertIn('data-review-reject-duplicate-questions="false"', question_html)
         styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
         default_style = styles[
             styles.index(".pdf-import-page #pdfDeleteSelected {"):

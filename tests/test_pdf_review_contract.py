@@ -242,6 +242,9 @@ class SmartPDFReviewContractTests(unittest.TestCase):
             'data-pdf-action="choice-down"',
             'data-pdf-role="single-correct"',
             'data-pdf-role="multiple-correct"',
+            'id="questionReviewConfirmSelected" disabled',
+            'id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite" hidden',
+            'data-review-reset-confirmation-on-edit="true"',
             "Choose one correct answer before switching to single-answer mode.",
             'aria-live="polite"',
         ):
