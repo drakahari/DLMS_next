@@ -9853,8 +9853,14 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .external-ai-builder-card,
 .external-ai-workflow-distinction,
 .external-ai-builder-errors {
+    box-sizing: border-box;
     min-width: 0;
     max-width: 100%;
+}
+
+.external-ai-builder-card,
+.external-ai-workflow-distinction {
+    padding: 22px;
 }
 
 .external-ai-builder-card {
@@ -10000,6 +10006,13 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 
 .external-ai-workflow-distinction p:last-child {
     margin-bottom: 0;
+}
+
+@media (max-width: 760px) {
+    .external-ai-builder-card,
+    .external-ai-workflow-distinction {
+        padding: 17px;
+    }
 }
 
 @media (max-width: 650px) {

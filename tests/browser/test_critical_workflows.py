@@ -5384,52 +5384,104 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "document.getElementById('externalAiCopyStatus').textContent.includes('copy it manually')"
     )
 
+    builder_layout_script = """
+        (() => {
+            const cardSpecs = [
+                {
+                    name: 'configure',
+                    card: '[aria-labelledby="externalAiConfigureHeading"]',
+                    children: ['.build-section-heading', '.build-section-heading > *',
+                               '.external-ai-builder-grid', '.external-ai-builder-grid > *',
+                               '.external-ai-builder-grid input', '.external-ai-builder-grid select',
+                               '.external-ai-builder-grid textarea', '.build-optional-source',
+                               '.build-optional-source > summary', '.build-submit-row',
+                               '.build-submit-row > *']
+                },
+                {
+                    name: 'prompt',
+                    card: '[aria-labelledby="externalAiPromptHeading"]',
+                    children: ['.build-section-heading', '.build-section-heading > *',
+                               'label[for="externalAiPrompt"]', '#externalAiPrompt',
+                               '.external-ai-copy-row', '.external-ai-copy-row > *']
+                },
+                {
+                    name: 'response',
+                    card: '[aria-labelledby="externalAiResponseHeading"]',
+                    children: ['.build-section-heading', '.build-section-heading > *',
+                               'label[for="externalAiResponse"]', '#externalAiResponse',
+                               '.external-ai-builder-actions',
+                               '.external-ai-builder-actions > *']
+                },
+                {
+                    name: 'workflow',
+                    card: '.external-ai-workflow-distinction',
+                    children: ['h2', 'p', 'p a']
+                }
+            ];
+            const cards = cardSpecs.map(spec => {
+                const card = document.querySelector(spec.card);
+                const bounds = card.getBoundingClientRect();
+                const style = getComputedStyle(card);
+                const paddingLeft = parseFloat(style.paddingLeft);
+                const paddingRight = parseFloat(style.paddingRight);
+                const contentLeft = bounds.left + parseFloat(style.borderLeftWidth) + paddingLeft;
+                const contentRight = bounds.right - parseFloat(style.borderRightWidth) - paddingRight;
+                const children = spec.children.flatMap(selector => [...card.querySelectorAll(selector)]);
+                return {
+                    name: spec.name,
+                    paddingLeft,
+                    paddingRight,
+                    childCount: children.length,
+                    contentInset: children.length > 0 && children.every(child => {
+                        const childBounds = child.getBoundingClientRect();
+                        return childBounds.left >= contentLeft - 1 &&
+                               childBounds.right <= contentRight + 1;
+                    })
+                };
+            });
+            const firstCard = document.querySelector('.external-ai-builder-card');
+            const input = document.querySelector('[name=topic]');
+            return {
+                cards,
+                cardBg: getComputedStyle(firstCard).backgroundImage,
+                inputBg: getComputedStyle(input).backgroundColor,
+                inputColor: getComputedStyle(input).color,
+                headingDisplay: getComputedStyle(firstCard.querySelector('.build-section-heading')).display,
+                overflow: document.documentElement.scrollWidth <= window.innerWidth + 1
+            };
+        })()
+    """
+
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
         status = browser.evaluate(
             f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
         )
         assert status == 200
-        browser.navigate(f"{base_url}/external-ai/quiz-builder")
-        browser.wait_for(
-            f"getComputedStyle(document.documentElement).getPropertyValue('--theme-color-scheme').trim() === "
-            f"{json.dumps('light' if theme == 'light' else 'dark')}"
-        )
-        theme_state = browser.evaluate(
-            "(() => {const card=document.querySelector('.external-ai-builder-card');"
-            "const heading=card.querySelector('.build-section-heading'),badge=heading.querySelector('.build-method-label');"
-            "const input=document.querySelector('[name=topic]');const cs=getComputedStyle(card);"
-            "const is=getComputedStyle(input),hs=getComputedStyle(heading),a=badge.getBoundingClientRect(),b=card.getBoundingClientRect();"
-            "return {cardBg:cs.backgroundImage,inputBg:is.backgroundColor,inputColor:is.color,"
-            "headingDisplay:hs.display,badgeContained:a.left>=b.left&&a.right<=b.right,"
-            "controlsContained:[...document.querySelectorAll('.external-ai-builder-card input,.external-ai-builder-card textarea,.external-ai-builder-card select')].every(control=>{const c=control.getBoundingClientRect(),panel=control.closest('.external-ai-builder-card').getBoundingClientRect();return c.left>=panel.left-1&&c.right<=panel.right+1;}),"
-            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
-        )
-        assert theme_state["cardBg"] != "none"
-        assert theme_state["inputBg"] != "rgba(0, 0, 0, 0)"
-        assert theme_state["inputColor"] != theme_state["inputBg"]
-        assert theme_state["headingDisplay"] == "grid"
-        assert theme_state["badgeContained"] is True
-        assert theme_state["controlsContained"] is True
-        assert theme_state["overflow"] is True
+        for width in (1440, 1280, 1024, 420, 390):
+            browser.set_viewport(width, 1000 if width >= 1024 else 820)
+            browser.navigate(f"{base_url}/external-ai/quiz-builder")
+            browser.wait_for(
+                "document.getElementById('externalAiBuilderForm') && "
+                "getComputedStyle(document.documentElement).getPropertyValue('--theme-color-scheme').trim() === "
+                f"{json.dumps('light' if theme == 'light' else 'dark')}"
+            )
+            theme_state = browser.evaluate(builder_layout_script)
+            expected_padding = 17 if width <= 760 else 22
+            assert theme_state["cardBg"] != "none"
+            assert theme_state["inputBg"] != "rgba(0, 0, 0, 0)"
+            assert theme_state["inputColor"] != theme_state["inputBg"]
+            assert theme_state["headingDisplay"] == "grid"
+            assert theme_state["overflow"] is True
+            assert [card["name"] for card in theme_state["cards"]] == [
+                "configure", "prompt", "response", "workflow",
+            ]
+            for card in theme_state["cards"]:
+                assert card["childCount"] >= 2
+                assert card["paddingLeft"] == expected_padding
+                assert card["paddingRight"] == expected_padding
+                assert card["contentInset"] is True
 
-    for width in (420, 390):
-        browser.set_viewport(width, 820)
-        browser.navigate(f"{base_url}/external-ai/quiz-builder")
-        browser.wait_for("document.getElementById('externalAiBuilderForm')")
-        narrow_builder = browser.evaluate(
-            "(() => {const cards=[...document.querySelectorAll('.external-ai-builder-card')];"
-            "return {overflow:document.documentElement.scrollWidth<=window.innerWidth+1,"
-            "headings:cards.every(card=>{const a=card.querySelector('.build-section-heading').getBoundingClientRect(),b=card.getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;}),"
-            "badges:cards.every(card=>{const a=card.querySelector('.build-method-label').getBoundingClientRect(),b=card.getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;}),"
-            "controls:[...document.querySelectorAll('.external-ai-builder-card input,.external-ai-builder-card textarea,.external-ai-builder-card select')].every(control=>{const a=control.getBoundingClientRect(),b=control.closest('.external-ai-builder-card').getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;})};})()"
-        )
-        assert narrow_builder == {
-            "overflow": True,
-            "headings": True,
-            "badges": True,
-            "controls": True,
-        }
     browser.set_viewport(1280, 1000)
 
     browser.navigate(f"{base_url}/external-ai/quiz-builder")

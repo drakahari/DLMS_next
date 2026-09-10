@@ -117,6 +117,8 @@ class ExternalAIBuilderTests(unittest.TestCase):
             "grid-template-columns: minmax(0, 1fr);",
             ".external-ai-builder-card .build-section-heading > *,",
             ".external-ai-builder-page :where(input:not([type=\"checkbox\"]):not([type=\"radio\"]), select, textarea) {",
+            ".external-ai-builder-card,\n.external-ai-workflow-distinction {\n    padding: 22px;",
+            ".external-ai-builder-card,\n    .external-ai-workflow-distinction {\n        padding: 17px;",
         ):
             self.assertIn(rule, styles)
 
