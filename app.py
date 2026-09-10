@@ -32,11 +32,13 @@ from dlms.runtime import (
 )
 from dlms.browser_presence import BrowserPresenceManager
 from dlms.persistence import json_files as _json_files
+from dlms.persistence import external_ai_drafts as _external_ai_draft_repository
 from dlms.persistence import portal as _portal_repository
 from dlms.persistence import registries as _registry_repository
 from dlms.persistence import database as _database
 from dlms.persistence import pdf_banks as _pdf_bank_repository
 from dlms.parsing import law_packet as _law_packet_parser
+from dlms.parsing import external_ai_structured as _external_ai_structured_parser
 from dlms.parsing import quiz_text as _quiz_text_parser
 from dlms.parsing import smart_pdf as _smart_pdf_parser
 from dlms.parsing import ocr_questions as _ocr_question_parser
@@ -46,6 +48,7 @@ from dlms.services import attempts as _attempt_service
 from dlms.services import backups as _backup_service
 from dlms.services import content_packs as _content_pack_service
 from dlms.services import content_pack_mutations as _content_pack_mutation_service
+from dlms.services import external_ai_structured as _external_ai_structured_service
 from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
 from dlms.services import quiz_publication as _quiz_publication_service
@@ -111,7 +114,7 @@ DLMS_DATA_ROOT_MARKER_ID = "dlms-application-data-root"
 DLMS_DATA_ROOT_MARKER_VERSION = 1
 DLMS_LEGACY_DATA_ROOT_ENTRIES = {
     ".quiz_publications", ".restore_operations", ".secret_key", "backups", "config", "content_pack_staging", "content_packs",
-    "data", "image_builder_drafts", "law", "pdf_import_drafts",
+    "data", "external_ai_drafts", "image_builder_drafts", "law", "pdf_import_drafts",
     "pdf_question_banks", "pdf_terminology_banks", "quiz_assets", "quizzes",
     "results.db", "results.db-journal", "results.db-shm", "results.db-wal",
     "static", "uploads",
@@ -568,6 +571,7 @@ BACKGROUND_FOLDER = os.path.join(APP_DATA_DIR, "static", "bg")
 CONTENT_PACK_FOLDER = os.path.join(APP_DATA_DIR, "content_packs")
 QUIZ_ASSET_FOLDER = os.path.join(APP_DATA_DIR, "quiz_assets")
 IMAGE_BUILDER_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "image_builder_drafts")
+EXTERNAL_AI_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "external_ai_drafts")
 PDF_IMPORT_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "pdf_import_drafts")
 OCR_IMPORT_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_screenshots")
 PDF_OCR_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_pdfs")
@@ -587,6 +591,7 @@ for d in [
     CONTENT_PACK_FOLDER,
     QUIZ_ASSET_FOLDER,
     IMAGE_BUILDER_DRAFT_FOLDER,
+    EXTERNAL_AI_DRAFT_FOLDER,
     PDF_IMPORT_DRAFT_FOLDER,
     OCR_IMPORT_STAGING_FOLDER,
     PDF_OCR_STAGING_FOLDER,
@@ -1826,7 +1831,8 @@ DLMS_BACKUP_MAX_SINGLE_FILE = 768 * 1024 * 1024
 DLMS_BACKUP_MAX_COMPRESSION_RATIO = 1000
 DLMS_BACKUP_RATIO_MIN_UNCOMPRESSED = 16 * 1024 * 1024
 DLMS_BACKUP_EXCLUDED_TOP_LEVEL = {
-    ".restore_operations", "backups", "uploads", "content_pack_staging"
+    ".restore_operations", "backups", "uploads", "content_pack_staging",
+    "external_ai_drafts",
 }
 DLMS_BACKUP_CORE_DB_SCHEMA = {
     "quizzes": {"id", "title", "source_file"},
@@ -1862,7 +1868,7 @@ def _ensure_runtime_data_dirs():
     for path in [
         UPLOAD_FOLDER, DATA_FOLDER, QUIZ_FOLDER, CONFIG_FOLDER, BACKGROUND_FOLDER,
         CONTENT_PACK_FOLDER, QUIZ_ASSET_FOLDER, IMAGE_BUILDER_DRAFT_FOLDER,
-        PDF_IMPORT_DRAFT_FOLDER, PDF_QUESTION_BANK_FOLDER,
+        EXTERNAL_AI_DRAFT_FOLDER, PDF_IMPORT_DRAFT_FOLDER, PDF_QUESTION_BANK_FOLDER,
         PDF_TERMINOLOGY_BANK_FOLDER, CONTENT_PACK_STAGING_FOLDER, BACKUP_FOLDER,
         BACKUP_RESTORE_STAGING_FOLDER, LOGO_FOLDER, LOGO_TEMP_FOLDER, LAW_FOLDER,
         LAW_CASES_FOLDER, LAW_IMPORTS_FOLDER, LAW_EXPORTS_FOLDER,
@@ -4029,6 +4035,52 @@ def _delete_pdf_terminology_bank(bank_id):
         load_bank=_load_pdf_terminology_bank,
         path_for_id=_pdf_term_bank_path,
         os_module=os,
+    )
+
+
+# =========================================================
+# EXTERNAL AI STRUCTURED QUIZ — BACKEND CONTRACT
+# Additive staging only; Segment 1 does not publish quizzes.
+# =========================================================
+ExternalAIStructuredError = _external_ai_structured_parser.ExternalAIStructuredError
+EXTERNAL_AI_STRUCTURED_MAX_INPUT_BYTES = (
+    _external_ai_structured_parser.EXTERNAL_AI_MAX_INPUT_BYTES
+)
+
+
+def _build_external_ai_quiz_prompt(topic, question_count, **kwargs):
+    return _external_ai_structured_service.build_external_ai_quiz_prompt(
+        topic, question_count, **kwargs
+    )
+
+
+def _parse_external_ai_quiz_response(raw_response):
+    return _external_ai_structured_parser.parse_external_ai_quiz_response(
+        raw_response
+    )
+
+
+def _stage_external_ai_quiz_response(raw_response):
+    return _external_ai_structured_service.stage_external_ai_quiz_response(
+        EXTERNAL_AI_DRAFT_FOLDER, raw_response
+    )
+
+
+def _load_external_ai_draft(draft_id):
+    return _external_ai_draft_repository.load_external_ai_draft(
+        EXTERNAL_AI_DRAFT_FOLDER, draft_id
+    )
+
+
+def _delete_external_ai_draft(draft_id):
+    return _external_ai_draft_repository.delete_external_ai_draft(
+        EXTERNAL_AI_DRAFT_FOLDER, draft_id
+    )
+
+
+def _prune_external_ai_drafts():
+    return _external_ai_draft_repository.prune_external_ai_drafts(
+        EXTERNAL_AI_DRAFT_FOLDER
     )
 
 

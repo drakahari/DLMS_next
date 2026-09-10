@@ -40,7 +40,7 @@ class BackupTransientInventoryTests(unittest.TestCase):
             data_root_marker=".dlms-data-root",
             excluded_top_level={
                 ".restore_operations", "backups", "uploads",
-                "content_pack_staging",
+                "content_pack_staging", "external_ai_drafts",
             },
         )
 
@@ -79,6 +79,7 @@ class BackupTransientInventoryTests(unittest.TestCase):
             "config/notes.tmp": b"legitimate generic temporary suffix",
             "config/.portal.json.manual.tmp": b"legitimate non-tempfile token",
             "content_packs/example/.dataset.json.abcdefgh.tmp": b"legitimate pack file",
+            "external_ai_drafts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": b'{"temporary":true}',
         }
         for relative, content in files.items():
             path = self.root / relative
@@ -96,6 +97,7 @@ class BackupTransientInventoryTests(unittest.TestCase):
             "config/.portal.json.abcdefgh.tmp",
             "config/.portal.json.corrupt-1234_ab5.tmp",
             "law/imports/.law_import_20260908_120000_torts.txt.a1b2c3d4.tmp",
+            "external_ai_drafts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
         }
         self.assertEqual(expected, inventory)
 
