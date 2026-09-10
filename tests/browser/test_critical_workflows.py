@@ -5397,21 +5397,39 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         )
         theme_state = browser.evaluate(
             "(() => {const card=document.querySelector('.external-ai-builder-card');"
+            "const heading=card.querySelector('.build-section-heading'),badge=heading.querySelector('.build-method-label');"
             "const input=document.querySelector('[name=topic]');const cs=getComputedStyle(card);"
-            "const is=getComputedStyle(input);return {cardBg:cs.backgroundImage,inputBg:is.backgroundColor,"
-            "inputColor:is.color,overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+            "const is=getComputedStyle(input),hs=getComputedStyle(heading),a=badge.getBoundingClientRect(),b=card.getBoundingClientRect();"
+            "return {cardBg:cs.backgroundImage,inputBg:is.backgroundColor,inputColor:is.color,"
+            "headingDisplay:hs.display,badgeContained:a.left>=b.left&&a.right<=b.right,"
+            "controlsContained:[...document.querySelectorAll('.external-ai-builder-card input,.external-ai-builder-card textarea,.external-ai-builder-card select')].every(control=>{const c=control.getBoundingClientRect(),panel=control.closest('.external-ai-builder-card').getBoundingClientRect();return c.left>=panel.left-1&&c.right<=panel.right+1;}),"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
         )
         assert theme_state["cardBg"] != "none"
         assert theme_state["inputBg"] != "rgba(0, 0, 0, 0)"
         assert theme_state["inputColor"] != theme_state["inputBg"]
+        assert theme_state["headingDisplay"] == "grid"
+        assert theme_state["badgeContained"] is True
+        assert theme_state["controlsContained"] is True
         assert theme_state["overflow"] is True
 
-    browser.set_viewport(390, 820)
-    browser.navigate(f"{base_url}/external-ai/quiz-builder")
-    browser.wait_for("document.getElementById('externalAiBuilderForm')")
-    assert browser.evaluate(
-        "document.documentElement.scrollWidth <= window.innerWidth + 1"
-    ) is True
+    for width in (420, 390):
+        browser.set_viewport(width, 820)
+        browser.navigate(f"{base_url}/external-ai/quiz-builder")
+        browser.wait_for("document.getElementById('externalAiBuilderForm')")
+        narrow_builder = browser.evaluate(
+            "(() => {const cards=[...document.querySelectorAll('.external-ai-builder-card')];"
+            "return {overflow:document.documentElement.scrollWidth<=window.innerWidth+1,"
+            "headings:cards.every(card=>{const a=card.querySelector('.build-section-heading').getBoundingClientRect(),b=card.getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;}),"
+            "badges:cards.every(card=>{const a=card.querySelector('.build-method-label').getBoundingClientRect(),b=card.getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;}),"
+            "controls:[...document.querySelectorAll('.external-ai-builder-card input,.external-ai-builder-card textarea,.external-ai-builder-card select')].every(control=>{const a=control.getBoundingClientRect(),b=control.closest('.external-ai-builder-card').getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;})};})()"
+        )
+        assert narrow_builder == {
+            "overflow": True,
+            "headings": True,
+            "badges": True,
+            "controls": True,
+        }
     browser.set_viewport(1280, 1000)
 
     browser.navigate(f"{base_url}/external-ai/quiz-builder")
@@ -5477,17 +5495,19 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "cards:document.querySelectorAll('.pdf-import-question-card').length,"
         "choices:card.querySelectorAll('[data-pdf-role=choice-row]').length,"
         "proposed:card.querySelector('[data-pdf-role=single-correct]:checked').dataset.choiceLabel,"
+        "proposedText:card.querySelector('[data-pdf-role=single-correct]:checked').closest('[data-pdf-role=choice-row]').querySelector('[data-pdf-role=choice]').value,"
         "confirmed:card.querySelector('[data-pdf-role=correctness-confirmed]').checked,"
         "rawCollapsed:!raw.open,ocr:document.body.textContent.includes('OCR confidence'),"
         "bulkDisabled:document.getElementById('questionReviewConfirmSelected').disabled,"
         "individualControl:card.querySelector('[data-pdf-role=correctness-confirmed]').type==='checkbox',"
         "csrf:document.querySelector('#pdfReviewForm input[name=csrf_token]').value.length>0};})()"
     )
+    assert initial.pop("proposed") in {"A", "B"}
+    assert initial.pop("proposedText") == "First neutral option"
     assert initial == {
         "title": "Browser External AI Review",
         "cards": 3,
         "choices": 2,
-        "proposed": "A",
         "confirmed": False,
         "rawCollapsed": True,
         "ocr": False,
@@ -5513,18 +5533,23 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         theme_state = browser.evaluate(
             "(() => {const button=document.getElementById('questionReviewConfirmSelected');"
             "const control=document.querySelector('[data-pdf-role=choice]');"
+            "const exclude=document.getElementById('pdfDeleteSelected'),keep=document.getElementById('pdfKeepSelected');"
             "const checkbox=document.querySelector('[data-pdf-role=select]');"
             "checkbox.checked=true;checkbox.dispatchEvent(new Event('change',{bubbles:true}));button.focus();"
-            "const bs=getComputedStyle(button),cs=getComputedStyle(control);return {"
+            "const bs=getComputedStyle(button),cs=getComputedStyle(control),es=getComputedStyle(exclude),ks=getComputedStyle(keep);return {"
             "enabled:!button.disabled,focused:document.activeElement===button,"
             "buttonColor:bs.color,buttonBackground:bs.backgroundColor,"
             "inputColor:cs.color,inputBackground:cs.backgroundColor,"
+            "excludeMatches:es.color===ks.color&&es.backgroundColor===ks.backgroundColor&&es.borderColor===ks.borderColor,"
+            "excludeReversible:!exclude.classList.contains('pdf-review-danger-action'),"
             "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
         )
         assert theme_state["enabled"] is True
         assert theme_state["focused"] is True
         assert theme_state["buttonColor"] != theme_state["buttonBackground"]
         assert theme_state["inputColor"] != theme_state["inputBackground"]
+        assert theme_state["excludeMatches"] is True
+        assert theme_state["excludeReversible"] is True
         assert theme_state["overflow"] is True
 
     browser.navigate(review_url)
@@ -5539,6 +5564,8 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "const mode=card.querySelector('[data-pdf-role=answer-mode]');"
         "mode.value='multiple';mode.dispatchEvent(new Event('change'));"
         "rows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
+        "rows.forEach(row=>row.querySelector('[data-pdf-role=multiple-correct]').checked=false);"
+        "rows[0].querySelector('[data-pdf-role=multiple-correct]').checked=true;"
         "rows[1].querySelector('[data-pdf-role=multiple-correct]').checked=true;"
         "rows[1].querySelector('[data-pdf-role=multiple-correct]').dispatchEvent(new Event('change',{bubbles:true}));"
         "card.querySelector('[data-pdf-role=explanation]').value='Reviewed neutral explanation.';"
@@ -5548,12 +5575,12 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "correct:[...card.querySelectorAll('[data-pdf-role=multiple-correct]:checked')].map(input=>input.dataset.choiceLabel),"
         "confirmed:card.querySelector('[data-pdf-role=correctness-confirmed]').checked};})()"
     )
-    assert edited == {
-        "labels": ["A", "B", "C"],
-        "texts": ["First neutral option", "Third neutral option", long_answer],
-        "correct": ["A", "B"],
-        "confirmed": False,
+    assert edited["labels"] == ["A", "B", "C"]
+    assert set(edited["texts"]) == {
+        "First neutral option", "Third neutral option", long_answer,
     }
+    assert edited["correct"] == ["A", "B"]
+    assert edited["confirmed"] is False
     mixed = browser.evaluate(
         "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
         "cards[1].querySelector('[data-pdf-role=choice]').value='';"
@@ -5597,7 +5624,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
             "return {columns:new Set(rows.map(row=>Math.round(row.getBoundingClientRect().left))).size,"
             "contained:controls.every(control=>{const panel=control.closest('.dashboard-panel');if(!panel)return true;"
             "const a=control.getBoundingClientRect(),b=panel.getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;}),"
-            "longValue:document.querySelectorAll('[data-pdf-role=choice]')[2].value.length,"
+            f"longValue:[...document.querySelectorAll('[data-pdf-role=choice]')].find(input=>input.value==={json.dumps(long_answer)}).value.length,"
             "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
         )
         assert narrow_layout["columns"] == 1

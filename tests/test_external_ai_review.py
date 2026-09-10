@@ -364,6 +364,14 @@ class ExternalAIReviewRouteTests(unittest.TestCase):
         self.assertIn("/static/question-review.js", body)
         self.assertIn('id="questionReviewConfirmSelected" disabled', body)
         self.assertIn('id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite"', body)
+        self.assertIn(
+            'class="build-secondary-link" id="pdfDeleteSelected">Exclude Selected</button>',
+            body,
+        )
+        self.assertNotIn(
+            'class="build-secondary-link pdf-review-danger-action" id="pdfDeleteSelected">Exclude Selected</button>',
+            body,
+        )
         self.assertNotIn("Confirm All", body)
 
     def test_review_containment_uses_shared_responsive_choice_geometry(self):
@@ -389,6 +397,14 @@ class ExternalAIReviewRouteTests(unittest.TestCase):
             "grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));",
             styles,
         )
+        self.assertIn(
+            ".pdf-import-page #pdfDeleteSelected { color:var(--semantic-secondary-control-text)!important;",
+            styles,
+        )
+        self.assertIn(
+            ".pdf-import-page .pdf-review-bulk-bar button:not(:disabled):hover,",
+            styles,
+        )
 
     def test_canonical_publication_creates_single_and_multiple_answer_quiz(self):
         draft_id, review, raw = self._stage(
@@ -401,6 +417,10 @@ class ExternalAIReviewRouteTests(unittest.TestCase):
                 concepts=["multiple concept"],
             ),
         )
+        expected_correct = [
+            question["proposed_correct_answers"]
+            for question in review["questions"]
+        ]
         response = self._post(draft_id, review)
         self.assertEqual(302, response.status_code)
         quiz_id = int(response.headers["Location"].rsplit("/", 1)[-1])
@@ -429,8 +449,7 @@ class ExternalAIReviewRouteTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertEqual("Neutral External Quiz", quiz["title"])
-        self.assertEqual(["B"], correct[0])
-        self.assertEqual(["A", "C"], correct[1])
+        self.assertEqual(expected_correct, correct)
         self.assertEqual("Neutral Learning Group", questions[0]["source_organization"])
         self.assertEqual(["multiple concept", "single concept"], concepts)
 

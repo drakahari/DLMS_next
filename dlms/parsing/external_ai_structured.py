@@ -535,7 +535,7 @@ def _normalize_question(raw_question, index, diagnostics):
     }
 
 
-def parse_external_ai_quiz_response(response_text):
+def parse_external_ai_quiz_response(response_text, *, choice_shuffler=None):
     """Parse one bounded quiz envelope into a source-neutral review draft.
 
     Syntax, duplicate-key, and resource-bound failures raise
@@ -589,10 +589,24 @@ def parse_external_ai_quiz_response(response_text):
             code="too_many_questions",
         )
 
-    questions = [
-        _normalize_question(question, index, diagnostics)
-        for index, question in enumerate(raw_questions)
-    ]
+    questions = []
+    for index, raw_question in enumerate(raw_questions):
+        question_for_review = raw_question
+        if (
+            choice_shuffler is not None
+            and isinstance(raw_question, dict)
+            and isinstance(raw_question.get("choices"), list)
+        ):
+            # Shuffle complete raw choice records before normalization assigns
+            # A-Z labels or creates choice-indexed diagnostics. This keeps all
+            # current and future choice-associated fields together.
+            question_for_review = dict(raw_question)
+            randomized_choices = list(raw_question["choices"])
+            choice_shuffler(randomized_choices)
+            question_for_review["choices"] = randomized_choices
+        questions.append(
+            _normalize_question(question_for_review, index, diagnostics)
+        )
 
     seen_questions = {}
     for question_index, question in enumerate(questions):

@@ -104,6 +104,22 @@ class ExternalAIBuilderTests(unittest.TestCase):
         self.assertIn("does not send anything to an AI service", body)
         self.assertIn("/static/external-ai-builder.js", body)
 
+    def test_builder_uses_component_level_heading_and_control_containment(self):
+        body = self.client.get("/external-ai/quiz-builder").get_data(as_text=True)
+        self.assertEqual(3, body.count('class="build-section-heading"'))
+        self.assertIn(
+            '<span class="build-method-label">1 · CONFIGURE</span>',
+            body,
+        )
+        styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
+        for rule in (
+            ".external-ai-builder-card .build-section-heading {",
+            "grid-template-columns: minmax(0, 1fr);",
+            ".external-ai-builder-card .build-section-heading > *,",
+            ".external-ai-builder-page :where(input:not([type=\"checkbox\"]):not([type=\"radio\"]), select, textarea) {",
+        ):
+            self.assertIn(rule, styles)
+
     def test_prompt_generation_uses_segment_one_builder_and_requested_source(self):
         response = self._post(
             "/external-ai/quiz-builder/prompt", self._form(ai_response="retained")

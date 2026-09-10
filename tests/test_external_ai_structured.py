@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from dlms import prompts
 from dlms.parsing.external_ai_structured import (
@@ -20,10 +21,11 @@ from dlms.persistence.external_ai_drafts import (
     load_external_ai_draft,
     prune_external_ai_drafts,
 )
-from dlms.services import backups
+from dlms.services import backups, external_ai_structured as external_ai_service
 from dlms.services.external_ai_structured import (
     build_external_ai_quiz_prompt,
     build_external_ai_review_draft,
+    external_ai_review_presentation,
     stage_external_ai_quiz_response,
 )
 
@@ -191,6 +193,25 @@ class ExternalAIParserValidationTests(unittest.TestCase):
             self.assertTrue(question["correctness_confirmation_required"])
             self.assertFalse(question["correctness_confirmed"])
 
+    def test_injected_choice_order_is_applied_before_labels_and_diagnostics(self):
+        question = _question(choice_count=3, correct=(0,))
+        question["choices"][0]["unsupported_note"] = "diagnostic follows choice"
+        parsed = parse_external_ai_quiz_response(
+            _json(_envelope(question)),
+            choice_shuffler=lambda choices: choices.reverse(),
+        )
+        normalized = parsed["questions"][0]
+        self.assertEqual(
+            ["Neutral option 3", "Neutral option 2", "Neutral option 1"],
+            [choice["text"] for choice in normalized["choices"]],
+        )
+        self.assertEqual(["C"], normalized["proposed_correct_answers"])
+        self.assertTrue(normalized["choices"][2]["proposed_is_correct"])
+        self.assertIn(
+            "questions[0].choices[2].unsupported_note",
+            {item["path"] for item in parsed["diagnostics"]},
+        )
+
     def test_invalid_mode_and_string_boolean_are_diagnostic_not_inferred(self):
         choices = [
             {"text": "Neutral one", "is_correct": "true"},
@@ -328,6 +349,85 @@ class ExternalAIPromptAndDraftTests(unittest.TestCase):
         self.assertNotIn("raw_response", draft)
         self.assertFalse(any("ocr" in key.casefold() for key in draft))
         self.assertTrue(draft["correctness_confirmation_required"])
+
+    def test_repeated_drafts_do_not_pin_single_or_multiple_correctness_to_leading_positions(self):
+        offsets = iter((0, 0, 1, 1, 2, 2))
+
+        def rotate(choices):
+            offset = next(offsets)
+            choices[:] = choices[offset:] + choices[:offset]
+
+        payload = _json(_envelope(
+            _question("Single position?", choice_count=4, correct=(0,)),
+            _question(
+                "Multiple positions?",
+                mode="multiple",
+                choice_count=4,
+                correct=(0, 1),
+            ),
+        ))
+        observed_single = set()
+        observed_multiple = set()
+        for _index in range(3):
+            draft = build_external_ai_review_draft(
+                payload,
+                choice_shuffler=rotate,
+            )
+            single, multiple = draft["questions"]
+            observed_single.add(tuple(single["proposed_correct_answers"]))
+            observed_multiple.add(tuple(multiple["proposed_correct_answers"]))
+            self.assertEqual(
+                {"Neutral option 1"},
+                {
+                    choice["text"]
+                    for choice in single["choices"]
+                    if choice["proposed_is_correct"] is True
+                },
+            )
+            self.assertEqual(
+                {"Neutral option 1", "Neutral option 2"},
+                {
+                    choice["text"]
+                    for choice in multiple["choices"]
+                    if choice["proposed_is_correct"] is True
+                },
+            )
+        self.assertGreater(len(observed_single), 1)
+        self.assertGreater(len(observed_multiple), 1)
+        self.assertNotEqual({("A",)}, observed_single)
+        self.assertNotEqual({("A", "B")}, observed_multiple)
+
+    def test_default_draft_path_invokes_the_secure_choice_shuffler(self):
+        def reverse(choices):
+            choices.reverse()
+
+        with mock.patch.object(
+            external_ai_service,
+            "_shuffle_external_ai_choices",
+            side_effect=reverse,
+        ) as shuffle:
+            draft = build_external_ai_review_draft(
+                _json(_envelope(_question(choice_count=4, correct=(0,))))
+            )
+        shuffle.assert_called_once()
+        self.assertEqual(["D"], draft["questions"][0]["proposed_correct_answers"])
+
+    def test_review_presentation_preserves_the_one_randomized_order(self):
+        raw = _json(_envelope(_question(choice_count=4, correct=(0,))))
+        review = build_external_ai_review_draft(
+            raw,
+            choice_shuffler=lambda choices: choices.reverse(),
+        )
+        stored = {
+            "id": "a" * 32,
+            "review_draft": review,
+            "raw_response": raw,
+        }
+        first = external_ai_review_presentation(stored)
+        second = external_ai_review_presentation(stored)
+        self.assertEqual(first["questions"][0]["choices"], second["questions"][0]["choices"])
+        self.assertEqual(["D"], first["questions"][0]["correct_answers"])
+        self.assertFalse(first["questions"][0]["correctness_confirmed"])
 
     def test_transient_save_load_delete_and_strict_ids(self):
         raw = _json(_envelope())

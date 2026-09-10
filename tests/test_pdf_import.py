@@ -435,7 +435,12 @@ class PDFImportParserTests(unittest.TestCase):
             styles.index(".pdf-import-page #pdfDeleteSelected {"):
             styles.index(".pdf-import-page .pdf-review-bulk-status")
         ]
-        self.assertIn("border-color:var(--theme-border-soft", default_style)
+        for token in (
+            "color:var(--semantic-secondary-control-text)",
+            "background:var(--semantic-secondary-control-surface)",
+            "border-color:var(--semantic-secondary-control-border)",
+        ):
+            self.assertIn(token, default_style)
         self.assertNotIn("#ef4444", default_style)
         self.assertNotIn(".pdf-import-page #pdfDeleteSelected:hover", styles)
         self.assertNotIn(".pdf-import-page #pdfDeleteSelected:focus-visible", styles)

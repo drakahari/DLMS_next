@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 from copy import deepcopy
 
 from dlms.parsing.external_ai_structured import (
@@ -26,6 +27,11 @@ EXTERNAL_AI_PROMPT_MAX_CONTEXT_CHARS = 2_000
 EXTERNAL_AI_PROMPT_SOURCE_FIELDS = (
     "organization", "dataset", "version", "url", "license",
 )
+
+
+def _shuffle_external_ai_choices(choices):
+    """Randomize one untrusted choice list without using archive workflow code."""
+    random.SystemRandom().shuffle(choices)
 
 
 def _prompt_text(value, *, name, limit, required=False):
@@ -209,9 +215,14 @@ Your entire response must have this shape:
 ```"""
 
 
-def build_external_ai_review_draft(raw_response):
+def build_external_ai_review_draft(raw_response, *, choice_shuffler=None):
     """Parse untrusted text and return a transient, source-neutral draft."""
-    parsed = parse_external_ai_quiz_response(raw_response)
+    if choice_shuffler is None:
+        choice_shuffler = _shuffle_external_ai_choices
+    parsed = parse_external_ai_quiz_response(
+        raw_response,
+        choice_shuffler=choice_shuffler,
+    )
     if not parsed["reviewable"]:
         raise ExternalAIStructuredError(
             "The response does not contain any questions that can be reviewed.",
@@ -230,9 +241,12 @@ def build_external_ai_review_draft(raw_response):
     }
 
 
-def stage_external_ai_quiz_response(folder, raw_response):
+def stage_external_ai_quiz_response(folder, raw_response, *, choice_shuffler=None):
     """Persist syntax-valid, reviewable content only in transient staging."""
-    review_draft = build_external_ai_review_draft(raw_response)
+    review_draft = build_external_ai_review_draft(
+        raw_response,
+        choice_shuffler=choice_shuffler,
+    )
     prune_external_ai_drafts(folder)
     draft_id = create_external_ai_draft(folder, review_draft, raw_response)
     return draft_id, review_draft
