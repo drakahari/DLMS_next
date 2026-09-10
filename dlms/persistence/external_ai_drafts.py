@@ -107,6 +107,32 @@ def load_external_ai_draft(folder, draft_id):
     return payload
 
 
+def update_external_ai_review_draft(
+    folder,
+    draft_id,
+    review_draft,
+    *,
+    atomic_write_json=json_files._atomic_write_json,
+):
+    """Replace only normalized review data while preserving transient raw text."""
+    if not isinstance(review_draft, dict):
+        raise ValueError("External AI review draft must be an object")
+    payload = load_external_ai_draft(folder, draft_id)
+    payload["review_draft"] = review_draft
+    serialized_size = len(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    )
+    if serialized_size > EXTERNAL_AI_DRAFT_MAX_FILE_BYTES:
+        raise ValueError("External AI draft exceeds its storage limit")
+    atomic_write_json(
+        _validated_draft_path(folder, draft_id),
+        payload,
+        ensure_ascii=False,
+        expected_type=dict,
+    )
+    return payload
+
+
 def delete_external_ai_draft(folder, draft_id):
     """Delete one explicitly addressed draft; missing drafts are harmless."""
     path = _validated_draft_path(folder, draft_id)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 
 from dlms.parsing.external_ai_structured import (
     EXTERNAL_AI_MAX_QUESTIONS,
@@ -13,6 +14,7 @@ from dlms.persistence.external_ai_drafts import (
     create_external_ai_draft,
     prune_external_ai_drafts,
 )
+from dlms.services import question_review
 
 
 EXTERNAL_AI_PROMPT_MAX_TOPIC_CHARS = 500
@@ -199,3 +201,49 @@ def stage_external_ai_quiz_response(folder, raw_response):
     prune_external_ai_drafts(folder)
     draft_id = create_external_ai_draft(folder, review_draft, raw_response)
     return draft_id, review_draft
+
+
+def external_ai_review_presentation(stored_draft):
+    """Build the common editor model without introducing OCR-only fields."""
+    if not isinstance(stored_draft, dict):
+        raise ValueError("External AI draft is malformed")
+    review = stored_draft.get("review_draft")
+    if not isinstance(review, dict):
+        raise ValueError("External AI review data is malformed")
+    presentation = deepcopy(review)
+    questions = presentation.get("questions")
+    if not isinstance(questions, list):
+        raise ValueError("External AI review questions are malformed")
+
+    normalized_questions = []
+    for index, question in enumerate(questions):
+        normalized = question_review.normalize_choice_question_for_review(
+            question,
+            answer_keys=("proposed_correct_answers", "correct_answers", "correct"),
+            choice_boolean_keys=("proposed_is_correct", "is_correct"),
+        )
+        normalized["number"] = index + 1
+        normalized["concepts_text"] = "\n".join(
+            str(item) for item in (normalized.get("concepts") or [])
+        )
+        state = str(normalized.get("validation_state") or "").strip().lower()
+        if normalized.get("excluded"):
+            normalized["status"] = "review"
+        elif state == "needs_repair":
+            normalized["status"] = "incomplete"
+        elif normalized.get("validation_issues"):
+            normalized["status"] = "review"
+        else:
+            normalized["status"] = "complete"
+        normalized_questions.append(normalized)
+
+    presentation["questions"] = normalized_questions
+    presentation["id"] = stored_draft.get("id")
+    presentation["raw_response"] = stored_draft.get("raw_response") or ""
+    presentation["summary"] = {
+        "detected": len(normalized_questions),
+        "complete": sum(q["status"] == "complete" for q in normalized_questions),
+        "review": sum(q["status"] == "review" for q in normalized_questions),
+        "incomplete": sum(q["status"] == "incomplete" for q in normalized_questions),
+    }
+    return presentation

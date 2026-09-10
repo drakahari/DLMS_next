@@ -155,7 +155,7 @@
 </div>
 </details>
 <div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk question actions"><div class="pdf-review-bulk-actions"><button type="button" class="build-secondary-link" id="pdfSelectAllVisible">Select All Visible</button><button type="button" class="build-secondary-link" id="pdfClearSelection">Clear Selection</button><button type="button" class="build-secondary-link pdf-review-danger-action" id="pdfDeleteSelected">Mark Selected for Deletion</button><button type="button" class="build-secondary-link" id="pdfKeepSelected">Keep Selected</button></div><span class="pdf-review-bulk-status" id="pdfSelectionCount" aria-live="polite">0 selected</span></div>
-<form method="POST" action="/pdf-import/save/{{ draft.id }}" id="pdfReviewForm">
+<form method="POST" action="/pdf-import/save/{{ draft.id }}" id="pdfReviewForm" data-single-mode-safeguard="Choose one correct answer before switching to single-answer mode.">
 <input type="hidden" name="review_payload" id="pdfReviewPayload" value="">
 <section class="dashboard-panel pdf-import-finalize"><div class="build-two-column-fields"><label class="build-field"><span>Question bank title</span><input name="quiz_title" value="{{ draft.quiz_title }}" required form="pdfReviewForm"></label><label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ draft.exam_minutes }}" form="pdfReviewForm"></label></div><div class="pdf-import-source-note">Source: {% if draft.source_kind == "user-provided-screenshot-ocr" %}user-provided screenshot OCR{% else %}user-provided PDF{% endif %} · redistribution status: not cleared for redistribution</div>{% if draft.ocr_batch %}{% set is_pdf_ocr = draft.source_kind == "user-provided-pdf-ocr" %}<div class="pdf-ocr-batch-summary semantic-info-surface" role="status">{{ draft.ocr_batch.sources|selectattr("status", "equalto", "processed")|list|length }} {% if is_pdf_ocr %}selected PDF page(s){% else %}screenshot(s){% endif %} produced review records. {{ draft.ocr_batch.sources|rejectattr("status", "equalto", "processed")|list|length }} source(s) failed or need attention.</div>{% set failed_sources = draft.ocr_batch.sources|rejectattr("status", "equalto", "processed")|list %}{% if failed_sources %}<details class="pdf-ocr-failure-list"><summary>{% if is_pdf_ocr %}PDF page{% else %}Screenshot{% endif %} processing details</summary><ul>{% for source in failed_sources %}<li><strong>{% if is_pdf_ocr %}PDF page {{ source.page }}{% else %}Screenshot {{ source.index }} · {{ source.original_name }}{% endif %}</strong>: {{ source.error or source.status|replace("_", " ") }}</li>{% endfor %}</ul></details>{% endif %}{% endif %}</section>
 <div class="pdf-import-question-list">
@@ -192,111 +192,4 @@
 </div>
 <section class="dashboard-panel pdf-import-create-bar"><div><strong>Save the complete reviewed source bank.</strong><span>Questions marked Delete are preserved in the bank as excluded, not used for generated quizzes. You can later generate random, sequential, range-based, or unused-question quizzes of any manageable size.</span></div><div class="build-submit-row">{% if draft.source_kind == "user-provided-screenshot-ocr" %}<button class="build-secondary-link" type="submit" form="pdfReviewForm" formaction="{{ url_for('pdf_import.pdf_import_screenshot_cancel', draft_id=draft.id) }}" formnovalidate>Start Over</button>{% else %}<a class="build-secondary-link" href="/pdf-import">Start Over</a>{% endif %}<button class="build-primary-button" type="submit" form="pdfReviewForm">Save Reviewed Question Bank</button></div></section>
 </form></main></div>
-<script>
-document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));
-const pdfQuestionCards=[...document.querySelectorAll(".pdf-import-question-card")];
-const pdfSelectionCount=document.getElementById("pdfSelectionCount");
-function pdfUpdateSelectionCount(){
- const selected=pdfQuestionCards.filter(card=>card.querySelector('[data-pdf-role="select"]')?.checked).length;
- if(pdfSelectionCount) pdfSelectionCount.textContent=`${selected} selected`;
-}
-function pdfSelectedCards(){return pdfQuestionCards.filter(card=>card.querySelector('[data-pdf-role="select"]')?.checked);}
-document.querySelectorAll(".pdf-import-filter-row button").forEach(btn=>btn.addEventListener("click",()=>{
- document.querySelectorAll(".pdf-import-filter-row button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");
- const f=btn.dataset.filter;pdfQuestionCards.forEach(card=>card.hidden=f!=="all"&&card.dataset.status!==f);
-}));
-pdfQuestionCards.forEach(card=>card.querySelector('[data-pdf-role="select"]')?.addEventListener("change",pdfUpdateSelectionCount));
-document.getElementById("pdfSelectAllVisible")?.addEventListener("click",()=>{pdfQuestionCards.filter(card=>!card.hidden).forEach(card=>{const box=card.querySelector('[data-pdf-role="select"]');if(box) box.checked=true;});pdfUpdateSelectionCount();});
-document.getElementById("pdfClearSelection")?.addEventListener("click",()=>{pdfQuestionCards.forEach(card=>{const box=card.querySelector('[data-pdf-role="select"]');if(box) box.checked=false;});pdfUpdateSelectionCount();});
-document.getElementById("pdfDeleteSelected")?.addEventListener("click",()=>{const cards=pdfSelectedCards();if(!cards.length)return;if(!confirm(`Mark ${cards.length} selected question(s) for deletion/exclusion?`))return;cards.forEach(card=>{const box=card.querySelector('[data-pdf-role="delete"]');if(box) box.checked=true;});});
-document.getElementById("pdfKeepSelected")?.addEventListener("click",()=>{pdfSelectedCards().forEach(card=>{const box=card.querySelector('[data-pdf-role="delete"]');if(box) box.checked=false;});});
-const pdfChoiceLabels="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-function pdfChoiceRows(card){return [...card.querySelectorAll('[data-pdf-role="choice-row"]')];}
-function pdfSetChoiceMessage(card,message){const status=card.querySelector('[data-pdf-role="choice-message"]');if(status)status.textContent=message;}
-function pdfSyncChoiceEditor(card){
- const rows=pdfChoiceRows(card);const mode=card.querySelector('[data-pdf-role="answer-mode"]')?.value||"single";
- rows.forEach((row,index)=>{
-  const label=pdfChoiceLabels[index];row.dataset.choiceLabel=label;
-  const feedback=card.querySelector(`[data-feedback-choice-key="${row.dataset.choiceKey}"] [data-pdf-role="feedback"]`);
-  if(feedback){feedback.dataset.choiceLabel=label;const feedbackLabel=feedback.closest("label")?.querySelector('[data-pdf-role="feedback-label"]');if(feedbackLabel)feedbackLabel.textContent=`${label} feedback`;}
-  const labelText=row.querySelector('[data-pdf-role="choice-label"]');if(labelText)labelText.textContent=label;
-  const textInput=row.querySelector('[data-pdf-role="choice"]');if(textInput)textInput.dataset.choiceLabel=label;
-  row.querySelectorAll('[data-pdf-role="single-correct"],[data-pdf-role="multiple-correct"]').forEach(input=>{input.value=label;input.dataset.choiceLabel=label;});
-  row.querySelectorAll('[data-pdf-action]').forEach(button=>{button.setAttribute("aria-label",`${button.dataset.pdfAction==="choice-up"?"Move":button.dataset.pdfAction==="choice-down"?"Move":"Delete"} choice ${label}${button.dataset.pdfAction==="choice-up"?" up":button.dataset.pdfAction==="choice-down"?" down":""}`);});
-  row.querySelector('[data-pdf-role="single-correct-control"]')?.toggleAttribute("hidden",mode!=="single");
-  row.querySelector('[data-pdf-role="multiple-correct-control"]')?.toggleAttribute("hidden",mode!=="multiple");
-  const up=row.querySelector('[data-pdf-action="choice-up"]');const down=row.querySelector('[data-pdf-action="choice-down"]');const del=row.querySelector('[data-pdf-action="choice-delete"]');
-  if(up)up.disabled=index===0;if(down)down.disabled=index===rows.length-1;if(del)del.disabled=rows.length<=2;
- });
- const feedbackGrid=card.querySelector('.pdf-feedback-grid');if(feedbackGrid){rows.forEach(row=>{const feedbackRow=card.querySelector(`[data-feedback-choice-key="${row.dataset.choiceKey}"]`);if(feedbackRow)feedbackGrid.appendChild(feedbackRow);});}
- const add=card.querySelector('[data-pdf-action="choice-add"]');if(add)add.disabled=rows.length>=26;
-}
-function pdfCreateChoiceRow(card){
- const rows=pdfChoiceRows(card);if(rows.length>=26)return null;
- const row=rows[0]?.cloneNode(true);if(!row)return null;
- row.dataset.choiceKey=`choice-new-${Date.now()}-${rows.length}`;
- row.dataset.labelOrigin="manual";row.querySelector('[data-pdf-role="label-origin"]')?.remove();
- const input=row.querySelector('[data-pdf-role="choice"]');if(input)input.value="";
- row.querySelectorAll('input[type="radio"],input[type="checkbox"]').forEach(control=>control.checked=false);
- return row;
-}
-pdfQuestionCards.forEach(card=>{
- const modeSelect=card.querySelector('[data-pdf-role="answer-mode"]');
- let previousMode=modeSelect?.value||"single";
- modeSelect?.addEventListener("change",()=>{
-  if(modeSelect.value==="multiple"){
-   const selected=card.querySelector('[data-pdf-role="single-correct"]:checked');
-   card.querySelectorAll('[data-pdf-role="multiple-correct"]').forEach(input=>input.checked=false);
-   if(selected){const matching=[...card.querySelectorAll('[data-pdf-role="multiple-correct"]')].find(input=>input.dataset.choiceLabel===selected.dataset.choiceLabel);if(matching)matching.checked=true;}
-  }else{
-   const selected=[...card.querySelectorAll('[data-pdf-role="multiple-correct"]:checked')];
-   if(selected.length>1){modeSelect.value=previousMode;pdfSetChoiceMessage(card,"Choose one correct answer before switching to single-answer mode.");pdfSyncChoiceEditor(card);return;}
-   if(selected.length===1){const matching=[...card.querySelectorAll('[data-pdf-role="single-correct"]')].find(input=>input.dataset.choiceLabel===selected[0].dataset.choiceLabel);if(matching)matching.checked=true;}
-  }
-  previousMode=modeSelect.value;pdfSetChoiceMessage(card,"");pdfSyncChoiceEditor(card);
- });
- card.addEventListener("click",event=>{
-  const button=event.target.closest('[data-pdf-action]');if(!button)return;
-  const action=button.dataset.pdfAction;const row=button.closest('[data-pdf-role="choice-row"]');const list=card.querySelector('[data-pdf-role="choice-list"]');
-  if(action==="choice-add"){
-   const added=pdfCreateChoiceRow(card);if(added&&list){list.appendChild(added);added.querySelector('[data-pdf-role="choice"]')?.focus();}
-  }else if(action==="choice-delete"&&row&&pdfChoiceRows(card).length>2){card.querySelector(`[data-feedback-choice-key="${row.dataset.choiceKey}"]`)?.remove();row.remove();}
-  else if(action==="choice-up"&&row&&row.previousElementSibling){list.insertBefore(row,row.previousElementSibling);}
-  else if(action==="choice-down"&&row&&row.nextElementSibling){list.insertBefore(row.nextElementSibling,row);}
-  pdfSetChoiceMessage(card,"");pdfSyncChoiceEditor(card);
- });
- pdfSyncChoiceEditor(card);
-});
-pdfUpdateSelectionCount();
-const pdfReviewForm=document.getElementById("pdfReviewForm");
-if(pdfReviewForm){
- pdfReviewForm.addEventListener("submit",()=>{
-  const payload=[];
-  document.querySelectorAll(".pdf-import-question-card").forEach(card=>{
-   const choices=[];
-   card.querySelectorAll('[data-pdf-role="choice-row"]').forEach(row=>{
-    const input=row.querySelector('[data-pdf-role="choice"]');
-    choices.push({label:row.dataset.choiceLabel||"",text:input?.value||""});
-   });
-   const feedback={};
-   card.querySelectorAll('[data-pdf-role="feedback"]').forEach(input=>{
-    feedback[input.dataset.choiceLabel||""]=input.value||"";
-   });
-   payload.push({
-    index:Number(card.dataset.questionIndex||0),
-    number:Number(card.dataset.questionNumber||0),
-    delete:!!card.querySelector('[data-pdf-role="delete"]')?.checked,
-    question:card.querySelector('[data-pdf-role="question"]')?.value||"",
-    choices,
-    answer_mode:card.querySelector('[data-pdf-role="answer-mode"]')?.value||"single",
-    correct_answers:[...card.querySelectorAll((card.querySelector('[data-pdf-role="answer-mode"]')?.value||"single")==="multiple"?'[data-pdf-role="multiple-correct"]:checked':'[data-pdf-role="single-correct"]:checked')].map(input=>input.dataset.choiceLabel||""),
-    correctness_confirmed:!card.querySelector('[data-pdf-role="correctness-confirmed"]')||!!card.querySelector('[data-pdf-role="correctness-confirmed"]')?.checked,
-    explanation:card.querySelector('[data-pdf-role="explanation"]')?.value||"",
-    feedback
-   });
-  });
-  const hidden=document.getElementById("pdfReviewPayload");
-  if(hidden) hidden.value=JSON.stringify(payload);
- });
-}
-</script><script src="/static/nav-normalize.js"></script></body></html>
+<script src="/static/question-review.js"></script><script src="/static/nav-normalize.js"></script></body></html>

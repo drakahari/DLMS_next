@@ -9712,6 +9712,76 @@ body.it-study-page .medical-ai-builder-teaser-icon {
     margin: 0 0 14px;
 }
 
+.external-ai-review-page .external-ai-diagnostics,
+.external-ai-review-page .external-ai-raw-reference {
+    margin: 0 0 14px;
+    padding: 15px 17px;
+    min-width: 0;
+    color: var(--theme-page-text, #eaf2ff);
+}
+
+.external-ai-review-page .external-ai-diagnostics summary,
+.external-ai-review-page .external-ai-raw-reference summary {
+    cursor: pointer;
+    color: var(--theme-heading, #fff);
+    font-weight: 800;
+}
+
+.external-ai-review-page .external-ai-diagnostics p,
+.external-ai-review-page .external-ai-raw-reference p {
+    color: var(--theme-muted-text, #b8c2cc);
+}
+
+.external-ai-review-page .external-ai-diagnostics ul {
+    display: grid;
+    gap: 7px;
+    margin: 12px 0 0;
+    padding-left: 22px;
+}
+
+.external-ai-review-page .external-ai-diagnostics .diagnostic-error {
+    color: var(--semantic-error-text);
+}
+
+.external-ai-review-page .external-ai-diagnostics .diagnostic-warning {
+    color: var(--semantic-warning-text);
+}
+
+.external-ai-review-page .external-ai-raw-reference pre {
+    max-height: 340px;
+    margin: 10px 0 0;
+    padding: 13px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--semantic-inset-text);
+    background: var(--semantic-inset-surface);
+    border: 1px solid var(--semantic-inset-border);
+    border-radius: 10px;
+}
+
+.external-ai-review-page .external-ai-basics h2 {
+    margin: 18px 0 10px;
+    color: var(--theme-heading, #fff);
+    font-size: 17px;
+}
+
+.external-ai-review-page .external-ai-source-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.external-ai-review-page .external-ai-answer-mode {
+    max-width: 360px;
+}
+
+@media (max-width: 650px) {
+    .external-ai-review-page .external-ai-source-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 
 /* =========================================================
    PDF QUESTION / TERMINOLOGY SOURCE BANKS

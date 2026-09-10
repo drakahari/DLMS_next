@@ -24,12 +24,13 @@ from flask import (
 
 from dlms.services.ocr import OCRCancelledError
 from dlms.services.ocr_screenshots import OCRTaskBusyError
+from dlms.services import question_review as _question_review_service
 
 
 Dependency = Callable[..., Any]
-PDF_QUESTION_MIN_CHOICES = 2
-PDF_QUESTION_MAX_CHOICES = 26
-PDF_CHOICE_LABELS = tuple(chr(ord("A") + index) for index in range(26))
+PDF_QUESTION_MIN_CHOICES = _question_review_service.QUESTION_REVIEW_MIN_CHOICES
+PDF_QUESTION_MAX_CHOICES = _question_review_service.QUESTION_REVIEW_MAX_CHOICES
+PDF_CHOICE_LABELS = _question_review_service.QUESTION_REVIEW_LABELS
 
 
 @dataclass(frozen=True)
@@ -111,82 +112,12 @@ def _pdf_bank_active_questions(bank):
 
 def _pdf_question_correct_answers(question):
     """Return canonical answer labels from list-capable or legacy scalar data."""
-
-    raw_answers = question.get("correct_answers")
-    if not isinstance(raw_answers, list):
-        raw_answers = [question.get("correct")]
-    answers = []
-    for raw_answer in raw_answers:
-        answer = str(raw_answer or "").strip().upper()
-        if answer in PDF_CHOICE_LABELS and answer not in answers:
-            answers.append(answer)
-    return answers
+    return _question_review_service.choice_question_correct_answers(question)
 
 
 def _normalize_pdf_question_for_review(question):
     """Build the bounded, editable Smart PDF review representation."""
-
-    normalized = deepcopy(question) if isinstance(question, dict) else {}
-    raw_choices = normalized.get("choices") or []
-    if not isinstance(raw_choices, list):
-        raw_choices = []
-    if len(raw_choices) > PDF_QUESTION_MAX_CHOICES:
-        raise ValueError(
-            f"Question {normalized.get('number') or ''} has more than "
-            f"{PDF_QUESTION_MAX_CHOICES} choices."
-        )
-
-    original_answers = set(_pdf_question_correct_answers(normalized))
-    original_feedback = (
-        normalized.get("choice_feedback")
-        if isinstance(normalized.get("choice_feedback"), dict)
-        else {}
-    )
-    choices = []
-    answers = []
-    feedback = {}
-    for index, raw_choice in enumerate(raw_choices):
-        if not isinstance(raw_choice, dict):
-            raw_choice = {}
-        old_label = str(raw_choice.get("label") or "").strip().upper()
-        label = PDF_CHOICE_LABELS[index]
-        choice = {"label": label, "text": str(raw_choice.get("text") or "")}
-        label_origin = str(raw_choice.get("label_origin") or "").strip().lower()
-        if label_origin in {"source", "inferred", "manual"}:
-            choice["label_origin"] = label_origin
-        choices.append(choice)
-        if old_label in original_answers:
-            answers.append(label)
-        note = str(original_feedback.get(old_label) or "")
-        if note:
-            feedback[label] = note
-
-    while len(choices) < PDF_QUESTION_MIN_CHOICES:
-        label = PDF_CHOICE_LABELS[len(choices)]
-        choices.append({"label": label, "text": ""})
-
-    explicit_mode = str(normalized.get("answer_mode") or "").strip().lower()
-    answer_mode = (
-        explicit_mode
-        if explicit_mode in {"single", "multiple"}
-        else ("multiple" if len(answers) > 1 else "single")
-    )
-    confirmation_required = bool(
-        normalized.get("correctness_confirmation_required", False)
-    )
-    normalized.update(
-        {
-            "choices": choices,
-            "correct_answers": answers,
-            "answer_mode": answer_mode,
-            "choice_feedback": feedback,
-            "correctness_confirmation_required": confirmation_required,
-            "correctness_confirmed": bool(
-                normalized.get("correctness_confirmed", not confirmation_required)
-            ),
-        }
-    )
-    return normalized
+    return _question_review_service.normalize_choice_question_for_review(question)
 
 
 def _normalize_pdf_draft_for_review(draft):
@@ -201,16 +132,9 @@ def _normalize_pdf_draft_for_review(draft):
 
 
 def _pdf_submitted_question_at_index(submitted_items, index):
-    for item in submitted_items or []:
-        if not isinstance(item, dict):
-            continue
-        try:
-            submitted_index = int(item.get("index", -1))
-        except (TypeError, ValueError):
-            continue
-        if submitted_index == index:
-            return item
-    return None
+    return _question_review_service.submitted_question_at_index(
+        submitted_items, index
+    )
 
 
 def _select_pdf_bank_questions(

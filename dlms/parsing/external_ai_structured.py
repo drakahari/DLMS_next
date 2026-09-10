@@ -298,6 +298,11 @@ def _safe_source_url(value):
     )
 
 
+def external_ai_source_url_is_safe(value):
+    """Public review-time check matching the parser's URL safety policy."""
+    return _safe_source_url(value)
+
+
 def _add_unknown_field_diagnostics(value, allowed, *, path, diagnostics, issues=None):
     if not isinstance(value, dict):
         return

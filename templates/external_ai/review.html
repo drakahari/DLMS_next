@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review External AI Quiz - DLMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home pdf-import-page external-ai-review-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        </nav>
+        <div class="dashboard-sidebar-version">External AI Review</div>
+    </aside>
+
+    <main class="dashboard-main pdf-import-main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="pdf-import-flash-stack">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+        {% endwith %}
+
+        <header class="dashboard-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div><div class="build-eyebrow">EXTERNAL AI QUIZ · REVIEW</div><h1>Review &amp; Repair</h1><p>AI-generated correctness is only a proposal. Repair every kept question and explicitly confirm its complete correct-answer set before publication.</p></div>
+        </header>
+
+        <section class="pdf-import-summary-grid" aria-label="Review summary">
+            <article class="dashboard-stat-card"><span>Received</span><strong>{{ draft.summary.detected }}</strong><small>questions</small></article>
+            <article class="dashboard-stat-card"><span>Ready</span><strong>{{ draft.summary.complete }}</strong><small>review records</small></article>
+            <article class="dashboard-stat-card"><span>Warnings</span><strong>{{ draft.summary.review }}</strong><small>review carefully</small></article>
+            <article class="dashboard-stat-card"><span>Repair</span><strong>{{ draft.summary.incomplete }}</strong><small>blocking issues</small></article>
+        </section>
+
+        <details class="dashboard-panel external-ai-diagnostics" {% if draft.validation_state == "needs_repair" %}open{% endif %}>
+            <summary>Parser and validation diagnostics</summary>
+            <p>These describe the pasted response. Blocking question problems can be resolved below; warnings document unsupported or unusual source data.</p>
+            {% if draft.diagnostics %}<ul>{% for diagnostic in draft.diagnostics %}<li class="diagnostic-{{ diagnostic.severity|default('warning') }}"><strong>{{ diagnostic.path or "Response" }}</strong>: {{ diagnostic.message }}</li>{% endfor %}</ul>{% else %}<p>No parser diagnostics were reported.</p>{% endif %}
+        </details>
+
+        <details class="dashboard-panel external-ai-raw-reference">
+            <summary>Raw AI response (reference only)</summary>
+            <p>This temporary text is never published with the quiz.</p>
+            <pre>{{ draft.raw_response }}</pre>
+        </details>
+
+        <div class="pdf-import-filter-row" aria-label="Filter questions">
+            <button type="button" data-filter="all" class="active">All</button>
+            <button type="button" data-filter="complete">Ready</button>
+            <button type="button" data-filter="review">Warnings</button>
+            <button type="button" data-filter="incomplete">Needs Repair</button>
+        </div>
+        <details class="pdf-review-bulk-help">
+            <summary>How filters and bulk actions work</summary>
+            <div class="pdf-review-bulk-help-body"><p>Filters affect visibility only. Select visible cards, then mark them for exclusion or keep them. Excluded questions are not published.</p></div>
+        </details>
+        <div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk question actions">
+            <div class="pdf-review-bulk-actions">
+                <button type="button" class="build-secondary-link" id="pdfSelectAllVisible">Select All Visible</button>
+                <button type="button" class="build-secondary-link" id="pdfClearSelection">Clear Selection</button>
+                <button type="button" class="build-secondary-link pdf-review-danger-action" id="pdfDeleteSelected">Exclude Selected</button>
+                <button type="button" class="build-secondary-link" id="pdfKeepSelected">Keep Selected</button>
+            </div>
+            <span class="pdf-review-bulk-status" id="pdfSelectionCount" aria-live="polite">0 selected</span>
+        </div>
+
+        <form method="POST" action="{{ url_for('external_ai.external_ai_publish', draft_id=draft.id) }}" id="pdfReviewForm" data-review-reset-confirmation-on-edit="true" data-single-mode-safeguard="Choose one correct answer before switching to single-answer mode.">
+            <input type="hidden" name="review_payload" id="pdfReviewPayload" value="">
+            <section class="dashboard-panel pdf-import-finalize external-ai-basics">
+                <div class="build-two-column-fields">
+                    <label class="build-field"><span>Quiz title</span><input name="quiz_title" value="{{ draft.title }}" maxlength="240" required></label>
+                    <label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label>
+                </div>
+                <h2>Source and provenance</h2>
+                <div class="external-ai-source-grid">
+                    {% for name, label, limit in [("organization", "Organization", 1000), ("dataset", "Dataset", 1000), ("version", "Version", 1000), ("url", "Source URL", 2048), ("license", "License", 1000)] %}
+                    <label class="build-field"><span>{{ label }}</span><input name="source_{{ name }}" value="{{ draft.source[name] }}" maxlength="{{ limit }}"{% if name == "url" %} inputmode="url"{% endif %}></label>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <div class="pdf-import-question-list">
+                {% for q in draft.questions %}
+                {% set question_index = loop.index0 %}
+                <article class="dashboard-panel pdf-import-question-card status-{{ q.status }}" data-status="{{ q.status }}" data-question-index="{{ question_index }}" data-question-number="{{ q.number }}">
+                    <div class="pdf-import-question-head">
+                        <div><label class="pdf-review-select-toggle"><input type="checkbox" data-pdf-role="select"><span>Select</span></label><span class="pdf-status {{ q.status }}">{{ q.status|replace('_', ' ')|upper }}</span><strong>Question {{ q.number }}</strong></div>
+                        <label class="pdf-delete-toggle"><input type="checkbox" data-pdf-role="delete" {% if q.excluded %}checked{% endif %}><span>Exclude question</span></label>
+                    </div>
+                    {% if q.validation_issues %}<div class="pdf-import-issues" role="status">{% for issue in q.validation_issues %}<div>⚠ {{ issue.message if issue is mapping else issue }}</div>{% endfor %}</div>{% endif %}
+                    <label class="build-field"><span>Question text</span><textarea rows="4" maxlength="10000" data-pdf-role="question">{{ q.question }}</textarea></label>
+                    <label class="build-field external-ai-answer-mode"><span>Answer mode</span><select data-pdf-role="answer-mode"><option value="single" {% if q.answer_mode == "single" %}selected{% endif %}>Single answer</option><option value="multiple" {% if q.answer_mode == "multiple" %}selected{% endif %}>Multiple answers</option></select></label>
+                    <div class="pdf-choice-editor" data-pdf-role="choice-editor">
+                        <div class="pdf-import-choice-grid" data-pdf-role="choice-list">
+                            {% for choice in q.choices %}
+                            <div class="pdf-choice-editor-row" data-pdf-role="choice-row" data-choice-key="choice-{{ question_index }}-{{ loop.index0 }}" data-choice-label="{{ choice.label }}">
+                                <label class="build-field pdf-choice-field"><span><span data-pdf-role="choice-label">{{ choice.label }}</span> · answer text</span><input value="{{ choice.text }}" maxlength="4000" data-pdf-role="choice" data-choice-label="{{ choice.label }}"></label>
+                                <fieldset class="pdf-correctness-controls"><legend>Correctness</legend><label data-pdf-role="single-correct-control"><input type="radio" name="correct_{{ question_index }}" value="{{ choice.label }}" {% if choice.label in q.correct_answers %}checked{% endif %} data-pdf-role="single-correct" data-choice-label="{{ choice.label }}"><span>Correct</span></label><label data-pdf-role="multiple-correct-control"><input type="checkbox" value="{{ choice.label }}" {% if choice.label in q.correct_answers %}checked{% endif %} data-pdf-role="multiple-correct" data-choice-label="{{ choice.label }}"><span>Correct</span></label></fieldset>
+                                <div class="pdf-choice-order-controls"><button type="button" class="build-secondary-link" data-pdf-action="choice-up" aria-label="Move choice {{ choice.label }} up">↑</button><button type="button" class="build-secondary-link" data-pdf-action="choice-down" aria-label="Move choice {{ choice.label }} down">↓</button><button type="button" class="build-secondary-link pdf-review-danger-action" data-pdf-action="choice-delete" aria-label="Delete choice {{ choice.label }}">Delete</button></div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="pdf-choice-editor-actions"><button type="button" class="build-secondary-link" data-pdf-action="choice-add">Add choice</button><span>2–26 choices · DLMS reassigns A–Z after reordering.</span></div>
+                        <p class="pdf-choice-editor-message" data-pdf-role="choice-message" aria-live="polite"></p>
+                    </div>
+                    <label class="pdf-correctness-confirmation"><input type="checkbox" data-pdf-role="correctness-confirmed" {% if q.correctness_confirmed %}checked{% endif %}><span>I reviewed this question and confirm the answer mode and complete set of correct answers.</span></label>
+                    <label class="build-field"><span>Study Mode explanation</span><textarea rows="4" maxlength="20000" data-pdf-role="explanation">{{ q.explanation }}</textarea></label>
+                    <label class="build-field"><span>Concepts</span><textarea rows="3" data-pdf-role="concepts" placeholder="One concept per line">{{ q.concepts_text }}</textarea><small>One concept per line, up to 24.</small></label>
+                </article>
+                {% endfor %}
+            </div>
+
+            <section class="dashboard-panel pdf-import-create-bar">
+                <div><strong>Publish the reviewed quiz.</strong><span>Only kept, valid, explicitly confirmed questions will enter the normal DLMS quiz library.</span></div>
+                <div class="build-submit-row"><button class="build-secondary-link" type="submit" formaction="{{ url_for('external_ai.external_ai_cancel', draft_id=draft.id) }}" formnovalidate>Start Over</button><button class="build-primary-button" type="submit">Publish Reviewed Quiz</button></div>
+            </section>
+        </form>
+    </main>
+</div>
+<script src="/static/question-review.js"></script><script src="/static/nav-normalize.js"></script>
+</body>
+</html>

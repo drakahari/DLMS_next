@@ -5345,6 +5345,96 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     ]
 
 
+def test_external_ai_shared_review_editor_and_publication(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    draft_id = browser_stack.metadata["external_ai_draft_id"]
+
+    browser.navigate(f"{base_url}/external-ai/review/{draft_id}")
+    browser.wait_for(
+        "window.dlmsCsrfToken && document.querySelector('.external-ai-review-page') && "
+        "document.querySelector('[data-pdf-action=choice-add]')"
+    )
+    initial = browser.evaluate(
+        "(() => {const card=document.querySelector('.pdf-import-question-card');"
+        "const raw=document.querySelector('.external-ai-raw-reference');"
+        "return {title:document.querySelector('[name=quiz_title]').value,"
+        "choices:card.querySelectorAll('[data-pdf-role=choice-row]').length,"
+        "proposed:card.querySelector('[data-pdf-role=single-correct]:checked').dataset.choiceLabel,"
+        "confirmed:card.querySelector('[data-pdf-role=correctness-confirmed]').checked,"
+        "rawCollapsed:!raw.open,ocr:document.body.textContent.includes('OCR confidence'),"
+        "csrf:document.querySelector('#pdfReviewForm input[name=csrf_token]').value.length>0};})()"
+    )
+    assert initial == {
+        "title": "Browser External AI Review",
+        "choices": 2,
+        "proposed": "A",
+        "confirmed": False,
+        "rawCollapsed": True,
+        "ocr": False,
+        "csrf": True,
+    }
+
+    edited = browser.evaluate(
+        "(() => {const card=document.querySelector('.pdf-import-question-card');"
+        "card.querySelector('[data-pdf-action=choice-add]').click();"
+        "let rows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
+        "rows[2].querySelector('[data-pdf-role=choice]').value='Third neutral option';"
+        "rows[2].querySelector('[data-pdf-action=choice-up]').click();"
+        "const mode=card.querySelector('[data-pdf-role=answer-mode]');"
+        "mode.value='multiple';mode.dispatchEvent(new Event('change'));"
+        "rows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
+        "rows[1].querySelector('[data-pdf-role=multiple-correct]').checked=true;"
+        "rows[1].querySelector('[data-pdf-role=multiple-correct]').dispatchEvent(new Event('change',{bubbles:true}));"
+        "card.querySelector('[data-pdf-role=explanation]').value='Reviewed neutral explanation.';"
+        "card.querySelector('[data-pdf-role=concepts]').value='browser-review\\nneutral-concept';"
+        "card.querySelector('[data-pdf-role=correctness-confirmed]').checked=true;"
+        "return {labels:rows.map(row=>row.dataset.choiceLabel),"
+        "texts:rows.map(row=>row.querySelector('[data-pdf-role=choice]').value),"
+        "correct:[...card.querySelectorAll('[data-pdf-role=multiple-correct]:checked')].map(input=>input.dataset.choiceLabel),"
+        "confirmed:card.querySelector('[data-pdf-role=correctness-confirmed]').checked};})()"
+    )
+    assert edited == {
+        "labels": ["A", "B", "C"],
+        "texts": ["First neutral option", "Third neutral option", "Second neutral option"],
+        "correct": ["A", "B"],
+        "confirmed": True,
+    }
+    browser.set_viewport(390, 820)
+    assert browser.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth + 1"
+    ) is True
+    browser.set_viewport(1280, 1000)
+
+    browser.click("#pdfReviewForm .build-primary-button")
+    browser.wait_for("location.pathname.startsWith('/edit_quiz/')")
+    quiz_id = int(browser.evaluate("location.pathname.split('/').pop()"))
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        quiz = connection.execute(
+            "SELECT title FROM quizzes WHERE id = ?", (quiz_id,)
+        ).fetchone()
+    assert quiz == ("Browser External AI Review",)
+    registry = json.loads(
+        (browser_stack.data_root / "config" / "quizzes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    entry = next(item for item in registry if item["id"] == quiz_id)
+    json_name = Path(entry["html"]).with_suffix(".json").name
+    published = json.loads(
+        (browser_stack.data_root / "data" / json_name).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert published[0]["answer_mode"] == "multiple"
+    assert published[0]["correct"] == ["A", "B"]
+    assert published[0]["explanation"] == "Reviewed neutral explanation."
+    assert published[0]["concepts"] == ["browser-review", "neutral-concept"]
+    assert not (
+        browser_stack.data_root / "external_ai_drafts" / f"{draft_id}.json"
+    ).exists()
+
+
 def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url

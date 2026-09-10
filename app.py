@@ -78,6 +78,10 @@ from dlms.routes.content_packs import (
     ContentPackRouteDependencies,
     create_content_packs_blueprint,
 )
+from dlms.routes.external_ai import (
+    ExternalAIRouteDependencies,
+    create_external_ai_blueprint,
+)
 from dlms.routes.medical import MedicalRouteDependencies, create_medical_blueprint
 from dlms.routes.pdf_import import (
     PDFImportRouteDependencies,
@@ -3648,6 +3652,7 @@ def _reset_source_content_core():
             PDF_QUESTION_BANK_FOLDER,
             PDF_TERMINOLOGY_BANK_FOLDER,
             PDF_IMPORT_DRAFT_FOLDER,
+            EXTERNAL_AI_DRAFT_FOLDER,
             IMAGE_BUILDER_DRAFT_FOLDER,
             CONTENT_PACK_STAGING_FOLDER,
             UPLOAD_FOLDER,
@@ -4040,7 +4045,7 @@ def _delete_pdf_terminology_bank(bank_id):
 
 # =========================================================
 # EXTERNAL AI STRUCTURED QUIZ — BACKEND CONTRACT
-# Additive staging only; Segment 1 does not publish quizzes.
+# Additive External AI structured-text workflow. Archive builders remain separate.
 # =========================================================
 ExternalAIStructuredError = _external_ai_structured_parser.ExternalAIStructuredError
 EXTERNAL_AI_STRUCTURED_MAX_INPUT_BYTES = (
@@ -4069,6 +4074,12 @@ def _stage_external_ai_quiz_response(raw_response):
 def _load_external_ai_draft(draft_id):
     return _external_ai_draft_repository.load_external_ai_draft(
         EXTERNAL_AI_DRAFT_FOLDER, draft_id
+    )
+
+
+def _update_external_ai_review_draft(draft_id, review_draft):
+    return _external_ai_draft_repository.update_external_ai_review_draft(
+        EXTERNAL_AI_DRAFT_FOLDER, draft_id, review_draft
     )
 
 
@@ -5901,6 +5912,18 @@ app.register_blueprint(create_law_blueprint(LawRouteDependencies(
     secure_filename=lambda filename: secure_filename(filename),
     now=lambda: datetime.now(),
     from_timestamp=lambda timestamp: datetime.fromtimestamp(timestamp),
+)))
+
+
+app.register_blueprint(create_external_ai_blueprint(ExternalAIRouteDependencies(
+    load_draft=lambda draft_id: _load_external_ai_draft(draft_id),
+    update_review_draft=lambda draft_id, review_draft: _update_external_ai_review_draft(
+        draft_id, review_draft
+    ),
+    delete_draft=lambda draft_id: _delete_external_ai_draft(draft_id),
+    publish_quiz=lambda *args, **kwargs: _publish_quiz(*args, **kwargs),
+    normalize_exam_minutes=lambda value: normalize_exam_minutes(value),
+    print_message=lambda message: print(message),
 )))
 
 

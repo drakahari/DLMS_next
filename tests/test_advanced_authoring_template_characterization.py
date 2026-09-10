@@ -184,7 +184,18 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
                 self.assertIn(f'name="{payload_name}"', body)
                 self.assertIn(f'id="{live_id}" aria-live="polite"', body)
                 self.assertIn("Automatic parsing confidence was low", body)
-                self.assertIn("JSON.stringify(payload)", body)
+                if draft["document_type"] == "question_bank":
+                    self.assertIn(
+                        '<script src="/static/question-review.js"></script>', body
+                    )
+                    shared_editor = (
+                        Path(dlms.__file__).resolve().parent
+                        / "static"
+                        / "question-review.js"
+                    ).read_text(encoding="utf-8")
+                    self.assertIn("JSON.stringify(payload)", shared_editor)
+                else:
+                    self.assertIn("JSON.stringify(payload)", body)
 
     def test_pdf_bank_pages_preserve_counts_usage_forms_and_escaping(self):
         marker = '</h1><script id="pdf-bank-injection">bad()</script>&'
