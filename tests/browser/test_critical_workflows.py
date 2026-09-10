@@ -3323,13 +3323,17 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "probe.style.color=`var(${name})`;document.body.appendChild(probe);"
             "const value=getComputedStyle(probe).color;probe.remove();return value};"
             "const hero=document.querySelector('.library-hero');"
+            "const stats=document.querySelector('.library-summary-grid');"
             "const toolbar=document.querySelector('.library-toolbar');"
+            "const tip=document.querySelector('.library-tip');"
             "const folder=document.querySelector('.library-folder');"
             "const header=folder.querySelector('.library-folder-header');"
             "const body=folder.querySelector('.library-folder-body');"
             "const title=folder.querySelector('h2');"
             "title.textContent='Folder-'+'unbroken-value-'.repeat(18);"
             "const selected=document.querySelector('.library-view-option.selected');"
+            "const blockGap=(before,after)=>Math.round(after.getBoundingClientRect().top-"
+            "before.getBoundingClientRect().bottom);"
             "return {"
             "pageText:resolve('--theme-page-text'),muted:resolve('--theme-muted-text'),"
             "accent:resolve('--theme-accent'),heading:resolve('--theme-heading'),"
@@ -3341,6 +3345,8 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "bodyColor:getComputedStyle(body).backgroundColor,"
             "titleColor:getComputedStyle(title).color,titleWrap:getComputedStyle(title).overflowWrap,"
             "selectedBorder:getComputedStyle(selected).borderTopColor,"
+            "heroStatsGap:blockGap(hero,stats),statsToolbarGap:blockGap(stats,toolbar),"
+            "toolbarTipGap:blockGap(toolbar,tip),tipFolderGap:blockGap(tip,folder),"
             "focusVisibleSupported:CSS.supports('selector(:focus-visible)'),"
             "documentContained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,"
             "folderContained:folder.scrollWidth<=folder.clientWidth+1}"
@@ -3353,9 +3359,31 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         assert library["titleColor"] == library["heading"]
         assert library["titleWrap"] == "anywhere"
         assert library["selectedBorder"] == library["accent"]
+        assert library["heroStatsGap"] == 18
+        assert library["statsToolbarGap"] == 18
+        assert 8 <= library["toolbarTipGap"] <= 12
+        assert 8 <= library["tipFolderGap"] <= 12
         assert library["focusVisibleSupported"] is True
         assert library["documentContained"] is True
         assert library["folderContained"] is True
+
+        browser.set_viewport(1280, 900)
+        browser.navigate(f"{base_url}/library?theme-consistency-desktop={theme}")
+        browser.wait_for("document.querySelector('.library-folder') !== null")
+        desktop_gaps = browser.evaluate(
+            "(() => {const hero=document.querySelector('.library-hero');"
+            "const stats=document.querySelector('.library-summary-grid');"
+            "const toolbar=document.querySelector('.library-toolbar');"
+            "const gap=(before,after)=>Math.round(after.getBoundingClientRect().top-"
+            "before.getBoundingClientRect().bottom);"
+            "return {heroStats:gap(hero,stats),statsToolbar:gap(stats,toolbar),"
+            "contained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1};})()"
+        )
+        assert desktop_gaps == {
+            "heroStats": 18,
+            "statsToolbar": 18,
+            "contained": True,
+        }
 
     set_theme(original_theme)
 

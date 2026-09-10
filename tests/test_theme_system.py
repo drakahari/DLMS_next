@@ -992,6 +992,15 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertIsNotNone(detail_spacing)
         self.assertIn("margin-top: var(--dlms-space-lg)", detail_spacing.group(1))
 
+        library_spacing = re.search(
+            r"\.library-page \.library-hero \+ \.library-summary-grid,"
+            r"[\s\S]*?\.library-page \.library-summary-grid \+ \.library-toolbar "
+            r"\{([^}]*)\}",
+            rules,
+        )
+        self.assertIsNotNone(library_spacing)
+        self.assertIn("margin-top: var(--dlms-space-lg)", library_spacing.group(1))
+
         detail_expectations = {
             ".content-packs-page .pack-detail-hero p": (
                 "--theme-page-text", "opacity: 1",

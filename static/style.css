@@ -14131,6 +14131,11 @@ body:not([class]) > .container > .hero-title {
     max-width: 100%;
 }
 
+.library-page .library-hero + .library-summary-grid,
+.library-page .library-summary-grid + .library-toolbar {
+    margin-top: var(--dlms-space-lg);
+}
+
 .library-page .library-hero {
     background: linear-gradient(
         180deg,
