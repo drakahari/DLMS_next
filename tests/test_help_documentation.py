@@ -2,6 +2,7 @@ import glob
 import os
 import re
 import unittest
+from pathlib import Path
 
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
@@ -50,6 +51,26 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn("Learning Intelligence", index)
         self.assertIn("Anki &amp; Printable Cards", index)
         self.assertIn("System Tools &amp; Data Management", index)
+
+    def test_every_registered_help_topic_is_in_the_index_and_shared_navigation(self):
+        index = self._static("help.html")
+        navigation = self._static("help-navigation.js")
+        for topic in help_routes.HELP_TOPIC_FILES:
+            with self.subTest(topic=topic, surface="index"):
+                self.assertIn(f'href="/help/{topic}"', index)
+            with self.subTest(topic=topic, surface="shared-navigation"):
+                self.assertIn(f"['{topic}',", navigation)
+
+    def test_build_quiz_help_links_external_ai_and_quiz_paste_uses_canonical_regex_route(self):
+        build_quiz = self._static("help-build-quiz.html")
+        self.assertIn('href="/help/external-ai"', build_quiz)
+        self.assertIn("External AI Quiz Builder", build_quiz)
+
+        paste_template = Path(dlms.TEMPLATE_ROOT, "quiz", "paste.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('href="/regex-help"', paste_template)
+        self.assertNotIn('href="/static/regex-help.html"', paste_template)
 
     def test_legacy_help_targets_remain_available(self):
         version_text = f"Documentation for DLMS {dlms.APP_VERSION}."
@@ -158,6 +179,11 @@ class HelpDocumentationTests(unittest.TestCase):
         topic = self._static("help-smart-pdf.html")
         self.assertIn("PDF &amp; Image Import", topic)
         self.assertIn('href="/help/smart-pdf"', topic)
+
+    def test_pdf_and_image_help_distinguishes_screenshot_and_scanned_pdf_limits(self):
+        topic = self._static("help-smart-pdf.html")
+        self.assertIn("up to 25 screenshot images per batch", topic)
+        self.assertIn("up to 25 selected scanned-PDF pages per import", topic)
 
     def test_data_safety_and_reset_help_matches_current_user_facing_contract(self):
         maintenance = self._static("help-maintenance.html")

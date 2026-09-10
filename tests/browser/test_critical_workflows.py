@@ -5760,6 +5760,67 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     ) is True
 
 
+def test_external_ai_help_is_discoverable_and_twenty_five_screenshot_queue_is_rendered(
+    browser_stack, tmp_path
+):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    browser.navigate(f"{base_url}/help/")
+    help_state = browser.evaluate(
+        "(() => {const link=document.querySelector('.help-index-card[href=\"/help/external-ai\"]');"
+        "return {found:!!link,label:link?.querySelector('strong')?.textContent.trim()||''};})()"
+    )
+    assert help_state == {"found": True, "label": "External AI Quiz Builder"}
+    browser.navigate(f"{base_url}/help/external-ai")
+    browser.wait_for("document.querySelector('.help-toc a[aria-current=page]')")
+    assert browser.evaluate(
+        "document.querySelector('.help-toc a[aria-current=page]').getAttribute('href')"
+    ) == "/help/external-ai"
+
+    upload_root = tmp_path / "twenty-five-screenshot-browser-fixtures"
+    upload_root.mkdir(exist_ok=True)
+    uploads = []
+    for index in range(1, 26):
+        target = upload_root / f"screenshot-{index:02d}.png"
+        target.write_bytes(b"not an image")
+        uploads.append(str(target))
+
+    browser.navigate(f"{base_url}/pdf-import")
+    browser.wait_for(
+        "window.dlmsCsrfToken && "
+        "document.querySelector('form[action=\"/pdf-import/screenshots\"] input[name=csrf_token]')"
+    )
+    assert browser.evaluate(
+        "document.querySelector('form[action=\"/pdf-import/screenshots\"]')"
+        ".closest('section').innerText.includes('Import up to 25')"
+    ) is True
+    browser.set_files(
+        'form[action="/pdf-import/screenshots"] [name=screenshots]', uploads
+    )
+    browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/screenshots\"]');"
+        "form.querySelector('[name=quiz_title]').value='Twenty Five Queue';"
+        "form.querySelector('[name=rights_ok]').checked=true;return true;})()"
+    )
+    browser.click('form[action="/pdf-import/screenshots"] button[type=submit]')
+    browser.wait_for(
+        "location.pathname.startsWith('/pdf-import/screenshots/process/') && "
+        "document.querySelectorAll('#ocrSourceList > li').length === 25",
+        timeout=20,
+    )
+    queue_state = browser.evaluate(
+        "(() => ({rows:document.querySelectorAll('#ocrSourceList > li').length,"
+        "maximum:Number(document.getElementById('ocrProgressBar').max),"
+        "count:document.getElementById('ocrProgressCount').textContent.trim(),"
+        "cancel:!document.getElementById('ocrCancelButton').disabled}))()"
+    )
+    assert queue_state["rows"] == 25
+    assert queue_state["maximum"] == 25
+    assert queue_state["count"].endswith("/ 25")
+    assert queue_state["cancel"] is True
+
+
 def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url

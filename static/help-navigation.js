@@ -3,6 +3,7 @@
     ['getting-started', 'Getting Started & Navigation'],
     ['quizzes', 'Taking Quizzes'],
     ['build-quiz', 'Building Quizzes'],
+    ['external-ai', 'External AI Quiz Builder'],
     ['smart-pdf', 'PDF & Image Import'],
     ['study-packs', 'Study Packs & AI Builder'],
     ['study-modules', 'Study Areas & Case Review'],

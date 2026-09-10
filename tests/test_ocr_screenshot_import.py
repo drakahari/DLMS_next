@@ -350,23 +350,23 @@ class OCRScreenshotImportTests(unittest.TestCase):
         self.assertIn("valid supported raster", sources[2]["error"])
         self.assertIn("use PNG", sources[3]["error"])
 
-    def test_more_than_ten_images_is_rejected_without_staging(self):
+    def test_more_than_twenty_five_images_is_rejected_without_staging(self):
         payload = image_bytes("PNG", size=(20, 20))
-        response = self.upload([(f"{index}.png", payload) for index in range(11)])
+        response = self.upload([(f"{index}.png", payload) for index in range(26)])
         self.assertEqual(response.status_code, 302)
         self.assertEqual([], list(self.drafts.glob("*.json")))
         self.assertFalse(self.staging.exists() and any(self.staging.iterdir()))
         with self.client.session_transaction() as session:
             messages = [message for _category, message in session.get("_flashes", [])]
-        self.assertTrue(any("no more than 10" in message for message in messages))
+        self.assertTrue(any("no more than 25" in message for message in messages))
 
-    def test_ten_images_are_accepted_and_preserve_multipart_order(self):
+    def test_twenty_five_images_are_accepted_and_preserve_multipart_order(self):
         payload = image_bytes("PNG", size=(20, 20))
-        response = self.upload([(f"source-{index}.png", payload) for index in range(1, 11)])
+        response = self.upload([(f"source-{index}.png", payload) for index in range(1, 26)])
         draft = dlms._load_pdf_import_draft(self.draft_id(response))
         self.assertEqual(
             [source["original_name"] for source in draft["ocr_batch"]["sources"]],
-            [f"source-{index}.png" for index in range(1, 11)],
+            [f"source-{index}.png" for index in range(1, 26)],
         )
 
     def test_per_file_byte_and_dimension_limits_are_reported_on_the_source(self):
