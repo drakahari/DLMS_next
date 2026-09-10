@@ -24,6 +24,9 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Temporary local OCR characterization inputs (never commit)
+tests/manual_ocr_inputs/
+
 # ----------------------------
 # Local runtime / data
 # (DLMS runtime data should live in user profile dirs, not the repo)
