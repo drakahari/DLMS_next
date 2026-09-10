@@ -5650,12 +5650,13 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         f"document.getElementById('externalAiResponse').value={json.dumps(raw_response)};true"
     )
     browser.click("#externalAiBuilderForm .build-primary-button")
-    browser.wait_for("location.pathname.startsWith('/external-ai/review/')")
-    draft_id = browser.evaluate("location.pathname.split('/').pop()")
-    browser.wait_for(
-        "window.dlmsCsrfToken && document.querySelector('.external-ai-review-page') && "
+    browser.wait_for_page_ready(
+        "location.pathname.startsWith('/external-ai/review/') && "
+        "document.querySelector('.external-ai-review-page') && "
         "document.querySelector('[data-pdf-action=choice-add]')"
     )
+    draft_id = browser.evaluate("location.pathname.split('/').pop()")
+    browser.wait_for("window.dlmsCsrfToken")
     initial = browser.evaluate(
         "(() => {const card=document.querySelector('.pdf-import-question-card');"
         "const raw=document.querySelector('.external-ai-raw-reference');"
@@ -5954,7 +5955,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "form.querySelector('[name=rights_ok]').checked=true;return true;})()"
     )
     browser.click("form[action=\"/pdf-import/screenshots\"] button[type=submit]")
-    browser.wait_for(
+    browser.wait_for_page_ready(
         "location.pathname.startsWith('/pdf-import/review/') && "
         "document.querySelectorAll('.pdf-import-question-card').length === 2",
         timeout=20,
@@ -6268,7 +6269,7 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
     browser.set_viewport(1280, 1000)
     browser.click("[name=ocr_pages][value='2']")
     browser.click(".pdf-ocr-page-selection button[type=submit]")
-    browser.wait_for(
+    browser.wait_for_page_ready(
         "location.pathname.startsWith('/pdf-import/review/') && document.querySelectorAll('.pdf-import-question-card').length===2",
         timeout=25,
     )

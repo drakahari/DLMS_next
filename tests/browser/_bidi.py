@@ -123,9 +123,8 @@ class FirefoxBidi:
         encoded_marker = json.dumps(marker)
         encoded_previous_url = json.dumps(previous_url)
         encoded_url = json.dumps(url)
-        self.wait_for(
+        self.wait_for_page_ready(
             "(() => {"
-            "if (document.readyState !== 'complete') return false;"
             f"const replaced = window.__dlmsBidiNavigationMarker !== {encoded_marker};"
             f"const target = new URL({encoded_url});"
             "const current = new URL(location.href);"
@@ -164,6 +163,13 @@ class FirefoxBidi:
             time.sleep(0.05)
         suffix = f" Last error: {last_error}" if last_error else ""
         raise TimeoutError(f"Browser condition did not become true: {expression}.{suffix}")
+
+    def wait_for_page_ready(self, expression: str = "true", timeout: float = 6.0):
+        """Wait for blocking page scripts and a workflow-specific condition."""
+        return self.wait_for(
+            "document.readyState === 'complete' && Boolean(" + expression + ")",
+            timeout=timeout,
+        )
 
     def click(self, selector: str) -> None:
         encoded = json.dumps(selector)
