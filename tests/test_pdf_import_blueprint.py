@@ -125,6 +125,7 @@ class PDFImportBlueprintTests(unittest.TestCase):
         "ocr_screenshot_max_file_bytes",
         "ocr_screenshot_max_batch_bytes",
         "detect_ocr_runtime",
+        "diagnose_ocr_runtime",
         "prune_ocr_staging",
         "stage_ocr_screenshots",
         "recognize_ocr_source",
@@ -312,6 +313,9 @@ class PDFImportBlueprintTests(unittest.TestCase):
         services["list_pdf_question_banks"].return_value = [{"id": "questions"}]
         services["list_pdf_terminology_banks"].return_value = [{"id": "terms"}]
         services["detect_ocr_runtime"].return_value = None
+        services["diagnose_ocr_runtime"].return_value = mock.Mock(
+            guidance="Install or configure the local OCR runtime."
+        )
         services["ocr_screenshot_max_files"].return_value = 10
         services["ocr_screenshot_max_file_bytes"].return_value = 16 * 1024 * 1024
         services["ocr_screenshot_max_batch_bytes"].return_value = 64 * 1024 * 1024
@@ -334,6 +338,7 @@ class PDFImportBlueprintTests(unittest.TestCase):
             term_banks=[{"id": "terms"}],
             ocr_available=False,
             ocr_version="",
+            ocr_unavailable_guidance="Install or configure the local OCR runtime.",
             ocr_max_files=10,
             ocr_max_file_mib=16,
             ocr_max_batch_mib=64,

@@ -116,6 +116,29 @@ class OCRScreenshotImportTests(unittest.TestCase):
             ],
         )
 
+    def test_unavailable_landing_explains_source_setup_without_disabling_normal_pdf(self):
+        diagnostic = mock.Mock(
+            guidance=(
+                "Source-mode OCR requires Tesseract 5 on PATH or configured with "
+                "DLMS_TESSERACT_EXECUTABLE, plus English trained data and TSV support."
+            )
+        )
+        with mock.patch.object(
+            dlms._ocr_service, "detect_tesseract_runtime", return_value=None
+        ), mock.patch.object(
+            dlms._ocr_service, "diagnose_tesseract_runtime", return_value=diagnostic
+        ):
+            response = self.client.get("/pdf-import")
+        body = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("OCR unavailable", body)
+        self.assertIn("Normal selectable-text PDF import remains fully available", body)
+        self.assertIn("DLMS_TESSERACT_EXECUTABLE", body)
+        self.assertIn('form action="/pdf-import/analyze"', body)
+        self.assertNotIn('form action="/pdf-import/analyze" disabled', body)
+        self.assertIn('name="screenshots"', body)
+        self.assertRegex(body, r'name="screenshots"[^>]*disabled')
+
     def test_ordered_upload_stages_opaque_reencoded_sources_and_exact_duplicates(self):
         first = image_bytes("PNG", color="white")
         second = image_bytes("JPEG", color="blue")

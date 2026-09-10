@@ -878,6 +878,28 @@ class ThemeSystemTests(unittest.TestCase):
             for block in feedback
         ))
 
+        availability = self._rule_blocks(
+            css, ".pdf-import-page .pdf-bank-panel-heading > .pdf-ocr-availability"
+        )
+        self.assertTrue(any(
+            "flex:0 0 auto" in block
+            and "width:max-content" in block
+            and "max-width:100%" in block
+            and "white-space:nowrap" in block
+            and "overflow-wrap:normal" in block
+            and "word-break:normal" in block
+            for block in availability
+        ))
+        index = (
+            Path(dlms.__file__).resolve().parent
+            / "templates"
+            / "pdf_import"
+            / "index.html"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(index.count("pdf-ocr-availability"), 2)
+        self.assertIn("OCR available · Tesseract", index)
+        self.assertIn("OCR unavailable", index)
+
         row_toggle = self._rule_blocks(
             css, ".pdf-import-page .pdf-term-review-card .pdf-delete-toggle"
         )

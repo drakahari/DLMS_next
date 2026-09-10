@@ -247,12 +247,24 @@ class SelectivePDFOCRRouteTests(unittest.TestCase):
         self.assertNotIn("/ocr/", response.headers["Location"])
 
     def test_unavailable_runtime_reports_offer_but_normal_pdf_remains_usable(self):
-        with mock.patch.object(dlms._ocr_service, "detect_tesseract_runtime", return_value=None):
+        diagnostic = mock.Mock(
+            guidance=(
+                "Source-mode OCR requires Tesseract 5 on PATH or configured with "
+                "DLMS_TESSERACT_EXECUTABLE."
+            )
+        )
+        with mock.patch.object(
+            dlms._ocr_service, "detect_tesseract_runtime", return_value=None
+        ), mock.patch.object(
+            dlms._ocr_service, "diagnose_tesseract_runtime", return_value=diagnostic
+        ):
             response = self.analyze_with_pages([{"page": 1, "lines": [], "has_images": True}])
             body = self.client.get(response.headers["Location"]).get_data(as_text=True)
         self.assertIn("OCR unavailable", body)
         self.assertIn("selectable text only", body)
         self.assertIn("Smart PDF and glossary import remain available", body)
+        self.assertIn("DLMS_TESSERACT_EXECUTABLE", body)
+        self.assertNotIn("/usr/", body)
 
     def test_selection_removes_chosen_page_from_direct_parse_and_preserves_order(self):
         response = self.analyze_with_pages(

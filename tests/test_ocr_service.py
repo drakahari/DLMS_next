@@ -46,6 +46,76 @@ class OCRServiceTests(unittest.TestCase):
         ):
             self.assertIsNone(ocr.detect_tesseract_runtime())
 
+    def test_source_mode_uses_environment_override_without_path_discovery(self):
+        script = self._script("print('tesseract 5.5.3')\n")
+        with mock.patch.dict(
+            os.environ,
+            {
+                "DLMS_TESSERACT_EXECUTABLE": str(script),
+                "DLMS_TESSDATA_PREFIX": str(self.tessdata),
+            },
+            clear=False,
+        ), mock.patch.object(ocr.shutil, "which", side_effect=AssertionError("PATH used")):
+            configured = ocr.resolve_tesseract_runtime()
+        self.assertEqual(configured.executable, script.resolve())
+        self.assertEqual(configured.tessdata_dir, self.tessdata.resolve())
+
+    def test_source_mode_path_discovery_uses_a_valid_known_tessdata_location(self):
+        executable = self.root / "bin" / "tesseract"
+        executable.parent.mkdir()
+        executable.write_text(
+            f"#!{sys.executable}\nprint('tesseract 5.5.3')\n", encoding="utf-8"
+        )
+        executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+        system_tessdata = self.root / "share" / "tessdata"
+        (system_tessdata / "configs").mkdir(parents=True)
+        (system_tessdata / "eng.traineddata").write_bytes(b"model")
+        (system_tessdata / "configs" / "tsv").write_text(
+            "tessedit_create_tsv 1\n", encoding="utf-8"
+        )
+        with mock.patch.object(ocr.shutil, "which", return_value=str(executable)), mock.patch.dict(
+            os.environ,
+            {"DLMS_TESSERACT_EXECUTABLE": "", "DLMS_TESSDATA_PREFIX": ""},
+            clear=False,
+        ):
+            runtime = ocr.resolve_tesseract_runtime()
+        self.assertEqual(runtime.executable, executable.resolve())
+        self.assertTrue((runtime.tessdata_dir / "eng.traineddata").is_file())
+        self.assertTrue((runtime.tessdata_dir / "configs" / "tsv").is_file())
+
+    def test_unavailable_diagnostics_are_safe_and_mode_specific(self):
+        missing = self.root / "private" / "missing-tesseract"
+        with mock.patch.object(ocr.shutil, "which", return_value=None), mock.patch.dict(
+            os.environ,
+            {
+                "DLMS_TESSERACT_EXECUTABLE": str(missing),
+                "DLMS_TESSDATA_PREFIX": str(self.tessdata),
+            },
+            clear=False,
+        ):
+            source = ocr.diagnose_tesseract_runtime()
+        self.assertFalse(source.available)
+        self.assertEqual(source.mode, "source")
+        self.assertEqual(source.reason, "executable-unavailable")
+        self.assertIn("DLMS_TESSERACT_EXECUTABLE", source.guidance)
+        self.assertNotIn(str(missing), source.guidance)
+
+        frozen = ocr.diagnose_tesseract_runtime(frozen_root=self.root / "missing-frozen")
+        self.assertFalse(frozen.available)
+        self.assertEqual(frozen.mode, "frozen")
+        self.assertIn("does not use a system Tesseract fallback", frozen.guidance)
+        self.assertNotIn(str(self.root), frozen.guidance)
+
+    def test_incomplete_tessdata_diagnostic_is_actionable(self):
+        script = self._script("print('tesseract 5.5.3')\n")
+        (self.tessdata / "configs" / "tsv").unlink()
+        diagnostic = ocr.diagnose_tesseract_runtime(
+            executable=script, tessdata_dir=self.tessdata
+        )
+        self.assertEqual(diagnostic.reason, "tsv-config-unavailable")
+        self.assertIn("English trained data or TSV configuration", diagnostic.guidance)
+        self.assertNotIn(str(self.tessdata), diagnostic.guidance)
+
     def test_version_detection_uses_explicit_trusted_paths(self):
         script = self._script(
             """

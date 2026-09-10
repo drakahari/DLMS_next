@@ -174,6 +174,15 @@ environment. Contributors who intentionally need compatible dependency updates c
 instead install the supported ranges in `requirements.txt`, run the full test suite,
 and then deliberately refresh the lock file.
 
+OCR is optional in source mode. Normal selectable-text Smart PDF imports work
+without it; screenshot and selective scanned-page OCR additionally require a
+local Tesseract 5 executable, English trained data, and the standard TSV
+configuration. Official OCR-enabled frozen packages use a validated bundled
+runtime and intentionally ignore any system Tesseract. See
+[`docs/OCR_PACKAGING.md`](docs/OCR_PACKAGING.md) for exact Ubuntu 24.04 and
+other source-platform setup, verification commands, configuration overrides,
+and the target-native OCR release gates.
+
 ### Building release binaries
 
 Build on each target operating system from a clean checkout and isolated virtual

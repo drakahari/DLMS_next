@@ -64,6 +64,20 @@ class OCRRuntime:
 
 
 @dataclass(frozen=True)
+class OCRRuntimeDiagnostic:
+    """Safe, user-presentable OCR availability information."""
+
+    runtime: OCRRuntime | None
+    mode: str
+    reason: str
+    guidance: str
+
+    @property
+    def available(self) -> bool:
+        return self.runtime is not None
+
+
+@dataclass(frozen=True)
 class OCRBoundingBox:
     left: int
     top: int
@@ -201,12 +215,66 @@ def resolve_tesseract_runtime(
 
 
 def detect_tesseract_runtime(**kwargs) -> OCRRuntime | None:
-    """Return runtime diagnostics when OCR is available, otherwise ``None``."""
+    """Return the resolved OCR runtime when available, otherwise ``None``."""
 
     try:
         return resolve_tesseract_runtime(**kwargs)
     except OCRUnavailableError:
         return None
+
+
+def diagnose_tesseract_runtime(**kwargs) -> OCRRuntimeDiagnostic:
+    """Resolve OCR and return bounded guidance without exposing local paths.
+
+    Source installs may use an explicitly configured or PATH-discovered
+    Tesseract. Frozen builds are intentionally restricted to their validated
+    bundled runtime, even when a system Tesseract happens to be installed.
+    """
+
+    frozen_mode = (
+        kwargs.get("frozen_root") is not None
+        or _frozen_resource_root() is not None
+    )
+    mode = "frozen" if frozen_mode else "source"
+    try:
+        runtime = resolve_tesseract_runtime(**kwargs)
+    except OCRUnavailableError as exc:
+        detail = str(exc).casefold()
+        if "english" in detail:
+            reason = "english-data-unavailable"
+        elif "tsv" in detail:
+            reason = "tsv-config-unavailable"
+        elif "language-data directory" in detail:
+            reason = "tessdata-unavailable"
+        elif "version" in detail or "recognized tesseract" in detail:
+            reason = "runtime-validation-failed"
+        else:
+            reason = "executable-unavailable"
+
+        if frozen_mode:
+            guidance = (
+                "This packaged build does not contain a complete validated OCR runtime. "
+                "Packaged DLMS intentionally does not use a system Tesseract fallback."
+            )
+        elif reason in {
+            "english-data-unavailable",
+            "tsv-config-unavailable",
+            "tessdata-unavailable",
+        }:
+            guidance = (
+                "Tesseract was found, but its English trained data or TSV configuration "
+                "is incomplete. Install the matching OCR data package, or configure "
+                "DLMS_TESSDATA_PREFIX, then restart DLMS."
+            )
+        else:
+            guidance = (
+                "Source-mode OCR requires Tesseract 5 on PATH or configured with "
+                "DLMS_TESSERACT_EXECUTABLE, plus English trained data and TSV support. "
+                "Restart DLMS after installing or configuring it."
+            )
+        return OCRRuntimeDiagnostic(None, mode, reason, guidance)
+
+    return OCRRuntimeDiagnostic(runtime, mode, "available", "OCR is available.")
 
 
 def parse_tesseract_tsv(

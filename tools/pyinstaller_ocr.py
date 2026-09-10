@@ -37,6 +37,11 @@ def collect_tesseract_bundle(*, required: bool = False):
     missing = [str(path) for path in required_paths if not path.is_file()]
     if missing:
         raise ValueError("Incomplete Tesseract bundle: " + ", ".join(missing))
+    empty = [str(path) for path in required_paths if path.stat().st_size == 0]
+    if empty:
+        raise ValueError("Empty Tesseract bundle resource: " + ", ".join(empty))
+    if os.name != "nt" and not os.access(executable, os.X_OK):
+        raise ValueError("Bundled Tesseract executable is not executable")
 
     bundled_native_libraries = sorted(
         path

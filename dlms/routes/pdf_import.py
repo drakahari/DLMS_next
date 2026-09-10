@@ -68,6 +68,7 @@ class PDFImportRouteDependencies:
     ocr_screenshot_max_file_bytes: Dependency
     ocr_screenshot_max_batch_bytes: Dependency
     detect_ocr_runtime: Dependency
+    diagnose_ocr_runtime: Dependency
     prune_ocr_staging: Dependency
     stage_ocr_screenshots: Dependency
     recognize_ocr_source: Dependency
@@ -511,12 +512,16 @@ def pdf_import_page(dependencies):
     except Exception as exc:
         print(f"[OCR STAGING CLEANUP ERROR] {type(exc).__name__}: {exc}")
     runtime = dependencies.detect_ocr_runtime()
+    diagnostic = None if runtime is not None else dependencies.diagnose_ocr_runtime()
     return render_template(
         "pdf_import/index.html",
         banks=dependencies.list_pdf_question_banks(),
         term_banks=dependencies.list_pdf_terminology_banks(),
         ocr_available=runtime is not None,
         ocr_version=getattr(runtime, "version", "") if runtime is not None else "",
+        ocr_unavailable_guidance=(
+            getattr(diagnostic, "guidance", "") if diagnostic is not None else ""
+        ),
         ocr_max_files=dependencies.ocr_screenshot_max_files(),
         ocr_max_file_mib=dependencies.ocr_screenshot_max_file_bytes() // (1024 * 1024),
         ocr_max_batch_mib=dependencies.ocr_screenshot_max_batch_bytes() // (1024 * 1024),
@@ -769,12 +774,16 @@ def pdf_import_ocr_offer(dependencies, draft_id):
         flash("The scanned-PDF OCR offer is unavailable or expired.", "error")
         return redirect("/pdf-import")
     runtime = dependencies.detect_ocr_runtime()
+    diagnostic = None if runtime is not None else dependencies.diagnose_ocr_runtime()
     return render_template(
         "pdf_import/ocr-pdf-offer.html",
         draft=draft,
         page_analysis=draft.get("pdf_ocr_preflight", {}).get("analysis") or [],
         ocr_available=runtime is not None,
         ocr_version=getattr(runtime, "version", "") if runtime is not None else "",
+        ocr_unavailable_guidance=(
+            getattr(diagnostic, "guidance", "") if diagnostic is not None else ""
+        ),
         max_selected_pages=dependencies.pdf_ocr_max_selected_pages(),
     )
 
@@ -1046,7 +1055,8 @@ def pdf_import_screenshots(dependencies):
         return redirect("/pdf-import")
     if dependencies.detect_ocr_runtime() is None:
         flash(
-            "Screenshot OCR is unavailable because the local Tesseract runtime could not be found.",
+            "Screenshot OCR is unavailable because no complete validated local OCR "
+            "runtime is active. Review the setup guidance on this page.",
             "error",
         )
         return redirect("/pdf-import")

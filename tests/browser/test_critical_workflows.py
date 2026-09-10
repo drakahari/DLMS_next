@@ -5273,6 +5273,87 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
     assert saved["rows"] == 2
 
 
+def test_ocr_availability_diagnostics_and_badge_are_responsive(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    executable = browser_stack.data_root.parent / "ocr-runtime" / "tesseract"
+    unavailable_executable = executable.with_name("tesseract.unavailable")
+
+    def set_theme(theme):
+        status = browser.evaluate(
+            f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        )
+        assert status == 200
+
+    def badge_state():
+        return browser.evaluate(
+            "(() => {const badge=document.querySelector('.pdf-ocr-availability');"
+            "const style=getComputedStyle(badge),rect=badge.getBoundingClientRect();"
+            "return {text:badge.textContent.trim(),whiteSpace:style.whiteSpace,"
+            "overflowWrap:style.overflowWrap,wordBreak:style.wordBreak,height:rect.height,"
+            "width:rect.width,scrollWidth:badge.scrollWidth,viewport:innerWidth,"
+            "documentWidth:document.documentElement.scrollWidth,color:style.color,"
+            "background:style.backgroundColor,border:style.borderColor};})()"
+        )
+
+    available_surfaces = {}
+    unavailable_surfaces = {}
+    for width in (1120, 760, 390):
+        browser.set_viewport(width, 850)
+        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            browser.navigate(f"{base_url}/pdf-import")
+            set_theme(theme)
+            browser.navigate(f"{base_url}/pdf-import")
+            browser.wait_for("document.querySelector('.pdf-ocr-availability')")
+            state = badge_state()
+            assert state["text"].startswith("OCR available · Tesseract")
+            assert state["whiteSpace"] == "nowrap"
+            assert state["overflowWrap"] == "normal"
+            assert state["wordBreak"] == "normal"
+            assert state["height"] < 32
+            assert state["documentWidth"] <= state["viewport"] + 1
+            available_surfaces[theme] = (
+                state["color"], state["background"], state["border"]
+            )
+
+    executable.rename(unavailable_executable)
+    try:
+        for width in (1120, 760, 390):
+            browser.set_viewport(width, 850)
+            for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+                browser.navigate(f"{base_url}/pdf-import")
+                browser.wait_for(
+                    "document.querySelector('.pdf-ocr-availability').textContent.includes('unavailable')"
+                )
+                set_theme(theme)
+                browser.navigate(f"{base_url}/pdf-import")
+                browser.wait_for(
+                    "document.querySelector('.pdf-ocr-availability').textContent.includes('unavailable')"
+                )
+                state = badge_state()
+                assert state["text"] == "OCR unavailable"
+                assert state["whiteSpace"] == "nowrap"
+                assert state["overflowWrap"] == "normal"
+                assert state["wordBreak"] == "normal"
+                assert state["height"] < 32
+                assert state["documentWidth"] <= state["viewport"] + 1
+                assert browser.evaluate(
+                    "document.querySelector('.pdf-ocr-unavailable').innerText.includes("
+                    "'Normal selectable-text PDF import remains fully available') && "
+                    "document.querySelector('.pdf-ocr-unavailable').innerText.includes("
+                    "'DLMS_TESSERACT_EXECUTABLE')"
+                ) is True
+                unavailable_surfaces[theme] = (
+                    state["color"], state["background"], state["border"]
+                )
+    finally:
+        unavailable_executable.rename(executable)
+
+    assert len(set(available_surfaces.values())) == 4
+    assert len(set(unavailable_surfaces.values())) == 4
+
+
 def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url

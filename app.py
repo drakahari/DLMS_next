@@ -5852,6 +5852,7 @@ app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(
     ocr_screenshot_max_file_bytes=lambda: OCR_SCREENSHOT_MAX_FILE_BYTES,
     ocr_screenshot_max_batch_bytes=lambda: OCR_SCREENSHOT_MAX_BATCH_BYTES,
     detect_ocr_runtime=lambda: _ocr_service.detect_tesseract_runtime(),
+    diagnose_ocr_runtime=lambda: _ocr_service.diagnose_tesseract_runtime(),
     prune_ocr_staging=lambda: _prune_pdf_ocr_staging(),
     stage_ocr_screenshots=lambda uploads, draft_id: _stage_pdf_ocr_screenshots(
         uploads, draft_id

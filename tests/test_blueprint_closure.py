@@ -76,7 +76,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.learning.LearningRouteDependencies": 17,
         "dlms.routes.maintenance.MaintenanceRouteDependencies": 26,
         "dlms.routes.medical.MedicalRouteDependencies": 9,
-        "dlms.routes.pdf_import.PDFImportRouteDependencies": 47,
+        "dlms.routes.pdf_import.PDFImportRouteDependencies": 48,
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 18,

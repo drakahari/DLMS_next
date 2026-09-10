@@ -276,8 +276,46 @@ class ReleaseDocumentationTests(unittest.TestCase):
             self.assertRegex(requirement, r">=[^,]+,<")
 
         locked = (ROOT / "requirements-lock.txt").read_text(encoding="utf-8")
+        direct_names = {
+            re.split(r"[<>=!~]", requirement, maxsplit=1)[0].strip().casefold()
+            for requirement in requirements
+        }
+        locked_names = {
+            line.split("==", 1)[0].strip().casefold()
+            for line in locked.splitlines()
+            if "==" in line and not line.lstrip().startswith("#")
+        }
+        self.assertTrue(direct_names.issubset(locked_names))
         for package in ("Flask", "Flask-WTF", "genanki", "Werkzeug", "pypdf", "pypdfium2", "Pillow"):
             self.assertRegex(locked, rf"(?im)^{re.escape(package)}==[^\s]+$")
+        self.assertNotIn("tesseract", direct_names)
+
+    def test_ocr_source_setup_and_native_release_gates_are_documented(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        ocr_doc = (ROOT / "docs" / "OCR_PACKAGING.md").read_text(encoding="utf-8")
+        release_doc = (ROOT / "docs" / "RELEASE_VERIFICATION.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("docs/OCR_PACKAGING.md", readme)
+        for text in (
+            "sudo apt install --yes tesseract-ocr tesseract-ocr-eng",
+            "sudo dnf install tesseract tesseract-langpack-eng",
+            "sudo pacman -S tesseract tesseract-data-eng",
+            "brew install tesseract",
+            "DLMS_TESSERACT_EXECUTABLE",
+            "DLMS_TESSDATA_PREFIX",
+            "tessdata/configs/tsv",
+            "normal selectable-text Smart PDF",
+        ):
+            with self.subTest(documented=text):
+                self.assertIn(text, ocr_doc)
+        self.assertIn("Fedora x86-64 is the only frozen OCR target proven", ocr_doc)
+        for pending in ("Ubuntu", "Omarchy/Arch", "Windows 11 x86-64", "macOS ARM64"):
+            with self.subTest(pending=pending):
+                self.assertIn(pending, ocr_doc)
+        self.assertIn("OCR-specific native gate", release_doc)
+        self.assertIn("Do not infer cross-platform OCR support", release_doc)
 
     def test_common_local_and_generated_artifacts_are_ignored(self):
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
