@@ -406,6 +406,20 @@ class ExternalAIReviewRouteTests(unittest.TestCase):
             styles,
         )
 
+    def test_review_renders_only_the_active_correctness_control_type(self):
+        draft_id, _review, _raw = self._stage(
+            _question("Choose one neutral option?", mode="single", correct=(0,)),
+            _question("Choose both neutral options?", mode="multiple", correct=(0, 1)),
+        )
+        body = self.client.get(f"/external-ai/review/{draft_id}").get_data(
+            as_text=True
+        )
+
+        self.assertEqual(2, body.count('data-pdf-role="single-correct-control" hidden'))
+        self.assertEqual(2, body.count('data-pdf-role="multiple-correct-control" hidden'))
+        self.assertEqual(2, body.count('disabled data-pdf-role="single-correct"'))
+        self.assertEqual(2, body.count('disabled data-pdf-role="multiple-correct"'))
+
     def test_canonical_publication_creates_single_and_multiple_answer_quiz(self):
         draft_id, review, raw = self._stage(
             _question("Single neutral question?", correct=(1,), concepts=["single concept"]),

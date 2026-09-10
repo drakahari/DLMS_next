@@ -159,12 +159,22 @@
           action === "choice-up" ? " up" : action === "choice-down" ? " down" : "";
         button.setAttribute("aria-label", `${verb} choice ${label}${direction}`);
       });
-      row
-        .querySelector('[data-pdf-role="single-correct-control"]')
-        ?.toggleAttribute("hidden", mode !== "single");
-      row
-        .querySelector('[data-pdf-role="multiple-correct-control"]')
-        ?.toggleAttribute("hidden", mode !== "multiple");
+      const singleControl = row.querySelector(
+        '[data-pdf-role="single-correct-control"]',
+      );
+      const multipleControl = row.querySelector(
+        '[data-pdf-role="multiple-correct-control"]',
+      );
+      const singleInput = singleControl?.querySelector(
+        '[data-pdf-role="single-correct"]',
+      );
+      const multipleInput = multipleControl?.querySelector(
+        '[data-pdf-role="multiple-correct"]',
+      );
+      singleControl?.toggleAttribute("hidden", mode !== "single");
+      multipleControl?.toggleAttribute("hidden", mode !== "multiple");
+      if (singleInput) singleInput.disabled = mode !== "single";
+      if (multipleInput) multipleInput.disabled = mode !== "multiple";
       const up = row.querySelector('[data-pdf-action="choice-up"]');
       const down = row.querySelector('[data-pdf-action="choice-down"]');
       const remove = row.querySelector('[data-pdf-action="choice-delete"]');

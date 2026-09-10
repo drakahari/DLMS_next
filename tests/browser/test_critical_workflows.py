@@ -5098,6 +5098,13 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         if draft_id == "browser_question_review":
             editor_state = browser.evaluate(
                 "(() => {const card=document.querySelector('.pdf-import-question-card');"
+                "const initialRows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
+                "const activeRadio=initialRows[0].querySelector('[data-pdf-role=single-correct]');activeRadio.focus();"
+                "const initialActiveFocusWorks=document.activeElement===activeRadio;"
+                "const inactiveCheckbox=initialRows[0].querySelector('[data-pdf-role=multiple-correct]');inactiveCheckbox.focus();"
+                "const initialSingleOnly=initialRows.every(row=>{const single=row.querySelector('[data-pdf-role=single-correct]'),multiple=row.querySelector('[data-pdf-role=multiple-correct]');"
+                "return getComputedStyle(single.closest('label')).display!=='none'&&!single.disabled&&getComputedStyle(multiple.closest('label')).display==='none'&&multiple.disabled;});"
+                "const initialInactiveFocusBlocked=document.activeElement!==inactiveCheckbox;"
                 "card.querySelector('[data-pdf-action=choice-add]').click();"
                 "let rows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
                 "rows[2].querySelector('[data-pdf-role=choice]').value='Third answer';"
@@ -5112,9 +5119,12 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
                 "const safeguardMessage=card.querySelector('[data-pdf-role=choice-message]').textContent;"
                 "const beforeDelete=rows.map(row=>row.dataset.choiceLabel);"
                 "rows[2].querySelector('[data-pdf-action=choice-delete]').click();"
+                "const finalRows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
+                "const multipleOnly=finalRows.every(row=>{const single=row.querySelector('[data-pdf-role=single-correct]'),multiple=row.querySelector('[data-pdf-role=multiple-correct]');"
+                "return getComputedStyle(single.closest('label')).display==='none'&&single.disabled&&getComputedStyle(multiple.closest('label')).display!=='none'&&!multiple.disabled;});"
                 "return {count:card.querySelectorAll('[data-pdf-role=choice-row]').length,"
                 "labels:[...card.querySelectorAll('[data-pdf-role=choice-row]')].map(row=>row.dataset.choiceLabel),"
-                "beforeDelete,mode:mode.value,safeguardMessage,retained,"
+                "beforeDelete,mode:mode.value,safeguardMessage,retained,initialSingleOnly,initialActiveFocusWorks,initialInactiveFocusBlocked,multipleOnly,"
                 "addDisabled:card.querySelector('[data-pdf-action=choice-add]').disabled};})()"
             )
             assert editor_state == {
@@ -5124,6 +5134,10 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
                 "mode": "multiple",
                 "safeguardMessage": "Choose one correct answer before switching to single-answer mode.",
                 "retained": True,
+                "initialSingleOnly": True,
+                "initialActiveFocusWorks": True,
+                "initialInactiveFocusBlocked": True,
+                "multipleOnly": True,
                 "addDisabled": False,
             }
             browser.set_viewport(390, 820)
@@ -5543,6 +5557,10 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     initial = browser.evaluate(
         "(() => {const card=document.querySelector('.pdf-import-question-card');"
         "const raw=document.querySelector('.external-ai-raw-reference');"
+        "const rows=[...card.querySelectorAll('[data-pdf-role=choice-row]')];"
+        "const active=rows[0].querySelector('[data-pdf-role=single-correct]');active.focus();"
+        "const activeFocusWorks=document.activeElement===active;"
+        "const inactive=rows[0].querySelector('[data-pdf-role=multiple-correct]');inactive.focus();"
         "return {title:document.querySelector('[name=quiz_title]').value,"
         "cards:document.querySelectorAll('.pdf-import-question-card').length,"
         "choices:card.querySelectorAll('[data-pdf-role=choice-row]').length,"
@@ -5552,6 +5570,9 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "rawCollapsed:!raw.open,ocr:document.body.textContent.includes('OCR confidence'),"
         "bulkDisabled:document.getElementById('questionReviewConfirmSelected').disabled,"
         "individualControl:card.querySelector('[data-pdf-role=correctness-confirmed]').type==='checkbox',"
+        "singleOnly:rows.every(row=>{const single=row.querySelector('[data-pdf-role=single-correct]'),multiple=row.querySelector('[data-pdf-role=multiple-correct]');return getComputedStyle(single.closest('label')).display!=='none'&&!single.disabled&&getComputedStyle(multiple.closest('label')).display==='none'&&multiple.disabled;}),"
+        "activeFocusWorks,"
+        "inactiveFocusBlocked:document.activeElement!==inactive,"
         "csrf:document.querySelector('#pdfReviewForm input[name=csrf_token]').value.length>0};})()"
     )
     assert initial.pop("proposed") in {"A", "B"}
@@ -5565,6 +5586,9 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "ocr": False,
         "bulkDisabled": True,
         "individualControl": True,
+        "singleOnly": True,
+        "activeFocusWorks": True,
+        "inactiveFocusBlocked": True,
         "csrf": True,
     }
     assert browser.evaluate(
@@ -5586,6 +5610,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
             "(() => {const button=document.getElementById('questionReviewConfirmSelected');"
             "const control=document.querySelector('[data-pdf-role=choice]');"
             "const exclude=document.getElementById('pdfDeleteSelected'),keep=document.getElementById('pdfKeepSelected');"
+            "const rows=[...document.querySelector('.pdf-import-question-card').querySelectorAll('[data-pdf-role=choice-row]')];"
             "const checkbox=document.querySelector('[data-pdf-role=select]');"
             "checkbox.checked=true;checkbox.dispatchEvent(new Event('change',{bubbles:true}));button.focus();"
             "const bs=getComputedStyle(button),cs=getComputedStyle(control),es=getComputedStyle(exclude),ks=getComputedStyle(keep);return {"
@@ -5594,6 +5619,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
             "inputColor:cs.color,inputBackground:cs.backgroundColor,"
             "excludeMatches:es.color===ks.color&&es.backgroundColor===ks.backgroundColor&&es.borderColor===ks.borderColor,"
             "excludeReversible:!exclude.classList.contains('pdf-review-danger-action'),"
+            "singleOnly:rows.every(row=>{const single=row.querySelector('[data-pdf-role=single-correct]'),multiple=row.querySelector('[data-pdf-role=multiple-correct]');return getComputedStyle(single.closest('label')).display!=='none'&&!single.disabled&&getComputedStyle(multiple.closest('label')).display==='none'&&multiple.disabled;}),"
             "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
         )
         assert theme_state["enabled"] is True
@@ -5602,6 +5628,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         assert theme_state["inputColor"] != theme_state["inputBackground"]
         assert theme_state["excludeMatches"] is True
         assert theme_state["excludeReversible"] is True
+        assert theme_state["singleOnly"] is True
         assert theme_state["overflow"] is True
 
     browser.navigate(review_url)
@@ -5622,9 +5649,15 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "rows[1].querySelector('[data-pdf-role=multiple-correct]').dispatchEvent(new Event('change',{bubbles:true}));"
         "card.querySelector('[data-pdf-role=explanation]').value='Reviewed neutral explanation.';"
         "card.querySelector('[data-pdf-role=concepts]').value='browser-review\\nneutral-concept';"
+        "const active=rows[0].querySelector('[data-pdf-role=multiple-correct]');active.focus();"
+        "const activeFocusWorks=document.activeElement===active;"
+        "const inactive=rows[0].querySelector('[data-pdf-role=single-correct]');inactive.focus();"
         "return {labels:rows.map(row=>row.dataset.choiceLabel),"
         "texts:rows.map(row=>row.querySelector('[data-pdf-role=choice]').value),"
         "correct:[...card.querySelectorAll('[data-pdf-role=multiple-correct]:checked')].map(input=>input.dataset.choiceLabel),"
+        "multipleOnly:rows.every(row=>{const single=row.querySelector('[data-pdf-role=single-correct]'),multiple=row.querySelector('[data-pdf-role=multiple-correct]');return getComputedStyle(single.closest('label')).display==='none'&&single.disabled&&getComputedStyle(multiple.closest('label')).display!=='none'&&!multiple.disabled;}),"
+        "activeFocusWorks,"
+        "inactiveFocusBlocked:document.activeElement!==inactive,"
         "confirmed:card.querySelector('[data-pdf-role=correctness-confirmed]').checked};})()"
     )
     assert edited["labels"] == ["A", "B", "C"]
@@ -5632,6 +5665,9 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "First neutral option", "Third neutral option", long_answer,
     }
     assert edited["correct"] == ["A", "B"]
+    assert edited["multipleOnly"] is True
+    assert edited["activeFocusWorks"] is True
+    assert edited["inactiveFocusBlocked"] is True
     assert edited["confirmed"] is False
     mixed = browser.evaluate(
         "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
@@ -5672,14 +5708,16 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         browser.set_viewport(width, 820)
         narrow_layout = browser.evaluate(
             "(() => {const rows=[...document.querySelectorAll('.pdf-import-question-card:first-child [data-pdf-role=choice-row]')];"
-            "const controls=[...document.querySelectorAll('.external-ai-review-page input,.external-ai-review-page textarea,.external-ai-review-page select,.external-ai-review-page .pdf-choice-order-controls button')];"
+            "const controls=[...document.querySelectorAll('.external-ai-review-page input:not(:disabled),.external-ai-review-page textarea:not(:disabled),.external-ai-review-page select:not(:disabled),.external-ai-review-page .pdf-choice-order-controls button:not(:disabled)')].filter(control=>control.getClientRects().length);"
             "return {columns:new Set(rows.map(row=>Math.round(row.getBoundingClientRect().left))).size,"
+            "multipleOnly:rows.every(row=>{const single=row.querySelector('[data-pdf-role=single-correct]'),multiple=row.querySelector('[data-pdf-role=multiple-correct]');return getComputedStyle(single.closest('label')).display==='none'&&single.disabled&&getComputedStyle(multiple.closest('label')).display!=='none'&&!multiple.disabled;}),"
             "contained:controls.every(control=>{const panel=control.closest('.dashboard-panel');if(!panel)return true;"
             "const a=control.getBoundingClientRect(),b=panel.getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;}),"
             f"longValue:[...document.querySelectorAll('[data-pdf-role=choice]')].find(input=>input.value==={json.dumps(long_answer)}).value.length,"
             "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
         )
         assert narrow_layout["columns"] == 1
+        assert narrow_layout["multipleOnly"] is True
         assert narrow_layout["contained"] is True
         assert narrow_layout["longValue"] == len(long_answer)
         assert narrow_layout["overflow"] is True
@@ -5765,6 +5803,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "duplicate:document.body.innerText.includes('exactly duplicates an earlier image'),"
         "modes:cards.map(card=>card.querySelector('[data-pdf-role=answer-mode]').value),"
         "answers:cards.map(card=>[...card.querySelectorAll('[data-pdf-role=multiple-correct]:checked')].map(input=>input.value)),"
+        "multipleOnly:cards.every(card=>[...card.querySelectorAll('[data-pdf-role=choice-row]')].every(row=>{const single=row.querySelector('[data-pdf-role=single-correct]'),multiple=row.querySelector('[data-pdf-role=multiple-correct]');return getComputedStyle(single.closest('label')).display==='none'&&single.disabled&&getComputedStyle(multiple.closest('label')).display!=='none'&&!multiple.disabled;})),"
         "confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
         "labels:[...cards[0].querySelectorAll('[data-pdf-role=choice-label]')].map(node=>node.textContent)};})()"
     )
@@ -5774,6 +5813,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "duplicate": True,
         "modes": ["multiple", "multiple"],
         "answers": [["B", "D"], ["B", "D"]],
+        "multipleOnly": True,
         "confirmations": [False, False],
         "labels": ["A", "B", "C", "D"],
     }

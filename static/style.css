@@ -9604,6 +9604,7 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 }
 .pdf-correctness-controls legend { font-size:11px; font-weight:800; color:var(--theme-muted-text,#b8c2cc); }
 .pdf-correctness-controls label,.pdf-correctness-confirmation { display:flex; gap:7px; align-items:center; }
+.pdf-correctness-controls [hidden] { display:none; }
 .pdf-import-page .pdf-correctness-controls input,
 .pdf-import-page .pdf-correctness-confirmation input {
     width:16px;

@@ -260,6 +260,37 @@ class SmartPDFReviewContractTests(unittest.TestCase):
         ):
             self.assertIn(token, editor_styles)
 
+    def test_correctness_controls_render_only_the_active_mode_enabled(self):
+        choices = self._choices(2)
+        self._draft("single_controls", choices, correct="A", answer_mode="single")
+        single_html = self.client.get(
+            "/pdf-import/review/single_controls"
+        ).get_data(as_text=True)
+        self.assertEqual(0, single_html.count('data-pdf-role="single-correct-control" hidden'))
+        self.assertEqual(2, single_html.count('data-pdf-role="multiple-correct-control" hidden'))
+        self.assertEqual(2, single_html.count('disabled data-pdf-role="multiple-correct"'))
+
+        self._draft(
+            "multiple_controls",
+            choices,
+            correct=["A", "B"],
+            answer_mode="multiple",
+        )
+        multiple_html = self.client.get(
+            "/pdf-import/review/multiple_controls"
+        ).get_data(as_text=True)
+        self.assertEqual(2, multiple_html.count('data-pdf-role="single-correct-control" hidden'))
+        self.assertEqual(0, multiple_html.count('data-pdf-role="multiple-correct-control" hidden'))
+        self.assertEqual(2, multiple_html.count('disabled data-pdf-role="single-correct"'))
+
+        styles = Path(dlms.resource_path("static/style.css")).read_text(encoding="utf-8")
+        script = Path(dlms.resource_path("static/question-review.js")).read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".pdf-correctness-controls [hidden] { display:none; }", styles)
+        self.assertIn('singleInput.disabled = mode !== "single"', script)
+        self.assertIn('multipleInput.disabled = mode !== "multiple"', script)
+
 
 if __name__ == "__main__":
     unittest.main()
