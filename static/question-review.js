@@ -5,6 +5,12 @@
 
   const cards = [...document.querySelectorAll(".pdf-import-question-card")];
   const selectionCount = document.getElementById("pdfSelectionCount");
+  const confirmSelectedButton = document.getElementById(
+    "questionReviewConfirmSelected",
+  );
+  const bulkConfirmationStatus = document.getElementById(
+    "questionReviewBulkConfirmationStatus",
+  );
   const reviewForm = document.getElementById("pdfReviewForm");
   const labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -21,6 +27,7 @@
       (card) => card.querySelector('[data-pdf-role="select"]')?.checked,
     ).length;
     if (selectionCount) selectionCount.textContent = `${selected} selected`;
+    if (confirmSelectedButton) confirmSelectedButton.disabled = selected === 0;
   }
 
   function selectedCards() {
@@ -31,6 +38,84 @@
 
   function choiceRows(card) {
     return [...card.querySelectorAll('[data-pdf-role="choice-row"]')];
+  }
+
+  function normalizedReviewText(value) {
+    return String(value || "")
+      .normalize("NFKC")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLocaleLowerCase();
+  }
+
+  function currentQuestionTextIsDuplicated(card) {
+    const current = normalizedReviewText(
+      card.querySelector('[data-pdf-role="question"]')?.value,
+    );
+    if (!current) return false;
+    return cards.some((candidate) => {
+      if (candidate === card) return false;
+      if (candidate.querySelector('[data-pdf-role="delete"]')?.checked) return false;
+      return normalizedReviewText(
+        candidate.querySelector('[data-pdf-role="question"]')?.value,
+      ) === current;
+    });
+  }
+
+  function currentQuestionIsStructurallyValid(card) {
+    if (card.querySelector('[data-pdf-role="delete"]')?.checked) {
+      return { valid: false, reason: "excluded" };
+    }
+    if (!String(card.querySelector('[data-pdf-role="question"]')?.value || "").trim()) {
+      return { valid: false, reason: "needs repair" };
+    }
+    if (currentQuestionTextIsDuplicated(card)) {
+      return { valid: false, reason: "duplicates another included question" };
+    }
+    const rows = choiceRows(card);
+    if (rows.length < 2 || rows.length > 26) {
+      return { valid: false, reason: "needs 2–26 choices" };
+    }
+    const choiceTexts = rows.map((row) =>
+      normalizedReviewText(row.querySelector('[data-pdf-role="choice"]')?.value),
+    );
+    if (choiceTexts.some((value) => !value)) {
+      return { valid: false, reason: "has an empty choice" };
+    }
+    if (new Set(choiceTexts).size !== choiceTexts.length) {
+      return { valid: false, reason: "has duplicate choices" };
+    }
+    const mode = card.querySelector('[data-pdf-role="answer-mode"]')?.value;
+    const selector =
+      mode === "multiple"
+        ? '[data-pdf-role="multiple-correct"]:checked'
+        : '[data-pdf-role="single-correct"]:checked';
+    const correctCount = card.querySelectorAll(selector).length;
+    if (
+      (mode === "single" && correctCount !== 1) ||
+      (mode === "multiple" && correctCount < 2) ||
+      !["single", "multiple"].includes(mode)
+    ) {
+      return { valid: false, reason: "has an invalid correct-answer set" };
+    }
+    if (!String(card.querySelector('[data-pdf-role="explanation"]')?.value || "").trim()) {
+      return { valid: false, reason: "needs an explanation" };
+    }
+    const concepts = String(
+      card.querySelector('[data-pdf-role="concepts"]')?.value || "",
+    )
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const normalizedConcepts = concepts.map(normalizedReviewText);
+    if (
+      concepts.length > 24 ||
+      concepts.some((value) => value.length > 120) ||
+      new Set(normalizedConcepts).size !== normalizedConcepts.length
+    ) {
+      return { valid: false, reason: "has invalid concepts" };
+    }
+    return { valid: true, reason: "" };
   }
 
   function setChoiceMessage(card, message) {
@@ -166,6 +251,38 @@
       const box = card.querySelector('[data-pdf-role="delete"]');
       if (box) box.checked = false;
     });
+  });
+  confirmSelectedButton?.addEventListener("click", () => {
+    const selected = selectedCards();
+    const confirmed = [];
+    const skipped = [];
+    selected.forEach((card) => {
+      const confirmation = card.querySelector(
+        '[data-pdf-role="correctness-confirmed"]',
+      );
+      const eligibility = currentQuestionIsStructurallyValid(card);
+      if (!confirmation || !eligibility.valid) {
+        if (confirmation) confirmation.checked = false;
+        skipped.push({
+          number: card.dataset.questionNumber || "?",
+          reason: eligibility.reason || "cannot be confirmed",
+        });
+        return;
+      }
+      confirmation.checked = true;
+      confirmed.push(card.dataset.questionNumber || "?");
+    });
+    if (!bulkConfirmationStatus) return;
+    const confirmedLabel = `${confirmed.length} selected question${
+      confirmed.length === 1 ? "" : "s"
+    } confirmed as reviewed.`;
+    const skippedLabel = skipped.length
+      ? ` Could not confirm ${skipped
+          .map((item) => `question ${item.number} (${item.reason})`)
+          .join(", ")}.`
+      : "";
+    bulkConfirmationStatus.textContent = confirmedLabel + skippedLabel;
+    bulkConfirmationStatus.hidden = false;
   });
 
   cards.forEach((card) => {

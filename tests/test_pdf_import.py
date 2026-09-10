@@ -428,6 +428,8 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertIn("Save Reviewed Question Bank", question_html)
         self.assertIn('class="pdf-review-bulk-actions"', question_html)
         self.assertIn('id="pdfSelectionCount" aria-live="polite"', question_html)
+        self.assertNotIn("questionReviewConfirmSelected", question_html)
+        self.assertNotIn("Confirm Selected as Reviewed", question_html)
         styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
         default_style = styles[
             styles.index(".pdf-import-page #pdfDeleteSelected {"):

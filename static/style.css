@@ -9489,9 +9489,12 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .pdf-import-page .pdf-review-bulk-bar { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px 18px;margin:0 0 16px;padding:15px;min-width:0; }
 .pdf-import-page .pdf-review-bulk-actions { display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:0; }
 .pdf-import-page .pdf-review-bulk-bar button { display:inline-flex;align-items:center;justify-content:center;width:auto;min-height:38px;margin:0;padding:8px 12px;white-space:normal;line-height:1.25;color:var(--theme-page-text,#eaf2ff)!important;background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;border-color:var(--theme-border-soft,rgba(98,155,255,.32))!important;box-shadow:none!important; }
+.pdf-import-page .pdf-review-bulk-bar button:disabled { color:var(--theme-muted-text,#b8c2cc)!important;background:var(--theme-surface,rgba(5,18,39,.58))!important;border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;opacity:.7;cursor:not-allowed; }
 .pdf-import-page .pdf-review-bulk-bar .pdf-review-danger-action { color:var(--theme-danger-text,#ff9ca5)!important;background:color-mix(in srgb,#ef4444 12%,var(--theme-surface,rgba(5,18,39,.58)))!important;border-color:color-mix(in srgb,#ef4444 48%,var(--theme-border-soft,rgba(98,155,255,.24)))!important; }
 .pdf-import-page #pdfDeleteSelected { color:var(--theme-page-text,#eaf2ff)!important;background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 8%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;border-color:var(--theme-border-soft,rgba(98,155,255,.32))!important; }
-.pdf-import-page .pdf-review-bulk-status { justify-self:end;margin:0;padding:7px 10px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.28));border-radius:999px;color:var(--theme-heading,#fff);background:var(--theme-surface-2,rgba(17,31,56,.78));font-size:13px;font-weight:800;white-space:nowrap; }
+.pdf-import-page .pdf-review-bulk-status-group { display:grid;justify-items:end;gap:7px;min-width:0;max-width:min(100%,460px); }
+.pdf-import-page .pdf-review-bulk-status { margin:0;padding:7px 10px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.28));border-radius:999px;color:var(--theme-heading,#fff);background:var(--theme-surface-2,rgba(17,31,56,.78));font-size:13px;font-weight:800;white-space:nowrap; }
+.pdf-import-page .pdf-review-bulk-confirmation-status { margin:0;color:var(--theme-page-text,#eaf2ff);font-size:12px;line-height:1.45;text-align:right;overflow-wrap:anywhere; }
 .pdf-import-page .pdf-review-select-toggle { color:var(--theme-page-text,#eaf2ff); }
 .pdf-import-page .pdf-review-select-toggle input[type="checkbox"] { width:16px!important;height:16px;min-width:16px!important;max-width:16px!important;margin:0; }
 .pdf-import-question-list { display:grid; gap:14px; }
@@ -9556,7 +9559,24 @@ body.it-study-page .medical-ai-builder-teaser-icon {
     word-break:normal !important;
 }
 .pdf-import-issues { margin:0 0 14px; padding:10px 12px; border-radius:9px; border:1px solid var(--semantic-warning-border); background:var(--semantic-warning-surface); color:var(--semantic-warning-text); font-size:12px; display:grid; gap:5px; }
-.pdf-import-choice-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:10px 0; }
+.pdf-choice-editor,
+.pdf-import-choice-grid,
+.pdf-choice-editor-row,
+.pdf-choice-editor-row > *,
+.pdf-choice-order-controls,
+.pdf-choice-editor-actions,
+.pdf-correctness-confirmation,
+.pdf-correctness-confirmation > span {
+    box-sizing:border-box;
+    min-width:0;
+    max-width:100%;
+}
+.pdf-import-choice-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));
+    gap:10px;
+    margin:10px 0;
+}
 .pdf-choice-editor-row {
     display:grid;
     grid-template-columns:minmax(0,1fr) auto;
@@ -9567,7 +9587,8 @@ body.it-study-page .medical-ai-builder-teaser-icon {
     border-radius:10px;
     background:var(--semantic-section-surface);
 }
-.pdf-choice-editor-row .pdf-choice-field { min-width:0; }
+.pdf-choice-editor-row .pdf-choice-field { min-width:0;max-width:100%; }
+.pdf-choice-editor-row .pdf-choice-field input { width:100%;min-width:0;max-width:100%; }
 .pdf-correctness-controls {
     display:flex;
     gap:10px;
@@ -9602,6 +9623,7 @@ body.it-study-page .medical-ai-builder-teaser-icon {
     border:1px solid var(--semantic-warning-border);
     border-radius:10px;
 }
+.pdf-correctness-confirmation > span { overflow-wrap:anywhere; }
 .pdf-choice-field span { color:var(--theme-page-text,#eaf2ff); }
 .pdf-feedback-details { margin-top:12px; border:1px solid var(--semantic-info-border); border-radius:10px; padding:10px 12px; color:var(--theme-page-text,#eaf2ff);background:var(--semantic-info-surface); }
 .pdf-feedback-details summary { cursor:pointer; color:var(--semantic-info-text); font-weight:700; }
@@ -9695,7 +9717,8 @@ body.it-study-page .medical-ai-builder-teaser-icon {
   .pdf-ocr-import-panel .pdf-bank-panel-heading,.pdf-ocr-review-source { grid-template-columns:1fr;flex-direction:column; }
   .pdf-ocr-confidence-list { grid-template-columns:1fr; }
   .pdf-import-page .pdf-review-bulk-bar { grid-template-columns:1fr; }
-  .pdf-import-page .pdf-review-bulk-status { justify-self:start; }
+  .pdf-import-page .pdf-review-bulk-status-group { justify-items:start;max-width:100%; }
+  .pdf-import-page .pdf-review-bulk-confirmation-status { text-align:left; }
 }
 @media (max-width:650px) {
   .pdf-import-choice-grid,.pdf-feedback-grid { grid-template-columns:1fr; }
@@ -9770,6 +9793,27 @@ body.it-study-page .medical-ai-builder-teaser-icon {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+}
+
+.external-ai-review-page #pdfReviewForm,
+.external-ai-review-page #pdfReviewForm > *,
+.external-ai-review-page .external-ai-basics,
+.external-ai-review-page .build-two-column-fields,
+.external-ai-review-page .external-ai-source-grid,
+.external-ai-review-page .external-ai-source-grid > *,
+.external-ai-review-page .pdf-import-question-list,
+.external-ai-review-page .pdf-import-question-card,
+.external-ai-review-page .pdf-import-question-card > * {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.external-ai-review-page .build-field :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .external-ai-review-page .external-ai-answer-mode {

@@ -68,16 +68,20 @@
         </div>
         <details class="pdf-review-bulk-help">
             <summary>How filters and bulk actions work</summary>
-            <div class="pdf-review-bulk-help-body"><p>Filters affect visibility only. Select visible cards, then mark them for exclusion or keep them. Excluded questions are not published.</p></div>
+            <div class="pdf-review-bulk-help-body"><p>Filters affect visibility only. Select the questions you reviewed, then confirm their current answer mode and complete correct-answer set or mark them for exclusion. Excluded questions are not published.</p></div>
         </details>
         <div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk question actions">
             <div class="pdf-review-bulk-actions">
                 <button type="button" class="build-secondary-link" id="pdfSelectAllVisible">Select All Visible</button>
                 <button type="button" class="build-secondary-link" id="pdfClearSelection">Clear Selection</button>
+                <button type="button" class="build-secondary-link" id="questionReviewConfirmSelected" disabled>Confirm Selected as Reviewed</button>
                 <button type="button" class="build-secondary-link pdf-review-danger-action" id="pdfDeleteSelected">Exclude Selected</button>
                 <button type="button" class="build-secondary-link" id="pdfKeepSelected">Keep Selected</button>
             </div>
-            <span class="pdf-review-bulk-status" id="pdfSelectionCount" aria-live="polite">0 selected</span>
+            <div class="pdf-review-bulk-status-group">
+                <span class="pdf-review-bulk-status" id="pdfSelectionCount" aria-live="polite">0 selected</span>
+                <p class="pdf-review-bulk-confirmation-status" id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite" hidden></p>
+            </div>
         </div>
 
         <form method="POST" action="{{ url_for('external_ai.external_ai_publish', draft_id=draft.id) }}" id="pdfReviewForm" data-review-reset-confirmation-on-edit="true" data-single-mode-safeguard="Choose one correct answer before switching to single-answer mode.">

@@ -430,7 +430,9 @@ def validate_quiz_review_submission(draft, submitted_items, *, title, source):
         concepts, concept_errors = _review_concepts(
             submitted.get("concepts", []), question_number=number
         )
-        confirmed = submitted.get("correctness_confirmed") is True
+        # Exclusion and correctness confirmation are mutually exclusive review
+        # states. Ignore a forged/stale confirmation value for excluded items.
+        confirmed = not excluded and submitted.get("correctness_confirmed") is True
         validation_issues = []
         if not excluded:
             included_count += 1

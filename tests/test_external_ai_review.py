@@ -185,6 +185,38 @@ class QuestionReviewServiceTests(unittest.TestCase):
         self.assertTrue(any("duplicate concept" in error for error in result["errors"]))
         self.assertTrue(any("duplicate choice text" in error for error in result["errors"]))
 
+    def test_mixed_confirmation_states_are_revalidated_for_every_included_question(self):
+        draft = self._draft(
+            _question("First independently reviewed question?"),
+            _question("Second question still needs repair?"),
+            _question("Excluded question?"),
+            _question("Unselected question remains unconfirmed?"),
+        )
+        submitted = _submitted_questions(draft, confirmed=False)
+        submitted[0]["correctness_confirmed"] = True
+        submitted[1]["choices"][0]["text"] = ""
+        submitted[2]["delete"] = True
+        submitted[2]["correctness_confirmed"] = True
+
+        blocked = self._validate(draft, submitted)
+
+        self.assertEqual([], blocked["publish_questions"])
+        self.assertTrue(any("Question 2 choice A is required" in error for error in blocked["errors"]))
+        self.assertTrue(any("Question 4 needs explicit confirmation" in error for error in blocked["errors"]))
+        reviewed = blocked["review_draft"]["questions"]
+        self.assertTrue(reviewed[0]["correctness_confirmed"])
+        self.assertFalse(reviewed[1]["correctness_confirmed"])
+        self.assertTrue(reviewed[2]["excluded"])
+        self.assertFalse(reviewed[2]["correctness_confirmed"])
+        self.assertFalse(reviewed[3]["correctness_confirmed"])
+
+        submitted[1]["choices"][0]["text"] = "Repaired neutral choice"
+        submitted[1]["correctness_confirmed"] = True
+        submitted[3]["correctness_confirmed"] = True
+        publishable = self._validate(draft, submitted)
+        self.assertEqual([], publishable["errors"])
+        self.assertEqual(3, len(publishable["publish_questions"]))
+
     def test_source_url_is_revalidated_without_fetching(self):
         draft = self._draft(_question())
         result = question_review.validate_quiz_review_submission(
@@ -330,6 +362,33 @@ class ExternalAIReviewRouteTests(unittest.TestCase):
         self.assertIn('data-pdf-action="choice-up"', body)
         self.assertIn('data-pdf-role="concepts"', body)
         self.assertIn("/static/question-review.js", body)
+        self.assertIn('id="questionReviewConfirmSelected" disabled', body)
+        self.assertIn('id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite"', body)
+        self.assertNotIn("Confirm All", body)
+
+    def test_review_containment_uses_shared_responsive_choice_geometry(self):
+        draft_id, _review, _raw = self._stage(
+            _question(
+                text="Long neutral question " + ("q" * 600),
+                explanation="Long neutral explanation " + ("e" * 800),
+            ),
+            source={**_source(), "organization": "o" * 800},
+        )
+        response = self.client.get(f"/external-ai/review/{draft_id}")
+        self.assertEqual(200, response.status_code)
+        styles = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
+        for selector in (
+            ".pdf-choice-editor,",
+            ".pdf-import-choice-grid,",
+            ".pdf-choice-editor-row > *,",
+            ".external-ai-review-page #pdfReviewForm,",
+            ".external-ai-review-page .external-ai-source-grid > *,",
+        ):
+            self.assertIn(selector, styles)
+        self.assertIn(
+            "grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));",
+            styles,
+        )
 
     def test_canonical_publication_creates_single_and_multiple_answer_quiz(self):
         draft_id, review, raw = self._stage(

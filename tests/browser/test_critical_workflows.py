@@ -5415,31 +5415,52 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     browser.set_viewport(1280, 1000)
 
     browser.navigate(f"{base_url}/external-ai/quiz-builder")
+    long_answer = "Second neutral option " + ("answersegment" * 100)
+    long_question = "Which neutral browser option is first? " + ("questionsegment" * 70)
+    long_source = "NeutralBrowserDataset" * 40
     raw_response = json.dumps({
         "schema_version": 1,
         "content_type": "quiz",
         "title": "Browser External AI Review",
         "source": {
             "organization": "Neutral Browser Source",
-            "dataset": "Review Regression",
+            "dataset": long_source,
             "version": "1",
             "url": "https://example.test/review",
             "license": "Test-only neutral content",
         },
         "questions": [{
-            "question": "Which neutral browser option is first?",
+            "question": long_question,
             "answer_mode": "single",
             "choices": [
                 {"text": "First neutral option", "is_correct": True},
-                {"text": "Second neutral option", "is_correct": False},
+                {"text": long_answer, "is_correct": False},
             ],
             "explanation": "The first option is designated by the neutral fixture.",
             "concepts": ["browser-review"],
+        }, {
+            "question": "Which neutral browser option is second?",
+            "answer_mode": "single",
+            "choices": [
+                {"text": "First secondary option", "is_correct": False},
+                {"text": "Second secondary option", "is_correct": True},
+            ],
+            "explanation": "The second option is designated by this neutral fixture.",
+            "concepts": ["browser-review-two"],
+        }, {
+            "question": "Which neutral browser option is excluded?",
+            "answer_mode": "single",
+            "choices": [
+                {"text": "Included-looking option", "is_correct": True},
+                {"text": "Alternative option", "is_correct": False},
+            ],
+            "explanation": "This neutral record is used to exercise exclusion.",
+            "concepts": ["browser-review-excluded"],
         }],
     })
     browser.evaluate(
         "document.querySelector('[name=topic]').value='Neutral browser systems';"
-        "document.querySelector('[name=question_count]').value='1';"
+        "document.querySelector('[name=question_count]').value='3';"
         f"document.getElementById('externalAiResponse').value={json.dumps(raw_response)};true"
     )
     browser.click("#externalAiBuilderForm .build-primary-button")
@@ -5453,21 +5474,61 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "(() => {const card=document.querySelector('.pdf-import-question-card');"
         "const raw=document.querySelector('.external-ai-raw-reference');"
         "return {title:document.querySelector('[name=quiz_title]').value,"
+        "cards:document.querySelectorAll('.pdf-import-question-card').length,"
         "choices:card.querySelectorAll('[data-pdf-role=choice-row]').length,"
         "proposed:card.querySelector('[data-pdf-role=single-correct]:checked').dataset.choiceLabel,"
         "confirmed:card.querySelector('[data-pdf-role=correctness-confirmed]').checked,"
         "rawCollapsed:!raw.open,ocr:document.body.textContent.includes('OCR confidence'),"
+        "bulkDisabled:document.getElementById('questionReviewConfirmSelected').disabled,"
+        "individualControl:card.querySelector('[data-pdf-role=correctness-confirmed]').type==='checkbox',"
         "csrf:document.querySelector('#pdfReviewForm input[name=csrf_token]').value.length>0};})()"
     )
     assert initial == {
         "title": "Browser External AI Review",
+        "cards": 3,
         "choices": 2,
         "proposed": "A",
         "confirmed": False,
         "rawCollapsed": True,
         "ocr": False,
+        "bulkDisabled": True,
+        "individualControl": True,
         "csrf": True,
     }
+    assert browser.evaluate(
+        "(() => {const control=document.querySelector('[data-pdf-role=correctness-confirmed]');"
+        "control.click();const checked=control.checked;control.click();"
+        "return checked && !control.checked;})()"
+    ) is True
+
+    review_url = browser.evaluate("location.href")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        status = browser.evaluate(
+            f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        )
+        assert status == 200
+        browser.navigate(review_url)
+        browser.wait_for("document.getElementById('questionReviewConfirmSelected')")
+        theme_state = browser.evaluate(
+            "(() => {const button=document.getElementById('questionReviewConfirmSelected');"
+            "const control=document.querySelector('[data-pdf-role=choice]');"
+            "const checkbox=document.querySelector('[data-pdf-role=select]');"
+            "checkbox.checked=true;checkbox.dispatchEvent(new Event('change',{bubbles:true}));button.focus();"
+            "const bs=getComputedStyle(button),cs=getComputedStyle(control);return {"
+            "enabled:!button.disabled,focused:document.activeElement===button,"
+            "buttonColor:bs.color,buttonBackground:bs.backgroundColor,"
+            "inputColor:cs.color,inputBackground:cs.backgroundColor,"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert theme_state["enabled"] is True
+        assert theme_state["focused"] is True
+        assert theme_state["buttonColor"] != theme_state["buttonBackground"]
+        assert theme_state["inputColor"] != theme_state["inputBackground"]
+        assert theme_state["overflow"] is True
+
+    browser.navigate(review_url)
+    browser.wait_for("document.getElementById('questionReviewConfirmSelected')")
 
     edited = browser.evaluate(
         "(() => {const card=document.querySelector('.pdf-import-question-card');"
@@ -5482,7 +5543,6 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "rows[1].querySelector('[data-pdf-role=multiple-correct]').dispatchEvent(new Event('change',{bubbles:true}));"
         "card.querySelector('[data-pdf-role=explanation]').value='Reviewed neutral explanation.';"
         "card.querySelector('[data-pdf-role=concepts]').value='browser-review\\nneutral-concept';"
-        "card.querySelector('[data-pdf-role=correctness-confirmed]').checked=true;"
         "return {labels:rows.map(row=>row.dataset.choiceLabel),"
         "texts:rows.map(row=>row.querySelector('[data-pdf-role=choice]').value),"
         "correct:[...card.querySelectorAll('[data-pdf-role=multiple-correct]:checked')].map(input=>input.dataset.choiceLabel),"
@@ -5490,14 +5550,60 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     )
     assert edited == {
         "labels": ["A", "B", "C"],
-        "texts": ["First neutral option", "Third neutral option", "Second neutral option"],
+        "texts": ["First neutral option", "Third neutral option", long_answer],
         "correct": ["A", "B"],
-        "confirmed": True,
+        "confirmed": False,
     }
-    browser.set_viewport(390, 820)
-    assert browser.evaluate(
-        "document.documentElement.scrollWidth <= window.innerWidth + 1"
-    ) is True
+    mixed = browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
+        "cards[1].querySelector('[data-pdf-role=choice]').value='';"
+        "cards[2].querySelector('[data-pdf-role=delete]').checked=true;"
+        "cards.forEach(card=>{const box=card.querySelector('[data-pdf-role=select]');box.checked=true;box.dispatchEvent(new Event('change',{bubbles:true}));});"
+        "document.getElementById('questionReviewConfirmSelected').click();"
+        "return {confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
+        "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent,"
+        "selected:document.getElementById('pdfSelectionCount').textContent};})()"
+    )
+    assert mixed["confirmations"] == [True, False, False]
+    assert mixed["selected"] == "3 selected"
+    assert "1 selected question confirmed as reviewed" in mixed["status"]
+    assert "question 2 (has an empty choice)" in mixed["status"]
+    assert "question 3 (excluded)" in mixed["status"]
+
+    repaired = browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
+        "document.getElementById('pdfClearSelection').click();"
+        "cards[1].querySelector('[data-pdf-role=choice]').value='Repaired secondary option';"
+        "const box=cards[1].querySelector('[data-pdf-role=select]');box.checked=true;box.dispatchEvent(new Event('change',{bubbles:true}));"
+        "document.getElementById('questionReviewConfirmSelected').click();"
+        "return {confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
+        "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
+    )
+    assert repaired["confirmations"] == [True, True, False]
+    assert repaired["status"] == "1 selected question confirmed as reviewed."
+
+    browser.set_viewport(1600, 1000)
+    desktop_layout = browser.evaluate(
+        "(() => {const rows=[...document.querySelectorAll('.pdf-import-question-card:first-child [data-pdf-role=choice-row]')];"
+        "return {columns:new Set(rows.map(row=>Math.round(row.getBoundingClientRect().left))).size,"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert desktop_layout == {"columns": 2, "overflow": True}
+    for width in (420, 390):
+        browser.set_viewport(width, 820)
+        narrow_layout = browser.evaluate(
+            "(() => {const rows=[...document.querySelectorAll('.pdf-import-question-card:first-child [data-pdf-role=choice-row]')];"
+            "const controls=[...document.querySelectorAll('.external-ai-review-page input,.external-ai-review-page textarea,.external-ai-review-page select,.external-ai-review-page .pdf-choice-order-controls button')];"
+            "return {columns:new Set(rows.map(row=>Math.round(row.getBoundingClientRect().left))).size,"
+            "contained:controls.every(control=>{const panel=control.closest('.dashboard-panel');if(!panel)return true;"
+            "const a=control.getBoundingClientRect(),b=panel.getBoundingClientRect();return a.left>=b.left-1&&a.right<=b.right+1;}),"
+            "longValue:document.querySelectorAll('[data-pdf-role=choice]')[2].value.length,"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert narrow_layout["columns"] == 1
+        assert narrow_layout["contained"] is True
+        assert narrow_layout["longValue"] == len(long_answer)
+        assert narrow_layout["overflow"] is True
     browser.set_viewport(1280, 1000)
 
     browser.click("#pdfReviewForm .build-primary-button")
@@ -5520,6 +5626,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
             encoding="utf-8"
         )
     )
+    assert len(published) == 2
     assert published[0]["answer_mode"] == "multiple"
     assert published[0]["correct"] == ["A", "B"]
     assert published[0]["explanation"] == "Reviewed neutral explanation."
@@ -5528,7 +5635,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         browser_stack.data_root / "external_ai_drafts" / f"{draft_id}.json"
     ).exists()
     browser.navigate(f"{base_url}/quizzes/{entry['html']}")
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 1")
+    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     browser.click(".study-mode-btn")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 3")
     assert browser.evaluate(
