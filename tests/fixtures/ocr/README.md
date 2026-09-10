@@ -12,9 +12,10 @@ rotation, and Unicode. `screenshot-explicit-abcd.png` was generated with the
 built-in image-generation tool from an original DLMS fixture prompt. The other
 fixtures were rendered locally from original text with Pillow.
 
-`generate_result_layout_fixtures.py` produces the self-authored reviewed-result
-screenshots. They cover a selected wrong row with a dedicated X, a correct row
-with a dedicated checkmark, explicit A–D labels beside radio controls, an
-Explanation panel, noisier early-label sequence recovery, and larger
-antialiased result markers at ordinary browser scaling. They contain no
-third-party quiz text or branding.
+`generate_result_layout_fixtures.py` produces the two self-authored,
+neutral reviewed-result screenshots retained in this corpus. More specific
+result-layout regressions are rendered in memory by the tests so their PNGs
+are never added to the repository. Those dynamic cases cover selected rows,
+dedicated check/X markers, explicit A–D labels beside noisy radio controls,
+early-label sequence recovery, C/© confusion, trailing control artifacts, and
+Explanation boundaries. They contain no third-party quiz text or branding.

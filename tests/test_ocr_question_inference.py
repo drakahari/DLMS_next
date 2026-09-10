@@ -76,6 +76,79 @@ def positioned_observations(lines, *, width=900, height=690):
 RESULT_FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "ocr"
 
 
+def result_marker_image(
+    *,
+    size=(900, 690),
+    row_tops=(210, 285, 360, 435),
+    marker_x=816,
+    marker_y_offset=29,
+    marker_radius=18,
+    checks=(),
+    wrongs=(),
+    selected=(),
+):
+    """Render neutral result-row controls and dedicated markers in memory."""
+
+    image = Image.new("RGB", size, "#f4f7fb")
+    draw = ImageDraw.Draw(image)
+    for index, top in enumerate(row_tops):
+        row_fill = "#eef4ff" if index in selected else "white"
+        draw.rounded_rectangle(
+            (23, top, size[0] - 25, top + 58),
+            radius=8,
+            fill=row_fill,
+            outline="#b8b8b8",
+            width=2,
+        )
+        draw.ellipse((36, top + 18, 56, top + 38), fill="white", outline="#53657c", width=2)
+        if index in selected:
+            draw.ellipse((41, top + 23, 51, top + 33), fill="#315fa8")
+        kind = "check" if index in checks else "x" if index in wrongs else None
+        if not kind:
+            continue
+        center_y = top + marker_y_offset
+        fill = "#16864b" if kind == "check" else "#c53030"
+        draw.ellipse(
+            (
+                marker_x - marker_radius,
+                center_y - marker_radius,
+                marker_x + marker_radius,
+                center_y + marker_radius,
+            ),
+            fill=fill,
+        )
+        stroke = max(4, marker_radius // 4)
+        if kind == "check":
+            draw.line(
+                (
+                    marker_x - marker_radius // 2,
+                    center_y,
+                    marker_x - marker_radius // 6,
+                    center_y + marker_radius // 2,
+                    marker_x + marker_radius * 2 // 3,
+                    center_y - marker_radius // 2,
+                ),
+                fill="white",
+                width=stroke,
+                joint="curve",
+            )
+        else:
+            offset = marker_radius // 2
+            draw.line(
+                (marker_x - offset, center_y - offset, marker_x + offset, center_y + offset),
+                fill="white",
+                width=stroke,
+            )
+            draw.line(
+                (marker_x + offset, center_y - offset, marker_x - offset, center_y + offset),
+                fill="white",
+                width=stroke,
+            )
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
 def result_layout_observations(banner, question, choices, explanation):
     lines = [(banner, 68, 44), (question, 55, 125)]
     noise = ("@", "O", "©", "O")
@@ -199,11 +272,11 @@ class OCRQuestionInferenceTests(unittest.TestCase):
 
     def test_non_question_vertical_list_is_retained_as_unassigned_in_incomplete_draft(self):
         question = self.infer(
-            ["Course resources", "Timeliness", "Detail", "Completeness", "Accuracy"]
+            ["Course resources", "Quartz", "Cobalt", "Amber", "Violet"]
         )["questions"][0]
         self.assertEqual(question["status"], "incomplete")
         self.assertEqual(question["choices"], [])
-        self.assertIn("Timeliness", question["ocr_metadata"]["unassigned_text"])
+        self.assertIn("Quartz", question["ocr_metadata"]["unassigned_text"])
 
     def test_clear_multiple_question_markers_split_but_chrome_remains_visible(self):
         result = self.infer(
@@ -254,42 +327,52 @@ class OCRQuestionInferenceTests(unittest.TestCase):
         self.assertIn(question["ocr_metadata"]["structure_confidence"], {"high", "medium"})
         self.assertEqual(question["ocr_metadata"]["correctness_evidence"], "unknown")
 
-    def test_reviewed_result_fixtures_detect_source_labels_explanation_and_correct_row(self):
+    def test_dynamic_result_layouts_detect_source_labels_explanation_and_correct_row(self):
         cases = (
             (
-                "screenshot-result-a-wrong-b-correct.png",
+                "paired-result-markers",
                 "Incorrect",
-                "Which quality is most useful for this synthetic example?",
-                ("Timeliness", "Detail", "Accuracy", "Relevance"),
-                "Detail is the answer identified by the result feedback.",
+                "Which neutral sample matches the rule?",
+                ("Quartz pulse", "Cobalt depth", "Amber precision", "Violet scope"),
+                "The dedicated marker identifies Cobalt depth.",
                 ["B"],
                 [{"label": "A", "kind": "x"}, {"label": "B", "kind": "check"}],
+                {1},
+                {0},
+                {0},
             ),
             (
-                "screenshot-result-d-correct.png",
+                "final-row-check",
                 "Correct",
                 "Which option best represents the synthetic group?",
                 ("Alpha unit", "Beta unit", "Gamma unit", "Delta collective"),
                 "Delta collective is explicitly marked correct by the row result icon.",
                 ["D"],
                 [{"label": "D", "kind": "check"}],
-            ),
-            (
-                "screenshot-result-a-correct-c-wrong.png",
-                "Incorrect",
-                "Which assessment best identifies the synthetic condition?",
-                ("Behavioral", "Instinctual", "Habitual", "Indicators"),
-                "Behavioral is marked correct; the selected Habitual row is marked wrong.",
-                ["A"],
-                [{"label": "A", "kind": "check"}, {"label": "C", "kind": "x"}],
+                {3},
+                set(),
+                {3},
             ),
         )
-        for filename, banner, question_text, choices, explanation, answers, marker_evidence in cases:
-            with self.subTest(filename=filename):
+        for (
+            case_name,
+            banner,
+            question_text,
+            choices,
+            explanation,
+            answers,
+            marker_evidence,
+            checks,
+            wrongs,
+            selected,
+        ) in cases:
+            with self.subTest(case=case_name):
                 observations_for_source = result_layout_observations(
                     banner, question_text, choices, explanation
                 )
-                image_bytes = (RESULT_FIXTURE_ROOT / filename).read_bytes()
+                image_bytes = result_marker_image(
+                    checks=checks, wrongs=wrongs, selected=selected
+                )
                 markers = ocr_questions.detect_visual_result_markers(
                     image_bytes, observations_for_source
                 )
@@ -353,17 +436,26 @@ class OCRQuestionInferenceTests(unittest.TestCase):
     def test_result_row_artifacts_are_removed_and_x_never_becomes_correct(self):
         source = scaled_result_observations(
             "Incorrect",
-            "Which assessment best identifies an internal risk?",
+            "Which neutral signal matches the rule?",
             (
-                "| O A Behavioral (/)",
-                "O B.Instinctual |",
-                "© C.Habitual (x)",
+                "| O A Quartz pulse (/)",
+                "O B.Cobalt pattern |",
+                "© C.Amber cycle (x)",
                 "O D. IOCs",
             ),
-            "Behavioral evidence is the intended answer in this synthetic example.",
+            "The first neutral row has the dedicated result marker.",
         )
-        fixture = RESULT_FIXTURE_ROOT / "screenshot-result-artifact-cleanup-a-correct-c-wrong.png"
-        markers = ocr_questions.detect_visual_result_markers(fixture.read_bytes(), source)
+        image_bytes = result_marker_image(
+            size=(1120, 840),
+            row_tops=(235, 317, 399, 481),
+            marker_x=1028,
+            marker_y_offset=48,
+            marker_radius=25,
+            checks={0},
+            wrongs={2},
+            selected={2},
+        )
+        markers = ocr_questions.detect_visual_result_markers(image_bytes, source)
         question = ocr_questions.infer_screenshot_questions(
             {"observations": source, "visual_markers": markers},
             source_id="source",
@@ -372,7 +464,7 @@ class OCRQuestionInferenceTests(unittest.TestCase):
 
         self.assertEqual(
             [choice["text"] for choice in question["choices"]],
-            ["Behavioral", "Instinctual", "Habitual", "IOCs"],
+            ["Quartz pulse", "Cobalt pattern", "Amber cycle", "IOCs"],
         )
         self.assertEqual(question["ocr_metadata"]["label_origin"], "source")
         self.assertEqual(question["correct_answers"], ["A"])
@@ -383,10 +475,112 @@ class OCRQuestionInferenceTests(unittest.TestCase):
         )
         self.assertEqual(
             question["explanation"],
-            "Behavioral evidence is the intended answer in this synthetic example.",
+            "The first neutral row has the dedicated result marker.",
         )
         self.assertNotIn("Explanation", [choice["text"] for choice in question["choices"]])
         self.assertTrue(question["correctness_confirmation_required"])
+
+    def test_measured_banner_omission_and_control_confusions_are_recovered(self):
+        cases = (
+            (
+                "omitted-banner-with-paired-markers",
+                "Which synthetic measure is least useful?",
+                (
+                    "@ A Alpha timing x)",
+                    "O B. Beta detail ()",
+                    "| O ©.Gamma accuracy |",
+                    "| © D. Delta relevance |",
+                ),
+                ("Alpha timing", "Beta detail", "Gamma accuracy", "Delta relevance"),
+                ["B"],
+                [{"label": "A", "kind": "x"}, {"label": "B", "kind": "check"}],
+            ),
+            (
+                "copyright-glyph-as-c-label",
+                "Which synthetic group is the example?",
+                (
+                    "O A Alpha unit",
+                    "O B.US. sample unit",
+                    "©. Gamma group",
+                    "© D. Delta collective ()",
+                ),
+                ("Alpha unit", "U.S. sample unit", "Gamma group", "Delta collective"),
+                ["D"],
+                [{"label": "D", "kind": "check"}],
+            ),
+            (
+                "trailing-controls-and-narrow-iocs",
+                "Which synthetic assessment is useful?",
+                (
+                    "O A Alpha behavior (7)",
+                    "| O B.Beta instinct |",
+                    "© C Gamma habit x)",
+                    "| O D.10¢s |",
+                ),
+                ("Alpha behavior", "Beta instinct", "Gamma habit", "IOCs"),
+                ["A"],
+                [{"label": "A", "kind": "check"}, {"label": "C", "kind": "x"}],
+            ),
+        )
+        for filename, question_text, answer_lines, choices, answers, evidence in cases:
+            with self.subTest(case=filename):
+                source = positioned_observations(
+                    [(question_text, 24, 114)]
+                    + [
+                        (answer_line, 24, top)
+                        for answer_line, top in zip(answer_lines, (186, 254, 324, 394))
+                    ]
+                    + [
+                        ("Q Explanation", 41, 472),
+                        ("Synthetic explanation remains separate.", 44, 514),
+                    ],
+                    width=815,
+                    height=642,
+                )
+                checks = {
+                    index
+                    for index, label in enumerate("ABCD")
+                    if {"label": label, "kind": "check"} in evidence
+                }
+                wrongs = {
+                    index
+                    for index, label in enumerate("ABCD")
+                    if {"label": label, "kind": "x"} in evidence
+                }
+                image_bytes = result_marker_image(
+                    size=(815, 642),
+                    row_tops=(166, 234, 304, 374),
+                    marker_x=762,
+                    marker_y_offset=38,
+                    checks=checks,
+                    wrongs=wrongs,
+                    selected=wrongs or checks,
+                )
+                markers = ocr_questions.detect_visual_result_markers(
+                    image_bytes, source
+                )
+                question = ocr_questions.infer_screenshot_questions(
+                    {"observations": source, "visual_markers": markers},
+                    source_id="source",
+                    source_index=1,
+                )["questions"][0]
+
+                self.assertEqual(question["question"], question_text)
+                self.assertEqual(
+                    [choice["text"] for choice in question["choices"]], list(choices)
+                )
+                self.assertEqual(
+                    [choice["label_origin"] for choice in question["choices"]],
+                    ["source"] * 4,
+                )
+                self.assertEqual(question["correct_answers"], answers)
+                self.assertEqual(question["correctness_evidence"], "visual_result_marker")
+                self.assertEqual(question["ocr_metadata"]["visual_result_markers"], evidence)
+                self.assertEqual(
+                    question["explanation"], "Synthetic explanation remains separate."
+                )
+                self.assertTrue(question["correctness_confirmation_required"])
+                self.assertFalse(question["correctness_confirmed"])
 
     def test_control_glyph_noise_is_bounded_to_a_real_following_source_label(self):
         question = self.infer(
@@ -429,6 +623,37 @@ class OCRQuestionInferenceTests(unittest.TestCase):
             "Which option?",
             ("Selected green row", "Second", "Third", "Fourth"),
             "Review the source.",
+        )
+        markers = ocr_questions.detect_visual_result_markers(output.getvalue(), source)
+        question = ocr_questions.infer_screenshot_questions(
+            {"observations": source, "visual_markers": markers},
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+        self.assertEqual(markers, ())
+        self.assertEqual(question["correct_answers"], [])
+        self.assertEqual(question["correctness_evidence"], "unknown")
+
+    def test_bannerless_selected_radio_and_checked_checkbox_stay_unknown(self):
+        image = Image.new("RGB", (900, 690), "#f4f7fb")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((52, 285, 848, 343), fill="#d9f6df")
+        draw.ellipse((72, 303, 92, 323), fill="white", outline="#53657c", width=2)
+        draw.ellipse((77, 308, 87, 318), fill="#315fa8")
+        draw.rectangle((800, 300, 828, 328), fill="white", outline="#16864b", width=3)
+        draw.line((806, 314, 813, 321, 824, 306), fill="#16864b", width=4)
+        output = BytesIO()
+        image.save(output, format="PNG")
+        source = positioned_observations(
+            [
+                ("Which option?", 55, 125),
+                ("O A First", 72, 224),
+                ("O B Selected", 72, 299),
+                ("O C Third", 72, 374),
+                ("O D Fourth", 72, 449),
+                ("Q Explanation", 55, 520),
+                ("Review the source.", 55, 558),
+            ]
         )
         markers = ocr_questions.detect_visual_result_markers(output.getvalue(), source)
         question = ocr_questions.infer_screenshot_questions(

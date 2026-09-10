@@ -9,7 +9,7 @@ import threading
 import unittest
 from unittest import mock
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from tests._isolation import ensure_test_data_isolation
 
@@ -27,6 +27,76 @@ def image_bytes(image_format="PNG", *, size=(640, 480), color="white", animated=
         first.save(output, format=image_format, save_all=True, append_images=[second], duration=100)
     else:
         first.save(output, format=image_format)
+    return output.getvalue()
+
+
+def result_image_bytes(
+    *,
+    size=(900, 690),
+    row_tops=(210, 285, 360, 435),
+    marker_x=816,
+    marker_y_offset=29,
+    marker_radius=18,
+    checks=(),
+    wrongs=(),
+    selected=(),
+):
+    """Create neutral result-row geometry without publishing quiz content."""
+
+    image = Image.new("RGB", size, "#f4f7fb")
+    draw = ImageDraw.Draw(image)
+    for index, top in enumerate(row_tops):
+        draw.rectangle(
+            (52, top, size[0] - 52, top + 58),
+            fill="#eef4ff" if index in selected else "white",
+            outline="#b8b8b8",
+            width=2,
+        )
+        draw.ellipse((72, top + 18, 92, top + 38), fill="white", outline="#53657c", width=2)
+        if index in selected:
+            draw.ellipse((77, top + 23, 87, top + 33), fill="#315fa8")
+        kind = "check" if index in checks else "x" if index in wrongs else None
+        if not kind:
+            continue
+        center_y = top + marker_y_offset
+        fill = "#16864b" if kind == "check" else "#c53030"
+        draw.ellipse(
+            (
+                marker_x - marker_radius,
+                center_y - marker_radius,
+                marker_x + marker_radius,
+                center_y + marker_radius,
+            ),
+            fill=fill,
+        )
+        offset = marker_radius // 2
+        stroke = max(4, marker_radius // 4)
+        if kind == "check":
+            draw.line(
+                (
+                    marker_x - offset,
+                    center_y,
+                    marker_x - marker_radius // 6,
+                    center_y + offset,
+                    marker_x + marker_radius * 2 // 3,
+                    center_y - offset,
+                ),
+                fill="white",
+                width=stroke,
+            )
+        else:
+            draw.line(
+                (marker_x - offset, center_y - offset, marker_x + offset, center_y + offset),
+                fill="white",
+                width=stroke,
+            )
+            draw.line(
+                (marker_x + offset, center_y - offset, marker_x - offset, center_y + offset),
+                fill="white",
+                width=stroke,
+            )
+    output = BytesIO()
+    image.save(output, format="PNG")
     return output.getvalue()
 
 
@@ -59,13 +129,13 @@ def ocr_observations(source_id, source_index, lines):
 def reviewed_result_observations(source_id, source_index):
     lines = [
         ("Incorrect", 68, 44),
-        ("Which quality is most useful for this synthetic example?", 55, 125),
-        ("@ A. Timeliness", 72, 224),
-        ("O B. Detail", 72, 299),
-        ("© C. Accuracy", 72, 374),
-        ("O D. Relevance", 72, 449),
+        ("Which neutral sample matches the rule?", 55, 125),
+        ("@ A. Quartz pulse", 72, 224),
+        ("O B. Cobalt depth", 72, 299),
+        ("© C. Amber precision", 72, 374),
+        ("O D. Violet scope", 72, 449),
         ("O Explanation", 55, 520),
-        ("Detail is the answer identified by the result feedback.", 55, 558),
+        ("The dedicated marker identifies Cobalt depth.", 55, 558),
     ]
     output = []
     for line_number, (line, left, top) in enumerate(lines, 1):
@@ -98,14 +168,14 @@ def reviewed_result_observations(source_id, source_index):
 def noisy_reviewed_result_observations(source_id, source_index):
     lines = [
         ("Incorrect", 72, 47),
-        ("Which assessment best identifies an internal risk?", 58, 132),
-        ("| O A Behavioral (/)", 73, 245),
-        ("O B.Instinctual |", 73, 327),
-        ("© C.Habitual (x)", 73, 409),
+        ("Which neutral signal matches the rule?", 58, 132),
+        ("| O A Quartz pulse (/)", 73, 245),
+        ("O B.Cobalt pattern |", 73, 327),
+        ("© C.Amber cycle (x)", 73, 409),
         ("O D. IOCs", 73, 491),
         ("O Explanation", 58, 590),
         (
-            "Behavioral evidence is the intended answer in this synthetic example.",
+            "The first neutral row has the dedicated result marker.",
             58,
             632,
         ),
@@ -363,8 +433,14 @@ class OCRScreenshotImportTests(unittest.TestCase):
         self.assertIn("I compared this draft with the source", html)
 
     def test_result_marker_observations_flow_into_review_without_confirming_correctness(self):
-        fixture = Path(__file__).parent / "fixtures" / "ocr" / "screenshot-result-a-wrong-b-correct.png"
-        response = self.upload([(fixture.name, fixture.read_bytes())])
+        response = self.upload(
+            [
+                (
+                    "neutral-result-layout.png",
+                    result_image_bytes(checks={1}, wrongs={0}, selected={0}),
+                )
+            ]
+        )
         draft_id = self.draft_id(response)
         draft = dlms._load_pdf_import_draft(draft_id)
         source = draft["ocr_batch"]["sources"][0]
@@ -389,13 +465,23 @@ class OCRScreenshotImportTests(unittest.TestCase):
         self.assertIn("I compared this draft with the source", html)
 
     def test_noisy_result_rows_flow_through_route_as_clean_source_choices(self):
-        fixture = (
-            Path(__file__).parent
-            / "fixtures"
-            / "ocr"
-            / "screenshot-result-artifact-cleanup-a-correct-c-wrong.png"
+        response = self.upload(
+            [
+                (
+                    "neutral-noisy-result-layout.png",
+                    result_image_bytes(
+                        size=(1120, 840),
+                        row_tops=(235, 317, 399, 481),
+                        marker_x=1028,
+                        marker_y_offset=48,
+                        marker_radius=25,
+                        checks={0},
+                        wrongs={2},
+                        selected={2},
+                    ),
+                )
+            ]
         )
-        response = self.upload([(fixture.name, fixture.read_bytes())])
         draft_id = self.draft_id(response)
         draft = dlms._load_pdf_import_draft(draft_id)
         source = draft["ocr_batch"]["sources"][0]
@@ -412,14 +498,14 @@ class OCRScreenshotImportTests(unittest.TestCase):
         question = dlms._load_pdf_import_draft(draft_id)["questions"][0]
         self.assertEqual(
             [choice["text"] for choice in question["choices"]],
-            ["Behavioral", "Instinctual", "Habitual", "IOCs"],
+            ["Quartz pulse", "Cobalt pattern", "Amber cycle", "IOCs"],
         )
         self.assertEqual(question["ocr_metadata"]["label_origin"], "source")
         self.assertEqual(question["correct_answers"], ["A"])
         self.assertEqual(question["correctness_evidence"], "visual_result_marker")
         self.assertEqual(
             question["explanation"],
-            "Behavioral evidence is the intended answer in this synthetic example.",
+            "The first neutral row has the dedicated result marker.",
         )
         self.assertTrue(question["correctness_confirmation_required"])
         self.assertFalse(question["correctness_confirmed"])
@@ -646,11 +732,8 @@ class OCRScreenshotStagingTests(unittest.TestCase):
             "screenshot-unicode.png",
             "screenshot-low-resolution.png",
             "screenshot-rotated.png",
-            "screenshot-result-a-wrong-b-correct.png",
             "screenshot-result-d-correct.png",
-            "screenshot-result-a-correct-c-wrong.png",
             "screenshot-result-sequence-recovery-d-correct.png",
-            "screenshot-result-artifact-cleanup-a-correct-c-wrong.png",
         }
         self.assertEqual(
             {path.name for path in fixture_root.glob("screenshot-*.png")}, expected

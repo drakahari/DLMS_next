@@ -33,13 +33,17 @@ _EXPLICIT_CHOICE_RE = re.compile(
 )
 _RELAXED_CHOICE_RE = re.compile(
     r"^\s*(?P<control>(?:(?:[@©®Oo0QØ○◯◉●□☐☑()]|\|)\s*){0,2})"
-    r"(?P<label>[A-Z]|8)(?:(?P<separator>[.)\]:-])\s*|\s+)"
+    r"(?P<label>[A-Z]|8|©)(?:(?P<separator>[.)\]:-])\s*|\s+)"
     r"(?P<text>.+?)\s*$",
     re.IGNORECASE,
 )
 _TRAILING_RESULT_GLYPH_RE = re.compile(
-    r"(?:\s+(?:\((?:x|/|v|✓|✔|✕|×)\)|[|])\s*)+$", re.IGNORECASE
+    r"(?:\s+(?:\((?:x|/|v|7|✓|✔|✕|×)?\)|"
+    r"(?:x|/|v|7|✓|✔|✕|×)\)|[|])\s*)+$",
+    re.IGNORECASE,
 )
+_RESULT_US_INITIALISM_RE = re.compile(r"^US\.(?=\s|$)")
+_RESULT_IOCS_CONFUSION_RE = re.compile(r"^1[0O][¢C]s$", re.IGNORECASE)
 _ANSWER_KEY_RE = re.compile(
     r"\bcorrect\s+answers?\s*[:\-]\s*([^\n]+)", re.IGNORECASE
 )
@@ -177,14 +181,17 @@ def _classify_marker_component(
     radius_x = max(1.0, width / 2)
     radius_y = max(1.0, height / 2)
     outer_sectors = set()
+    outside_circle = 0
     for x, y in component:
         offset_x = (x - center_x) / radius_x
         offset_y = (y - center_y) / radius_y
         radius = hypot(offset_x, offset_y)
+        if radius > 1.12:
+            outside_circle += 1
         if 0.62 <= radius <= 1.08:
             angle = (atan2(offset_y, offset_x) + pi) / (2 * pi)
             outer_sectors.add(min(7, int(angle * 8)))
-    if len(outer_sectors) < 6:
+    if len(outer_sectors) < 6 or outside_circle / len(component) > 0.08:
         return None
 
     interior = []
@@ -352,8 +359,9 @@ def detect_visual_result_markers(
     """Find dedicated row-level check/X icons in a reviewed-result screenshot.
 
     Color is used only to locate a compact candidate. A check/X stroke template,
-    an OCR-recognized result banner, far-right placement, and unambiguous row
-    geometry are all required before a marker is returned.
+    far-right placement, unambiguous row geometry, and either an OCR-recognized
+    result banner or a bounded question/answer/explanation result layout are
+    required before a marker is returned.
     """
 
     observations = tuple(observations)
@@ -380,13 +388,24 @@ def detect_visual_result_markers(
             line.top < first_question_top and _RESULT_BANNER_RE.match(line.text)
             for line in segment
         )
-        if not result_banner:
-            continue
         answer_rows = _choice_row_sequence(
             segment, source_width=source_width, result_context=True
         )
         if not answer_rows:
             continue
+        if not result_banner:
+            question_before = any(
+                _looks_like_question(line.text)
+                and line.top < answer_rows[0].line.top
+                for line in segment
+            )
+            explanation_after = any(
+                _explanation_heading(line.text)
+                and line.top > answer_rows[-1].line.top
+                for line in segment
+            )
+            if not (question_before and explanation_after):
+                continue
         answer_centers = [row.line.top + row.line.height / 2 for row in answer_rows]
         for row_index, row in enumerate(answer_rows):
             row_center = answer_centers[row_index]
@@ -564,6 +583,8 @@ def _choice_row_candidate(line: OCRLine, *, result_context: bool) -> OCRChoiceRo
         )
         if trailing_result_glyph:
             text = _TRAILING_RESULT_GLYPH_RE.sub("", text).strip()
+        if result_context:
+            text = _normalize_result_choice_text(text)
         return OCRChoiceRow(
             line=line,
             raw_label=strict_match.group(1),
@@ -584,6 +605,7 @@ def _choice_row_candidate(line: OCRLine, *, result_context: bool) -> OCRChoiceRo
     )
     if trailing_result_glyph:
         text = _TRAILING_RESULT_GLYPH_RE.sub("", text).strip()
+    text = _normalize_result_choice_text(text)
     return OCRChoiceRow(
         line=line,
         raw_label=relaxed_match.group("label"),
@@ -600,6 +622,8 @@ def _labels_are_contiguous(rows: list[OCRChoiceRow]) -> bool:
         observed = row.raw_label.upper()
         if observed == "8" and expected == "B":
             continue
+        if observed == "©" and expected == "C":
+            continue
         if observed != expected:
             return False
     return True
@@ -610,7 +634,11 @@ def _row_has_expected_label(row: OCRChoiceRow, index: int) -> bool:
         return False
     observed = row.raw_label.upper()
     expected = OCR_LABELS[index]
-    return observed == expected or (observed == "8" and expected == "B")
+    return (
+        observed == expected
+        or (observed == "8" and expected == "B")
+        or (observed == "©" and expected == "C")
+    )
 
 
 def _choice_row_sequence(
@@ -694,9 +722,20 @@ def _source_label(raw_label: str, expected: str) -> tuple[str, str | None]:
         return label, None
     if label == "8" and expected == "B":
         return expected, "OCR may have read source label B as 8."
+    if label == "©" and expected == "C":
+        return expected, "OCR may have read source label C as ©."
     if label.isdigit():
         return expected, f"Numeric or ambiguous source label {label} was normalized by position."
     return expected, f"Source label {label} was normalized to positional label {expected}."
+
+
+def _normalize_result_choice_text(text: str) -> str:
+    """Repair narrowly measured OCR confusions in reviewed-result answer rows."""
+
+    text = _RESULT_US_INITIALISM_RE.sub("U.S.", text)
+    if _RESULT_IOCS_CONFUSION_RE.fullmatch(text):
+        return "IOCs"
+    return text
 
 
 def _infer_one_question(
@@ -709,6 +748,7 @@ def _infer_one_question(
 ) -> dict[str, Any] | None:
     if not lines:
         return None
+    visual_markers = tuple(visual_markers)
     issues: list[str] = []
     unassigned: list[str] = []
     content_lines: list[OCRLine] = []
@@ -763,6 +803,7 @@ def _infer_one_question(
         else:
             unassigned.append(content_lines.pop(0).text)
 
+    result_context = bool(result_banner or visual_markers)
     key_texts: list[str] = []
     explanation_lines: list[str] = []
     choice_feedback: dict[str, str] = {}
@@ -794,7 +835,7 @@ def _infer_one_question(
             explanation_lines.append(line.text)
         else:
             body_lines.append(line)
-            if _choice_row_candidate(line, result_context=bool(result_banner)):
+            if _choice_row_candidate(line, result_context=result_context):
                 explicit_rows_seen += 1
             elif question_seen:
                 post_question_unlabelled_lines += 1
@@ -804,7 +845,7 @@ def _infer_one_question(
     choice_rows = _choice_row_sequence(
         body_lines,
         source_width=source_width,
-        result_context=bool(result_banner),
+        result_context=result_context,
     )
     explicit = [(row.line, row.raw_label, row.text) for row in choice_rows]
 
@@ -885,7 +926,7 @@ def _infer_one_question(
         issues.append("The detected answer key referenced a label outside the detected choices.")
 
     detected_markers = []
-    if result_banner and explicit:
+    if result_context and explicit:
         for index, (line, _raw_label, _text) in enumerate(explicit):
             row_markers = [
                 marker

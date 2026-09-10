@@ -81,16 +81,6 @@ def render(filename, *, banner, question, choices, selected, checks, wrongs, exp
 
 
 render(
-    "screenshot-result-a-wrong-b-correct.png",
-    banner="Incorrect",
-    question="Which quality is most useful for this synthetic example?",
-    choices=("Timeliness", "Detail", "Accuracy", "Relevance"),
-    selected={0},
-    checks={1},
-    wrongs={0},
-    explanation="Detail is the answer identified by the result feedback.\nThe selected first row is intentionally wrong.",
-)
-render(
     "screenshot-result-d-correct.png",
     banner="Correct",
     question="Which option best represents the synthetic group?",
@@ -100,18 +90,6 @@ render(
     wrongs=set(),
     explanation="Delta collective is explicitly marked correct by the row result icon.",
 )
-render(
-    "screenshot-result-a-correct-c-wrong.png",
-    banner="Incorrect",
-    question="Which assessment best identifies the synthetic condition?",
-    choices=("Behavioral", "Instinctual", "Habitual", "Indicators"),
-    selected={2},
-    checks={0},
-    wrongs={2},
-    explanation="Behavioral is marked correct; the selected Habitual row is marked wrong.",
-)
-
-
 def render_scaled_result(
     filename, *, banner, question, choices, selected, checks, wrongs, explanation
 ):
@@ -240,14 +218,4 @@ render_scaled_result(
     checks={3},
     wrongs=set(),
     explanation="The dedicated result marker identifies Delta advocates.",
-)
-render_scaled_result(
-    "screenshot-result-artifact-cleanup-a-correct-c-wrong.png",
-    banner="Incorrect",
-    question="Which assessment best identifies an internal risk?",
-    choices=("Behavioral", "Instinctual", "Habitual", "Indicators"),
-    selected={2},
-    checks={0},
-    wrongs={2},
-    explanation="Behavioral evidence is the intended answer in this synthetic example.",
 )
