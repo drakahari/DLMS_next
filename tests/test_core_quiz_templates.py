@@ -123,7 +123,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
 
         self.assertEqual(413, status)
         self.assertIn("Upload is too large", body)
-        self.assertIn("Smart PDF Import accepts PDF files up to 64 MB", body)
+        self.assertIn("PDF &amp; Image Import accepts PDF files up to 64 MB", body)
         self.assertIn('href="javascript:history.back()"', body)
         self.assertIn('href="/"', body)
 

@@ -4825,7 +4825,7 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "nav:document.querySelector('[data-nav-key=build]').getAttribute('aria-current')};})()"
     )
     assert pdf_landing == {
-        "title": "Smart PDF Import - DLMS",
+        "title": "PDF & Image Import - DLMS",
         "method": "post",
         "enctype": "multipart/form-data",
         "file": True,
@@ -5218,6 +5218,26 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
 
     surfaces = {}
     review_url = browser.evaluate("location.href")
+    contrast_helpers = (
+        "const parse=value=>{value=value.trim();if(value.startsWith('#')){let h=value.slice(1);"
+        "if(h.length===3)h=[...h].map(c=>c+c).join('');return [parseInt(h.slice(0,2),16)/255,"
+        "parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255,1];}"
+        "const m=value.match(/^rgba?\\(([^)]+)\\)$/);if(m){const p=m[1].split(/[, ]+/).filter(Boolean).map(Number);"
+        "return [p[0]/255,p[1]/255,p[2]/255,p.length>3?p[3]:1];}"
+        "const s=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);"
+        "if(s)return [+s[1],+s[2],+s[3],s[4]===undefined?1:+s[4]];throw new Error(value);};"
+        "const mix=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));"
+        "const base=parse(getComputedStyle(document.documentElement).getPropertyValue('--theme-body-base')).slice(0,3);"
+        "const effective=node=>{const layers=[];for(let item=node;item;item=item.parentElement)"
+        "layers.push(parse(getComputedStyle(item).backgroundColor));"
+        "return layers.reverse().reduce((bg,layer)=>mix(layer,bg),base);};"
+        "const lum=rgb=>rgb.map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4))"
+        ".reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);"
+        "const measure=node=>{const background=effective(node);"
+        "const foreground=mix(parse(getComputedStyle(node).color),background);"
+        "return {color:getComputedStyle(node).color,background:getComputedStyle(node).backgroundColor,"
+        "contrast:(Math.max(lum(foreground),lum(background))+.05)/(Math.min(lum(foreground),lum(background))+.05)};};"
+    )
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
@@ -5226,25 +5246,43 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
         )
         assert status == 200
+        browser.navigate(f"{base_url}/pdf-import")
+        browser.wait_for("document.querySelector('.pdf-ocr-guidance span')")
+        landing_state = browser.evaluate(
+            "(() => {" + contrast_helpers
+            + "return {title:document.title,instruction:measure(document.querySelector('.pdf-ocr-guidance span')) ,"
+            "rights:measure(document.querySelector('.pdf-import-rights span')) ,"
+            "status:measure(document.querySelector('.pdf-ocr-local-note')) ,"
+            "eyebrow:getComputedStyle(document.querySelector('.build-eyebrow')).color};})()"
+        )
+        assert landing_state["title"] == "PDF & Image Import - DLMS"
+        for role in ("instruction", "rights", "status"):
+            assert landing_state[role]["contrast"] >= 4.5, (
+                theme, role, landing_state[role]
+            )
+        if theme in {"purple-gold", "maroon-gold"}:
+            assert landing_state["instruction"]["color"] != landing_state["eyebrow"]
+
         browser.navigate(review_url)
         browser.wait_for("document.querySelector('.pdf-ocr-review-source')")
         theme_state = browser.evaluate(
-            "(() => {const source=document.querySelector('.pdf-ocr-review-source');"
+            "(() => {" + contrast_helpers
+            + "const source=document.querySelector('.pdf-ocr-review-source');"
             "const field=source.querySelector('.pdf-ocr-confidence-list span');"
             "const button=document.querySelector('[data-pdf-action=choice-add]');"
-            "const parse=value=>{value=value.trim();if(value.startsWith('#')){let h=value.slice(1);if(h.length===3)h=[...h].map(c=>c+c).join('');return [parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255,1];}const m=value.match(/^rgba?\\(([^)]+)\\)$/);if(m){const p=m[1].split(/[, ]+/).filter(Boolean).map(Number);return [p[0]/255,p[1]/255,p[2]/255,p.length>3?p[3]:1];}"
-            "const s=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);if(s)return [+s[1],+s[2],+s[3],s[4]===undefined?1:+s[4]];throw new Error(value);};"
-            "const mix=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));"
-            "const base=parse(getComputedStyle(document.documentElement).getPropertyValue('--theme-body-base')).slice(0,3);"
-            "const layers=[];for(let node=field;node;node=node.parentElement)layers.push(parse(getComputedStyle(node).backgroundColor));"
-            "const background=layers.reverse().reduce((bg,layer)=>mix(layer,bg),base);"
-            "const foreground=mix(parse(getComputedStyle(field).color),background);"
-            "const lum=rgb=>rgb.map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4)).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);"
-            "const ratio=(Math.max(lum(foreground),lum(background))+.05)/(Math.min(lum(foreground),lum(background))+.05);"
-            "return {source:getComputedStyle(source).backgroundColor,field:getComputedStyle(field).backgroundColor,"
-            "contrast:ratio,focusable:button.tabIndex===0&&!button.disabled,overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+            "return {source:getComputedStyle(source).backgroundColor,field:measure(field),"
+            "provenance:measure(document.querySelector('.pdf-import-source-note')) ,"
+            "confirmation:measure(document.querySelector('.pdf-correctness-confirmation span')) ,"
+            "control:measure(button),eyebrow:getComputedStyle(document.querySelector('.build-eyebrow')).color,"
+            "focusable:button.tabIndex===0&&!button.disabled,"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
         )
-        assert theme_state["contrast"] >= 4.5, (theme, theme_state)
+        for role in ("field", "provenance", "confirmation", "control"):
+            assert theme_state[role]["contrast"] >= 4.5, (
+                theme, role, theme_state[role]
+            )
+        if theme in {"purple-gold", "maroon-gold"}:
+            assert theme_state["confirmation"]["color"] != theme_state["eyebrow"]
         assert theme_state["focusable"] is True
         assert theme_state["overflow"] is True
         surfaces[theme] = theme_state["source"]

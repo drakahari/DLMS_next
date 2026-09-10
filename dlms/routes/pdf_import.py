@@ -570,7 +570,7 @@ def pdf_import_analyze(dependencies):
         flash("Choose a PDF to analyze.", "error")
         return redirect("/pdf-import")
     if not str(upload.filename).lower().endswith(".pdf"):
-        flash("Smart PDF Import currently accepts PDF files only.", "error")
+        flash("PDF & Image Import accepts PDF files for this workflow.", "error")
         return redirect("/pdf-import")
     if not request.form.get("rights_ok"):
         flash(
@@ -582,7 +582,7 @@ def pdf_import_analyze(dependencies):
         request.content_length
         and request.content_length > pdf_import_max_bytes + multipart_overhead_bytes
     ):
-        flash("PDF exceeds the 64 MB Smart PDF Import limit.", "error")
+        flash("PDF exceeds the 64 MB PDF & Image Import limit.", "error")
         return redirect("/pdf-import")
 
     draft_id = secrets.token_urlsafe(12).replace("-", "").replace("_", "")[:20]

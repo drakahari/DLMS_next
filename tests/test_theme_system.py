@@ -930,6 +930,36 @@ class ThemeSystemTests(unittest.TestCase):
                     ratio, 4.5, f"{scheme} exclusion text contrast is only {ratio:.2f}:1",
                 )
 
+        readability_start = css.index("/* Long-form import warnings and provenance")
+        readability_end = css.index(".build-option-card-pdf", readability_start)
+        readability_rules = css[readability_start:readability_end]
+        for selector in (
+            ".pdf-import-page .pdf-import-source-note",
+            ".pdf-import-page .pdf-import-issues",
+            ".pdf-import-page .pdf-correctness-confirmation",
+            ".pdf-import-page .semantic-warning-surface",
+            ".pdf-import-page .pdf-ocr-source-list li small",
+            ".pdf-import-page .pdf-ocr-unassigned",
+            ".pdf-import-page .pdf-ocr-failure-list",
+        ):
+            with self.subTest(readable_import_copy=selector):
+                self.assertIn(selector, readability_rules)
+        self.assertIn(
+            "color:var(--theme-page-text,#eaf2ff)!important",
+            readability_rules,
+        )
+
+        secondary_buttons = self._rule_blocks(
+            css,
+            ".pdf-import-page button.build-secondary-link:not(.pdf-review-danger-action)",
+        )
+        self.assertTrue(any(
+            "--semantic-secondary-control-text" in block
+            and "--semantic-secondary-control-surface" in block
+            and "--semantic-secondary-control-border" in block
+            for block in secondary_buttons
+        ))
+
     def test_pack_validation_readability_rules_use_semantic_tokens(self):
         css = self._style_css()
         expected = {

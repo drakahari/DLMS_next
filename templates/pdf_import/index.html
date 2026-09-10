@@ -1,8 +1,8 @@
 
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Smart PDF Import - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
+<title>PDF &amp; Image Import - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico">
 <style>
-/* Smart PDF page-local containment. Keeps long text, form controls, and grids inside panels. */
+/* PDF and image import page-local containment. Keeps long text, form controls, and grids inside panels. */
 .pdf-import-page *,
 .pdf-import-page *::before,
 .pdf-import-page *::after { box-sizing: border-box; }
@@ -175,7 +175,7 @@
 <div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
 <nav class="dashboard-nav"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item active" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a><a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav>
 <div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a><a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a><a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a></nav>
-<div class="dashboard-sidebar-version">Smart PDF Import</div></aside>
+<div class="dashboard-sidebar-version">PDF &amp; Image Import</div></aside>
 <main class="dashboard-main pdf-import-main">
 {% with messages = get_flashed_messages(with_categories=true) %}
 {% if messages %}
@@ -186,7 +186,7 @@
 </div>
 {% endif %}
 {% endwith %}
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">SMART PDF IMPORT</div><h1>Import Study Content from PDF</h1><p>DLMS can recognize structured question banks or glossary/terminology material, parse the full source, and let you review it before generating manageable quizzes.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="build-eyebrow">PDF &amp; IMAGE IMPORT</div><h1>PDF &amp; Image Import</h1><p>Import structured PDF question banks or terminology sources, or create reviewable quiz drafts from screenshots.</p></div></header>
 <section class="dashboard-panel pdf-import-intro"><div><span class="build-method-label">SAFE ADDITIVE WORKFLOW</span><h2>Your existing parsers are untouched</h2><p>This is a separate importer. The original text upload, paste parser, CSV matching importer, manual builder, and image builder continue to work exactly as before.</p></div>
 <div class="pdf-import-badges"><span>Question banks</span><span>Glossary / terminology</span><span>Automatic detection</span><span>Cross-page content</span><span>Inline repair</span></div></section>
 <section class="dashboard-panel">
@@ -210,7 +210,7 @@
 </form>
 {% if not ocr_available %}<div class="semantic-warning-surface pdf-ocr-unavailable" role="status">Screenshot and scanned-page OCR are unavailable in this runtime. Normal selectable-text PDF import remains fully available.{% if ocr_unavailable_guidance %} {{ ocr_unavailable_guidance }}{% endif %}</div>{% endif %}
 </section>
-<section class="dashboard-panel pdf-import-note"><strong>Current Smart PDF scope</strong><p>DLMS handles selectable-text PDF question banks and glossary/terminology layouts, screenshot OCR, and optional OCR of explicitly selected low-text question-bank PDF pages. OCR runs locally and never trusts selected or highlighted answers as proof of correctness. It supports 2–26 choices and multiple correct answers, and every OCR draft requires Review &amp; Repair. Temporary source previews are removed after save, cancellation, or expiration. Glossary OCR and arbitrary textbook/chapter interpretation are not enabled.</p></section>
+<section class="dashboard-panel pdf-import-note"><strong>Current import scope</strong><p>DLMS handles selectable-text PDF question banks and glossary/terminology layouts, screenshot OCR, and optional OCR of explicitly selected low-text question-bank PDF pages. OCR runs locally and never trusts selected or highlighted answers as proof of correctness. It supports 2–26 choices and multiple correct answers, and every OCR draft requires Review &amp; Repair. Temporary source previews are removed after save, cancellation, or expiration. Glossary OCR and arbitrary textbook/chapter interpretation are not enabled.</p></section>
 {% if banks or term_banks %}
 <div class="pdf-bank-toolbar">
 <div><strong>Saved PDF source banks</strong><span>Collapse large collections or enable management controls when you need them.</span></div>

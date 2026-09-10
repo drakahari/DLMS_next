@@ -176,7 +176,7 @@
     primary.innerHTML = [
       item('dashboard','/','⌂','Dashboard'),
       item('library','/library','▤','Quiz Library'),
-      `<div class="dashboard-nav-group">${item('build','/upload','✎','Build Quiz')}${buildOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/upload','↳','Quiz Builder', path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import')}${sub('/pdf-import','↳','PDF Import & Banks', path.startsWith('/pdf-import'))}</div>` : ''}</div>`,
+      `<div class="dashboard-nav-group">${item('build','/upload','✎','Build Quiz')}${buildOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/upload','↳','Quiz Builder', path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import')}${sub('/pdf-import','↳','PDF & Image Import', path.startsWith('/pdf-import'))}</div>` : ''}</div>`,
       primarySection('Study'),
       item('study','/study-packs','▣','Study Packs'),
       // IT and Medical landing pages already present their genuinely distinct

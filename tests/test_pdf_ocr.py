@@ -262,7 +262,7 @@ class SelectivePDFOCRRouteTests(unittest.TestCase):
             body = self.client.get(response.headers["Location"]).get_data(as_text=True)
         self.assertIn("OCR unavailable", body)
         self.assertIn("selectable text only", body)
-        self.assertIn("Smart PDF and glossary import remain available", body)
+        self.assertIn("PDF and terminology import", body)
         self.assertIn("DLMS_TESSERACT_EXECUTABLE", body)
         self.assertNotIn("/usr/", body)
 

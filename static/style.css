@@ -9666,6 +9666,23 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .pdf-ocr-batch-summary { margin-top:12px; }
 .pdf-ocr-failure-list { margin-top:10px; }
 .pdf-ocr-failure-list li { margin:5px 0;color:var(--theme-page-text,#eaf2ff); }
+
+/* Long-form import warnings and provenance need body-text contrast. Keep the
+   gold treatment on their borders/surfaces and on compact status accents. */
+.pdf-import-page .pdf-import-source-note,
+.pdf-import-page .pdf-import-issues,
+.pdf-import-page .pdf-correctness-confirmation,
+.pdf-import-page .semantic-warning-surface,
+.pdf-import-page .pdf-ocr-source-list li small,
+.pdf-import-page .pdf-ocr-unassigned,
+.pdf-import-page .pdf-ocr-failure-list {
+    color:var(--theme-page-text,#eaf2ff)!important;
+}
+.pdf-import-page button.build-secondary-link:not(.pdf-review-danger-action) {
+    color:var(--semantic-secondary-control-text)!important;
+    background:var(--semantic-secondary-control-surface)!important;
+    border-color:var(--semantic-secondary-control-border)!important;
+}
 .build-option-card-pdf .build-option-icon { font-size:12px; font-weight:900; letter-spacing:.04em; }
 
 @media (max-width:900px) {

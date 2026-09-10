@@ -176,7 +176,7 @@ class PdfResourceLimitTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"pypdf": None}):
             with self.assertRaisesRegex(
                 RuntimeError,
-                "Smart PDF Import requires the 'pypdf' package",
+                "PDF & Image Import requires the 'pypdf' package",
             ) as raised:
                 dlms._pdf_extract_pages("unused.pdf")
 

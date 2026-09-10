@@ -15,7 +15,7 @@
 <figure class="help-shot"><a href="/static/help_assets/settings-backup_restore.webp" target="_blank" rel="noopener"><img src="/static/help_assets/settings-backup_restore.webp" alt="Backup and Restore settings with portable backup, recent backups, and validated restore controls" width="1161" height="1032" loading="lazy"></a><figcaption>Backup &amp; Restore keeps portable backup and restore controls together.</figcaption></figure>
 
 <h3>Portable Backup</h3>
-<p><strong>Create &amp; Download Backup</strong> creates a portable ZIP snapshot and downloads it. The snapshot includes persistent quizzes and generated runtime data, the database and attempt history, settings, installed Study/Content Packs, quiz assets and persistent logos, Smart PDF source banks, PDF and image-builder drafts, Law Study content, and saved backgrounds.</p>
+<p><strong>Create &amp; Download Backup</strong> creates a portable ZIP snapshot and downloads it. The snapshot includes persistent quizzes and generated runtime data, the database and attempt history, settings, installed Study/Content Packs, quiz assets and persistent logos, PDF &amp; Image Import source banks, PDF and image-builder drafts, Law Study content, and saved backgrounds.</p>
 <p>The Quiz Library’s <strong>Download Quiz Library Reference (TXT)</strong> action serves a different purpose: it creates a human-readable reference, not a restorable or importable library package. Use <strong>Export</strong> on an individual quiz for an import-friendly classic MCQ text file. Use this portable backup for migration to another DLMS installation or a full restore.</p>
 <p>Temporary uploads, Content Pack staging, temporary logo previews, restore-operation files, database sidecars, and older backup ZIPs are excluded. This keeps the portable ZIP focused on persistent DLMS data instead of temporary work or copies of earlier backups.</p>
 
@@ -39,21 +39,21 @@
 
 <h3>Reset Quiz Library &amp; Results</h3>
 <p>This removes quiz database records, questions and choices, concept and learning-event records tied to those questions, attempts and missed-question history, the Quiz Library registry, generated quiz JSON/HTML, quiz asset buckets, and quiz logos.</p>
-<p>It preserves reusable source content and configuration: installed Study/Content Packs, Smart PDF question and terminology banks, PDF and image-builder drafts, Law Study content, application settings and backgrounds, and existing backup archives.</p>
+<p>It preserves reusable source content and configuration: installed Study/Content Packs, PDF &amp; Image Import question and terminology banks, PDF and image-builder drafts, Law Study content, application settings and backgrounds, and existing backup archives.</p>
 
 <h3>Clear Imported / Source Content</h3>
-<p>This clears reusable import material without deleting quizzes that have already been generated. It removes non-protected installed Content Packs, Smart PDF source banks, PDF and image-builder drafts, temporary uploads, and import/staging content. Packs marked as protected are preserved.</p>
+<p>This clears reusable import material without deleting quizzes that have already been generated. It removes non-protected installed Content Packs, PDF &amp; Image Import source banks, PDF and image-builder drafts, temporary uploads, and import/staging content. Packs marked as protected are preserved.</p>
 <p>Before a removable Content Pack is deleted, DLMS snapshots dependencies needed by existing generated quizzes into quiz-owned storage. That protection is intended to keep those quizzes independent of the removed source pack; it does not preserve the reusable pack or source bank itself.</p>
 
 <h3>Reset Application Settings</h3>
-<p>This returns appearance—including custom backgrounds—parsing options, AI integration, navigation visibility, and other portal settings to current DLMS defaults. It does not delete quizzes, result history, Study/Content Packs, Smart PDF banks, Law Study content, or backup archives.</p>
+<p>This returns appearance—including custom backgrounds—parsing options, AI integration, navigation visibility, and other portal settings to current DLMS defaults. It does not delete quizzes, result history, Study/Content Packs, PDF &amp; Image Import banks, Law Study content, or backup archives.</p>
 
 <h3>Reset DLMS to Fresh State</h3>
-<p>This broad reset removes essentially all active user/runtime data: quizzes and generated files, questions and database records, history, Study/Content Packs, Smart PDF banks, Law Study content, drafts and assets, and application settings. DLMS then recreates the empty/default folders, database, and configuration needed to continue running.</p>
+<p>This broad reset removes essentially all active user/runtime data: quizzes and generated files, questions and database records, history, Study/Content Packs, PDF &amp; Image Import banks, Law Study content, drafts and assets, and application settings. DLMS then recreates the empty/default folders, database, and configuration needed to continue running.</p>
 <p>Existing backup ZIPs in the DLMS backup folder are deliberately preserved, including the safety backup created for this reset. The executable or source installation is not removed.</p>
 
 <h3>Remove DLMS Data from This Computer</h3>
-<p>This is the most destructive option. After the exact phrase <strong>REMOVE DLMS DATA</strong> is typed and the final confirmation is accepted, DLMS deletes its verified writable application-data directory and shuts down. Quizzes, history, settings, Study/Content Packs, Smart PDF banks, Law Study content, drafts, assets, caches, and every backup stored inside that directory may all be removed.</p>
+<p>This is the most destructive option. After the exact phrase <strong>REMOVE DLMS DATA</strong> is typed and the final confirmation is accepted, DLMS deletes its verified writable application-data directory and shuts down. Quizzes, history, settings, Study/Content Packs, PDF &amp; Image Import banks, Law Study content, drafts, assets, caches, and every backup stored inside that directory may all be removed.</p>
 <div class="help-callout danger"><strong>Copy backups out first:</strong> this action does not create an automatic recovery backup. Download or copy every backup you want to keep somewhere outside the DLMS data directory before continuing. The DLMS executable or source installation itself is not removed; launching it again creates a new empty data directory.</div>
 </section>
 

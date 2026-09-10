@@ -82,6 +82,8 @@ class HelpDocumentationTests(unittest.TestCase):
                 self.assertIn("/static/help-navigation.js", page)
 
         toc = self._static("help-navigation.js")
+        self.assertIn("PDF & Image Import", toc)
+        self.assertNotIn("'Smart PDF'", toc)
         self.assertIn("Learning Intelligence", toc)
         self.assertIn("Anki & Printable Cards", toc)
         self.assertIn("System Tools & Data Management", toc)
@@ -145,6 +147,17 @@ class HelpDocumentationTests(unittest.TestCase):
         maintenance = self._static("help-maintenance.html")
         self.assertIn("System Tools", maintenance)
         self.assertIn("portable backup", maintenance)
+
+    def test_pdf_and_image_import_is_the_user_facing_help_name(self):
+        visible_help_files = glob.glob(os.path.join(dlms.STATIC_ROOT, "*.html"))
+        for path in visible_help_files:
+            with self.subTest(path=os.path.basename(path)):
+                page = self._static(os.path.basename(path))
+                self.assertNotIn("Smart PDF", page)
+
+        topic = self._static("help-smart-pdf.html")
+        self.assertIn("PDF &amp; Image Import", topic)
+        self.assertIn('href="/help/smart-pdf"', topic)
 
     def test_data_safety_and_reset_help_matches_current_user_facing_contract(self):
         maintenance = self._static("help-maintenance.html")

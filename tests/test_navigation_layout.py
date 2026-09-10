@@ -181,6 +181,15 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("item('image','/admin/image-editor','◎','Image Study Editor')", source)
         self.assertNotIn("item('maintenance','/admin/maintenance'", source)
 
+    def test_pdf_and_image_import_navigation_label_keeps_the_existing_route(self):
+        source = self._static("nav-normalize.js")
+
+        self.assertIn(
+            "sub('/pdf-import','↳','PDF & Image Import', path.startsWith('/pdf-import'))",
+            source,
+        )
+        self.assertNotIn("PDF Import & Banks", source)
+
     def test_sidebar_scanability_keeps_ordered_destinations_and_marks_nested_context(self):
         source = self._static("nav-normalize.js")
         css = self._static("style.css")

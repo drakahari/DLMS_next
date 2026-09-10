@@ -7,7 +7,7 @@
 
 <div class="settings-detail-card">
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">⇩</div><div><h2>Portable Backup</h2><p>Create one ZIP snapshot containing your persistent DLMS data.</p></div></div>
-<div class="settings-image-guidance"><strong>Included:</strong> quizzes and runtime JSON, database/history, settings, Study/Content Packs, quiz assets, Smart PDF source banks, drafts, Law Study content, backgrounds, and persistent logos.<br><strong>Excluded:</strong> temporary uploads, Content Pack staging files, temporary logo previews, and older backup archives.</div>
+<div class="settings-image-guidance"><strong>Included:</strong> quizzes and runtime JSON, database/history, settings, Study/Content Packs, quiz assets, PDF &amp; Image Import source banks, drafts, Law Study content, backgrounds, and persistent logos.<br><strong>Excluded:</strong> temporary uploads, Content Pack staging files, temporary logo previews, and older backup archives.</div>
 <form method="POST" action="/settings/backup/create"><div class="settings-form-actions"><button type="submit" class="settings-primary-button">⇩ Create &amp; Download Backup</button></div></form>
 {% if recent_backups %}<div class="settings-current-value"><strong>Recent safety backups kept on this device:</strong><ul>{% for item in recent_backups %}<li>{{ item.name }} — {{ item.size }} — {{ item.modified }}</li>{% endfor %}</ul></div>{% endif %}
 </section>

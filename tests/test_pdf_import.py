@@ -11,6 +11,23 @@ from dlms.routes import pdf_import as pdf_import_routes
 from tests.csrf_test_utils import csrf_token
 
 class PDFImportParserTests(unittest.TestCase):
+    def test_landing_and_review_use_pdf_and_image_import_display_name(self):
+        landing = dlms.app.test_client().get("/pdf-import").get_data(as_text=True)
+
+        self.assertIn("<title>PDF &amp; Image Import - DLMS</title>", landing)
+        self.assertIn('<div class="build-eyebrow">PDF &amp; IMAGE IMPORT</div>', landing)
+        self.assertIn("<h1>PDF &amp; Image Import</h1>", landing)
+        self.assertNotIn("Smart PDF", landing)
+
+        review_template = (
+            Path(dlms.__file__).resolve().parent
+            / "templates"
+            / "pdf_import"
+            / "review-question-bank.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("PDF &amp; IMAGE IMPORT · REVIEW", review_template)
+        self.assertIn('action="/pdf-import/save/{{ draft.id }}"', review_template)
+
     def test_empty_pages_preserve_exact_parser_and_detection_shapes(self):
         pages = [{"page": 1, "lines": []}, {"page": 2, "lines": []}]
 

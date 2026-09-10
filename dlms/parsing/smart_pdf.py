@@ -70,7 +70,7 @@ def _pdf_extract_pages(
         from pypdf import PdfReader
     except Exception as exc:
         raise RuntimeError(
-            "Smart PDF Import requires the 'pypdf' package. Install project requirements and rebuild the binary."
+            "PDF & Image Import requires the 'pypdf' package. Install project requirements and rebuild the binary."
         ) from exc
 
     try:
