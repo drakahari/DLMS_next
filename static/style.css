@@ -13742,6 +13742,44 @@ body:not([class]) > .container > .hero-title {
     overflow-wrap: anywhere;
 }
 
+.content-packs-page .pack-detail-actions > .medical-ai-secondary-button,
+.content-packs-page .pack-detail-actions > .medical-ai-secondary-button:link,
+.content-packs-page .pack-detail-actions > .medical-ai-secondary-button:visited {
+    min-height: 43px;
+    padding: 10px 15px;
+    border: 1px solid var(--semantic-secondary-control-border);
+    border-radius: 9px;
+    color: var(--semantic-secondary-control-text) !important;
+    background: var(--semantic-secondary-control-surface) !important;
+    box-shadow: none;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    transition: background .15s ease, border-color .15s ease, color .15s ease,
+        box-shadow .15s ease, transform .15s ease;
+}
+
+.content-packs-page .pack-detail-actions > .medical-ai-secondary-button:hover,
+.content-packs-page .pack-detail-actions > .medical-ai-secondary-button:focus-visible {
+    color: var(--theme-heading, #fff) !important;
+    background: var(--semantic-secondary-control-hover) !important;
+    border-color: var(--theme-accent, #1b9ff2);
+    box-shadow: 0 6px 16px var(--theme-shadow, rgba(0,0,0,.22));
+    transform: translateY(-1px);
+}
+
+.content-packs-page .pack-detail-actions > .medical-ai-secondary-button:active {
+    color: var(--theme-heading, #fff) !important;
+    background: color-mix(
+        in srgb,
+        var(--theme-accent, #1b9ff2) 18%,
+        var(--semantic-secondary-control-surface)
+    ) !important;
+    border-color: var(--theme-accent, #1b9ff2);
+    box-shadow: inset 0 1px 3px var(--theme-shadow, rgba(0,0,0,.24));
+    transform: translateY(0);
+}
+
 /* ---------- Quiz Library hierarchy ---------- */
 .library-page .library-hero,
 .library-page .library-toolbar,

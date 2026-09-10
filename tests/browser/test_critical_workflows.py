@@ -3244,9 +3244,22 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "const description=hero.querySelector('p');"
             "const meta=document.querySelector('.pack-detail-meta');"
             "const label=meta.querySelector('strong');const value=meta.querySelector('span');"
+            "const back=document.querySelector('.pack-detail-actions .medical-ai-secondary-button');"
+            "const exportAction=document.querySelector('.pack-detail-actions .medical-primary-button');"
+            "const backStyle=getComputedStyle(back);const exportStyle=getComputedStyle(exportAction);"
+            "const resolveBackground = name => {const probe=document.createElement('span');"
+            "probe.style.backgroundColor=`var(${name})`;document.body.appendChild(probe);"
+            "const result=getComputedStyle(probe).backgroundColor;probe.remove();return result};"
             "return {pageText:resolve('--theme-page-text'),muted:resolve('--theme-muted-text'),"
+            "secondaryText:resolve('--semantic-secondary-control-text'),"
+            "secondarySurface:resolveBackground('--semantic-secondary-control-surface'),"
             "description:getComputedStyle(description).color,"
             "label:getComputedStyle(label).color,value:getComputedStyle(value).color,"
+            "backText:back.textContent.trim(),backColor:backStyle.color,"
+            "backBackground:backStyle.backgroundColor,backRadius:backStyle.borderRadius,"
+            "backPadding:backStyle.padding,backMinHeight:backStyle.minHeight,"
+            "backWeight:backStyle.fontWeight,"
+            "actionsDistinct:backStyle.backgroundImage!==exportStyle.backgroundImage,"
             "descriptionWrap:getComputedStyle(description).overflowWrap,"
             "valueWrap:getComputedStyle(value).overflowWrap,"
             "documentContained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,"
@@ -3258,9 +3271,19 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         assert detail == {
             "pageText": detail["pageText"],
             "muted": detail["muted"],
+            "secondaryText": detail["secondaryText"],
+            "secondarySurface": detail["secondarySurface"],
             "description": detail["pageText"],
             "label": detail["muted"],
             "value": detail["pageText"],
+            "backText": "← Back to Content Packs",
+            "backColor": detail["secondaryText"],
+            "backBackground": detail["secondarySurface"],
+            "backRadius": "9px",
+            "backPadding": "10px 15px",
+            "backMinHeight": "43px",
+            "backWeight": "700",
+            "actionsDistinct": True,
             "descriptionWrap": "anywhere",
             "valueWrap": "anywhere",
             "documentContained": True,

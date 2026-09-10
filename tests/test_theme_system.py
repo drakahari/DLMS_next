@@ -1066,6 +1066,40 @@ class ThemeSystemTests(unittest.TestCase):
                         f"{theme} {foreground} on {surface} is only {ratio:.2f}:1",
                     )
 
+    def test_content_pack_back_action_uses_secondary_control_semantics(self):
+        css = self._style_css()
+        selector = (
+            ".content-packs-page .pack-detail-actions > "
+            ".medical-ai-secondary-button"
+        )
+        normal = self._rule_blocks(css, selector)
+        hover = self._rule_blocks(css, f"{selector}:hover")
+        focus = self._rule_blocks(css, f"{selector}:focus-visible")
+        active = self._rule_blocks(css, f"{selector}:active")
+
+        self.assertTrue(any(all(token in block for token in (
+            "--semantic-secondary-control-text",
+            "--semantic-secondary-control-surface",
+            "--semantic-secondary-control-border",
+            "min-height: 43px",
+            "padding: 10px 15px",
+            "border-radius: 9px",
+            "font-weight: 700",
+        )) for block in normal))
+        for state, blocks in (("hover", hover), ("focus", focus)):
+            with self.subTest(state=state):
+                self.assertTrue(any(
+                    "--semantic-secondary-control-hover" in block
+                    and "--theme-accent" in block
+                    for block in blocks
+                ))
+        self.assertTrue(any(
+            "--semantic-secondary-control-surface" in block
+            and "--theme-accent" in block
+            and "transform: translateY(0)" in block
+            for block in active
+        ))
+
     def test_review_small_text_uses_accessible_accent_foreground_token(self):
         css = self._style_css()
         match = re.search(
