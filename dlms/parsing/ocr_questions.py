@@ -8,10 +8,14 @@ confirmation before the Smart PDF workflow can save it as active content.
 
 from __future__ import annotations
 
+from io import BytesIO
 from dataclasses import dataclass
+from math import atan2, hypot, pi
 from statistics import median
 import re
 from typing import Any, Iterable
+
+from PIL import Image, UnidentifiedImageError
 
 
 OCR_QUESTION_MAX_CHOICES = 26
@@ -23,7 +27,9 @@ _QUESTION_MARKER_RE = re.compile(
     r"^\s*(?:question|q)\s*(\d+)\s*[:.)-]?\s*(.*)$", re.IGNORECASE
 )
 _EXPLICIT_CHOICE_RE = re.compile(
-    r"^\s*([A-Z]|\d{1,2})\s*[.)\]:-]\s+(.+?)\s*$", re.IGNORECASE
+    r"^\s*(?:(?:[@©®Oo0QØ○◯◉●□☐☑()]|\|)\s*)?"
+    r"([A-Z]|\d{1,2})\s*[.)\]:-]\s+(.+?)\s*$",
+    re.IGNORECASE,
 )
 _ANSWER_KEY_RE = re.compile(
     r"\bcorrect\s+answers?\s*[:\-]\s*([^\n]+)", re.IGNORECASE
@@ -51,6 +57,10 @@ _OBVIOUS_CHROME_RE = re.compile(
     r"menu|navigation|home)\s*[>»→]?\s*$",
     re.IGNORECASE,
 )
+_RESULT_BANNER_RE = re.compile(r"^\s*(correct|incorrect)\s*[!.]?\s*$", re.IGNORECASE)
+_CONTROL_GLYPH_PREFIX_RE = re.compile(
+    r"^\s*(?:[@©®Oo0QØ○◯◉●□☐☑()]|\|)\s+(.+?)\s*$", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -65,6 +75,315 @@ class OCRLine:
     @property
     def bottom(self) -> int:
         return self.top + self.height
+
+
+def _explanation_heading(text: str):
+    """Match a heading, tolerating one isolated OCR control-glyph token."""
+
+    match = _EXPLANATION_HEADING_RE.match(text)
+    if match:
+        return match
+    noisy = _CONTROL_GLYPH_PREFIX_RE.match(text)
+    return _EXPLANATION_HEADING_RE.match(noisy.group(1)) if noisy else None
+
+
+def _color_distance(first: tuple[int, ...], second: tuple[int, ...]) -> float:
+    return hypot(
+        hypot(int(first[0]) - int(second[0]), int(first[1]) - int(second[1])),
+        int(first[2]) - int(second[2]),
+    )
+
+
+def _point_segment_distance(
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> tuple[float, float]:
+    px, py = point
+    sx, sy = start
+    ex, ey = end
+    dx, dy = ex - sx, ey - sy
+    length_squared = dx * dx + dy * dy
+    if not length_squared:
+        return hypot(px - sx, py - sy), 0.0
+    position = max(0.0, min(1.0, ((px - sx) * dx + (py - sy) * dy) / length_squared))
+    nearest = (sx + position * dx, sy + position * dy)
+    return hypot(px - nearest[0], py - nearest[1]), position
+
+
+def _marker_template_score(
+    points: list[tuple[float, float]],
+    segments: tuple[tuple[tuple[float, float], tuple[float, float]], ...],
+) -> float:
+    if len(points) < 5:
+        return 0.0
+    distances = []
+    coverage = [[False, False, False] for _segment in segments]
+    for point in points:
+        candidates = [_point_segment_distance(point, *segment) for segment in segments]
+        segment_index, (distance, position) = min(
+            enumerate(candidates), key=lambda item: item[1][0]
+        )
+        distances.append(distance)
+        if distance <= 0.14:
+            coverage[segment_index][min(2, int(position * 3))] = True
+    if not all(all(segment_coverage) for segment_coverage in coverage):
+        return 0.0
+    return sum(max(0.0, 1.0 - distance / 0.18) for distance in distances) / len(distances)
+
+
+def _classify_marker_component(
+    image: Image.Image,
+    component: list[tuple[int, int]],
+) -> str | None:
+    left = min(point[0] for point in component)
+    top = min(point[1] for point in component)
+    right = max(point[0] for point in component) + 1
+    bottom = max(point[1] for point in component) + 1
+    width = right - left
+    height = bottom - top
+    if not (12 <= width <= 72 and 12 <= height <= 72 and 0.65 <= width / height <= 1.5):
+        return None
+
+    active = set(component)
+    density = len(active) / (width * height)
+    center_x = left + (width - 1) / 2
+    center_y = top + (height - 1) / 2
+    radius_x = max(1.0, width / 2)
+    radius_y = max(1.0, height / 2)
+    outer_sectors = set()
+    for x, y in component:
+        offset_x = (x - center_x) / radius_x
+        offset_y = (y - center_y) / radius_y
+        radius = hypot(offset_x, offset_y)
+        if 0.62 <= radius <= 1.08:
+            angle = (atan2(offset_y, offset_x) + pi) / (2 * pi)
+            outer_sectors.add(min(7, int(angle * 8)))
+    if len(outer_sectors) < 6:
+        return None
+
+    interior = []
+    if density >= 0.55:
+        fill_pixels = [image.getpixel(point) for point in component]
+        fill = tuple(
+            int(median(pixel[channel] for pixel in fill_pixels)) for channel in range(3)
+        )
+        for y in range(top, bottom):
+            for x in range(left, right):
+                normalized_radius = hypot(
+                    (x - center_x) / radius_x, (y - center_y) / radius_y
+                )
+                if normalized_radius > 0.72:
+                    continue
+                pixel = image.getpixel((x, y))
+                if _color_distance(pixel, fill) >= 75:
+                    interior.append(((x - left) / width, (y - top) / height))
+    else:
+        for x, y in component:
+            normalized_radius = hypot(
+                (x - center_x) / radius_x, (y - center_y) / radius_y
+            )
+            if normalized_radius <= 0.62:
+                interior.append(((x - left) / width, (y - top) / height))
+
+    x_score = _marker_template_score(
+        interior,
+        (((0.23, 0.23), (0.77, 0.77)), ((0.77, 0.23), (0.23, 0.77))),
+    )
+    check_score = _marker_template_score(
+        interior,
+        (((0.18, 0.52), (0.42, 0.75)), ((0.42, 0.75), (0.82, 0.25))),
+    )
+    best = max(x_score, check_score)
+    if best < 0.42 or abs(x_score - check_score) < 0.08:
+        return None
+    return "x" if x_score > check_score else "check"
+
+
+def _marker_components(image: Image.Image, box: tuple[int, int, int, int]):
+    left, top, right, bottom = box
+    if right <= left or bottom <= top:
+        return []
+    background_samples = [
+        image.getpixel((left, top)),
+        image.getpixel((left, bottom - 1)),
+        image.getpixel((right - 1, top)),
+        image.getpixel((right - 1, bottom - 1)),
+    ]
+    background = tuple(
+        int(median(pixel[channel] for pixel in background_samples))
+        for channel in range(3)
+    )
+    active = set()
+    for y in range(top, bottom):
+        for x in range(left, right):
+            pixel = image.getpixel((x, y))
+            chroma = max(pixel) - min(pixel)
+            if _color_distance(pixel, background) >= 65 and (
+                chroma >= 35 or max(pixel) <= 95
+            ):
+                active.add((x, y))
+
+    components = []
+    while active:
+        pending = [active.pop()]
+        component = []
+        while pending:
+            point = pending.pop()
+            component.append(point)
+            x, y = point
+            for neighbour in (
+                (x - 1, y - 1),
+                (x, y - 1),
+                (x + 1, y - 1),
+                (x - 1, y),
+                (x + 1, y),
+                (x - 1, y + 1),
+                (x, y + 1),
+                (x + 1, y + 1),
+            ):
+                if neighbour in active:
+                    active.remove(neighbour)
+                    pending.append(neighbour)
+        if len(component) >= 20:
+            components.append(component)
+    return components
+
+
+def _merge_nested_marker_components(components):
+    """Join an outlined circle and its disconnected interior glyph."""
+
+    remaining = sorted(components, key=len, reverse=True)
+    merged = []
+    while remaining:
+        group = list(remaining.pop(0))
+        left = min(point[0] for point in group)
+        top = min(point[1] for point in group)
+        right = max(point[0] for point in group) + 1
+        bottom = max(point[1] for point in group) + 1
+        retained = []
+        for component in remaining:
+            component_left = min(point[0] for point in component)
+            component_top = min(point[1] for point in component)
+            component_right = max(point[0] for point in component) + 1
+            component_bottom = max(point[1] for point in component) + 1
+            combined = (
+                min(left, component_left),
+                min(top, component_top),
+                max(right, component_right),
+                max(bottom, component_bottom),
+            )
+            center_x = (component_left + component_right) / 2
+            center_y = (component_top + component_bottom) / 2
+            nested = left <= center_x <= right and top <= center_y <= bottom
+            if nested and combined[2] - combined[0] <= 72 and combined[3] - combined[1] <= 72:
+                group.extend(component)
+                left, top, right, bottom = combined
+            else:
+                retained.append(component)
+        remaining = retained
+        merged.append(group)
+    return merged
+
+
+def detect_visual_result_markers(
+    image_bytes: bytes,
+    observations: Iterable[Any],
+) -> tuple[dict[str, Any], ...]:
+    """Find dedicated row-level check/X icons in a reviewed-result screenshot.
+
+    Color is used only to locate a compact candidate. A check/X stroke template,
+    an OCR-recognized result banner, far-right placement, and unambiguous row
+    geometry are all required before a marker is returned.
+    """
+
+    observations = tuple(observations)
+    lines = observations_to_lines(observations)
+    answer_rows = [line for line in lines if _EXPLICIT_CHOICE_RE.match(line.text)]
+    if not answer_rows:
+        return ()
+    first_answer_top = min(line.top for line in answer_rows)
+    first_question_top = min(
+        (line.top for line in lines if _looks_like_question(line.text)),
+        default=first_answer_top,
+    )
+    if not any(
+        line.top < min(first_question_top, first_answer_top)
+        and _RESULT_BANNER_RE.match(line.text)
+        for line in lines
+    ):
+        return ()
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            source.load()
+            image = source.convert("RGB")
+    except (OSError, ValueError, UnidentifiedImageError):
+        return ()
+
+    source_width = int(_field(observations[0], "source_width", image.width))
+    source_height = int(_field(observations[0], "source_height", image.height))
+    if image.size != (source_width, source_height):
+        return ()
+
+    markers = []
+    for row in answer_rows:
+        row_center = row.top + row.height / 2
+        vertical_radius = max(14, min(36, int(row.height * 1.25)))
+        search_left = int(image.width * 0.67)
+        search_box = (
+            min(image.width - 1, search_left),
+            max(0, int(row_center - vertical_radius)),
+            image.width,
+            min(image.height, int(row_center + vertical_radius + 1)),
+        )
+        candidates = []
+        components = _merge_nested_marker_components(_marker_components(image, search_box))
+        for component in components:
+            kind = _classify_marker_component(image, component)
+            if kind is None:
+                continue
+            left = min(point[0] for point in component)
+            top = min(point[1] for point in component)
+            right = max(point[0] for point in component) + 1
+            bottom = max(point[1] for point in component) + 1
+            marker_center = top + (bottom - top) / 2
+            if abs(marker_center - row_center) > max(10, row.height * 0.8):
+                continue
+            candidates.append((kind, left, top, right - left, bottom - top))
+        if len(candidates) != 1:
+            continue
+        kind, left, top, width, height = candidates[0]
+        markers.append(
+            {
+                "kind": kind,
+                "row_left": row.left,
+                "row_top": row.top,
+                "bounding_box": {
+                    "left": left,
+                    "top": top,
+                    "width": width,
+                    "height": height,
+                },
+            }
+        )
+    marker_counts = {}
+    for marker in markers:
+        box = marker["bounding_box"]
+        key = (box["left"], box["top"], box["width"], box["height"])
+        marker_counts[key] = marker_counts.get(key, 0) + 1
+    return tuple(
+        marker
+        for marker in markers
+        if marker_counts[
+            (
+                marker["bounding_box"]["left"],
+                marker["bounding_box"]["top"],
+                marker["bounding_box"]["width"],
+                marker["bounding_box"]["height"],
+            )
+        ]
+        == 1
+    )
 
 
 def _field(value: Any, name: str, default: Any = None) -> Any:
@@ -184,7 +503,12 @@ def _source_label(raw_label: str, expected: str) -> tuple[str, str | None]:
 
 
 def _infer_one_question(
-    lines: list[OCRLine], *, source_id: str, source_index: int, source_width: int
+    lines: list[OCRLine],
+    *,
+    source_id: str,
+    source_index: int,
+    source_width: int,
+    visual_markers: Iterable[Any] = (),
 ) -> dict[str, Any] | None:
     if not lines:
         return None
@@ -196,6 +520,34 @@ def _infer_one_question(
             unassigned.append(line.text)
         else:
             content_lines.append(line)
+    if not content_lines:
+        return None
+
+    first_explicit_top = min(
+        (
+            line.top
+            for line in content_lines
+            if _EXPLICIT_CHOICE_RE.match(line.text)
+        ),
+        default=float("inf"),
+    )
+    first_question_top = min(
+        (line.top for line in content_lines if _looks_like_question(line.text)),
+        default=first_explicit_top,
+    )
+    result_banner = None
+    without_banner = []
+    for line in content_lines:
+        banner_match = _RESULT_BANNER_RE.match(line.text)
+        if (
+            result_banner is None
+            and banner_match
+            and line.top < min(first_question_top, first_explicit_top)
+        ):
+            result_banner = banner_match.group(1).lower()
+            continue
+        without_banner.append(line)
+    content_lines = without_banner
     if not content_lines:
         return None
 
@@ -219,13 +571,20 @@ def _infer_one_question(
     choice_feedback: dict[str, str] = {}
     body_lines: list[OCRLine] = []
     in_explanation = False
+    question_seen = False
+    post_question_unlabelled_lines = 0
+    explicit_rows_seen = 0
     for line in content_lines:
         feedback_match = _CHOICE_FEEDBACK_RE.match(line.text)
-        heading_match = _EXPLANATION_HEADING_RE.match(line.text)
+        heading_match = _explanation_heading(line.text)
         if feedback_match:
             choice_feedback[feedback_match.group(1).upper()] = feedback_match.group(2).strip()
             continue
-        if heading_match:
+        explanation_context = (
+            explicit_rows_seen >= 2
+            or (question_seen and post_question_unlabelled_lines >= 2)
+        )
+        if heading_match and explanation_context:
             in_explanation = True
             remainder = heading_match.group(2).strip()
             if remainder:
@@ -238,6 +597,12 @@ def _infer_one_question(
             explanation_lines.append(line.text)
         else:
             body_lines.append(line)
+            if _EXPLICIT_CHOICE_RE.match(line.text):
+                explicit_rows_seen += 1
+            elif question_seen:
+                post_question_unlabelled_lines += 1
+            if _looks_like_question(line.text):
+                question_seen = True
 
     explicit: list[tuple[OCRLine, str, str]] = []
     for line in body_lines:
@@ -321,13 +686,40 @@ def _infer_one_question(
     if len(correct_answers) != len(explicit_answers):
         issues.append("The detected answer key referenced a label outside the detected choices.")
 
+    detected_markers = []
+    if result_banner and explicit:
+        for index, (line, _raw_label, _text) in enumerate(explicit):
+            row_markers = [
+                marker
+                for marker in visual_markers
+                if abs(int(_field(marker, "row_top", -10_000)) - line.top) <= 2
+                and abs(int(_field(marker, "row_left", -10_000)) - line.left) <= 2
+                and str(_field(marker, "kind", "")) in {"check", "x"}
+            ]
+            if len(row_markers) == 1:
+                detected_markers.append(
+                    {
+                        "label": OCR_LABELS[index],
+                        "kind": str(_field(row_markers[0], "kind")),
+                    }
+                )
+    visual_answers = [
+        marker["label"] for marker in detected_markers if marker["kind"] == "check"
+    ]
+    if not correct_answers and visual_answers:
+        correct_answers = list(dict.fromkeys(visual_answers))
+        correctness_evidence = "visual_result_marker"
+
     multiple_wording = bool(_MULTIPLE_MODE_RE.search(all_text))
     answer_mode = "multiple" if multiple_wording or len(correct_answers) > 1 else "single"
-    answer_mode_evidence = (
-        "explicit_instruction"
-        if multiple_wording
-        else ("explicit_answer_key" if correct_answers else "unknown")
-    )
+    if multiple_wording:
+        answer_mode_evidence = "explicit_instruction"
+    elif correctness_evidence == "explicit_source":
+        answer_mode_evidence = "explicit_answer_key"
+    elif correctness_evidence in {"explicit_feedback", "visual_result_marker"}:
+        answer_mode_evidence = correctness_evidence
+    else:
+        answer_mode_evidence = "unknown"
     if answer_mode_evidence == "unknown":
         issues.append("Answer mode was not explicit; verify single-answer or multiple-answer mode.")
 
@@ -373,6 +765,8 @@ def _infer_one_question(
             "structure_confidence": structure_confidence,
             "correctness_evidence": correctness_evidence,
             "unassigned_text": "\n".join(dict.fromkeys(unassigned)).strip(),
+            "result_banner": result_banner,
+            "visual_result_markers": detected_markers,
         },
     }
 
@@ -382,6 +776,10 @@ def infer_screenshot_questions(
 ) -> dict[str, Any]:
     """Return bounded Smart PDF review records for one screenshot."""
 
+    visual_markers: Iterable[Any] = ()
+    if isinstance(observations, dict):
+        visual_markers = observations.get("visual_markers") or ()
+        observations = observations.get("observations") or ()
     observations = tuple(observations)
     if not observations:
         return {"questions": [], "raw_text": "", "warnings": ["No readable OCR text was detected."]}
@@ -399,6 +797,7 @@ def infer_screenshot_questions(
             source_id=source_id,
             source_index=source_index,
             source_width=source_width,
+            visual_markers=visual_markers,
         )
         if question:
             question["number"] = len(questions) + 1

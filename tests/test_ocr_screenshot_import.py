@@ -56,6 +56,45 @@ def ocr_observations(source_id, source_index, lines):
     return tuple(output)
 
 
+def reviewed_result_observations(source_id, source_index):
+    lines = [
+        ("Incorrect", 68, 44),
+        ("Which quality is most useful for this synthetic example?", 55, 125),
+        ("@ A. Timeliness", 72, 224),
+        ("O B. Detail", 72, 299),
+        ("© C. Accuracy", 72, 374),
+        ("O D. Relevance", 72, 449),
+        ("O Explanation", 55, 520),
+        ("Detail is the answer identified by the result feedback.", 55, 558),
+    ]
+    output = []
+    for line_number, (line, left, top) in enumerate(lines, 1):
+        cursor = left
+        for word in line.split():
+            width = max(16, len(word) * 12)
+            output.append(
+                {
+                    "source_id": source_id,
+                    "page_index": source_index - 1,
+                    "source_width": 900,
+                    "source_height": 690,
+                    "text": word,
+                    "bounding_box": {
+                        "left": cursor,
+                        "top": top,
+                        "width": width,
+                        "height": 28,
+                    },
+                    "confidence": 94.0,
+                    "block_id": 1,
+                    "paragraph_id": 1,
+                    "line_id": line_number,
+                }
+            )
+            cursor += width + 8
+    return tuple(output)
+
+
 class OCRScreenshotImportTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="dlms-ocr-screenshots-")
@@ -275,6 +314,32 @@ class OCRScreenshotImportTests(unittest.TestCase):
         self.assertIn("Screenshot 1 · bad-ocr.png", html)
         self.assertNotIn("private OCR failure", html)
         self.assertIn("Source screenshot 2 for OCR question 1", html)
+        self.assertIn("I compared this draft with the source", html)
+
+    def test_result_marker_observations_flow_into_review_without_confirming_correctness(self):
+        fixture = Path(__file__).parent / "fixtures" / "ocr" / "screenshot-result-a-wrong-b-correct.png"
+        response = self.upload([(fixture.name, fixture.read_bytes())])
+        draft_id = self.draft_id(response)
+        draft = dlms._load_pdf_import_draft(draft_id)
+        source = draft["ocr_batch"]["sources"][0]
+        observations = reviewed_result_observations(source["id"], source["index"])
+        with mock.patch.object(
+            dlms._ocr_service, "recognize_image_bytes", return_value=observations
+        ):
+            result = self.client.post(
+                f"/pdf-import/screenshots/process/{draft_id}/next",
+                headers={"X-CSRFToken": csrf_token(self.client), "Accept": "application/json"},
+            )
+        self.assertEqual(result.status_code, 200)
+        draft = dlms._load_pdf_import_draft(draft_id)
+        question = draft["questions"][0]
+        self.assertEqual(question["correct_answers"], ["B"])
+        self.assertEqual(question["correctness_evidence"], "visual_result_marker")
+        self.assertTrue(question["correctness_confirmation_required"])
+        self.assertFalse(question["correctness_confirmed"])
+        html = self.client.get(f"/pdf-import/review/{draft_id}").get_data(as_text=True)
+        self.assertIn("Detected from result marker", html)
+        self.assertIn("Source-derived, normalized by position", html)
         self.assertIn("I compared this draft with the source", html)
 
     def test_successful_review_save_removes_sources_and_never_persists_temporary_metadata(self):
@@ -499,6 +564,9 @@ class OCRScreenshotStagingTests(unittest.TestCase):
             "screenshot-unicode.png",
             "screenshot-low-resolution.png",
             "screenshot-rotated.png",
+            "screenshot-result-a-wrong-b-correct.png",
+            "screenshot-result-d-correct.png",
+            "screenshot-result-a-correct-c-wrong.png",
         }
         self.assertEqual(
             {path.name for path in fixture_root.glob("screenshot-*.png")}, expected

@@ -1,6 +1,10 @@
 """Focused layout-inference coverage for DLMS-119 screenshot OCR drafts."""
 
+from io import BytesIO
+from pathlib import Path
 import unittest
+
+from PIL import Image, ImageDraw
 
 from dlms.parsing import ocr_questions
 
@@ -38,6 +42,49 @@ def observations(lines, *, width=1200, confidence=93.0):
             cursor += word_width + 9
         top += 54
     return output
+
+
+def positioned_observations(lines, *, width=900, height=690):
+    output = []
+    for line_number, (text, left, top) in enumerate(lines, 1):
+        cursor = left
+        for word in text.split():
+            word_width = max(16, len(word) * 12)
+            output.append(
+                {
+                    "source_id": "source",
+                    "page_index": 0,
+                    "source_width": width,
+                    "source_height": height,
+                    "text": word,
+                    "bounding_box": {
+                        "left": cursor,
+                        "top": top,
+                        "width": word_width,
+                        "height": 28,
+                    },
+                    "confidence": 94.0,
+                    "block_id": 1,
+                    "paragraph_id": 1,
+                    "line_id": line_number,
+                }
+            )
+            cursor += word_width + 8
+    return output
+
+
+RESULT_FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "ocr"
+
+
+def result_layout_observations(banner, question, choices, explanation):
+    lines = [(banner, 68, 44), (question, 55, 125)]
+    noise = ("@", "O", "©", "O")
+    lines.extend(
+        (f"{noise[index]} {chr(65 + index)}. {choice}", 72, 224 + 75 * index)
+        for index, choice in enumerate(choices)
+    )
+    lines.extend((("O Explanation", 55, 520), (explanation, 55, 558)))
+    return positioned_observations(lines)
 
 
 class OCRQuestionInferenceTests(unittest.TestCase):
@@ -196,6 +243,187 @@ class OCRQuestionInferenceTests(unittest.TestCase):
         self.assertEqual(question["ocr_metadata"]["text_confidence"], "low")
         self.assertIn(question["ocr_metadata"]["structure_confidence"], {"high", "medium"})
         self.assertEqual(question["ocr_metadata"]["correctness_evidence"], "unknown")
+
+    def test_reviewed_result_fixtures_detect_source_labels_explanation_and_correct_row(self):
+        cases = (
+            (
+                "screenshot-result-a-wrong-b-correct.png",
+                "Incorrect",
+                "Which quality is most useful for this synthetic example?",
+                ("Timeliness", "Detail", "Accuracy", "Relevance"),
+                "Detail is the answer identified by the result feedback.",
+                ["B"],
+                [{"label": "A", "kind": "x"}, {"label": "B", "kind": "check"}],
+            ),
+            (
+                "screenshot-result-d-correct.png",
+                "Correct",
+                "Which option best represents the synthetic group?",
+                ("Alpha unit", "Beta unit", "Gamma unit", "Delta collective"),
+                "Delta collective is explicitly marked correct by the row result icon.",
+                ["D"],
+                [{"label": "D", "kind": "check"}],
+            ),
+            (
+                "screenshot-result-a-correct-c-wrong.png",
+                "Incorrect",
+                "Which assessment best identifies the synthetic condition?",
+                ("Behavioral", "Instinctual", "Habitual", "Indicators"),
+                "Behavioral is marked correct; the selected Habitual row is marked wrong.",
+                ["A"],
+                [{"label": "A", "kind": "check"}, {"label": "C", "kind": "x"}],
+            ),
+        )
+        for filename, banner, question_text, choices, explanation, answers, marker_evidence in cases:
+            with self.subTest(filename=filename):
+                observations_for_source = result_layout_observations(
+                    banner, question_text, choices, explanation
+                )
+                image_bytes = (RESULT_FIXTURE_ROOT / filename).read_bytes()
+                markers = ocr_questions.detect_visual_result_markers(
+                    image_bytes, observations_for_source
+                )
+                result = ocr_questions.infer_screenshot_questions(
+                    {"observations": observations_for_source, "visual_markers": markers},
+                    source_id="source",
+                    source_index=1,
+                )
+                inferred = result["questions"][0]
+                self.assertEqual(len(inferred["choices"]), 4)
+                self.assertEqual(
+                    [choice["label_origin"] for choice in inferred["choices"]],
+                    ["source"] * 4,
+                )
+                self.assertEqual([choice["text"] for choice in inferred["choices"]], list(choices))
+                self.assertEqual(inferred["correct_answers"], answers)
+                self.assertEqual(inferred["correctness_evidence"], "visual_result_marker")
+                self.assertEqual(inferred["ocr_metadata"]["visual_result_markers"], marker_evidence)
+                self.assertEqual(inferred["explanation"], explanation)
+                self.assertNotIn("Explanation", [choice["text"] for choice in inferred["choices"]])
+                self.assertTrue(inferred["correctness_confirmation_required"])
+                self.assertFalse(inferred["correctness_confirmed"])
+
+    def test_control_glyph_noise_is_bounded_to_a_real_following_source_label(self):
+        question = self.infer(
+            [
+                "Which option?",
+                "@ A. First",
+                "O B. Second",
+                "© C. Third",
+                "O D. Fourth",
+                "@ ordinary prose is not a labelled choice",
+            ]
+        )["questions"][0]
+        self.assertEqual([choice["text"] for choice in question["choices"]], ["First", "Second", "Third", "Fourth"])
+        self.assertEqual(question["ocr_metadata"]["label_origin"], "source")
+        self.assertIn("ordinary prose", question["ocr_metadata"]["unassigned_text"])
+
+    def test_visual_selection_or_row_color_without_a_dedicated_marker_stays_unknown(self):
+        image = Image.new("RGB", (900, 690), "#f4f7fb")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((52, 210, 848, 268), fill="#d9f6df")
+        output = BytesIO()
+        image.save(output, format="PNG")
+        source = result_layout_observations(
+            "Incorrect",
+            "Which option?",
+            ("Selected green row", "Second", "Third", "Fourth"),
+            "Review the source.",
+        )
+        markers = ocr_questions.detect_visual_result_markers(output.getvalue(), source)
+        question = ocr_questions.infer_screenshot_questions(
+            {"observations": source, "visual_markers": markers},
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+        self.assertEqual(markers, ())
+        self.assertEqual(question["correct_answers"], [])
+        self.assertEqual(question["correctness_evidence"], "unknown")
+
+    def test_outlined_circle_and_disconnected_check_glyph_are_one_dedicated_marker(self):
+        image = Image.new("RGB", (900, 690), "#f4f7fb")
+        draw = ImageDraw.Draw(image)
+        draw.ellipse((798, 296, 834, 332), outline="#16864b", width=4)
+        draw.line((806, 314, 813, 322, 828, 304), fill="#16864b", width=4)
+        output = BytesIO()
+        image.save(output, format="PNG")
+        source = result_layout_observations(
+            "Incorrect",
+            "Which option?",
+            ("Wrong selected row", "Correct row", "Third", "Fourth"),
+            "Review the source.",
+        )
+        markers = ocr_questions.detect_visual_result_markers(output.getvalue(), source)
+        question = ocr_questions.infer_screenshot_questions(
+            {"observations": source, "visual_markers": markers},
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+        self.assertEqual([marker["kind"] for marker in markers], ["check"])
+        self.assertEqual(question["correct_answers"], ["B"])
+        self.assertEqual(question["correctness_evidence"], "visual_result_marker")
+
+    def test_multiple_dedicated_checks_preserve_multi_answer_support(self):
+        image = Image.new("RGB", (900, 690), "#f4f7fb")
+        draw = ImageDraw.Draw(image)
+        for center_y in (314, 464):
+            draw.ellipse((798, center_y - 18, 834, center_y + 18), fill="#16864b")
+            draw.line(
+                (806, center_y, 813, center_y + 8, 828, center_y - 10),
+                fill="white",
+                width=5,
+            )
+        output = BytesIO()
+        image.save(output, format="PNG")
+        source = result_layout_observations(
+            "Correct",
+            "Which options apply? Select all that apply",
+            ("First", "Second", "Third", "Fourth"),
+            "Two rows are explicitly marked.",
+        )
+        markers = ocr_questions.detect_visual_result_markers(output.getvalue(), source)
+        question = ocr_questions.infer_screenshot_questions(
+            {"observations": source, "visual_markers": markers},
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+        self.assertEqual(question["correct_answers"], ["B", "D"])
+        self.assertEqual(question["answer_mode"], "multiple")
+        self.assertTrue(question["correctness_confirmation_required"])
+
+    def test_unassociated_or_ambiguous_checkmark_does_not_establish_correctness(self):
+        fixture = Image.open(RESULT_FIXTURE_ROOT / "screenshot-result-d-correct.png").convert("RGB")
+        draw = ImageDraw.Draw(fixture)
+        draw.ellipse((732, 446, 768, 482), fill="#16864b")
+        draw.line((740, 464, 747, 472, 762, 454), fill="white", width=5)
+        output = BytesIO()
+        fixture.save(output, format="PNG")
+        source = result_layout_observations(
+            "Correct",
+            "Which option best represents the synthetic group?",
+            ("Alpha unit", "Beta unit", "Gamma unit", "Delta collective"),
+            "Delta collective is explicitly marked correct by the row result icon.",
+        )
+        markers = ocr_questions.detect_visual_result_markers(output.getvalue(), source)
+        question = ocr_questions.infer_screenshot_questions(
+            {"observations": source, "visual_markers": markers},
+            source_id="source",
+            source_index=1,
+        )["questions"][0]
+        self.assertFalse(any(marker["row_top"] == 449 for marker in markers))
+        self.assertEqual(question["correct_answers"], [])
+        self.assertEqual(question["correctness_evidence"], "unknown")
+
+        outside = Image.new("RGB", (900, 690), "#f4f7fb")
+        outside_draw = ImageDraw.Draw(outside)
+        outside_draw.ellipse((798, 592, 834, 628), fill="#16864b")
+        outside_draw.line((806, 610, 813, 618, 828, 600), fill="white", width=5)
+        outside_bytes = BytesIO()
+        outside.save(outside_bytes, format="PNG")
+        self.assertEqual(
+            ocr_questions.detect_visual_result_markers(outside_bytes.getvalue(), source),
+            (),
+        )
 
 
 if __name__ == "__main__":

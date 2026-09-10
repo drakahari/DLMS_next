@@ -4190,8 +4190,9 @@ def _prune_pdf_ocr_staging():
 
 def _recognize_pdf_ocr_source(draft_id, source, cancel_requested):
     path = _pdf_ocr_staged_source_path(draft_id, source)
-    return _ocr_service.recognize_image_bytes(
-        path.read_bytes(),
+    image_bytes = path.read_bytes()
+    observations = _ocr_service.recognize_image_bytes(
+        image_bytes,
         source_id=source["id"],
         source_width=int(source["width"]),
         source_height=int(source["height"]),
@@ -4199,6 +4200,12 @@ def _recognize_pdf_ocr_source(draft_id, source, cancel_requested):
         cancel_requested=cancel_requested,
         image_suffix=path.suffix,
     )
+    return {
+        "observations": observations,
+        "visual_markers": _ocr_question_parser.detect_visual_result_markers(
+            image_bytes, observations
+        ),
+    }
 
 
 def _analyze_pdf_text_usefulness(pages):
