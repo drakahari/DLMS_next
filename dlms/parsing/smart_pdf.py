@@ -6,6 +6,12 @@ import re
 PDF_IMPORT_MAX_PAGES = 2000
 PDF_IMPORT_MAX_EXTRACTED_TEXT_BYTES = 16 * 1024 * 1024
 PDF_IMPORT_MAX_PAGE_TEXT_BYTES = 2 * 1024 * 1024
+PDF_CORRECT_ANSWER_LINE_MAX_CHARS = 4096
+
+_PDF_CHECK_GLYPH = r"[✅✓✔☑]\ufe0f?"
+_PDF_ANSWER_LABEL_LIST = (
+    r"[A-Z](?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)[A-Z])*"
+)
 
 
 class PDFResourceLimitError(ValueError):
@@ -25,6 +31,85 @@ def _pdf_clean_line(line):
     line = line.replace("\ufeff", "").replace("\u00a0", " ")
     line = re.sub(r"[ \t]+", " ", line).strip()
     return line
+
+
+def _pdf_match_correct_answer_line(line):
+    """Parse one explicit, bounded PDF correct-answer heading.
+
+    Returning a record with ``valid`` false still establishes a structural
+    boundary. This keeps malformed answer metadata out of the final choice
+    without promoting it to correctness evidence.
+    """
+    line = _pdf_clean_line(line)
+    heading = re.match(
+        rf"^(?:{_PDF_CHECK_GLYPH}\s*)?Correct\s+Answers?\s*:\s*",
+        line,
+        re.I | re.ASCII,
+    )
+    if not heading:
+        return None
+
+    payload = re.sub(
+        rf"\s*{_PDF_CHECK_GLYPH}\s*$", "", line[heading.end():], flags=re.I
+    ).strip()
+    malformed_issue = (
+        "Correct-answer heading has a malformed or ambiguous answer list; "
+        "review required."
+    )
+
+    def _invalid_result():
+        return {
+            "labels": [],
+            "declared_answer_text": "",
+            "valid": False,
+            "issues": [malformed_issue],
+        }
+
+    if not payload or len(line) > PDF_CORRECT_ANSWER_LINE_MAX_CHARS:
+        return _invalid_result()
+
+    answer = re.fullmatch(
+        rf"(?P<labels>{_PDF_ANSWER_LABEL_LIST})"
+        r"(?:\s*[—–-]\s*(?P<answer_text>.+))?",
+        payload,
+        re.I | re.ASCII,
+    )
+    if not answer:
+        return _invalid_result()
+
+    raw_labels = re.findall(
+        r"\b[A-Z]\b", answer.group("labels"), re.I | re.ASCII
+    )
+    if not raw_labels or len(raw_labels) > 26:
+        return _invalid_result()
+
+    labels = []
+    duplicate_labels = []
+    for raw_label in raw_labels:
+        label = raw_label.upper()
+        if label in labels:
+            if label not in duplicate_labels:
+                duplicate_labels.append(label)
+            continue
+        labels.append(label)
+
+    declared_answer_text = (answer.group("answer_text") or "").strip()
+    issues = []
+    if duplicate_labels:
+        issues.append(
+            "Correct-answer heading repeats label(s) "
+            + ", ".join(duplicate_labels)
+            + "; duplicates were removed and review is required."
+        )
+    if declared_answer_text and len(labels) != 1:
+        return _invalid_result()
+
+    return {
+        "labels": labels,
+        "declared_answer_text": declared_answer_text,
+        "valid": True,
+        "issues": issues,
+    }
 
 
 def _pdf_page_has_images(page, *, max_depth=4):
@@ -191,11 +276,14 @@ def _pdf_suppress_repeated_margins(pages):
     locations = {}
 
     def _is_structural(line):
-        return bool(re.match(
-            r"^(?:question\s*#?\s*\d+|[A-Z]\.\s+|correct\s+answer:|why\s+the\s+other\s+options)",
-            line,
-            re.I,
-        ))
+        return bool(
+            re.match(
+                r"^(?:question\s*#?\s*\d+|[A-Z]\.\s+|why\s+the\s+other\s+options)",
+                line,
+                re.I,
+            )
+            or _pdf_match_correct_answer_line(line) is not None
+        )
 
     for page in pages:
         lines = page["lines"]
@@ -282,7 +370,7 @@ def _pdf_join_wrapped(lines):
         return ""
     out = ""
     structural = re.compile(
-        r"^(?:Question\s*#?\s*\d+|[A-Z]\.\s+|Correct Answer:|Why The Other Options Are Incorrect)",
+        r"^(?:Question\s*#?\s*\d+|[A-Z]\.\s+|Why The Other Options Are Incorrect)",
         re.I,
     )
     for raw in lines:
@@ -294,7 +382,7 @@ def _pdf_join_wrapped(lines):
             continue
         if out.endswith("-") and line[:1].islower():
             out = out[:-1] + line
-        elif structural.match(line):
+        elif structural.match(line) or _pdf_match_correct_answer_line(line) is not None:
             out += "\n" + line
         else:
             out += " " + line
@@ -309,7 +397,7 @@ def _pdf_parse_question_chunk(number, records):
     answer_idx = None
     answer_match = None
     for i, line in enumerate(lines):
-        m = re.search(r"Correct\s+Answer:\s*([A-Z])(?:\s*[—–-]\s*(.*?))?\s*✅?\s*$", line, re.I)
+        m = _pdf_match_correct_answer_line(line)
         if m:
             answer_idx = i
             answer_match = m
@@ -345,8 +433,19 @@ def _pdf_parse_question_chunk(number, records):
     stem_lines = lines[:first_choice_index]
     question_text = _pdf_join_wrapped(stem_lines)
 
-    correct_label = answer_match.group(1).upper() if answer_match else ""
-    declared_answer_text = (answer_match.group(2) or "").strip(" ✅") if answer_match else ""
+    parsed_correct_answers = (
+        list(answer_match.get("labels") or [])
+        if answer_match and answer_match.get("valid")
+        else []
+    )
+    correct_label = (
+        parsed_correct_answers[0] if len(parsed_correct_answers) == 1 else ""
+    )
+    declared_answer_text = (
+        str(answer_match.get("declared_answer_text") or "")
+        if answer_match and answer_match.get("valid")
+        else ""
+    )
 
     # Some PDFs wrap the printed "Correct Answer: X — answer text" across lines.
     # Reconstruct that wrapped answer text before we decide where the explanation begins.
@@ -410,17 +509,32 @@ def _pdf_parse_question_chunk(number, records):
         if current:
             feedback[current] = _pdf_join_wrapped(buffer)
 
-    issues = []
+    issues = list(answer_match.get("issues") or []) if answer_match else []
     status = "complete"
     labels = {c["label"] for c in choices}
+    invalid_correct_answers = [
+        label for label in parsed_correct_answers if label not in labels
+    ]
+    correct_answers = (
+        parsed_correct_answers if parsed_correct_answers and not invalid_correct_answers else []
+    )
+    answer_mode = "multiple" if len(parsed_correct_answers) > 1 else "single"
+    correct_label = correct_answers[0] if len(correct_answers) == 1 else ""
     if not question_text:
         issues.append("Question text was not detected.")
     if len(choices) < 2:
         issues.append("Fewer than two answer choices were detected.")
-    if not correct_label:
+    if answer_match is None:
         issues.append("A correct-answer marker was not detected.")
-    elif correct_label not in labels:
-        issues.append(f"Correct answer {correct_label} does not match a detected choice.")
+    elif invalid_correct_answers:
+        issues.append(
+            "Correct answer label(s) "
+            + ", ".join(invalid_correct_answers)
+            + " do not match the detected choices; review required."
+        )
+    elif not correct_answers:
+        if not any("malformed or ambiguous" in issue for issue in issues):
+            issues.append("A usable correct-answer list was not detected.")
     if declared_answer_text and correct_label in labels:
         selected = next((c["text"] for c in choices if c["label"] == correct_label), "")
         a = re.sub(r"\W+", "", selected).casefold()
@@ -501,6 +615,8 @@ def _pdf_parse_question_chunk(number, records):
         "question": question_text,
         "choices": choices,
         "correct": correct_label,
+        "correct_answers": correct_answers,
+        "answer_mode": answer_mode,
         "declared_answer_text": declared_answer_text,
         "explanation": explanation,
         "choice_feedback": feedback,
@@ -923,7 +1039,9 @@ def _pdf_question_chunk_structure(records):
                 contiguous = max(contiguous, run)
             else:
                 run = 1
-    answer_marker = any(re.search(r"Correct\s+Answer:\s*[A-Z]", line, re.I) for line in lines)
+    answer_marker = any(
+        _pdf_match_correct_answer_line(line) is not None for line in lines
+    )
     return {"choice_run": contiguous, "answer_marker": answer_marker}
 
 
@@ -1041,7 +1159,9 @@ def _pdf_detect_document_type(pages, question_result=None, glossary_result=None)
 
     stream = _pdf_lines_to_stream(pages)
     question_markers = sum(1 for r in stream if _pdf_question_start_match(r["text"]))
-    answer_markers = sum(1 for r in stream if re.search(r"Correct\s+Answer:", r["text"], re.I))
+    answer_markers = sum(
+        1 for r in stream if _pdf_match_correct_answer_line(r["text"]) is not None
+    )
     q_detected = int((question_result.get("summary") or {}).get("detected") or 0)
     g_detected = int((glossary_result.get("summary") or {}).get("detected") or 0)
 

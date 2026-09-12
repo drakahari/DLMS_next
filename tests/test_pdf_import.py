@@ -11,6 +11,23 @@ from dlms.routes import pdf_import as pdf_import_routes
 from tests.csrf_test_utils import csrf_token
 
 class PDFImportParserTests(unittest.TestCase):
+    @staticmethod
+    def _neutral_choice_question(answer_line, *, final_choice_lines=None):
+        final_choice_lines = final_choice_lines or ["E. Extended setting"]
+        return [{"page": 1, "lines": [
+            "1. Which settings satisfy the neutral example?",
+            "A. Alpha setting",
+            "B. Beta setting",
+            "C. Gamma setting",
+            "D. Delta setting",
+            *final_choice_lines,
+            answer_line,
+            "The identified settings satisfy the stated rule.",
+            "Why The Other Options Are Incorrect",
+            "B. Beta does not satisfy the stated rule.",
+            "D. Delta does not satisfy the stated rule.",
+        ]}]
+
     def test_landing_and_review_use_pdf_and_image_import_display_name(self):
         landing = dlms.app.test_client().get("/pdf-import").get_data(as_text=True)
 
@@ -216,10 +233,146 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertEqual(result["summary"]["detected"], 2)
         q1 = result["questions"][0]
         self.assertEqual(q1["correct"], "B")
+        self.assertEqual(q1["correct_answers"], ["B"])
+        self.assertEqual(q1["answer_mode"], "single")
         self.assertEqual(q1["choices"][1]["text"], "Scapy")
         self.assertIn("craft packets", q1["explanation"])
         self.assertIn("captures packets", q1["choice_feedback"]["A"])
         self.assertIn(2, q1["pages"])
+
+    def test_explicit_multi_answer_key_forms_share_structural_parsing(self):
+        cases = (
+            ("Correct Answer: A, C", ["A", "C"]),
+            ("Correct Answer: A, C, E", ["A", "C", "E"]),
+            ("Correct Answers: A and C", ["A", "C"]),
+            ("Correct Answer: A, C and E", ["A", "C", "E"]),
+            ("✅ Correct Answer: A, E", ["A", "E"]),
+            ("Correct Answers: B, D✅", ["B", "D"]),
+        )
+
+        for answer_line, expected in cases:
+            with self.subTest(answer_line=answer_line):
+                pages = self._neutral_choice_question(answer_line)
+                result = dlms._pdf_parse_question_bank(pages)
+                question = result["questions"][0]
+
+                self.assertEqual(question["correct_answers"], expected)
+                self.assertEqual(question["correct"], "")
+                self.assertEqual(question["answer_mode"], "multiple")
+                self.assertEqual(question["choices"][-1]["text"], "Extended setting")
+                self.assertNotIn("Correct Answer", question["choices"][-1]["text"])
+                self.assertEqual(
+                    question["explanation"],
+                    "The identified settings satisfy the stated rule.",
+                )
+                self.assertIn("does not satisfy", question["choice_feedback"]["B"])
+                self.assertEqual(question["status"], "complete")
+
+                kind, detection = dlms._pdf_detect_document_type(pages, result)
+                self.assertEqual(kind, "question_bank")
+                self.assertEqual(detection["answer_markers"], 1)
+
+    def test_single_answer_text_and_check_glyph_behavior_is_preserved(self):
+        pages = self._neutral_choice_question(
+            "✅ Correct Answer: B — Beta setting✅"
+        )
+
+        question = dlms._pdf_parse_question_bank(pages)["questions"][0]
+
+        self.assertEqual(question["correct"], "B")
+        self.assertEqual(question["correct_answers"], ["B"])
+        self.assertEqual(question["answer_mode"], "single")
+        self.assertEqual(question["declared_answer_text"], "Beta setting")
+        self.assertEqual(question["choices"][-1]["text"], "Extended setting")
+
+    def test_multi_answer_boundary_preserves_wrapped_final_choice_and_feedback(self):
+        pages = self._neutral_choice_question(
+            "Correct Answer: A, E",
+            final_choice_lines=["E. Extended", "setting with a wrapped description"],
+        )
+
+        question = dlms._pdf_parse_question_bank(pages)["questions"][0]
+
+        self.assertEqual(
+            question["choices"][-1]["text"],
+            "Extended setting with a wrapped description",
+        )
+        self.assertEqual(question["correct_answers"], ["A", "E"])
+        self.assertEqual(
+            question["explanation"],
+            "The identified settings satisfy the stated rule.",
+        )
+        self.assertEqual(
+            sorted(question["choice_feedback"]),
+            ["B", "D"],
+        )
+
+    def test_explicit_answer_lists_support_the_full_a_to_z_choice_range(self):
+        pages = [{"page": 1, "lines": [
+            "Question #26",
+            "Which endpoints satisfy the neutral example?",
+            *[
+                f"{chr(65 + index)}. Neutral choice {index + 1}"
+                for index in range(26)
+            ],
+            "Correct Answers: A and Z",
+            "The first and final endpoints satisfy the stated rule.",
+        ]}]
+
+        question = dlms._pdf_parse_question_bank(pages)["questions"][0]
+
+        self.assertEqual(len(question["choices"]), 26)
+        self.assertEqual(question["choices"][-1]["label"], "Z")
+        self.assertEqual(question["correct_answers"], ["A", "Z"])
+        self.assertEqual(question["answer_mode"], "multiple")
+
+    def test_duplicate_answer_labels_are_deduplicated_with_review_warning(self):
+        pages = self._neutral_choice_question("Correct Answer: A, A, C")
+
+        question = dlms._pdf_parse_question_bank(pages)["questions"][0]
+
+        self.assertEqual(question["correct_answers"], ["A", "C"])
+        self.assertEqual(question["answer_mode"], "multiple")
+        self.assertEqual(question["status"], "review")
+        self.assertTrue(any("repeats label" in issue for issue in question["issues"]))
+        self.assertEqual(question["choices"][-1]["text"], "Extended setting")
+
+    def test_invalid_answer_lists_remain_unknown_but_still_end_choices(self):
+        cases = (
+            ("Correct Answer: A, F", "do not match", "multiple"),
+            ("Correct Answer: A,, C", "malformed or ambiguous", "single"),
+        )
+
+        for answer_line, issue_text, expected_mode in cases:
+            with self.subTest(answer_line=answer_line):
+                question = dlms._pdf_parse_question_bank(
+                    self._neutral_choice_question(answer_line)
+                )["questions"][0]
+
+                self.assertEqual(question["correct"], "")
+                self.assertEqual(question["correct_answers"], [])
+                self.assertEqual(question["answer_mode"], expected_mode)
+                self.assertEqual(question["status"], "review")
+                self.assertTrue(
+                    any(issue_text in issue for issue in question["issues"])
+                )
+                self.assertEqual(question["choices"][-1]["text"], "Extended setting")
+                self.assertEqual(
+                    question["explanation"],
+                    "The identified settings satisfy the stated rule.",
+                )
+
+    def test_check_glyph_without_explicit_answer_text_is_not_correctness_evidence(self):
+        pages = self._neutral_choice_question("✅")
+        pages[0]["lines"][0] = "Question #1"
+
+        question = dlms._pdf_parse_question_bank(pages)["questions"][0]
+
+        self.assertEqual(question["correct"], "")
+        self.assertEqual(question["correct_answers"], [])
+        self.assertTrue(
+            any("marker was not detected" in issue for issue in question["issues"])
+        )
 
     def test_embedded_content_cue_is_flagged_for_review(self):
         pages = [{"page": 1, "lines": [
