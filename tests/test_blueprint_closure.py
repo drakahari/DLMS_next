@@ -44,7 +44,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "learning": 15,
         "maintenance": 20,
         "medical": 6,
-        "pdf_import": 24,
+        "pdf_import": 25,
         "quiz": 31,
         "settings": 15,
         "study_packs": 9,
@@ -79,7 +79,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.learning.LearningRouteDependencies": 17,
         "dlms.routes.maintenance.MaintenanceRouteDependencies": 26,
         "dlms.routes.medical.MedicalRouteDependencies": 9,
-        "dlms.routes.pdf_import.PDFImportRouteDependencies": 48,
+        "dlms.routes.pdf_import.PDFImportRouteDependencies": 53,
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 18,
@@ -87,7 +87,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "66878fbc2fa8613c4374b69febfd32e16a8e4781f67226c41640ddd6ea133fb4"
+        "5eed803ddc929347c81c7b8f4d1c8e89d042f80dad000582a099c7d8bb14e465"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -138,13 +138,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_199_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_200_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(199, len(rules))
+        self.assertEqual(200, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(198, len(blueprint_rules))
+        self.assertEqual(199, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])

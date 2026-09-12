@@ -10,6 +10,8 @@ PDF_IMPORT_MAX_EXTRACTED_TEXT_BYTES = 16 * 1024 * 1024
 PDF_IMPORT_MAX_PAGE_TEXT_BYTES = 2 * 1024 * 1024
 PDF_CORRECT_ANSWER_LINE_MAX_CHARS = 4096
 PDF_NO_ANSWER_BANK_MIN_STRUCTURED_RATIO = 0.80
+PDF_IMPORT_MAX_RASTER_REGIONS = 10_000
+PDF_IMPORT_MAX_RASTER_REGIONS_PER_PAGE = 256
 
 _PDF_CHECK_GLYPH = r"[✅✓✔☑]\ufe0f?"
 _PDF_ANSWER_LABEL_LIST = (
@@ -188,9 +190,34 @@ def _pdf_extract_pages(
     pages = []
     total_text_bytes = 0
     total_styled_text_bytes = 0
+    total_raster_regions = 0
     for page_number, page in enumerate(reader.pages, 1):
         fragments = []
+        raster_regions = []
         page_styled_text_bytes = 0
+        try:
+            page_width = float(page.mediabox.width)
+            page_height = float(page.mediabox.height)
+            page_rotation = int(page.get("/Rotate") or 0) % 360
+        except Exception:
+            page_width = 0.0
+            page_height = 0.0
+            page_rotation = 0
+        try:
+            resources = page.get("/Resources") or {}
+            resources = (
+                resources.get_object()
+                if hasattr(resources, "get_object")
+                else resources
+            )
+            xobjects = resources.get("/XObject") or {}
+            xobjects = (
+                xobjects.get_object()
+                if hasattr(xobjects, "get_object")
+                else xobjects
+            )
+        except Exception:
+            xobjects = {}
 
         def _visitor_text(fragment_text, cm, tm, font_dict, font_size):
             nonlocal page_styled_text_bytes, total_styled_text_bytes
@@ -217,14 +244,56 @@ def _pdf_extract_pages(
                 "bold": bool(re.search(r"(?:bold|black|heavy|demi|semibold)", font_name, re.I)),
             })
 
+        def _visitor_operand_before(operator, operands, cm, _tm):
+            nonlocal total_raster_regions
+            if operator != b"Do" or not operands or not hasattr(xobjects, "get"):
+                return
+            if (
+                len(raster_regions) >= PDF_IMPORT_MAX_RASTER_REGIONS_PER_PAGE
+                or total_raster_regions >= PDF_IMPORT_MAX_RASTER_REGIONS
+            ):
+                return
+            try:
+                image = xobjects.get(operands[0])
+                image = image.get_object() if hasattr(image, "get_object") else image
+                if not hasattr(image, "get") or str(image.get("/Subtype")) != "/Image":
+                    return
+                a, b, c, d, e, f = (float(value) for value in cm)
+                xs = (e, a + e, c + e, a + c + e)
+                ys = (f, b + f, d + f, b + d + f)
+                left = max(0.0, min(xs))
+                bottom = max(0.0, min(ys))
+                right = min(page_width, max(xs))
+                top = min(page_height, max(ys))
+                if right <= left or top <= bottom:
+                    return
+                region = {
+                    "left": round(left, 3),
+                    "bottom": round(bottom, 3),
+                    "right": round(right, 3),
+                    "top": round(top, 3),
+                    "pixel_width": int(image.get("/Width") or 0),
+                    "pixel_height": int(image.get("/Height") or 0),
+                }
+                if region not in raster_regions:
+                    raster_regions.append(region)
+                    total_raster_regions += 1
+            except Exception:
+                return
+
         try:
-            text = page.extract_text(visitor_text=_visitor_text) or ""
+            text = page.extract_text(
+                visitor_operand_before=_visitor_operand_before,
+                visitor_text=_visitor_text,
+            ) or ""
         except resource_limit_error:
             raise
         except Exception:
             # Style metadata is optional. Retry plain extraction only when the
             # visitor interface itself is incompatible with an otherwise valid PDF.
+            total_raster_regions -= len(raster_regions)
             fragments = []
+            raster_regions = []
             total_styled_text_bytes -= page_styled_text_bytes
             page_styled_text_bytes = 0
             try:
@@ -244,7 +313,16 @@ def _pdf_extract_pages(
             )
 
         lines = [clean_line(line) for line in text.splitlines()]
-        page_record = {"page": page_number, "lines": [line for line in lines if line]}
+        page_record = {
+            "page": page_number,
+            "lines": [line for line in lines if line],
+        }
+        if page_width > 0 and page_height > 0:
+            page_record.update({
+                "page_width": round(page_width, 3),
+                "page_height": round(page_height, 3),
+                "page_rotation": page_rotation,
+            })
         # This is only a preflight signal.  Inspect the page resource dictionary
         # without decoding images so normal selectable-text extraction stays
         # lightweight and the OCR offer can distinguish obvious blank pages.
@@ -270,6 +348,8 @@ def _pdf_extract_pages(
                 page_record["styled_lines"] = normalized_styled
         except Exception:
             page_record.pop("styled_lines", None)
+        if raster_regions:
+            page_record["raster_regions"] = raster_regions
         pages.append(page_record)
     return pages
 
@@ -368,6 +448,14 @@ def _pdf_suppress_repeated_margins(pages):
                 line for line in page["styled_lines"]
                 if re.sub(r"\s+", " ", str(line.get("text") or "")).strip().casefold() not in repeated
             ]
+        for metadata_key in (
+            "page_width",
+            "page_height",
+            "page_rotation",
+            "raster_regions",
+        ):
+            if metadata_key in page:
+                item[metadata_key] = page[metadata_key]
         cleaned.append(item)
     return cleaned, removed
 

@@ -37,6 +37,35 @@ def review_question(page=1):
     }
 
 
+def ocr_line_observations(lines, *, source_width=800, source_height=1200):
+    observations = []
+    top = 20
+    for line_id, item in enumerate(lines, 1):
+        if isinstance(item, tuple):
+            text, left = item
+        else:
+            text, left = item, 120
+        observations.append({
+            "source_id": "synthetic-region",
+            "page_index": 0,
+            "source_width": source_width,
+            "source_height": source_height,
+            "text": text,
+            "bounding_box": {
+                "left": left,
+                "top": top,
+                "width": max(20, min(600, len(text) * 9)),
+                "height": 24,
+            },
+            "confidence": 92.0,
+            "block_id": 1,
+            "paragraph_id": 1,
+            "line_id": line_id,
+        })
+        top += 34
+    return observations
+
+
 class PDFTextUsefulnessTests(unittest.TestCase):
     def test_committed_pdf_corpus_characterizes_digital_scanned_and_mixed_pages(self):
         root = Path(__file__).parent / "fixtures" / "ocr" / "pdf"
@@ -115,6 +144,214 @@ class PDFTextUsefulnessTests(unittest.TestCase):
             pdf_ocr.validate_selected_pages(range(1, 27), range(1, 27))
 
 
+class PDFTargetedRasterQuestionTests(unittest.TestCase):
+    @staticmethod
+    def _page(page, lines, styled, regions):
+        return {
+            "page": page,
+            "lines": lines,
+            "styled_lines": [
+                {"text": text, "y": y, "fragments": []}
+                for text, y in styled
+            ],
+            "raster_regions": regions,
+            "page_width": 612.0,
+            "page_height": 792.0,
+            "page_rotation": 0,
+            "has_images": bool(regions),
+        }
+
+    @staticmethod
+    def _region(*, left=110, bottom=330, right=500, top=610, pixels=(780, 560)):
+        return {
+            "left": float(left),
+            "bottom": float(bottom),
+            "right": float(right),
+            "top": float(top),
+            "pixel_width": pixels[0],
+            "pixel_height": pixels[1],
+        }
+
+    def test_text_rich_page_targets_only_missing_question_raster(self):
+        pages = [self._page(
+            1,
+            [
+                "Question #1", "Which neutral configuration is valid?",
+                "Question #2", "Which neutral value is direct?",
+                "A. First", "B. Second",
+            ],
+            [("Question #1", 710), ("Question #2", 260)],
+            [self._region()],
+        )]
+        parsed = dlms._pdf_parse_question_bank(pages)
+        second_before = dict(parsed["questions"][1])
+
+        candidates = dlms._pdf_targeted_ocr_candidates(pages, parsed)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["question_number"], 1)
+        self.assertEqual(candidates[0]["page"], 1)
+        self.assertEqual(candidates[0]["kind"], "choices")
+        self.assertEqual(parsed["questions"][1], second_before)
+
+    def test_repeated_decorative_raster_is_not_targeted(self):
+        shared = self._region(left=150, bottom=350, right=460, top=455, pixels=(620, 210))
+        pages = []
+        for number in range(1, 5):
+            lines = [f"Question #{number}", f"Neutral prompt {number}?"]
+            if number > 1:
+                lines.extend(["A. First", "B. Second"])
+            pages.append(self._page(
+                number,
+                lines,
+                [(f"Question #{number}", 700)],
+                [dict(shared)],
+            ))
+        parsed = dlms._pdf_parse_question_bank(pages)
+
+        self.assertEqual(
+            dlms._pdf_targeted_ocr_candidates(pages, parsed),
+            [],
+        )
+
+    def test_cross_page_raster_belongs_to_prior_question_not_neighbor(self):
+        pages = [
+            self._page(
+                1,
+                ["Question #10", "Which neutral block is valid?"],
+                [("Question #10", 150)],
+                [],
+            ),
+            self._page(
+                2,
+                [
+                    "Question #11", "Which direct option is valid?",
+                    "A. North", "B. South",
+                ],
+                [("Question #11", 180)],
+                [self._region(bottom=250, top=700)],
+            ),
+        ]
+        parsed = dlms._pdf_parse_question_bank(pages)
+
+        candidates = dlms._pdf_targeted_ocr_candidates(pages, parsed)
+
+        self.assertEqual(
+            [(item["question_number"], item["page"]) for item in candidates],
+            [(10, 2)],
+        )
+        self.assertEqual(
+            [choice["text"] for choice in parsed["questions"][1]["choices"]],
+            ["North", "South"],
+        )
+
+    def test_unassigned_end_matter_page_is_never_targeted(self):
+        pages = [
+            self._page(
+                1,
+                ["Question #1", "Which neutral block is valid?"],
+                [("Question #1", 700)],
+                [],
+            ),
+            self._page(2, ["Appendix", "Further resources"], [], [self._region()]),
+        ]
+        result = dlms._pdf_parse_question_bank(pages)
+        result["unassigned_pages"] = [2]
+
+        self.assertEqual(
+            dlms._pdf_targeted_ocr_candidates(pages, result),
+            [],
+        )
+
+    def test_standalone_labels_preserve_multiline_choice_bodies(self):
+        observations = ocr_line_observations([
+            ("A.", 60), ("mode alpha {", 130), ("enabled true", 150), ("}", 130),
+            ("B.", 61), ("mode beta {", 130), ("enabled false", 150), ("}", 130),
+            ("C.", 59), ("mode gamma {", 130), ("level 3", 150), ("}", 130),
+            ("D.", 62), ("mode delta {", 130), ("level 4", 150), ("}", 130),
+            ("E.", 60), ("mode epsilon {", 130), ("level 5", 150), ("}", 130),
+        ])
+
+        result = dlms._pdf_raster_question_parser.parse_targeted_raster_choices(
+            observations
+        )
+
+        self.assertEqual(result["status"], "review")
+        self.assertEqual([choice["label"] for choice in result["choices"]], list("ABCDE"))
+        self.assertEqual(
+            result["choices"][0]["text"],
+            "mode alpha {\nenabled true\n}",
+        )
+
+    def test_missing_source_label_is_preserved_as_incomplete(self):
+        observations = ocr_line_observations([
+            ("A.", 60), ("alpha", 130),
+            ("B.", 60), ("beta", 130),
+            ("D.", 60), ("delta", 130),
+            ("E.", 60), ("epsilon", 130),
+        ])
+
+        result = dlms._pdf_raster_question_parser.parse_targeted_raster_choices(
+            observations
+        )
+
+        self.assertEqual(result["status"], "incomplete")
+        self.assertEqual([choice["label"] for choice in result["choices"]], ["A", "B", "D", "E"])
+        self.assertTrue(any("missing or noncontiguous" in issue for issue in result["issues"]))
+
+    def test_misaligned_label_like_code_line_is_not_promoted_to_a_choice(self):
+        observations = ocr_line_observations([
+            ("A.", 60), ("alpha {", 130), ("i", 220), ("}", 130),
+            ("B.", 61), ("beta {", 130), ("enabled true", 150), ("}", 130),
+        ])
+
+        result = dlms._pdf_raster_question_parser.parse_targeted_raster_choices(
+            observations
+        )
+
+        self.assertEqual([choice["label"] for choice in result["choices"]], ["A", "B"])
+        self.assertIn("i", result["choices"][0]["text"])
+
+    def test_merge_deduplicates_selectable_text_and_never_adds_correctness(self):
+        question = {
+            "number": 3,
+            "question": "Choose two neutral modes.",
+            "choices": [{"label": "A", "text": "Alpha mode"}],
+            "correct": "",
+            "correct_answers": [],
+            "answer_mode": "multiple",
+            "pages": [1],
+            "status": "incomplete",
+            "issues": ["Fewer than two answer choices were detected."],
+        }
+        recovered = dlms._pdf_raster_question_parser.parse_targeted_raster_choices(
+            ocr_line_observations([
+                ("✓", 20),
+                ("A.", 60), ("Alpha mode", 130),
+                ("B.", 60), ("Beta mode", 130),
+            ])
+        )
+        source = {
+            "id": "abcdefghijkl",
+            "kind": "choices",
+            "page": 2,
+            "question_number": 3,
+        }
+
+        merged = dlms._pdf_raster_question_parser.merge_targeted_raster_result(
+            question, recovered, source
+        )
+
+        self.assertEqual([choice["label"] for choice in merged["choices"]], ["A", "B"])
+        self.assertEqual(sum(choice["text"] == "Alpha mode" for choice in merged["choices"]), 1)
+        self.assertEqual(merged["correct_answers"], [])
+        self.assertEqual(merged["correct"], "")
+        self.assertEqual(merged["answer_mode"], "multiple")
+        self.assertTrue(merged["correctness_confirmation_required"])
+        self.assertFalse(merged["correctness_confirmed"])
+        self.assertIn("✓", merged["ocr_metadata"]["unassigned_text"])
+
+
 class PDFRasterServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="dlms-pdf-ocr-service-")
@@ -125,6 +362,19 @@ class PDFRasterServiceTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_selectable_extractor_records_painted_raster_geometry(self):
+        page = dlms._pdf_extract_pages(self.pdf)[0]
+
+        self.assertGreater(page["page_width"], 0)
+        self.assertGreater(page["page_height"], 0)
+        self.assertEqual(page["page_rotation"], 0)
+        self.assertTrue(page["raster_regions"])
+        region = page["raster_regions"][0]
+        self.assertLess(region["left"], region["right"])
+        self.assertLess(region["bottom"], region["top"])
+        self.assertGreater(region["pixel_width"], 0)
+        self.assertGreater(region["pixel_height"], 0)
 
     def test_selected_page_renders_near_300_dpi_and_preview_is_bounded(self):
         result = pdf_ocr.render_pdf_page(
@@ -139,6 +389,30 @@ class PDFRasterServiceTests(unittest.TestCase):
         self.assertEqual(
             "page-0001.png",
             pdf_ocr.staged_page_path(self.root / "stage", "abcdefghijkl", 1).name,
+        )
+
+    def test_targeted_region_render_is_bounded_and_smaller_than_full_page(self):
+        full = pdf_ocr.render_pdf_page(
+            self.root / "stage",
+            "abcdefghijkl",
+            1,
+            render_lock=threading.RLock(),
+        )
+        region = pdf_ocr.render_pdf_region(
+            self.root / "stage",
+            "abcdefghijkl",
+            "mnopqrstuvwx",
+            1,
+            {"left": 40, "bottom": 260, "right": 380, "top": 520},
+            render_lock=threading.RLock(),
+        )
+
+        self.assertLess(region["width"] * region["height"], full["width"] * full["height"])
+        self.assertEqual(
+            "region-mnopqrstuvwx.png",
+            pdf_ocr.staged_region_path(
+                self.root / "stage", "abcdefghijkl", "mnopqrstuvwx"
+            ).name,
         )
 
     def test_invalid_page_and_cancel_leave_no_rendering_temporary(self):
@@ -223,6 +497,107 @@ class SelectivePDFOCRRouteTests(unittest.TestCase):
         self.assertEqual(302, response.status_code)
         self.assertIn("/pdf-import/review/", response.headers["Location"])
         self.assertNotIn("/ocr/", response.headers["Location"])
+
+    def test_targeted_region_augments_known_question_without_duplicate(self):
+        region = {
+            "left": 100.0,
+            "bottom": 330.0,
+            "right": 500.0,
+            "top": 610.0,
+            "pixel_width": 800,
+            "pixel_height": 560,
+        }
+        pages = [{
+            "page": 1,
+            "lines": [
+                "Question #1", "Which neutral configuration is valid?",
+                "Question #2", "Which direct value is valid?", "A. North", "B. South",
+            ],
+            "styled_lines": [
+                {"text": "Question #1", "y": 710.0, "fragments": []},
+                {"text": "Question #2", "y": 250.0, "fragments": []},
+            ],
+            "raster_regions": [region],
+            "page_width": 612.0,
+            "page_height": 792.0,
+            "page_rotation": 0,
+            "has_images": True,
+        }]
+        with mock.patch.object(
+            dlms, "_pdf_extract_pages", return_value=pages
+        ), mock.patch.object(
+            dlms, "_pdf_suppress_repeated_margins", side_effect=lambda value: (value, [])
+        ):
+            response = self.client.post(
+                "/pdf-import/analyze",
+                data={
+                    "pdf_file": (BytesIO(scanned_pdf_bytes()), "synthetic.pdf"),
+                    "pdf_content_type": "question_bank",
+                    "rights_ok": "1",
+                    "csrf_token": csrf_token(self.client, "/pdf-import"),
+                },
+                content_type="multipart/form-data",
+            )
+
+        self.assertIn("/process", response.headers["Location"])
+        draft_id = response.headers["Location"].split("/ocr/", 1)[1].split("/", 1)[0]
+        draft = dlms._load_pdf_import_draft(draft_id)
+        self.assertTrue(draft["targeted_ocr"])
+        self.assertEqual(len(draft["questions"]), 2)
+        self.assertEqual(draft["ocr_batch"]["sources"][0]["source_type"], "question_region")
+
+        observations = ocr_line_observations([
+            ("A.", 60), ("mode alpha", 130),
+            ("B.", 60), ("mode beta", 130),
+        ])
+        rendered = {
+            "page": 1,
+            "filename": "region-synthetic.png",
+            "mime_type": "image/png",
+            "width": 800,
+            "height": 1200,
+            "dpi": 300.0,
+        }
+        with mock.patch.object(
+            dlms, "_render_pdf_ocr_region", return_value=rendered
+        ), mock.patch.object(
+            dlms, "_recognize_rendered_pdf_page", return_value=observations
+        ), mock.patch.object(
+            dlms._ocr_question_parser, "infer_screenshot_questions"
+        ) as full_page_inference:
+            token = csrf_token(self.client, f"/pdf-import/ocr/{draft_id}/process")
+            processed = self.client.post(
+                f"/pdf-import/ocr/{draft_id}/process/next",
+                headers={"Accept": "application/json", "X-CSRFToken": token},
+            )
+
+        self.assertEqual(processed.status_code, 200)
+        full_page_inference.assert_not_called()
+        updated = dlms._load_pdf_import_draft(draft_id)
+        self.assertEqual(len(updated["questions"]), 2)
+        self.assertEqual(
+            [choice["text"] for choice in updated["questions"][0]["choices"]],
+            ["mode alpha", "mode beta"],
+        )
+        self.assertEqual(
+            [
+                choice["text"]
+                for choice in updated["questions"][1]["choices"]
+                if choice["text"]
+            ],
+            ["North", "South"],
+        )
+        self.assertEqual(
+            updated["questions"][1]["question"],
+            "Which direct value is valid?",
+        )
+        self.assertEqual(updated["questions"][0]["correct_answers"], [])
+        self.assertEqual(updated["questions"][0]["pages"], [1])
+        review = self.client.get(
+            f"/pdf-import/review/{draft_id}"
+        ).get_data(as_text=True)
+        self.assertIn("Selectable question text remained authoritative", review)
+        self.assertIn("PDF page 1", review)
 
     def test_scanned_and_mixed_pdf_offer_only_low_text_pages(self):
         pages = [

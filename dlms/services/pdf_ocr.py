@@ -236,6 +236,18 @@ def staged_page_path(
     return candidate
 
 
+def staged_region_path(
+    staging_root: str | os.PathLike[str], task_id: str, source_id: str
+) -> Path:
+    task_path = _task_path(staging_root, task_id)
+    _validated_marker(task_path, task_id)
+    source_id = _safe_task_id(source_id)
+    candidate = (task_path / f"region-{source_id}.png").resolve()
+    if candidate.parent != task_path or not candidate.is_file() or candidate.is_symlink():
+        raise FileNotFoundError("PDF OCR region preview is unavailable.")
+    return candidate
+
+
 def _bounded_render_scale(width_points: float, height_points: float) -> float:
     if width_points <= 0 or height_points <= 0:
         raise PDFOCRTaskError("The selected PDF page has invalid dimensions.")
@@ -312,6 +324,112 @@ def render_pdf_page(
             "width": width,
             "height": height,
             "dpi": round(scale * 72.0, 1),
+        }
+    finally:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+
+
+def render_pdf_region(
+    staging_root: str | os.PathLike[str],
+    task_id: str,
+    source_id: str,
+    page_number: int,
+    bbox: dict[str, Any],
+    *,
+    render_lock: Any,
+    cancel_requested: Callable[[], bool] | None = None,
+    padding_points: float = 6.0,
+) -> dict[str, Any]:
+    """Render one validated PDF-space raster union, never the complete page."""
+    cancel_requested = cancel_requested or (lambda: False)
+    if cancel_requested():
+        raise InterruptedError("PDF OCR was cancelled.")
+    source = staged_pdf_path(staging_root, task_id)
+    task_path = source.parent
+    source_id = _safe_task_id(source_id)
+    try:
+        import pypdfium2 as pdfium
+    except Exception as exc:
+        raise PDFOCRUnavailableError(
+            "Targeted PDF OCR requires the bundled PDFium runtime."
+        ) from exc
+
+    temporary = task_path / f".region-{source_id}.rendering.png"
+    destination = task_path / f"region-{source_id}.png"
+    try:
+        with render_lock:
+            if cancel_requested():
+                raise InterruptedError("PDF OCR was cancelled.")
+            document = pdfium.PdfDocument(str(source))
+            try:
+                index = int(page_number) - 1
+                if index < 0 or index >= len(document):
+                    raise PDFOCRTaskError("The targeted PDF page is out of range.")
+                page = document[index]
+                try:
+                    page_width, page_height = page.get_size()
+                    try:
+                        left = float(bbox["left"])
+                        bottom = float(bbox["bottom"])
+                        right = float(bbox["right"])
+                        top = float(bbox["top"])
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise PDFOCRTaskError(
+                            "The targeted PDF raster bounds are invalid."
+                        ) from exc
+                    values = (left, bottom, right, top, page_width, page_height)
+                    if not all(math.isfinite(value) for value in values):
+                        raise PDFOCRTaskError(
+                            "The targeted PDF raster bounds are invalid."
+                        )
+                    left = max(0.0, left - padding_points)
+                    bottom = max(0.0, bottom - padding_points)
+                    right = min(page_width, right + padding_points)
+                    top = min(page_height, top + padding_points)
+                    if not (left < right and bottom < top):
+                        raise PDFOCRTaskError(
+                            "The targeted PDF raster bounds are outside the page."
+                        )
+                    region_width = right - left
+                    region_height = top - bottom
+                    scale = _bounded_render_scale(region_width, region_height)
+                    crop = (
+                        left,
+                        bottom,
+                        page_width - right,
+                        page_height - top,
+                    )
+                    bitmap = page.render(scale=scale, crop=crop)
+                    try:
+                        image = bitmap.to_pil().convert("RGB")
+                    finally:
+                        bitmap.close()
+                finally:
+                    page.close()
+            finally:
+                document.close()
+        if cancel_requested():
+            raise InterruptedError("PDF OCR was cancelled.")
+        width, height = image.size
+        if (
+            width > PDF_OCR_MAX_SIDE
+            or height > PDF_OCR_MAX_SIDE
+            or width * height > PDF_OCR_MAX_PIXELS
+        ):
+            raise PDFOCRTaskError("The targeted PDF raster exceeds OCR image limits.")
+        image.save(temporary, format="PNG", optimize=False)
+        os.replace(temporary, destination)
+        return {
+            "page": int(page_number),
+            "filename": destination.name,
+            "mime_type": "image/png",
+            "width": width,
+            "height": height,
+            "dpi": round(scale * 72.0, 1),
+            "bbox": {"left": left, "bottom": bottom, "right": right, "top": top},
         }
     finally:
         try:

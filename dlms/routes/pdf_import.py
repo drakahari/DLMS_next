@@ -78,11 +78,16 @@ class PDFImportRouteDependencies:
     cleanup_ocr_staging: Dependency
     pdf_ocr_max_selected_pages: Dependency
     analyze_pdf_text_usefulness: Dependency
+    find_pdf_targeted_ocr_candidates: Dependency
     stage_pdf_ocr_document: Dependency
     validate_pdf_ocr_selection: Dependency
     render_pdf_ocr_page: Dependency
+    render_pdf_ocr_region: Dependency
     recognize_pdf_ocr_page: Dependency
+    parse_pdf_raster_choices: Dependency
+    merge_pdf_raster_choices: Dependency
     pdf_ocr_page_preview_path: Dependency
+    pdf_ocr_region_preview_path: Dependency
     cleanup_pdf_ocr_staging: Dependency
     ocr_cancellations: Any
 
@@ -589,13 +594,32 @@ def pdf_import_analyze(dependencies):
                 }
 
         if document_type == "question_bank":
+            targeted_candidates = dependencies.find_pdf_targeted_ocr_candidates(
+                pages, result
+            )
+            targeted_numbers = {
+                int(candidate["question_number"])
+                for candidate in targeted_candidates
+            }
             result["questions"] = [
-                dependencies.add_pdf_question_review_slots(question)
+                question
+                if int(question.get("number") or 0) in targeted_numbers
+                else dependencies.add_pdf_question_review_slots(question)
                 for question in (result.get("questions") or [])
             ]
             page_analysis = dependencies.analyze_pdf_text_usefulness(pages)
+            protected_target_pages = {
+                int(candidate["page"])
+                for candidate in targeted_candidates
+            } | {
+                int(candidate["question_start_page"])
+                for candidate in targeted_candidates
+            }
             candidates = [
-                item for item in page_analysis if item.get("ocr_candidate")
+                item
+                for item in page_analysis
+                if item.get("ocr_candidate")
+                and int(item.get("page") or 0) not in protected_target_pages
             ]
             if candidates:
                 dependencies.stage_pdf_ocr_document(draft_id, temp_pdf)
@@ -621,6 +645,7 @@ def pdf_import_analyze(dependencies):
                         "candidate_pages": [item["page"] for item in candidates],
                         "max_selected_pages": dependencies.pdf_ocr_max_selected_pages(),
                         "ocr_available": dependencies.detect_ocr_runtime() is not None,
+                        "targeted_candidates": targeted_candidates,
                     },
                     **result,
                 }
@@ -628,6 +653,55 @@ def pdf_import_analyze(dependencies):
                 return redirect(
                     url_for("pdf_import.pdf_import_ocr_offer", draft_id=draft_id)
                 )
+            if targeted_candidates and dependencies.detect_ocr_runtime() is not None:
+                dependencies.stage_pdf_ocr_document(draft_id, temp_pdf)
+                pdf_ocr_staged = True
+                sources = _pdf_targeted_ocr_sources(targeted_candidates)
+                for question in result.get("questions") or []:
+                    question["pdf_source_number"] = int(
+                        question.get("number") or 0
+                    )
+                draft = {
+                    "id": draft_id,
+                    "created_at": dependencies.timestamp_now(),
+                    "source_name": source_name,
+                    "source_kind": "user-provided-pdf-ocr",
+                    "redistribution_status": "not-cleared-for-redistribution",
+                    "document_type": "question_bank",
+                    "detection": {
+                        **(detection or {}),
+                        "targeted_raster_augmentation": True,
+                    },
+                    "quiz_title": (request.form.get("quiz_title") or "").strip()
+                    or os.path.splitext(source_name)[0],
+                    "exam_minutes": dependencies.normalize_exam_minutes(
+                        request.form.get("exam_minutes")
+                    ),
+                    "page_count": len(pages),
+                    "removed_margin_text": removed_margins,
+                    "targeted_ocr": True,
+                    "selective_page_ocr": False,
+                    "ocr_batch": {
+                        "status": "processing",
+                        "total": len(sources),
+                        "sources": sources,
+                    },
+                    **result,
+                }
+                dependencies.save_pdf_import_draft(draft)
+                return redirect(
+                    url_for("pdf_import.pdf_import_ocr_processing", draft_id=draft_id)
+                )
+            if targeted_candidates:
+                detection = {
+                    **(detection or {}),
+                    "targeted_raster_augmentation": False,
+                    "targeted_raster_reason": "ocr_unavailable",
+                }
+                result["questions"] = [
+                    dependencies.add_pdf_question_review_slots(question)
+                    for question in (result.get("questions") or [])
+                ]
             if not result.get("questions"):
                 raise ValueError(
                     "No selectable text could be recovered from this PDF."
@@ -712,15 +786,37 @@ def pdf_import_ocr_offer(dependencies, draft_id):
     )
 
 
-def _pdf_ocr_direct_questions(dependencies, pages):
+def _pdf_ocr_direct_questions(dependencies, pages, *, add_review_slots=True):
     result = dependencies.parse_pdf_question_bank(pages)
     if not result.get("questions") and pages:
         result = dependencies.recover_pdf_questions(pages)
-    result["questions"] = [
-        dependencies.add_pdf_question_review_slots(question)
-        for question in (result.get("questions") or [])
-    ]
+    if add_review_slots:
+        result["questions"] = [
+            dependencies.add_pdf_question_review_slots(question)
+            for question in (result.get("questions") or [])
+        ]
     return result
+
+
+def _pdf_targeted_ocr_sources(candidates):
+    return [
+        {
+            "id": secrets.token_hex(10),
+            "index": index,
+            "page": int(candidate["page"]),
+            "question_number": int(candidate["question_number"]),
+            "question_start_page": int(candidate["question_start_page"]),
+            "source_type": "question_region",
+            "kind": str(candidate["kind"]),
+            "bbox": dict(candidate["bbox"]),
+            "region_count": int(candidate.get("region_count") or 1),
+            "original_name": (
+                f"PDF question {candidate['question_number']} raster region"
+            ),
+            "status": "pending",
+        }
+        for index, candidate in enumerate(candidates, 1)
+    ]
 
 
 def pdf_import_ocr_continue_without(dependencies, draft_id):
@@ -731,6 +827,10 @@ def pdf_import_ocr_continue_without(dependencies, draft_id):
         if not draft.get("questions"):
             raise ValueError("No selectable question text was recovered.")
         draft["source_kind"] = "user-provided-pdf"
+        draft["questions"] = [
+            dependencies.add_pdf_question_review_slots(question)
+            for question in (draft.get("questions") or [])
+        ]
         draft.pop("pdf_pages", None)
         draft.pop("pdf_ocr_preflight", None)
         dependencies.save_pdf_import_draft(draft)
@@ -763,20 +863,55 @@ def pdf_import_ocr_start(dependencies, draft_id):
         direct_pages = [
             page for page in pages if int(page.get("page") or 0) not in selected_set
         ]
-        direct_result = _pdf_ocr_direct_questions(dependencies, direct_pages)
+        targeted_candidates = draft.get("pdf_ocr_preflight", {}).get(
+            "targeted_candidates"
+        ) or []
+        direct_result = _pdf_ocr_direct_questions(
+            dependencies,
+            direct_pages,
+            add_review_slots=not targeted_candidates,
+        )
+        direct_numbers = {
+            int(question.get("number") or 0)
+            for question in (direct_result.get("questions") or [])
+        }
+        targeted_candidates = [
+            candidate
+            for candidate in targeted_candidates
+            if int(candidate.get("question_number") or 0) in direct_numbers
+        ]
+        targeted_numbers = {
+            int(candidate["question_number"])
+            for candidate in targeted_candidates
+        }
+        direct_result["questions"] = [
+            question
+            if int(question.get("number") or 0) in targeted_numbers
+            else dependencies.add_pdf_question_review_slots(question)
+            for question in (direct_result.get("questions") or [])
+        ]
+        for question in direct_result.get("questions") or []:
+            question["pdf_source_number"] = int(question.get("number") or 0)
         sources = [
             {
                 "id": secrets.token_hex(10),
                 "index": index,
                 "page": page_number,
                 "original_name": f"PDF page {page_number}",
+                "source_type": "page",
                 "status": "pending",
             }
             for index, page_number in enumerate(selected, 1)
         ]
+        targeted_sources = _pdf_targeted_ocr_sources(targeted_candidates)
+        for offset, source in enumerate(targeted_sources, len(sources) + 1):
+            source["index"] = offset
+        sources.extend(targeted_sources)
         draft.update(
             {
                 "source_kind": "user-provided-pdf-ocr",
+                "targeted_ocr": bool(targeted_sources),
+                "selective_page_ocr": bool(selected),
                 "questions": direct_result.get("questions") or [],
                 "summary": direct_result.get("summary") or {},
                 "ocr_batch": {
@@ -838,40 +973,72 @@ def pdf_import_ocr_process_next(dependencies, draft_id):
             return jsonify(_ocr_process_response(draft))
         with dependencies.ocr_cancellations.active(draft_id) as cancel_requested:
             try:
-                rendered = dependencies.render_pdf_ocr_page(
-                    draft_id, int(source["page"]), cancel_requested
-                )
+                if source.get("source_type") == "question_region":
+                    rendered = dependencies.render_pdf_ocr_region(
+                        draft_id, source, cancel_requested
+                    )
+                else:
+                    rendered = dependencies.render_pdf_ocr_page(
+                        draft_id, int(source["page"]), cancel_requested
+                    )
                 source.update(rendered)
                 observations = dependencies.recognize_pdf_ocr_page(
                     draft_id, source, cancel_requested
                 )
                 if cancel_requested():
                     raise OCRCancelledError("OCR was cancelled.")
-                result = dependencies.infer_ocr_questions(
-                    observations,
-                    source_id=source["id"],
-                    source_index=int(source["page"]),
-                )
-                questions = result.get("questions") or []
-                if not questions:
-                    source.update(
-                        {"status": "ocr_failed", "error": "No readable quiz content was detected on this page."}
-                    )
-                else:
-                    for question in questions:
-                        question["pages"] = [int(source["page"])]
-                        metadata = question.setdefault("ocr_metadata", {})
-                        metadata.update(
-                            {
-                                "source_id": source["id"],
-                                "source_index": source["index"],
-                                "source_name": draft.get("source_name"),
-                                "source_type": "pdf_page",
-                                "page_number": int(source["page"]),
-                            }
+                if source.get("source_type") == "question_region":
+                    recovered = dependencies.parse_pdf_raster_choices(observations)
+                    matches = [
+                        (index, question)
+                        for index, question in enumerate(draft.get("questions") or [])
+                        if int(
+                            question.get("pdf_source_number")
+                            or question.get("number")
+                            or 0
                         )
-                        draft.setdefault("questions", []).append(question)
-                    source["status"] = "processed"
+                        == int(source.get("question_number") or -1)
+                    ]
+                    if len(matches) != 1:
+                        source.update({
+                            "status": "ocr_failed",
+                            "error": "The targeted question boundary is no longer unique.",
+                        })
+                    else:
+                        question_index, question = matches[0]
+                        draft["questions"][question_index] = (
+                            dependencies.merge_pdf_raster_choices(
+                                question, recovered, source
+                            )
+                        )
+                        source["status"] = "processed"
+                else:
+                    result = dependencies.infer_ocr_questions(
+                        observations,
+                        source_id=source["id"],
+                        source_index=int(source["page"]),
+                    )
+                    questions = result.get("questions") or []
+                    if not questions:
+                        source.update({
+                            "status": "ocr_failed",
+                            "error": "No readable quiz content was detected on this page.",
+                        })
+                    else:
+                        for question in questions:
+                            question["pages"] = [int(source["page"])]
+                            metadata = question.setdefault("ocr_metadata", {})
+                            metadata.update(
+                                {
+                                    "source_id": source["id"],
+                                    "source_index": source["index"],
+                                    "source_name": draft.get("source_name"),
+                                    "source_type": "pdf_page",
+                                    "page_number": int(source["page"]),
+                                }
+                            )
+                            draft.setdefault("questions", []).append(question)
+                        source["status"] = "processed"
             except (OCRCancelledError, InterruptedError):
                 dependencies.cleanup_pdf_ocr_staging(draft_id)
                 dependencies.delete_pdf_import_draft(draft_id)
@@ -939,6 +1106,31 @@ def pdf_import_ocr_page_preview(dependencies, draft_id, page_number):
         if int(page_number) not in selected:
             raise FileNotFoundError
         path = dependencies.pdf_ocr_page_preview_path(draft_id, page_number)
+        response = send_file(path, mimetype="image/png", conditional=True)
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+    except (FileNotFoundError, ValueError, OSError):
+        return "Source preview no longer available", 404
+
+
+def pdf_import_ocr_region_preview(dependencies, draft_id, source_id):
+    try:
+        draft = _load_pdf_ocr_draft(
+            dependencies, draft_id, "user-provided-pdf-ocr"
+        )
+        _batch, sources, _processed, _failed = _ocr_batch_progress(draft)
+        source = next(
+            (
+                item
+                for item in sources
+                if item.get("id") == source_id
+                and item.get("source_type") == "question_region"
+            ),
+            None,
+        )
+        if source is None:
+            raise FileNotFoundError
+        path = dependencies.pdf_ocr_region_preview_path(draft_id, source_id)
         response = send_file(path, mimetype="image/png", conditional=True)
         response.headers["Cache-Control"] = "private, no-store"
         return response
@@ -1250,7 +1442,14 @@ def pdf_import_review(dependencies, draft_id):
             if source is None:
                 continue
             try:
-                if review_draft.get("source_kind") == "user-provided-pdf-ocr":
+                if metadata.get("source_type") == "pdf_question_region":
+                    dependencies.pdf_ocr_region_preview_path(draft_id, source_id)
+                    preview_url = url_for(
+                        "pdf_import.pdf_import_ocr_region_preview",
+                        draft_id=draft_id,
+                        source_id=source_id,
+                    )
+                elif review_draft.get("source_kind") == "user-provided-pdf-ocr":
                     page_number = int(metadata.get("page_number") or source.get("page"))
                     dependencies.pdf_ocr_page_preview_path(draft_id, page_number)
                     preview_url = url_for(
@@ -1940,6 +2139,12 @@ def create_pdf_import_blueprint(
             "/pdf-import/ocr/<draft_id>/page/<int:page_number>",
             "pdf_import_ocr_page_preview",
             pdf_import_ocr_page_preview,
+            ["GET"],
+        ),
+        (
+            "/pdf-import/ocr/<draft_id>/region/<source_id>",
+            "pdf_import_ocr_region_preview",
+            pdf_import_ocr_region_preview,
             ["GET"],
         ),
         (

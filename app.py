@@ -42,6 +42,7 @@ from dlms.parsing import external_ai_structured as _external_ai_structured_parse
 from dlms.parsing import quiz_text as _quiz_text_parser
 from dlms.parsing import smart_pdf as _smart_pdf_parser
 from dlms.parsing import ocr_questions as _ocr_question_parser
+from dlms.parsing import pdf_raster_questions as _pdf_raster_question_parser
 from dlms.rendering import quiz_artifacts as _quiz_artifact_renderer
 from dlms.services import anki as _anki_service
 from dlms.services import attempts as _attempt_service
@@ -4320,10 +4321,27 @@ def _render_pdf_ocr_page(draft_id, page_number, cancel_requested):
     )
 
 
-def _recognize_rendered_pdf_page(draft_id, source, cancel_requested):
-    path = _pdf_ocr_service.staged_page_path(
-        PDF_OCR_STAGING_FOLDER, draft_id, source["page"]
+def _render_pdf_ocr_region(draft_id, source, cancel_requested):
+    return _pdf_ocr_service.render_pdf_region(
+        PDF_OCR_STAGING_FOLDER,
+        draft_id,
+        source["id"],
+        source["page"],
+        source["bbox"],
+        render_lock=PDF_OCR_RENDER_LOCK,
+        cancel_requested=cancel_requested,
     )
+
+
+def _recognize_rendered_pdf_page(draft_id, source, cancel_requested):
+    if source.get("source_type") == "question_region":
+        path = _pdf_ocr_service.staged_region_path(
+            PDF_OCR_STAGING_FOLDER, draft_id, source["id"]
+        )
+    else:
+        path = _pdf_ocr_service.staged_page_path(
+            PDF_OCR_STAGING_FOLDER, draft_id, source["page"]
+        )
     return _ocr_service.recognize_image_bytes(
         path.read_bytes(),
         source_id=source["id"],
@@ -4338,6 +4356,12 @@ def _recognize_rendered_pdf_page(draft_id, source, cancel_requested):
 def _pdf_ocr_page_preview_path(draft_id, page_number):
     return _pdf_ocr_service.staged_page_path(
         PDF_OCR_STAGING_FOLDER, draft_id, page_number
+    )
+
+
+def _pdf_ocr_region_preview_path(draft_id, source_id):
+    return _pdf_ocr_service.staged_region_path(
+        PDF_OCR_STAGING_FOLDER, draft_id, source_id
     )
 
 
@@ -4450,6 +4474,14 @@ def _pdf_parse_question_bank(pages):
         question_start_match=_pdf_question_start_match,
         question_chunk_structure=_pdf_question_chunk_structure,
         parse_question_chunk=_pdf_parse_question_chunk,
+    )
+
+
+def _pdf_targeted_ocr_candidates(pages, question_result):
+    return _pdf_raster_question_parser.targeted_ocr_candidates(
+        pages,
+        question_result,
+        question_start_match=_pdf_question_start_match,
     )
 
 # =====================================================
@@ -5981,6 +6013,9 @@ app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(
     cleanup_ocr_staging=lambda draft_id: _cleanup_pdf_ocr_staging(draft_id),
     pdf_ocr_max_selected_pages=lambda: PDF_OCR_MAX_SELECTED_PAGES,
     analyze_pdf_text_usefulness=lambda pages: _analyze_pdf_text_usefulness(pages),
+    find_pdf_targeted_ocr_candidates=lambda pages, result: _pdf_targeted_ocr_candidates(
+        pages, result
+    ),
     stage_pdf_ocr_document=lambda draft_id, pdf_path: _stage_pdf_ocr_document(
         draft_id, pdf_path
     ),
@@ -5990,11 +6025,23 @@ app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(
     render_pdf_ocr_page=lambda draft_id, page_number, cancel_requested: _render_pdf_ocr_page(
         draft_id, page_number, cancel_requested
     ),
+    render_pdf_ocr_region=lambda draft_id, source, cancel_requested: _render_pdf_ocr_region(
+        draft_id, source, cancel_requested
+    ),
     recognize_pdf_ocr_page=lambda draft_id, source, cancel_requested: _recognize_rendered_pdf_page(
         draft_id, source, cancel_requested
     ),
+    parse_pdf_raster_choices=lambda observations: _pdf_raster_question_parser.parse_targeted_raster_choices(
+        observations
+    ),
+    merge_pdf_raster_choices=lambda question, recovered, source: _pdf_raster_question_parser.merge_targeted_raster_result(
+        question, recovered, source
+    ),
     pdf_ocr_page_preview_path=lambda draft_id, page_number: _pdf_ocr_page_preview_path(
         draft_id, page_number
+    ),
+    pdf_ocr_region_preview_path=lambda draft_id, source_id: _pdf_ocr_region_preview_path(
+        draft_id, source_id
     ),
     cleanup_pdf_ocr_staging=lambda draft_id: _cleanup_pdf_document_ocr_staging(
         draft_id

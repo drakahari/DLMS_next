@@ -38,7 +38,7 @@ class FakePage:
     def __init__(self, text):
         self.text = text
 
-    def extract_text(self, visitor_text=None):
+    def extract_text(self, visitor_text=None, visitor_operand_before=None):
         if visitor_text is not None:
             visitor_text(self.text, None, [0, 0, 0, 0, 0, 0], {}, 12)
         return self.text
@@ -170,7 +170,16 @@ class PdfResourceLimitTests(unittest.TestCase):
             {"page": 1, "lines": ["Question 1", "A. One"], "has_images": False},
             pages[0],
         )
-        self.assertEqual([mock.call(visitor_text=mock.ANY), mock.call()], page.extract_text.call_args_list)
+        self.assertEqual(
+            [
+                mock.call(
+                    visitor_operand_before=mock.ANY,
+                    visitor_text=mock.ANY,
+                ),
+                mock.call(),
+            ],
+            page.extract_text.call_args_list,
+        )
 
     def test_missing_optional_pdf_dependency_preserves_runtime_error(self):
         with mock.patch.dict(sys.modules, {"pypdf": None}):
