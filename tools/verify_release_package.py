@@ -102,7 +102,11 @@ def _normalized_member_name(name: str) -> str:
 
 
 def _check_common_names(
-    names: list[str], required_root: str, *, check_duplicates: bool = True
+    names: list[str],
+    required_root: str,
+    *,
+    allowed_root_files: frozenset[str] = frozenset(),
+    check_duplicates: bool = True,
 ) -> list[str]:
     errors: list[str] = []
     seen: dict[str, str] = {}
@@ -114,7 +118,10 @@ def _check_common_names(
             )
         else:
             seen[folded] = name
-        if PurePosixPath(name).parts[0] != required_root:
+        if (
+            PurePosixPath(name).parts[0] != required_root
+            and name not in allowed_root_files
+        ):
             errors.append(
                 f"member is outside the required {required_root}/ root: {name}"
             )
@@ -294,20 +301,27 @@ def _verify_macos_package(
     archive: zipfile.ZipFile,
     infos: dict[str, zipfile.ZipInfo],
     version: str,
+    expected_assets: dict[str, bytes],
 ) -> list[str]:
     errors: list[str] = []
     app_prefix = "DLMS.app/"
     required = {
         app_prefix + "Contents/Info.plist",
         app_prefix + "Contents/MacOS/DLMS",
-    }
+    } | set(expected_assets)
     files = {name for name, info in infos.items() if not info.is_dir()}
     for name in sorted(required - files):
         errors.append(f"macOS package is missing: {name}")
     for name in files:
-        if name in required or name.startswith(app_prefix):
+        if name in expected_assets or name.startswith(app_prefix):
             continue
-        errors.append("macOS package contains a file outside DLMS.app: " + name)
+        errors.append("macOS package contains an unexpected root file: " + name)
+
+    for asset_name, expected in expected_assets.items():
+        if asset_name in infos and archive.read(asset_name) != expected:
+            errors.append(
+                f"packaged {asset_name} does not match release_assets/{asset_name}"
+            )
 
     if not any(name.startswith(app_prefix + "Contents/Resources/") for name in infos):
         errors.append("macOS package is missing bundled Resources content")
@@ -362,14 +376,12 @@ def verify_release_package(package: Path, source_root: Path) -> list[str]:
     if not package.is_file():
         return [f"package does not exist: {package}"]
 
-    expected_assets: dict[str, bytes] = {}
-    if spec.kind != "macos":
-        expected_assets, asset_errors = _expected_asset_bytes(
-            source_root / "release_assets"
-        )
-        errors.extend(asset_errors)
-        if asset_errors:
-            return errors
+    expected_assets, asset_errors = _expected_asset_bytes(
+        source_root / "release_assets"
+    )
+    errors.extend(asset_errors)
+    if asset_errors:
+        return errors
     if spec.kind == "linux":
         return _verify_linux_package(package, spec, expected_assets)
 
@@ -400,8 +412,16 @@ def verify_release_package(package: Path, source_root: Path) -> list[str]:
                 infos[name] = info
             required_root = "DLMS.app" if spec.kind == "macos" else spec.wrapper
             assert required_root is not None
+            allowed_root_files = (
+                frozenset(expected_assets) if spec.kind == "macos" else frozenset()
+            )
             errors.extend(
-                _check_common_names(names, required_root, check_duplicates=False)
+                _check_common_names(
+                    names,
+                    required_root,
+                    allowed_root_files=allowed_root_files,
+                    check_duplicates=False,
+                )
             )
             if metadata_names:
                 if spec.kind != "macos":
@@ -419,7 +439,7 @@ def verify_release_package(package: Path, source_root: Path) -> list[str]:
                 errors.extend(_verify_windows_package(archive, infos, spec, expected_assets))
             else:
                 errors.extend(
-                    _verify_macos_package(archive, infos, version)
+                    _verify_macos_package(archive, infos, version, expected_assets)
                 )
     except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
         errors.append(f"could not inspect ZIP package: {exc}")
@@ -481,7 +501,10 @@ def _extract_final_package(
 
 
 def _verify_extracted_macos(
-    package: Path, extraction_root: Path, version: str
+    package: Path,
+    extraction_root: Path,
+    version: str,
+    expected_assets: dict[str, bytes],
 ) -> tuple[Path, list[str]]:
     errors: list[str] = []
     app = extraction_root / "DLMS.app"
@@ -499,6 +522,15 @@ def _verify_extracted_macos(
             errors.append("clean-extracted macOS executable is not arm64 Mach-O")
     if not resources.is_dir():
         errors.append("clean extraction is missing DLMS.app/Contents/Resources")
+    for asset_name, expected in expected_assets.items():
+        asset = extraction_root / asset_name
+        if not asset.is_file():
+            errors.append(f"clean extraction is missing {asset_name}")
+        elif asset.read_bytes() != expected:
+            errors.append(
+                f"clean-extracted {asset_name} does not match "
+                f"release_assets/{asset_name}"
+            )
     if not plist.is_file():
         errors.append("clean extraction is missing DLMS.app/Contents/Info.plist")
     else:
@@ -543,19 +575,28 @@ def verify_extracted_release_package(
 ) -> tuple[Path, list[str]]:
     """Validate filesystem results after the user's final archive is extracted."""
     version = release_version(source_root)
-    expected_top = "DLMS.app" if spec.kind == "macos" else spec.wrapper
-    assert expected_top is not None
+    expected_top = (
+        {"DLMS.app", "README.txt", "sample_quiz.txt"}
+        if spec.kind == "macos"
+        else {spec.wrapper}
+    )
+    assert None not in expected_top
     actual_top = {path.name for path in extraction_root.iterdir()}
     errors: list[str] = []
-    if actual_top != {expected_top}:
+    if actual_top != expected_top:
         errors.append(
-            "clean extraction must contain exactly one top-level "
-            f"{expected_top}; got {', '.join(sorted(actual_top)) or 'nothing'}"
+            "clean extraction has unexpected top-level contents; expected "
+            f"{', '.join(sorted(expected_top))}; got "
+            f"{', '.join(sorted(actual_top)) or 'nothing'}"
         )
 
     if spec.kind == "macos":
+        expected_assets, asset_errors = _expected_asset_bytes(
+            source_root / "release_assets"
+        )
+        errors.extend(asset_errors)
         executable, platform_errors = _verify_extracted_macos(
-            package, extraction_root, version
+            package, extraction_root, version, expected_assets
         )
         errors.extend(platform_errors)
         return executable, errors

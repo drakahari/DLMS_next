@@ -55,13 +55,16 @@ browser after the local server is ready. In a headless or SSH session it prints 
 address but does not open a browser. See [Browser launch and server options](#browser-launch-and-server-options)
 for explicit controls.
 
-The browser is DLMS's interface, not the application process itself. Closing the
-browser tab or window does not shut down DLMS; the local process continues running.
+The browser is DLMS's interface, not the application process itself. When you
+are finished, use **Shutdown DLMS** in the application sidebar for an immediate,
+explicit stop. In an eligible loopback-only desktop session, the optional
+browser-presence shutdown feature may stop DLMS after the final DLMS browser
+presence disappears and its grace period expires. This automatic behavior does
+not apply when the feature is disabled or DLMS is running in LAN/server mode.
 To return to an instance that is still running, reopen a browser and visit
 **[http://127.0.0.1:9001/](http://127.0.0.1:9001/)** instead of starting another
-server copy. When you are finished, use **Shutdown DLMS** in the application
-sidebar and confirm the prompt to fully exit. After shutdown, launch DLMS normally
-the next time you want to use it.
+server copy. After shutdown, launch DLMS normally the next time you want to use
+it.
 
 ---
 
@@ -116,9 +119,9 @@ for long-term retention.
 
 ### From the packaged releases (recommended)
 
-Linux and Windows release packages contain the platform-specific application,
-`README.txt`, and `sample_quiz.txt`. The macOS ZIP is app-only and exposes
-`DLMS.app` directly at its archive root. Supported builds are:
+All six release packages contain the platform-specific application,
+`README.txt`, and `sample_quiz.txt`. The macOS ZIP exposes all three directly at
+its archive root, with no wrapper around `DLMS.app`. Supported builds are:
 
 * Fedora 44 x86-64
 * Ubuntu 24.04 x86-64
@@ -247,8 +250,8 @@ produced and tested from an `x86_64` Python environment, use the distinct name
 
 After native verification and UAT, create these six final download packages.
 The repository-maintained `release_assets/README.txt` and
-`release_assets/sample_quiz.txt` are added to Linux and Windows packages only;
-the verified app-only macOS ZIP is promoted unchanged:
+`release_assets/sample_quiz.txt` are added to all six packages. The verified
+macOS app ZIP gains those two files at its root without adding a wrapper:
 
 * Fedora 44: `DLMS-3.1.0-fedora44-x86_64.tar.gz`
 * Ubuntu 24.04: `DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz`
@@ -542,7 +545,7 @@ files once removed.
    UAT.
 5. Review `git status`, then package the already-verified native artifacts. Add
    the tracked `release_assets/README.txt` and `release_assets/sample_quiz.txt`
-   to Linux and Windows packages; promote the app-only macOS ZIP byte-for-byte.
+   to every package, including beside the root-level `DLMS.app` on macOS.
    Run `tools/verify_release_package.py --smoke` against each exact final archive
    on its named native platform. This clean-extracts the archive and launches
    the executable from the extracted user-facing layout. GitHub's automatic

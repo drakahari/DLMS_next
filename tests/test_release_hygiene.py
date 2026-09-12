@@ -24,12 +24,14 @@ class ReleaseDocumentationTests(unittest.TestCase):
         for setting in ("--browser", "--no-browser", "DLMS_NO_BROWSER"):
             self.assertIn(setting, readme)
         self.assertIn("interactive desktop session", readme)
+        self.assertIn("optional\nbrowser-presence shutdown feature", readme)
+        self.assertIn("loopback-only desktop session", readme)
+        self.assertIn("feature is disabled or DLMS is running in LAN/server mode", readme)
+        self.assertRegex(readme, r"instead of starting another\s+server copy")
         self.assertRegex(
             readme,
-            r"Closing the\s+browser tab or window does not shut down DLMS",
+            r"use \*\*Shutdown DLMS\*\*.*for an immediate,\s+explicit stop",
         )
-        self.assertRegex(readme, r"instead of starting another\s+server copy")
-        self.assertIn("use **Shutdown DLMS**", readme)
         self.assertIn("requirements-lock.txt", readme)
         self.assertIn("GitHub's automatic source archives", readme)
 
@@ -146,6 +148,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         package_readme = (ROOT / "release_assets" / "README.txt").read_text(
             encoding="utf-8"
         )
+        normalized_procedure = " ".join(procedure.split())
         package_verifier = ROOT / "tools" / "verify_release_package.py"
         packager = ROOT / "tools" / "package_release.py"
         final_packages = (
@@ -170,19 +173,40 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("--checksums", procedure)
         self.assertIn("verify_release_package.py --smoke", procedure)
         self.assertIn("Expand-Archive", procedure)
-        self.assertIn("promotes that ZIP byte-for-byte", procedure)
-        self.assertIn("only root-level `DLMS.app`", procedure)
+        self.assertIn(
+            "exactly `DLMS.app`, `README.txt`, and `sample_quiz.txt`",
+            normalized_procedure,
+        )
         self.assertNotIn(
             "DLMS-3.1.0-macos-arm64.zip\n└── DLMS-3.1.0-macos-arm64/",
             procedure,
         )
         self.assertIn(
-            "The macOS ZIP is app-only and exposes\n`DLMS.app` directly",
+            "The macOS ZIP exposes all three directly at\nits archive root",
             readme,
         )
         self.assertIn(
-            "The macOS download is an\napp-only ZIP containing DLMS.app directly",
+            "In the macOS ZIP, DLMS.app, README.txt, and\nsample_quiz.txt are all directly at the archive root",
             package_readme,
+        )
+        self.assertIn(
+            "DLMS-3.1.0-macos-arm64.zip\n├── DLMS.app/\n├── README.txt\n└── sample_quiz.txt",
+            procedure,
+        )
+        normalized_package_readme = " ".join(package_readme.split())
+        for wording in (
+            "Use Shutdown DLMS in the application for an immediate, explicit stop",
+            "optional browser-presence shutdown feature",
+            "closing the final DLMS browser window or tab",
+            "automatically after its grace period",
+            "feature is disabled",
+            "LAN/server mode",
+        ):
+            with self.subTest(lifecycle_wording=wording):
+                self.assertIn(wording, normalized_package_readme)
+        self.assertNotIn(
+            "Closing the browser tab or window does not stop DLMS",
+            normalized_package_readme,
         )
         self.assertIn("GitHub automatically supplies repository source", procedure)
         self.assertIn("Do not\ncreate or upload `DLMS-3.1.0-source.zip`", procedure)

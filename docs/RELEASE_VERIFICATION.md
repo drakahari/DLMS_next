@@ -207,7 +207,9 @@ DLMS-3.1.0-windows11-x86_64.zip
     └── sample_quiz.txt
 
 DLMS-3.1.0-macos-arm64.zip
-└── DLMS.app/
+├── DLMS.app/
+├── README.txt
+└── sample_quiz.txt
 
 DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz
 └── DLMS-3.1.0-omarchy-quattro-x86_64/
@@ -220,23 +222,24 @@ Linux executables are written to the tar archives with mode `0755`; release
 documents use `0644`. The package verifier requires at least one execute bit on
 each archived Linux executable, independent of the verifier host filesystem.
 
-The staged macOS input is already the final native `ditto` ZIP containing one
-root-level `DLMS.app`. The packaging helper promotes that ZIP byte-for-byte; it
-does not rewrite members or add a versioned wrapper, `README.txt`, or
-`sample_quiz.txt`. Exact-byte promotion preserves Unix modes, symbolic links,
-resource-fork/AppleDouble metadata, timestamps, compression, and ZIP extra
-fields without materializing the bundle on a non-macOS filesystem. The final
-package verifier requires the app-only root layout and rechecks arm64 Mach-O,
-bundle identifier/version metadata, executable mode, resources, safe unique
-paths, and content exclusions.
+The staged macOS native input remains a `ditto` ZIP containing one root-level
+`DLMS.app`. The packaging helper copies that verified ZIP, then appends the two
+authoritative release documents at the archive root. It does not materialize or
+renest the app, does not add a versioned wrapper, and retains the existing app
+member data and ZIP metadata. The final-package verifier requires exactly
+`DLMS.app`, `README.txt`, and `sample_quiz.txt` at the root, requires both
+documents to match their tracked sources byte-for-byte, and rechecks arm64
+Mach-O, bundle identifier/version metadata, executable mode, resources, safe
+unique paths, and content exclusions.
 
-`tools/verify_release_package.py` requires Linux and Windows package documents
-to match the tracked sources byte-for-byte. Those packages may contain only the
-three listed files in their versioned wrapper. The macOS package may contain
-only root-level `DLMS.app` (plus associated `__MACOSX` metadata when present).
-It rejects unsafe, duplicate, and case-colliding paths and common
-development/runtime content such as `build/`, `dist/`, virtual environments,
-`__pycache__/`, databases, logs, backups, and uploads.
+`tools/verify_release_package.py` requires every package's documents to match
+the tracked sources byte-for-byte. Linux and Windows packages may contain only
+the three listed files in their versioned wrapper. The macOS package may
+contain only root-level `DLMS.app`, `README.txt`, and `sample_quiz.txt` (plus
+associated `__MACOSX` metadata when present). It rejects unsafe, duplicate, and
+case-colliding paths and common development/runtime content such as `build/`,
+`dist/`, virtual environments, `__pycache__/`, databases, logs, backups, and
+uploads.
 
 ## Clean-extract and smoke the exact final distributables
 
@@ -283,10 +286,10 @@ python tools/verify_release_package.py "$PACKAGE_DIR/DLMS-3.1.0-macos-arm64.zip"
 ```
 
 The macOS flow uses `ditto -x -k`, requires `<temp>/DLMS.app` with no versioned
-wrapper, reconfirms the executable bit, arm64 Mach-O, bundle identifier and
-version metadata, resources, and archived bundle symlinks, then launches
-`<temp>/DLMS.app/Contents/MacOS/DLMS`. `README.txt` and `sample_quiz.txt` are not
-part of the macOS archive contract.
+wrapper, requires `<temp>/README.txt` and `<temp>/sample_quiz.txt` to match the
+tracked release assets, reconfirms the executable bit, arm64 Mach-O, bundle
+identifier and version metadata, resources, and archived bundle symlinks, then
+launches `<temp>/DLMS.app/Contents/MacOS/DLMS`.
 
 The final archive that passes this gate is the artifact that must be checksummed
 and uploaded. Native inputs remain clearly separated in `DLMS-3.1.0`; final

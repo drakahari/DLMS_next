@@ -139,11 +139,14 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         self,
         *,
         wrapped=False,
-        include_documents=False,
+        include_readme=True,
+        include_sample=True,
+        readme=None,
         identifier="io.github.drakahari.DLMS",
         symlink_target=None,
         runtime_member=None,
         include_dist_info_license=False,
+        extra_root_file=None,
     ):
         archive_name = f"DLMS-{VERSION}-macos-arm64.zip"
         path = self.root / archive_name
@@ -158,9 +161,16 @@ class ReleasePackageVerificationTests(unittest.TestCase):
             }
         )
         with zipfile.ZipFile(path, "w") as archive:
-            if include_documents:
-                add_zip_file(archive, f"{prefix}README.txt", self.readme)
+            if include_readme:
+                add_zip_file(
+                    archive,
+                    f"{prefix}README.txt",
+                    self.readme if readme is None else readme,
+                )
+            if include_sample:
                 add_zip_file(archive, f"{prefix}sample_quiz.txt", self.sample)
+            if extra_root_file:
+                add_zip_file(archive, f"{prefix}{extra_root_file}", b"unexpected")
             add_zip_file(
                 archive,
                 f"{prefix}DLMS.app/Contents/Info.plist",
@@ -305,10 +315,19 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
         self.assertIn("Verified checksum manifest:", checked.stdout)
 
-    def test_macos_final_zip_is_app_only_at_archive_root(self):
-        passed = self.verify(self.make_macos())
+    def test_macos_final_zip_has_app_and_release_assets_at_archive_root(self):
+        package = self.make_macos()
+        passed = self.verify(package)
 
         self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
+        with zipfile.ZipFile(package) as archive:
+            top_level = {
+                info.filename.rstrip("/").split("/", 1)[0]
+                for info in archive.infolist()
+            }
+            self.assertEqual(
+                top_level, {"DLMS.app", "README.txt", "sample_quiz.txt"}
+            )
 
     def test_macos_final_zip_still_rejects_runtime_data(self):
         failed = self.verify(
@@ -332,12 +351,29 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         self.assertIn("outside the required DLMS.app/ root", failed.stdout)
         self.assertIn("macOS package is missing", failed.stdout)
 
-    def test_macos_release_documents_are_not_required_or_allowed(self):
-        self.assertEqual(self.verify(self.make_macos()).returncode, 0)
-        failed = self.verify(self.make_macos(include_documents=True))
+    def test_macos_release_documents_are_required_and_must_match_sources(self):
+        for omitted, options in (
+            ("README.txt", {"include_readme": False}),
+            ("sample_quiz.txt", {"include_sample": False}),
+        ):
+            with self.subTest(omitted=omitted):
+                failed = self.verify(self.make_macos(**options))
+                self.assertEqual(failed.returncode, 1)
+                self.assertIn(f"macOS package is missing: {omitted}", failed.stdout)
+
+        stale = self.verify(self.make_macos(readme=b"stale README"))
+        self.assertEqual(stale.returncode, 1)
+        self.assertIn(
+            "packaged README.txt does not match release_assets/README.txt",
+            stale.stdout,
+        )
+
+    def test_macos_unexpected_root_file_is_rejected(self):
+        failed = self.verify(self.make_macos(extra_root_file="notes.txt"))
 
         self.assertEqual(failed.returncode, 1)
         self.assertIn("outside the required DLMS.app/ root", failed.stdout)
+        self.assertIn("unexpected root file", failed.stdout)
 
     def test_macos_bundle_identifier_is_enforced(self):
         failed = self.verify(self.make_macos(identifier="invalid.example.DLMS"))
@@ -526,17 +562,57 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         self.assertEqual(before, fingerprints())
         macos_package = output / f"DLMS-{VERSION}-macos-arm64.zip"
         staged_macos = staging / macos_package.name
-        self.assertEqual(
+        with zipfile.ZipFile(staged_macos) as staged_archive:
+            staged_members = {
+                info.filename: (
+                    staged_archive.read(info),
+                    info.date_time,
+                    info.compress_type,
+                    info.flag_bits,
+                    info.external_attr,
+                    info.internal_attr,
+                    info.create_system,
+                    info.create_version,
+                    info.extract_version,
+                    info.extra,
+                    info.comment,
+                )
+                for info in staged_archive.infolist()
+            }
+        self.assertNotEqual(
             hashlib.sha256(macos_package.read_bytes()).hexdigest(),
             hashlib.sha256(staged_macos.read_bytes()).hexdigest(),
         )
         with zipfile.ZipFile(macos_package) as archive:
             names = {info.filename.rstrip("/") for info in archive.infolist()}
             self.assertTrue(
-                all(name == "DLMS.app" or name.startswith("DLMS.app/") for name in names)
+                all(
+                    name in {"README.txt", "sample_quiz.txt"}
+                    or name == "DLMS.app"
+                    or name.startswith("DLMS.app/")
+                    for name in names
+                )
             )
-            self.assertNotIn("README.txt", names)
-            self.assertNotIn("sample_quiz.txt", names)
+            self.assertEqual(archive.read("README.txt"), self.readme)
+            self.assertEqual(archive.read("sample_quiz.txt"), self.sample)
+            for name, staged_member in staged_members.items():
+                info = archive.getinfo(name)
+                self.assertEqual(
+                    (
+                        archive.read(info),
+                        info.date_time,
+                        info.compress_type,
+                        info.flag_bits,
+                        info.external_attr,
+                        info.internal_attr,
+                        info.create_system,
+                        info.create_version,
+                        info.extract_version,
+                        info.extra,
+                        info.comment,
+                    ),
+                    staged_member,
+                )
             symlink_name = "DLMS.app/Contents/Frameworks/Current"
             symlink = archive.getinfo(symlink_name)
             self.assertTrue(stat.S_ISLNK(symlink.external_attr >> 16))

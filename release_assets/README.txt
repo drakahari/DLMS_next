@@ -19,9 +19,9 @@ system. Do not assume that one Linux build is universal across distributions.
 
 PACKAGE CONTENTS
 
-Linux and Windows packages contain the DLMS application for their named
-platform, this README.txt, and sample_quiz.txt. The macOS download is an
-app-only ZIP containing DLMS.app directly at the archive root.
+All six packages contain the DLMS application for their named platform, this
+README.txt, and sample_quiz.txt. In the macOS ZIP, DLMS.app, README.txt, and
+sample_quiz.txt are all directly at the archive root, with no wrapper folder.
 
 STARTING DLMS
 
@@ -61,9 +61,12 @@ checksum and the download source.
 
 USING DLMS
 
-DLMS opens a local address in your default browser. Keep the DLMS application
-running while using that browser page. Closing the browser tab or window does
-not stop DLMS; use Shutdown DLMS in the application when you are finished.
+DLMS opens a local address in your default browser. Use Shutdown DLMS in the
+application for an immediate, explicit stop when you are finished. When the
+optional browser-presence shutdown feature is enabled for a loopback-only
+desktop session, closing the final DLMS browser window or tab may stop DLMS
+automatically after its grace period. Do not rely on automatic shutdown when
+that feature is disabled or when DLMS is running in LAN/server mode.
 
 Screenshot OCR and selected scanned-PDF OCR use Tesseract and PDFium bundled
 inside the native DLMS package. Users of an OCR-enabled frozen package do not

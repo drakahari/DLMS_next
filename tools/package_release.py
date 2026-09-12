@@ -79,17 +79,14 @@ def _package_windows(
             _write_zip_file(archive, assets_dir / name, f"{wrapper}/{name}", 0o644)
 
 
-def _package_macos(source: Path, destination: Path) -> None:
-    """Promote the verified app-only ZIP without changing a single archive byte.
-
-    The native ``ditto --keepParent`` ZIP is already the final macOS
-    distributable. Copying it byte-for-byte avoids both a second archive layout
-    and any opportunity to alter bundle metadata, permissions, resource forks,
-    or symbolic-link records on a non-macOS packaging host.
-    """
+def _package_macos(source: Path, destination: Path, assets_dir: Path) -> None:
+    """Add authoritative root documents to the verified native app ZIP."""
     shutil.copyfile(source, destination)
     if sha256_file(source) != sha256_file(destination):
-        raise OSError("macOS final distributable differs from its verified native ZIP")
+        raise OSError("macOS staging copy differs from its verified native ZIP")
+    with zipfile.ZipFile(destination, "a", allowZip64=True) as archive:
+        for name in ("README.txt", "sample_quiz.txt"):
+            _write_zip_file(archive, assets_dir / name, name, 0o644)
 
 
 def _input_artifacts(staging_dir: Path, version: str) -> list[tuple[str, Path, str]]:
@@ -152,7 +149,7 @@ def package_release(staging_dir: Path, output_dir: Path, source_root: Path) -> l
             elif target == "windows-x86_64":
                 _package_windows(source, destination, spec.wrapper, assets_dir)
             else:
-                _package_macos(source, destination)
+                _package_macos(source, destination, assets_dir)
             errors = verify_release_package(destination, source_root)
             if errors:
                 raise ValueError(f"invalid generated package {output_name}: {'; '.join(errors)}")
