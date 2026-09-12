@@ -65,6 +65,18 @@ WINDOWS_POWERSHELL = (
     / "v1.0"
     / "powershell.exe"
 )
+TEXT_RELEASE_ASSETS = frozenset({"README.txt", "sample_quiz.txt"})
+
+
+def _release_asset_bytes_match(name: str, packaged: bytes, expected: bytes) -> bool:
+    """Compare known text assets with canonical newlines; keep others exact."""
+    if name not in TEXT_RELEASE_ASSETS:
+        return packaged == expected
+
+    def canonical_newlines(payload: bytes) -> bytes:
+        return payload.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+    return canonical_newlines(packaged) == canonical_newlines(expected)
 
 
 def expected_packages(version: str) -> dict[str, PackageSpec]:
@@ -223,7 +235,9 @@ def _verify_linux_package(
                 member = files.get(f"{spec.wrapper}/{asset_name}")
                 if member is not None:
                     extracted = archive.extractfile(member)
-                    if extracted is None or extracted.read() != expected:
+                    if extracted is None or not _release_asset_bytes_match(
+                        asset_name, extracted.read(), expected
+                    ):
                         errors.append(
                             f"packaged {asset_name} does not match "
                             f"release_assets/{asset_name}"
@@ -290,7 +304,9 @@ def _verify_windows_package(
         errors.append("Windows package executable is not an x86_64 PE file")
     for asset_name, expected in expected_assets.items():
         member_name = f"{spec.wrapper}/{asset_name}"
-        if member_name in infos and archive.read(member_name) != expected:
+        if member_name in infos and not _release_asset_bytes_match(
+            asset_name, archive.read(member_name), expected
+        ):
             errors.append(
                 f"packaged {asset_name} does not match release_assets/{asset_name}"
             )
@@ -318,7 +334,9 @@ def _verify_macos_package(
         errors.append("macOS package contains an unexpected root file: " + name)
 
     for asset_name, expected in expected_assets.items():
-        if asset_name in infos and archive.read(asset_name) != expected:
+        if asset_name in infos and not _release_asset_bytes_match(
+            asset_name, archive.read(asset_name), expected
+        ):
             errors.append(
                 f"packaged {asset_name} does not match release_assets/{asset_name}"
             )
@@ -526,7 +544,9 @@ def _verify_extracted_macos(
         asset = extraction_root / asset_name
         if not asset.is_file():
             errors.append(f"clean extraction is missing {asset_name}")
-        elif asset.read_bytes() != expected:
+        elif not _release_asset_bytes_match(
+            asset_name, asset.read_bytes(), expected
+        ):
             errors.append(
                 f"clean-extracted {asset_name} does not match "
                 f"release_assets/{asset_name}"
@@ -624,7 +644,9 @@ def verify_extracted_release_package(
         errors.append("clean extraction contains an unexpected subdirectory")
     for asset_name, expected in expected_assets.items():
         asset = package_root / asset_name
-        if asset.is_file() and asset.read_bytes() != expected:
+        if asset.is_file() and not _release_asset_bytes_match(
+            asset_name, asset.read_bytes(), expected
+        ):
             errors.append(
                 f"clean-extracted {asset_name} does not match release_assets/{asset_name}"
             )

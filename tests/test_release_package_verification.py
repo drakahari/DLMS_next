@@ -65,6 +65,14 @@ def add_zip_symlink(archive, name, target):
     archive.writestr(info, target)
 
 
+def canonical_lf(payload: bytes) -> bytes:
+    return payload.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def as_crlf(payload: bytes) -> bytes:
+    return canonical_lf(payload).replace(b"\n", b"\r\n")
+
+
 class ReleasePackageVerificationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="dlms-package-verification-")
@@ -75,14 +83,14 @@ class ReleasePackageVerificationTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def verify(self, package):
+    def verify(self, package, source_root=ROOT):
         return subprocess.run(
             [
                 sys.executable,
                 str(SCRIPT),
                 str(package),
                 "--source-root",
-                str(ROOT),
+                str(source_root),
             ],
             capture_output=True,
             text=True,
@@ -112,6 +120,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         include_readme=True,
         include_sample=True,
         readme=None,
+        sample=None,
         wrapper=None,
         extra_executable=None,
     ):
@@ -128,7 +137,11 @@ class ReleasePackageVerificationTests(unittest.TestCase):
                     self.readme if readme is None else readme,
                 )
             if include_sample:
-                add_zip_file(archive, f"{wrapper}/sample_quiz.txt", self.sample)
+                add_zip_file(
+                    archive,
+                    f"{wrapper}/sample_quiz.txt",
+                    self.sample if sample is None else sample,
+                )
             if extra_executable:
                 add_zip_file(
                     archive, f"{wrapper}/{extra_executable}", pe_x86_64()
@@ -255,6 +268,17 @@ class ReleasePackageVerificationTests(unittest.TestCase):
                 "Versions/Current",
             )
         return staging
+
+    def make_source_root(self, name, *, readme, sample):
+        source_root = self.root / name
+        assets = source_root / "release_assets"
+        assets.mkdir(parents=True)
+        (source_root / "app.py").write_text(
+            f'APP_VERSION = "{VERSION}"\n', encoding="utf-8"
+        )
+        (assets / "README.txt").write_bytes(readme)
+        (assets / "sample_quiz.txt").write_bytes(sample)
+        return source_root
 
     def test_complete_final_package_set_has_only_expected_payload(self):
         packages = [
@@ -498,6 +522,59 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("does not match release_assets/README.txt", result.stdout)
+
+    def test_lf_package_matches_crlf_release_asset_checkout(self):
+        readme = canonical_lf(self.readme)
+        sample = canonical_lf(self.sample)
+        package = self.make_windows(readme=readme, sample=sample)
+        source_root = self.make_source_root(
+            "crlf-source", readme=as_crlf(readme), sample=as_crlf(sample)
+        )
+
+        result = self.verify(package, source_root)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_crlf_package_matches_lf_release_asset_checkout(self):
+        readme = canonical_lf(self.readme)
+        sample = canonical_lf(self.sample)
+        package = self.make_windows(
+            readme=as_crlf(readme), sample=as_crlf(sample)
+        )
+        source_root = self.make_source_root(
+            "lf-source", readme=readme, sample=sample
+        )
+
+        result = self.verify(package, source_root)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_newline_normalization_does_not_hide_text_changes(self):
+        readme = canonical_lf(self.readme)
+        sample = canonical_lf(self.sample)
+        package = self.make_windows(readme=readme, sample=sample)
+        source_root = self.make_source_root(
+            "changed-source",
+            readme=as_crlf(readme + b"Changed text\n"),
+            sample=as_crlf(sample),
+        )
+
+        result = self.verify(package, source_root)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("does not match release_assets/README.txt", result.stdout)
+
+    def test_only_known_text_assets_receive_newline_normalization(self):
+        self.assertTrue(
+            PACKAGE_VERIFIER._release_asset_bytes_match(
+                "README.txt", b"line one\rline two\r\n", b"line one\nline two\n"
+            )
+        )
+        self.assertFalse(
+            PACKAGE_VERIFIER._release_asset_bytes_match(
+                "application.bin", b"line one\r\n", b"line one\n"
+            )
+        )
 
     def test_checksum_manifest_must_cover_exact_supplied_package_set(self):
         package = self.make_linux("omarchy-quattro-x86_64")

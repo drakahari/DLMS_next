@@ -10,3 +10,6 @@
 /README_MEDICAL_V0.4.md export-ignore
 /README_MEDICAL_V0.5.md export-ignore
 /docs/screenshots/requirements.txt export-ignore
+
+# Final-package text assets use stable bytes across checkout platforms.
+/release_assets/*.txt text eol=lf

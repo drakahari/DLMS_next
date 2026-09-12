@@ -393,6 +393,10 @@ class ReleaseDocumentationTests(unittest.TestCase):
         )
         self.assertEqual(ignored_probe.returncode, 0)
 
+    def test_release_text_assets_are_checked_out_with_lf_endings(self):
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        self.assertIn("/release_assets/*.txt text eol=lf", attributes)
+
     def test_canonical_pyinstaller_manifest_has_narrow_local_inputs(self):
         spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")
         build_requirements = (ROOT / "requirements-build.txt").read_text(encoding="utf-8")

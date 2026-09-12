@@ -228,18 +228,20 @@ authoritative release documents at the archive root. It does not materialize or
 renest the app, does not add a versioned wrapper, and retains the existing app
 member data and ZIP metadata. The final-package verifier requires exactly
 `DLMS.app`, `README.txt`, and `sample_quiz.txt` at the root, requires both
-documents to match their tracked sources byte-for-byte, and rechecks arm64
-Mach-O, bundle identifier/version metadata, executable mode, resources, safe
-unique paths, and content exclusions.
+documents to match their tracked sources under the text comparison described
+below, and rechecks arm64 Mach-O, bundle identifier/version metadata,
+executable mode, resources, safe unique paths, and content exclusions.
 
 `tools/verify_release_package.py` requires every package's documents to match
-the tracked sources byte-for-byte. Linux and Windows packages may contain only
-the three listed files in their versioned wrapper. The macOS package may
-contain only root-level `DLMS.app`, `README.txt`, and `sample_quiz.txt` (plus
-associated `__MACOSX` metadata when present). It rejects unsafe, duplicate, and
-case-colliding paths and common development/runtime content such as `build/`,
-`dist/`, virtual environments, `__pycache__/`, databases, logs, backups, and
-uploads.
+the tracked sources. For `README.txt` and `sample_quiz.txt` only, it canonicalizes
+CRLF and lone CR newlines to LF before comparing; every other textual byte must
+still match. Executable and other binary comparisons remain byte-exact. Linux
+and Windows packages may contain only the three listed files in their versioned
+wrapper. The macOS package may contain only root-level `DLMS.app`, `README.txt`,
+and `sample_quiz.txt` (plus associated `__MACOSX` metadata when present). It
+rejects unsafe, duplicate, and case-colliding paths and common
+development/runtime content such as `build/`, `dist/`, virtual environments,
+`__pycache__/`, databases, logs, backups, and uploads.
 
 ## Clean-extract and smoke the exact final distributables
 
