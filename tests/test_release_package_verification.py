@@ -143,6 +143,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         identifier="io.github.drakahari.DLMS",
         symlink_target=None,
         runtime_member=None,
+        include_dist_info_license=False,
     ):
         archive_name = f"DLMS-{VERSION}-macos-arm64.zip"
         path = self.root / archive_name
@@ -188,6 +189,12 @@ class ReleasePackageVerificationTests(unittest.TestCase):
             )
             if runtime_member is not None:
                 add_zip_file(archive, f"{prefix}{runtime_member}", b"must not ship")
+            if include_dist_info_license:
+                add_zip_file(
+                    archive,
+                    f"{prefix}DLMS.app/Contents/Resources/neutral_dependency-9.4.dist-info/licenses/data/platform/NOTICE.txt",
+                    b"immutable dependency license",
+                )
             if symlink_target is not None:
                 add_zip_symlink(
                     archive,
@@ -312,6 +319,11 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
         self.assertEqual(failed.returncode, 1)
         self.assertIn("forbidden development or runtime content", failed.stdout)
+
+    def test_macos_final_zip_accepts_dist_info_license_data_directory(self):
+        passed = self.verify(self.make_macos(include_dist_info_license=True))
+
+        self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
 
     def test_macos_versioned_wrapper_regression_is_rejected(self):
         failed = self.verify(self.make_macos(wrapped=True))

@@ -224,12 +224,13 @@ def _macos_cpu_types(binary: bytes) -> set[int]:
 
 
 def _contains_runtime_data(member_names: list[str]) -> list[str]:
-    """Return runtime-data paths, excluding exact bundled template namespaces.
+    """Return runtime-data paths, excluding narrow immutable bundle collisions.
 
     Template directory names may legitimately collide with runtime directory
     names. Only the first component beneath the immutable macOS template root
-    receives that exception; runtime names elsewhere, including deeper inside
-    such a template directory, remain forbidden.
+    receives that exception. A directory named ``data`` may also occur inside
+    the license subtree of bundled Python distribution metadata. Runtime names
+    elsewhere, including other names below either exception, remain forbidden.
     """
     offending = []
     for name in member_names:
@@ -243,8 +244,21 @@ def _contains_runtime_data(member_names: list[str]) -> list[str]:
         immutable_template_root = (
             parts[:template_namespace_index] == MACOS_IMMUTABLE_TEMPLATE_ROOT
         )
+
+        dist_info_license_root = (
+            len(parts) >= 6
+            and parts[:3] == MACOS_IMMUTABLE_TEMPLATE_ROOT[:3]
+            and parts[3].endswith(".dist-info")
+            and bool(parts[3].removesuffix(".dist-info"))
+            and parts[4] == "licenses"
+        )
         if any(
-            not immutable_template_root or index != template_namespace_index
+            not (
+                immutable_template_root and index == template_namespace_index
+                or dist_info_license_root
+                and index >= 5
+                and parts[index] == "data"
+            )
             for index in runtime_indexes
         ):
             offending.append(name)

@@ -179,12 +179,34 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_macos_dist_info_license_data_directories_are_accepted(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            artifact = root / "DLMS-3.1.0-macos-arm64.zip"
+            _write_macos_zip(
+                artifact,
+                resource_members=(
+                    "DLMS.app/Contents/Resources/neutral_dependency-9.4.dist-info/licenses/data/platform/BUILD_LICENSES/codec.txt",
+                    "DLMS.app/Contents/Resources/neutral_dependency-9.4.dist-info/licenses/notices/data/library.txt",
+                ),
+            )
+
+            result = self._run(
+                "macos-arm64", str(artifact), "--source-root", str(root)
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_macos_runtime_names_outside_or_below_template_namespace_are_rejected(self):
         runtime_members = (
             "DLMS.app/Contents/Resources/content_packs/user-pack.json",
             "DLMS.app/Contents/Resources/law/user-state.json",
             "DLMS.app/Contents/Resources/data/results.db",
             "DLMS.app/Contents/Resources/templates/law/uploads/session.bin",
+            "DLMS.app/Contents/Resources/vendor/licenses/data/notice.txt",
+            "DLMS.app/Contents/Resources/neutral_dependency-9.4.dist-info/data/notice.txt",
+            "DLMS.app/Contents/Resources/neutral_dependency-9.4.dist-info/licenses/data/uploads/session.bin",
         )
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
             root = Path(directory)
