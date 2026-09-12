@@ -214,6 +214,9 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
                 'name="file"',
                 'name="quiz_logo"',
                 'href="/paste"',
+                "Import PDF &amp; image study content",
+                "selectable or scanned PDFs",
+                "local OCR",
             ),
             "quiz/paste.html": (
                 'action="/preview_paste"',

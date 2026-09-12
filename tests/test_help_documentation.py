@@ -65,6 +65,8 @@ class HelpDocumentationTests(unittest.TestCase):
         build_quiz = self._static("help-build-quiz.html")
         self.assertIn('href="/help/external-ai"', build_quiz)
         self.assertIn("External AI Quiz Builder", build_quiz)
+        self.assertIn("Import PDF &amp; image study content", build_quiz)
+        self.assertIn("PDF question banks, glossaries, scans, or screenshots", build_quiz)
 
         paste_template = Path(dlms.TEMPLATE_ROOT, "quiz", "paste.html").read_text(
             encoding="utf-8"

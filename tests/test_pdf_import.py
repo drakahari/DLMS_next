@@ -28,6 +28,18 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertIn("PDF &amp; IMAGE IMPORT · REVIEW", review_template)
         self.assertIn('action="/pdf-import/save/{{ draft.id }}"', review_template)
 
+    def test_saved_bank_generators_use_back_navigation_wording(self):
+        template_root = Path(dlms.__file__).resolve().parent / "templates" / "pdf_import"
+        for template_name in ("question-bank.html", "terminology-bank.html"):
+            with self.subTest(template=template_name):
+                template = (template_root / template_name).read_text(encoding="utf-8")
+                self.assertIn(
+                    '<a class="build-secondary-link" href="/pdf-import">'
+                    "← Back to PDF Banks</a>",
+                    template,
+                )
+                self.assertNotIn(">All PDF Banks</a>", template)
+
     def test_empty_pages_preserve_exact_parser_and_detection_shapes(self):
         pages = [{"page": 1, "lines": []}, {"page": 2, "lines": []}]
 

@@ -30,7 +30,7 @@
 <label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="{{ bank.default_exam_minutes or 90 }}"></label>
 <label class="build-field"><span>Start term #</span><input type="number" name="start_number" min="1" max="{{ max_number }}" value="1"></label>
 <label class="build-field"><span>End term #</span><input type="number" name="end_number" min="1" max="{{ max_number }}" value="{{ [25,max_number]|min }}"></label>
-<div class="build-submit-row"><a class="build-secondary-link" href="/pdf-import">All PDF Banks</a><button class="build-primary-button" type="submit">Create Practice Quiz</button></div>
+<div class="build-submit-row"><a class="build-secondary-link" href="/pdf-import">← Back to PDF Banks</a><button class="build-primary-button" type="submit">Create Practice Quiz</button></div>
 </form></section>
 <section class="dashboard-panel pdf-bank-source-panel"><div class="pdf-bank-panel-heading"><div><span class="build-method-label">SOURCE INVENTORY</span><h2>Parsed Terminology</h2><p>{{ active|length }} active · {{ excluded|length }} excluded but preserved</p></div></div>
 <div class="pdf-term-table-wrap"><table class="study-dataset-table pdf-term-table"><thead><tr><th>#</th><th>Status</th><th>Term</th><th>Definition</th><th>Used</th><th>Page</th></tr></thead><tbody>
