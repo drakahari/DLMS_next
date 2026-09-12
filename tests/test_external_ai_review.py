@@ -364,6 +364,9 @@ class ExternalAIReviewRouteTests(unittest.TestCase):
         self.assertIn("/static/question-review.js", body)
         self.assertIn('id="questionReviewConfirmSelected" disabled', body)
         self.assertIn('id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite"', body)
+        self.assertIn('id="questionReviewSkippedDetails" hidden', body)
+        self.assertIn('id="questionReviewSkippedSummary"', body)
+        self.assertIn('id="questionReviewSkippedList"', body)
         self.assertIn(
             'class="build-secondary-link" id="pdfDeleteSelected">Exclude Selected</button>',
             body,

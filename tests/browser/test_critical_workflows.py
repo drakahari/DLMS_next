@@ -5780,13 +5780,16 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "document.getElementById('questionReviewConfirmSelected').click();"
         "return {confirmations:cards.map(card=>card.querySelector('[data-pdf-role=correctness-confirmed]').checked),"
         "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent,"
+        "detailsHidden:document.getElementById('questionReviewSkippedDetails').hidden,"
+        "details:document.getElementById('questionReviewSkippedList').textContent,"
         "selected:document.getElementById('pdfSelectionCount').textContent};})()"
     )
     assert mixed["confirmations"] == [True, False, False]
     assert mixed["selected"] == "3 selected"
-    assert "1 selected question confirmed as reviewed" in mixed["status"]
-    assert "question 2 (has an empty choice)" in mixed["status"]
-    assert "question 3 (excluded)" in mixed["status"]
+    assert mixed["status"] == "1 question confirmed. 2 skipped."
+    assert mixed["detailsHidden"] is False
+    assert "Question 2: has an empty choice." in mixed["details"]
+    assert "Question 3: excluded." in mixed["details"]
 
     repaired = browser.evaluate(
         "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
@@ -5798,7 +5801,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
     )
     assert repaired["confirmations"] == [True, True, False]
-    assert repaired["status"] == "1 selected question confirmed as reviewed."
+    assert repaired["status"] == "1 question confirmed. 0 skipped."
 
     browser.set_viewport(1600, 1000)
     desktop_layout = browser.evaluate(
@@ -6079,7 +6082,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
     )
     assert bulk_single["confirmations"] == [True, False], bulk_single
-    assert bulk_single["status"] == "1 selected question confirmed as reviewed."
+    assert bulk_single["status"] == "1 question confirmed. 0 skipped."
 
     bulk_mixed = browser.evaluate(
         "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
@@ -6091,8 +6094,10 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
     )
     assert bulk_mixed["confirmations"] == [True, False]
-    assert "1 selected question confirmed as reviewed" in bulk_mixed["status"]
-    assert "question 2 (has an empty choice)" in bulk_mixed["status"]
+    assert bulk_mixed["status"] == "1 question confirmed. 1 skipped."
+    assert "Question 2: has an empty choice." in browser.evaluate(
+        "document.getElementById('questionReviewSkippedList').textContent"
+    )
 
     bulk_excluded = browser.evaluate(
         "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
@@ -6103,7 +6108,10 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
     )
     assert bulk_excluded["confirmed"] is False
-    assert "question 2 (excluded)" in bulk_excluded["status"]
+    assert bulk_excluded["status"] == "1 question confirmed. 1 skipped."
+    assert "Question 2: excluded." in browser.evaluate(
+        "document.getElementById('questionReviewSkippedList').textContent"
+    )
 
     bulk_ready = browser.evaluate(
         "(() => {const cards=[...document.querySelectorAll('.pdf-import-question-card')];"
@@ -6118,7 +6126,10 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
     )
     assert bulk_ready["confirmations"] == [True, True]
-    assert bulk_ready["status"] == "2 selected questions confirmed as reviewed."
+    assert bulk_ready["status"] == "2 questions confirmed. 0 skipped."
+    assert browser.evaluate(
+        "document.getElementById('questionReviewSkippedDetails').hidden"
+    ) is True
     browser.click("#pdfReviewForm button[type=submit]:not([formaction])")
     browser.wait_for("location.pathname.startsWith('/pdf-import/bank/')")
     saved = browser.evaluate(
@@ -6299,7 +6310,7 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
         "status:document.getElementById('questionReviewBulkConfirmationStatus').textContent};})()"
     )
     assert scanned_bulk["confirmed"] is True, scanned_bulk
-    assert "1 selected question confirmed as reviewed" in scanned_bulk["status"]
+    assert scanned_bulk["status"] == "1 question confirmed. 0 skipped."
     browser.evaluate(
         "document.getElementById('pdfReviewForm').requestSubmit("
         "document.querySelector('#pdfReviewForm button[type=submit]:not([formaction])'))"
@@ -6318,6 +6329,119 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
     )
     assert saved == {"rows": 2, "source": True}
     assert not (browser_stack.data_root / "uploads" / "ocr_pdfs" / draft_id).exists()
+
+
+def test_pdf_review_large_bulk_confirmation_status_stays_compact(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    draft_id = "browser_large_bulk_status"
+    questions = []
+    for index in range(40):
+        skipped = index >= 31
+        questions.append({
+            "number": index + 1,
+            "question": f"Which neutral option applies to item {index + 1}?",
+            "choices": [
+                {"label": "A", "text": f"Applicable option {index + 1}"},
+                {"label": "B", "text": "" if skipped else f"Alternative option {index + 1}"},
+            ],
+            "correct": "A",
+            "answer_mode": "single",
+            "correctness_confirmation_required": True,
+            "correctness_confirmed": False,
+            "explanation": f"Neutral explanation {index + 1}.",
+            "pages": [index + 1],
+            "status": "incomplete" if skipped else "complete",
+            "issues": [],
+        })
+    draft = {
+        "id": draft_id,
+        "source_name": "neutral-large-review.pdf",
+        "source_kind": "user-provided-pdf-ocr",
+        "page_count": 40,
+        "document_type": "question_bank",
+        "detection": {"recovery_mode": True},
+        "recovery_mode": True,
+        "quiz_title": "Large Bulk Review",
+        "exam_minutes": 45,
+        "summary": {"detected": 40, "complete": 31, "review": 0, "incomplete": 9},
+        "questions": questions,
+    }
+    review_root = browser_stack.data_root / "pdf_import_drafts"
+    review_root.mkdir(exist_ok=True)
+    (review_root / f"{draft_id}.json").write_text(
+        json.dumps(draft), encoding="utf-8"
+    )
+
+    detail_surfaces = {}
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{base_url}/settings")
+        browser.wait_for("window.dlmsCsrfToken")
+        status = browser.evaluate(
+            f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        )
+        assert status == 200
+        browser.navigate(f"{base_url}/pdf-import/review/{draft_id}")
+        browser.wait_for_page_ready(
+            "document.querySelectorAll('.pdf-import-question-card').length === 40 && "
+            "document.getElementById('questionReviewConfirmSelected')"
+        )
+        browser.click("#pdfSelectAllVisible")
+        browser.click("#questionReviewConfirmSelected")
+        desktop = browser.evaluate(
+            "(() => {const bar=document.querySelector('.pdf-review-bulk-bar');"
+            "const actions=document.querySelector('.pdf-review-bulk-actions');"
+            "const statusGroup=document.querySelector('.pdf-review-bulk-status-group');"
+            "const status=document.getElementById('questionReviewBulkConfirmationStatus');"
+            "const details=document.getElementById('questionReviewSkippedDetails');"
+            "const summary=document.getElementById('questionReviewSkippedSummary');"
+            "const list=document.getElementById('questionReviewSkippedList');"
+            "const detailsStyle=getComputedStyle(details);summary.focus();details.open=true;"
+            "const itemStyle=getComputedStyle(list.firstElementChild);"
+            "const detailRect=details.getBoundingClientRect(),actionsRect=actions.getBoundingClientRect(),"
+            "statusRect=statusGroup.getBoundingClientRect();return {"
+            "selection:document.getElementById('pdfSelectionCount').textContent,"
+            "status:status.textContent,statusLive:status.getAttribute('aria-live'),"
+            "detailsHidden:details.hidden,summary:summary.textContent,items:list.children.length,"
+            "first:list.firstElementChild.textContent,last:list.lastElementChild.textContent,"
+            "confirmed:document.querySelectorAll('[data-pdf-role=correctness-confirmed]:checked').length,"
+            "focused:document.activeElement===summary,open:details.open,"
+            "belowToolbar:detailRect.top>=Math.max(actionsRect.bottom,statusRect.bottom),"
+            "contained:detailRect.left>=bar.getBoundingClientRect().left&&detailRect.right<=bar.getBoundingClientRect().right,"
+            "wrap:itemStyle.overflowWrap,background:detailsStyle.backgroundColor,"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        detail_background = desktop.pop("background")
+        assert desktop == {
+            "selection": "40 selected",
+            "status": "31 questions confirmed. 9 skipped.",
+            "statusLive": "polite",
+            "detailsHidden": False,
+            "summary": "Show skipped questions (9)",
+            "items": 9,
+            "first": "Question 32: has an empty choice.",
+            "last": "Question 40: has an empty choice.",
+            "confirmed": 31,
+            "focused": True,
+            "open": True,
+            "belowToolbar": True,
+            "contained": True,
+            "wrap": "anywhere",
+            "overflow": True,
+        }
+        detail_surfaces[theme] = detail_background
+        browser.set_viewport(420, 820)
+        narrow = browser.evaluate(
+            "(() => {const bar=document.querySelector('.pdf-review-bulk-bar'),"
+            "details=document.getElementById('questionReviewSkippedDetails'),"
+            "rect=details.getBoundingClientRect(),barRect=bar.getBoundingClientRect();return {"
+            "contained:rect.left>=barRect.left&&rect.right<=barRect.right,"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert narrow == {"contained": True, "overflow": True}
+        browser.set_viewport(1280, 1000)
+    assert len(set(detail_surfaces.values())) == 4
 
 
 def test_law_semantic_surfaces_follow_all_themes(browser_stack):

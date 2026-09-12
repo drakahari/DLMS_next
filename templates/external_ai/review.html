@@ -82,6 +82,10 @@
                 <span class="pdf-review-bulk-status" id="pdfSelectionCount" aria-live="polite">0 selected</span>
                 <p class="pdf-review-bulk-confirmation-status" id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite" hidden></p>
             </div>
+            <details class="pdf-review-bulk-skipped" id="questionReviewSkippedDetails" hidden>
+                <summary id="questionReviewSkippedSummary">Show skipped questions</summary>
+                <ul id="questionReviewSkippedList"></ul>
+            </details>
         </div>
 
         <form method="POST" action="{{ url_for('external_ai.external_ai_publish', draft_id=draft.id) }}" id="pdfReviewForm" data-review-reset-confirmation-on-edit="true" data-single-mode-safeguard="Choose one correct answer before switching to single-answer mode.">

@@ -447,6 +447,14 @@ class PDFImportParserTests(unittest.TestCase):
             'id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite" hidden',
             question_html,
         )
+        self.assertIn(
+            'id="questionReviewSkippedDetails" hidden', question_html
+        )
+        self.assertIn(
+            'id="questionReviewSkippedSummary">Show skipped questions</summary>',
+            question_html,
+        )
+        self.assertIn('id="questionReviewSkippedList"', question_html)
         self.assertIn('data-review-reset-confirmation-on-edit="true"', question_html)
         self.assertIn('data-review-require-explanation="false"', question_html)
         self.assertIn('data-review-reject-duplicate-questions="false"', question_html)

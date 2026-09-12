@@ -9498,6 +9498,10 @@ body.it-study-page .medical-ai-builder-teaser-icon {
 .pdf-import-page .pdf-review-bulk-status-group { display:grid;justify-items:end;gap:7px;min-width:0;max-width:min(100%,460px); }
 .pdf-import-page .pdf-review-bulk-status { margin:0;padding:7px 10px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.28));border-radius:999px;color:var(--theme-heading,#fff);background:var(--theme-surface-2,rgba(17,31,56,.78));font-size:13px;font-weight:800;white-space:nowrap; }
 .pdf-import-page .pdf-review-bulk-confirmation-status { margin:0;color:var(--theme-page-text,#eaf2ff);font-size:12px;line-height:1.45;text-align:right;overflow-wrap:anywhere; }
+.pdf-import-page .pdf-review-bulk-skipped { grid-column:1/-1;width:100%;min-width:0;margin:0;padding:0 12px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.28));border-radius:10px;background:var(--theme-surface,rgba(5,18,39,.52));color:var(--theme-page-text,#eaf2ff); }
+.pdf-import-page .pdf-review-bulk-skipped summary { cursor:pointer;padding:10px 0;color:var(--theme-heading,#fff);font-size:13px;font-weight:800;overflow-wrap:anywhere; }
+.pdf-import-page .pdf-review-bulk-skipped ul { display:grid;gap:6px;margin:0;padding:0 0 12px 20px;min-width:0; }
+.pdf-import-page .pdf-review-bulk-skipped li { max-width:100%;line-height:1.45;overflow-wrap:anywhere;word-break:break-word; }
 .pdf-import-page .pdf-review-select-toggle { color:var(--theme-page-text,#eaf2ff); }
 .pdf-import-page .pdf-review-select-toggle input[type="checkbox"] { width:16px!important;height:16px;min-width:16px!important;max-width:16px!important;margin:0; }
 .pdf-import-question-list { display:grid; gap:14px; }

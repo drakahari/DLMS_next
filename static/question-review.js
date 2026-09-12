@@ -11,6 +11,9 @@
   const bulkConfirmationStatus = document.getElementById(
     "questionReviewBulkConfirmationStatus",
   );
+  const skippedDetails = document.getElementById("questionReviewSkippedDetails");
+  const skippedSummary = document.getElementById("questionReviewSkippedSummary");
+  const skippedList = document.getElementById("questionReviewSkippedList");
   const reviewForm = document.getElementById("pdfReviewForm");
   const labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -292,16 +295,21 @@
       confirmed.push(card.dataset.questionNumber || "?");
     });
     if (!bulkConfirmationStatus) return;
-    const confirmedLabel = `${confirmed.length} selected question${
+    bulkConfirmationStatus.textContent = `${confirmed.length} question${
       confirmed.length === 1 ? "" : "s"
-    } confirmed as reviewed.`;
-    const skippedLabel = skipped.length
-      ? ` Could not confirm ${skipped
-          .map((item) => `question ${item.number} (${item.reason})`)
-          .join(", ")}.`
-      : "";
-    bulkConfirmationStatus.textContent = confirmedLabel + skippedLabel;
+    } confirmed. ${skipped.length} skipped.`;
     bulkConfirmationStatus.hidden = false;
+    if (skippedDetails && skippedSummary && skippedList) {
+      skippedDetails.open = false;
+      skippedList.replaceChildren();
+      skipped.forEach((item) => {
+        const detail = document.createElement("li");
+        detail.textContent = `Question ${item.number}: ${item.reason}.`;
+        skippedList.appendChild(detail);
+      });
+      skippedSummary.textContent = `Show skipped questions (${skipped.length})`;
+      skippedDetails.hidden = skipped.length === 0;
+    }
   });
 
   cards.forEach((card) => {

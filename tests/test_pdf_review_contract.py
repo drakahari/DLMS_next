@@ -244,6 +244,8 @@ class SmartPDFReviewContractTests(unittest.TestCase):
             'data-pdf-role="multiple-correct"',
             'id="questionReviewConfirmSelected" disabled',
             'id="questionReviewBulkConfirmationStatus" role="status" aria-live="polite" hidden',
+            'id="questionReviewSkippedDetails" hidden',
+            'id="questionReviewSkippedList"',
             'data-review-reset-confirmation-on-edit="true"',
             "Choose one correct answer before switching to single-answer mode.",
             'aria-live="polite"',
@@ -293,6 +295,8 @@ class SmartPDFReviewContractTests(unittest.TestCase):
         self.assertIn(".pdf-correctness-controls [hidden] { display:none; }", styles)
         self.assertIn('singleInput.disabled = mode !== "single"', script)
         self.assertIn('multipleInput.disabled = mode !== "multiple"', script)
+        self.assertIn("skippedList.replaceChildren()", script)
+        self.assertIn("detail.textContent = `Question ${item.number}: ${item.reason}.`", script)
 
 
 if __name__ == "__main__":
