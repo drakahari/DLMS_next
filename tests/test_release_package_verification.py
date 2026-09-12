@@ -142,6 +142,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         include_documents=False,
         identifier="io.github.drakahari.DLMS",
         symlink_target=None,
+        runtime_member=None,
     ):
         archive_name = f"DLMS-{VERSION}-macos-arm64.zip"
         path = self.root / archive_name
@@ -175,6 +176,18 @@ class ReleasePackageVerificationTests(unittest.TestCase):
                 f"{prefix}DLMS.app/Contents/Resources/static/style.css",
                 b"body {}",
             )
+            add_zip_file(
+                archive,
+                f"{prefix}DLMS.app/Contents/Resources/templates/content_packs/index.html",
+                b"immutable template",
+            )
+            add_zip_file(
+                archive,
+                f"{prefix}DLMS.app/Contents/Resources/templates/law/overview.html",
+                b"immutable template",
+            )
+            if runtime_member is not None:
+                add_zip_file(archive, f"{prefix}{runtime_member}", b"must not ship")
             if symlink_target is not None:
                 add_zip_symlink(
                     archive,
@@ -289,6 +302,16 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         passed = self.verify(self.make_macos())
 
         self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
+
+    def test_macos_final_zip_still_rejects_runtime_data(self):
+        failed = self.verify(
+            self.make_macos(
+                runtime_member="DLMS.app/Contents/Resources/content_packs/user.json"
+            )
+        )
+
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("forbidden development or runtime content", failed.stdout)
 
     def test_macos_versioned_wrapper_regression_is_rejected(self):
         failed = self.verify(self.make_macos(wrapped=True))

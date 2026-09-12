@@ -51,6 +51,7 @@ def _write_macos_zip(
     *,
     runtime_member: str | None = None,
     bundle_version: str = VERSION,
+    resource_members: tuple[str, ...] = (),
 ) -> None:
     executable = b"\xcf\xfa\xed\xfe" + struct.pack("<I", 0x0100000C) + (b"\0" * 24)
     metadata = plistlib.dumps({
@@ -67,6 +68,8 @@ def _write_macos_zip(
         executable_info.external_attr = (stat.S_IFREG | 0o755) << 16
         archive.writestr(executable_info, executable)
         archive.writestr("DLMS.app/Contents/Resources/static/style.css", "body {}")
+        for resource_member in resource_members:
+            archive.writestr(resource_member, "immutable application resource")
         if runtime_member:
             archive.writestr(runtime_member, "must not ship")
 
@@ -156,6 +159,45 @@ class ReleaseArtifactVerificationTests(unittest.TestCase):
             bad = self._run("macos-arm64", str(artifact), "--source-root", str(root))
             self.assertEqual(bad.returncode, 1)
             self.assertIn("includes runtime/user data", bad.stderr)
+
+    def test_macos_template_namespace_collisions_are_accepted(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            artifact = root / "DLMS-3.1.0-macos-arm64.zip"
+            _write_macos_zip(
+                artifact,
+                resource_members=(
+                    "DLMS.app/Contents/Resources/templates/content_packs/index.html",
+                    "DLMS.app/Contents/Resources/templates/law/overview.html",
+                ),
+            )
+
+            result = self._run(
+                "macos-arm64", str(artifact), "--source-root", str(root)
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_macos_runtime_names_outside_or_below_template_namespace_are_rejected(self):
+        runtime_members = (
+            "DLMS.app/Contents/Resources/content_packs/user-pack.json",
+            "DLMS.app/Contents/Resources/law/user-state.json",
+            "DLMS.app/Contents/Resources/data/results.db",
+            "DLMS.app/Contents/Resources/templates/law/uploads/session.bin",
+        )
+        with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:
+            root = Path(directory)
+            _write_source_root(root)
+            artifact = root / "DLMS-3.1.0-macos-arm64.zip"
+            for runtime_member in runtime_members:
+                with self.subTest(runtime_member=runtime_member):
+                    _write_macos_zip(artifact, runtime_member=runtime_member)
+                    result = self._run(
+                        "macos-arm64", str(artifact), "--source-root", str(root)
+                    )
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn("includes runtime/user data", result.stderr)
 
     def test_macos_smoke_uses_ditto_to_preserve_the_bundled_app_structure(self):
         with tempfile.TemporaryDirectory(prefix="dlms-native-release-") as directory:

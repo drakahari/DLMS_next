@@ -26,6 +26,7 @@ from verify_release_artifact import (
     MACOS_DITTO,
     RUNTIME_DATA_NAMES,
     _assert_smoke_host,
+    _contains_runtime_data,
     _linux_machine,
     _macos_bundle_versions,
     _macos_cpu_types,
@@ -56,6 +57,7 @@ FORBIDDEN_PARTS = {
     "results.db",
     "uploads",
 } | RUNTIME_DATA_NAMES
+FORBIDDEN_DEVELOPMENT_PARTS = FORBIDDEN_PARTS - RUNTIME_DATA_NAMES
 WINDOWS_POWERSHELL = (
     Path(os.environ.get("SystemRoot", r"C:\Windows"))
     / "System32"
@@ -117,7 +119,10 @@ def _check_common_names(
                 f"member is outside the required {required_root}/ root: {name}"
             )
         parts = {part.casefold() for part in PurePosixPath(name).parts}
-        if parts.intersection(FORBIDDEN_PARTS):
+        if (
+            parts.intersection(FORBIDDEN_DEVELOPMENT_PARTS)
+            or _contains_runtime_data([name])
+        ):
             errors.append(f"forbidden development or runtime content: {name}")
         if name.casefold().endswith((".db", ".log")):
             errors.append(f"forbidden database or log file: {name}")

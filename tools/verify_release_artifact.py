@@ -49,6 +49,12 @@ RUNTIME_DATA_NAMES = {
     "results.db",
     "uploads",
 }
+MACOS_IMMUTABLE_TEMPLATE_ROOT = (
+    "dlms.app",
+    "contents",
+    "resources",
+    "templates",
+)
 TARGETS = {
     "windows-x86_64": {
         "label": "Windows",
@@ -218,10 +224,29 @@ def _macos_cpu_types(binary: bytes) -> set[int]:
 
 
 def _contains_runtime_data(member_names: list[str]) -> list[str]:
+    """Return runtime-data paths, excluding exact bundled template namespaces.
+
+    Template directory names may legitimately collide with runtime directory
+    names. Only the first component beneath the immutable macOS template root
+    receives that exception; runtime names elsewhere, including deeper inside
+    such a template directory, remain forbidden.
+    """
     offending = []
     for name in member_names:
-        parts = [part.casefold() for part in Path(name).parts]
-        if RUNTIME_DATA_NAMES.intersection(parts):
+        parts = tuple(part.casefold() for part in PurePosixPath(name).parts)
+        runtime_indexes = [
+            index
+            for index, part in enumerate(parts)
+            if part in RUNTIME_DATA_NAMES
+        ]
+        template_namespace_index = len(MACOS_IMMUTABLE_TEMPLATE_ROOT)
+        immutable_template_root = (
+            parts[:template_namespace_index] == MACOS_IMMUTABLE_TEMPLATE_ROOT
+        )
+        if any(
+            not immutable_template_root or index != template_namespace_index
+            for index in runtime_indexes
+        ):
             offending.append(name)
     return offending
 
