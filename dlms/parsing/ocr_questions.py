@@ -17,6 +17,8 @@ from typing import Any, Iterable
 
 from PIL import Image, UnidentifiedImageError
 
+from dlms.parsing.question_wording import question_wording_selects_multiple
+
 
 OCR_QUESTION_MAX_CHOICES = 26
 OCR_QUESTION_MAX_RECORDS = 50
@@ -49,11 +51,6 @@ _ANSWER_KEY_RE = re.compile(
 )
 _FEEDBACK_KEY_RE = re.compile(
     r"\b(?:the\s+)?correct\s+answers?\s+(?:is|are)\s+([^.;\n]+)",
-    re.IGNORECASE,
-)
-_MULTIPLE_MODE_RE = re.compile(
-    r"\b(?:select|choose)\s+(?:all(?:\s+that\s+apply)?|two|three|multiple|\d+)\b|"
-    r"\bmultiple\s+(?:answers?|responses?)\b",
     re.IGNORECASE,
 )
 _EXPLANATION_HEADING_RE = re.compile(
@@ -738,7 +735,7 @@ def _looks_like_question(text: str) -> bool:
     return (
         normalized.endswith("?")
         or normalized.startswith(("which ", "what ", "who ", "when ", "where ", "why ", "how "))
-        or bool(_MULTIPLE_MODE_RE.search(normalized))
+        or question_wording_selects_multiple(normalized)
     )
 
 
@@ -1141,7 +1138,7 @@ def _infer_unlabelled_card_question(
     ).strip()
     all_text = "\n".join(line.text for line in content_lines)
     explanation = "\n".join(line.text for line in overall_explanation).strip()
-    multiple_wording = bool(_MULTIPLE_MODE_RE.search(all_text))
+    multiple_wording = question_wording_selects_multiple(all_text)
     expected_multiple = _expected_multiple_count(all_text)
     positive_indexes = [
         index for index, state in enumerate(choice_states) if state == "correct"
@@ -1569,7 +1566,7 @@ def _infer_one_question(
         correct_answers = list(dict.fromkeys(visual_answers))
         correctness_evidence = "visual_result_marker"
 
-    multiple_wording = bool(_MULTIPLE_MODE_RE.search(all_text))
+    multiple_wording = question_wording_selects_multiple(all_text)
     answer_mode = "multiple" if multiple_wording or len(correct_answers) > 1 else "single"
     if multiple_wording:
         answer_mode_evidence = "explicit_instruction"

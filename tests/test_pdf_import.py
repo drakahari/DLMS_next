@@ -498,6 +498,214 @@ class PDFImportParserTests(unittest.TestCase):
         self.assertEqual(result["summary"]["detected"], 2)
         self.assertEqual(result["questions"][1]["question"], "Which value is three?")
 
+    def test_extended_metadata_headings_require_a_valid_repeated_sequence(self):
+        pages = [{"page": 1, "lines": [
+            "Question #7 Topic 1 · Q7",
+            "Which neutral value is first?", "A. Amber", "B. Blue",
+            "Question #8 Topic 1 - Q8",
+            "Which neutral value is second?", "A. Cedar", "B. Dune",
+            "Question #9 Topic 2 – Q1",
+            "Which neutral value is third?", "A. Elm", "B. Fern",
+        ]}]
+
+        result = dlms._pdf_parse_question_bank(pages)
+
+        self.assertEqual(result["summary"]["detected"], 3)
+        self.assertEqual([q["number"] for q in result["questions"]], [7, 8, 9])
+        self.assertEqual(
+            result["questions"][2]["source_heading"],
+            {"kind": "extended_heading", "global_number": 9, "topic": 2, "local_number": 1},
+        )
+
+    def test_extended_heading_near_misses_and_same_topic_local_reset_are_rejected(self):
+        near_miss_pages = [{"page": 1, "lines": [
+            "Question #1 Topic 1 · Q1 draft",
+            "Which value is first?", "A. One", "B. Two",
+            "Question #2 Topic 1 / Q2",
+            "Which value is second?", "A. Three", "B. Four",
+        ]}]
+        invalid_reset_pages = [{"page": 1, "lines": [
+            "Question #1 Topic 1 · Q2",
+            "Which value is first?", "A. One", "B. Two",
+            "Question #2 Topic 1 · Q1",
+            "Which value is second?", "A. Three", "B. Four",
+        ]}]
+        invalid_global_pages = [{"page": 1, "lines": [
+            "Question #2 Topic 1 · Q1",
+            "Which value is first?", "A. One", "B. Two",
+            "Question #1 Topic 1 · Q2",
+            "Which value is second?", "A. Three", "B. Four",
+        ]}]
+
+        self.assertEqual(
+            dlms._pdf_parse_question_bank(near_miss_pages)["summary"]["detected"],
+            0,
+        )
+        self.assertEqual(
+            dlms._pdf_parse_question_bank(invalid_reset_pages)["summary"]["detected"],
+            0,
+        )
+        self.assertEqual(
+            dlms._pdf_parse_question_bank(invalid_global_pages)["summary"]["detected"],
+            0,
+        )
+
+    def test_no_answer_bank_is_classified_without_inventing_correctness(self):
+        pages = [{"page": 1, "lines": [
+            "Question #1 Topic 1 · Q1",
+            "Choose two neutral colors.", "A. Amber", "B. Blue", "C. Cedar",
+            "Question #2 Topic 1 · Q2",
+            "Which neutral shape is round?", "A. Circle", "B. Square",
+            "Question #3 Topic 1 · Q3",
+            "Fill in the blank:", "A short neutral prompt ____.",
+            "Question #4 Topic 2 · Q1",
+            "Which neutral texture is smooth?", "A. Glass", "B. Gravel",
+        ]}]
+
+        result = dlms._pdf_parse_question_bank(pages)
+        kind, detection = dlms._pdf_detect_document_type(
+            pages, result, dlms._pdf_parse_glossary(pages)
+        )
+
+        self.assertEqual(kind, "question_bank")
+        self.assertTrue(detection["no_answer_question_bank"])
+        self.assertEqual(detection["structured_question_ratio"], 1.0)
+        self.assertEqual(result["summary"], {
+            "detected": 4, "complete": 0, "review": 3, "incomplete": 1,
+        })
+        self.assertTrue(all(q["correct_answers"] == [] for q in result["questions"]))
+        self.assertTrue(all(q["correct"] == "" for q in result["questions"]))
+
+    def test_question_word_in_glossary_prose_does_not_trigger_no_answer_bank(self):
+        pages = [{"page": 1, "lines": [
+            "Question Design A method for writing clear assessment prompts.",
+            "Question Review A process for checking an assessment before use.",
+            "Question Timing A method for planning an assessment session.",
+            "Question Scoring A method for evaluating submitted responses.",
+        ]}]
+
+        question_result = dlms._pdf_parse_question_bank(pages)
+        kind, detection = dlms._pdf_detect_document_type(
+            pages, question_result, dlms._pdf_parse_glossary(pages)
+        )
+
+        self.assertEqual(question_result["summary"]["detected"], 0)
+        self.assertEqual(detection["question_markers"], 0)
+        self.assertNotEqual(kind, "question_bank")
+
+    def test_no_answer_classification_rejects_weak_heading_only_structure(self):
+        pages = [{"page": 1, "lines": [
+            "Question #1", "A prose section without answer choices.",
+            "Question #2", "Another prose section without answer choices.",
+            "Question #3", "Which neutral value is shown?", "A. One", "B. Two",
+            "Question #4", "A final prose section without answer choices.",
+        ]}]
+
+        question_result = dlms._pdf_parse_question_bank(pages)
+        kind, detection = dlms._pdf_detect_document_type(
+            pages, question_result, dlms._pdf_parse_glossary(pages)
+        )
+
+        self.assertNotEqual(kind, "question_bank")
+        self.assertNotIn("no_answer_question_bank", detection)
+
+    def test_explicit_question_wording_sets_multiple_mode_without_answers(self):
+        for wording in (
+            "Choose two neutral values.",
+            "Choose three neutral values.",
+            "Select all that apply to the neutral rule.",
+        ):
+            with self.subTest(wording=wording):
+                pages = [{"page": 1, "lines": [
+                    "Question #1", wording, "A. Alpha", "B. Beta", "C. Gamma",
+                ]}]
+                question = dlms._pdf_parse_question_bank(pages)["questions"][0]
+
+                self.assertEqual(question["answer_mode"], "multiple")
+                self.assertEqual(question["answer_mode_evidence"], "explicit_instruction")
+                self.assertEqual(question["correct_answers"], [])
+                self.assertEqual(question["correct"], "")
+                self.assertEqual(question["status"], "review")
+
+    def test_fill_in_record_is_preserved_as_unsupported_and_incomplete(self):
+        pages = [{"page": 4, "lines": [
+            "Question #12", "Fill in the blank.", "A neutral process uses ____ steps.",
+        ]}]
+
+        question = dlms._pdf_parse_question_bank(pages)["questions"][0]
+        review_question = dlms._pdf_add_question_review_slots(question)
+
+        self.assertEqual(question["number"], 12)
+        self.assertEqual(question["pages"], [4])
+        self.assertIn("A neutral process uses ____ steps.", question["question"])
+        self.assertEqual(question["source_question_type"], "fill_in")
+        self.assertEqual(question["choices"], [])
+        self.assertEqual(review_question["choices"], [])
+        self.assertEqual(question["correct_answers"], [])
+        self.assertEqual(question["status"], "incomplete")
+        self.assertTrue(any("not supported" in issue for issue in question["issues"]))
+
+    def test_extended_choices_continue_across_pages_and_numbered_questions_stay_separate(self):
+        pages = [
+            {"page": 1, "lines": [
+                "Question #20 Topic 3 · Q4",
+                "Which neutral sequence is valid?", "A. First value",
+            ]},
+            {"page": 2, "lines": [
+                "continued detail", "B. Second value", "C. Third value",
+                "Question #21 Topic 3 · Q5",
+                "Which neutral sequence is valid?", "A. Fourth value", "B. Fifth value",
+            ]},
+        ]
+
+        result = dlms._pdf_parse_question_bank(pages)
+
+        self.assertEqual(result["summary"]["detected"], 2)
+        self.assertEqual(result["questions"][0]["choices"][0]["text"], "First value continued detail")
+        self.assertEqual([q["number"] for q in result["questions"]], [20, 21])
+        self.assertEqual(
+            [q["question"] for q in result["questions"]],
+            ["Which neutral sequence is valid?", "Which neutral sequence is valid?"],
+        )
+
+    def test_final_trailing_matter_is_preserved_outside_last_question(self):
+        pages = [
+            {"page": 1, "lines": [
+                "Question #1", "Which neutral value is first?", "A. One", "B. Two",
+                "Question #2", "Which neutral value is second?", "A. Three", "B. Four",
+            ]},
+            {"page": 2, "lines": [
+                "Appendix", "Further neutral resources", "https://example.invalid/resources",
+            ]},
+        ]
+
+        result = dlms._pdf_parse_question_bank(pages)
+
+        self.assertEqual(result["summary"]["detected"], 2)
+        self.assertEqual(result["questions"][-1]["choices"][-1]["text"], "Four")
+        self.assertNotIn("Appendix", result["questions"][-1]["question"])
+        self.assertNotIn("Appendix", result["questions"][-1]["choices"][-1]["text"])
+        self.assertIn("Appendix", result["unassigned_text"])
+        self.assertEqual(result["unassigned_pages"], [2])
+
+        draft = {
+            "id": "synthetic_trailing_matter",
+            "source_name": "synthetic.pdf",
+            "source_kind": "user-provided-pdf",
+            "page_count": 2,
+            "document_type": "question_bank",
+            "detection": {},
+            "quiz_title": "Synthetic trailing matter",
+            "exam_minutes": 30,
+            **result,
+        }
+        dlms._save_pdf_import_draft(draft)
+        html = dlms.app.test_client().get(
+            "/pdf-import/review/synthetic_trailing_matter"
+        ).get_data(as_text=True)
+        self.assertIn("Unassigned document text", html)
+        self.assertIn("Appendix", html)
+
     def test_numbered_supporting_prose_stays_inside_conventional_question(self):
         pages = [{"page": 1, "lines": [
             "Question #7",

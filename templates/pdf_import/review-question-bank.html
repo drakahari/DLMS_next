@@ -146,6 +146,7 @@
 <article class="dashboard-stat-card"><span>Review</span><strong>{{ draft.summary.review }}</strong><small>needs attention</small></article>
 <article class="dashboard-stat-card"><span>Incomplete</span><strong>{{ draft.summary.incomplete }}</strong><small>repair or remove</small></article>
 </section>
+{% if draft.unassigned_text %}<details class="pdf-ocr-unassigned pdf-import-unassigned"><summary>Unassigned document text</summary><p>DLMS kept structurally separate end matter outside the final question. It is shown for diagnosis and will not be saved as question content.</p><pre>{{ draft.unassigned_text }}</pre></details>{% endif %}
 <div class="pdf-import-filter-row"><button type="button" data-filter="all" class="active">All</button><button type="button" data-filter="complete">Complete</button><button type="button" data-filter="review">Needs Review</button><button type="button" data-filter="incomplete">Incomplete</button></div>
 <details class="pdf-review-bulk-help">
 <summary>How filters and bulk actions work</summary>

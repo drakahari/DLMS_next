@@ -2,11 +2,14 @@
 
 import re
 
+from dlms.parsing.question_wording import question_wording_selects_multiple
+
 
 PDF_IMPORT_MAX_PAGES = 2000
 PDF_IMPORT_MAX_EXTRACTED_TEXT_BYTES = 16 * 1024 * 1024
 PDF_IMPORT_MAX_PAGE_TEXT_BYTES = 2 * 1024 * 1024
 PDF_CORRECT_ANSWER_LINE_MAX_CHARS = 4096
+PDF_NO_ANSWER_BANK_MIN_STRUCTURED_RATIO = 0.80
 
 _PDF_CHECK_GLYPH = r"[✅✓✔☑]\ufe0f?"
 _PDF_ANSWER_LABEL_LIST = (
@@ -31,6 +34,17 @@ def _pdf_clean_line(line):
     line = line.replace("\ufeff", "").replace("\u00a0", " ")
     line = re.sub(r"[ \t]+", " ", line).strip()
     return line
+
+
+def _pdf_is_fill_in_marker(line):
+    """Recognize a standalone source declaration for a fill-in question."""
+    return bool(
+        re.fullmatch(
+            r"Fill(?:\s+in)?\s+(?:the\s+)?blank\s*[:.]?",
+            _pdf_clean_line(line),
+            re.I | re.ASCII,
+        )
+    )
 
 
 def _pdf_match_correct_answer_line(line):
@@ -432,6 +446,7 @@ def _pdf_parse_question_chunk(number, records):
     first_choice_index = choice_starts[0][0] if choices else choice_scan_end
     stem_lines = lines[:first_choice_index]
     question_text = _pdf_join_wrapped(stem_lines)
+    is_fill_in = any(_pdf_is_fill_in_marker(line) for line in stem_lines)
 
     parsed_correct_answers = (
         list(answer_match.get("labels") or [])
@@ -518,7 +533,22 @@ def _pdf_parse_question_chunk(number, records):
     correct_answers = (
         parsed_correct_answers if parsed_correct_answers and not invalid_correct_answers else []
     )
-    answer_mode = "multiple" if len(parsed_correct_answers) > 1 else "single"
+    multiple_wording = question_wording_selects_multiple(question_text)
+    answer_mode = (
+        "multiple"
+        if multiple_wording or len(parsed_correct_answers) > 1
+        else "single"
+    )
+    if multiple_wording:
+        answer_mode_evidence = "explicit_instruction"
+    elif len(parsed_correct_answers) > 1:
+        answer_mode_evidence = "explicit_answer_key"
+    elif len(parsed_correct_answers) == 1:
+        answer_mode_evidence = "explicit_answer_key"
+    else:
+        answer_mode_evidence = "unknown"
+    if is_fill_in:
+        correct_answers = []
     correct_label = correct_answers[0] if len(correct_answers) == 1 else ""
     if not question_text:
         issues.append("Question text was not detected.")
@@ -535,6 +565,11 @@ def _pdf_parse_question_chunk(number, records):
     elif not correct_answers:
         if not any("malformed or ambiguous" in issue for issue in issues):
             issues.append("A usable correct-answer list was not detected.")
+    if is_fill_in:
+        issues.append(
+            "Fill-in questions are not supported by the current choice-question "
+            "model; convert this record to a choice question or exclude it."
+        )
     if declared_answer_text and correct_label in labels:
         selected = next((c["text"] for c in choices if c["label"] == correct_label), "")
         a = re.sub(r"\W+", "", selected).casefold()
@@ -609,14 +644,17 @@ def _pdf_parse_question_chunk(number, records):
 
     if issues:
         status = "review" if question_text and len(choices) >= 2 else "incomplete"
+    if is_fill_in:
+        status = "incomplete"
 
-    return {
+    result = {
         "number": int(number),
         "question": question_text,
         "choices": choices,
         "correct": correct_label,
         "correct_answers": correct_answers,
         "answer_mode": answer_mode,
+        "answer_mode_evidence": answer_mode_evidence,
         "declared_answer_text": declared_answer_text,
         "explanation": explanation,
         "choice_feedback": feedback,
@@ -625,6 +663,9 @@ def _pdf_parse_question_chunk(number, records):
         "issues": issues,
         "keep": True,
     }
+    if is_fill_in:
+        result["source_question_type"] = "fill_in"
+    return result
 
 
 def _pdf_glossary_term_like(text):
@@ -1010,6 +1051,24 @@ def _pdf_question_start_match(text):
     if m:
         return {"number": int(m.group(1)), "inline_stem": "", "kind": "heading"}
 
+    # This metadata-bearing form is only a candidate here. It is promoted to a
+    # boundary after the complete document proves that the family repeats with
+    # monotonically increasing global/topic-local numbering.
+    m = re.fullmatch(
+        r"Question\s*#\s*(\d{1,6})\s+Topic\s+(\d{1,6})\s*"
+        r"(?:[\u00b7\u2022]|[-\u2013\u2014])\s*Q\s*(\d{1,6})",
+        text,
+        re.I | re.ASCII,
+    )
+    if m:
+        return {
+            "number": int(m.group(1)),
+            "inline_stem": "",
+            "kind": "extended_heading",
+            "topic": int(m.group(2)),
+            "local_number": int(m.group(3)),
+        }
+
     # Numbered stems are accepted only after structural validation in
     # _pdf_parse_question_bank(). Keeping this matcher narrow avoids treating
     # arbitrary numbered prose or glossary lists as question starts.
@@ -1019,6 +1078,26 @@ def _pdf_question_start_match(text):
         if stem:
             return {"number": int(m.group(1)), "inline_stem": stem, "kind": "numbered"}
     return None
+
+
+def _pdf_filter_trusted_extended_starts(candidates):
+    """Admit extended headings only when their complete family is trustworthy."""
+    extended = [item for item in candidates if item[1].get("kind") == "extended_heading"]
+    trusted = len(extended) >= 2
+    for (_, previous), (_, current) in zip(extended, extended[1:]):
+        global_increases = current["number"] > previous["number"]
+        topic_increases = current["topic"] >= previous["topic"]
+        local_valid = (
+            current["local_number"] > previous["local_number"]
+            if current["topic"] == previous["topic"]
+            else True
+        )
+        if not (global_increases and topic_increases and local_valid):
+            trusted = False
+            break
+    if trusted:
+        return candidates
+    return [item for item in candidates if item[1].get("kind") != "extended_heading"]
 
 
 def _pdf_question_chunk_structure(records):
@@ -1042,12 +1121,145 @@ def _pdf_question_chunk_structure(records):
     answer_marker = any(
         _pdf_match_correct_answer_line(line) is not None for line in lines
     )
-    return {"choice_run": contiguous, "answer_marker": answer_marker}
+    fill_in_marker = any(_pdf_is_fill_in_marker(line) for line in lines)
+    return {
+        "choice_run": contiguous,
+        "answer_marker": answer_marker,
+        "fill_in_marker": fill_in_marker,
+    }
+
+
+def _pdf_validated_question_starts(
+    stream, question_start_match, question_chunk_structure
+):
+    """Return boundaries that satisfy their format-specific structural rules."""
+    raw_starts = []
+    for idx, record in enumerate(stream):
+        match = question_start_match(record.get("text"))
+        if match:
+            raw_starts.append((idx, match))
+    raw_starts = _pdf_filter_trusted_extended_starts(raw_starts)
+
+    starts = []
+    for pos, (start_idx, match) in enumerate(raw_starts):
+        end_idx = raw_starts[pos + 1][0] if pos + 1 < len(raw_starts) else len(stream)
+        if match.get("kind") == "numbered":
+            if starts and starts[-1][1].get("kind") in {
+                "heading",
+                "extended_heading",
+            }:
+                prior_structure = question_chunk_structure(
+                    stream[starts[-1][0] + 1:start_idx]
+                )
+                if not prior_structure["answer_marker"]:
+                    continue
+            evidence = question_chunk_structure(stream[start_idx + 1:end_idx])
+            if evidence["choice_run"] < 2 or not evidence["answer_marker"]:
+                continue
+        starts.append((start_idx, match))
+    return starts
+
+
+def _pdf_no_answer_question_bank_evidence(
+    stream, starts, question_chunk_structure
+):
+    """Measure a bounded, high-confidence no-key question-bank signature."""
+    headings = [
+        item
+        for item in starts
+        if item[1].get("kind") in {"heading", "extended_heading"}
+    ]
+    sequential = len(headings) >= 2 and all(
+        current[1]["number"] == previous[1]["number"] + 1
+        for previous, current in zip(headings, headings[1:])
+    )
+    if not sequential or len(headings) != len(starts):
+        return {"qualified": False, "structured_ratio": 0.0}
+
+    structured = 0
+    for pos, (start_idx, _match) in enumerate(headings):
+        end_idx = headings[pos + 1][0] if pos + 1 < len(headings) else len(stream)
+        evidence = question_chunk_structure(stream[start_idx + 1:end_idx])
+        if evidence["choice_run"] >= 2 or evidence.get("fill_in_marker"):
+            structured += 1
+    ratio = structured / len(headings)
+    return {
+        "qualified": ratio >= PDF_NO_ANSWER_BANK_MIN_STRUCTURED_RATIO,
+        "structured_ratio": ratio,
+    }
+
+
+_PDF_FINAL_MATTER_HEADING_RE = re.compile(
+    r"^(?:appendix|references|resources|acknowledg(?:e)?ments?|"
+    r"about\s+(?:the\s+)?(?:author|publisher)|end\s+of\s+"
+    r"(?:document|questions)|closing\s+notes?)\b",
+    re.I | re.ASCII,
+)
+_PDF_FINAL_MATTER_SIGNAL_RE = re.compile(
+    r"(?:https?://|www\.|\bcontact\b|\be-?mail\b|\bcopyright\b|"
+    r"\ball\s+rights\s+reserved\b|\bfurther\s+resources\b)",
+    re.I | re.ASCII,
+)
+
+
+def _pdf_page_looks_like_final_matter(records):
+    lines = [_pdf_clean_line(item.get("text")) for item in records]
+    lines = [line for line in lines if line]
+    if not lines:
+        return False
+    if any(_pdf_question_start_match(line) for line in lines):
+        return False
+    if any(re.match(r"^[A-Z]\.\s+.+$", line) for line in lines):
+        return False
+    if any(_pdf_match_correct_answer_line(line) is not None for line in lines):
+        return False
+    signal_count = sum(
+        bool(_PDF_FINAL_MATTER_SIGNAL_RE.search(line)) for line in lines
+    )
+    if _PDF_FINAL_MATTER_HEADING_RE.match(lines[0]) and signal_count >= 1:
+        return True
+    return signal_count >= 2
+
+
+def _pdf_split_final_trailing_matter(records, question_chunk_structure):
+    """Split only whole, structurally distinct tail pages after a completed prompt."""
+    page_numbers = list(dict.fromkeys(int(item["page"]) for item in records))
+    if len(page_numbers) < 2:
+        return records, []
+
+    for candidate_page in page_numbers[1:]:
+        before = [item for item in records if int(item["page"]) < candidate_page]
+        tail = [item for item in records if int(item["page"]) >= candidate_page]
+        tail_pages = {
+            page: [item for item in tail if int(item["page"]) == page]
+            for page in page_numbers
+            if page >= candidate_page
+        }
+        if not tail_pages or not all(
+            _pdf_page_looks_like_final_matter(items)
+            for items in tail_pages.values()
+        ):
+            continue
+
+        structure = question_chunk_structure(before)
+        fill_prompt_complete = structure.get("fill_in_marker") and "?" in _pdf_join_wrapped(
+            [item.get("text") for item in before]
+        )
+        if structure["answer_marker"] or structure["choice_run"] >= 2 or fill_prompt_complete:
+            return before, tail
+    return records, []
 
 
 def _pdf_add_question_review_slots(question, minimum_labels=("A", "B", "C", "D")):
     """Ensure Review & Repair always has editable choice slots for reconstruction."""
     question = dict(question or {})
+    if question.get("source_question_type") == "fill_in":
+        question["choices"] = [
+            dict(choice)
+            for choice in (question.get("choices") or [])
+            if isinstance(choice, dict)
+        ]
+        return question
     choices = [dict(c) for c in (question.get("choices") or []) if isinstance(c, dict)]
     existing = {str(c.get("label") or "").upper() for c in choices}
     for label in minimum_labels:
@@ -1066,6 +1278,7 @@ def _pdf_question_recovery_result(pages):
         match = _pdf_question_start_match(record.get("text"))
         if match:
             candidates.append((idx, match))
+    candidates = _pdf_filter_trusted_extended_starts(candidates)
 
     questions = []
     if candidates:
@@ -1158,7 +1371,10 @@ def _pdf_detect_document_type(pages, question_result=None, glossary_result=None)
     glossary_result = glossary_result if isinstance(glossary_result, dict) else _pdf_parse_glossary(pages)
 
     stream = _pdf_lines_to_stream(pages)
-    question_markers = sum(1 for r in stream if _pdf_question_start_match(r["text"]))
+    starts = _pdf_validated_question_starts(
+        stream, _pdf_question_start_match, _pdf_question_chunk_structure
+    )
+    question_markers = len(starts)
     answer_markers = sum(
         1 for r in stream if _pdf_match_correct_answer_line(r["text"]) is not None
     )
@@ -1175,13 +1391,31 @@ def _pdf_detect_document_type(pages, question_result=None, glossary_result=None)
         and len(question_result.get("questions") or []) == 1
         and (question_result.get("questions") or [{}])[0].get("status") == "complete"
     )
-    if (q_detected >= 2 and answer_markers >= 1) or structured_single:
-        return "question_bank", {
+    no_answer_evidence = _pdf_no_answer_question_bank_evidence(
+        stream, starts, _pdf_question_chunk_structure
+    )
+    no_answer_question_bank = bool(
+        answer_markers == 0
+        and q_detected == len(starts)
+        and no_answer_evidence["qualified"]
+    )
+    if (
+        (q_detected >= 2 and answer_markers >= 1)
+        or structured_single
+        or no_answer_question_bank
+    ):
+        detection = {
             "question_markers": question_markers,
             "answer_markers": answer_markers,
             "question_records": q_detected,
             "glossary_records": g_detected,
         }
+        if no_answer_question_bank:
+            detection.update({
+                "no_answer_question_bank": True,
+                "structured_question_ratio": no_answer_evidence["structured_ratio"],
+            })
+        return "question_bank", detection
 
     if g_detected >= 4:
         return "glossary", {
@@ -1212,48 +1446,36 @@ def _pdf_parse_question_bank(
     parse_question_chunk = parse_question_chunk or _pdf_parse_question_chunk
 
     stream = lines_to_stream(pages)
-    raw_starts = []
-    for idx, record in enumerate(stream):
-        match = question_start_match(record.get("text"))
-        if match:
-            raw_starts.append((idx, match))
-
-    # Standalone "Question N" headings remain trusted boundaries. Numbered stems
-    # such as "1. ..." or "1) ..." must have nearby A/B/... choices plus a
-    # Correct Answer marker before being promoted to structured questions.
-    starts = []
-    for pos, (start_idx, match) in enumerate(raw_starts):
-        end_idx = raw_starts[pos + 1][0] if pos + 1 < len(raw_starts) else len(stream)
-        if match.get("kind") == "numbered":
-            # A numbered line inside a conventional question is supporting stem
-            # material, not a new boundary. The conventional record remains open
-            # until its Correct Answer marker, so do not let later choices make
-            # the embedded numbered line look like a standalone question.
-            if starts and starts[-1][1].get("kind") == "heading":
-                prior_structure = question_chunk_structure(
-                    stream[starts[-1][0] + 1:start_idx]
-                )
-                if not prior_structure["answer_marker"]:
-                    continue
-            evidence = question_chunk_structure(stream[start_idx + 1:end_idx])
-            if evidence["choice_run"] < 2 or not evidence["answer_marker"]:
-                continue
-        starts.append((start_idx, match))
+    starts = _pdf_validated_question_starts(
+        stream, question_start_match, question_chunk_structure
+    )
 
     questions = []
+    unassigned_records = []
     for pos, (start_idx, match) in enumerate(starts):
         end_idx = starts[pos + 1][0] if pos + 1 < len(starts) else len(stream)
         records = list(stream[start_idx + 1:end_idx])
+        if pos + 1 == len(starts):
+            records, unassigned_records = _pdf_split_final_trailing_matter(
+                records, question_chunk_structure
+            )
         if match.get("inline_stem"):
             records.insert(0, {"page": stream[start_idx]["page"], "text": match["inline_stem"]})
         q = parse_question_chunk(match["number"], records)
         if q:
+            if match.get("kind") == "extended_heading":
+                q["source_heading"] = {
+                    "kind": "extended_heading",
+                    "global_number": match["number"],
+                    "topic": match["topic"],
+                    "local_number": match["local_number"],
+                }
             questions.append(q)
 
     complete = sum(q["status"] == "complete" for q in questions)
     review = sum(q["status"] == "review" for q in questions)
     incomplete = sum(q["status"] == "incomplete" for q in questions)
-    return {
+    result = {
         "type": "multiple_choice_question_bank",
         "questions": questions,
         "summary": {
@@ -1261,5 +1483,13 @@ def _pdf_parse_question_bank(
             "complete": complete,
             "review": review,
             "incomplete": incomplete,
-        }
+        },
     }
+    if unassigned_records:
+        result["unassigned_text"] = _pdf_join_wrapped(
+            [item.get("text") for item in unassigned_records]
+        )
+        result["unassigned_pages"] = sorted({
+            int(item["page"]) for item in unassigned_records
+        })
+    return result
