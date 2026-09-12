@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -20,6 +21,12 @@ def main() -> int:
     resource_root = Path(sys._MEIPASS)
     fixture = resource_root / "ocr-probe" / "dlms-question.png"
     runtime = resolve_tesseract_runtime()
+    if not runtime.bundled:
+        raise SystemExit("Frozen OCR probe did not discover its bundled runtime.")
+    if not re.match(r"^5(?:\.|$)", runtime.version):
+        raise SystemExit(
+            f"Frozen OCR probe requires Tesseract 5; found {runtime.version!r}."
+        )
     fixture_bytes = fixture.read_bytes()
     try:
         recognize_image_bytes(

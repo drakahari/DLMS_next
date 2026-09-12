@@ -296,6 +296,8 @@ class ReleaseDocumentationTests(unittest.TestCase):
         release_doc = (ROOT / "docs" / "RELEASE_VERIFICATION.md").read_text(
             encoding="utf-8"
         )
+        normalized_ocr_doc = " ".join(ocr_doc.split())
+        normalized_release_doc = " ".join(release_doc.split())
 
         self.assertIn("docs/OCR_PACKAGING.md", readme)
         for text in (
@@ -318,20 +320,23 @@ class ReleaseDocumentationTests(unittest.TestCase):
             "leptonica-LICENSE.txt",
             "command -v tesseract",
             "Get-Command tesseract.exe -ErrorAction SilentlyContinue",
+            "tools/prepare_ocr_bundle.py",
+            "DLMS-OCR-Probe.spec",
+            "--download-missing-licenses",
         ):
             with self.subTest(documented=text):
                 self.assertIn(text, ocr_doc)
-        for proven in ("Ubuntu 24.04 x86-64", "Windows 11 x86-64"):
-            with self.subTest(proven=proven):
-                self.assertIn(proven, ocr_doc)
-                self.assertIn(proven, release_doc)
-        for pending in (
+        for proven in (
+            "Fedora 44 x86-64",
+            "Ubuntu 24.04 x86-64",
             "Ubuntu 26.04 x86-64",
-            "Omarchy/Arch x86-64",
-            "macOS ARM64",
+            "Omarchy Quattro",
+            "Windows 11 x86-64",
+            "macOS Apple Silicon arm64",
         ):
-            with self.subTest(pending=pending):
-                self.assertIn(pending, ocr_doc)
+            with self.subTest(proven=proven):
+                self.assertIn(proven, normalized_ocr_doc)
+                self.assertIn(proven, normalized_release_doc)
         self.assertIn("OCR-specific native gate", release_doc)
         self.assertIn("Do not infer cross-platform OCR support", release_doc)
         package_readme = (ROOT / "release_assets" / "README.txt").read_text(
@@ -348,12 +353,21 @@ class ReleaseDocumentationTests(unittest.TestCase):
             ".pytest_cache/",
             "dist/",
             "build/",
+            ".ocr-bundle/",
             "*.spec",
             "*.tmp",
             "*.log",
         ):
             self.assertIn(pattern, ignored)
         self.assertIn("!DLMS.spec", ignored)
+        self.assertIn("!DLMS-OCR-Probe.spec", ignored)
+
+        ignored_probe = subprocess.run(
+            ["git", "check-ignore", "--quiet", "--", ".ocr-bundle/probe"],
+            cwd=ROOT,
+            check=False,
+        )
+        self.assertEqual(ignored_probe.returncode, 0)
 
     def test_canonical_pyinstaller_manifest_has_narrow_local_inputs(self):
         spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")

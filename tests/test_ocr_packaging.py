@@ -6,7 +6,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tools.pyinstaller_ocr import collect_tesseract_bundle
+from tools.pyinstaller_ocr import (
+    collect_tesseract_bundle,
+    validate_tesseract_bundle,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +75,9 @@ class OCRPackagingContractTests(unittest.TestCase):
                 os.environ, {"DLMS_TESSERACT_BUNDLE_ROOT": str(root)}, clear=True
             ):
                 binaries, datas = collect_tesseract_bundle(required=True)
+            self.assertEqual(
+                validate_tesseract_bundle(root)["executable"], executable
+            )
 
         self.assertEqual(
             binaries,
@@ -139,6 +145,7 @@ class OCRPackagingContractTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(ValueError, "Empty Tesseract bundle resource"):
                     collect_tesseract_bundle(required=True)
+
     def test_specs_share_the_same_contract_and_frozen_probe_is_path_independent(self):
         main_spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")
         probe_spec = (ROOT / "DLMS-OCR-Probe.spec").read_text(encoding="utf-8")
@@ -146,12 +153,16 @@ class OCRPackagingContractTests(unittest.TestCase):
         probe = (ROOT / "tools" / "ocr_packaging_probe.py").read_text(encoding="utf-8")
         self.assertIn("collect_tesseract_bundle()", main_spec)
         self.assertIn("collect_tesseract_bundle(required=True)", probe_spec)
+        self.assertIn('project_root / "tools" / "ocr_packaging_probe.py"', probe_spec)
+        self.assertIn('project_root / "tests" / "fixtures" / "ocr"', probe_spec)
         self.assertIn('"dlms.services.ocr"', main_spec)
         self.assertIn('"pypdfium2"', main_spec)
         self.assertIn('"pypdfium2_raw"', main_spec)
         self.assertIn('copy_metadata("pypdfium2")', main_spec)
         self.assertIn('detected_frozen_root / "ocr" / "tesseract"', service)
         self.assertIn('if not getattr(sys, "frozen", False)', probe)
+        self.assertIn("if not runtime.bundled", probe)
+        self.assertIn("requires Tesseract 5", probe)
         self.assertIn("except OCRTimeoutError", probe)
         self.assertIn("except OCRCancelledError", probe)
 

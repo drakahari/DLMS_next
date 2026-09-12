@@ -5,6 +5,8 @@ dist/
 build/
 *.spec
 !DLMS.spec
+!DLMS-OCR-Probe.spec
+.ocr-bundle/
 
 # Local release artifacts (never commit)
 releases/

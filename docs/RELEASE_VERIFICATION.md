@@ -29,30 +29,37 @@ system and architecture.
 
 1. Create a clean environment from `requirements-lock.txt`, then install
    `requirements-build.txt`.
-2. Run the focused release tests and the full isolated pytest and unittest
+2. Install the target's native Tesseract packages and prepare or validate the
+   ignored `.ocr-bundle` with `tools/prepare_ocr_bundle.py`, following
+   `docs/OCR_PACKAGING.md`. Set the printed absolute
+   `DLMS_TESSERACT_BUNDLE_ROOT` value in the build shell.
+3. Build and run `DLMS-OCR-Probe.spec`. This strict frozen gate fails rather
+   than silently producing an intended OCR release without its bundled runtime.
+4. Run the focused release tests and the full isolated pytest and unittest
    suites, compilation, and `git diff --check`.
-3. Build natively with `python -m PyInstaller --clean --noconfirm DLMS.spec`.
+5. Build natively with `python -m PyInstaller --clean --noconfirm DLMS.spec`.
    PyInstaller does not cross-build Windows, Linux, or macOS artifacts.
-4. Stage only the verified native input in `releases/`, using the name below. Do not
+6. Stage only the verified native input in `releases/`, using the name below. Do not
    stage `build/`, `dist/`, user data, logs, databases, or virtual environments.
 
 ## OCR-specific native gate
 
 OCR-enabled release artifacts have an additional platform-native gate described
-in `docs/OCR_PACKAGING.md`. The DLMS 3.1.0 artifacts for Ubuntu 24.04 x86-64
-and Windows 11 x86-64 have passed clean-system bundled screenshot OCR and
-scanned-PDF OCR validation. Fedora x86-64 passed the earlier bundled DLMS-119
-probe and workflow validation. Ubuntu 26.04, Omarchy/Arch x86-64, and macOS
-ARM64 still require current target-native OCR validation.
+in `docs/OCR_PACKAGING.md`. The DLMS 3.1.0 native artifacts have completed
+build and smoke verification on Fedora 44 x86-64, Ubuntu 24.04 x86-64, Ubuntu
+26.04 x86-64, Omarchy Quattro x86-64, Windows 11 x86-64, and macOS Apple
+Silicon arm64. Future rebuilds must repeat the target-native gate.
 
-For each target, stage a platform-native Tesseract bundle, set the absolute
-`DLMS_TESSERACT_BUNDLE_ROOT` path in the same shell that runs PyInstaller, build
-the canonical spec, and verify that the exact artifact contains the executable,
-native dependencies, English tessdata,
-TSV config, PDFium, and required licenses. Then prove screenshot OCR,
-scanned-PDF OCR, timeout/cancellation, and no dependence on a system Tesseract.
-Run the final OCR smoke on a clean machine where `command -v tesseract` (Linux)
-or `Get-Command tesseract.exe -ErrorAction SilentlyContinue` (Windows) finds no
+For each target, use `tools/prepare_ocr_bundle.py` to stage and validate a
+platform-native Tesseract bundle, set the absolute
+`DLMS_TESSERACT_BUNDLE_ROOT` path in the same shell that runs PyInstaller,
+build and run the strict `DLMS-OCR-Probe.spec`, then build the canonical spec.
+Verify that the exact artifact contains the executable, native dependencies,
+English tessdata, TSV config, PDFium, and required licenses. Then prove
+screenshot OCR, scanned-PDF OCR, timeout/cancellation, and no dependence on a
+system Tesseract. Run the final OCR smoke on a clean machine where
+`command -v tesseract` (Linux) or
+`Get-Command tesseract.exe -ErrorAction SilentlyContinue` (Windows) finds no
 system executable. Do not infer cross-platform OCR support from another target.
 
 ## Windows 11 x86_64

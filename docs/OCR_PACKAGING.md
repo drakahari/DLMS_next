@@ -96,7 +96,8 @@ Native builders prepare a platform-specific directory and set
 `DLMS_TESSERACT_BUNDLE_ROOT`. Its required layout is:
 
 ```text
-bin/tesseract[.exe]
+bin/tesseract (Linux/macOS)
+bin/tesseract.exe (Windows)
 bin/[platform-native dependent libraries, when not resolved by the build host]
 tessdata/eng.traineddata
 tessdata/configs/tsv
@@ -105,33 +106,151 @@ licenses/tessdata-LICENSE.txt
 licenses/leptonica-LICENSE.txt
 ```
 
-`DLMS.spec` includes this runtime when the variable is set. The stricter
-`DLMS-OCR-Probe.spec` requires it and produces a frozen executable that checks
-version detection, timeout termination, cancellation termination, TSV output,
-and OCR of the repository-created probe fixture. Missing executable, English
-data, TSV config, or required license files is a build-contract failure.
+### Prepare the native bundle
 
-Set the variable in the same shell that invokes PyInstaller. Use an absolute
-path so the build does not depend on its working directory:
+`tools/prepare_ocr_bundle.py` is the authoritative preparation and validation
+helper. It discovers the current platform's package-manager layout, copies only
+the required files into a new bundle, validates the result through the same
+contract used by `DLMS.spec`, and prints the environment command for the build.
+It intentionally has no cross-target mode. The default output is
+repository-local but ignored:
 
 ```bash
-# Linux/macOS builder
-export DLMS_TESSERACT_BUNDLE_ROOT=/absolute/path/to/native-tesseract-bundle
+python tools/prepare_ocr_bundle.py
+python tools/prepare_ocr_bundle.py --output .ocr-bundle --validate-only
+export DLMS_TESSERACT_BUNDLE_ROOT="$PWD/.ocr-bundle"
+```
+
+Preparation is atomic and refuses to replace an existing directory. Remove an
+old local bundle deliberately before preparing a new one, or use
+`--validate-only` to check it. A custom output inside the checkout must already
+be ignored by Git; an output outside the checkout is also supported. The helper
+never changes source package files and copies adjacent `.dll`, `.dylib`, or
+`.so` files when the native installation places them beside Tesseract.
+
+Install the native packages first, then prepare on that same target:
+
+- **Ubuntu 24.04 and 26.04:**
+
+  ```bash
+  sudo apt update
+  sudo apt install --yes tesseract-ocr tesseract-ocr-eng
+  python tools/prepare_ocr_bundle.py
+  ```
+
+  The helper recognizes both `liblept5` and `libleptonica6` copyright paths.
+
+- **Fedora 44:**
+
+  ```bash
+  sudo dnf install -y tesseract tesseract-langpack-eng
+  python tools/prepare_ocr_bundle.py
+  ```
+
+  Fedora does not expose a separate English tessdata license in the validated
+  layout. The helper may reuse the packaged Tesseract license for tessdata only
+  when its bytes match the pinned official tessdata license exactly.
+
+- **Omarchy/Arch:**
+
+  ```bash
+  sudo pacman -S --needed tesseract tesseract-data-eng
+  python tools/prepare_ocr_bundle.py --download-missing-licenses
+  ```
+
+  The validated Arch package exposes the Leptonica license but not a Tesseract
+  license. The opt-in flag obtains the missing official license once and caches
+  the checksum-verified text for later preparations.
+
+- **macOS Apple Silicon with Homebrew:**
+
+  ```bash
+  brew install tesseract
+  python tools/prepare_ocr_bundle.py --download-missing-licenses
+  ```
+
+  Homebrew prefixes are queried rather than version-coded. The packaged
+  Tesseract license is used. If the Leptonica prefix has no license file, the
+  helper downloads and caches the actual pinned Leptonica license; it never
+  substitutes the Tesseract license for Leptonica.
+
+- **Windows 11 PowerShell:** validate the known-good local bundle directly:
+
+  ```powershell
+  python tools\prepare_ocr_bundle.py --output .ocr-bundle --validate-only
+  $env:DLMS_TESSERACT_BUNDLE_ROOT = (Resolve-Path .ocr-bundle).Path
+  ```
+
+  To prepare from another trusted native installation, give explicit paths;
+  the helper intentionally does not assume a particular third-party installer:
+
+  ```powershell
+  python tools\prepare_ocr_bundle.py --output .ocr-bundle `
+    --tesseract-executable C:\path\to\tesseract.exe `
+    --tessdata-dir C:\path\to\tessdata `
+    --tesseract-license C:\path\to\tesseract-LICENSE.txt `
+    --tessdata-license C:\path\to\tessdata-LICENSE.txt `
+    --leptonica-license C:\path\to\leptonica-LICENSE.txt
+  $env:DLMS_TESSERACT_BUNDLE_ROOT = (Resolve-Path .ocr-bundle).Path
+  ```
+
+Explicit source overrides are also available on Unix for nonstandard package
+layouts. Run `python tools/prepare_ocr_bundle.py --help` for the complete list.
+
+### License handling
+
+An explicit CLI license path is authoritative when supplied. Otherwise,
+package-manager license files are preferred, followed by an existing local
+cache. `--download-missing-licenses` is opt-in and downloads only a missing
+license from immutable upstream commits. Every download is bounded and checked
+against a pinned SHA-256 before it enters the cache or bundle:
+
+- `tesseract-ocr/tesseract` 5.5.0 `LICENSE` at source commit
+  `64eab6c457b2337dd690746a5fde5c222b40d5f8`;
+- `tesseract-ocr/tessdata` 4.1.0 `LICENSE` at source commit
+  `4767ea922bcc460e70b87b1d303ebdfed0897da8`;
+- `DanBloomberg/leptonica` 1.85.0 `leptonica-license.txt` at source commit
+  `63aef18d98432b8582a1565e241f7bd2ee9cc8d9`.
+
+The cache defaults to the platform user cache and can be overridden with
+`--license-cache` or `DLMS_OCR_LICENSE_CACHE`. This avoids a network request on
+every build without committing third-party license files, executables, or
+trained models. Missing, empty, or checksum-mismatched licenses fail clearly;
+placeholder files are never generated. Review and update the pinned source and
+checksum deliberately if a future native dependency changes its licensing.
+
+### Canonical frozen build and strict probe
+
+`DLMS.spec` includes the bundle whenever `DLMS_TESSERACT_BUNDLE_ROOT` is set.
+`DLMS-OCR-Probe.spec` is the strict pre-build gate: it refuses to build without
+a complete bundle. Build and run it before the application in the same native
+environment:
+
+```bash
+export DLMS_TESSERACT_BUNDLE_ROOT="$PWD/.ocr-bundle"
+python -m PyInstaller --clean --noconfirm DLMS-OCR-Probe.spec
+./dist/DLMS-OCR-Probe
 python -m PyInstaller --clean --noconfirm DLMS.spec
 ```
 
 ```powershell
-# Windows builder
-$env:DLMS_TESSERACT_BUNDLE_ROOT = (Resolve-Path C:\path\to\native-tesseract-bundle).Path
+$env:DLMS_TESSERACT_BUNDLE_ROOT = (Resolve-Path .ocr-bundle).Path
+python -m PyInstaller --clean --noconfirm DLMS-OCR-Probe.spec
+.\dist\DLMS-OCR-Probe.exe
 python -m PyInstaller --clean --noconfirm DLMS.spec
 ```
 
-The bundle must match the build target. A Linux bundle uses `bin/tesseract`
-and Linux shared libraries; a Windows bundle uses `bin/tesseract.exe` and its
-required DLLs. Put bundle-supplied `.so`, `.dylib`, or `.dll` dependencies
-beside the executable in `bin/`; the packaging helper collects native libraries
-from that directory. Do not reuse a bundle prepared for another operating
-system or architecture.
+The frozen probe requires bundled Tesseract 5 and checks frozen resource
+discovery, version detection, timeout termination, cancellation termination,
+TSV output, and OCR of the repository-created fixture. Missing executable,
+English data, TSV config, required licenses, or bundled discovery is a hard
+failure. This gate prevents an intended OCR-enabled release build from silently
+continuing without its OCR bundle.
+
+The bundle must match the build target. Do not reuse a bundle prepared for
+another operating system or architecture. PyInstaller analyzes the staged
+Tesseract executable's native dependencies; libraries supplied alongside the
+executable are also included by the shared bundle collector.
 
 `pypdfium2>=5.13.0,<6` is declared in `requirements.txt` and version 5.13.0 is
 locked in `requirements-lock.txt`, which was exercised with Python 3.14.7 on
@@ -142,19 +261,10 @@ one operating system cannot prove another target's binary compatibility.
 
 ## OCR-specific native release gate
 
-Current validation status is deliberately target-specific:
-
-- **Ubuntu 24.04 x86-64:** the DLMS 3.1.0 single-file artifact has passed build,
-  clean/production-system launch, bundled screenshot OCR, and bundled
-  scanned-PDF OCR validation.
-- **Windows 11 x86-64:** the DLMS 3.1.0 self-contained artifact has passed
-  build, clean-system launch, bundled screenshot OCR, and bundled scanned-PDF
-  OCR validation.
-- **Fedora x86-64:** the bundled DLMS-119 OCR probe and OCR workflows were
-  proven during implementation; each current release artifact still requires
-  its normal target-native release gate.
-- **Ubuntu 26.04 x86-64, Omarchy/Arch x86-64, and macOS ARM64:** current 3.1.0
-  artifacts still require target-native OCR validation.
+The DLMS 3.1.0 native artifacts have completed build and smoke verification on
+Fedora 44 x86-64, Ubuntu 24.04 x86-64, Ubuntu 26.04 x86-64, Omarchy Quattro
+x86-64, Windows 11 x86-64, and macOS Apple Silicon arm64. This does not waive
+the gate for future builds: each rebuilt native artifact must pass it again.
 
 Do not advertise OCR in any platform package until that exact native artifact
 proves all of the following:

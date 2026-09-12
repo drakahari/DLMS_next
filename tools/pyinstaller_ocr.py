@@ -7,6 +7,39 @@ import sys
 from pathlib import Path
 
 
+def tesseract_bundle_paths(root, *, platform_name: str | None = None):
+    """Return the required paths for one target-native OCR bundle."""
+    root = Path(root).expanduser().resolve()
+    platform_name = str(platform_name or sys.platform).casefold()
+    windows = platform_name in {"win32", "windows"}
+    executable = root / "bin" / ("tesseract.exe" if windows else "tesseract")
+    return {
+        "executable": executable,
+        "eng_traineddata": root / "tessdata" / "eng.traineddata",
+        "tsv_config": root / "tessdata" / "configs" / "tsv",
+        "tesseract_license": root / "licenses" / "tesseract-LICENSE.txt",
+        "tessdata_license": root / "licenses" / "tessdata-LICENSE.txt",
+        "leptonica_license": root / "licenses" / "leptonica-LICENSE.txt",
+    }
+
+
+def validate_tesseract_bundle(root, *, platform_name: str | None = None):
+    """Validate and return the authoritative frozen OCR bundle paths."""
+    paths = tesseract_bundle_paths(root, platform_name=platform_name)
+    missing = [str(path) for path in paths.values() if not path.is_file()]
+    if missing:
+        raise ValueError("Incomplete Tesseract bundle: " + ", ".join(missing))
+    empty = [str(path) for path in paths.values() if path.stat().st_size == 0]
+    if empty:
+        raise ValueError("Empty Tesseract bundle resource: " + ", ".join(empty))
+    target = str(platform_name or sys.platform).casefold()
+    if target not in {"win32", "windows"} and not os.access(
+        paths["executable"], os.X_OK
+    ):
+        raise ValueError("Bundled Tesseract executable is not executable")
+    return paths
+
+
 def collect_tesseract_bundle(*, required: bool = False):
     """Return ``(binaries, datas)`` for a prepared native Tesseract bundle.
 
@@ -22,26 +55,10 @@ def collect_tesseract_bundle(*, required: bool = False):
         return [], []
 
     root = Path(configured).expanduser().resolve()
-    executable_name = "tesseract.exe" if sys.platform == "win32" else "tesseract"
-    executable = root / "bin" / executable_name
+    paths = validate_tesseract_bundle(root)
+    executable = paths["executable"]
     tessdata = root / "tessdata"
     licenses = root / "licenses"
-    required_paths = (
-        executable,
-        tessdata / "eng.traineddata",
-        tessdata / "configs" / "tsv",
-        licenses / "tesseract-LICENSE.txt",
-        licenses / "tessdata-LICENSE.txt",
-        licenses / "leptonica-LICENSE.txt",
-    )
-    missing = [str(path) for path in required_paths if not path.is_file()]
-    if missing:
-        raise ValueError("Incomplete Tesseract bundle: " + ", ".join(missing))
-    empty = [str(path) for path in required_paths if path.stat().st_size == 0]
-    if empty:
-        raise ValueError("Empty Tesseract bundle resource: " + ", ".join(empty))
-    if os.name != "nt" and not os.access(executable, os.X_OK):
-        raise ValueError("Bundled Tesseract executable is not executable")
 
     bundled_native_libraries = sorted(
         path
