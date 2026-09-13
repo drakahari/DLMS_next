@@ -41,7 +41,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "history": 13,
         "it": 3,
         "law": 16,
-        "learning": 15,
+        "learning": 16,
         "maintenance": 20,
         "medical": 6,
         "pdf_import": 25,
@@ -87,7 +87,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "5eed803ddc929347c81c7b8f4d1c8e89d042f80dad000582a099c7d8bb14e465"
+        "a69af1f90e9eba22c0467cf4e6bed424189067baffd589719c04aa05cdd9eaa4"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -138,13 +138,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_200_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_201_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(200, len(rules))
+        self.assertEqual(201, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(199, len(blueprint_rules))
+        self.assertEqual(200, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])

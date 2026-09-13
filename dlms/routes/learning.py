@@ -182,6 +182,77 @@ def smart_review_generate(dependencies):
     return redirect(f"/quizzes/{html_name}")
 
 
+def concept_review_generate(dependencies):
+    """Build focused practice from one canonical concept and its source quizzes."""
+    try:
+        concept_id = int(request.form.get("concept_id", ""))
+    except (TypeError, ValueError):
+        concept_id = 0
+    try:
+        requested = int(request.form.get("question_count", "20"))
+    except (TypeError, ValueError):
+        requested = 20
+    requested = max(1, min(requested, 50))
+
+    if concept_id < 1:
+        flash("Choose a valid concept for focused review.", "error")
+        return redirect("/learning-intelligence")
+
+    conn = dependencies.get_db()
+    cur = conn.cursor()
+    try:
+        payload = dependencies.learning_intelligence_payload(cur)
+        topic = next(
+            (
+                candidate
+                for candidate in payload.get("topics") or []
+                if candidate.get("concept_id") == concept_id
+            ),
+            None,
+        )
+        if topic is None:
+            flash("That concept is no longer available.", "error")
+            return redirect("/learning-intelligence")
+
+        candidates = dependencies.review_candidates_for_topics(cur, [topic])
+        if not candidates:
+            flash(
+                "No tagged source questions are available for that concept.",
+                "info",
+            )
+            return redirect("/learning-intelligence")
+
+        selected = dependencies.review_select_candidates(
+            candidates, [topic], requested
+        )
+        quiz_data = []
+        for number, candidate in enumerate(selected, start=1):
+            item = dependencies.question_payload_from_db(
+                cur, candidate["question_id"]
+            )
+            if not item:
+                continue
+            item["number"] = number
+            quiz_data.append(item)
+        topic_name = topic["name"]
+    finally:
+        conn.close()
+
+    if not quiz_data:
+        flash("No usable source questions were available for Concept Review.", "error")
+        return redirect("/learning-intelligence")
+
+    quiz_title = f"Concept Review — {topic_name}"
+    _quiz_id, html_name = dependencies.publish_quiz(
+        quiz_title,
+        quiz_data,
+        filename_prefix="concept_review",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
+    return redirect(f"/quizzes/{html_name}")
+
+
 def review_schedule_page(dependencies):
     return send_from_directory(dependencies.static_folder(), "review-schedule.html")
 
@@ -375,6 +446,12 @@ def create_learning_blueprint(dependencies):
             "/smart-review/generate",
             "smart_review_generate",
             smart_review_generate,
+            ["POST"],
+        ),
+        (
+            "/concept-review/generate",
+            "concept_review_generate",
+            concept_review_generate,
             ["POST"],
         ),
         (

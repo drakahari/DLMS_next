@@ -401,7 +401,7 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("flex:0 0 auto", action.group(1))
         self.assertIn("max-width:100%", action.group(1))
         self.assertIn("white-space:normal", action.group(1))
-        self.assertEqual(page.count('class="build-secondary-link"'), 3)
+        self.assertEqual(page.count('class="build-secondary-link"'), 4)
         self.assertIn('class="build-secondary-link" id="liModelButton"', page)
         self.assertIn('class="build-secondary-link" id="liToggleZeroEvidence"', page)
 

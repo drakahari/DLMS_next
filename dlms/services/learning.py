@@ -37,6 +37,48 @@ def _question_concepts(cur, question_id):
     return [r[0] for r in rows]
 
 
+def _concept_performance_trend(
+    events, *, minimum_window=3, maximum_window=5, threshold_points=15.0
+):
+    """Compare adjacent recent evidence windows without over-reading small samples."""
+    if len(events) < minimum_window * 2:
+        return {
+            "trend": "insufficient",
+            "trend_label": "More data needed",
+            "trend_delta": None,
+            "trend_window_size": 0,
+            "previous_accuracy": None,
+        }
+
+    window_size = min(maximum_window, len(events) // 2)
+    previous = events[-(window_size * 2):-window_size]
+    current = events[-window_size:]
+
+    def accuracy(rows):
+        correct = sum(1 for row in rows if int(row["was_correct"] or 0) == 1)
+        return round((correct / len(rows)) * 100, 1)
+
+    previous_accuracy = accuracy(previous)
+    current_accuracy = accuracy(current)
+    delta = round(current_accuracy - previous_accuracy, 1)
+    if delta >= threshold_points:
+        trend = "improving"
+        label = "Improving"
+    elif delta <= -threshold_points:
+        trend = "declining"
+        label = "Declining"
+    else:
+        trend = "stable"
+        label = "Roughly stable"
+    return {
+        "trend": trend,
+        "trend_label": label,
+        "trend_delta": delta,
+        "trend_window_size": window_size,
+        "previous_accuracy": previous_accuracy,
+    }
+
+
 def _learning_intelligence_topics(cur, now=None):
     """Build explainable concept-level learning metrics for DLMS-008/009/010.
 
@@ -49,9 +91,25 @@ def _learning_intelligence_topics(cur, now=None):
     concept_rows = cur.execute("""
         SELECT c.id, c.name,
                COUNT(DISTINCT CASE
-                   WHEN z.source_file IS NULL OR (LOWER(z.source_file) NOT LIKE 'smart_review_%' AND LOWER(z.source_file) NOT LIKE 'spaced_review_%')
+                   WHEN z.id IS NOT NULL
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'smart_review_%'
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'spaced_review_%'
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'concept_review_%'
+                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'smart review —%'
+                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'spaced review —%'
+                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'concept review —%'
                    THEN qc.question_id
-               END) AS question_count
+               END) AS question_count,
+               COUNT(DISTINCT CASE
+                   WHEN z.id IS NOT NULL
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'smart_review_%'
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'spaced_review_%'
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'concept_review_%'
+                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'smart review —%'
+                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'spaced review —%'
+                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'concept review —%'
+                   THEN q.quiz_id
+               END) AS quiz_count
         FROM concepts c
         LEFT JOIN question_concepts qc ON qc.concept_id = c.id
         LEFT JOIN questions q ON q.id = qc.question_id
@@ -119,6 +177,18 @@ def _learning_intelligence_topics(cur, now=None):
         recent = events[-5:]
         recent_correct = sum(1 for r in recent if int(r["was_correct"] or 0) == 1)
         recent_accuracy = round((recent_correct / len(recent)) * 100, 1) if recent else None
+        trend = _concept_performance_trend(events)
+
+        exam_attempts = {
+            str(row["attempt_id"] or f"exam-event-{row['id']}")
+            for row in events
+            if row["event_type"] == "exam_answer"
+        }
+        study_sessions = {
+            str(row["session_id"] or f"study-event-{row['id']}")
+            for row in events
+            if row["event_type"] == "study_answer"
+        }
 
         last_dt = parse_dt(events[-1]["occurred_at"]) if events else None
         days_since = max(0, int((now - last_dt).total_seconds() // 86400)) if last_dt else None
@@ -173,11 +243,18 @@ def _learning_intelligence_topics(cur, now=None):
             "concept_id": concept["id"],
             "name": concept["name"],
             "question_count": concept["question_count"],
+            "quiz_count": concept["quiz_count"],
             "evidence": evidence,
+            "attempt_count": len(exam_attempts),
+            "study_session_count": len(study_sessions),
+            "practice_run_count": len(exam_attempts) + len(study_sessions),
+            "answered_question_count": len({row["question_id"] for row in events}),
             "correct": correct,
             "incorrect": incorrect,
             "accuracy": accuracy,
+            "recent_evidence": len(recent),
             "recent_accuracy": recent_accuracy,
+            **trend,
             "mastery": mastery,
             "status": status,
             "status_label": status_label,
@@ -361,6 +438,8 @@ def _learning_intelligence_payload(
             "minimum_evidence": "Fewer than 3 responses = Not enough data; 3-4 responses cannot exceed 74 mastery",
             "weak_area_rule": "At least 3 responses and mastery below 60 or accuracy below 60",
             "deduplication": "Latest Study response per question/session and one Exam response per question/attempt",
+            "trend": "At least 6 responses are required. DLMS compares two adjacent equal windows of 3-5 responses; a change under 15 percentage points is roughly stable.",
+            "coverage": "Question and quiz counts include tagged source material across quizzes and Study Packs, but exclude generated Smart, Spaced, and Concept Review copies.",
             "retention_separation": "Base mastery includes the existing recency component; retained mastery adds explicit post-due decay for review timing.",
         },
     }
@@ -545,8 +624,10 @@ def _review_candidates_for_topics(cur, topics):
         WHERE qc.concept_id IN (%s)
           AND LOWER(z.source_file) NOT LIKE 'smart_review_%%'
           AND LOWER(z.source_file) NOT LIKE 'spaced_review_%%'
+          AND LOWER(z.source_file) NOT LIKE 'concept_review_%%'
           AND LOWER(z.title) NOT LIKE 'smart review —%%'
           AND LOWER(z.title) NOT LIKE 'spaced review —%%'
+          AND LOWER(z.title) NOT LIKE 'concept review —%%'
     """ % ",".join("?" for _ in topic_by_id), tuple(topic_by_id)).fetchall()
     grouped = {}
     for row in rows:

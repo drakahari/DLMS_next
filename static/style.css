@@ -10582,7 +10582,7 @@ body.help-page .dashboard-main *::after {
 .learning-intelligence-filters button.active{background:#176cb5;border-color:#2f8fe4;color:#fff;}
 .learning-intelligence-search{max-width:260px;margin:0!important;}
 .learning-intelligence-table-wrap{overflow-x:auto;border:1px solid #203b5c;border-radius:12px;}
-.learning-intelligence-table{width:100%;border-collapse:collapse;min-width:780px;}
+.learning-intelligence-table{width:100%;border-collapse:collapse;min-width:1120px;}
 .learning-intelligence-table th{padding:11px 12px;text-align:left;font-size:12px;letter-spacing:.06em;color:#9db3cf;background:#0c2037;border-bottom:1px solid #294663;}
 .learning-intelligence-table td{padding:13px 12px;border-bottom:1px solid #17314f;vertical-align:middle;}
 .learning-intelligence-table tbody tr:last-child td{border-bottom:0;}
@@ -10591,6 +10591,13 @@ body.help-page .dashboard-main *::after {
 .li-mastery{min-width:105px;}.li-mastery>div{height:7px;background:#142b46;border-radius:99px;overflow:hidden;margin-top:6px;}.li-mastery>div>span{display:block;height:100%;background:linear-gradient(90deg,#2387e8,#31c9b4);border-radius:99px;}
 .li-status{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid #31506f;background:#10243c;white-space:nowrap;}
 .li-status-weak{color:#ff9ba6;border-color:#723442;background:#351822;}.li-status-developing{color:#ffd890;border-color:#6b5524;background:#302717;}.li-status-proficient{color:#9bd0ff;border-color:#315d83;background:#112c45;}.li-status-strong{color:#83e3c2;border-color:#216a57;background:#0d3028;}.li-status-insufficient{color:#aebbc9;border-color:#3a4a5d;background:#172230;}
+.li-trend{display:inline-flex;padding:5px 9px;border:1px solid var(--theme-border-soft,#31506f);border-radius:999px;background:var(--theme-surface-2,#10243c);color:var(--theme-page-text,#d8e6f5);font-size:12px;font-weight:800;white-space:nowrap;}
+.li-trend-improving{color:light-dark(#176b49,#83e3c2);border-color:light-dark(#8fc9b2,#216a57);background:light-dark(#edf8f3,#0d3028);}
+.li-trend-declining{color:light-dark(#a92f45,#ff9ba6);border-color:light-dark(#dda4ad,#723442);background:light-dark(#fff1f3,#351822);}
+.li-trend-stable{color:light-dark(#285d8f,#9bd0ff);border-color:light-dark(#9bbbd7,#315d83);background:light-dark(#eef6fc,#112c45);}
+.li-trend-insufficient{color:var(--theme-muted-text,#aebbc9);}
+.li-concept-review-form{margin:0;}
+.li-concept-review-form .build-secondary-link{min-width:max-content;margin:0;padding:7px 10px;font-size:12px;}
 .learning-intelligence-empty{padding:22px;text-align:center;color:#9eb0c6;border:1px dashed #28435f;border-radius:12px;}
 .learning-intelligence-no-evidence strong{display:block;color:var(--theme-heading,#eef4fb);font-size:18px;}
 .learning-intelligence-no-evidence p{max-width:680px;margin:8px auto 0;}
