@@ -29,11 +29,15 @@ jobs:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: |
+            requirements-build.txt
             requirements-lock.txt
             requirements-test.txt
 
-      - name: Install locked runtime and test dependencies
-        run: python -m pip install -r requirements-test.txt
+      - name: Install locked runtime, test, and release-tooling dependencies
+        run: >-
+          python -m pip install
+          -r requirements-test.txt
+          -r requirements-build.txt
 
       - name: Check installed dependency consistency
         run: python -m pip check

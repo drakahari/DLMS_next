@@ -26,6 +26,18 @@ class RepositoryAutomationTests(unittest.TestCase):
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertEqual(set(workflow["on"]), {"push", "pull_request"})
         self.assertIn("requirements-test.txt", text)
+        self.assertIn("requirements-build.txt", text)
+        install_step = next(
+            step
+            for step in workflow["jobs"]["non-browser-tests"]["steps"]
+            if step.get("name")
+            == "Install locked runtime, test, and release-tooling dependencies"
+        )
+        self.assertEqual(
+            install_step["run"],
+            "python -m pip install -r requirements-test.txt "
+            "-r requirements-build.txt",
+        )
         self.assertIn("python -m pip check", text)
         self.assertIn('-m "not browser"', text)
         self.assertIn("git diff --check", text)

@@ -33,9 +33,11 @@ python -m pip check
 ```
 
 The release-verifier tests are part of that suite. Packaging-related changes
-should also run these focused files for quicker feedback:
+should install the canonical build tools and run these focused files for
+quicker feedback:
 
 ```bash
+python -m pip install -r requirements-build.txt
 python -m pytest -q -p no:cacheprovider \
   tests/test_ocr_packaging.py \
   tests/test_prepare_ocr_bundle.py \
