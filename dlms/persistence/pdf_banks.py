@@ -135,6 +135,47 @@ def _list_pdf_question_banks(
     return banks
 
 
+def _ocr_generated_quiz_ids(
+    folder,
+    *,
+    os_module=None,
+    json_module=None,
+    open_file=None,
+    print_message=None,
+):
+    """Return quiz ids backed by question banks with explicit OCR provenance."""
+    os_module = os_module or os
+    json_module = json_module or json
+    open_file = open_file or open
+    print_message = print_message or print
+    ocr_source_kinds = {
+        "user-provided-screenshot-ocr",
+        "user-provided-pdf-ocr",
+    }
+    quiz_ids = set()
+    if not os_module.path.isdir(folder):
+        return quiz_ids
+    for name in sorted(os_module.listdir(folder)):
+        if not name.endswith(".json"):
+            continue
+        try:
+            with open_file(
+                os_module.path.join(folder, name), "r", encoding="utf-8"
+            ) as handle:
+                bank = json_module.load(handle) or {}
+            if str(bank.get("source_kind") or "").strip() not in ocr_source_kinds:
+                continue
+            for generated in bank.get("generated_quizzes") or []:
+                value = generated.get("quiz_id") if isinstance(generated, dict) else None
+                if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                    quiz_ids.add(value)
+        except Exception as exc:
+            print_message(
+                f"[PDF BANKS] Skipping OCR provenance from invalid bank {name!r}: {exc}"
+            )
+    return quiz_ids
+
+
 def _delete_pdf_question_bank(
     folder,
     bank_id,

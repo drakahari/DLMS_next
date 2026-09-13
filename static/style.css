@@ -11488,6 +11488,7 @@ h1,h2,h3,
 
 /* Quiz Library: convert the large remaining dark-only blocks to theme surfaces. */
 .library-page .library-hero,
+.library-page .library-smart-views,
 .library-page .library-toolbar,
 .library-page .library-folder,
 .library-page .library-footer-actions,
@@ -14530,6 +14531,172 @@ body:not([class]) > .container > .hero-title {
     margin-top: var(--dlms-space-lg);
 }
 
+.library-page .library-summary-grid + .library-smart-views,
+.library-page .library-smart-views + .library-toolbar {
+    margin-top: var(--dlms-space-lg);
+}
+
+.library-page .library-smart-views {
+    display: grid;
+    gap: var(--dlms-space-md);
+    padding: 18px 20px;
+    color: var(--theme-page-text, #eaf2ff);
+    background: var(--theme-panel-1, rgba(6,20,45,.82)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
+    box-shadow: var(--semantic-section-shadow);
+}
+
+.library-page .library-smart-views-heading,
+.library-page .library-smart-active {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dlms-space-md);
+    min-width: 0;
+}
+
+.library-page .library-smart-views-heading > div,
+.library-page .library-smart-active > div {
+    min-width: 0;
+}
+
+.library-page .library-smart-views h2 {
+    margin: 2px 0 3px;
+    color: var(--theme-heading, #fff);
+    font-size: 1.18rem;
+}
+
+.library-page .library-smart-views p,
+.library-page .library-smart-active > div > span,
+.library-page .library-smart-match-reason {
+    color: var(--theme-muted-text, #b8c2cc);
+}
+
+.library-page .library-smart-views p {
+    max-width: 760px;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.library-page .library-smart-reset {
+    flex: 0 0 auto;
+}
+
+.library-page .library-smart-view-list {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    gap: 8px;
+    min-width: 0;
+}
+
+.library-page .library-smart-view-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid var(--semantic-secondary-control-border);
+    border-radius: 10px;
+    color: var(--semantic-secondary-control-text);
+    background: var(--semantic-secondary-control-surface);
+    font-size: 13px;
+    font-weight: 750;
+    text-decoration: none;
+}
+
+.library-page .library-smart-view-link span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.library-page .library-smart-view-link strong,
+.library-page .library-smart-active-count,
+.library-page .library-smart-match-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--semantic-info-border);
+    border-radius: 999px;
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    font-weight: 800;
+}
+
+.library-page .library-smart-view-link strong {
+    flex: 0 0 auto;
+    min-width: 25px;
+    min-height: 23px;
+    padding: 2px 6px;
+    font-size: 11px;
+}
+
+.library-page .library-smart-view-link:hover,
+.library-page .library-smart-view-link:focus-visible {
+    color: var(--theme-heading, #fff);
+    background: var(--semantic-secondary-control-hover);
+    border-color: var(--theme-accent, #1b9ff2);
+}
+
+.library-page .library-smart-view-link:focus,
+.library-page .library-smart-view-link:focus-visible {
+    outline: 2px solid var(--theme-accent, #1b9ff2);
+    outline-offset: 2px;
+}
+
+.library-page .library-smart-view-link.active {
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    border-color: var(--semantic-info-border);
+    box-shadow: inset 0 -2px 0 var(--theme-accent, #1b9ff2);
+}
+
+.library-page .library-smart-active {
+    padding: 11px 12px;
+    border: 1px solid var(--semantic-info-border);
+    border-radius: 10px;
+    background: var(--semantic-info-surface);
+}
+
+.library-page .library-smart-active > div {
+    display: grid;
+    gap: 2px;
+}
+
+.library-page .library-smart-active > div > strong {
+    color: var(--theme-heading, #fff);
+}
+
+.library-page .library-smart-active-count {
+    flex: 0 0 auto;
+    gap: 4px;
+    padding: 5px 9px;
+    font-size: 12px;
+}
+
+.library-page .library-smart-match-badge {
+    padding: 2px 7px;
+    font-size: 10px;
+    letter-spacing: .03em;
+    line-height: 1.35;
+    text-transform: uppercase;
+}
+
+.library-page .library-smart-match-reason {
+    margin: 5px 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.library-page .library-folder.library-smart-empty {
+    display: none;
+}
+
+.library-page.library-smart-view-unfinished:not(.library-smart-view-ready) #quizList {
+    visibility: hidden;
+}
+
 .library-page .library-hero {
     background: linear-gradient(
         180deg,
@@ -14549,6 +14716,7 @@ body:not([class]) > .container > .hero-title {
 }
 
 .library-page .library-hero > div,
+.library-page .library-smart-views > div,
 .library-page .library-toolbar > div,
 .library-page .library-footer-actions > div {
     min-width: 0;
@@ -14878,6 +15046,24 @@ button.build-secondary-link:disabled {
    breakpoint. Container queries therefore respond to the width the workflow
    actually receives, instead of assuming viewport width equals content width. */
 @container (max-width: 760px) {
+    .library-page .library-smart-views-heading,
+    .library-page .library-smart-active {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .library-page .library-smart-reset {
+        align-self: flex-start;
+    }
+
+    .library-page .library-smart-view-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .library-page .library-smart-active-count {
+        align-self: flex-start;
+    }
+
     .mixed-builder-intro,
     .mixed-builder-plan,
     .mixed-builder-section-heading,
@@ -14962,5 +15148,15 @@ button.build-secondary-link:disabled {
 
     .external-ai-builder-wide {
         grid-column: auto;
+    }
+}
+
+@container (max-width: 430px) {
+    .library-page .library-smart-view-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .library-page .library-smart-view-link span {
+        overflow-wrap: normal;
     }
 }

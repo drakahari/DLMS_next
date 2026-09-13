@@ -14,6 +14,116 @@ from tests.csrf_test_utils import csrf_headers
 
 
 class QuizLibraryTests(unittest.TestCase):
+    def test_smart_views_filter_without_mutating_folders_and_reset_cleanly(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-smart-views-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "Alpha", "Beta"]}, handle)
+            registry = [
+                {"id": 1, "title": "Alpha Quiz", "html": "alpha.html", "folder": "Alpha"},
+                {"id": 2, "title": "Beta Quiz", "html": "beta.html", "folder": "Beta"},
+            ]
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump(registry, handle)
+
+            definitions = [
+                {"key": "needs-review", "label": "Needs Review", "description": "Due.", "client_derived": False},
+                {"key": "recently-added", "label": "Recently Added", "description": "Recent.", "client_derived": False},
+                {"key": "low-score", "label": "Low Score", "description": "Low.", "client_derived": False},
+                {"key": "unfinished", "label": "Unfinished", "description": "Local.", "client_derived": True},
+                {"key": "ocr-imported", "label": "OCR Imported", "description": "OCR.", "client_derived": False},
+            ]
+            smart_data = {
+                "views": definitions,
+                "matches": {
+                    "needs-review": {
+                        2: {"badge": "Due now", "reason": "2 source questions due"},
+                        1: {"badge": "Due now", "reason": "1 source question due"},
+                    },
+                    "recently-added": {1: {"badge": "New", "reason": "Added today"}},
+                    "low-score": {2: {"badge": "Below 75%", "reason": "Latest completed score: 60%"}},
+                    "unfinished": {},
+                    "ocr-imported": {},
+                },
+            }
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}), \
+                    mock.patch.object(
+                        dlms._quiz_smart_view_service,
+                        "build_quiz_smart_views",
+                        return_value=smart_data,
+                    ):
+                client = dlms.app.test_client()
+                low = client.get("/library?view=visible&smart=low-score")
+                needs = client.get("/library?view=visible&smart=needs-review")
+                reset = client.get("/library?view=visible")
+                unknown = client.get("/library?view=visible&smart=not-a-view")
+                unfinished = client.get("/library?view=visible&smart=unfinished")
+                mutation = client.post(
+                    "/toggle_hidden",
+                    data={"id": "2", "view": "visible", "smart": "low-score"},
+                    headers=csrf_headers(client, "/library?smart=low-score"),
+                )
+
+            low_html = low.get_data(as_text=True)
+            self.assertEqual(low.status_code, 200)
+            self.assertIn('aria-current="page"', low_html)
+            self.assertIn("Latest completed score: 60%", low_html)
+            self.assertIn("Beta Quiz", low_html)
+            self.assertNotIn("Alpha Quiz", low_html)
+            self.assertIn("<h2>Beta</h2>", low_html)
+            self.assertNotIn("<h2>Alpha</h2>", low_html)
+            self.assertNotIn('class="library-reorder-controls"', low_html)
+            self.assertIn("does not move quizzes or change folder order", low_html)
+            self.assertIn('name="smart" value="low-score"', low_html)
+
+            needs_html = needs.get_data(as_text=True)
+            self.assertLess(needs_html.index("Alpha Quiz"), needs_html.index("Beta Quiz"))
+
+            for page in (reset.get_data(as_text=True), unknown.get_data(as_text=True)):
+                self.assertIn("Alpha Quiz", page)
+                self.assertIn("Beta Quiz", page)
+                self.assertNotIn("library-smart-view-active", page)
+
+            unfinished_html = unfinished.get_data(as_text=True)
+            self.assertIn("Alpha Quiz", unfinished_html)
+            self.assertIn("Beta Quiz", unfinished_html)
+            self.assertIn("applyUnfinishedLibraryView", unfinished_html)
+            self.assertIn('id="librarySmartEmptyState"', unfinished_html)
+            self.assertIn('id="librarySmartEligibleQuizData"', unfinished_html)
+            self.assertEqual(
+                mutation.headers["Location"],
+                "/library?view=visible&smart=low-score",
+            )
+
+    def test_server_derived_smart_view_has_a_useful_empty_state(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-smart-empty-") as directory:
+            quiz_registry = os.path.join(directory, "quizzes.json")
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([{
+                    "id": 1,
+                    "title": "Ordinary Quiz",
+                    "html": "ordinary.html",
+                    "folder": "Uncategorized",
+                }], handle)
+            with mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                response = dlms.app.test_client().get(
+                    "/library?view=visible&smart=ocr-imported"
+                )
+
+            html = response.get_data(as_text=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("No OCR Imported quizzes", html)
+            self.assertIn("Nothing in the Visible library currently matches", html)
+            self.assertIn('href="/library?view=visible">Show full library</a>', html)
+            self.assertNotIn("Ordinary Quiz", html)
+
     def test_library_uses_vendored_sortable_with_existing_order_initialization(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-sortable-") as directory:
             config_dir = os.path.join(directory, "config")

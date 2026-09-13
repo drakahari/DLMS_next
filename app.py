@@ -56,6 +56,7 @@ from dlms.services import learning as _learning_service
 from dlms.services import quiz_publication as _quiz_publication_service
 from dlms.services import quiz_composition as _quiz_composition_service
 from dlms.services import quiz_duplicates as _quiz_duplicate_service
+from dlms.services import quiz_smart_views as _quiz_smart_view_service
 from dlms.services import portable_quiz_bundles as _portable_quiz_bundle_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import restore as _restore_service
@@ -3997,6 +3998,14 @@ def _list_pdf_question_banks():
         print_message=print,
     )
 
+def _ocr_generated_quiz_ids():
+    return _pdf_bank_repository._ocr_generated_quiz_ids(
+        PDF_QUESTION_BANK_FOLDER,
+        os_module=os,
+        json_module=json,
+        print_message=print,
+    )
+
 def _delete_pdf_question_bank(bank_id):
     return _pdf_bank_repository._delete_pdf_question_bank(
         PDF_QUESTION_BANK_FOLDER,
@@ -6362,6 +6371,14 @@ app.register_blueprint(create_quiz_blueprint(
         ),
         quiz_duplicate_report=lambda cur, registry: (
             _quiz_duplicate_service.build_quiz_duplicate_report(cur, registry)
+        ),
+        quiz_smart_views=lambda cur, registry: (
+            _quiz_smart_view_service.build_quiz_smart_views(
+                cur,
+                registry,
+                native_schedule=_native_spaced_repetition_schedule,
+                bank_ocr_quiz_ids=_ocr_generated_quiz_ids(),
+            )
         ),
         question_payload_from_db=lambda cur, question_id: (
             _question_payload_from_db(cur, question_id)

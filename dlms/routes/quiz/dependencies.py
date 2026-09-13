@@ -31,6 +31,7 @@ class QuizLibraryDependencies:
     mixed_quiz_catalog: Dependency
     mixed_quiz_filter_options: Dependency
     quiz_duplicate_report: Dependency
+    quiz_smart_views: Dependency
     question_payload_from_db: Dependency
     publish_quiz: Dependency
 

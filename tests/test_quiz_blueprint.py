@@ -73,7 +73,7 @@ class QuizBlueprintTests(unittest.TestCase):
         "delete_quiz_folder_metadata", "get_portal_title",
         "resolve_logo_filename", "debug_print", "get_db",
         "mixed_quiz_catalog", "mixed_quiz_filter_options",
-        "quiz_duplicate_report",
+        "quiz_duplicate_report", "quiz_smart_views",
         "question_payload_from_db", "publish_quiz",
     }
     EDITOR_DEPENDENCIES = {

@@ -206,6 +206,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         self.assertIn("Sortable.create", body)
         self.assertIn("JSON.stringify(payload)", body)
         self.assertIn('id="libraryQuizIdentityData"', body)
+        self.assertIn('id="librarySmartEligibleQuizData"', body)
         self.assertIn('src="/static/quiz-recovery.js"', body)
         self.assertIn('/static/nav-normalize.js', body)
 

@@ -598,6 +598,109 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
     assert browser.wait_for(f"{order_expression} === {json.dumps(expected_order)}") is True
 
 
+def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
+    browser_stack,
+):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    critical_id = str(browser_stack.metadata["critical_id"])
+    critical_html = browser_stack.metadata["critical_html"]
+
+    browser.navigate(f"{base_url}/quizzes/{critical_html}")
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+
+    browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")
+    browser.wait_for(
+        "document.body.classList.contains('library-smart-view-ready') && "
+        "document.getElementById('librarySmartViewCount').textContent === '1'"
+    )
+    state = browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.library-quiz-card')];"
+        "const visible=cards.filter(card=>getComputedStyle(card).display!=='none');"
+        "const active=document.querySelector('.library-smart-view-link.active');"
+        "return {visibleIds:visible.map(card=>card.dataset.quizId),"
+        "active:active?.textContent.trim(),current:active?.getAttribute('aria-current'),"
+        "badge:visible[0]?.querySelector('.library-smart-match-badge')?.textContent.trim(),"
+        "reason:visible[0]?.querySelector('.library-smart-match-reason')?.textContent.trim(),"
+        "reorder:document.querySelectorAll('.library-reorder-controls').length};})()"
+    )
+    assert state == {
+        "visibleIds": [critical_id],
+        "active": "Unfinished\n                    1",
+        "current": "page",
+        "badge": "In progress",
+        "reason": "Study session saved in this browser · ready to resume",
+        "reorder": 0,
+    }
+
+    browser.evaluate(
+        "(() => {const input=document.getElementById('librarySearch');"
+        "input.value='no such quiz';input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "return true;})()"
+    )
+    browser.wait_for(
+        "[...document.querySelectorAll('.library-folder')]"
+        ".every(folder=>getComputedStyle(folder).display==='none')"
+    )
+    browser.evaluate(
+        "(() => {const input=document.getElementById('librarySearch');"
+        "input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()"
+    )
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")
+        browser.wait_for(
+            "document.body.classList.contains('library-smart-view-ready') && "
+            "document.getElementById('librarySmartViewCount').textContent === '1'"
+        )
+        snapshot = _theme_contrast_snapshot(browser, {
+            "smart heading": ".library-smart-views h2",
+            "smart helper": ".library-smart-views-heading p",
+            "inactive view": ".library-smart-view-link:not(.active)",
+            "active view": ".library-smart-view-link.active",
+            "active detail": ".library-smart-active > div span",
+            "match badge": ".library-smart-match-badge",
+            "match reason": ".library-smart-match-reason",
+            "reset action": ".library-smart-reset",
+        })
+        for role, values in snapshot.items():
+            assert values["contrast"] >= 4.5, (theme, role, values)
+
+    for width, expected_columns in ((1280, 5), (700, 2), (420, 1)):
+        browser.set_viewport(width, 900)
+        layout = browser.evaluate(
+            "(() => {const links=[...document.querySelectorAll('.library-smart-view-link')];"
+            "const tops=new Set(links.map(link=>Math.round(link.getBoundingClientRect().top)));"
+            "const panel=document.querySelector('.library-smart-views').getBoundingClientRect();"
+            "const main=document.querySelector('.dashboard-main').getBoundingClientRect();"
+            "return {columns:Math.round(links.length/tops.size),"
+            "overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,"
+            "inside:panel.left>=main.left-1&&panel.right<=main.right+1,"
+            "minWidth:Math.min(...links.map(link=>link.getBoundingClientRect().width))};})()"
+        )
+        assert layout["columns"] == expected_columns, (width, layout)
+        assert layout["overflow"] <= 1, (width, layout)
+        assert layout["inside"] is True, (width, layout)
+        assert layout["minWidth"] >= (250 if expected_columns == 1 else 120), (
+            width, layout
+        )
+
+    browser.navigate(f"{base_url}/library?view=visible")
+    browser.wait_for("document.querySelectorAll('.library-quiz-card').length === 2")
+    assert browser.evaluate("document.body.dataset.librarySmartView") == ""
+
+    browser.evaluate(f"localStorage.removeItem({json.dumps(recovery_key)});true")
+    browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")
+    browser.wait_for(
+        "document.body.classList.contains('library-smart-view-ready') && "
+        "document.getElementById('librarySmartEmptyState').hidden === false"
+    )
+
+
 def test_library_empty_folder_lifecycle_persists_in_real_browser(browser_stack):
     browser = browser_stack.browser
     folder_name = "Browser Empty Folder"
@@ -3447,6 +3550,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "const value=getComputedStyle(probe).color;probe.remove();return value};"
             "const hero=document.querySelector('.library-hero');"
             "const stats=document.querySelector('.library-summary-grid');"
+            "const smart=document.querySelector('.library-smart-views');"
             "const toolbar=document.querySelector('.library-toolbar');"
             "const tip=document.querySelector('.library-tip');"
             "const folder=document.querySelector('.library-folder');"
@@ -3468,7 +3572,8 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "bodyColor:getComputedStyle(body).backgroundColor,"
             "titleColor:getComputedStyle(title).color,titleWrap:getComputedStyle(title).overflowWrap,"
             "selectedBorder:getComputedStyle(selected).borderTopColor,"
-            "heroStatsGap:blockGap(hero,stats),statsToolbarGap:blockGap(stats,toolbar),"
+            "heroStatsGap:blockGap(hero,stats),statsSmartGap:blockGap(stats,smart),"
+            "smartToolbarGap:blockGap(smart,toolbar),"
             "toolbarTipGap:blockGap(toolbar,tip),tipFolderGap:blockGap(tip,folder),"
             "focusVisibleSupported:CSS.supports('selector(:focus-visible)'),"
             "documentContained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,"
@@ -3483,7 +3588,8 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         assert library["titleWrap"] == "anywhere"
         assert library["selectedBorder"] == library["accent"]
         assert library["heroStatsGap"] == 18
-        assert library["statsToolbarGap"] == 18
+        assert library["statsSmartGap"] == 18
+        assert library["smartToolbarGap"] == 18
         assert 8 <= library["toolbarTipGap"] <= 12
         assert 8 <= library["tipFolderGap"] <= 12
         assert library["focusVisibleSupported"] is True
@@ -3496,15 +3602,18 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         desktop_gaps = browser.evaluate(
             "(() => {const hero=document.querySelector('.library-hero');"
             "const stats=document.querySelector('.library-summary-grid');"
+            "const smart=document.querySelector('.library-smart-views');"
             "const toolbar=document.querySelector('.library-toolbar');"
             "const gap=(before,after)=>Math.round(after.getBoundingClientRect().top-"
             "before.getBoundingClientRect().bottom);"
-            "return {heroStats:gap(hero,stats),statsToolbar:gap(stats,toolbar),"
+            "return {heroStats:gap(hero,stats),statsSmart:gap(stats,smart),"
+            "smartToolbar:gap(smart,toolbar),"
             "contained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1};})()"
         )
         assert desktop_gaps == {
             "heroStats": 18,
-            "statsToolbar": 18,
+            "statsSmart": 18,
+            "smartToolbar": 18,
             "contained": True,
         }
 

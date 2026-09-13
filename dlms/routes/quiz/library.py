@@ -5,6 +5,7 @@ from functools import wraps
 import os
 import re
 import sqlite3
+from urllib.parse import urlencode
 
 from flask import (
     Blueprint,
@@ -15,6 +16,8 @@ from flask import (
     render_template,
     request,
 )
+
+from dlms.services.quiz_smart_views import normalize_smart_view
 
 from .dependencies import QuizLibraryDependencies
 
@@ -30,6 +33,17 @@ def _bind_dependencies(view_func, dependencies):
 # Modern Quiz Library UI introduced on 2026-08-21. This module owns its
 # presentation context plus the existing folder-management forms and APIs.
 
+
+def _library_return_url(view=None, smart=None):
+    normalized_view = str(view or "").strip().casefold()
+    if normalized_view not in {"visible", "hidden", "all"}:
+        normalized_view = "visible"
+    query = {"view": normalized_view}
+    normalized_smart = normalize_smart_view(smart)
+    if normalized_smart:
+        query["smart"] = normalized_smart
+    return f"/library?{urlencode(query)}"
+
 def toggle_hidden(dependencies):
     registry_lock = dependencies.registry_lock()
     load_registry = dependencies.load_registry
@@ -40,6 +54,7 @@ def toggle_hidden(dependencies):
     )
 
     view = request.form.get("view")
+    smart = request.form.get("smart")
 
     with registry_lock:
         registry = load_registry()
@@ -51,8 +66,8 @@ def toggle_hidden(dependencies):
 
         save_registry(registry)
 
-    if view:
-        return redirect(f"/library?view={view}")
+    if view or smart:
+        return redirect(_library_return_url(view, smart))
 
     return redirect("/library")
 
@@ -67,6 +82,7 @@ def move_quiz_folder(dependencies):
     quiz_id = int(request.form.get("id"))
     folder = str(request.form.get("folder") or "").strip()
     view = request.form.get("view") or "visible"
+    smart = request.form.get("smart")
 
     with registry_lock:
         loaded_registry = load_registry()
@@ -75,7 +91,7 @@ def move_quiz_folder(dependencies):
         )
         target_folder = identity.resolve(folder)
         if target_folder is None:
-            return redirect(f"/library?view={view}")
+            return redirect(_library_return_url(view, smart))
 
         registry = normalize_quiz_folders(loaded_registry)
 
@@ -86,7 +102,7 @@ def move_quiz_folder(dependencies):
 
         save_registry(registry)
 
-    return redirect(f"/library?view={view}")
+    return redirect(_library_return_url(view, smart))
 
 def add_quiz_folder(dependencies):
     registry_lock = dependencies.registry_lock()
@@ -97,9 +113,10 @@ def add_quiz_folder(dependencies):
 
     folder = str(request.form.get("folder") or "").strip()
     view = request.form.get("view") or "visible"
+    smart = request.form.get("smart")
 
     if not folder:
-        return redirect(f"/library?view={view}")
+        return redirect(_library_return_url(view, smart))
 
     with registry_lock:
         folders = get_quiz_folders()
@@ -115,7 +132,7 @@ def add_quiz_folder(dependencies):
             folders.append(existing_display)
             save_quiz_folders(folders)
 
-    return redirect(f"/library?view={view}")
+    return redirect(_library_return_url(view, smart))
 
 def set_quiz_folder_hidden(dependencies):
     registry_lock = dependencies.registry_lock()
@@ -128,12 +145,13 @@ def set_quiz_folder_hidden(dependencies):
     requested_folder = str(request.form.get("folder") or "").strip()
     requested_state = request.form.get("hidden")
     view = request.form.get("view") or "visible"
+    smart = request.form.get("smart")
 
     if (
         not requested_folder
         or requested_state not in {"0", "1"}
     ):
-        return redirect(f"/library?view={view}")
+        return redirect(_library_return_url(view, smart))
     hide_folder = requested_state == "1"
 
     with registry_lock:
@@ -144,7 +162,7 @@ def set_quiz_folder_hidden(dependencies):
             configured_name is None
             or identity.is_uncategorized(configured_name)
         ):
-            return redirect(f"/library?view={view}")
+            return redirect(_library_return_url(view, smart))
 
         # A legacy assignment-only folder becomes explicitly persistent only
         # when the user chooses to hide it. Page loads never promote legacy
@@ -153,7 +171,7 @@ def set_quiz_folder_hidden(dependencies):
             if hide_folder:
                 folders.append(configured_name)
             else:
-                return redirect(f"/library?view={view}")
+                return redirect(_library_return_url(view, smart))
 
         hidden_folders = get_hidden_quiz_folders(folders)
         hidden_folders = [
@@ -165,7 +183,7 @@ def set_quiz_folder_hidden(dependencies):
             hidden_folders.append(configured_name)
 
         save_quiz_folder_state(folders, hidden_folders)
-    return redirect(f"/library?view={view}")
+    return redirect(_library_return_url(view, smart))
 
 def rename_quiz_folder(dependencies):
     rename_folder_metadata = dependencies.rename_quiz_folder_metadata
@@ -173,26 +191,28 @@ def rename_quiz_folder(dependencies):
     old_folder = str(request.form.get("old_folder") or "").strip()
     new_folder = str(request.form.get("new_folder") or "").strip()
     view = request.form.get("view") or "visible"
+    smart = request.form.get("smart")
 
     if not old_folder or not new_folder:
-        return redirect(f"/library?view={view}")
+        return redirect(_library_return_url(view, smart))
 
     rename_folder_metadata(old_folder, new_folder)
 
-    return redirect(f"/library?view={view}")
+    return redirect(_library_return_url(view, smart))
 
 def delete_quiz_folder(dependencies):
     delete_folder_metadata = dependencies.delete_quiz_folder_metadata
 
     folder = str(request.form.get("folder") or "").strip()
     view = request.form.get("view") or "visible"
+    smart = request.form.get("smart")
 
     if not folder:
-        return redirect(f"/library?view={view}")
+        return redirect(_library_return_url(view, smart))
 
     delete_folder_metadata(folder)
 
-    return redirect(f"/library?view={view}")
+    return redirect(_library_return_url(view, smart))
 
 def save_folder_order(dependencies):
     registry_lock = dependencies.registry_lock()
@@ -661,6 +681,7 @@ def quiz_library(dependencies):
     # 2) legacy ?show_hidden=1
     # 3) default = visible only
     view = request.args.get("view")
+    smart = normalize_smart_view(request.args.get("smart"))
 
     if not view and request.args.get("show_hidden") == "1":
         view = "all"
@@ -702,11 +723,54 @@ def quiz_library(dependencies):
             if not q.get("hidden", False) or quiz_folder_is_hidden(q)
         ]
 
+    # Smart views are read-only overlays on the existing Visible/Hidden/All
+    # scope. Their evidence comes from canonical services and storage; the
+    # Unfinished view is completed in the browser because recoverable quiz
+    # state intentionally lives in browser-local storage.
+    conn = dependencies.get_db()
+    try:
+        smart_view_data = dependencies.quiz_smart_views(conn.cursor(), registry)
+    finally:
+        conn.close()
+    smart_matches = smart_view_data["matches"]
+    active_smart_view = next(
+        (
+            item
+            for item in smart_view_data["views"]
+            if item["key"] == smart
+        ),
+        None,
+    )
+    base_normal_filtered = list(normal_filtered)
+    base_normal_ids = {
+        int(q["id"])
+        for q in base_normal_filtered
+        if isinstance(q.get("id"), int) and not isinstance(q.get("id"), bool)
+    }
+    smart_views = []
+    for item in smart_view_data["views"]:
+        count = None if item["client_derived"] else len(
+            base_normal_ids.intersection(smart_matches[item["key"]])
+        )
+        smart_views.append({**item, "count": count})
+    if active_smart_view and not active_smart_view["client_derived"]:
+        allowed_ids = set(smart_matches[smart])
+        normal_filtered = [q for q in normal_filtered if q.get("id") in allowed_ids]
+        render_filtered = [q for q in render_filtered if q.get("id") in allowed_ids]
+    elif active_smart_view:
+        # Hidden-folder search-only markup is a normal-library convenience. It
+        # must not leak outside the selected base scope in a dynamic view.
+        render_filtered = list(normal_filtered)
+
     quizzes = [
         {
             **q,
             "folder": quiz_folder_name(q),
             "logo": resolve_logo_filename(q.get("logo")),
+            "smart_match": (
+                smart_matches.get(smart, {}).get(q.get("id"))
+                if active_smart_view else None
+            ),
         }
         for q in render_filtered
     ]
@@ -736,6 +800,8 @@ def quiz_library(dependencies):
         and (
             normal_grouped_quizzes.get(folder)
             or (
+                not active_smart_view
+                and
                 identity.key(folder) in configured_folder_keys
                 and not identity.is_uncategorized(folder)
                 and (
@@ -749,7 +815,8 @@ def quiz_library(dependencies):
         folder for folder in folder_names
         if folder in normal_display_folder_names
         or (
-            view == "visible"
+            not active_smart_view
+            and view == "visible"
             and identity.key(folder) in hidden_folder_keys
             and grouped_quizzes.get(folder)
         )
@@ -760,7 +827,11 @@ def quiz_library(dependencies):
         if not q.get("hidden", False) and not quiz_folder_is_hidden(q)
     )
     hidden_count = len(registry) - visible_count
-    view_quiz_count = len(normal_filtered)
+    view_quiz_count = (
+        None
+        if active_smart_view and active_smart_view["client_derived"]
+        else len(normal_filtered)
+    )
     active_quiz_ids = [
         str(quiz.get("id"))
         for quiz in registry
@@ -773,7 +844,10 @@ def quiz_library(dependencies):
        hidden_folder_keys=hidden_folder_keys, portal_title=portal_title,
        visible_count=visible_count, hidden_count=hidden_count,
        view_quiz_count=view_quiz_count, view=view, app_version=APP_VERSION,
-       active_quiz_ids=active_quiz_ids)
+       active_quiz_ids=active_quiz_ids,
+       smart=smart, smart_views=smart_views,
+       active_smart_view=active_smart_view,
+       smart_eligible_quiz_ids=sorted(base_normal_ids))
 
 
 def _mixed_quiz_page_context(dependencies, *, error=None, selected_ids=(), title=""):

@@ -83,7 +83,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
         "dlms.routes.quiz.dependencies.QuizBundleDependencies": 15,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
-        "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 23,
+        "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 24,
         "dlms.routes.settings.SettingsRouteDependencies": 11,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }

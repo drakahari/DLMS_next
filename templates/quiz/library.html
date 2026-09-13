@@ -9,7 +9,7 @@
     <link rel="icon" href="/static/favicon.ico">
     <script src="/static/vendor/sortablejs-1.15.0.min.js"></script>
 </head>
-<body class="dashboard-home library-page">
+<body class="dashboard-home library-page{% if active_smart_view %} library-smart-view-active library-smart-view-{{ smart }}{% endif %}" data-library-smart-view="{{ smart or '' }}">
 <div class="dashboard-shell">
 
     <aside class="dashboard-sidebar" id="dashboardSidebar">
@@ -91,13 +91,47 @@
         <section class="library-summary-grid" aria-label="Library summary">
             <div class="library-stat-card"><span>Visible</span><strong>{{ visible_count }}</strong><small>available quizzes</small></div>
             <div class="library-stat-card"><span>Hidden</span><strong>{{ hidden_count }}</strong><small>hidden quizzes</small></div>
-            <div class="library-stat-card"><span>Folders</span><strong>{{ normal_display_folder_names|length }}</strong><small>folders in this view</small></div>
-            <div class="library-stat-card"><span>This View</span><strong>{{ view_quiz_count }}</strong><small>{{ view|capitalize }} items</small></div>
+            <div class="library-stat-card" id="libraryFolderStat"><span>Folders</span><strong>{% if active_smart_view and active_smart_view.client_derived %}…{% else %}{{ normal_display_folder_names|length }}{% endif %}</strong><small>folders in this view</small></div>
+            <div class="library-stat-card" id="libraryThisViewStat"><span>This View</span><strong>{% if view_quiz_count is none %}…{% else %}{{ view_quiz_count }}{% endif %}</strong><small>{% if active_smart_view %}{{ active_smart_view.label }}{% else %}{{ view|capitalize }} items{% endif %}</small></div>
+        </section>
+
+        <section class="library-smart-views dashboard-panel" aria-labelledby="librarySmartViewsHeading">
+            <div class="library-smart-views-heading">
+                <div>
+                    <span class="library-eyebrow">DYNAMIC ORGANIZATION</span>
+                    <h2 id="librarySmartViewsHeading">Smart Views</h2>
+                    <p>Filter the current library view using existing quiz and learning data. Quizzes stay in their folders.</p>
+                </div>
+                {% if active_smart_view %}
+                <a class="library-secondary-action compact library-smart-reset" href="/library?view={{ view|urlencode }}">Show full library</a>
+                {% endif %}
+            </div>
+            <nav class="library-smart-view-list" aria-label="Quiz Library smart views">
+                {% for smart_view in smart_views %}
+                <a class="library-smart-view-link{% if smart == smart_view.key %} active{% endif %}"
+                   href="/library?view={{ view|urlencode }}&amp;smart={{ smart_view.key|urlencode }}"
+                   {% if smart == smart_view.key %}aria-current="page"{% endif %}
+                   title="{{ smart_view.description }}">
+                    <span>{{ smart_view.label }}</span>
+                    <strong{% if smart_view.key == 'unfinished' %} id="libraryUnfinishedViewCount"{% endif %}>{% if smart_view.count is none %}—{% else %}{{ smart_view.count }}{% endif %}</strong>
+                </a>
+                {% endfor %}
+            </nav>
+            {% if active_smart_view %}
+            <div class="library-smart-active" role="status">
+                <div>
+                    <strong>{{ active_smart_view.label }}</strong>
+                    <span>{{ active_smart_view.description }}</span>
+                </div>
+                <span class="library-smart-active-count"><strong id="librarySmartViewCount">{% if view_quiz_count is none %}…{% else %}{{ view_quiz_count }}{% endif %}</strong> in {{ view|capitalize }}</span>
+            </div>
+            {% endif %}
         </section>
 
         <section class="library-toolbar dashboard-panel">
             <div class="library-toolbar-left">
                 <form method="GET" action="/library" class="library-view-switcher" aria-label="Library view">
+                    {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
                     <span>View</span>
                     <label class="library-view-option {% if view == 'visible' %}selected{% endif %}">
                         <input type="radio" name="view" value="visible" onchange="this.form.submit()" {% if view == 'visible' %}checked{% endif %}>Visible
@@ -124,6 +158,7 @@
                 </button>
                 <form method="POST" action="/add_quiz_folder" class="add-folder-form library-inline-form" style="display:none;">
                     <input type="hidden" name="view" value="{{ view }}">
+                    {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
                     <input type="text" name="folder" placeholder="New folder name" required>
                     <button type="submit">Save</button>
                     <button type="button" class="library-quiet-button" onclick="hideAddFolderForm(event, this)">Cancel</button>
@@ -131,7 +166,7 @@
             </div>
         </section>
 
-        <div class="library-tip">Drag folder headers to reorder folders. Drag quiz cards to reorder quizzes inside a folder. Use the Up and Down buttons for keyboard reordering.</div>
+        <div class="library-tip">{% if active_smart_view %}This dynamic view does not move quizzes or change folder order. Search narrows these results further.{% else %}Drag folder headers to reorder folders. Drag quiz cards to reorder quizzes inside a folder. Use the Up and Down buttons for keyboard reordering.{% endif %}</div>
         <div id="libraryReorderStatus" class="library-reorder-status" aria-live="polite" aria-atomic="true"></div>
 
         {% if display_folder_names %}
@@ -154,7 +189,7 @@
                     </div>
 
                     <div class="library-folder-actions">
-                        {% if normal_display_folder_names|length > 1 and not folder_is_search_only %}
+                        {% if not active_smart_view and normal_display_folder_names|length > 1 and not folder_is_search_only %}
                         <div class="library-reorder-controls" role="group" aria-label="Reorder {{ folder_name }}">
                             <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="folder" data-library-reorder-direction="-1" onclick="moveLibraryFolder(event, this, -1)" aria-label="Move {{ folder_name }} up" title="Move folder up" {% if loop.first %}disabled{% endif %}>↑</button>
                             <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="folder" data-library-reorder-direction="1" onclick="moveLibraryFolder(event, this, 1)" aria-label="Move {{ folder_name }} down" title="Move folder down" {% if loop.last %}disabled{% endif %}>↓</button>
@@ -165,6 +200,7 @@
                             <input type="hidden" name="folder" value="{{ folder_name }}">
                             <input type="hidden" name="hidden" value="{{ '0' if folder_is_hidden else '1' }}">
                             <input type="hidden" name="view" value="{{ view }}">
+                            {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
                             <button type="submit" class="library-secondary-action compact library-folder-visibility-action" aria-label="{{ 'Unhide' if folder_is_hidden else 'Hide' }} {{ folder_name }} folder">{% if folder_is_hidden %}👁 Unhide{% else %}◌ Hide{% endif %}</button>
                         </form>
                         <div class="folder-actions">
@@ -172,6 +208,7 @@
                             <form method="POST" action="/rename_quiz_folder" class="rename-folder-form library-inline-form" style="display:none;">
                                 <input type="hidden" name="old_folder" value="{{ folder_name }}">
                                 <input type="hidden" name="view" value="{{ view }}">
+                                {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
                                 <input type="text" name="new_folder" value="{{ folder_name }}" required>
                                 <button type="submit">Save</button>
                                 <button type="button" class="library-quiet-button" onclick="hideRenameFolderForm(event, this)">Cancel</button>
@@ -180,6 +217,7 @@
                         <form method="POST" action="/delete_quiz_folder" class="delete-folder-form" onsubmit="return confirm('Delete this folder? Quizzes inside it will move to Uncategorized.');">
                             <input type="hidden" name="folder" value="{{ folder_name }}">
                             <input type="hidden" name="view" value="{{ view }}">
+                            {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
                             <button type="submit" class="library-icon-button library-danger-icon" title="Delete folder" aria-label="Delete {{ folder_name }} folder">🗑</button>
                         </form>
                     {% endif %}
@@ -191,7 +229,7 @@
                     <p class="library-folder-empty">No quizzes in this view.</p>
                     {% endif %}
                     {% for q in folder_quizzes %}
-                    <article class="quiz-card library-quiz-card" data-id="{{ q['html'] }}" data-title="{{ q['title']|lower }}" data-search="{{ (q['title'] ~ ' ' ~ folder_name)|lower }}">
+                    <article class="quiz-card library-quiz-card" data-id="{{ q['html'] }}" data-quiz-id="{{ q['id'] }}" data-title="{{ q['title']|lower }}" data-search="{{ (q['title'] ~ ' ' ~ folder_name)|lower }}">
                         <div class="library-quiz-main">
                             <div class="library-quiz-title-row">
                                 {% if q['logo'] %}
@@ -207,7 +245,9 @@
                                         <span>{{ folder_name }}</span>
                                         {% if q.get('hidden') %}<span class="library-hidden-badge">Hidden</span>{% endif %}
                                         {% if folder_is_hidden %}<span class="library-folder-hidden-badge">Folder hidden</span>{% endif %}
+                                        {% if q.smart_match %}<span class="library-smart-match-badge">{{ q.smart_match.badge }}</span>{% endif %}
                                     </div>
+                                    {% if q.smart_match %}<p class="library-smart-match-reason">{{ q.smart_match.reason }}</p>{% endif %}
                                 </div>
                             </div>
 
@@ -216,7 +256,7 @@
                                 <a class="library-secondary-action compact" href="/edit_quiz/{{ q['id'] }}">✎ Edit</a>
                                 <a class="library-secondary-action compact" href="/export/quiz/{{ q['id'] }}.txt" title="Exports this quiz as an import-friendly DLMS text file.">⇩ Export</a>
 
-                                {% if folder_quizzes|length > 1 %}
+                                {% if not active_smart_view and folder_quizzes|length > 1 %}
                                 <div class="library-reorder-controls" role="group" aria-label="Reorder {{ q['title'] }} within {{ folder_name }}">
                                     <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="quiz" data-library-reorder-direction="-1" onclick="moveLibraryQuiz(event, this, -1)" aria-label="Move {{ q['title'] }} up within {{ folder_name }}" title="Move quiz up" {% if loop.first %}disabled{% endif %}>↑</button>
                                     <button type="button" class="library-icon-button library-reorder-button" data-library-reorder="quiz" data-library-reorder-direction="1" onclick="moveLibraryQuiz(event, this, 1)" aria-label="Move {{ q['title'] }} down within {{ folder_name }}" title="Move quiz down" {% if loop.last %}disabled{% endif %}>↓</button>
@@ -226,6 +266,7 @@
                                 <form method="POST" action="/toggle_hidden" class="library-action-form">
                                     <input type="hidden" name="id" value="{{ q['id'] }}">
                                     <input type="hidden" name="view" value="{{ view }}">
+                                    {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
                                     <button type="submit" class="library-secondary-action compact">{% if q.get('hidden') %}👁 Unhide{% else %}◌ Hide{% endif %}</button>
                                 </form>
 
@@ -234,6 +275,7 @@
                                     <form method="POST" action="/move_quiz_folder" class="move-quiz-form library-inline-form" style="display:none;">
                                         <input type="hidden" name="id" value="{{ q['id'] }}">
                                         <input type="hidden" name="view" value="{{ view }}">
+                                        {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
                                         <select name="folder">
                                             {% for folder in folder_names %}
                                             <option value="{{ folder }}" {% if q.get('folder', 'Uncategorized') == folder %}selected{% endif %}>{{ folder }}{% if folder|lower in hidden_folder_keys %} (hidden){% endif %}</option>
@@ -264,12 +306,20 @@
             {% endfor %}
         </section>
         {% endif %}
-        {% if not normal_display_folder_names %}
+        {% if not normal_display_folder_names and not (active_smart_view and active_smart_view.client_derived) %}
         <section id="libraryEmptyState" class="library-empty dashboard-panel">
             <div class="library-empty-icon">▤</div>
-            <h2>No quizzes found</h2>
-            <p>There are no quizzes in the selected {{ view }} view.</p>
-            <a class="library-primary-action" href="/upload">Build a Quiz</a>
+            <h2>{% if active_smart_view %}No {{ active_smart_view.label }} quizzes{% else %}No quizzes found{% endif %}</h2>
+            <p>{% if active_smart_view %}Nothing in the {{ view|capitalize }} library currently matches this dynamic view.{% else %}There are no quizzes in the selected {{ view }} view.{% endif %}</p>
+            {% if active_smart_view %}<a class="library-secondary-action" href="/library?view={{ view|urlencode }}">Show full library</a>{% else %}<a class="library-primary-action" href="/upload">Build a Quiz</a>{% endif %}
+        </section>
+        {% endif %}
+        {% if active_smart_view and active_smart_view.client_derived %}
+        <section id="librarySmartEmptyState" class="library-empty dashboard-panel" hidden>
+            <div class="library-empty-icon">↶</div>
+            <h2>No unfinished quizzes</h2>
+            <p>No recoverable quiz session in this browser matches the selected {{ view|capitalize }} library view.</p>
+            <a class="library-secondary-action" href="/library?view={{ view|urlencode }}">Show full library</a>
         </section>
         {% endif %}
 
@@ -288,10 +338,12 @@
 
 <script src="/static/quiz-recovery.js"></script>
 <script id="libraryQuizIdentityData" type="application/json">{{ active_quiz_ids|tojson }}</script>
+<script id="librarySmartEligibleQuizData" type="application/json">{{ smart_eligible_quiz_ids|default([], true)|tojson }}</script>
 <script id="libraryFolderIdentityData" type="application/json">{{ folder_names|tojson }}</script>
 <script>
 const collapsedLibraryFoldersStorageKey = "dlmsCollapsedLibraryFolders";
 const pendingLibraryFolderMutationStorageKey = "dlmsPendingLibraryFolderMutation";
+const activeLibrarySmartView = document.body.dataset.librarySmartView || "";
 
 function normalizeLibraryFolderIdentity(folderName) {
     return String(folderName || "").trim().toLowerCase();
@@ -544,6 +596,113 @@ function librarySearchIsActive() {
     return Boolean(document.getElementById("librarySearch")?.value.trim());
 }
 
+function updateLibraryFilters() {
+    const search = document.getElementById("librarySearch");
+    const term = search?.value.trim().toLowerCase() || "";
+    let totalVisible = 0;
+    document.querySelectorAll(".library-folder").forEach(folder => {
+        let visibleCards = 0;
+        folder.querySelectorAll(".library-quiz-card").forEach(card => {
+            const searchableText = card.dataset.search || card.dataset.title || "";
+            const includedBySmartView = !card.classList.contains("library-smart-view-excluded");
+            const matches = includedBySmartView && (!term || searchableText.includes(term));
+            card.style.display = matches ? "" : "none";
+            if (matches) visibleCards += 1;
+        });
+        totalVisible += visibleCards;
+        const hasSearchResult = Boolean(term) && visibleCards > 0;
+        folder.classList.toggle(
+            "library-search-revealed",
+            folder.classList.contains("library-view-search-only") && hasSearchResult
+        );
+        folder.classList.toggle(
+            "library-search-empty",
+            Boolean(term) && visibleCards === 0
+        );
+        folder.classList.toggle(
+            "library-smart-empty",
+            Boolean(activeLibrarySmartView) && visibleCards === 0
+        );
+        const subtitle = folder.querySelector(".library-folder-subtitle");
+        if (activeLibrarySmartView === "unfinished" && subtitle) {
+            subtitle.textContent = `${visibleCards} quiz${visibleCards === 1 ? "" : "zes"}`;
+        }
+        if (hasSearchResult && folder.classList.contains("collapsed")) {
+            folder.dataset.librarySearchWasCollapsed = "true";
+            setLibraryFolderCollapsed(folder, false);
+        } else if (!term && folder.dataset.librarySearchWasCollapsed === "true") {
+            setLibraryFolderCollapsed(folder, true);
+            delete folder.dataset.librarySearchWasCollapsed;
+        }
+    });
+    const emptyState = document.getElementById("libraryEmptyState");
+    if (emptyState) {
+        emptyState.style.display = term && totalVisible > 0 ? "none" : "";
+    }
+    return totalVisible;
+}
+
+function applyUnfinishedLibraryView() {
+    if (activeLibrarySmartView !== "unfinished") return;
+    let eligibleQuizIds = [];
+    try {
+        const parsed = JSON.parse(
+            document.getElementById("librarySmartEligibleQuizData")?.textContent || "[]"
+        );
+        if (Array.isArray(parsed)) eligibleQuizIds = parsed.map(String);
+    } catch { /* A malformed page value safely produces an empty view. */ }
+
+    const result = window.DLMSQuizRecovery?.listStoredRecords({
+        activeQuizIds: eligibleQuizIds
+    }) || {available: false, records: []};
+    const unfinishedIds = new Set(
+        (result.records || []).map(record => String(record.quizId))
+    );
+    document.querySelectorAll(".library-quiz-card").forEach(card => {
+        const matches = result.available && unfinishedIds.has(String(card.dataset.quizId));
+        card.classList.toggle("library-smart-view-excluded", !matches);
+        if (!matches || card.querySelector(".library-smart-match-badge")) return;
+        const meta = card.querySelector(".library-quiz-meta");
+        const heading = card.querySelector(".library-quiz-heading");
+        const badge = document.createElement("span");
+        badge.className = "library-smart-match-badge";
+        badge.textContent = "In progress";
+        meta?.appendChild(badge);
+        const record = (result.records || []).find(
+            item => String(item.quizId) === String(card.dataset.quizId)
+        );
+        const reason = document.createElement("p");
+        reason.className = "library-smart-match-reason";
+        const mode = record?.mode === "exam" ? "Exam" : "Study";
+        reason.textContent = `${mode} session saved in this browser · ready to resume`;
+        heading?.appendChild(reason);
+    });
+    const count = result.available ? unfinishedIds.size : 0;
+    ["libraryUnfinishedViewCount", "librarySmartViewCount"].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = String(count);
+    });
+    const thisViewCount = document.querySelector("#libraryThisViewStat strong");
+    if (thisViewCount) thisViewCount.textContent = String(count);
+    const folderCount = [...document.querySelectorAll(".library-folder")].filter(folder =>
+        [...folder.querySelectorAll(".library-quiz-card")].some(card =>
+            unfinishedIds.has(String(card.dataset.quizId))
+        )
+    ).length;
+    const thisViewFolders = document.querySelector("#libraryFolderStat strong");
+    if (thisViewFolders) thisViewFolders.textContent = String(folderCount);
+    const empty = document.getElementById("librarySmartEmptyState");
+    if (empty) {
+        const detail = empty.querySelector("p");
+        if (!result.available && detail) {
+            detail.textContent = "Browser recovery storage is unavailable, so unfinished sessions cannot be listed here.";
+        }
+        empty.hidden = count !== 0;
+    }
+    document.body.classList.add("library-smart-view-ready");
+    updateLibraryFilters();
+}
+
 function updateLibraryReorderControls() {
     const searchIsActive = librarySearchIsActive();
     document.querySelectorAll('[data-library-reorder="folder"]').forEach(button => {
@@ -665,44 +824,15 @@ document.addEventListener("DOMContentLoaded", function() {
     const search = document.getElementById("librarySearch");
     if (search) {
         search.addEventListener("input", function() {
-            const term = search.value.trim().toLowerCase();
-            let totalMatches = 0;
-            document.querySelectorAll(".library-folder").forEach(folder => {
-                let visibleCards = 0;
-                folder.querySelectorAll(".library-quiz-card").forEach(card => {
-                    const searchableText = card.dataset.search || card.dataset.title || "";
-                    const matches = !term || searchableText.includes(term);
-                    card.style.display = matches ? "" : "none";
-                    if (matches) visibleCards += 1;
-                });
-                totalMatches += term ? visibleCards : 0;
-                const hasSearchResult = Boolean(term) && visibleCards > 0;
-                folder.classList.toggle(
-                    "library-search-revealed",
-                    folder.classList.contains("library-view-search-only") && hasSearchResult
-                );
-                folder.classList.toggle(
-                    "library-search-empty",
-                    Boolean(term) && visibleCards === 0
-                );
-                if (hasSearchResult && folder.classList.contains("collapsed")) {
-                    folder.dataset.librarySearchWasCollapsed = "true";
-                    setLibraryFolderCollapsed(folder, false);
-                } else if (!term && folder.dataset.librarySearchWasCollapsed === "true") {
-                    setLibraryFolderCollapsed(folder, true);
-                    delete folder.dataset.librarySearchWasCollapsed;
-                }
-            });
-            const emptyState = document.getElementById("libraryEmptyState");
-            if (emptyState) {
-                emptyState.style.display = term && totalMatches > 0 ? "none" : "";
-            }
+            updateLibraryFilters();
             updateLibraryReorderControls();
         });
     }
 
+    applyUnfinishedLibraryView();
+
     const folderList = document.getElementById("quizList");
-    if (folderList && window.Sortable) {
+    if (!activeLibrarySmartView && folderList && window.Sortable) {
         Sortable.create(folderList, {
             animation: 150,
             draggable: ".library-folder:not(.library-view-search-only)",
@@ -718,7 +848,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    if (window.Sortable) {
+    if (!activeLibrarySmartView && window.Sortable) {
         document.querySelectorAll(".library-folder-body").forEach(body => {
             Sortable.create(body, {
                 animation: 150,
