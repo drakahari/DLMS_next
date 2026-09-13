@@ -1782,6 +1782,7 @@ body.dashboard-home {
 
 .dashboard-main {
     min-width: 0;
+    container-type: inline-size;
     padding: 26px 28px 14px;
     background:
         linear-gradient(180deg, rgba(3,12,28,.60), rgba(2,10,23,.78)),
@@ -2754,7 +2755,9 @@ a.settings-hub-card:active {
 /* DLMS-133: Portable Quiz Bundles */
 .portable-bundle-main {
     display: grid;
+    align-content: start;
     gap: 20px;
+    min-width: 0;
 }
 
 .portable-bundle-intro,
@@ -2765,6 +2768,25 @@ a.settings-hub-card:active {
     align-items: flex-start;
     justify-content: space-between;
     gap: 20px;
+}
+
+.portable-bundle-intro,
+.portable-bundle-panel,
+.portable-bundle-review-quiz,
+.portable-bundle-confirm-panel {
+    padding: 22px;
+}
+
+.portable-bundle-intro > div,
+.portable-bundle-panel-heading > *,
+.portable-bundle-review-heading > *,
+.portable-bundle-confirm-panel > * {
+    min-width: 0;
+}
+
+.portable-bundle-intro > .build-secondary-link {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .portable-bundle-intro h2,
@@ -2784,7 +2806,7 @@ a.settings-hub-card:active {
 
 .portable-bundle-workflows {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
     gap: 20px;
     align-items: start;
 }
@@ -2800,6 +2822,12 @@ a.settings-hub-card:active {
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+.portable-bundle-panel-heading {
+    display: grid;
+    justify-content: stretch;
+    gap: 8px;
 }
 
 .portable-bundle-step {
@@ -2873,6 +2901,11 @@ a.settings-hub-card:active {
     gap: 16px;
 }
 
+.portable-bundle-upload-form input[type="file"] {
+    width: 100%;
+    min-width: 0;
+}
+
 .portable-bundle-boundary,
 .portable-bundle-empty,
 .portable-bundle-collision {
@@ -2936,12 +2969,6 @@ a.settings-hub-card:active {
 .portable-bundle-confirm-actions form {
     display: grid;
     gap: 10px;
-}
-
-@media (max-width: 900px) {
-    .portable-bundle-workflows {
-        grid-template-columns: minmax(0, 1fr);
-    }
 }
 
 @media (max-width: 620px) {
@@ -14762,5 +14789,96 @@ body:not([class]) > .container > .hero-title {
     .external-ai-matching-settings,
     .external-ai-matching-pair-fields {
         grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Dashboard pages live beside a persistent sidebar until the 820px shell
+   breakpoint. Container queries therefore respond to the width the workflow
+   actually receives, instead of assuming viewport width equals content width. */
+@container (max-width: 760px) {
+    .mixed-builder-intro,
+    .mixed-builder-plan,
+    .mixed-builder-section-heading,
+    .duplicate-question-intro,
+    .duplicate-question-section-heading,
+    .learning-intelligence-toolbar,
+    .learning-intelligence-panel-head,
+    .review-schedule-actions,
+    .pdf-import-intro,
+    .pdf-import-create-bar,
+    .pdf-ocr-import-panel .pdf-bank-panel-heading,
+    .pdf-ocr-progress-panel .pdf-bank-panel-heading,
+    .portable-bundle-intro,
+    .portable-bundle-confirm-panel {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .mixed-builder-selection-summary {
+        justify-items: start;
+        text-align: left;
+    }
+
+    .mixed-builder-filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .duplicate-question-section-heading p {
+        text-align: left;
+    }
+
+    .possible-locations,
+    .pdf-ocr-review-source,
+    .pdf-import-page .pdf-review-bulk-bar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .pdf-import-page .pdf-import-upload-form {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .pdf-import-badges {
+        justify-content: flex-start;
+    }
+
+    .pdf-import-page .pdf-review-bulk-status-group {
+        justify-items: start;
+        max-width: 100%;
+    }
+
+    .pdf-import-page .pdf-review-bulk-confirmation-status {
+        text-align: left;
+    }
+}
+
+@container (max-width: 650px) {
+    .daily-review-item {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .daily-review-item-action {
+        grid-column: 1 / -1;
+    }
+
+    .daily-review-action,
+    .daily-review-item-action form {
+        width: 100%;
+    }
+
+    .daily-review-heading {
+        align-items: flex-start;
+    }
+
+    .external-ai-review-page .external-ai-source-grid,
+    .external-ai-builder-grid,
+    .external-ai-builder-steps,
+    .external-ai-matching-settings,
+    .external-ai-matching-pair-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .external-ai-builder-wide {
+        grid-column: auto;
     }
 }

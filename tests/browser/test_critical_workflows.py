@@ -5922,6 +5922,18 @@ def test_external_ai_matching_review_and_publication(browser_stack):
     assert initial == {
         "pairs": 2, "confirmed": False, "choiceMode": False, "overflow": True,
     }
+    browser.set_viewport(840, 900)
+    matching_layout = browser.evaluate(
+        "(() => {const settings=document.querySelector('.external-ai-matching-settings');"
+        "const fields=document.querySelector('.external-ai-matching-pair-fields');"
+        "return {settingsColumns:getComputedStyle(settings).gridTemplateColumns.split(' ').length,"
+        "fieldColumns:getComputedStyle(fields).gridTemplateColumns.split(' ').length,"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert matching_layout == {
+        "settingsColumns": 1, "fieldColumns": 1, "overflow": True,
+    }
+    browser.set_viewport(1280, 1000)
     browser.evaluate(
         "(() => {const card=document.querySelector('.pdf-import-question-card');"
         "const select=card.querySelector('[data-pdf-role=select]');"
@@ -5965,6 +5977,27 @@ def test_ocr_matching_import_entry_is_clear_and_distinct(browser_stack):
     assert state["rights"] is True
     assert "Pairing is deliberately conservative" in state["copy"]
     assert "No cloud OCR or external AI is used" in state["copy"]
+
+    browser.set_viewport(1024, 900)
+    ocr_layout = browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/ocr-matching\"]');"
+        "const panel=form.closest('.pdf-ocr-import-panel');"
+        "const bounds=panel.getBoundingClientRect();"
+        "const controls=[...form.querySelectorAll('input,select,button')]"
+        ".filter(item=>item.getClientRects().length);"
+        "return {formDirection:getComputedStyle(form).flexDirection,"
+        "headingDirection:getComputedStyle(panel.querySelector('.pdf-bank-panel-heading')).flexDirection,"
+        "contained:controls.every(item=>{const rect=item.getBoundingClientRect();"
+        "return rect.left>=bounds.left&&rect.right<=bounds.right;}),"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert ocr_layout == {
+        "formDirection": "column",
+        "headingDirection": "column",
+        "contained": True,
+        "overflow": True,
+    }
+    browser.set_viewport(1280, 1000)
 
 
 def test_external_ai_help_is_discoverable_and_twenty_five_screenshot_queue_is_rendered(
@@ -7638,6 +7671,96 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
         assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
 
 
+def test_post_310_workflows_stack_by_available_content_width(browser_stack):
+    """Sidebar-constrained workflows must respond to content, not viewport, width."""
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    cases = (
+        (
+            "/quiz-composer",
+            "document.querySelector('.mixed-builder-intro')",
+            "getComputedStyle(document.querySelector('.mixed-builder-intro')).flexDirection === 'column' && "
+            "getComputedStyle(document.querySelector('.mixed-builder-plan')).flexDirection === 'column'",
+        ),
+        (
+            "/library/duplicates",
+            "document.querySelector('.duplicate-question-intro')",
+            "getComputedStyle(document.querySelector('.duplicate-question-intro')).flexDirection === 'column'",
+        ),
+        (
+            "/learning-intelligence",
+            "document.querySelector('.learning-intelligence-panel-head')",
+            "getComputedStyle(document.querySelector('.learning-intelligence-panel-head')).flexDirection === 'column'",
+        ),
+        (
+            "/review-schedule",
+            "document.querySelector('.review-schedule-actions')",
+            "getComputedStyle(document.querySelector('.review-schedule-actions')).flexDirection === 'column'",
+        ),
+        (
+            "/pdf-import",
+            "document.querySelector('.pdf-ocr-import-panel .pdf-bank-panel-heading')",
+            "getComputedStyle(document.querySelector('.pdf-ocr-import-panel .pdf-bank-panel-heading')).flexDirection === 'column' && "
+            "getComputedStyle(document.querySelector('.pdf-import-upload-form')).flexDirection === 'column'",
+        ),
+    )
+
+    browser.set_viewport(1024, 900)
+    for path, ready, stacked in cases:
+        browser.navigate(base_url + path)
+        browser.wait_for(ready)
+        state = browser.evaluate(
+            "(() => {const main=document.querySelector('.dashboard-main');"
+            "const controls=[...main.querySelectorAll('a,button,input,select,textarea')]"
+            ".filter(item=>item.getClientRects().length);const bounds=main.getBoundingClientRect();"
+            "return {stacked:" + stacked + ","
+            "contained:controls.every(item=>{const rect=item.getBoundingClientRect();"
+            "return rect.left>=bounds.left-1&&rect.right<=bounds.right+1;}),"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert state == {"stacked": True, "contained": True, "overflow": True}, (
+            path, state,
+        )
+
+    browser.set_viewport(920, 900)
+    browser.navigate(base_url + "/external-ai/quiz-builder")
+    browser.wait_for("document.querySelector('.external-ai-builder-grid')")
+    external_ai = browser.evaluate(
+        "(() => {const grid=document.querySelector('.external-ai-builder-grid');"
+        "const steps=document.querySelector('.external-ai-builder-steps');"
+        "return {gridColumns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,"
+        "stepColumns:new Set([...steps.children].map(item=>"
+        "Math.round(item.getBoundingClientRect().left))).size,"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert external_ai == {"gridColumns": 1, "stepColumns": 1, "overflow": True}
+
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelector('.daily-review-item')")
+    daily = browser.evaluate(
+        "(() => {const item=document.querySelector('.daily-review-item');"
+        "const copy=item.querySelector('.daily-review-copy').getBoundingClientRect();"
+        "const action=item.querySelector('.daily-review-item-action').getBoundingClientRect();"
+        "return {actionBelow:action.top>=copy.bottom,"
+        "actionContained:action.left>=item.getBoundingClientRect().left&&"
+        "action.right<=item.getBoundingClientRect().right,"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert daily == {"actionBelow": True, "actionContained": True, "overflow": True}
+
+    for path, ready, _stacked in cases + (
+        ("/external-ai/quiz-builder", "document.querySelector('.external-ai-builder-grid')", "true"),
+        ("/", "document.querySelector('.daily-review-item')", "true"),
+        ("/quiz-bundles", "document.querySelector('.portable-bundle-workflows')", "true"),
+    ):
+        browser.set_viewport(420, 820)
+        browser.navigate(base_url + path)
+        browser.wait_for(ready)
+        assert browser.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth + 1"
+        ) is True, path
+
+
 def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sources(
     browser_stack,
 ):
@@ -7894,6 +8017,50 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
     assert source_title in state["sources"]
     assert "Content Packs" in state["studyPackBoundary"]
 
+    browser.wait_for("window.dlmsCsrfToken && typeof window.fetch === 'function'")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        status = browser.evaluate(
+            f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        )
+        assert status == 200
+        for width in (1280, 1024, 840, 420):
+            browser.set_viewport(width, 900 if width >= 840 else 820)
+            browser.navigate(f"{browser_stack.base_url}/quiz-bundles")
+            browser.wait_for("document.querySelectorAll('.portable-bundle-panel').length === 2")
+            layout = browser.evaluate(
+                "(() => {const panels=[...document.querySelectorAll('.portable-bundle-panel')];"
+                "const intro=document.querySelector('.portable-bundle-intro');"
+                "const back=intro.querySelector('.build-secondary-link');"
+                "const file=document.querySelector('.portable-bundle-upload-form input[type=file]');"
+                "const rect=node=>node.getBoundingClientRect();"
+                "const headings=panels.map(panel=>panel.querySelector('h2'));"
+                "return {sideBySide:Math.abs(rect(panels[0]).top-rect(panels[1]).top)<=1,"
+                "panelWidths:panels.map(panel=>Math.round(rect(panel).width)),"
+                "panelInsets:panels.map(panel=>Math.round(rect(panel.firstElementChild).left-rect(panel).left)),"
+                "headingHeights:headings.map(heading=>Math.round(rect(heading).height)),"
+                "backWidth:Math.round(rect(back).width),"
+                "backContained:rect(back).left>=rect(intro).left+20&&rect(back).right<=rect(intro).right-20,"
+                "fileContained:rect(file).left>=rect(panels[1]).left+20&&rect(file).right<=rect(panels[1]).right-20,"
+                "cardsContained:[intro,...panels].every(card=>card.scrollWidth<=card.clientWidth+1),"
+                "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+            )
+            assert layout["sideBySide"] == (width == 1280), (theme, width, layout)
+            assert min(layout["panelWidths"]) >= min(388, width - 32), (
+                theme, width, layout,
+            )
+            assert min(layout["panelInsets"]) >= 20, (theme, width, layout)
+            assert max(layout["headingHeights"]) <= 32, (theme, width, layout)
+            assert layout["backWidth"] >= 120, (theme, width, layout)
+            assert layout["backContained"] is True, (theme, width, layout)
+            assert layout["fileContained"] is True, (theme, width, layout)
+            assert layout["cardsContained"] is True, (theme, width, layout)
+            assert layout["overflow"] is True, (theme, width, layout)
+
+    browser.set_viewport(1280, 1000)
+    browser.navigate(f"{browser_stack.base_url}/quiz-bundles")
+    browser.wait_for("document.querySelector('form[action=\"/quiz-bundles/import\"]')")
+
     browser.set_files("input[name='bundle_zip']", [str(bundle_path)])
     browser.click("form[action='/quiz-bundles/import'] button[type='submit']")
     browser.wait_for(
@@ -7910,6 +8077,27 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
     assert review["heading"] == "Review Portable Bundle"
     assert review["quiz"] == import_title
     assert "Browser Imported Folder" in review["folder"]
+    review_url = browser.evaluate("location.href")
+    for width in (1024, 420):
+        browser.set_viewport(width, 900 if width == 1024 else 820)
+        browser.navigate(review_url)
+        browser.wait_for("document.querySelector('.portable-bundle-confirm-panel')")
+        review_layout = browser.evaluate(
+            "(() => {const panel=document.querySelector('.portable-bundle-confirm-panel');"
+            "const bounds=panel.getBoundingClientRect();"
+            "const controls=[...panel.querySelectorAll('button,input')].filter(item=>"
+            "item.getClientRects().length);return {"
+            "direction:getComputedStyle(panel).flexDirection,"
+            "contained:controls.every(item=>{const rect=item.getBoundingClientRect();"
+            "return rect.left>=bounds.left+20&&rect.right<=bounds.right-20;}),"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert review_layout == {
+            "direction": "column", "contained": True, "overflow": True,
+        }, (width, review_layout)
+    browser.set_viewport(1280, 1000)
+    browser.navigate(review_url)
+    browser.wait_for("document.querySelector(\"input[name='confirm_import']\")")
     browser.click("input[name='confirm_import']")
     browser.click("form[action$='/confirm'] button[type='submit']")
     browser.wait_for(
