@@ -677,14 +677,19 @@ def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
             "const tops=new Set(links.map(link=>Math.round(link.getBoundingClientRect().top)));"
             "const panel=document.querySelector('.library-smart-views').getBoundingClientRect();"
             "const main=document.querySelector('.dashboard-main').getBoundingClientRect();"
+            "const folders=[...document.querySelectorAll('.library-folder')]"
+            ".filter(folder=>getComputedStyle(folder).display!=='none');"
+            "const footer=document.querySelector('.library-footer-actions').getBoundingClientRect();"
             "return {columns:Math.round(links.length/tops.size),"
             "overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,"
             "inside:panel.left>=main.left-1&&panel.right<=main.right+1,"
+            "footerGap:Math.round(footer.top-folders.at(-1).getBoundingClientRect().bottom),"
             "minWidth:Math.min(...links.map(link=>link.getBoundingClientRect().width))};})()"
         )
         assert layout["columns"] == expected_columns, (width, layout)
         assert layout["overflow"] <= 1, (width, layout)
         assert layout["inside"] is True, (width, layout)
+        assert layout["footerGap"] == 18, (width, layout)
         assert layout["minWidth"] >= (250 if expected_columns == 1 else 120), (
             width, layout
         )
@@ -3554,6 +3559,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "const toolbar=document.querySelector('.library-toolbar');"
             "const tip=document.querySelector('.library-tip');"
             "const folder=document.querySelector('.library-folder');"
+            "const footer=document.querySelector('.library-footer-actions');"
             "const header=folder.querySelector('.library-folder-header');"
             "const body=folder.querySelector('.library-folder-body');"
             "const title=folder.querySelector('h2');"
@@ -3575,6 +3581,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "heroStatsGap:blockGap(hero,stats),statsSmartGap:blockGap(stats,smart),"
             "smartToolbarGap:blockGap(smart,toolbar),"
             "toolbarTipGap:blockGap(toolbar,tip),tipFolderGap:blockGap(tip,folder),"
+            "folderFooterGap:blockGap(document.querySelector('.library-folder:last-child'),footer),"
             "focusVisibleSupported:CSS.supports('selector(:focus-visible)'),"
             "documentContained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,"
             "folderContained:folder.scrollWidth<=folder.clientWidth+1}"
@@ -3592,6 +3599,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         assert library["smartToolbarGap"] == 18
         assert 8 <= library["toolbarTipGap"] <= 12
         assert 8 <= library["tipFolderGap"] <= 12
+        assert library["folderFooterGap"] == 18
         assert library["focusVisibleSupported"] is True
         assert library["documentContained"] is True
         assert library["folderContained"] is True
@@ -3604,16 +3612,20 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "const stats=document.querySelector('.library-summary-grid');"
             "const smart=document.querySelector('.library-smart-views');"
             "const toolbar=document.querySelector('.library-toolbar');"
+            "const folders=[...document.querySelectorAll('.library-folder')];"
+            "const footer=document.querySelector('.library-footer-actions');"
             "const gap=(before,after)=>Math.round(after.getBoundingClientRect().top-"
             "before.getBoundingClientRect().bottom);"
             "return {heroStats:gap(hero,stats),statsSmart:gap(stats,smart),"
             "smartToolbar:gap(smart,toolbar),"
+            "folderFooter:gap(folders.at(-1),footer),"
             "contained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1};})()"
         )
         assert desktop_gaps == {
             "heroStats": 18,
             "statsSmart": 18,
             "smartToolbar": 18,
+            "folderFooter": 18,
             "contained": True,
         }
 

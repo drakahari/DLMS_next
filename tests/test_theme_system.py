@@ -1023,6 +1023,14 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertIsNotNone(library_spacing)
         self.assertIn("margin-top: var(--dlms-space-lg)", library_spacing.group(1))
 
+        library_footer_spacing = self._rule_blocks(
+            css, ".library-page .library-footer-actions"
+        )
+        self.assertTrue(any(
+            "margin-top: var(--dlms-space-lg)" in block
+            for block in library_footer_spacing
+        ))
+
         detail_expectations = {
             ".content-packs-page .pack-detail-hero p": (
                 "--theme-page-text", "opacity: 1",
