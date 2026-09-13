@@ -36,6 +36,25 @@ class QuizLibraryDependencies:
 
 
 @dataclass(frozen=True)
+class QuizBundleDependencies:
+    app_version: Dependency
+    get_portal_title: Dependency
+    get_db: Dependency
+    load_registry: Dependency
+    registry_lock: Dependency
+    export_catalog: Dependency
+    build_export: Dependency
+    stage_upload: Dependency
+    load_staged: Dependency
+    plan_import: Dependency
+    install_staged: Dependency
+    cancel_staged: Dependency
+    upload_max_bytes: Dependency
+    multipart_overhead_bytes: Dependency
+    print_message: Dependency
+
+
+@dataclass(frozen=True)
 class QuizEditorDependencies:
     app_version: Dependency
     data_folder: Dependency

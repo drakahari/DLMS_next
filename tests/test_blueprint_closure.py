@@ -45,7 +45,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "maintenance": 20,
         "medical": 6,
         "pdf_import": 29,
-        "quiz": 34,
+        "quiz": 40,
         "settings": 15,
         "study_packs": 9,
     }
@@ -81,13 +81,14 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.medical.MedicalRouteDependencies": 9,
         "dlms.routes.pdf_import.PDFImportRouteDependencies": 56,
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
+        "dlms.routes.quiz.dependencies.QuizBundleDependencies": 15,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 23,
         "dlms.routes.settings.SettingsRouteDependencies": 11,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "c2b769cea20af84387ebaaa34c23ba0f5fa3e209628874218a1677299aa74607"
+        "85bdd5c7d24456317e9c447b72bb77a8c18735bcdd059fbcc6ab7d4851949fd9"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -138,13 +139,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_211_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_217_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(211, len(rules))
+        self.assertEqual(217, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(210, len(blueprint_rules))
+        self.assertEqual(216, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -230,7 +231,7 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_route_modules_have_frozen_family_dependencies_and_no_app_import(self):
         route_paths = sorted(ROUTE_ROOT.rglob("*.py"))
-        self.assertEqual(21, len(route_paths))
+        self.assertEqual(22, len(route_paths))
         for path in route_paths:
             with self.subTest(route_module=path.relative_to(ROOT)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))

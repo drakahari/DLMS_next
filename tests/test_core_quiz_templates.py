@@ -23,6 +23,8 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         "home": "dashboard/index.html",
         "quiz_library": "quiz/library.html",
         "quiz_duplicate_report": "quiz/duplicates.html",
+        "portable_quiz_bundles": "quiz/bundles.html",
+        "review_portable_quiz_bundle": "quiz/bundle-review.html",
         "edit_quiz": "quiz/edit.html",
         "upload_page": "quiz/upload.html",
         "paste_page": "quiz/paste.html",

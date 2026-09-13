@@ -56,6 +56,7 @@ from dlms.services import learning as _learning_service
 from dlms.services import quiz_publication as _quiz_publication_service
 from dlms.services import quiz_composition as _quiz_composition_service
 from dlms.services import quiz_duplicates as _quiz_duplicate_service
+from dlms.services import portable_quiz_bundles as _portable_quiz_bundle_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
@@ -94,6 +95,7 @@ from dlms.routes.pdf_import import (
 )
 from dlms.routes.quiz import (
     QuizAuthoringDependencies,
+    QuizBundleDependencies,
     QuizEditorDependencies,
     QuizLibraryDependencies,
     create_quiz_blueprint,
@@ -463,6 +465,7 @@ def reject_declared_oversized_workflow_upload():
         "/pdf-import/screenshots": OCR_SCREENSHOT_MAX_BATCH_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/pdf-import/ocr-matching": PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/content-packs/import": CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES,
+        "/quiz-bundles/import": PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/settings/data/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/settings/backup/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/study-packs/image-builder": IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
@@ -585,6 +588,7 @@ EXTERNAL_AI_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "external_ai_drafts")
 PDF_IMPORT_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "pdf_import_drafts")
 OCR_IMPORT_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_screenshots")
 PDF_OCR_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_pdfs")
+PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "quiz_bundles")
 PDF_QUESTION_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_question_banks")
 PDF_TERMINOLOGY_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_terminology_banks")
 CONTENT_PACK_STAGING_FOLDER = os.path.join(APP_DATA_DIR, "content_pack_staging")
@@ -605,6 +609,7 @@ for d in [
     PDF_IMPORT_DRAFT_FOLDER,
     OCR_IMPORT_STAGING_FOLDER,
     PDF_OCR_STAGING_FOLDER,
+    PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER,
     PDF_QUESTION_BANK_FOLDER,
     PDF_TERMINOLOGY_BANK_FOLDER,
     CONTENT_PACK_STAGING_FOLDER,
@@ -638,6 +643,9 @@ IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES = 192 * 1024 * 1024
 # Reserve 2 MB beneath the existing 300 MB request ceiling for multipart
 # framing while preserving nearly all of the prior effective restore capacity.
 BACKUP_UPLOAD_MAX_BYTES = 298 * 1024 * 1024
+PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES = (
+    _portable_quiz_bundle_service.PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES
+)
 UPLOAD_MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
 
 # 8K study images are about 33 MP. These limits allow substantially larger
@@ -4865,6 +4873,130 @@ def _question_payload_from_db(cur, question_id):
     )
 
 
+def _portable_quiz_media_source(reference):
+    """Resolve only an existing DLMS-owned passive quiz/content-pack image."""
+    value = str(reference or "")
+    quiz_prefix = "/quiz-assets/"
+    if value.startswith(quiz_prefix):
+        relative = value[len(quiz_prefix):].lstrip("/")
+        parts = relative.split("/", 1)
+        if len(parts) != 2 or not re.fullmatch(r"[A-Za-z0-9_.-]{1,140}", parts[0]):
+            return None
+        try:
+            return _safe_pack_child(os.path.join(QUIZ_ASSET_FOLDER, parts[0]), parts[1])
+        except ValueError:
+            return None
+
+    pack_match = re.fullmatch(
+        r"/content-packs/([A-Za-z0-9_-]+)/assets/(.+)", value
+    )
+    if pack_match:
+        pack = get_content_pack(pack_match.group(1))
+        if not pack:
+            return None
+        try:
+            return _safe_pack_child(pack["_root"], pack_match.group(2))
+        except (KeyError, ValueError):
+            return None
+    return None
+
+
+def _inspect_portable_quiz_bundle(path):
+    return _portable_quiz_bundle_service.inspect_portable_quiz_bundle(
+        path,
+        validate_raster_image=_decode_raster_image,
+        allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
+    )
+
+
+def _build_portable_quiz_bundle(cur, registry, selected_quiz_ids):
+    return _portable_quiz_bundle_service.build_portable_quiz_bundle(
+        cur,
+        registry,
+        selected_quiz_ids,
+        question_payload_from_db=_question_payload_from_db,
+        resolve_media_source=_portable_quiz_media_source,
+        logo_folder=LOGO_FOLDER,
+        validate_raster_image=_decode_raster_image,
+        allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
+        app_version=APP_VERSION,
+        now=datetime.now,
+    )
+
+
+def _stage_portable_quiz_bundle(upload):
+    return _portable_quiz_bundle_service.stage_portable_quiz_bundle(
+        upload,
+        content_length=request.content_length,
+        staging_folder=PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER,
+        bounded_save_upload=_bounded_save_upload,
+        inspect_bundle=_inspect_portable_quiz_bundle,
+        secure_filename=secure_filename,
+        token_hex=secrets.token_hex,
+        now=datetime.now,
+    )
+
+
+def _load_staged_portable_quiz_bundle(token):
+    return _portable_quiz_bundle_service.load_staged_portable_quiz_bundle(
+        token,
+        staging_folder=PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER,
+        inspect_bundle=_inspect_portable_quiz_bundle,
+    )
+
+
+def _cancel_staged_portable_quiz_bundle(token):
+    return _portable_quiz_bundle_service.remove_portable_quiz_bundle_stage(
+        token, staging_folder=PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER
+    )
+
+
+def _portable_quiz_existing_titles():
+    conn = get_db()
+    try:
+        return [row[0] for row in conn.execute("SELECT title FROM quizzes ORDER BY id")]
+    finally:
+        conn.close()
+
+
+def _set_imported_quiz_folders(published):
+    """Apply portable folder labels only to the exact newly published entries."""
+    with registry_lock:
+        registry = load_registry()
+        updated = [dict(entry) for entry in registry]
+        for item in published:
+            entry = next((
+                candidate for candidate in updated
+                if str(candidate.get("id")) == str(item["quiz_id"])
+                and candidate.get("html") == item["html"]
+            ), None)
+            if entry is None:
+                raise RuntimeError("New portable quiz registry entry is missing")
+            entry["folder"] = item["folder"]
+        save_registry(updated)
+
+
+def _rollback_portable_quiz(quiz_id):
+    deleted_entry, remaining = _delete_quiz_transaction(quiz_id)
+    _cleanup_deleted_quiz_artifacts(deleted_entry, remaining)
+
+
+def _install_staged_portable_quiz_bundle(token):
+    return _portable_quiz_bundle_service.install_staged_portable_quiz_bundle(
+        token,
+        load_staged_bundle=_load_staged_portable_quiz_bundle,
+        existing_titles=_portable_quiz_existing_titles,
+        quiz_asset_folder=QUIZ_ASSET_FOLDER,
+        logo_folder=LOGO_FOLDER,
+        validate_raster_image=_decode_raster_image,
+        allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
+        publish_quiz=_publish_quiz,
+        set_imported_folders=_set_imported_quiz_folders,
+        rollback_published_quiz=_rollback_portable_quiz,
+        remove_stage=_cancel_staged_portable_quiz_bundle,
+    )
+
+
 def _snapshot_existing_quiz_asset_refs(value, bucket, *, destination_root=None, strict=False):
     """Copy existing quiz-owned asset URLs so Smart Review survives source-quiz deletion."""
     if isinstance(value, dict):
@@ -6277,6 +6409,31 @@ app.register_blueprint(create_quiz_blueprint(
         analyze_confidence=lambda text: analyze_confidence(text),
         parse_questions=lambda source: parse_questions(source),
         debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
+    ),
+    QuizBundleDependencies(
+        app_version=lambda: APP_VERSION,
+        get_portal_title=lambda: get_portal_title(),
+        get_db=lambda: get_db(),
+        load_registry=lambda: load_registry(),
+        registry_lock=lambda: registry_lock,
+        export_catalog=lambda cur, registry: (
+            _portable_quiz_bundle_service.portable_quiz_export_catalog(cur, registry)
+        ),
+        build_export=lambda cur, registry, selected: (
+            _build_portable_quiz_bundle(cur, registry, selected)
+        ),
+        stage_upload=lambda upload: _stage_portable_quiz_bundle(upload),
+        load_staged=lambda token: _load_staged_portable_quiz_bundle(token),
+        plan_import=lambda manifest, titles: (
+            _portable_quiz_bundle_service.plan_portable_quiz_bundle_import(
+                manifest, titles
+            )
+        ),
+        install_staged=lambda token: _install_staged_portable_quiz_bundle(token),
+        cancel_staged=lambda token: _cancel_staged_portable_quiz_bundle(token),
+        upload_max_bytes=lambda: PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES,
+        multipart_overhead_bytes=lambda: UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        print_message=lambda *args, **kwargs: print(*args, **kwargs),
     ),
 ))
 

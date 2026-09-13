@@ -16,6 +16,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7800,6 +7801,131 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
             assert connection.execute(
                 "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
             ).fetchone()[0] == 1
+
+
+def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
+    """Exercise the DLMS-133 Library entry point and confirmed publication."""
+    database_path = browser_stack.data_root / "results.db"
+    source_title = "Browser Portable Source"
+    with sqlite3.connect(database_path) as connection:
+        cursor = connection.execute(
+            "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+            (source_title, "browser-portable-source.html"),
+        )
+        source_id = cursor.lastrowid
+        cursor = connection.execute(
+            """
+            INSERT INTO questions (
+                quiz_id, question_number, question_text, question_type,
+                explanation, media_json
+            ) VALUES (?, 1, ?, 'choice', '', '{}')
+            """,
+            (source_id, "Which browser source option is expected?"),
+        )
+        question_id = cursor.lastrowid
+        connection.executemany(
+            "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+            [
+                (question_id, "A", "Expected", 1),
+                (question_id, "B", "Alternative", 0),
+            ],
+        )
+
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry.append({
+        "id": source_id,
+        "title": source_title,
+        "html": "browser-portable-source.html",
+        "folder": "Browser Portable Sources",
+        "exam_minutes": 90,
+    })
+    registry_path.write_text(json.dumps(registry, indent=4), encoding="utf-8")
+
+    import_title = "Browser Portable Import"
+    manifest = {
+        "format": "dlms-portable-quiz-bundle",
+        "schema_version": 1,
+        "created_at": "2026-09-13T10:00:00-05:00",
+        "created_by": {"application": "DLMS", "version": "3.1.0"},
+        "quizzes": [{
+            "bundle_id": "quiz-001",
+            "title": import_title,
+            "folder": "Browser Imported Folder",
+            "exam_minutes": 30,
+            "logo": None,
+            "assets": [],
+            "questions": [{
+                "number": 1,
+                "type": "choice",
+                "question": "Which imported browser option is expected?",
+                "explanation": "A browser workflow fixture.",
+                "concepts": ["Portable browser concept"],
+                "source": {},
+                "media": {},
+                "choices": [
+                    {"label": "A", "text": "Expected", "is_correct": True},
+                    {"label": "B", "text": "Alternative", "is_correct": False},
+                ],
+            }],
+        }],
+    }
+    bundle_path = browser_stack.data_root.parent / "browser-portable-bundle.zip"
+    with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("dlms-quiz-bundle.json", json.dumps(manifest))
+
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector(\"a[href='/quiz-bundles']\") !== null")
+    browser.click("a[href='/quiz-bundles']")
+    browser.wait_for(
+        "location.pathname === '/quiz-bundles' && "
+        "document.querySelectorAll(\"input[name='quiz_ids']\").length >= 1"
+    )
+    state = browser.evaluate(
+        "(() => ({"
+        "heading:document.querySelector('h1')?.textContent.trim(),"
+        "sources:[...document.querySelectorAll('.portable-bundle-quiz strong')]"
+        ".map(node=>node.textContent.trim()),"
+        "studyPackBoundary:document.querySelector('.portable-bundle-boundary')?.textContent"
+        "}))()"
+    )
+    assert state["heading"] == "Portable Quiz Bundles"
+    assert source_title in state["sources"]
+    assert "Content Packs" in state["studyPackBoundary"]
+
+    browser.set_files("input[name='bundle_zip']", [str(bundle_path)])
+    browser.click("form[action='/quiz-bundles/import'] button[type='submit']")
+    browser.wait_for(
+        "location.pathname.startsWith('/quiz-bundles/import/') && "
+        "document.querySelector(\"input[name='confirm_import']\") !== null"
+    )
+    review = browser.evaluate(
+        "(() => ({"
+        "heading:document.querySelector('h1')?.textContent.trim(),"
+        "quiz:document.querySelector('.portable-bundle-review-quiz h2')?.textContent.trim(),"
+        "folder:document.querySelector('.portable-bundle-review-meta')?.textContent"
+        "}))()"
+    )
+    assert review["heading"] == "Review Portable Bundle"
+    assert review["quiz"] == import_title
+    assert "Browser Imported Folder" in review["folder"]
+    browser.click("input[name='confirm_import']")
+    browser.click("form[action$='/confirm'] button[type='submit']")
+    browser.wait_for(
+        "location.pathname === '/quiz-bundles' && "
+        "document.body.textContent.includes('Imported 1 quiz.')"
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        imported = connection.execute(
+            "SELECT id, source_file FROM quizzes WHERE title = ?", (import_title,)
+        ).fetchone()
+        assert imported is not None
+        assert imported[1].startswith("portable_quiz_")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (imported[0],)
+        ).fetchone()[0] == 1
 
 
 def test_native_spaced_review_displays_due_reason_and_creates_session(browser_stack):

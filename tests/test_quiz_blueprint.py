@@ -57,6 +57,12 @@ class QuizBlueprintTests(unittest.TestCase):
         "quiz.download_cleaned": ("/download_cleaned", {"GET", "POST"}),
         "quiz.process_paste": ("/process_paste", {"POST"}),
         "quiz.process_file": ("/process", {"POST"}),
+        "quiz.portable_quiz_bundles": ("/quiz-bundles", {"GET"}),
+        "quiz.export_portable_quiz_bundle": ("/quiz-bundles/export", {"POST"}),
+        "quiz.stage_portable_quiz_bundle": ("/quiz-bundles/import", {"POST"}),
+        "quiz.review_portable_quiz_bundle": ("/quiz-bundles/import/<token>", {"GET"}),
+        "quiz.confirm_portable_quiz_bundle": ("/quiz-bundles/import/<token>/confirm", {"POST"}),
+        "quiz.cancel_portable_quiz_bundle": ("/quiz-bundles/import/<token>/cancel", {"POST"}),
     }
     LIBRARY_DEPENDENCIES = {
         "app_version", "logo_folder", "quiz_registry_path", "registry_lock",
@@ -89,6 +95,12 @@ class QuizBlueprintTests(unittest.TestCase):
         "finalize_logo_from_request", "save_preview_logo",
         "get_confidence_setting", "analyze_confidence", "parse_questions",
         "debug_print",
+    }
+    BUNDLE_DEPENDENCIES = {
+        "app_version", "get_portal_title", "get_db", "load_registry",
+        "registry_lock", "export_catalog", "build_export", "stage_upload",
+        "load_staged", "plan_import", "install_staged", "cancel_staged",
+        "upload_max_bytes", "multipart_overhead_bytes", "print_message",
     }
 
     def test_blueprint_is_registered_once_and_owns_exact_route_contract(self):
@@ -134,12 +146,16 @@ class QuizBlueprintTests(unittest.TestCase):
             "quiz.delete_choice_from_question": {"quiz_id": 7, "choice_id": 13},
             "quiz.delete_match_pair_from_question": {"quiz_id": 7, "pair_id": 17},
             "quiz.delete_quiz": {"quiz_id": 7},
+            "quiz.review_portable_quiz_bundle": {"token": "token"},
+            "quiz.confirm_portable_quiz_bundle": {"token": "token"},
+            "quiz.cancel_portable_quiz_bundle": {"token": "token"},
         }
         expected_paths = {
             endpoint: rule.replace("<int:quiz_id>", "7")
             .replace("<int:question_id>", "11")
             .replace("<int:choice_id>", "13")
             .replace("<int:pair_id>", "17")
+            .replace("<token>", "token")
             .replace("<path:filename>", values.get(endpoint, {}).get("filename", ""))
             for endpoint, (rule, _methods) in self.EXPECTED_RULES.items()
         }
@@ -162,7 +178,14 @@ class QuizBlueprintTests(unittest.TestCase):
             {field.name for field in dataclasses.fields(quiz_routes.QuizAuthoringDependencies)},
         )
         self.assertEqual(
-            ["library_dependencies", "editor_dependencies", "authoring_dependencies"],
+            self.BUNDLE_DEPENDENCIES,
+            {field.name for field in dataclasses.fields(quiz_routes.QuizBundleDependencies)},
+        )
+        self.assertEqual(
+            [
+                "library_dependencies", "editor_dependencies",
+                "authoring_dependencies", "bundle_dependencies",
+            ],
             list(inspect.signature(quiz_routes.create_quiz_blueprint).parameters),
         )
 
@@ -215,7 +238,7 @@ class QuizBlueprintTests(unittest.TestCase):
         self.assertIn("quiz.edit_quiz", url_for_targets)
 
     def test_global_security_headers_csrf_and_strict_slash_behavior_are_preserved(self):
-        for path in ("/library", "/quiz-composer", "/upload", "/paste", "/matching_bank_import", "/create_short_quiz"):
+        for path in ("/library", "/quiz-composer", "/quiz-bundles", "/upload", "/paste", "/matching_bank_import", "/create_short_quiz"):
             with self.subTest(path=path):
                 response = dlms.app.test_client().get(path)
                 self.assertEqual(200, response.status_code)
