@@ -162,9 +162,78 @@ label the Apple Silicon archive as Intel-compatible.
 
 ## Final downloadable packages
 
-Native build artifacts remain read-only after they pass the preceding structural
-checks, smoke test, and UAT. Package them with the authoritative end-user files
-in `release_assets/` by writing to a **different** output directory:
+### Native build machine: package one finished target
+
+After the canonical native artifact passes its preceding structural check,
+native smoke, and UAT, package it on that same host with the authoritative
+end-user files in `release_assets/`. Use a **different** output directory from
+the native artifact. The following examples also clean-extract and smoke the
+completed final archive before it is made visible in the output directory.
+
+Run the matching command on each Linux build host:
+
+```bash
+python tools/package_release.py \
+  --target fedora44-x86_64 \
+  --artifact releases/DLMS-3.1.0-fedora44-x86_64 \
+  --output-dir release-packages \
+  --smoke
+
+python tools/package_release.py \
+  --target ubuntu24.04-x86_64 \
+  --artifact releases/DLMS-3.1.0-ubuntu24.04-x86_64 \
+  --output-dir release-packages \
+  --smoke
+
+python tools/package_release.py \
+  --target ubuntu26.04-x86_64 \
+  --artifact releases/DLMS-3.1.0-ubuntu26.04-x86_64 \
+  --output-dir release-packages \
+  --smoke
+
+python tools/package_release.py \
+  --target omarchy-quattro-x86_64 \
+  --artifact releases/DLMS-3.1.0-omarchy-quattro-x86_64 \
+  --output-dir release-packages \
+  --smoke
+```
+
+```powershell
+python tools\package_release.py `
+  --target windows11-x86_64 `
+  --artifact releases\DLMS-3.1.0-windows11-x86_64.exe `
+  --output-dir release-packages `
+  --smoke
+```
+
+```bash
+python tools/package_release.py \
+  --target macos-arm64 \
+  --artifact releases/DLMS-3.1.0-macos-arm64.zip \
+  --output-dir release-packages \
+  --smoke
+```
+
+The single-target helper enforces the target's canonical native-input and final
+package names, validates the native artifact, creates the final package in a
+temporary directory, adds the two authoritative release assets, validates the
+finished package, and, with `--smoke`, clean-extracts and launches that package
+through the existing native smoke verifier. It moves the package to the output
+directory only after every requested gate passes. It then prints the SHA-256 of
+the exact completed archive; it never reports an intermediate artifact hash as
+the release-package hash. A failed validation or smoke does not publish a
+partial final package. The helper does not build or modify an executable.
+
+Record the printed hash with the transfer notes. It can be recomputed before
+and after transfer with `sha256sum <package>` on Linux,
+`shasum -a 256 <package>` on macOS, or
+`Get-FileHash <package> -Algorithm SHA256` in PowerShell. The bytes and digest
+must remain unchanged.
+
+### Coordinated all-six compatibility mode
+
+The existing coordinated mode remains available when all six verified native
+inputs have already been collected in one staging directory:
 
 ```bash
 python tools/package_release.py \
@@ -172,12 +241,14 @@ python tools/package_release.py \
   /home/drak/DLMS_builds/DLMS-3.1.0-packages
 ```
 
-The helper validates all six native inputs before writing anything. It refuses
+This mode validates all six native inputs before writing anything. It refuses
 to use the staging directory as its output or overwrite an existing final
 package. It assembles and structurally validates all output in a temporary
 directory before publishing the six archives to the requested output directory.
-It does not build or modify an executable. These outputs are the one canonical
-final distributable set; do not create a second upload archive by hand.
+Because one host cannot natively smoke all three operating-system families,
+each final archive still requires `verify_release_package.py --smoke` on its
+matching host. These outputs are the one canonical final distributable set; do
+not create a second upload archive by hand.
 
 The final archives and their exact payload layouts are platform-specific:
 
@@ -245,14 +316,14 @@ development/runtime content such as `build/`, `dist/`, virtual environments,
 
 ## Clean-extract and smoke the exact final distributables
 
-Portable member inspection is necessary but is not the final gate. Return each
-archive from `DLMS-3.1.0-packages` to its named native build host and run
-`verify_release_package.py --smoke` against that exact file. The command first
-checks the archive contract, extracts into a new temporary directory, rechecks
-the resulting filesystem layout and executable, and only then runs the existing
-isolated start/routes/shutdown/restart smoke against the extracted executable.
-Set `PACKAGE_DIR` to that final-package directory on each host before running
-the commands below.
+Portable member inspection is necessary but is not the final gate. Single-target
+packaging with `--smoke` performs this gate before publishing the final file.
+The commands below are the equivalent explicit verification and may be used to
+repeat the check or to validate packages produced by coordinated all-six mode.
+They first check the archive contract, extract into a new temporary directory,
+recheck the resulting filesystem layout and executable, and only then run the
+existing isolated start/routes/shutdown/restart smoke against the extracted
+executable. Set `PACKAGE_DIR` to the final-package directory on each native host.
 
 Run the four Linux packages on their individually named systems:
 
@@ -293,33 +364,40 @@ tracked release assets, reconfirms the executable bit, arm64 Mach-O, bundle
 identifier and version metadata, resources, and archived bundle symlinks, then
 launches `<temp>/DLMS.app/Contents/MacOS/DLMS`.
 
-The final archive that passes this gate is the artifact that must be checksummed
-and uploaded. Native inputs remain clearly separated in `DLMS-3.1.0`; final
-distributables remain in `DLMS-3.1.0-packages`. Never substitute a smoke-tested
-native input for a later repackaged upload, or repackage a passing final archive.
+The final archive that passes this gate is the file that must be transferred,
+checksummed, and uploaded. Native inputs remain clearly separated in `releases`;
+final distributables remain in `release-packages`. Never substitute a
+smoke-tested native input for a later repackaged upload, or repackage a passing
+final archive.
 
 The canonical release handoff is therefore:
 
 1. Build the native artifact on the named platform.
 2. Verify that native input structurally and with its isolated native smoke.
-3. Create the one canonical final release archive in the package directory.
-4. Clean-extract that exact final archive.
-5. Verify its platform-specific top-level layout and names.
-6. Smoke-test the executable or app from that clean extraction.
-7. After all six native confirmations, compute SHA-256 from those exact final
-   package-directory files.
-8. Upload those unchanged archives and `SHA256SUMS.txt`.
-9. Download each published asset once.
-10. Compare its SHA-256 to the pre-upload validated value.
-11. When the bytes match exactly, do not repeat the native smoke merely because
+3. On that native host, create the one canonical final release archive with
+   single-target mode and `--smoke`.
+4. Record the SHA-256 printed only after that exact final archive passes its
+   platform-specific layout, clean-extraction, and native smoke gates.
+5. Transfer that unchanged finished package to the release assembly machine and
+   compare its SHA-256 with the native-host value.
+6. After all six finished packages arrive, generate and validate the combined
+   `SHA256SUMS.txt` from those exact files. Intermediate native artifacts are not
+   needed on the assembly machine.
+7. Upload those unchanged archives and `SHA256SUMS.txt`.
+8. Download each published asset once.
+9. Compare its SHA-256 to the pre-upload validated value.
+10. When the bytes match exactly, do not repeat the native smoke merely because
     GitHub hosted the file.
 
 ## Final checksums and upload set
 
-Generate the checksum manifest only after all six exact final archives have
-passed their native clean-extraction smoke. The checksum helper derives the
-canonical six filenames from the repository release version, requires exactly
-that set, structurally validates each file again, and hashes those same bytes:
+On the release assembly machine, collect only the six exact final archives that
+passed their native clean-extraction smoke. Verify each transferred file against
+the SHA-256 reported by its native host. Then generate the authoritative
+combined manifest. The checksum helper derives the canonical six filenames from
+the repository release version, requires exactly that set, structurally
+validates each file again, and hashes those same bytes; it does not need the
+intermediate native artifacts:
 
 ```bash
 PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.1.0-packages
