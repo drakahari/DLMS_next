@@ -58,6 +58,10 @@ class BrowserServer:
 
 
 def _set_theme(browser, theme):
+    browser.wait_for(
+        "typeof window.dlmsCsrfToken === 'string' && "
+        "window.dlmsCsrfToken.length > 0"
+    )
     status = browser.evaluate(
         f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
         f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
@@ -179,7 +183,7 @@ def _terminate_process_tree(process):
     process.wait(timeout=5)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def browser_server(tmp_path_factory):
     firefox = shutil.which("firefox") or shutil.which("firefox-esr")
     if not firefox:
@@ -7875,7 +7879,7 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         ),
         (
             "/learning-intelligence",
-            "document.querySelector('.learning-intelligence-panel-head')",
+            "document.getElementById('liLoading').hidden",
             "getComputedStyle(document.querySelector('.learning-intelligence-panel-head')).flexDirection === 'column'",
         ),
         (
@@ -7907,6 +7911,39 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         assert state == {"stacked": True, "contained": True, "overflow": True}, (
             path, state,
         )
+
+    # Concept performance is intentionally a horizontally scrollable comparison
+    # table at this width. Its Practice column remains pinned so the primary row
+    # action is reachable before and after the user scrolls the metrics.
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/learning-intelligence")
+        browser.wait_for("document.getElementById('liLoading').hidden")
+        if browser.evaluate("!document.getElementById('liToggleZeroEvidence').hidden"):
+            browser.click("#liToggleZeroEvidence")
+        browser.wait_for(
+            "!document.getElementById('liTableWrap').hidden && "
+            "document.querySelector('.li-concept-review-form .build-secondary-link')"
+        )
+        table_state = browser.evaluate(
+            "(() => {const wrap=document.getElementById('liTableWrap');"
+            "const action=document.querySelector('.li-concept-review-form .build-secondary-link');"
+            "const cell=action.closest('td');const bounds=wrap.getBoundingClientRect();"
+            "const contained=()=>{const rect=action.getBoundingClientRect();"
+            "return rect.left>=bounds.left-1&&rect.right<=bounds.right+1;};"
+            "const before=contained();wrap.scrollLeft=wrap.scrollWidth;"
+            "return {scrollable:wrap.scrollWidth>wrap.clientWidth,"
+            "practicePosition:getComputedStyle(cell).position,"
+            "actionBeforeScroll:before,actionAfterScroll:contained(),"
+            "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert table_state == {
+            "scrollable": True,
+            "practicePosition": "sticky",
+            "actionBeforeScroll": True,
+            "actionAfterScroll": True,
+            "documentFits": True,
+        }, (theme, table_state)
 
     browser.set_viewport(920, 900)
     browser.navigate(base_url + "/external-ai/quiz-builder")

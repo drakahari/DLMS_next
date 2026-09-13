@@ -5,9 +5,9 @@ from tests.browser import test_critical_workflows as browser_workflows
 
 
 class BrowserHarnessStructureTests(unittest.TestCase):
-    def test_server_is_module_scoped_but_bidi_session_is_workflow_scoped(self):
+    def test_server_data_and_bidi_session_are_workflow_scoped(self):
         self.assertEqual(
-            "module",
+            "function",
             browser_workflows.browser_server._fixture_function_marker.scope,
         )
         self.assertEqual(

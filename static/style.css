@@ -10931,6 +10931,20 @@ body.help-page .dashboard-main *::after {
 .learning-intelligence-table{width:100%;border-collapse:collapse;min-width:1120px;}
 .learning-intelligence-table th{padding:11px 12px;text-align:left;font-size:12px;letter-spacing:.06em;color:#9db3cf;background:#0c2037;border-bottom:1px solid #294663;}
 .learning-intelligence-table td{padding:13px 12px;border-bottom:1px solid #17314f;vertical-align:middle;}
+.learning-intelligence-table th:last-child,
+.learning-intelligence-table td:last-child{
+    position:sticky;
+    right:0;
+    z-index:1;
+    border-left:1px solid var(--theme-border-soft,#294663);
+}
+.learning-intelligence-table th:last-child{
+    z-index:2;
+    background:var(--theme-surface-2,#0c2037);
+}
+.learning-intelligence-table td:last-child{
+    background:var(--theme-panel-1,#07182e);
+}
 .learning-intelligence-table tbody tr:last-child td{border-bottom:0;}
 .learning-intelligence-table td small{display:block;margin-top:4px;color:#8298b4;font-size:12px;}
 .li-score{font-weight:800;}.li-score.low{color:#ff9aa6;}
