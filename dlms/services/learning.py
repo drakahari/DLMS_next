@@ -73,6 +73,17 @@ def _deduplicated_learning_answer_events(cur):
     )
 
 
+def _canonical_question_identity(question_type, question_text, question_id=None):
+    """Return the exact source/copy identity shared by learning workflows."""
+    normalized = re.sub(
+        r"\s+", " ", str(question_text or "").strip()
+    ).casefold()
+    return (
+        str(question_type or "choice").strip().casefold(),
+        normalized or f"question-id:{question_id}",
+    )
+
+
 def _normalize_concept_names(value):
     """Return stable, de-duplicated concept names from CSV/list input."""
     if isinstance(value, str):
@@ -401,10 +412,229 @@ def _learning_topics_with_retention(
     return topics
 
 
+def _native_question_schedule_entry(events, *, now):
+    """Derive one deterministic schedule from canonical correctness history.
+
+    Correct-answer streaks progress through 1, 3, 7, 14, and 30 day
+    intervals. An incorrect answer resets the next interval to one day. The
+    values are deliberately small and explainable; this is not an FSRS model.
+    """
+    if not events:
+        return {
+            "schedule_state": "unscheduled",
+            "schedule_state_label": "Not yet scheduled",
+            "review_interval_days": None,
+            "next_review": None,
+            "days_until_review": None,
+            "days_overdue": 0,
+            "is_due": False,
+            "is_upcoming": False,
+            "correct_streak": 0,
+            "last_result": None,
+            "schedule_reason": "No recorded answers yet.",
+        }
+
+    last_event = events[-1]
+    last_correct = bool(last_event["was_correct"])
+    correct_streak = 0
+    if last_correct:
+        for event in reversed(events):
+            if not bool(event["was_correct"]):
+                break
+            correct_streak += 1
+    intervals = (1, 3, 7, 14, 30)
+    interval_days = intervals[min(max(correct_streak, 1), len(intervals)) - 1]
+    if not last_correct:
+        interval_days = 1
+    last_dt = _parse_learning_datetime(last_event["occurred_at"])
+    if last_dt is None:
+        return {
+            "schedule_state": "unscheduled",
+            "schedule_state_label": "Not yet scheduled",
+            "review_interval_days": None,
+            "next_review": None,
+            "days_until_review": None,
+            "days_overdue": 0,
+            "is_due": False,
+            "is_upcoming": False,
+            "correct_streak": correct_streak,
+            "last_result": "correct" if last_correct else "incorrect",
+            "schedule_reason": "The most recent learning event has no usable date.",
+        }
+
+    next_review_dt = last_dt + timedelta(days=interval_days)
+    delta_seconds = (next_review_dt - now).total_seconds()
+    if delta_seconds <= 0:
+        overdue_seconds = -delta_seconds
+        days_overdue = (
+            int(math.ceil(overdue_seconds / 86400.0))
+            if overdue_seconds > 0
+            else 0
+        )
+        state = "overdue" if days_overdue else "due"
+        state_label = "Overdue" if days_overdue else "Due now"
+        days_until = 0
+        is_due = True
+        is_upcoming = False
+    else:
+        days_overdue = 0
+        days_until = int(math.ceil(delta_seconds / 86400.0))
+        state = "upcoming"
+        state_label = "Upcoming"
+        is_due = False
+        is_upcoming = True
+
+    if last_correct:
+        reason = (
+            f"{correct_streak} consecutive correct response"
+            f"{'s' if correct_streak != 1 else ''}; "
+            f"review after {interval_days} day{'s' if interval_days != 1 else ''}."
+        )
+    else:
+        reason = "The latest response was incorrect; review again after 1 day."
+    return {
+        "schedule_state": state,
+        "schedule_state_label": state_label,
+        "review_interval_days": interval_days,
+        "next_review": next_review_dt.isoformat(),
+        "days_until_review": days_until,
+        "days_overdue": days_overdue,
+        "is_due": is_due,
+        "is_upcoming": is_upcoming,
+        "correct_streak": correct_streak,
+        "last_result": "correct" if last_correct else "incorrect",
+        "schedule_reason": reason,
+    }
+
+
+def _native_spaced_repetition_schedule(cur, now=None):
+    """Schedule canonical source questions from existing learning events."""
+    now = now or datetime.now(timezone.utc)
+    question_rows = cur.execute("""
+        SELECT q.id, q.quiz_id, q.question_number, q.question_text,
+               COALESCE(q.question_type, 'choice') AS question_type,
+               COALESCE(z.source_file, '') AS source_file,
+               COALESCE(z.title, '') AS quiz_title
+        FROM questions q
+        JOIN quizzes z ON z.id = q.quiz_id
+        ORDER BY q.quiz_id, q.question_number, q.id
+    """).fetchall()
+    concept_links = cur.execute("""
+        SELECT qc.question_id, c.name
+        FROM question_concepts qc
+        JOIN concepts c ON c.id = qc.concept_id
+        ORDER BY qc.question_id, c.name COLLATE NOCASE, c.id
+    """).fetchall()
+    concepts_by_question = {}
+    for link in concept_links:
+        concepts_by_question.setdefault(link["question_id"], []).append(
+            link["name"]
+        )
+
+    groups = {}
+    question_to_key = {}
+    for row in question_rows:
+        key = _canonical_question_identity(
+            row["question_type"], row["question_text"], row["id"]
+        )
+        question_to_key[row["id"]] = key
+        group = groups.setdefault(
+            key, {"source_rows": [], "concepts": {}, "events": []}
+        )
+        if _is_generated_review_source(row["source_file"], row["quiz_title"]):
+            continue
+        group["source_rows"].append(row)
+        for concept in concepts_by_question.get(row["id"], []):
+            group["concepts"].setdefault(concept.casefold(), concept)
+
+    for event in _deduplicated_learning_answer_events(cur):
+        key = question_to_key.get(event["question_id"])
+        if key in groups:
+            groups[key]["events"].append(event)
+
+    questions = []
+    for group in groups.values():
+        if not group["source_rows"]:
+            continue
+        source = group["source_rows"][0]
+        events = sorted(
+            group["events"],
+            key=lambda event: (
+                str(event["occurred_at"] or ""), int(event["id"])
+            ),
+        )
+        correct = sum(bool(event["was_correct"]) for event in events)
+        schedule = _native_question_schedule_entry(events, now=now)
+        questions.append({
+            "question_id": source["id"],
+            "source_question_ids": [row["id"] for row in group["source_rows"]],
+            "quiz_id": source["quiz_id"],
+            "quiz_title": source["quiz_title"],
+            "question_number": source["question_number"],
+            "question_text": source["question_text"],
+            "question_type": source["question_type"],
+            "concepts": sorted(group["concepts"].values(), key=str.casefold),
+            "responses": len(events),
+            "correct": correct,
+            "incorrect": len(events) - correct,
+            "accuracy": round(correct * 100.0 / len(events), 1) if events else None,
+            "last_activity": events[-1]["occurred_at"] if events else None,
+            **schedule,
+        })
+
+    state_order = {"overdue": 0, "due": 1, "upcoming": 2, "unscheduled": 3}
+    questions.sort(key=lambda item: (
+        state_order.get(item["schedule_state"], 9),
+        item["next_review"] or "9999",
+        item["quiz_id"],
+        item["question_number"] if item["question_number"] is not None else 10**9,
+        item["question_id"],
+    ))
+    due = [item for item in questions if item["is_due"]]
+    overdue = [
+        item for item in questions if item["schedule_state"] == "overdue"
+    ]
+    upcoming = [
+        item for item in questions if item["schedule_state"] == "upcoming"
+    ]
+    due_next_7_days = [
+        item for item in upcoming
+        if item["days_until_review"] is not None
+        and item["days_until_review"] <= 7
+    ]
+    unscheduled = [
+        item for item in questions if item["schedule_state"] == "unscheduled"
+    ]
+    return {
+        "questions": questions,
+        "summary": {
+            "eligible_questions": len(questions),
+            "due_now": len(due),
+            "overdue": len(overdue),
+            "upcoming": len(upcoming),
+            "due_next_7_days": len(due_next_7_days),
+            "unscheduled": len(unscheduled),
+        },
+        "model": {
+            "intervals": "Consecutive correct responses use 1, 3, 7, 14, then 30 day intervals.",
+            "incorrect": "An incorrect response resets the next interval to 1 day.",
+            "identity": "Generated review and mixed-quiz copies contribute results to their canonical source question but are never scheduled independently.",
+            "new_material": "Unseen questions remain visible as not yet scheduled and enter the schedule after their first recorded answer.",
+        },
+    }
+
+
 def _review_schedule_payload(
-    cur, now=None, *, learning_topics_with_retention=_learning_topics_with_retention
+    cur,
+    now=None,
+    *,
+    learning_topics_with_retention=_learning_topics_with_retention,
+    native_question_schedule=None,
 ):
+    if native_question_schedule is None:
+        native_question_schedule = _native_spaced_repetition_schedule
     topics = learning_topics_with_retention(cur, now=now)
+    question_schedule = native_question_schedule(cur, now=now)
     scheduled = [t for t in topics if t.get("evidence", 0) >= 3 and t.get("review_state") != "unscheduled"]
     due = [t for t in scheduled if t.get("review_state") in ("due", "overdue")]
     overdue = [t for t in scheduled if t.get("review_state") == "overdue"]
@@ -421,6 +651,7 @@ def _review_schedule_payload(
     ))
     return {
         "topics": scheduled,
+        "questions": question_schedule["questions"],
         "summary": {
             "scheduled_topics": len(scheduled),
             "due_now": len(due),
@@ -429,11 +660,13 @@ def _review_schedule_payload(
             "fresh": len(fresh),
             "average_retained_mastery": avg_retained,
         },
+        "question_summary": question_schedule["summary"],
         "model": {
             "intervals": "Mastery below 60 = 1 day; 60-74 = 3 days; 75-89 = 7 days; 90+ = 14 days",
             "decay": "Retention decay starts only after the scheduled review date. Lower-mastery topics decay faster; the displayed penalty is capped at 35 points.",
             "separation": "Base mastery already includes the existing 10% recency component. Retained mastery adds a separate post-due decay estimate for review timing without changing stored answers or accuracy.",
         },
+        "question_model": question_schedule["model"],
     }
 
 
@@ -807,12 +1040,8 @@ def _adaptive_study_candidates(
     groups = {}
     question_to_key = {}
     for row in question_rows:
-        normalized = re.sub(
-            r"\s+", " ", str(row["question_text"] or "").strip()
-        ).casefold()
-        key = (
-            str(row["question_type"] or "choice").casefold(),
-            normalized or f"question-id:{row['id']}",
+        key = _canonical_question_identity(
+            row["question_type"], row["question_text"], row["id"]
         )
         question_to_key[row["id"]] = key
         group = groups.setdefault(

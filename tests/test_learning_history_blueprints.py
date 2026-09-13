@@ -79,6 +79,11 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
             frozenset({"POST"}),
         ),
         (
+            "learning.native_spaced_review_generate",
+            "/native-spaced-review/generate",
+            frozenset({"POST"}),
+        ),
+        (
             "learning.learning_diagnostics_page",
             "/learning-diagnostics",
             frozenset({"GET"}),
@@ -216,7 +221,7 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
             for rule in rules
         }
         self.assertEqual(self.EXPECTED_RULES, actual)
-        self.assertEqual(30, len(rules))
+        self.assertEqual(31, len(rules))
         for rule in rules:
             with self.subTest(endpoint=rule.endpoint, rule=rule.rule):
                 self.assertTrue(rule.strict_slashes)

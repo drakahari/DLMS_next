@@ -7623,3 +7623,81 @@ def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sourc
             assert connection.execute(
                 "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
             ).fetchone()[0] == 1
+
+
+def test_native_spaced_review_displays_due_reason_and_creates_session(browser_stack):
+    """Exercise the DLMS-129 schedule UI and normal quiz-publication seam."""
+    database_path = browser_stack.data_root / "results.db"
+    prompt = "Browser native spaced-review prompt?"
+    with sqlite3.connect(database_path) as connection:
+        cursor = connection.execute(
+            "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+            ("Browser Native Schedule Source", "browser-native-schedule.html"),
+        )
+        quiz_id = cursor.lastrowid
+        cursor = connection.execute(
+            """
+            INSERT INTO questions (
+                quiz_id, question_number, question_text, question_type,
+                explanation, media_json
+            ) VALUES (?, 1, ?, 'choice', 'Browser schedule explanation', '{}')
+            """,
+            (quiz_id, prompt),
+        )
+        question_id = cursor.lastrowid
+        connection.executemany(
+            "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+            [
+                (question_id, "A", "Expected", 1),
+                (question_id, "B", "Alternative", 0),
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO learning_events (
+                event_type, quiz_id, question_id, attempt_id, mode,
+                was_correct, response_json, occurred_at
+            ) VALUES ('exam_answer', ?, ?, ?, 'Exam', 0, '{}', ?)
+            """,
+            (quiz_id, question_id, "browser-native-attempt", "2020-01-01T00:00:00+00:00"),
+        )
+
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/review-schedule")
+    browser.wait_for(
+        "document.querySelector('#nrsRows')?.textContent.includes(" + json.dumps(prompt) + ") && "
+        "document.querySelector('form[action=\"/native-spaced-review/generate\"] "
+        "input[name=csrf_token]')"
+    )
+    schedule_state = browser.evaluate(
+        "(() => {const row=[...document.querySelectorAll('#nrsRows tr')].find(item=>"
+        "item.textContent.includes(" + json.dumps(prompt) + "));"
+        "return {due:Number(document.getElementById('nrsDue').textContent),"
+        "row:row?.textContent||'',status:row?.querySelector('.review-state')?.textContent||''};})()"
+    )
+    assert schedule_state["due"] >= 1
+    assert "latest response was incorrect" in schedule_state["row"]
+    assert schedule_state["status"] == "Overdue"
+
+    browser.click(
+        "form[action='/native-spaced-review/generate'] button[type='submit']"
+    )
+    browser.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_')")
+
+    with sqlite3.connect(database_path) as connection:
+        created = connection.execute(
+            """
+            SELECT id, source_file FROM quizzes
+            WHERE title = 'Spaced Review — Due Questions'
+            ORDER BY id DESC LIMIT 1
+            """
+        ).fetchone()
+        assert created is not None
+        assert created[1].startswith("spaced_review_native_")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ? AND question_text = ?",
+            (created[0], prompt),
+        ).fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
+        ).fetchone()[0] == 1

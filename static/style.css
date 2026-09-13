@@ -10742,6 +10742,13 @@ body.help-page .dashboard-main *::after {
 .review-state-overdue,.review-state-due{color:#ff9ca7;border-color:#70404b;background:#321820;}
 .review-state-due_soon{color:#ffd381;border-color:#66512b;background:#2a2315;}
 .review-state-fresh{color:#86d8c1;border-color:#285c54;background:#102b29;}
+.review-state-upcoming{color:#9ed1ff;border-color:#315d83;background:#112c45;}
+.review-state-unscheduled{color:#c5ceda;border-color:#4f5c6d;background:#222b37;}
+.native-review-heading{margin:8px 0 14px;}
+.native-review-heading h2{margin:3px 0 6px;}
+.native-review-heading p{margin:0;opacity:.78;line-height:1.5;}
+.native-review-list-panel{margin-bottom:28px;}
+.native-review-table{min-width:960px;}
 .learning-profile-retention-panel{padding:22px;margin-bottom:18px;}
 .learning-profile-retention-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:14px;}
 .learning-profile-retention-head h2{margin:3px 0 5px;}
@@ -13696,6 +13703,18 @@ body:not([class]) > .container > .hero-title {
     color: light-dark(#765511, #ffd890);
     background: light-dark(#f6ead0, #302717);
     border-color: light-dark(#d8b66d, #6b5524);
+}
+
+.review-state-upcoming {
+    color: light-dark(#1b577d, #9ed1ff) !important;
+    background: light-dark(#e0edf8, #112c45) !important;
+    border-color: light-dark(#8caeca, #315d83) !important;
+}
+
+.review-state-unscheduled {
+    color: var(--theme-muted-text, #b8c2cc) !important;
+    background: var(--theme-surface-2, rgba(17,31,56,.78)) !important;
+    border-color: var(--theme-border-soft, rgba(98,155,255,.24)) !important;
 }
 
 .li-status-proficient {

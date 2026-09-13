@@ -429,6 +429,50 @@ def spaced_review_generate(dependencies):
     return redirect(f"/quizzes/{html_name}")
 
 
+def native_spaced_review_generate(dependencies):
+    """Publish a normal quiz from canonical questions due under DLMS-129."""
+    try:
+        requested = int(request.form.get("question_count", "20"))
+    except (TypeError, ValueError):
+        requested = 20
+    requested = max(1, min(requested, 50))
+
+    conn = dependencies.get_db()
+    cur = conn.cursor()
+    try:
+        schedule = dependencies.review_schedule_payload(cur)
+        due = [
+            item
+            for item in schedule.get("questions") or []
+            if item.get("schedule_state") in {"due", "overdue"}
+        ]
+        selected = due[:requested]
+        quiz_data = []
+        for number, candidate in enumerate(selected, start=1):
+            item = dependencies.question_payload_from_db(
+                cur, candidate["question_id"]
+            )
+            if not item:
+                continue
+            item["number"] = number
+            quiz_data.append(item)
+    finally:
+        conn.close()
+
+    if not quiz_data:
+        flash("No source questions are due for native spaced review yet.", "info")
+        return redirect("/review-schedule")
+
+    _quiz_id, html_name = dependencies.publish_quiz(
+        "Spaced Review — Due Questions",
+        quiz_data,
+        filename_prefix="spaced_review_native",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
+    return redirect(f"/quizzes/{html_name}")
+
+
 def learning_diagnostics_page(dependencies):
     return send_from_directory(
         dependencies.static_root(), "learning-diagnostics.html"
@@ -534,6 +578,12 @@ def create_learning_blueprint(dependencies):
             "/spaced-review/generate",
             "spaced_review_generate",
             spaced_review_generate,
+            ["POST"],
+        ),
+        (
+            "/native-spaced-review/generate",
+            "native_spaced_review_generate",
+            native_spaced_review_generate,
             ["POST"],
         ),
         (

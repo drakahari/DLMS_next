@@ -4809,7 +4809,12 @@ def _review_schedule_payload(cur, now=None):
         cur,
         now=now,
         learning_topics_with_retention=_learning_topics_with_retention,
+        native_question_schedule=_native_spaced_repetition_schedule,
     )
+
+
+def _native_spaced_repetition_schedule(cur, now=None):
+    return _learning_service._native_spaced_repetition_schedule(cur, now=now)
 
 
 def _learning_intelligence_payload(cur, now=None):

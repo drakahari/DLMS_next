@@ -3,6 +3,7 @@
 import re
 
 from .learning import (
+    _canonical_question_identity,
     _deduplicated_learning_answer_events,
     _is_generated_review_source,
 )
@@ -10,10 +11,8 @@ from .learning import (
 
 def canonical_question_identity(question_type, question_text, question_id=None):
     """Match the exact cross-quiz identity already used by learning analytics."""
-    normalized = re.sub(r"\s+", " ", str(question_text or "").strip()).casefold()
-    return (
-        str(question_type or "choice").strip().casefold(),
-        normalized or f"question-id:{question_id}",
+    return _canonical_question_identity(
+        question_type, question_text, question_id
     )
 
 
