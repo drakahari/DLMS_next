@@ -918,7 +918,7 @@ class ThemeSystemTests(unittest.TestCase):
             / "pdf_import"
             / "index.html"
         ).read_text(encoding="utf-8")
-        self.assertEqual(index.count("pdf-ocr-availability"), 2)
+        self.assertEqual(index.count("pdf-ocr-availability"), 4)
         self.assertIn("OCR available · Tesseract", index)
         self.assertIn("OCR unavailable", index)
 

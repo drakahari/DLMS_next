@@ -388,7 +388,7 @@ def stage_external_ai_quiz_response(
 
 
 def external_ai_review_presentation(stored_draft):
-    """Build the common editor model without introducing OCR-only fields."""
+    """Build the common editor model for structured and OCR matching drafts."""
     if not isinstance(stored_draft, dict):
         raise ValueError("External AI draft is malformed")
     review = stored_draft.get("review_draft")
@@ -405,6 +405,7 @@ def external_ai_review_presentation(stored_draft):
             normalized = deepcopy(question) if isinstance(question, dict) else {}
             normalized["pairs"] = [
                 {
+                    **deepcopy(pair),
                     "left": str(pair.get("left") or ""),
                     "right": str(pair.get("right") or ""),
                     "category": str(pair.get("category") or ""),

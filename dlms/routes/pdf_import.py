@@ -73,7 +73,10 @@ class PDFImportRouteDependencies:
     prune_ocr_staging: Dependency
     stage_ocr_screenshots: Dependency
     recognize_ocr_source: Dependency
+    recognize_ocr_matching_source: Dependency
     infer_ocr_questions: Dependency
+    extract_ocr_matching_pairs: Dependency
+    stage_ocr_matching_review: Dependency
     ocr_staged_source_path: Dependency
     cleanup_ocr_staging: Dependency
     pdf_ocr_max_selected_pages: Dependency
@@ -1377,6 +1380,324 @@ def pdf_import_screenshot_cancel(dependencies, draft_id):
     return redirect("/pdf-import")
 
 
+_OCR_MATCHING_SOURCE_KINDS = {
+    "user-provided-ocr-matching-images",
+    "user-provided-ocr-matching-pdf",
+}
+
+
+def _load_ocr_matching_draft(dependencies, draft_id):
+    draft = dependencies.load_pdf_import_draft(draft_id)
+    if draft.get("source_kind") not in _OCR_MATCHING_SOURCE_KINDS:
+        raise ValueError("Not an OCR matching draft")
+    return draft
+
+
+def _cleanup_ocr_matching_sources(dependencies, draft):
+    draft_id = draft["id"]
+    if draft.get("source_kind") == "user-provided-ocr-matching-pdf":
+        dependencies.cleanup_pdf_ocr_staging(draft_id)
+    else:
+        dependencies.cleanup_ocr_staging(draft_id)
+
+
+def pdf_import_ocr_matching(dependencies):
+    image_uploads = [
+        upload
+        for upload in request.files.getlist("matching_images")
+        if upload.filename
+    ]
+    pdf_upload = request.files.get("matching_pdf")
+    has_pdf = bool(pdf_upload and pdf_upload.filename)
+    if not request.form.get("rights_ok"):
+        flash(
+            "Confirm that you have permission to use these sources for your own study.",
+            "error",
+        )
+        return redirect("/pdf-import")
+    if dependencies.detect_ocr_runtime() is None:
+        flash(
+            "Terminology OCR is unavailable because no complete validated local OCR "
+            "runtime is active.",
+            "error",
+        )
+        return redirect("/pdf-import")
+    if not image_uploads and not has_pdf:
+        flash("Choose one or more images or one scanned PDF.", "error")
+        return redirect("/pdf-import")
+    if image_uploads and has_pdf:
+        flash("Import images or one scanned PDF at a time, not both together.", "error")
+        return redirect("/pdf-import")
+    title = (request.form.get("quiz_title") or "").strip()
+    matching_question = (request.form.get("matching_question") or "").strip()
+    matching_direction = request.form.get("matching_direction") or "term_to_definition"
+    if len(title) > 240 or len(matching_question) > 10_000:
+        flash("The terminology OCR title or matching prompt is too long.", "error")
+        return redirect("/pdf-import")
+    if matching_direction not in {
+        "term_to_definition", "definition_to_term", "random",
+    }:
+        flash("Choose a supported matching direction.", "error")
+        return redirect("/pdf-import")
+
+    draft_id = secrets.token_urlsafe(12).replace("-", "").replace("_", "")[:20]
+    temp_pdf = None
+    source_kind = "user-provided-ocr-matching-images"
+    staging_created = False
+    draft_saved = False
+    try:
+        if image_uploads:
+            sources = dependencies.stage_ocr_screenshots(image_uploads, draft_id)
+            staging_created = True
+        else:
+            source_kind = "user-provided-ocr-matching-pdf"
+            temp_pdf = dependencies.save_pdf_import_upload(pdf_upload, draft_id)
+            pages = dependencies.extract_pdf_pages(temp_pdf)
+            if not pages:
+                raise ValueError("The scanned PDF has no pages.")
+            maximum = dependencies.pdf_ocr_max_selected_pages()
+            if len(pages) > maximum:
+                raise ValueError(
+                    f"Terminology OCR accepts at most {maximum} PDF pages per import."
+                )
+            dependencies.stage_pdf_ocr_document(draft_id, temp_pdf)
+            staging_created = True
+            safe_name = dependencies.secure_filename(pdf_upload.filename) or "scanned.pdf"
+            sources = [
+                {
+                    "id": f"page{page_number:04d}",
+                    "index": page_number,
+                    "page": page_number,
+                    "source_type": "pdf_page",
+                    "original_name": f"{safe_name} · page {page_number}",
+                    "status": "pending",
+                }
+                for page_number in range(1, len(pages) + 1)
+            ]
+        source_names = [source.get("original_name") for source in sources]
+        draft = {
+            "id": draft_id,
+            "created_at": dependencies.timestamp_now(),
+            "source_name": (
+                source_names[0]
+                if len(source_names) == 1
+                else f"Terminology OCR batch ({len(source_names)} sources)"
+            ),
+            "source_kind": source_kind,
+            "redistribution_status": "not-cleared-for-redistribution",
+            "document_type": "matching",
+            "detection": {"ocr": True, "matching_extraction": True},
+            "quiz_title": title or "OCR Terminology Matching",
+            "matching_question": matching_question or "Match each term to its definition.",
+            "matching_direction": matching_direction,
+            "page_count": len(sources),
+            "matching_results": [],
+            "ocr_batch": {
+                "status": "processing",
+                "total": len(sources),
+                "sources": sources,
+            },
+        }
+        dependencies.save_pdf_import_draft(draft)
+        draft_saved = True
+    except Exception as exc:
+        if staging_created:
+            try:
+                if source_kind == "user-provided-ocr-matching-pdf":
+                    dependencies.cleanup_pdf_ocr_staging(draft_id)
+                else:
+                    dependencies.cleanup_ocr_staging(draft_id)
+            except Exception:
+                pass
+        if draft_saved:
+            dependencies.delete_pdf_import_draft(draft_id)
+        print(f"[OCR MATCHING STAGING ERROR] {type(exc).__name__}: {exc}")
+        public_error = (
+            str(exc)
+            if isinstance(exc, ValueError)
+            else "The terminology OCR sources could not be staged safely."
+        )
+        flash(public_error, "error")
+        return redirect("/pdf-import")
+    finally:
+        dependencies.remove_pdf_import_upload(temp_pdf)
+    return redirect(
+        url_for("pdf_import.pdf_import_ocr_matching_processing", draft_id=draft_id)
+    )
+
+
+def pdf_import_ocr_matching_processing(dependencies, draft_id):
+    try:
+        draft = _load_ocr_matching_draft(dependencies, draft_id)
+    except Exception as exc:
+        print(f"[OCR MATCHING PROCESSING LOAD ERROR] {type(exc).__name__}: {exc}")
+        flash("The terminology OCR session is unavailable or expired.", "error")
+        return redirect("/pdf-import")
+    _batch, sources, processed, failed = _ocr_batch_progress(draft)
+    return render_template(
+        "pdf_import/process-ocr-matching.html",
+        draft=draft,
+        sources=sources,
+        processed=processed,
+        failed=failed,
+    )
+
+
+def _ocr_matching_process_response(dependencies, draft):
+    batch, sources, processed, failed = _ocr_batch_progress(draft)
+    pending = [source for source in sources if source.get("status") == "pending"]
+    if pending:
+        return {
+            "status": "processing",
+            "processed": processed,
+            "total": len(sources),
+            "failed": failed,
+            "has_results": bool(draft.get("matching_results")),
+            "sources": _ocr_matching_source_states(sources),
+        }
+    results = [
+        result for result in (draft.get("matching_results") or [])
+        if isinstance(result, dict)
+        and (result.get("pairs") or result.get("unassigned"))
+    ]
+    review_url = None
+    if results:
+        review_id, _review = dependencies.stage_ocr_matching_review(draft)
+        review_url = url_for("external_ai.external_ai_review", draft_id=review_id)
+    try:
+        _cleanup_ocr_matching_sources(dependencies, draft)
+    except Exception as exc:
+        print(f"[OCR MATCHING CLEANUP ERROR] {type(exc).__name__}: {exc}")
+    try:
+        dependencies.delete_pdf_import_draft(draft["id"])
+    except Exception as exc:
+        print(f"[OCR MATCHING DRAFT CLEANUP ERROR] {type(exc).__name__}: {exc}")
+    dependencies.ocr_cancellations.clear(draft["id"])
+    return {
+        "status": "complete",
+        "processed": processed,
+        "total": len(sources),
+        "failed": failed,
+        "has_results": bool(results),
+        "review_url": review_url,
+        "sources": _ocr_matching_source_states(sources),
+        "batch_status": batch.get("status"),
+    }
+
+
+def _ocr_matching_source_states(sources):
+    return [
+        {
+            "index": source.get("index"),
+            "name": source.get("original_name"),
+            "status": source.get("status"),
+            "error": source.get("error"),
+        }
+        for source in sources
+    ]
+
+
+def pdf_import_ocr_matching_process_next(dependencies, draft_id):
+    try:
+        draft = _load_ocr_matching_draft(dependencies, draft_id)
+        _batch, sources, _processed, _failed = _ocr_batch_progress(draft)
+        source = next(
+            (item for item in sources if item.get("status") == "pending"), None
+        )
+        if source is None:
+            return jsonify(_ocr_matching_process_response(dependencies, draft))
+
+        with dependencies.ocr_cancellations.active(draft_id) as cancel_requested:
+            try:
+                if source.get("source_type") == "pdf_page":
+                    rendered = dependencies.render_pdf_ocr_page(
+                        draft_id, int(source["page"]), cancel_requested
+                    )
+                    source.update({
+                        "width": int(rendered["width"]),
+                        "height": int(rendered["height"]),
+                    })
+                    observations = dependencies.recognize_pdf_ocr_page(
+                        draft_id, source, cancel_requested
+                    )
+                else:
+                    observations = dependencies.recognize_ocr_matching_source(
+                        draft_id, source, cancel_requested
+                    )
+                if cancel_requested():
+                    raise OCRCancelledError("OCR was cancelled.")
+                result = dependencies.extract_ocr_matching_pairs(
+                    observations,
+                    source_id=source["id"],
+                    source_index=int(source["index"]),
+                    source_name=source["original_name"],
+                    source_page_number=source.get("page"),
+                )
+                if cancel_requested():
+                    raise OCRCancelledError("OCR was cancelled.")
+                if not result.get("line_count"):
+                    source.update({
+                        "status": "ocr_failed",
+                        "error": "No readable terminology text was detected.",
+                    })
+                else:
+                    if source.get("duplicate_of"):
+                        result.setdefault("diagnostics", []).append({
+                            "severity": "warning",
+                            "code": "duplicate_ocr_source",
+                            "path": f"source[{source['index']}]",
+                            "message": "This image exactly duplicates an earlier batch source.",
+                        })
+                    draft.setdefault("matching_results", []).append(result)
+                    source["status"] = "processed"
+            except (OCRCancelledError, InterruptedError):
+                _cleanup_ocr_matching_sources(dependencies, draft)
+                dependencies.delete_pdf_import_draft(draft_id)
+                dependencies.ocr_cancellations.clear(draft_id)
+                return jsonify({"status": "cancelled", "redirect_url": "/pdf-import"})
+            except Exception as exc:
+                print(
+                    f"[OCR MATCHING ERROR] Source {source.get('index')}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                source.update({
+                    "status": "ocr_failed",
+                    "error": "OCR or terminology layout analysis failed for this source.",
+                })
+
+            _batch, pending_sources, _processed, _failed = _ocr_batch_progress(draft)
+            if not any(item.get("status") == "pending" for item in pending_sources):
+                draft["ocr_batch"]["status"] = "complete"
+            dependencies.save_pdf_import_draft(draft)
+        return jsonify(_ocr_matching_process_response(dependencies, draft))
+    except OCRTaskBusyError:
+        return jsonify({"status": "busy"}), 409
+    except Exception as exc:
+        print(f"[OCR MATCHING PROCESSING ERROR] {type(exc).__name__}: {exc}")
+        return jsonify({"error": "The terminology OCR session could not be processed."}), 400
+
+
+def pdf_import_ocr_matching_cancel(dependencies, draft_id):
+    try:
+        draft = _load_ocr_matching_draft(dependencies, draft_id)
+    except Exception:
+        flash("The terminology OCR session is unavailable or expired.", "error")
+        return redirect("/pdf-import")
+    active = dependencies.ocr_cancellations.request_cancel(draft_id)
+    if active:
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"status": "cancelling"}), 202
+        flash("Stopping terminology OCR…", "info")
+        return redirect("/pdf-import")
+    _cleanup_ocr_matching_sources(dependencies, draft)
+    dependencies.delete_pdf_import_draft(draft_id)
+    dependencies.ocr_cancellations.clear(draft_id)
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify({"status": "cancelled", "redirect_url": "/pdf-import"})
+    flash("Terminology OCR import cancelled. Temporary sources were removed.", "info")
+    return redirect("/pdf-import")
+
+
 def pdf_import_screenshot_source(dependencies, draft_id, source_id):
     try:
         draft = dependencies.load_pdf_import_draft(draft_id)
@@ -2176,6 +2497,30 @@ def create_pdf_import_blueprint(
             "pdf_import_screenshot_source",
             pdf_import_screenshot_source,
             ["GET"],
+        ),
+        (
+            "/pdf-import/ocr-matching",
+            "pdf_import_ocr_matching",
+            pdf_import_ocr_matching,
+            ["POST"],
+        ),
+        (
+            "/pdf-import/ocr-matching/process/<draft_id>",
+            "pdf_import_ocr_matching_processing",
+            pdf_import_ocr_matching_processing,
+            ["GET"],
+        ),
+        (
+            "/pdf-import/ocr-matching/process/<draft_id>/next",
+            "pdf_import_ocr_matching_process_next",
+            pdf_import_ocr_matching_process_next,
+            ["POST"],
+        ),
+        (
+            "/pdf-import/ocr-matching/cancel/<draft_id>",
+            "pdf_import_ocr_matching_cancel",
+            pdf_import_ocr_matching_cancel,
+            ["POST"],
         ),
         (
             "/pdf-import/review/<draft_id>",

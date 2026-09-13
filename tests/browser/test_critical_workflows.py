@@ -5944,6 +5944,28 @@ def test_external_ai_matching_review_and_publication(browser_stack):
     assert pair_count == 2
 
 
+def test_ocr_matching_import_entry_is_clear_and_distinct(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/pdf-import")
+    browser.wait_for(
+        "document.querySelector('form[action=\"/pdf-import/ocr-matching\"]')"
+    )
+    state = browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/ocr-matching\"]');"
+        "return {images:!!form.querySelector('[name=matching_images][multiple]'),"
+        "pdf:!!form.querySelector('[name=matching_pdf]'),"
+        "direction:!!form.querySelector('[name=matching_direction]'),"
+        "rights:!!form.querySelector('[name=rights_ok][required]'),"
+        "copy:form.closest('section').textContent};})()"
+    )
+    assert state["images"] is True
+    assert state["pdf"] is True
+    assert state["direction"] is True
+    assert state["rights"] is True
+    assert "Pairing is deliberately conservative" in state["copy"]
+    assert "No cloud OCR or external AI is used" in state["copy"]
+
+
 def test_external_ai_help_is_discoverable_and_twenty_five_screenshot_queue_is_rendered(
     browser_stack, tmp_path
 ):

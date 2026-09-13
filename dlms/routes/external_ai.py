@@ -154,7 +154,7 @@ def _load_review_or_redirect(dependencies, draft_id):
         dependencies.print_message(
             f"[EXTERNAL AI REVIEW LOAD ERROR] {type(exc).__name__}"
         )
-        flash("The External AI review session is unavailable or expired.", "error")
+        flash("The content review session is unavailable or expired.", "error")
         return None, redirect("/upload")
 
 
@@ -222,10 +222,11 @@ def external_ai_publish(dependencies, draft_id):
         request.form.get("exam_minutes")
     )
     try:
+        origin = str(review_draft.get("origin") or "external_ai")
         quiz_id, _html_name = dependencies.publish_quiz(
             result["review_draft"]["title"],
             result["publish_questions"],
-            filename_prefix="external_ai",
+            filename_prefix=("ocr_matching" if origin == "ocr_matching" else "external_ai"),
             exam_minutes=exam_minutes,
         )
     except Exception as exc:
@@ -248,10 +249,7 @@ def external_ai_publish(dependencies, draft_id):
             "Quiz published, but its temporary review data could not be removed.",
             "warning",
         )
-    flash(
-        f"Published '{result['review_draft']['title']}' after Review & Repair.",
-        "success",
-    )
+    flash(f"Published '{result['review_draft']['title']}' after Review & Repair.", "success")
     return redirect(f"/edit_quiz/{quiz_id}")
 
 
@@ -264,9 +262,9 @@ def external_ai_cancel(dependencies, draft_id):
         dependencies.print_message(
             f"[EXTERNAL AI DRAFT CANCEL ERROR] {type(exc).__name__}"
         )
-        flash("The temporary External AI draft could not be removed.", "error")
+        flash("The temporary review draft could not be removed.", "error")
         return redirect(url_for("external_ai.external_ai_review", draft_id=draft_id))
-    flash("External AI review draft removed.", "success")
+    flash("Review draft removed.", "success")
     return redirect("/upload")
 
 

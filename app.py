@@ -42,6 +42,7 @@ from dlms.parsing import external_ai_structured as _external_ai_structured_parse
 from dlms.parsing import quiz_text as _quiz_text_parser
 from dlms.parsing import smart_pdf as _smart_pdf_parser
 from dlms.parsing import ocr_questions as _ocr_question_parser
+from dlms.parsing import ocr_matching as _ocr_matching_parser
 from dlms.parsing import pdf_raster_questions as _pdf_raster_question_parser
 from dlms.rendering import quiz_artifacts as _quiz_artifact_renderer
 from dlms.services import anki as _anki_service
@@ -59,6 +60,7 @@ from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
 from dlms.services import ocr as _ocr_service
 from dlms.services import ocr_screenshots as _ocr_screenshot_service
+from dlms.services import ocr_matching as _ocr_matching_service
 from dlms.services import pdf_ocr as _pdf_ocr_service
 from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
@@ -458,6 +460,7 @@ def reject_declared_oversized_workflow_upload():
     route_limits = {
         "/pdf-import/analyze": PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/pdf-import/screenshots": OCR_SCREENSHOT_MAX_BATCH_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/pdf-import/ocr-matching": PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/content-packs/import": CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES,
         "/settings/data/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/settings/backup/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
@@ -4100,6 +4103,12 @@ def _prune_external_ai_drafts():
     )
 
 
+def _stage_ocr_matching_review(processing_draft):
+    return _ocr_matching_service.stage_ocr_matching_review(
+        EXTERNAL_AI_DRAFT_FOLDER, processing_draft
+    )
+
+
 # =========================================================
 # SMART PDF IMPORT — QUESTION BANK MVP
 # Isolated from the existing text/paste/CSV parsers.
@@ -4300,6 +4309,20 @@ def _recognize_pdf_ocr_source(draft_id, source, cancel_requested):
         ),
         "answer_regions": answer_regions,
     }
+
+
+def _recognize_pdf_ocr_matching_source(draft_id, source, cancel_requested):
+    """Run the shared OCR engine without choice-question visual augmentation."""
+    path = _pdf_ocr_staged_source_path(draft_id, source)
+    return _ocr_service.recognize_image_bytes(
+        path.read_bytes(),
+        source_id=source["id"],
+        source_width=int(source["width"]),
+        source_height=int(source["height"]),
+        page_index=0,
+        cancel_requested=cancel_requested,
+        image_suffix=path.suffix,
+    )
 
 
 def _analyze_pdf_text_usefulness(pages):
@@ -6046,9 +6069,16 @@ app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(
     recognize_ocr_source=lambda draft_id, source, cancel_requested: _recognize_pdf_ocr_source(
         draft_id, source, cancel_requested
     ),
+    recognize_ocr_matching_source=lambda draft_id, source, cancel_requested: _recognize_pdf_ocr_matching_source(
+        draft_id, source, cancel_requested
+    ),
     infer_ocr_questions=lambda observations, **kwargs: _ocr_question_parser.infer_screenshot_questions(
         observations, **kwargs
     ),
+    extract_ocr_matching_pairs=lambda observations, **kwargs: _ocr_matching_parser.extract_ocr_matching_pairs(
+        observations, **kwargs
+    ),
+    stage_ocr_matching_review=lambda draft: _stage_ocr_matching_review(draft),
     ocr_staged_source_path=lambda draft_id, source: _pdf_ocr_staged_source_path(
         draft_id, source
     ),

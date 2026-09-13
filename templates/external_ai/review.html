@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Review External AI Quiz - DLMS</title>
+    <title>Review {{ "OCR Matching" if draft.origin == "ocr_matching" else "External AI Quiz" }} - DLMS</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
@@ -28,7 +28,7 @@
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
-        <div class="dashboard-sidebar-version">External AI Review</div>
+        <div class="dashboard-sidebar-version">{{ "OCR Matching Review" if draft.origin == "ocr_matching" else "External AI Review" }}</div>
     </aside>
 
     <main class="dashboard-main pdf-import-main">
@@ -38,7 +38,7 @@
 
         <header class="dashboard-header">
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
-            <div><div class="build-eyebrow">EXTERNAL AI {{ "MATCHING" if draft.content_type == "matching" else "QUIZ" }} · REVIEW</div><h1>Review &amp; Repair</h1><p>{% if draft.content_type == "matching" %}AI-generated pairings may be wrong. Repair every kept matching question and explicitly confirm every term/definition pair before publication.{% else %}AI-generated correctness is only a proposal. Repair every kept question and explicitly confirm its complete correct-answer set before publication.{% endif %}</p></div>
+            <div><div class="build-eyebrow">{% if draft.origin == "ocr_matching" %}LOCAL OCR MATCHING{% else %}EXTERNAL AI {{ "MATCHING" if draft.content_type == "matching" else "QUIZ" }}{% endif %} · REVIEW</div><h1>Review &amp; Repair</h1><p>{% if draft.origin == "ocr_matching" %}OCR can misread text and uncertain layout is not silently paired. Repair the candidates, use the retained unassigned text when helpful, and explicitly confirm every final term/definition pair.{% elif draft.content_type == "matching" %}AI-generated pairings may be wrong. Repair every kept matching question and explicitly confirm every term/definition pair before publication.{% else %}AI-generated correctness is only a proposal. Repair every kept question and explicitly confirm its complete correct-answer set before publication.{% endif %}</p></div>
         </header>
 
         <section class="pdf-import-summary-grid" aria-label="Review summary">
@@ -50,15 +50,23 @@
 
         <details class="dashboard-panel external-ai-diagnostics" {% if draft.validation_state == "needs_repair" %}open{% endif %}>
             <summary>Parser and validation diagnostics</summary>
-            <p>These describe the pasted response. Blocking question problems can be resolved below; warnings document unsupported or unusual source data.</p>
+            <p>{% if draft.origin == "ocr_matching" %}These describe OCR confidence and layout decisions. Blocking pair problems can be resolved below; uncertain lines remain unassigned rather than being guessed into a pair.{% else %}These describe the pasted response. Blocking question problems can be resolved below; warnings document unsupported or unusual source data.{% endif %}</p>
             {% if draft.diagnostics %}<ul>{% for diagnostic in draft.diagnostics %}<li class="diagnostic-{{ diagnostic.severity|default('warning') }}"><strong>{{ diagnostic.path or "Response" }}</strong>: {{ diagnostic.message }}</li>{% endfor %}</ul>{% else %}<p>No parser diagnostics were reported.</p>{% endif %}
         </details>
 
+        {% if draft.origin == "ocr_matching" and draft.unassigned_text %}
+        <details class="dashboard-panel external-ai-raw-reference" open>
+            <summary>Unassigned OCR text (reference only)</summary>
+            <p>These temporary lines were readable but did not have enough structural evidence for DLMS to infer a pairing. Copy or correct them in the editor if appropriate.</p>
+            <ul>{% for item in draft.unassigned_text %}<li><strong>{{ item.source_name }}{% if item.page_number %} · page {{ item.page_number }}{% endif %}</strong>: {{ item.text }}</li>{% endfor %}</ul>
+        </details>
+        {% elif draft.origin != "ocr_matching" %}
         <details class="dashboard-panel external-ai-raw-reference">
             <summary>Raw AI response (reference only)</summary>
             <p>This temporary text is never published with the quiz.</p>
             <pre>{{ draft.raw_response }}</pre>
         </details>
+        {% endif %}
 
         <div class="pdf-import-filter-row" aria-label="Filter questions">
             <button type="button" data-filter="all" class="active">All</button>
@@ -122,6 +130,7 @@
                         <div data-matching-role="pair-list">
                             {% for pair in q.pairs %}
                             <div class="external-ai-matching-pair" data-matching-role="pair-row">
+                                {% if pair.ocr_metadata %}<p class="pdf-ocr-local-note ocr-matching-pair-provenance">OCR source: {{ pair.ocr_metadata.source_name }}{% if pair.ocr_metadata.page_number %} · page {{ pair.ocr_metadata.page_number }}{% endif %} · {{ pair.ocr_metadata.pattern|replace("_", " ") }}{% if pair.ocr_metadata.confidence is not none %} · {{ pair.ocr_metadata.confidence }}% confidence{% endif %}</p>{% endif %}
                                 <div class="external-ai-matching-pair-fields">
                                     <label class="build-field"><span>Term / left side</span><textarea rows="2" maxlength="4000" data-matching-role="left">{{ pair.left }}</textarea></label>
                                     <label class="build-field"><span>Definition / right side</span><textarea rows="2" maxlength="4000" data-matching-role="right">{{ pair.right }}</textarea></label>

@@ -63,6 +63,22 @@ class PDFImportBlueprintTests(unittest.TestCase):
             "/pdf-import/screenshots/source/<draft_id>/<source_id>",
             {"GET"},
         ),
+        "pdf_import.pdf_import_ocr_matching": (
+            "/pdf-import/ocr-matching",
+            {"POST"},
+        ),
+        "pdf_import.pdf_import_ocr_matching_processing": (
+            "/pdf-import/ocr-matching/process/<draft_id>",
+            {"GET"},
+        ),
+        "pdf_import.pdf_import_ocr_matching_process_next": (
+            "/pdf-import/ocr-matching/process/<draft_id>/next",
+            {"POST"},
+        ),
+        "pdf_import.pdf_import_ocr_matching_cancel": (
+            "/pdf-import/ocr-matching/cancel/<draft_id>",
+            {"POST"},
+        ),
         "pdf_import.pdf_import_review": (
             "/pdf-import/review/<draft_id>",
             {"GET"},
@@ -130,7 +146,10 @@ class PDFImportBlueprintTests(unittest.TestCase):
         "prune_ocr_staging",
         "stage_ocr_screenshots",
         "recognize_ocr_source",
+        "recognize_ocr_matching_source",
         "infer_ocr_questions",
+        "extract_ocr_matching_pairs",
+        "stage_ocr_matching_review",
         "ocr_staged_source_path",
         "cleanup_ocr_staging",
         "pdf_ocr_max_selected_pages",
@@ -201,6 +220,9 @@ class PDFImportBlueprintTests(unittest.TestCase):
                 "draft_id": "draft",
                 "source_id": "source",
             },
+            "pdf_import.pdf_import_ocr_matching_processing": {"draft_id": "draft"},
+            "pdf_import.pdf_import_ocr_matching_process_next": {"draft_id": "draft"},
+            "pdf_import.pdf_import_ocr_matching_cancel": {"draft_id": "draft"},
             "pdf_import.pdf_import_ocr_offer": {"draft_id": "draft"},
             "pdf_import.pdf_import_ocr_start": {"draft_id": "draft"},
             "pdf_import.pdf_import_ocr_continue_without": {"draft_id": "draft"},

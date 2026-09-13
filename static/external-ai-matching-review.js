@@ -104,6 +104,7 @@
     row.querySelectorAll("input, textarea").forEach((control) => {
       control.value = "";
     });
+    row.querySelector(".ocr-matching-pair-provenance")?.remove();
     return row;
   }
 
