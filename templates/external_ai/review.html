@@ -38,7 +38,7 @@
 
         <header class="dashboard-header">
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
-            <div><div class="build-eyebrow">EXTERNAL AI QUIZ · REVIEW</div><h1>Review &amp; Repair</h1><p>AI-generated correctness is only a proposal. Repair every kept question and explicitly confirm its complete correct-answer set before publication.</p></div>
+            <div><div class="build-eyebrow">EXTERNAL AI {{ "MATCHING" if draft.content_type == "matching" else "QUIZ" }} · REVIEW</div><h1>Review &amp; Repair</h1><p>{% if draft.content_type == "matching" %}AI-generated pairings may be wrong. Repair every kept matching question and explicitly confirm every term/definition pair before publication.{% else %}AI-generated correctness is only a proposal. Repair every kept question and explicitly confirm its complete correct-answer set before publication.{% endif %}</p></div>
         </header>
 
         <section class="pdf-import-summary-grid" aria-label="Review summary">
@@ -68,7 +68,7 @@
         </div>
         <details class="pdf-review-bulk-help">
             <summary>How filters and bulk actions work</summary>
-            <div class="pdf-review-bulk-help-body"><p>Filters affect visibility only. Select the questions you reviewed, then confirm their current answer mode and complete correct-answer set or mark them for exclusion. Excluded questions are not published.</p></div>
+            <div class="pdf-review-bulk-help-body"><p>Filters affect visibility only. Select the questions you reviewed, then {% if draft.content_type == "matching" %}confirm every current term/definition pair{% else %}confirm their current answer mode and complete correct-answer set{% endif %} or mark them for exclusion. Excluded questions are not published.</p></div>
         </details>
         <div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk question actions">
             <div class="pdf-review-bulk-actions">
@@ -113,6 +113,30 @@
                     </div>
                     {% if q.validation_issues %}<div class="pdf-import-issues" role="status">{% for issue in q.validation_issues %}<div>⚠ {{ issue.message if issue is mapping else issue }}</div>{% endfor %}</div>{% endif %}
                     <label class="build-field"><span>Question text</span><textarea rows="4" maxlength="10000" data-pdf-role="question">{{ q.question }}</textarea></label>
+                    {% if draft.content_type == "matching" %}
+                    <div class="external-ai-matching-settings">
+                        <label class="build-field"><span>Direction</span><select data-matching-role="direction"><option value="term_to_definition" {% if q.direction == "term_to_definition" %}selected{% endif %}>Term → definition</option><option value="definition_to_term" {% if q.direction == "definition_to_term" %}selected{% endif %}>Definition → term</option><option value="random" {% if q.direction == "random" %}selected{% endif %}>Random each attempt</option></select></label>
+                        <label class="build-field"><span>Pairs per attempt</span><input type="number" min="2" max="100" value="{{ q.round_size }}" data-matching-role="round-size" inputmode="numeric"></label>
+                    </div>
+                    <div class="external-ai-matching-editor" data-matching-role="pair-editor">
+                        <div data-matching-role="pair-list">
+                            {% for pair in q.pairs %}
+                            <div class="external-ai-matching-pair" data-matching-role="pair-row">
+                                <div class="external-ai-matching-pair-fields">
+                                    <label class="build-field"><span>Term / left side</span><textarea rows="2" maxlength="4000" data-matching-role="left">{{ pair.left }}</textarea></label>
+                                    <label class="build-field"><span>Definition / right side</span><textarea rows="2" maxlength="4000" data-matching-role="right">{{ pair.right }}</textarea></label>
+                                    <label class="build-field"><span>Category <em>Optional</em></span><input maxlength="240" value="{{ pair.category }}" data-matching-role="category"></label>
+                                    <label class="build-field"><span>Pair explanation <em>Optional</em></span><textarea rows="2" maxlength="20000" data-matching-role="pair-explanation">{{ pair.explanation }}</textarea></label>
+                                </div>
+                                <div class="pdf-choice-order-controls"><button type="button" class="build-secondary-link" data-matching-action="pair-up" aria-label="Move pair up">↑</button><button type="button" class="build-secondary-link" data-matching-action="pair-down" aria-label="Move pair down">↓</button><button type="button" class="build-secondary-link pdf-review-danger-action" data-matching-action="pair-delete">Delete pair</button></div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="pdf-choice-editor-actions"><button type="button" class="build-secondary-link" data-matching-action="pair-add">Add pair</button><span>2–100 complete, unique pairs.</span></div>
+                        <p class="pdf-choice-editor-message" data-matching-role="pair-message" aria-live="polite"></p>
+                    </div>
+                    <label class="pdf-correctness-confirmation"><input type="checkbox" data-matching-role="review-confirmed" {% if q.review_confirmed %}checked{% endif %}><span>I reviewed this matching question and confirm every term/definition pairing.</span></label>
+                    {% else %}
                     <label class="build-field external-ai-answer-mode"><span>Answer mode</span><select data-pdf-role="answer-mode"><option value="single" {% if q.answer_mode == "single" %}selected{% endif %}>Single answer</option><option value="multiple" {% if q.answer_mode == "multiple" %}selected{% endif %}>Multiple answers</option></select></label>
                     <div class="pdf-choice-editor" data-pdf-role="choice-editor">
                         <div class="pdf-import-choice-grid" data-pdf-role="choice-list">
@@ -128,6 +152,7 @@
                         <p class="pdf-choice-editor-message" data-pdf-role="choice-message" aria-live="polite"></p>
                     </div>
                     <label class="pdf-correctness-confirmation"><input type="checkbox" data-pdf-role="correctness-confirmed" {% if q.correctness_confirmed %}checked{% endif %}><span>I reviewed this question and confirm the answer mode and complete set of correct answers.</span></label>
+                    {% endif %}
                     <label class="build-field"><span>Study Mode explanation</span><textarea rows="4" maxlength="20000" data-pdf-role="explanation">{{ q.explanation }}</textarea></label>
                     <label class="build-field"><span>Concepts</span><textarea rows="3" data-pdf-role="concepts" placeholder="One concept per line">{{ q.concepts_text }}</textarea><small>One concept per line, up to 24.</small></label>
                 </article>
@@ -141,6 +166,6 @@
         </form>
     </main>
 </div>
-<script src="/static/question-review.js"></script><script src="/static/nav-normalize.js"></script>
+{% if draft.content_type == "matching" %}<script src="/static/external-ai-matching-review.js"></script>{% else %}<script src="/static/question-review.js"></script>{% endif %}<script src="/static/nav-normalize.js"></script>
 </body>
 </html>

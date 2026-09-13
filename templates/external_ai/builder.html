@@ -34,7 +34,7 @@
     <main class="dashboard-main build-modern-main external-ai-builder-main">
         <header class="dashboard-header build-page-header">
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
-            <div><div class="build-eyebrow">AI STRUCTURED TEXT</div><h1>External AI Quiz Builder</h1><p>Generate a structured prompt, use it with a conversational AI, then paste the JSON response back into DLMS to create a normal quiz.</p></div>
+            <div><div class="build-eyebrow">AI STRUCTURED TEXT</div><h1>External AI Quiz Builder</h1><p>Generate a structured prompt, use it with a conversational AI, then paste the JSON response back into DLMS to create a normal choice or matching quiz.</p></div>
         </header>
 
         {% if errors %}
@@ -50,12 +50,13 @@
 
         <form method="POST" action="{{ url_for('external_ai.external_ai_builder_validate') }}" id="externalAiBuilderForm">
             <section class="dashboard-panel external-ai-builder-card" aria-labelledby="externalAiConfigureHeading">
-                <div class="build-section-heading"><span class="build-method-label">1 · CONFIGURE</span><h2 id="externalAiConfigureHeading">Describe the quiz</h2><p>DLMS places these values into a provider-neutral prompt. It does not send anything to an AI service.</p></div>
+                <div class="build-section-heading"><span class="build-method-label">1 · CONFIGURE</span><h2 id="externalAiConfigureHeading">Describe the quiz</h2><p>Choose a content workflow. DLMS places these values into a provider-neutral prompt and does not send anything to an AI service.</p></div>
                 <div class="external-ai-builder-grid">
+                    <label class="build-field external-ai-builder-wide"><span>Content workflow</span><select name="content_type" id="externalAiContentType" required><option value="quiz" {% if builder.content_type == "quiz" %}selected{% endif %}>Choice questions</option><option value="matching" {% if builder.content_type == "matching" %}selected{% endif %}>Matching / terminology</option></select><small id="externalAiWorkflowHelp">{{ "Create one matching activity from term/definition pairs." if builder.content_type == "matching" else "Create single-answer and multiple-answer choice questions." }}</small></label>
                     <label class="build-field external-ai-builder-wide"><span>Topic or domain</span><input type="text" name="topic" value="{{ builder.topic }}" maxlength="500" required placeholder="Example: introductory network troubleshooting"></label>
                     <label class="build-field"><span>Audience</span><input type="text" name="audience" value="{{ builder.audience }}" maxlength="2000" required></label>
                     <label class="build-field"><span>Difficulty</span><select name="difficulty" required>{% for value in ["Introductory", "Intermediate", "Advanced", "Mixed"] %}<option value="{{ value }}" {% if builder.difficulty == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
-                    <label class="build-field"><span>Question count</span><input type="number" name="question_count" value="{{ builder.question_count }}" min="1" max="{{ max_questions }}" required inputmode="numeric"><small>Between 1 and {{ max_questions }} questions.</small></label>
+                    <label class="build-field"><span id="externalAiCountLabel">{{ "Pair count" if builder.content_type == "matching" else "Question count" }}</span><input type="number" name="question_count" id="externalAiItemCount" value="{{ builder.question_count }}" min="{{ 2 if builder.content_type == "matching" else 1 }}" max="{{ max_questions }}" required inputmode="numeric"><small id="externalAiCountHelp">{{ "Between 2 and 100 pairs." if builder.content_type == "matching" else "Between 1 and " ~ max_questions ~ " questions." }}</small></label>
                     <label class="build-field external-ai-builder-wide"><span>Source expectations</span><textarea name="source_expectations" rows="3" maxlength="2000" required>{{ builder.source_expectations }}</textarea><small>Tell the AI what kinds of sources or source discipline to use.</small></label>
                 </div>
                 <details class="build-optional-source external-ai-source-request">
@@ -73,7 +74,7 @@
 
             <section class="dashboard-panel external-ai-builder-card" aria-labelledby="externalAiPromptHeading">
                 <div class="build-section-heading"><span class="build-method-label">2 · COPY</span><h2 id="externalAiPromptHeading">Generated prompt</h2><p>Copy this prompt into any conversational AI. No API key or direct DLMS connection is required.</p></div>
-                <label class="build-field" for="externalAiPrompt"><span>Structured quiz prompt</span></label>
+                <label class="build-field" for="externalAiPrompt"><span>Structured content prompt</span></label>
                 <textarea id="externalAiPrompt" class="external-ai-prompt-output" rows="18" readonly aria-describedby="externalAiCopyStatus" placeholder="Configure the quiz and choose Generate Prompt.">{{ generated_prompt }}</textarea>
                 <div class="external-ai-copy-row"><button class="build-secondary-link" id="externalAiCopyPrompt" type="button" {% if not generated_prompt %}disabled{% endif %}>Copy Prompt</button><span id="externalAiCopyStatus" role="status" aria-live="polite">{% if generated_prompt %}Prompt ready to copy.{% else %}Generate a prompt first.{% endif %}</span></div>
             </section>
@@ -87,8 +88,9 @@
         </form>
 
         <aside class="dashboard-panel external-ai-workflow-distinction" aria-labelledby="externalAiDistinctionHeading">
-            <h2 id="externalAiDistinctionHeading">Quiz text and Study Pack archives are separate workflows</h2>
-            <p><strong>External AI Quiz Builder:</strong> the AI returns structured text, you paste it into DLMS, and DLMS creates a normal quiz.</p>
+            <h2 id="externalAiDistinctionHeading">Choose the right External AI workflow</h2>
+            <p><strong>Choice questions:</strong> the AI returns structured choice-question JSON for a normal single-answer or multiple-answer quiz.</p>
+            <p><strong>Matching / terminology:</strong> the AI returns structured term/definition pairs for a normal DLMS matching quiz.</p>
             <p><strong>AI Study Pack Builder:</strong> the AI returns a downloadable DLMS Study Pack archive for the existing import and install workflow. <a href="/study-packs/ai-builder">Open AI Study Pack Builder</a>.</p>
             <p><a href="/help/external-ai">Read External AI Quiz Builder Help</a>.</p>
         </aside>

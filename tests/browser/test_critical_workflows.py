@@ -5866,6 +5866,84 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     ) is True
 
 
+def test_external_ai_matching_review_and_publication(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    browser.navigate(f"{base_url}/external-ai/quiz-builder")
+    browser.wait_for("document.getElementById('externalAiContentType')")
+    raw_response = json.dumps({
+        "schema_version": 1,
+        "content_type": "matching",
+        "title": "Browser External Matching",
+        "source": {
+            "organization": "Neutral Browser Source",
+            "dataset": "Neutral terminology",
+            "version": "1",
+            "url": "https://example.test/terms",
+            "license": "Test-only neutral content",
+        },
+        "questions": [{
+            "question": "Match each neutral marker to its description.",
+            "direction": "term_to_definition",
+            "round_size": 2,
+            "pairs": [
+                {"left": "Marker one", "right": "First neutral description",
+                 "category": "markers", "explanation": "First pairing."},
+                {"left": "Marker two", "right": "Second neutral description",
+                 "category": "markers", "explanation": "Second pairing."},
+            ],
+            "explanation": "Use the neutral terminology source.",
+            "concepts": ["browser-matching"],
+        }],
+    })
+    browser.evaluate(
+        "document.getElementById('externalAiContentType').value='matching';"
+        "document.getElementById('externalAiContentType').dispatchEvent(new Event('change'));"
+        "document.querySelector('[name=topic]').value='Neutral terminology';"
+        "document.querySelector('[name=question_count]').value='2';"
+        f"document.getElementById('externalAiResponse').value={json.dumps(raw_response)};true"
+    )
+    assert browser.evaluate(
+        "document.getElementById('externalAiCountLabel').textContent"
+    ) == "Pair count"
+    browser.click("#externalAiBuilderForm .build-primary-button")
+    browser.wait_for_page_ready(
+        "location.pathname.startsWith('/external-ai/review/') && "
+        "document.querySelector('[data-matching-role=pair-row]')"
+    )
+    initial = browser.evaluate(
+        "(() => {const card=document.querySelector('.pdf-import-question-card');"
+        "return {pairs:card.querySelectorAll('[data-matching-role=pair-row]').length,"
+        "confirmed:card.querySelector('[data-matching-role=review-confirmed]').checked,"
+        "choiceMode:!!card.querySelector('[data-pdf-role=answer-mode]'),"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert initial == {
+        "pairs": 2, "confirmed": False, "choiceMode": False, "overflow": True,
+    }
+    browser.evaluate(
+        "(() => {const card=document.querySelector('.pdf-import-question-card');"
+        "const select=card.querySelector('[data-pdf-role=select]');"
+        "select.checked=true;select.dispatchEvent(new Event('change',{bubbles:true}));"
+        "document.getElementById('questionReviewConfirmSelected').click();return true;})()"
+    )
+    assert browser.evaluate(
+        "document.querySelector('[data-matching-role=review-confirmed]').checked"
+    ) is True
+    browser.click("#pdfReviewForm .build-primary-button")
+    browser.wait_for("location.pathname.startsWith('/edit_quiz/')")
+    quiz_id = int(browser.evaluate("location.pathname.split('/').pop()"))
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        question = connection.execute(
+            "SELECT id, question_type FROM questions WHERE quiz_id = ?", (quiz_id,)
+        ).fetchone()
+        pair_count = connection.execute(
+            "SELECT COUNT(*) FROM matching_pairs WHERE question_id = ?", (question[0],)
+        ).fetchone()[0]
+    assert question[1] == "matching"
+    assert pair_count == 2
+
+
 def test_external_ai_help_is_discoverable_and_twenty_five_screenshot_queue_is_rendered(
     browser_stack, tmp_path
 ):

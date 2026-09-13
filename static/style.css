@@ -14491,3 +14491,34 @@ body:not([class]) > .container > .hero-title {
         justify-content: center;
     }
 }
+.external-ai-matching-settings,
+.external-ai-matching-pair-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.external-ai-matching-editor {
+    display: grid;
+    gap: 14px;
+}
+
+.external-ai-matching-pair {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    background: var(--choice-bg);
+}
+
+.external-ai-matching-pair + .external-ai-matching-pair {
+    margin-top: 12px;
+}
+
+@media (max-width: 760px) {
+    .external-ai-matching-settings,
+    .external-ai-matching-pair-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

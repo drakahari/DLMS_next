@@ -4070,9 +4070,9 @@ def _parse_external_ai_quiz_response(raw_response):
     )
 
 
-def _stage_external_ai_quiz_response(raw_response):
+def _stage_external_ai_quiz_response(raw_response, *, content_type="quiz"):
     return _external_ai_structured_service.stage_external_ai_quiz_response(
-        EXTERNAL_AI_DRAFT_FOLDER, raw_response
+        EXTERNAL_AI_DRAFT_FOLDER, raw_response, content_type=content_type
     )
 
 
@@ -5991,7 +5991,9 @@ app.register_blueprint(create_external_ai_blueprint(ExternalAIRouteDependencies(
     build_prompt=lambda topic, question_count, **kwargs: _build_external_ai_quiz_prompt(
         topic, question_count, **kwargs
     ),
-    stage_response=lambda raw_response: _stage_external_ai_quiz_response(raw_response),
+    stage_response=lambda raw_response, **kwargs: _stage_external_ai_quiz_response(
+        raw_response, **kwargs
+    ),
     load_draft=lambda draft_id: _load_external_ai_draft(draft_id),
     update_review_draft=lambda draft_id, review_draft: _update_external_ai_review_draft(
         draft_id, review_draft

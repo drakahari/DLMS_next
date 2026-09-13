@@ -1,4 +1,4 @@
-"""Source-specific routes for External AI quiz building, review, and publication."""
+"""Routes for External AI structured-content building, review, and publication."""
 
 from __future__ import annotations
 
@@ -40,6 +40,7 @@ def _bind_dependencies(view_func, dependencies):
 def _builder_values(form=None):
     values = form if form is not None else {}
     return {
+        "content_type": str(values.get("content_type") or "quiz"),
         "topic": str(values.get("topic") or ""),
         "audience": str(values.get("audience") or "General learner"),
         "difficulty": str(values.get("difficulty") or "Mixed"),
@@ -60,9 +61,10 @@ def _build_prompt(dependencies, values):
     try:
         question_count = int(values["question_count"])
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Question count must be a whole number between 1 and 100."
-        ) from exc
+        count_name = (
+            "Pair count" if values["content_type"] == "matching" else "Question count"
+        )
+        raise ValueError(f"{count_name} must be a whole number.") from exc
     return dependencies.build_prompt(
         values["topic"],
         question_count,
@@ -70,6 +72,7 @@ def _build_prompt(dependencies, values):
         difficulty=values["difficulty"],
         source_expectations=values["source_expectations"],
         requested_source=values["source"],
+        content_type=values["content_type"],
     )
 
 
@@ -125,7 +128,9 @@ def external_ai_builder_validate(dependencies):
         return _render_builder(values, errors=[str(exc)], status=400)
 
     try:
-        draft_id, _review = dependencies.stage_response(values["ai_response"])
+        draft_id, _review = dependencies.stage_response(
+            values["ai_response"], content_type=values["content_type"]
+        )
     except external_ai_structured.ExternalAIStructuredError as exc:
         return _render_builder(values, prompt=prompt, errors=[str(exc)], status=400)
     except Exception as exc:
@@ -177,7 +182,12 @@ def external_ai_publish(dependencies, draft_id):
         submitted = question_review.parse_question_review_payload(
             request.form.get("review_payload") or ""
         )
-        result = question_review.validate_quiz_review_submission(
+        validator = (
+            question_review.validate_matching_review_submission
+            if review_draft.get("content_type") == "matching"
+            else question_review.validate_quiz_review_submission
+        )
+        result = validator(
             review_draft,
             submitted,
             title=request.form.get("quiz_title"),
