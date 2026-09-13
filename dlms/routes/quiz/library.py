@@ -960,6 +960,7 @@ def create_mixed_quiz(dependencies):
         title,
         questions,
         filename_prefix="mixed_quiz",
+        generation_kind="mixed_quiz",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )

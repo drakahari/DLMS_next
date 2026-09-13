@@ -25,6 +25,7 @@ from dlms.services.content_packs import (
     _safe_zip_member_name,
 )
 from dlms.services.learning import _is_generated_review_source
+from dlms.services.question_identity import is_generated_quiz
 
 
 PORTABLE_QUIZ_BUNDLE_FORMAT = "dlms-portable-quiz-bundle"
@@ -601,11 +602,12 @@ def portable_quiz_export_catalog(
     """List registry-backed, non-generated quizzes eligible for export."""
     rows = cur.execute("""
         SELECT z.id, z.title, COALESCE(z.source_file, '') AS source_file,
+               z.generation_kind,
                COUNT(q.id) AS question_count,
                SUM(CASE WHEN COALESCE(q.question_type, 'choice') = 'matching' THEN 1 ELSE 0 END) AS matching_count
         FROM quizzes z
         LEFT JOIN questions q ON q.quiz_id = z.id
-        GROUP BY z.id, z.title, z.source_file
+        GROUP BY z.id, z.title, z.source_file, z.generation_kind
     """).fetchall()
     rows_by_id = {row["id"]: row for row in rows}
     catalog = []
@@ -618,7 +620,14 @@ def portable_quiz_export_catalog(
         row = rows_by_id.get(quiz_id)
         if row is None or not int(row["question_count"] or 0):
             continue
-        if is_generated_source(row["source_file"], row["title"]):
+        generated = is_generated_quiz(
+            generation_kind=row["generation_kind"],
+            source_file=row["source_file"],
+            title=row["title"],
+        )
+        if is_generated_source is not _is_generated_review_source:
+            generated = is_generated_source(row["source_file"], row["title"])
+        if generated:
             excluded_generated_count += 1
             continue
         catalog.append({

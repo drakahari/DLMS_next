@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS quizzes (
     -- Canonical identity (filename or source identifier)
     source_file TEXT NOT NULL UNIQUE,
     registry_id INTEGER,
+    -- Explicitly classifies generated quiz families. Legacy rows remain NULL
+    -- and continue to use the historical filename/title fallback.
+    generation_kind TEXT,
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -41,6 +44,12 @@ CREATE TABLE IF NOT EXISTS questions (
     media_json TEXT,
     correct_letters TEXT,
     correct_text TEXT,
+    -- Contract v2 lineage. These installation-local values are intentionally
+    -- nullable so legacy rows are not ambiguously backfilled.
+    question_uid TEXT,
+    canonical_question_uid TEXT,
+    source_question_uid TEXT,
+    is_generated_copy INTEGER NOT NULL DEFAULT 0,
 
     -- Prevent accidental duplicate imports of the same question
     UNIQUE (quiz_id, question_number, question_text),
@@ -160,6 +169,15 @@ CREATE TABLE IF NOT EXISTS missed_questions (
 CREATE INDEX IF NOT EXISTS idx_questions_quiz
     ON questions (quiz_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_questions_question_uid_unique
+    ON questions (question_uid) WHERE question_uid IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_questions_canonical_uid
+    ON questions (canonical_question_uid);
+
+CREATE INDEX IF NOT EXISTS idx_questions_source_uid
+    ON questions (source_question_uid);
+
 CREATE INDEX IF NOT EXISTS idx_choices_question
     ON choices (question_id);
 
@@ -191,7 +209,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 2);
+VALUES (1, 3);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)

@@ -167,6 +167,11 @@ def save_edited_quiz(dependencies, quiz_id):
     conn = get_db()
     cur = conn.cursor()
 
+    quiz_row = cur.execute(
+        "SELECT generation_kind FROM quizzes WHERE id = ?", (quiz_id,)
+    ).fetchone()
+    generation_kind = quiz_row[0] if quiz_row else None
+
     action = request.form.get("action", "")
 
     action_question_id = None
@@ -284,12 +289,24 @@ def save_edited_quiz(dependencies, quiz_id):
 
         next_qnum = (row[0] or 0) + 1
 
+        lineage = dependencies.question_lineage_for_insert(
+            cur, {}, generation_kind=generation_kind
+        )
+
         cur.execute(
             """
-            INSERT INTO questions (quiz_id, question_number, question_text)
-            VALUES (?, ?, ?)
+            INSERT INTO questions (
+                quiz_id, question_number, question_text,
+                question_uid, canonical_question_uid, source_question_uid,
+                is_generated_copy
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (quiz_id, next_qnum, "New question")
+            (
+                quiz_id, next_qnum, "New question",
+                lineage["question_uid"], lineage["canonical_question_uid"],
+                lineage["source_question_uid"], lineage["is_generated_copy"],
+            )
         )
 
         question_id = cur.lastrowid

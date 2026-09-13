@@ -8166,13 +8166,36 @@ def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sourc
 
     with sqlite3.connect(database_path) as connection:
         created = connection.execute(
-            "SELECT id, source_file FROM quizzes WHERE title = 'Browser Composed Quiz'"
+            "SELECT id, source_file, generation_kind FROM quizzes "
+            "WHERE title = 'Browser Composed Quiz'"
         ).fetchone()
         assert created is not None
         assert created[1].startswith("mixed_quiz_")
+        assert created[2] == "mixed_quiz"
         assert connection.execute(
             "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (created[0],)
         ).fetchone()[0] == 2
+        copied = connection.execute(
+            """
+            SELECT question_uid, canonical_question_uid,
+                   source_question_uid, is_generated_copy
+            FROM questions WHERE quiz_id = ? ORDER BY question_number
+            """,
+            (created[0],),
+        ).fetchall()
+        sources = [
+            connection.execute(
+                """
+                SELECT question_uid, canonical_question_uid
+                FROM questions WHERE quiz_id = ?
+                """,
+                (quiz_id,),
+            ).fetchone()
+            for quiz_id in source_ids
+        ]
+        assert all(row[3] == 1 for row in copied)
+        assert [row[2] for row in copied] == [row[0] for row in sources]
+        assert [row[1] for row in copied] == [row[1] for row in sources]
         for quiz_id in source_ids:
             assert connection.execute(
                 "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
@@ -8539,17 +8562,35 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
     with sqlite3.connect(database_path) as connection:
         created = connection.execute(
             """
-            SELECT id, source_file FROM quizzes
+            SELECT id, source_file, generation_kind FROM quizzes
             WHERE title = 'Spaced Review — Due Questions'
             ORDER BY id DESC LIMIT 1
             """
         ).fetchone()
         assert created is not None
         assert created[1].startswith("spaced_review_native_")
+        assert created[2] == "native_spaced_review"
         assert connection.execute(
             "SELECT COUNT(*) FROM questions WHERE quiz_id = ? AND question_text = ?",
             (created[0], prompt),
         ).fetchone()[0] == 1
+        source_lineage = connection.execute(
+            """
+            SELECT question_uid, canonical_question_uid
+            FROM questions WHERE id = ?
+            """,
+            (question_id,),
+        ).fetchone()
+        copy_lineage = connection.execute(
+            """
+            SELECT canonical_question_uid, source_question_uid,
+                   is_generated_copy
+            FROM questions WHERE quiz_id = ?
+            """,
+            (created[0],),
+        ).fetchone()
+        assert source_lineage[0] is not None
+        assert copy_lineage == (source_lineage[1], source_lineage[0], 1)
         assert connection.execute(
             "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
         ).fetchone()[0] == 1

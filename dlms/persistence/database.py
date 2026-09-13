@@ -4,16 +4,20 @@ import os
 import sqlite3
 
 
-DLMS_SCHEMA_VERSION = 2
+DLMS_SCHEMA_VERSION = 3
 DLMS_LEGACY_SCHEMA_VERSION = 1
 
 DLMS_SCHEMA_COLUMNS = {
-    "quizzes": {"id", "title", "source_file", "registry_id", "created_at"},
+    "quizzes": {
+        "id", "title", "source_file", "registry_id", "generation_kind", "created_at",
+    },
     "questions": {
         "id", "quiz_id", "question_number", "question_text", "question_type",
         "matching_round_size", "matching_direction", "source_organization",
         "source_dataset", "source_version", "source_url", "source_license",
         "explanation", "media_json", "correct_letters", "correct_text",
+        "question_uid", "canonical_question_uid", "source_question_uid",
+        "is_generated_copy",
     },
     "choices": {"id", "question_id", "label", "text", "is_correct"},
     "matching_pairs": {
@@ -41,6 +45,9 @@ DLMS_SCHEMA_COLUMNS = {
 
 DLMS_SCHEMA_INDEXES = {
     "idx_questions_quiz",
+    "idx_questions_canonical_uid",
+    "idx_questions_source_uid",
+    "idx_questions_question_uid_unique",
     "idx_choices_question",
     "idx_matching_pairs_question",
     "idx_attempts_quiz",
@@ -260,7 +267,40 @@ def _migrate_schema_to_v2(
         conn.execute(statement)
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2}
+def _migrate_schema_to_v3(conn, *, database_column_info=None):
+    """Add nullable question lineage without inferring identities for old rows."""
+    if database_column_info is None:
+        database_column_info = _database_column_info
+
+    quiz_columns = database_column_info(conn, "quizzes")
+    if "generation_kind" not in quiz_columns:
+        conn.execute("ALTER TABLE quizzes ADD COLUMN generation_kind TEXT")
+
+    question_columns = database_column_info(conn, "questions")
+    for name, definition in {
+        "question_uid": "TEXT",
+        "canonical_question_uid": "TEXT",
+        "source_question_uid": "TEXT",
+        "is_generated_copy": "INTEGER NOT NULL DEFAULT 0",
+    }.items():
+        if name not in question_columns:
+            conn.execute(f'ALTER TABLE questions ADD COLUMN "{name}" {definition}')
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_questions_question_uid_unique "
+        "ON questions(question_uid) WHERE question_uid IS NOT NULL"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_questions_canonical_uid "
+        "ON questions(canonical_question_uid)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_questions_source_uid "
+        "ON questions(source_question_uid)"
+    )
+
+
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3}
 
 
 def _read_database_schema_version(conn, tables, *, database_column_info=None):

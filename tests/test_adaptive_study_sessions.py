@@ -356,6 +356,7 @@ class AdaptiveStudySessionTests(unittest.TestCase):
         self.assertEqual(1, len(args[1]))
         self.assertEqual(1, args[1][0]["number"])
         self.assertEqual("adaptive_study", kwargs["filename_prefix"])
+        self.assertEqual("adaptive_study", kwargs["generation_kind"])
         self.assertTrue(kwargs["snapshot_existing_assets"])
 
     def test_no_source_questions_returns_to_intelligence_without_publication(self):

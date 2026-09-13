@@ -2,17 +2,18 @@
 
 import re
 
-from .learning import (
-    _canonical_question_identity,
-    _deduplicated_learning_answer_events,
-    _is_generated_review_source,
+from .learning import _deduplicated_learning_answer_events, _is_generated_review_source
+from .question_identity import (
+    canonical_learning_identity,
+    duplicate_content_identity,
+    is_generated_question,
 )
 
 
 def canonical_question_identity(question_type, question_text, question_id=None):
-    """Match the exact cross-quiz identity already used by learning analytics."""
-    return _canonical_question_identity(
-        question_type, question_text, question_id
+    """Return the conservative content identity used for catalog collapsing."""
+    return duplicate_content_identity(
+        question_type, question_text, question_id=question_id
     )
 
 
@@ -43,6 +44,8 @@ def build_mixed_quiz_catalog(
         SELECT q.id, q.quiz_id, q.question_number, q.question_text,
                COALESCE(q.question_type, 'choice') AS question_type,
                z.title AS quiz_title, COALESCE(z.source_file, '') AS source_file,
+               z.generation_kind, q.question_uid, q.canonical_question_uid,
+               COALESCE(q.is_generated_copy, 0) AS is_generated_copy,
                (SELECT COUNT(*) FROM choices c WHERE c.question_id = q.id) AS choice_count,
                (SELECT COUNT(*) FROM matching_pairs m WHERE m.question_id = q.id) AS pair_count
         FROM questions q
@@ -80,7 +83,11 @@ def build_mixed_quiz_catalog(
 
     groups = {}
     question_to_identity = {}
+    source_group_by_lineage = {}
     for row in rows:
+        # Catalog collapsing remains a duplicate-content decision, not a
+        # learning-lineage decision. Independently authored exact duplicates
+        # are still offered once with all source provenance.
         identity = canonical_question_identity(
             row["question_type"], row["question_text"], row["id"]
         )
@@ -88,13 +95,20 @@ def build_mixed_quiz_catalog(
         group = groups.setdefault(identity, {"source_rows": [], "concepts": {}})
 
         registry_item = registry_by_id.get(row["quiz_id"])
-        if registry_item is None or is_generated_source(
-            row["source_file"], row["quiz_title"]
-        ):
+        generated = is_generated_question(row)
+        if is_generated_source is not _is_generated_review_source:
+            generated = is_generated_source(row["source_file"], row["quiz_title"])
+        if registry_item is None or generated:
             continue
         group["source_rows"].append(row)
+        source_group_by_lineage[canonical_learning_identity(row)] = identity
         for concept in concepts_by_question.get(row["id"], []):
             group["concepts"].setdefault(concept.casefold(), concept)
+
+    for row in rows:
+        lineage_identity = canonical_learning_identity(row)
+        if lineage_identity[0] == "lineage" and lineage_identity in source_group_by_lineage:
+            question_to_identity[row["id"]] = source_group_by_lineage[lineage_identity]
 
     missed_identities = set()
     for event in answer_events(cur):

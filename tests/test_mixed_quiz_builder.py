@@ -332,13 +332,15 @@ class MixedQuizBuilderTests(unittest.TestCase):
         conn = dlms.get_db()
         try:
             created = conn.execute(
-                "SELECT id, source_file FROM quizzes WHERE title = ?",
+                "SELECT id, source_file, generation_kind FROM quizzes WHERE title = ?",
                 ("Focused Mixed Quiz",),
             ).fetchone()
             self.assertIsNotNone(created)
             self.assertTrue(created["source_file"].startswith("mixed_quiz_"))
+            self.assertEqual("mixed_quiz", created["generation_kind"])
             copied = conn.execute(
-                "SELECT question_text, question_type, source_organization, source_dataset, media_json "
+                "SELECT question_text, question_type, source_organization, source_dataset, media_json, "
+                "question_uid, canonical_question_uid, source_question_uid, is_generated_copy "
                 "FROM questions WHERE quiz_id = ? ORDER BY question_number",
                 (created["id"],),
             ).fetchall()
@@ -348,6 +350,19 @@ class MixedQuizBuilderTests(unittest.TestCase):
             )
             self.assertEqual("Neutral Organization", copied[0]["source_organization"])
             self.assertEqual("Set A", copied[0]["source_dataset"])
+            source_identity = conn.execute(
+                "SELECT question_uid, canonical_question_uid FROM questions WHERE id = ?",
+                (first_questions[0],),
+            ).fetchone()
+            self.assertEqual(
+                source_identity["question_uid"], copied[0]["source_question_uid"]
+            )
+            self.assertEqual(
+                source_identity["canonical_question_uid"],
+                copied[0]["canonical_question_uid"],
+            )
+            self.assertNotEqual(source_identity["question_uid"], copied[0]["question_uid"])
+            self.assertEqual(1, copied[0]["is_generated_copy"])
             composition_sources = json.loads(copied[0]["media_json"])[
                 "composition_sources"
             ]

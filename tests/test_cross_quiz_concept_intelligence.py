@@ -320,6 +320,7 @@ class CrossQuizConceptIntelligenceTests(unittest.TestCase):
         self.assertEqual(2, len(args[1]))
         self.assertEqual([1, 2], [item["number"] for item in args[1]])
         self.assertEqual("concept_review", kwargs["filename_prefix"])
+        self.assertEqual("concept_review", kwargs["generation_kind"])
         self.assertEqual(90, kwargs["exam_minutes"])
         self.assertTrue(kwargs["snapshot_existing_assets"])
 

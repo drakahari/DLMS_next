@@ -5,19 +5,12 @@ import math
 import re
 from datetime import datetime, timedelta, timezone
 
-
-_GENERATED_REVIEW_SOURCE_PREFIXES = (
-    "smart_review_",
-    "spaced_review_",
-    "concept_review_",
-    "adaptive_study_",
-    "mixed_quiz_",
-)
-_GENERATED_REVIEW_TITLE_PREFIXES = (
-    "smart review —",
-    "spaced review —",
-    "concept review —",
-    "adaptive study —",
+from .question_identity import (
+    canonical_learning_identity,
+    duplicate_content_identity,
+    is_generated_question,
+    is_generated_quiz,
+    legacy_question_identity,
 )
 
 
@@ -40,11 +33,9 @@ def _parse_learning_datetime(value):
 
 
 def _is_generated_review_source(source_file, title=""):
-    source = str(source_file or "").strip().casefold()
-    normalized_title = str(title or "").strip().casefold()
-    return (
-        source.startswith(_GENERATED_REVIEW_SOURCE_PREFIXES)
-        or normalized_title.startswith(_GENERATED_REVIEW_TITLE_PREFIXES)
+    return is_generated_quiz(
+        source_file=source_file,
+        title=title,
     )
 
 
@@ -74,13 +65,9 @@ def _deduplicated_learning_answer_events(cur):
 
 
 def _canonical_question_identity(question_type, question_text, question_id=None):
-    """Return the exact source/copy identity shared by learning workflows."""
-    normalized = re.sub(
-        r"\s+", " ", str(question_text or "").strip()
-    ).casefold()
-    return (
-        str(question_type or "choice").strip().casefold(),
-        normalized or f"question-id:{question_id}",
+    """Backward-compatible name for the centralized legacy content fallback."""
+    return legacy_question_identity(
+        question_type, question_text, question_id=question_id
     )
 
 
@@ -166,40 +153,20 @@ def _learning_intelligence_topics(cur, now=None):
     overpowering completed exam evidence.
     """
     now = now or datetime.now(timezone.utc)
-    concept_rows = cur.execute("""
-        SELECT c.id, c.name,
-               COUNT(DISTINCT CASE
-                   WHEN z.id IS NOT NULL
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'smart_review_%'
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'spaced_review_%'
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'concept_review_%'
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'adaptive_study_%'
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'mixed_quiz_%'
-                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'smart review —%'
-                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'spaced review —%'
-                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'concept review —%'
-                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'adaptive study —%'
-                   THEN qc.question_id
-               END) AS question_count,
-               COUNT(DISTINCT CASE
-                   WHEN z.id IS NOT NULL
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'smart_review_%'
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'spaced_review_%'
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'concept_review_%'
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'adaptive_study_%'
-                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'mixed_quiz_%'
-                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'smart review —%'
-                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'spaced review —%'
-                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'concept review —%'
-                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'adaptive study —%'
-                   THEN q.quiz_id
-               END) AS quiz_count
-        FROM concepts c
-        LEFT JOIN question_concepts qc ON qc.concept_id = c.id
-        LEFT JOIN questions q ON q.id = qc.question_id
-        LEFT JOIN quizzes z ON z.id = q.quiz_id
-        GROUP BY c.id, c.name
-        ORDER BY c.name COLLATE NOCASE
+    concept_rows = cur.execute(
+        "SELECT id, name FROM concepts ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+
+    question_rows = cur.execute("""
+        SELECT q.id, q.quiz_id, q.question_text,
+               COALESCE(q.question_type, 'choice') AS question_type,
+               q.question_uid, q.canonical_question_uid,
+               COALESCE(q.is_generated_copy, 0) AS is_generated_copy,
+               z.generation_kind, COALESCE(z.source_file, '') AS source_file,
+               COALESCE(z.title, '') AS quiz_title
+        FROM questions q
+        JOIN quizzes z ON z.id = q.quiz_id
+        ORDER BY q.id
     """).fetchall()
 
     links = cur.execute("""
@@ -210,9 +177,37 @@ def _learning_intelligence_topics(cur, now=None):
     for row in links:
         concepts_by_question.setdefault(row["question_id"], []).append(row["concept_id"])
 
+    question_by_id = {row["id"]: row for row in question_rows}
+    question_to_identity = {
+        row["id"]: canonical_learning_identity(row) for row in question_rows
+    }
+    source_concepts_by_identity = {}
+    source_question_ids_by_concept = {}
+    source_quiz_ids_by_concept = {}
+    for row in question_rows:
+        if is_generated_question(row):
+            continue
+        identity = question_to_identity[row["id"]]
+        for concept_id in concepts_by_question.get(row["id"], []):
+            source_concepts_by_identity.setdefault(identity, set()).add(concept_id)
+            source_question_ids_by_concept.setdefault(concept_id, set()).add(row["id"])
+            source_quiz_ids_by_concept.setdefault(concept_id, set()).add(row["quiz_id"])
+
     evidence_by_concept = {}
     for row in _deduplicated_learning_answer_events(cur):
-        for concept_id in concepts_by_question.get(row["question_id"], []):
+        question = question_by_id.get(row["question_id"])
+        if question is None:
+            continue
+        identity = question_to_identity[row["question_id"]]
+        if identity[0] == "lineage":
+            concept_ids = source_concepts_by_identity.get(identity, set())
+            if not concept_ids:
+                concept_ids = concepts_by_question.get(row["question_id"], [])
+        else:
+            # Preserve the legacy behavior: historical rows are attributed only
+            # through the concept metadata on the physical question answered.
+            concept_ids = concepts_by_question.get(row["question_id"], [])
+        for concept_id in concept_ids:
             evidence_by_concept.setdefault(concept_id, []).append(row)
 
     topics = []
@@ -292,13 +287,16 @@ def _learning_intelligence_topics(cur, now=None):
         topics.append({
             "concept_id": concept["id"],
             "name": concept["name"],
-            "question_count": concept["question_count"],
-            "quiz_count": concept["quiz_count"],
+            "question_count": len(source_question_ids_by_concept.get(concept["id"], set())),
+            "quiz_count": len(source_quiz_ids_by_concept.get(concept["id"], set())),
             "evidence": evidence,
             "attempt_count": len(exam_attempts),
             "study_session_count": len(study_sessions),
             "practice_run_count": len(exam_attempts) + len(study_sessions),
-            "answered_question_count": len({row["question_id"] for row in events}),
+            "answered_question_count": len({
+                question_to_identity.get(row["question_id"], ("missing", row["question_id"]))
+                for row in events
+            }),
             "correct": correct,
             "incorrect": incorrect,
             "accuracy": accuracy,
@@ -513,6 +511,9 @@ def _native_spaced_repetition_schedule(cur, now=None):
     question_rows = cur.execute("""
         SELECT q.id, q.quiz_id, q.question_number, q.question_text,
                COALESCE(q.question_type, 'choice') AS question_type,
+               q.question_uid, q.canonical_question_uid,
+               COALESCE(q.is_generated_copy, 0) AS is_generated_copy,
+               z.generation_kind,
                COALESCE(z.source_file, '') AS source_file,
                COALESCE(z.title, '') AS quiz_title
         FROM questions q
@@ -534,14 +535,12 @@ def _native_spaced_repetition_schedule(cur, now=None):
     groups = {}
     question_to_key = {}
     for row in question_rows:
-        key = _canonical_question_identity(
-            row["question_type"], row["question_text"], row["id"]
-        )
+        key = canonical_learning_identity(row)
         question_to_key[row["id"]] = key
         group = groups.setdefault(
             key, {"source_rows": [], "concepts": {}, "events": []}
         )
-        if _is_generated_review_source(row["source_file"], row["quiz_title"]):
+        if is_generated_question(row):
             continue
         group["source_rows"].append(row)
         for concept in concepts_by_question.get(row["id"], []):
@@ -818,7 +817,9 @@ def _question_payload_from_db(
                COALESCE(matching_direction, 'term_to_definition') AS matching_direction,
                COALESCE(explanation, '') AS explanation,
                COALESCE(media_json, '{}') AS media_json,
-               source_organization, source_dataset, source_version, source_url, source_license
+               source_organization, source_dataset, source_version, source_url, source_license,
+               question_uid, canonical_question_uid, source_question_uid,
+               COALESCE(is_generated_copy, 0) AS is_generated_copy
         FROM questions WHERE id = ?
     """, (question_id,)).fetchone()
     if not q:
@@ -829,6 +830,13 @@ def _question_payload_from_db(
         "question": q["question_text"],
         "explanation": q["explanation"] or "",
         "concepts": question_concepts(cur, q["id"]),
+        "_lineage": {
+            "source_question_id": q["id"],
+            "question_uid": q["question_uid"],
+            "canonical_question_uid": q["canonical_question_uid"],
+            "source_question_uid": q["source_question_uid"],
+            "is_generated_copy": bool(q["is_generated_copy"]),
+        },
     }
     try:
         media = json.loads(q["media_json"] or "{}")
@@ -874,23 +882,21 @@ def _review_candidates_for_topics(cur, topics):
         return []
     topic_by_id = {t["concept_id"]: t for t in topics}
     rows = cur.execute("""
-        SELECT qc.question_id, qc.concept_id, q.quiz_id, q.question_number, q.question_text
+        SELECT qc.question_id, qc.concept_id, q.quiz_id, q.question_number,
+               q.question_text, COALESCE(q.question_type, 'choice') AS question_type,
+               q.question_uid, q.canonical_question_uid,
+               COALESCE(q.is_generated_copy, 0) AS is_generated_copy,
+               z.generation_kind, COALESCE(z.source_file, '') AS source_file,
+               COALESCE(z.title, '') AS quiz_title
         FROM question_concepts qc
         JOIN questions q ON q.id = qc.question_id
         JOIN quizzes z ON z.id = q.quiz_id
         WHERE qc.concept_id IN (%s)
-          AND LOWER(z.source_file) NOT LIKE 'smart_review_%%'
-          AND LOWER(z.source_file) NOT LIKE 'spaced_review_%%'
-          AND LOWER(z.source_file) NOT LIKE 'concept_review_%%'
-          AND LOWER(z.source_file) NOT LIKE 'adaptive_study_%%'
-          AND LOWER(z.source_file) NOT LIKE 'mixed_quiz_%%'
-          AND LOWER(z.title) NOT LIKE 'smart review —%%'
-          AND LOWER(z.title) NOT LIKE 'spaced review —%%'
-          AND LOWER(z.title) NOT LIKE 'concept review —%%'
-          AND LOWER(z.title) NOT LIKE 'adaptive study —%%'
     """ % ",".join("?" for _ in topic_by_id), tuple(topic_by_id)).fetchall()
     grouped = {}
     for row in rows:
+        if is_generated_question(row):
+            continue
         g = grouped.setdefault(row["question_id"], {
             "question_id": row["question_id"], "quiz_id": row["quiz_id"],
             "question_number": row["question_number"], "question_text": row["question_text"],
@@ -906,9 +912,17 @@ def _review_candidates_for_topics(cur, topics):
 
     unique_by_fingerprint = {}
     for candidate in candidates:
-        fingerprint = " ".join(str(candidate.get("question_text") or "").casefold().split())
-        if not fingerprint:
-            fingerprint = f"question-id:{candidate['question_id']}"
+        source_row = next(
+            row for row in rows if row["question_id"] == candidate["question_id"]
+        )
+        # Candidate diversity is a content-deduplication concern, separate
+        # from learning lineage. Preserve the existing behavior of offering an
+        # exact-equivalent prompt once in a generated review.
+        fingerprint = duplicate_content_identity(
+            source_row["question_type"],
+            source_row["question_text"],
+            question_id=source_row["question_id"],
+        )
         existing = unique_by_fingerprint.get(fingerprint)
         if existing is None:
             candidate["fingerprint"] = fingerprint
@@ -1020,6 +1034,9 @@ def _adaptive_study_candidates(
     question_rows = cur.execute("""
         SELECT q.id, q.quiz_id, q.question_number, q.question_text,
                COALESCE(q.question_type, 'choice') AS question_type,
+               q.question_uid, q.canonical_question_uid,
+               COALESCE(q.is_generated_copy, 0) AS is_generated_copy,
+               z.generation_kind,
                COALESCE(z.source_file, '') AS source_file,
                COALESCE(z.title, '') AS quiz_title
         FROM questions q
@@ -1040,9 +1057,7 @@ def _adaptive_study_candidates(
     groups = {}
     question_to_key = {}
     for row in question_rows:
-        key = _canonical_question_identity(
-            row["question_type"], row["question_text"], row["id"]
-        )
+        key = canonical_learning_identity(row)
         question_to_key[row["id"]] = key
         group = groups.setdefault(
             key,
@@ -1052,7 +1067,7 @@ def _adaptive_study_candidates(
                 "events": [],
             },
         )
-        if _is_generated_review_source(row["source_file"], row["quiz_title"]):
+        if is_generated_question(row):
             continue
         group["source_rows"].append(row)
         group["concept_ids"].update(concepts_by_question.get(row["id"], []))
@@ -1517,7 +1532,10 @@ def _question_diagnostics_payload(
     qrows = cur.execute("""
         SELECT q.id, q.quiz_id, q.question_number, q.question_text,
                COALESCE(q.question_type,'choice') AS question_type,
-               z.title AS quiz_title, COALESCE(z.source_file,'') AS source_file
+               q.question_uid, q.canonical_question_uid,
+               COALESCE(q.is_generated_copy, 0) AS is_generated_copy,
+               z.generation_kind, z.title AS quiz_title,
+               COALESCE(z.source_file,'') AS source_file
         FROM questions q JOIN quizzes z ON z.id=q.quiz_id
         ORDER BY q.id
     """).fetchall()
@@ -1526,8 +1544,7 @@ def _question_diagnostics_payload(
     question_to_key = {}
     for q in qrows:
         qtype = (q['question_type'] or 'choice').lower()
-        norm = re.sub(r"\s+", " ", str(q['question_text'] or '').strip()).casefold()
-        key = (qtype, norm)
+        key = canonical_learning_identity(q)
         question_to_key[q['id']] = key
         g = groups.setdefault(key, {
             'question_type': qtype, 'question_text': q['question_text'] or '',
@@ -1536,7 +1553,7 @@ def _question_diagnostics_payload(
         })
         g['question_ids'].append(q['id'])
         g['quiz_titles'].add(q['quiz_title'] or '')
-        if not _is_generated_review_source(q['source_file'], q['quiz_title']):
+        if not is_generated_question(q):
             g['source_question_ids'].append(q['id'])
         for concept in question_concepts(cur, q['id']):
             g['concepts'].add(concept)

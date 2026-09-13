@@ -6,7 +6,7 @@ import re
 import unicodedata
 
 from .learning import _is_generated_review_source
-from .quiz_composition import canonical_question_identity
+from .question_identity import duplicate_content_identity, is_generated_question
 
 
 # These deliberately conservative thresholds identify only very close wording
@@ -142,7 +142,10 @@ def _source_records(cur, registry, *, is_generated_source):
         SELECT q.id, q.quiz_id, q.question_number, q.question_text,
                COALESCE(q.question_type, 'choice') AS question_type,
                COALESCE(q.matching_direction, 'term_to_definition') AS matching_direction,
-               z.title AS quiz_title, COALESCE(z.source_file, '') AS source_file
+               q.question_uid, q.canonical_question_uid,
+               COALESCE(q.is_generated_copy, 0) AS is_generated_copy,
+               z.generation_kind, z.title AS quiz_title,
+               COALESCE(z.source_file, '') AS source_file
         FROM questions q
         JOIN quizzes z ON z.id = q.quiz_id
         ORDER BY q.quiz_id, q.question_number, q.id
@@ -177,7 +180,10 @@ def _source_records(cur, registry, *, is_generated_source):
         registry_item = registry_by_id.get(row["quiz_id"])
         if registry_item is None:
             continue
-        if is_generated_source(row["source_file"], row["quiz_title"]):
+        generated = is_generated_question(row)
+        if is_generated_source is not _is_generated_review_source:
+            generated = is_generated_source(row["source_file"], row["quiz_title"])
+        if generated:
             excluded_generated_count += 1
             continue
         record = {
@@ -194,8 +200,13 @@ def _source_records(cur, registry, *, is_generated_source):
             "edit_url": f"/edit_quiz/{row['quiz_id']}",
             "_registry_order": registry_order[row["quiz_id"]],
         }
-        record["_canonical_identity"] = canonical_question_identity(
-            record["question_type"], record["question_text"], record["question_id"]
+        # Duplicate equivalence is intentionally content-based and richer than
+        # canonical learning lineage. Independent source UIDs may still be
+        # useful duplicate candidates.
+        record["_canonical_identity"] = duplicate_content_identity(
+            record["question_type"],
+            record["question_text"],
+            question_id=record["question_id"],
         )
         record["_response_fingerprint"] = _response_fingerprint(record)
         record["_tokens"] = _word_tokens(record["question_text"])

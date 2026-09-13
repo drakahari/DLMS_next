@@ -84,6 +84,7 @@ class QuizBlueprintTests(unittest.TestCase):
         "quiz_edit_validation", "publish_quiz_edit_request",
         "delete_quiz_transaction", "cleanup_deleted_quiz_artifacts",
         "rebuild_quiz_html_from_registry",
+        "question_lineage_for_insert",
     }
     AUTHORING_DEPENDENCIES = {
         "data_folder", "logo_folder", "parse_log_path",

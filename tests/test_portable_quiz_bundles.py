@@ -217,7 +217,8 @@ class PortableQuizBundleTests(unittest.TestCase):
         manifest_text = json.dumps(manifest).casefold()
         for excluded in (
             "attempt", "score", "learning_event", "schedule", "confidence",
-            "composition_sources",
+            "composition_sources", "question_uid", "canonical_question_uid",
+            "source_question_uid", "source_question_id", "is_generated_copy",
         ):
             self.assertNotIn(excluded, manifest_text)
 
@@ -252,7 +253,27 @@ class PortableQuizBundleTests(unittest.TestCase):
             folder="Portable Folder",
             logo=logo_path.name,
         )
+        source_lineage = dlms._question_identity_service.source_question_lineage()
+        connection = dlms.get_db()
+        try:
+            connection.execute(
+                """
+                UPDATE questions
+                SET question_uid = ?, canonical_question_uid = ?
+                WHERE quiz_id = ? AND question_number = 1
+                """,
+                (
+                    source_lineage["question_uid"],
+                    source_lineage["canonical_question_uid"],
+                    quiz_id,
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
         bundle_bytes, _name, manifest = self._export([quiz_id])
+        self.assertNotIn("question_uid", json.dumps(manifest))
+        self.assertNotIn(source_lineage["question_uid"], json.dumps(manifest))
         self.assertEqual(2, len(manifest["quizzes"][0]["assets"]))
 
         client = dlms.app.test_client()
@@ -288,7 +309,9 @@ class PortableQuizBundleTests(unittest.TestCase):
         connection = dlms.get_db()
         try:
             imported_questions = connection.execute(
-                "SELECT id, question_type, media_json FROM questions WHERE quiz_id = ? ORDER BY question_number",
+                "SELECT id, question_type, media_json, question_uid, canonical_question_uid, "
+                "source_question_uid, is_generated_copy FROM questions "
+                "WHERE quiz_id = ? ORDER BY question_number",
                 (imported_entry["id"],),
             ).fetchall()
             concepts = {
@@ -305,6 +328,16 @@ class PortableQuizBundleTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertEqual(["choice", "matching"], [row["question_type"] for row in imported_questions])
+        self.assertNotEqual(
+            source_lineage["canonical_question_uid"],
+            imported_questions[0]["canonical_question_uid"],
+        )
+        self.assertEqual(
+            imported_questions[0]["question_uid"],
+            imported_questions[0]["canonical_question_uid"],
+        )
+        self.assertIsNone(imported_questions[0]["source_question_uid"])
+        self.assertEqual(0, imported_questions[0]["is_generated_copy"])
         self.assertEqual({"Portable concepts", "Terminology"}, concepts)
         self.assertEqual([("Alpha", "First definition"), ("Beta", "Second definition")], [tuple(row) for row in pairs])
         imported_media = json.loads(imported_questions[0]["media_json"])

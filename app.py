@@ -59,6 +59,7 @@ from dlms.services import quiz_duplicates as _quiz_duplicate_service
 from dlms.services import quiz_smart_views as _quiz_smart_view_service
 from dlms.services import portable_quiz_bundles as _portable_quiz_bundle_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
+from dlms.services import question_identity as _question_identity_service
 from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
 from dlms.services import ocr as _ocr_service
@@ -1309,7 +1310,11 @@ def _publish_quiz(
     source_dataset_id=None,
     snapshot_existing_assets=False,
     rollback_logo_filename=None,
+    generation_kind=None,
 ):
+    generation_kind = _question_identity_service.validate_generation_kind(
+        generation_kind
+    )
     return _quiz_publication_service.publish_quiz(
         quiz_title,
         runtime_questions,
@@ -1322,6 +1327,7 @@ def _publish_quiz(
         source_dataset_id=source_dataset_id,
         snapshot_existing_assets=snapshot_existing_assets,
         rollback_logo_filename=rollback_logo_filename,
+        generation_kind=generation_kind,
         generated_artifact_names=_generated_quiz_artifact_names,
         staging_root=_quiz_publication_staging_root,
         normalize_ordinals=_normalize_quiz_question_ordinals,
@@ -1775,7 +1781,14 @@ def _migrate_schema_to_v2(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2}
+def _migrate_schema_to_v3(conn):
+    return _database._migrate_schema_to_v3(
+        conn,
+        database_column_info=_database_column_info,
+    )
+
+
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3}
 
 
 def _read_database_schema_version(conn, tables):
@@ -3786,23 +3799,33 @@ def _schedule_post_removal_shutdown(removed_path):
 # =========================
 # QUIZ DB SAVE HELPER (UPLOAD + PASTE)
 # =========================
-def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=None):
+def _insert_quiz_rows(
+    conn,
+    quiz_title,
+    source_file,
+    quiz_data,
+    logo_filename=None,
+    generation_kind=None,
+):
     """Insert a complete quiz on the caller's current transaction."""
     cur = conn.cursor()
 
     # Insert quiz (now stores registry_id too)
     cur.execute(
         """
-        INSERT INTO quizzes (title, source_file)
-        VALUES (?, ?)
+        INSERT INTO quizzes (title, source_file, generation_kind)
+        VALUES (?, ?, ?)
         """,
-        (quiz_title, source_file),
+        (quiz_title, source_file, generation_kind),
     )
 
     quiz_id = cur.lastrowid  # ✅ CAPTURE DB ID
 
     # Insert questions + question-specific answer data
     for q in quiz_data:
+        lineage = _question_identity_service.lineage_for_insert(
+            cur, q, generation_kind=generation_kind
+        )
         question_number = q.get("number")
         question_text = q.get("question") or q.get("text") or ""
         question_type = (q.get("type") or "choice").strip().lower()
@@ -3835,9 +3858,13 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
                 source_url,
                 source_license,
                 explanation,
-                media_json
+                media_json,
+                question_uid,
+                canonical_question_uid,
+                source_question_uid,
+                is_generated_copy
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 quiz_id, question_number, question_text, question_type,
@@ -3849,6 +3876,10 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
                 (q.get("source") or {}).get("license"),
                 q.get("explanation") or "",
                 json.dumps(media_payload, ensure_ascii=False),
+                lineage["question_uid"],
+                lineage["canonical_question_uid"],
+                lineage["source_question_uid"],
+                lineage["is_generated_copy"],
             ),
         )
 
@@ -6404,6 +6435,9 @@ app.register_blueprint(create_quiz_blueprint(
         delete_quiz_transaction=lambda *args, **kwargs: _delete_quiz_transaction(*args, **kwargs),
         cleanup_deleted_quiz_artifacts=lambda *args, **kwargs: _cleanup_deleted_quiz_artifacts(*args, **kwargs),
         rebuild_quiz_html_from_registry=lambda *args, **kwargs: rebuild_quiz_html_from_registry(*args, **kwargs),
+        question_lineage_for_insert=lambda *args, **kwargs: (
+            _question_identity_service.lineage_for_insert(*args, **kwargs)
+        ),
     ),
     QuizAuthoringDependencies(
         data_folder=lambda: DATA_FOLDER,

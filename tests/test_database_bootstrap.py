@@ -244,12 +244,18 @@ class DatabaseBootstrapTests(unittest.TestCase):
 
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS, {2: recorded}):
             result = dlms.bootstrap_database(str(self.db_path), require_owned_root=False)
-        self.assertEqual(result, {"status": "migrated", "version": 2, "from_version": 1})
+        self.assertEqual(
+            result,
+            {"status": "migrated", "version": dlms.DLMS_SCHEMA_VERSION, "from_version": 1},
+        )
         self.assertEqual(calls, [2])
 
         conn = sqlite3.connect(self.db_path)
         try:
-            self.assertEqual(conn.execute("SELECT version FROM schema_meta WHERE id=1").fetchone()[0], 2)
+            self.assertEqual(
+                conn.execute("SELECT version FROM schema_meta WHERE id=1").fetchone()[0],
+                dlms.DLMS_SCHEMA_VERSION,
+            )
             self.assertEqual(conn.execute(
                 "SELECT id, attempt_id, question_id, correct_letters FROM missed_questions"
             ).fetchone(), (20, "legacy-attempt", 10, "A"))
@@ -282,7 +288,45 @@ class DatabaseBootstrapTests(unittest.TestCase):
             self.assertEqual(columns["question_id"][3], 0)
             self.assertIn("response_json", columns)
             self.assertEqual(conn.execute("SELECT correct_letters FROM missed_questions").fetchone()[0], "A")
-            self.assertEqual(conn.execute("SELECT version FROM schema_meta").fetchone()[0], 2)
+            self.assertEqual(
+                conn.execute("SELECT version FROM schema_meta").fetchone()[0],
+                dlms.DLMS_SCHEMA_VERSION,
+            )
+        finally:
+            conn.close()
+
+    def test_version_two_migration_adds_lineage_without_ambiguous_backfill(self):
+        self._legacy_database()
+        conn = sqlite3.connect(self.db_path)
+        try:
+            dlms._migrate_schema_to_v2(conn)
+            conn.execute("UPDATE schema_meta SET version = 2 WHERE id = 1")
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = dlms.bootstrap_database(
+            str(self.db_path), require_owned_root=False
+        )
+
+        self.assertEqual(
+            {"status": "migrated", "version": 3, "from_version": 2}, result
+        )
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                """
+                SELECT question_uid, canonical_question_uid,
+                       source_question_uid, is_generated_copy
+                FROM questions WHERE id = 10
+                """
+            ).fetchone()
+            self.assertEqual((None, None, None, 0), row)
+            self.assertIsNone(
+                conn.execute(
+                    "SELECT generation_kind FROM quizzes WHERE id = 1"
+                ).fetchone()[0]
+            )
         finally:
             conn.close()
 

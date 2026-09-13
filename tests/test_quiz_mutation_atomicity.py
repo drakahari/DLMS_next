@@ -104,6 +104,14 @@ class QuizMutationAtomicityTests(unittest.TestCase):
                     "SELECT question_text, explanation FROM questions WHERE id = ?",
                     (self.question_id,),
                 ).fetchone()),
+                "identity": tuple(conn.execute(
+                    """
+                    SELECT question_uid, canonical_question_uid,
+                           source_question_uid, is_generated_copy
+                    FROM questions WHERE id = ?
+                    """,
+                    (self.question_id,),
+                ).fetchone()),
                 "choices": [tuple(row) for row in conn.execute(
                     "SELECT label, text, is_correct FROM choices WHERE question_id = ? ORDER BY label",
                     (self.question_id,),
@@ -358,6 +366,7 @@ class QuizMutationAtomicityTests(unittest.TestCase):
             conn.close()
 
     def test_successful_edit_updates_all_stores_and_keeps_valid_json(self):
+        before_identity = self._snapshot()["db"]["identity"]
         response = self.client.post(
             f"/edit_quiz/{self.quiz_id}",
             data=self._edit_form(),
@@ -366,6 +375,7 @@ class QuizMutationAtomicityTests(unittest.TestCase):
         self.assertEqual(302, response.status_code)
         snapshot = self._snapshot()
         self.assertEqual((self.quiz_id, "Changed quiz"), snapshot["db"]["quiz"])
+        self.assertEqual(before_identity, snapshot["db"]["identity"])
         registry = json.loads(snapshot["registry"])
         self.assertEqual("Changed quiz", registry[0]["title"])
         self.assertEqual(45, registry[0]["exam_minutes"])
@@ -373,6 +383,34 @@ class QuizMutationAtomicityTests(unittest.TestCase):
         self.assertEqual("Changed question", payload[0]["question"])
         self.assertIn(b"Changed quiz", snapshot["html"])
         self._assert_no_mutation_staging()
+
+    def test_editor_adds_a_new_source_question_with_durable_identity(self):
+        form = self._edit_form()
+        form["action"] = "add_question"
+        response = self.client.post(
+            f"/edit_quiz/{self.quiz_id}",
+            data=form,
+            headers=csrf_headers(self.client),
+        )
+        self.assertEqual(302, response.status_code)
+        conn = dlms.get_db()
+        try:
+            added = conn.execute(
+                """
+                SELECT question_uid, canonical_question_uid,
+                       source_question_uid, is_generated_copy
+                FROM questions
+                WHERE quiz_id = ? AND question_number = 2
+                """,
+                (self.quiz_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(added)
+        self.assertRegex(added["question_uid"], r"^[0-9a-f]{32}$")
+        self.assertEqual(added["question_uid"], added["canonical_question_uid"])
+        self.assertIsNone(added["source_question_uid"])
+        self.assertEqual(0, added["is_generated_copy"])
 
 
 if __name__ == "__main__":

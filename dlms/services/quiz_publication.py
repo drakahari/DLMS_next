@@ -674,6 +674,7 @@ def publish_quiz(
     source_dataset_id=None,
     snapshot_existing_assets=False,
     rollback_logo_filename=None,
+    generation_kind=None,
     generated_artifact_names,
     staging_root,
     normalize_ordinals,
@@ -814,7 +815,13 @@ def publish_quiz(
         journal["artifacts"]["assets"]["required"] = isdir(staged_assets)
         update_journal(journal_path, journal)
 
-        write_staged_quiz_json(staged_json, runtime_payload)
+        # Lineage hints are transaction-local database metadata. They must not
+        # leak into the generated runtime JSON artifact.
+        runtime_artifact_payload = copy.deepcopy(runtime_payload)
+        for question in runtime_artifact_payload:
+            if isinstance(question, dict):
+                question.pop("_lineage", None)
+        write_staged_quiz_json(staged_json, runtime_artifact_payload)
 
         conn = get_db()
         conn.execute("BEGIN")
@@ -824,6 +831,7 @@ def publish_quiz(
             effective_source_file,
             db_payload,
             logo_filename,
+            generation_kind,
         )
         journal["quiz"]["id"] = quiz_id
         update_journal(journal_path, journal, state="db_commit_pending")

@@ -298,6 +298,7 @@ class NativeSpacedRepetitionTests(unittest.TestCase):
         )
         self.assertEqual([1, 2], [question["number"] for question in args[1]])
         self.assertEqual("spaced_review_native", kwargs["filename_prefix"])
+        self.assertEqual("native_spaced_review", kwargs["generation_kind"])
         self.assertEqual(90, kwargs["exam_minutes"])
         self.assertTrue(kwargs["snapshot_existing_assets"])
 

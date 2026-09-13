@@ -189,6 +189,7 @@ def smart_review_generate(dependencies):
         quiz_title,
         quiz_data,
         filename_prefix="smart_review",
+        generation_kind="smart_review",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )
@@ -239,6 +240,7 @@ def adaptive_study_generate(dependencies):
         "Adaptive Study — What I Need Most",
         quiz_data,
         filename_prefix="adaptive_study",
+        generation_kind="adaptive_study",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )
@@ -310,6 +312,7 @@ def concept_review_generate(dependencies):
         quiz_title,
         quiz_data,
         filename_prefix="concept_review",
+        generation_kind="concept_review",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )
@@ -434,6 +437,7 @@ def spaced_review_generate(dependencies):
         quiz_title,
         quiz_data,
         filename_prefix="spaced_review",
+        generation_kind="spaced_review",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )
@@ -478,6 +482,7 @@ def native_spaced_review_generate(dependencies):
         "Spaced Review — Due Questions",
         quiz_data,
         filename_prefix="spaced_review_native",
+        generation_kind="native_spaced_review",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )

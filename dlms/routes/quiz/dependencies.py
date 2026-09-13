@@ -75,6 +75,7 @@ class QuizEditorDependencies:
     delete_quiz_transaction: Dependency
     cleanup_deleted_quiz_artifacts: Dependency
     rebuild_quiz_html_from_registry: Dependency
+    question_lineage_for_insert: Dependency
 
 
 @dataclass(frozen=True)
