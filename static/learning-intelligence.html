@@ -56,25 +56,25 @@
   </div>
   <div class="learning-intelligence-toolbar" id="liToolbar">
     <div class="learning-intelligence-filters" role="group" aria-label="Topic filters">
-      <button type="button" class="active" data-li-filter="all">All</button>
-      <button type="button" data-li-filter="weak">Weak Areas</button>
-      <button type="button" data-li-filter="developing">Developing</button>
-      <button type="button" data-li-filter="proficient">Proficient</button>
-      <button type="button" data-li-filter="strong">Strong</button>
-      <button type="button" data-li-filter="insufficient">Not Enough Data</button>
+      <button type="button" class="active" data-li-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-li-filter="weak" aria-pressed="false">Weak Areas</button>
+      <button type="button" data-li-filter="developing" aria-pressed="false">Developing</button>
+      <button type="button" data-li-filter="proficient" aria-pressed="false">Proficient</button>
+      <button type="button" data-li-filter="strong" aria-pressed="false">Strong</button>
+      <button type="button" data-li-filter="insufficient" aria-pressed="false">Not Enough Data</button>
     </div>
     <input id="liSearch" class="learning-intelligence-search" type="search" placeholder="Search topics…" aria-label="Search topics">
   </div>
-  <div id="liLoading" class="learning-intelligence-empty">Loading learning intelligence…</div>
+  <div id="liLoading" class="learning-intelligence-empty" role="status" aria-live="polite">Loading learning intelligence…</div>
   <div id="liNoEvidence" class="learning-intelligence-empty learning-intelligence-no-evidence" role="status" hidden>
     <strong>No Learning Intelligence data exists yet.</strong>
     <p>Your tagged concepts are preserved. New mastery data will appear after you answer tagged questions in Study or Exam Mode.</p>
     <button class="build-secondary-link" id="liToggleZeroEvidence" type="button" aria-expanded="false" aria-controls="liTableWrap" hidden>View preserved tagged concepts</button>
   </div>
-  <div id="liEmpty" class="learning-intelligence-empty" hidden>No concepts match this view.</div>
+  <div id="liEmpty" class="learning-intelligence-empty" role="status" aria-live="polite" hidden>No concepts match this view.</div>
   <div class="learning-intelligence-table-wrap" id="liTableWrap" hidden>
     <table class="learning-intelligence-table">
-      <thead><tr><th>Concept</th><th>Coverage</th><th>Results</th><th>Accuracy</th><th>Trend</th><th>Mastery</th><th>Practice</th></tr></thead>
+      <thead><tr><th scope="col">Concept</th><th scope="col">Coverage</th><th scope="col">Results</th><th scope="col">Accuracy</th><th scope="col">Trend</th><th scope="col">Mastery</th><th scope="col">Practice</th></tr></thead>
       <tbody id="liRows"></tbody>
     </table>
   </div>
@@ -177,8 +177,8 @@ fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
  document.getElementById('liLoading').hidden=true;
  document.getElementById('liModelContent').innerHTML=`<p><strong>Mastery:</strong> ${esc(state.model.mastery_formula||'')}</p><p><strong>Evidence:</strong> ${esc(state.model.evidence_credit||'')}</p><p><strong>Minimum evidence:</strong> ${esc(state.model.minimum_evidence||'')}</p><p><strong>Weak area:</strong> ${esc(state.model.weak_area_rule||'')}</p><p><strong>De-duplication:</strong> ${esc(state.model.deduplication||'')}</p><p><strong>Trend:</strong> ${esc(state.model.trend||'')}</p><p><strong>Coverage:</strong> ${esc(state.model.coverage||'')}</p>`;
  render();renderWeak();
-}).catch(()=>{document.getElementById('liLoading').textContent='Learning intelligence could not be loaded.';});
-document.querySelectorAll('[data-li-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-li-filter]').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.filter=b.dataset.liFilter;render();}));
+}).catch(()=>{const loading=document.getElementById('liLoading');loading.setAttribute('role','alert');loading.setAttribute('aria-live','assertive');loading.textContent='Learning intelligence could not be loaded.';});
+document.querySelectorAll('[data-li-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-li-filter]').forEach(x=>{const selected=x===b;x.classList.toggle('active',selected);x.setAttribute('aria-pressed',String(selected));});state.filter=b.dataset.liFilter;render();}));
 document.getElementById('liSearch').addEventListener('input',render);
 document.getElementById('liToggleZeroEvidence').addEventListener('click',e=>{state.showZeroEvidence=!state.showZeroEvidence;e.currentTarget.setAttribute('aria-expanded',String(state.showZeroEvidence));e.currentTarget.textContent=state.showZeroEvidence?'Hide preserved tagged concepts':`View ${state.topics.length} preserved tagged concept${state.topics.length===1?'':'s'}`;render();});
 const modal=document.getElementById('liModel');

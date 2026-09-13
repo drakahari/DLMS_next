@@ -5674,7 +5674,12 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "(() => {const form=document.getElementById('builderForm');"
         "return {action:form.getAttribute('action'),method:form.method,images:DRAFT.images.length,"
         "payload:!!document.getElementById('builderPayload'),rights:form.rights_ok.required,"
-        "csrf:form.querySelector('[name=csrf_token]').value.length>0,questions:document.querySelectorAll('.image-builder-question-card').length};})()"
+        "csrf:form.querySelector('[name=csrf_token]').value.length>0,questions:document.querySelectorAll('.image-builder-question-card').length,"
+        "imageDescription:document.querySelector('.image-alt-input').getAttribute('aria-label'),"
+        "choiceText:document.querySelector('.choice-text').getAttribute('aria-label'),"
+        "correctChoice:document.querySelector('.choice-correct').getAttribute('aria-label'),"
+        "hotspotStageRole:document.querySelector('.image-builder-hotspot-stage').getAttribute('role'),"
+        "hotspotStageTabIndex:document.querySelector('.image-builder-hotspot-stage').tabIndex};})()"
     )
     assert image_builder_state == {
         "action": "/study-packs/image-builder/save",
@@ -5684,6 +5689,26 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "rights": True,
         "csrf": True,
         "questions": 1,
+        "imageDescription": "Accessible description for segment19-browser.png",
+        "choiceText": "Answer choice text",
+        "correctChoice": "Mark this answer correct",
+        "hotspotStageRole": "group",
+        "hotspotStageTabIndex": 0,
+    }
+    image_builder_keyboard = browser.evaluate(
+        "(() => {const card=document.querySelector('.image-builder-question-card');"
+        "const type=card.querySelector('.q-type');type.value='hotspot';"
+        "type.dispatchEvent(new Event('change',{bubbles:true}));"
+        "const stage=card.querySelector('.image-builder-hotspot-stage');stage.focus();"
+        "stage.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));"
+        "stage.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));"
+        "return {center:card._shape.center,status:card.querySelector('.hotspot-status').textContent,"
+        "cursorHidden:card.querySelector('.hotspot-keyboard-cursor').hidden};})()"
+    )
+    assert image_builder_keyboard == {
+        "center": [0.52, 0.5],
+        "status": "Circle center placed with keyboard.",
+        "cursorHidden": False,
     }
 
     pack_root = data_root / "content_packs" / "DLMS_Study_segment19_browser_editor"
@@ -5730,6 +5755,12 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     editor_state = browser.evaluate(
         "(() => ({pack:EDITOR_DATA.pack_id,dataset:EDITOR_DATA.dataset_id,kind:EDITOR_DATA.dataset_kind,"
         "status:document.getElementById('editorStatus').textContent,"
+        "statusRole:document.getElementById('editorStatus').getAttribute('role'),"
+        "statusLive:document.getElementById('editorStatus').getAttribute('aria-live'),"
+        "activeMode:document.getElementById('hotspotModeBtn').getAttribute('aria-pressed'),"
+        "inactiveMode:document.getElementById('prepModeBtn').getAttribute('aria-pressed'),"
+        "stageRole:document.getElementById('editorStage').getAttribute('role'),"
+        "stageTabIndex:document.getElementById('editorStage').tabIndex,"
         "menuLabel:document.getElementById('menuButton').getAttribute('aria-label')}))()"
     )
     assert editor_state == {
@@ -5737,8 +5768,26 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "dataset": "visuals",
         "kind": "hotspot",
         "status": "Clickable-region mode.",
+        "statusRole": "status",
+        "statusLive": "polite",
+        "activeMode": "true",
+        "inactiveMode": "false",
+        "stageRole": "group",
+        "stageTabIndex": 0,
         "menuLabel": "Toggle navigation",
     }
+    editor_keyboard = browser.evaluate(
+        "(() => {const stage=document.getElementById('editorStage');stage.focus();"
+        "stage.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));"
+        "stage.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));"
+        "return {shape:currentShape(),cursorHidden:document.getElementById('editorKeyboardCursor').hidden};})()"
+    )
+    assert editor_keyboard["cursorHidden"] is False
+    assert editor_keyboard["shape"]["type"] == "circle"
+    assert editor_keyboard["shape"]["x"] == pytest.approx(0.52, abs=0.002)
+    assert editor_keyboard["shape"]["y"] == pytest.approx(0.5, abs=0.002)
+    assert editor_keyboard["shape"]["radius"] == 0.1
+    browser.click("#loadExistingBtn")
     browser.evaluate(
         "window.confirm=()=>true;document.getElementById('saveBtn').click();true"
     )
@@ -5749,6 +5798,10 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "document.getElementById('saveEditsBtn').click();true"
     )
     browser.wait_for("document.getElementById('editorStatus').textContent.includes('Image prep saved')")
+    assert browser.evaluate(
+        "document.getElementById('prepModeBtn').getAttribute('aria-pressed')==='true' && "
+        "document.getElementById('hotspotModeBtn').getAttribute('aria-pressed')==='false'"
+    ) is True
     saved_editor_data = json.loads(editor_data_path.read_text(encoding="utf-8"))
     assert saved_editor_data["images"][0]["hotspots"][0]["shape"] == {
         "type": "circle", "x": .5, "y": .5, "radius": .1
@@ -8776,6 +8829,66 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
         assert connection.execute(
             "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
         ).fetchone()[0] == 1
+
+
+def test_core_filter_state_and_repeated_builder_fields_are_accessible(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    browser.set_viewport(640, 900)  # 1280px desktop content at a 200% zoom equivalent.
+    browser.navigate(f"{base_url}/create_short_quiz?count=2")
+    browser.wait_for("document.getElementById('create-short-quiz-form')")
+    choice_names = browser.evaluate(
+        "[...document.querySelectorAll('.choice-text')].map(input=>input.getAttribute('aria-label'))"
+    )
+    assert choice_names == [
+        "Question 1 answer A text", "Question 1 answer B text",
+        "Question 1 answer C text", "Question 1 answer D text",
+        "Question 2 answer A text", "Question 2 answer B text",
+        "Question 2 answer C text", "Question 2 answer D text",
+    ]
+    dynamic_names = browser.evaluate(
+        "(() => {const first=document.querySelector('.question-block');"
+        "const type=first.querySelector('.question-type');type.value='matching';"
+        "type.dispatchEvent(new Event('change',{bubbles:true}));"
+        "first.querySelector('.choice-editor .build-add-choice').click();first.querySelector('.matching-editor .build-add-choice').click();"
+        "const pairs=[...first.querySelectorAll('.build-match-pair')];"
+        "return {choice:[...first.querySelectorAll('.choice-text')].at(-1).getAttribute('aria-label'),"
+        "left:pairs.at(-1).querySelector('.match-left').getAttribute('aria-label'),"
+        "right:pairs.at(-1).querySelector('.match-right').getAttribute('aria-label'),"
+        "deletePair:pairs.at(-1).querySelector('.btn-delete').getAttribute('aria-label'),"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert dynamic_names == {
+        "choice": "Question 1 answer E text",
+        "left": "Question 1 matching term 5",
+        "right": "Question 1 matching definition 5",
+        "deletePair": "Delete question 1 matching pair 5",
+        "overflow": True,
+    }
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(f"{base_url}/learning-intelligence")
+        browser.wait_for("document.getElementById('liLoading').hidden")
+        browser.click('[data-li-filter="weak"]')
+        learning_state = browser.evaluate(
+            "(() => {const buttons=[...document.querySelectorAll('[data-li-filter]')];"
+            "return {pressed:buttons.filter(button=>button.getAttribute('aria-pressed')==='true').map(button=>button.dataset.liFilter),"
+            "active:buttons.filter(button=>button.classList.contains('active')).map(button=>button.dataset.liFilter),"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert learning_state == {"pressed": ["weak"], "active": ["weak"], "overflow": True}
+
+    browser.navigate(f"{base_url}/history")
+    browser.wait_for("document.getElementById('historyAttemptCount').textContent !== 'Loading…'")
+    browser.click('[data-origin-filter="quiz"]')
+    browser.wait_for(
+        "document.querySelector('[data-origin-filter=quiz]').getAttribute('aria-pressed')==='true'"
+    )
+    assert browser.evaluate(
+        "[...document.querySelectorAll('[data-origin-filter]')].filter(button=>button.getAttribute('aria-pressed')==='true').map(button=>button.dataset.originFilter)"
+    ) == ["quiz"]
 
 
 def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack):

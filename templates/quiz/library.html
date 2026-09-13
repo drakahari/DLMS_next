@@ -159,7 +159,7 @@
                 <form method="POST" action="/add_quiz_folder" class="add-folder-form library-inline-form" style="display:none;">
                     <input type="hidden" name="view" value="{{ view }}">
                     {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
-                    <input type="text" name="folder" placeholder="New folder name" required>
+                    <input type="text" name="folder" placeholder="New folder name" aria-label="New folder name" required>
                     <button type="submit">Save</button>
                     <button type="button" class="library-quiet-button" onclick="hideAddFolderForm(event, this)">Cancel</button>
                 </form>
@@ -209,7 +209,7 @@
                                 <input type="hidden" name="old_folder" value="{{ folder_name }}">
                                 <input type="hidden" name="view" value="{{ view }}">
                                 {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
-                                <input type="text" name="new_folder" value="{{ folder_name }}" required>
+                            <input type="text" name="new_folder" value="{{ folder_name }}" aria-label="Rename {{ folder_name }} folder" required>
                                 <button type="submit">Save</button>
                                 <button type="button" class="library-quiet-button" onclick="hideRenameFolderForm(event, this)">Cancel</button>
                             </form>
@@ -277,7 +277,7 @@
                                         <input type="hidden" name="id" value="{{ q['id'] }}">
                                         <input type="hidden" name="view" value="{{ view }}">
                                         {% if smart %}<input type="hidden" name="smart" value="{{ smart }}">{% endif %}
-                                        <select name="folder">
+                                        <select name="folder" aria-label="Move {{ q['title'] }} to folder">
                                             {% for folder in folder_names %}
                                             <option value="{{ folder }}" {% if q.get('folder', 'Uncategorized') == folder %}selected{% endif %}>{{ folder }}{% if folder|lower in hidden_folder_keys %} (hidden){% endif %}</option>
                                             {% endfor %}

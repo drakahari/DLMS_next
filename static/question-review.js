@@ -227,8 +227,11 @@
     button.addEventListener("click", () => {
       document
         .querySelectorAll(".pdf-import-filter-row button")
-        .forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
+        .forEach((item) => {
+          const selected = item === button;
+          item.classList.toggle("active", selected);
+          item.setAttribute("aria-pressed", String(selected));
+        });
       const filter = button.dataset.filter;
       cards.forEach((card) => {
         card.hidden = filter !== "all" && card.dataset.status !== filter;

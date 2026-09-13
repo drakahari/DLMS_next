@@ -12,7 +12,7 @@
 <section class="dashboard-panel learning-diagnostics-panel">
 <div class="learning-diagnostics-section-head"><div><div class="build-eyrow build-eyebrow">QUESTION REVIEW SIGNALS</div><h2>Question review signals</h2><p>These are review prompts, not automatic judgments. A difficult question can be excellent; DLMS simply surfaces patterns worth inspecting.</p></div><button class="learning-diagnostics-collapse" type="button" data-collapse-target="qualitySection" aria-expanded="true">Collapse</button></div>
 <div id="qualitySection" class="learning-diagnostics-section-body">
-<div class="learning-diagnostics-head"><div class="learning-diagnostics-filters"><button type="button" data-filter="review" class="active">Review suggested</button><button type="button" data-filter="healthy">Healthy</button><button type="button" data-filter="insufficient">Not enough data</button><button type="button" data-filter="all">All</button></div><input id="dqSearch" type="search" placeholder="Search questions or concepts..." aria-label="Search questions or concepts"></div>
+<div class="learning-diagnostics-head"><div class="learning-diagnostics-filters" role="group" aria-label="Question quality filters"><button type="button" data-filter="review" class="active" aria-pressed="true">Review suggested</button><button type="button" data-filter="healthy" aria-pressed="false">Healthy</button><button type="button" data-filter="insufficient" aria-pressed="false">Not enough data</button><button type="button" data-filter="all" aria-pressed="false">All</button></div><input id="dqSearch" type="search" placeholder="Search questions or concepts..." aria-label="Search questions or concepts"></div>
 <div id="questionDiagnostics" class="learning-diagnostics-list"></div>
 <div id="questionCount" class="learning-diagnostics-count"></div>
 </div></section>
@@ -77,8 +77,11 @@ fetch('/api/learning-diagnostics').then(r=>r.json()).then(d=>{
 });
 
 document.querySelectorAll('.learning-diagnostics-filters button').forEach(b=>b.onclick=()=>{
-    document.querySelectorAll('.learning-diagnostics-filters button').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
+    document.querySelectorAll('.learning-diagnostics-filters button').forEach(x=>{
+        const selected=x===b;
+        x.classList.toggle('active',selected);
+        x.setAttribute('aria-pressed',String(selected));
+    });
     FILTER=b.dataset.filter;
     renderQuestions();
 });

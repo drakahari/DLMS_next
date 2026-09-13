@@ -68,11 +68,11 @@
         </details>
         {% endif %}
 
-        <div class="pdf-import-filter-row" aria-label="Filter questions">
-            <button type="button" data-filter="all" class="active">All</button>
-            <button type="button" data-filter="complete">Ready</button>
-            <button type="button" data-filter="review">Warnings</button>
-            <button type="button" data-filter="incomplete">Needs Repair</button>
+        <div class="pdf-import-filter-row" role="group" aria-label="Filter questions">
+            <button type="button" data-filter="all" class="active" aria-pressed="true">All</button>
+            <button type="button" data-filter="complete" aria-pressed="false">Ready</button>
+            <button type="button" data-filter="review" aria-pressed="false">Warnings</button>
+            <button type="button" data-filter="incomplete" aria-pressed="false">Needs Repair</button>
         </div>
         <details class="pdf-review-bulk-help">
             <summary>How filters and bulk actions work</summary>
