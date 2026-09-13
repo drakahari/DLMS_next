@@ -261,7 +261,7 @@ example, a Fedora builder runs:
 ```bash
 python tools/package_release.py \
   --target fedora44-x86_64 \
-  --artifact releases/DLMS-3.1.0-fedora44-x86_64 \
+  --artifact releases/DLMS-3.2.0-fedora44-x86_64 \
   --output-dir release-packages \
   --smoke
 ```

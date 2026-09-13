@@ -8793,6 +8793,7 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
         "format": "dlms-portable-quiz-bundle",
         "schema_version": 1,
         "created_at": "2026-09-13T10:00:00-05:00",
+        # A prior producer version exercises the portable compatibility contract.
         "created_by": {"application": "DLMS", "version": "3.1.0"},
         "quizzes": [{
             "bundle_id": "quiz-001",

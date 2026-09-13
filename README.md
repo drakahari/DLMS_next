@@ -3,7 +3,7 @@
 **A private, local-first workspace for building, studying, and improving your
 own learning material.**
 
-**Current release: DLMS 3.1.0** · [Download packaged releases](../../releases)
+**Current release: DLMS 3.2.0** · [Download packaged releases](../../releases)
 
 DLMS is a single-user learning-management and study application that runs on
 your computer. It combines quiz authoring, document and image import, Study and
@@ -122,7 +122,9 @@ keeping source provenance and installed content manageable.
 
 ## Screenshots
 
-These are existing screenshots from the DLMS 3.1.0 Help Center.
+These are existing screenshots from the DLMS 3.1.0 Help Center. They remain
+representative of the pictured workflows; their embedded version text is
+historical and was not regenerated for this release.
 
 | Smart PDF Review & Repair | Learning Intelligence | AI Study Pack Builder |
 | --- | --- | --- |
@@ -134,14 +136,14 @@ For normal use, download the package for your operating system from the
 [Releases page](../../releases). Every final package contains the native
 application, `README.txt`, and `sample_quiz.txt`.
 
-| Platform | DLMS 3.1.0 package |
+| Platform | DLMS 3.2.0 package |
 | --- | --- |
-| Fedora 44 x86-64 | `DLMS-3.1.0-fedora44-x86_64.tar.gz` |
-| Ubuntu 24.04 x86-64 | `DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz` |
-| Ubuntu 26.04 x86-64 | `DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz` |
-| Omarchy Quattro x86-64 | `DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz` |
-| Windows 11 x86-64 | `DLMS-3.1.0-windows11-x86_64.zip` |
-| macOS Apple Silicon (`arm64`) | `DLMS-3.1.0-macos-arm64.zip` |
+| Fedora 44 x86-64 | `DLMS-3.2.0-fedora44-x86_64.tar.gz` |
+| Ubuntu 24.04 x86-64 | `DLMS-3.2.0-ubuntu24.04-x86_64.tar.gz` |
+| Ubuntu 26.04 x86-64 | `DLMS-3.2.0-ubuntu26.04-x86_64.tar.gz` |
+| Omarchy Quattro x86-64 | `DLMS-3.2.0-omarchy-quattro-x86_64.tar.gz` |
+| Windows 11 x86-64 | `DLMS-3.2.0-windows11-x86_64.zip` |
+| macOS Apple Silicon (`arm64`) | `DLMS-3.2.0-macos-arm64.zip` |
 
 Linux packages are distribution-specific; use the package named for your
 distribution. On Linux or Windows, extract the archive and run the DLMS
@@ -153,7 +155,7 @@ The macOS release is a native application bundle. The macOS ZIP exposes all thre
 its archive root: `DLMS.app`, `README.txt`, and `sample_quiz.txt`, with no
 wrapper directory around the app.
 
-1. Extract `DLMS-3.1.0-macos-arm64.zip`.
+1. Extract `DLMS-3.2.0-macos-arm64.zip`.
 2. Drag `DLMS.app` into `/Applications`.
 3. Open it from Finder or Applications.
 4. Because the release is not Developer ID-signed or notarized, Gatekeeper may
@@ -261,7 +263,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the test environment, Firefox
 workflow expectations, fixture privacy rules, and release-impact guidance.
 
 Compatible dependency ranges are recorded in `requirements.txt`; the verified
-3.1.0 environment is pinned in `requirements-lock.txt`. This project is
+3.2.0 environment is pinned in `requirements-lock.txt`. This project is
 available under the [MIT License](LICENSE).
 
 <details>
@@ -281,18 +283,18 @@ python -m PyInstaller --clean --noconfirm DLMS.spec
 
 Verified native inputs use these exact names:
 
-- `DLMS-3.1.0-fedora44-x86_64`
-- `DLMS-3.1.0-ubuntu24.04-x86_64`
-- `DLMS-3.1.0-ubuntu26.04-x86_64`
-- `DLMS-3.1.0-omarchy-quattro-x86_64`
-- `DLMS-3.1.0-windows11-x86_64.exe`
-- `DLMS-3.1.0-macos-arm64.zip`
+- `DLMS-3.2.0-fedora44-x86_64`
+- `DLMS-3.2.0-ubuntu24.04-x86_64`
+- `DLMS-3.2.0-ubuntu26.04-x86_64`
+- `DLMS-3.2.0-omarchy-quattro-x86_64`
+- `DLMS-3.2.0-windows11-x86_64.exe`
+- `DLMS-3.2.0-macos-arm64.zip`
 
 On Apple Silicon, verify a native `arm64` Python, build `DLMS.spec`, and create
 the verified native-input ZIP with:
 
 ```bash
-ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.1.0-macos-arm64.zip
+ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.2.0-macos-arm64.zip
 ```
 
 The bundle executable is `DLMS.app/Contents/MacOS/DLMS`. Do not place a wrapper
@@ -302,12 +304,12 @@ directory around the app or include build/runtime data.
 
 The six user-facing packages are:
 
-- `DLMS-3.1.0-fedora44-x86_64.tar.gz`
-- `DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz`
-- `DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz`
-- `DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz`
-- `DLMS-3.1.0-windows11-x86_64.zip`
-- `DLMS-3.1.0-macos-arm64.zip`
+- `DLMS-3.2.0-fedora44-x86_64.tar.gz`
+- `DLMS-3.2.0-ubuntu24.04-x86_64.tar.gz`
+- `DLMS-3.2.0-ubuntu26.04-x86_64.tar.gz`
+- `DLMS-3.2.0-omarchy-quattro-x86_64.tar.gz`
+- `DLMS-3.2.0-windows11-x86_64.zip`
+- `DLMS-3.2.0-macos-arm64.zip`
 
 Follow [Native Release Verification](docs/RELEASE_VERIFICATION.md) for the exact
 artifact and final-package checks, native smoke tests, UAT, and checksum steps.
@@ -323,7 +325,8 @@ a separately assembled source ZIP.
 
 ## Project status
 
-DLMS 3.1.0 is the current stable release. The capabilities described above are
-present in the 3.1.0 source and packages. Active development may continue on
-separate branches, but unreleased roadmap work is intentionally not presented
-here as stable functionality.
+DLMS 3.2.0 is the current release line represented by this source. The
+capabilities described above are present in the 3.2.0 source. The Releases page
+is authoritative for packages that have completed native verification and been
+published; unreleased roadmap work is intentionally not presented here as
+current functionality.

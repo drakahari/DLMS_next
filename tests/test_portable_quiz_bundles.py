@@ -142,6 +142,8 @@ class PortableQuizBundleTests(unittest.TestCase):
         return path
 
     def _minimal_manifest(self, *, title="Imported Quiz"):
+        # Keep a prior producer version to prove bundles are not tied to the
+        # installation that created them or to the current application version.
         return {
             "format": bundles.PORTABLE_QUIZ_BUNDLE_FORMAT,
             "schema_version": 1,
@@ -196,6 +198,10 @@ class PortableQuizBundleTests(unittest.TestCase):
         multi_bytes, name, manifest = self._export([first_id, second_id])
 
         self.assertEqual(1, len(single_manifest["quizzes"]))
+        self.assertEqual(
+            {"application": "DLMS", "version": "3.2.0"},
+            manifest["created_by"],
+        )
         self.assertEqual("DLMS-Quiz-Bundle-", name[:17])
         self.assertEqual(["Choice  Bank", "Matching Bank"], [
             quiz["title"] for quiz in manifest["quizzes"]
