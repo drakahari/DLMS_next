@@ -28,6 +28,7 @@ class LearningRouteDependencies:
     review_select_candidates: Dependency
     adaptive_study_candidates: Dependency
     adaptive_study_select_candidates: Dependency
+    daily_review_plan: Dependency
     question_payload_from_db: Dependency
     publish_quiz: Dependency
     review_schedule_payload: Dependency
@@ -92,6 +93,16 @@ def learning_foundation_summary(dependencies):
     out = dependencies.learning_foundation_summary(cur)
     conn.close()
     return jsonify(out)
+
+
+def daily_review_plan_api(dependencies):
+    """Return the derived DLMS-126 action plan for the Dashboard."""
+    conn = dependencies.get_db()
+    cur = conn.cursor()
+    try:
+        return jsonify(dependencies.daily_review_plan(cur))
+    finally:
+        conn.close()
 
 
 def smart_review_preview_api(dependencies):
@@ -530,6 +541,12 @@ def create_learning_blueprint(dependencies):
             "/api/learning-foundation/summary",
             "learning_foundation_summary",
             learning_foundation_summary,
+            ["GET"],
+        ),
+        (
+            "/api/daily-review-plan",
+            "daily_review_plan_api",
+            daily_review_plan_api,
             ["GET"],
         ),
         (

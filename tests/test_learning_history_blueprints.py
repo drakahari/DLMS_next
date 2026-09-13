@@ -39,6 +39,11 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
             frozenset({"GET"}),
         ),
         (
+            "learning.daily_review_plan_api",
+            "/api/daily-review-plan",
+            frozenset({"GET"}),
+        ),
+        (
             "learning.smart_review_preview_api",
             "/api/smart-review/preview",
             frozenset({"GET"}),
@@ -165,6 +170,7 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
         "review_select_candidates",
         "adaptive_study_candidates",
         "adaptive_study_select_candidates",
+        "daily_review_plan",
         "question_payload_from_db",
         "publish_quiz",
         "review_schedule_payload",
@@ -221,7 +227,7 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
             for rule in rules
         }
         self.assertEqual(self.EXPECTED_RULES, actual)
-        self.assertEqual(31, len(rules))
+        self.assertEqual(32, len(rules))
         for rule in rules:
             with self.subTest(endpoint=rule.endpoint, rule=rule.rule):
                 self.assertTrue(rule.strict_slashes)

@@ -4923,6 +4923,18 @@ def _adaptive_study_select_candidates(candidates, requested):
     )
 
 
+def _daily_review_plan(cur, now=None):
+    return _learning_service._daily_review_plan(
+        cur,
+        registry=load_registry(),
+        installed_content_packs=content_pack_summary(),
+        now=now,
+        review_schedule_payload=_review_schedule_payload,
+        learning_intelligence_payload=_learning_intelligence_payload,
+        adaptive_study_candidates=_adaptive_study_candidates,
+    )
+
+
 
 
 
@@ -5794,6 +5806,7 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
     adaptive_study_select_candidates=lambda candidates, requested: _adaptive_study_select_candidates(
         candidates, requested
     ),
+    daily_review_plan=lambda cur: _daily_review_plan(cur),
     question_payload_from_db=lambda cur, question_id: _question_payload_from_db(
         cur, question_id
     ),

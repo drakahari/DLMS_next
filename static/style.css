@@ -1980,6 +1980,28 @@ body.dashboard-home {
     text-decoration: none;
 }
 
+.daily-review-panel{padding:22px;margin-bottom:20px;}
+.daily-review-heading{align-items:center;margin-bottom:8px;}
+.daily-review-heading>div>div{display:grid;gap:2px;}
+.daily-review-eyebrow{color:var(--theme-accent-text,#78bfff);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;}
+.daily-review-count{padding:6px 10px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.24));border-radius:999px;background:var(--theme-surface-2,rgba(17,31,56,.78));color:var(--theme-page-text,#eaf2ff);font-size:12px;white-space:nowrap;}
+.daily-review-intro{margin:0 0 14px;color:var(--theme-muted-text,#b8c2cc);line-height:1.5;}
+.daily-review-list{display:grid;gap:10px;}
+.daily-review-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:13px;align-items:center;padding:14px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.24));border-radius:12px;background:var(--theme-surface,rgba(5,18,39,.58));}
+.daily-review-rank{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 18%,var(--theme-surface-2));color:var(--theme-heading,#fff);font-weight:800;}
+.daily-review-copy{min-width:0;}
+.daily-review-copy>span{display:block;margin-bottom:2px;color:var(--theme-accent-text,#78bfff);font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;}
+.daily-review-copy h3{margin:0 0 3px;color:var(--theme-heading,#fff);font-size:16px;overflow-wrap:anywhere;}
+.daily-review-copy p{margin:0;color:var(--theme-muted-text,#b8c2cc);font-size:13px;line-height:1.45;overflow-wrap:anywhere;}
+.daily-review-item-action form{margin:0;}
+.daily-review-action{display:inline-flex;align-items:center;justify-content:center;width:auto;min-height:38px;margin:0;padding:8px 12px;border:1px solid var(--theme-accent,#1b9ff2);border-radius:9px;background:var(--theme-accent-2,#138ad6);color:var(--semantic-primary-control-text,#fff)!important;font:inherit;font-size:13px;font-weight:800;text-decoration:none;white-space:nowrap;cursor:pointer;}
+.daily-review-action:hover,.daily-review-action:focus-visible{background:var(--theme-accent,#1b9ff2);}
+.daily-review-empty{display:grid;gap:5px;padding:16px;border:1px dashed var(--theme-border-soft,rgba(98,155,255,.24));border-radius:12px;background:var(--theme-surface,rgba(5,18,39,.58));color:var(--theme-page-text,#eaf2ff);}
+.daily-review-empty[hidden]{display:none;}
+.daily-review-empty span{color:var(--theme-muted-text,#b8c2cc);line-height:1.45;}
+.daily-review-empty .daily-review-action{justify-self:start;margin-top:7px;}
+@media(max-width:720px){.daily-review-item{grid-template-columns:auto minmax(0,1fr);}.daily-review-item-action{grid-column:1/-1;}.daily-review-action,.daily-review-item-action form{width:100%;}.daily-review-heading{align-items:flex-start;}.daily-review-panel{padding:18px;}}
+
 .dashboard-heading-icon {
     color: #55e48f;
     font-size: 21px;

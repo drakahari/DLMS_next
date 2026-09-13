@@ -31,6 +31,7 @@ def test_recovery_namespace_fingerprint_and_limits_are_versioned_and_bounded():
 
 def test_lifecycle_cleanup_is_scoped_and_best_effort():
     assert "function pruneStoredRecords" in RECOVERY
+    assert "function listStoredRecords" in RECOVERY
     assert "function clearAllStoredRecords" in RECOVERY
     assert "function removeStoredQuiz" in RECOVERY
     assert "key.startsWith(STORAGE_PREFIX)" in RECOVERY
@@ -38,6 +39,7 @@ def test_lifecycle_cleanup_is_scoped_and_best_effort():
     assert "validateRecordEnvelope(record, now)" in RECOVERY
     assert "active.has(quizId)" in RECOVERY
     assert "pruneStoredRecords();" in RECOVERY
+    assert "listStoredRecords," in RECOVERY
     assert "!current && savedRecord !== null && !allowTakeover" in RECOVERY
 
 

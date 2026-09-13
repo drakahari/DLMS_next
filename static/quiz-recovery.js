@@ -438,6 +438,42 @@
     }
   }
 
+  function listStoredRecords({activeQuizIds = null, now = Date.now()} = {}) {
+    try {
+      const active = activeQuizIds === null
+        ? null
+        : new Set(Array.from(activeQuizIds, value => String(value)));
+      const records = [];
+      recoveryStorageKeys().forEach(key => {
+        try {
+          const quizId = storedQuizId(key);
+          const raw = localStorage.getItem(key);
+          if (quizId === null || raw === null || storageBytes(raw) > MAX_RECORD_BYTES) return;
+          const record = JSON.parse(raw);
+          if (!validateRecordEnvelope(record, now)
+              || String(record.quiz.id) !== quizId
+              || (active !== null && !active.has(quizId))) return;
+          records.push({
+            quizId,
+            mode: record.session.mode,
+            phase: record.session.phase,
+            questionIndex: record.view.questionIndex,
+            updatedAt: record.session.updatedAt,
+          });
+        } catch (_error) {
+          // Listing is read-only; malformed records are left for normal pruning.
+        }
+      });
+      records.sort((left, right) => (
+        right.updatedAt - left.updatedAt
+        || left.quizId.localeCompare(right.quizId)
+      ));
+      return {available: true, records};
+    } catch (_error) {
+      return {available: false, records: []};
+    }
+  }
+
   function createController(options) {
     const context = {
       quizId: String(options.quizId),
@@ -726,6 +762,7 @@
     validateRecord,
     validateRecordEnvelope,
     pruneStoredRecords,
+    listStoredRecords,
     removeStoredQuiz,
     clearAllStoredRecords,
   };

@@ -7701,3 +7701,110 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
         assert connection.execute(
             "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
         ).fetchone()[0] == 1
+
+
+def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack):
+    """The daily plan orders canonical due work before browser-local progress."""
+    database_path = browser_stack.data_root / "results.db"
+    prompt = "Browser daily-review due prompt?"
+    with sqlite3.connect(database_path) as connection:
+        cursor = connection.execute(
+            "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+            ("Browser Daily Review Source", "browser-daily-review-source.html"),
+        )
+        source_quiz_id = cursor.lastrowid
+        cursor = connection.execute(
+            """
+            INSERT INTO questions (
+                quiz_id, question_number, question_text, question_type,
+                explanation, media_json
+            ) VALUES (?, 1, ?, 'choice', 'Daily review explanation', '{}')
+            """,
+            (source_quiz_id, prompt),
+        )
+        source_question_id = cursor.lastrowid
+        connection.executemany(
+            "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+            [
+                (source_question_id, "A", "Expected", 1),
+                (source_question_id, "B", "Alternative", 0),
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO learning_events (
+                event_type, quiz_id, question_id, attempt_id, mode,
+                was_correct, response_json, occurred_at
+            ) VALUES ('exam_answer', ?, ?, ?, 'Exam', 0, '{}', ?)
+            """,
+            (
+                source_quiz_id,
+                source_question_id,
+                "browser-daily-review-attempt",
+                "2020-01-01T00:00:00+00:00",
+            ),
+        )
+
+    browser = browser_stack.browser
+    critical_url = (
+        f"{browser_stack.base_url}/quizzes/"
+        f"{browser_stack.metadata['critical_html']}"
+    )
+    browser.navigate(critical_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for(
+        "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
+        + json.dumps(str(browser_stack.metadata["critical_id"]))
+        + "]}).records.length === 1"
+    )
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for(
+        "document.querySelector('.daily-review-native_due') && "
+        "document.querySelector('.daily-review-unfinished a')"
+    )
+    plan = browser.evaluate(
+        "(() => ({"
+        "kinds:[...document.querySelectorAll('.daily-review-item')].map(item => "
+        "[...item.classList].find(name => name.startsWith('daily-review-') && "
+        "name !== 'daily-review-item').replace('daily-review-', '')) ,"
+        "dueText:document.querySelector('.daily-review-native_due').textContent,"
+        "resumeText:document.querySelector('.daily-review-unfinished').textContent,"
+        "csrf:Boolean(document.querySelector("
+        "'.daily-review-native_due form input[name=csrf_token]'))"
+        "}))()"
+    )
+    assert plan["kinds"][:2] == ["native_due", "unfinished"]
+    assert "due" in plan["dueText"].lower()
+    assert "Browser Critical Workflow" in plan["resumeText"]
+    assert plan["csrf"] is True
+
+    browser.click(".daily-review-unfinished a")
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    assert browser.evaluate("location.pathname") == (
+        f"/quizzes/{browser_stack.metadata['critical_html']}"
+    )
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("document.querySelector('.daily-review-native_due button')")
+    browser.click(".daily-review-native_due button")
+    browser.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_')")
+    with sqlite3.connect(database_path) as connection:
+        generated = connection.execute(
+            """
+            SELECT q.id
+            FROM questions q
+            JOIN quizzes z ON z.id = q.quiz_id
+            WHERE z.source_file LIKE 'spaced_review_native_%'
+              AND q.question_text = ?
+            ORDER BY q.id DESC LIMIT 1
+            """,
+            (prompt,),
+        ).fetchone()
+        assert generated is not None
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ? AND id = ?",
+            (source_quiz_id, source_question_id),
+        ).fetchone()[0] == 1
