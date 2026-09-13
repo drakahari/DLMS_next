@@ -35,6 +35,7 @@ class QuizLibraryTests(unittest.TestCase):
                 {"key": "low-score", "label": "Low Score", "description": "Low.", "client_derived": False},
                 {"key": "unfinished", "label": "Unfinished", "description": "Local.", "client_derived": True},
                 {"key": "ocr-imported", "label": "OCR Imported", "description": "OCR.", "client_derived": False},
+                {"key": "generated-practice", "label": "Generated Practice", "description": "Saved practice.", "client_derived": False},
             ]
             smart_data = {
                 "views": definitions,
@@ -47,6 +48,13 @@ class QuizLibraryTests(unittest.TestCase):
                     "low-score": {2: {"badge": "Below 75%", "reason": "Latest completed score: 60%"}},
                     "unfinished": {},
                     "ocr-imported": {},
+                    "generated-practice": {
+                        2: {"reason": "Saved practice built from source questions"},
+                    },
+                },
+                "generation": {
+                    1: {"kind": "mixed_quiz", "label": "Mixed Quiz", "category": "mixed"},
+                    2: {"kind": "adaptive_study", "label": "Adaptive Study practice", "category": "practice"},
                 },
             }
 
@@ -64,6 +72,9 @@ class QuizLibraryTests(unittest.TestCase):
                 reset = client.get("/library?view=visible")
                 unknown = client.get("/library?view=visible&smart=not-a-view")
                 unfinished = client.get("/library?view=visible&smart=unfinished")
+                generated = client.get(
+                    "/library?view=visible&smart=generated-practice"
+                )
                 mutation = client.post(
                     "/toggle_hidden",
                     data={"id": "2", "view": "visible", "smart": "low-score"},
@@ -96,6 +107,20 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn("applyUnfinishedLibraryView", unfinished_html)
             self.assertIn('id="librarySmartEmptyState"', unfinished_html)
             self.assertIn('id="librarySmartEligibleQuizData"', unfinished_html)
+            generated_html = generated.get_data(as_text=True)
+            self.assertIn("Generated Practice", generated_html)
+            self.assertIn("Adaptive Study practice", generated_html)
+            self.assertIn("Saved practice built from source questions", generated_html)
+            self.assertIn("Beta Quiz", generated_html)
+            self.assertNotIn("Alpha Quiz", generated_html)
+            self.assertNotIn("Mixed Quiz", generated_html)
+
+            reset_html = reset.get_data(as_text=True)
+            self.assertIn("Adaptive Study practice", reset_html)
+            self.assertIn("Mixed Quiz", reset_html)
+            self.assertIn('data-generation-kind="adaptive_study"', reset_html)
+            self.assertIn('data-generation-category="mixed"', reset_html)
+            self.assertIn("revisit, hide, or ignore for now", reset_html)
             self.assertEqual(
                 mutation.headers["Location"],
                 "/library?view=visible&smart=low-score",

@@ -4,9 +4,44 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from dlms.services.question_identity import quiz_generation_kind
+
 
 RECENTLY_ADDED_DAYS = 30
 LOW_SCORE_PERCENT = 75.0
+GENERATED_PRACTICE_KINDS = frozenset({
+    "adaptive_study",
+    "concept_review",
+    "native_spaced_review",
+    "smart_review",
+    "spaced_review",
+})
+GENERATION_PRESENTATION = {
+    "adaptive_study": {
+        "label": "Adaptive Study practice",
+        "category": "practice",
+    },
+    "concept_review": {
+        "label": "Concept Review practice",
+        "category": "practice",
+    },
+    "native_spaced_review": {
+        "label": "Due Questions practice",
+        "category": "practice",
+    },
+    "smart_review": {
+        "label": "Smart Review practice",
+        "category": "practice",
+    },
+    "spaced_review": {
+        "label": "Topic Retention practice",
+        "category": "practice",
+    },
+    "mixed_quiz": {
+        "label": "Mixed Quiz",
+        "category": "mixed",
+    },
+}
 
 SMART_VIEW_DEFINITIONS = (
     {
@@ -37,6 +72,16 @@ SMART_VIEW_DEFINITIONS = (
         "key": "ocr-imported",
         "label": "OCR Imported",
         "description": "Quizzes published from explicit local OCR workflows.",
+        "client_derived": False,
+    },
+    {
+        "key": "generated-practice",
+        "label": "Generated Practice",
+        "description": (
+            "Saved review sessions created from source questions. Revisit, "
+            "hide, or ignore them for now without changing source quizzes or "
+            "learning history."
+        ),
         "client_derived": False,
     },
 )
@@ -242,6 +287,54 @@ def _ocr_quiz_matches(cur, registry_ids, bank_ocr_quiz_ids):
     }
 
 
+def _generated_quiz_presentations(cur, registry_ids, registry):
+    """Describe generated quizzes using explicit metadata with legacy fallback."""
+    registry_id_set = set(registry_ids)
+    rows_by_id = {}
+    if registry_ids:
+        placeholders = ",".join("?" for _ in registry_ids)
+        rows_by_id = {
+            int(row["id"]): row
+            for row in cur.execute(
+                f"""
+                SELECT id, title, source_file, generation_kind
+                FROM quizzes WHERE id IN ({placeholders})
+                """,
+                registry_ids,
+            ).fetchall()
+        }
+
+    presentations = {}
+    for entry in registry if isinstance(registry, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            quiz_id = int(entry.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if isinstance(entry.get("id"), bool) or quiz_id not in registry_id_set:
+            continue
+        row = rows_by_id.get(quiz_id)
+        kind = quiz_generation_kind(
+            generation_kind=(
+                row["generation_kind"] if row is not None
+                else entry.get("generation_kind")
+            ),
+            source_file=(
+                row["source_file"] if row is not None else entry.get("html")
+            ),
+            title=row["title"] if row is not None else entry.get("title"),
+        )
+        presentation = GENERATION_PRESENTATION.get(kind)
+        if presentation is None:
+            continue
+        presentations[quiz_id] = {
+            "kind": kind,
+            **presentation,
+        }
+    return presentations
+
+
 def build_quiz_smart_views(
     cur,
     registry,
@@ -255,6 +348,7 @@ def build_quiz_smart_views(
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     registry_ids = _registry_quiz_ids(registry)
+    generation = _generated_quiz_presentations(cur, registry_ids, registry)
     matches = {
         "needs-review": _due_quiz_matches(
             cur, registry_ids, native_schedule, now
@@ -265,9 +359,19 @@ def build_quiz_smart_views(
         "ocr-imported": _ocr_quiz_matches(
             cur, registry_ids, bank_ocr_quiz_ids
         ),
+        "generated-practice": {
+            quiz_id: {
+                "reason": (
+                    "Saved practice built from source questions · safe to "
+                    "revisit or hide"
+                ),
+            }
+            for quiz_id, presentation in generation.items()
+            if presentation["kind"] in GENERATED_PRACTICE_KINDS
+        },
     }
     views = [
         {**definition, "count": len(matches[definition["key"]])}
         for definition in SMART_VIEW_DEFINITIONS
     ]
-    return {"views": views, "matches": matches}
+    return {"views": views, "matches": matches, "generation": generation}

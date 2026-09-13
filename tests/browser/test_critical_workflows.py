@@ -626,6 +626,44 @@ def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
     base_url = browser_stack.base_url
     critical_id = str(browser_stack.metadata["critical_id"])
     critical_html = browser_stack.metadata["critical_html"]
+    database_path = browser_stack.data_root / "results.db"
+    generated_rows = (
+        (
+            "Renamed browser practice",
+            "renamed-browser-practice.html",
+            "adaptive_study",
+        ),
+        (
+            "Browser curated collection",
+            "browser-curated-collection.html",
+            "mixed_quiz",
+        ),
+    )
+    generated_ids = []
+    with sqlite3.connect(database_path) as connection:
+        for title, source_file, generation_kind in generated_rows:
+            cursor = connection.execute(
+                """
+                INSERT INTO quizzes (title, source_file, generation_kind)
+                VALUES (?, ?, ?)
+                """,
+                (title, source_file, generation_kind),
+            )
+            generated_ids.append(cursor.lastrowid)
+
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    for quiz_id, (title, source_file, _generation_kind) in zip(
+        generated_ids, generated_rows
+    ):
+        registry.append({
+            "id": quiz_id,
+            "title": title,
+            "html": source_file,
+            "folder": "Generated Sessions",
+            "exam_minutes": 90,
+        })
+    registry_path.write_text(json.dumps(registry, indent=4), encoding="utf-8")
 
     browser.navigate(f"{base_url}/quizzes/{critical_html}")
     browser.wait_for("quizRecoveryReady === true")
@@ -691,7 +729,44 @@ def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
         for role, values in snapshot.items():
             assert values["contrast"] >= 4.5, (theme, role, values)
 
-    for width, expected_columns in ((1280, 5), (700, 2), (420, 1)):
+        browser.navigate(
+            f"{base_url}/library?view=visible&smart=generated-practice"
+        )
+        browser.wait_for(
+            "document.getElementById('librarySmartViewCount').textContent === '1'"
+        )
+        generated_state = browser.evaluate(
+            "(() => {const cards=[...document.querySelectorAll('.library-quiz-card')];"
+            "return {ids:cards.map(card=>card.dataset.quizId),"
+            "kinds:cards.map(card=>card.dataset.generationKind),"
+            "badge:cards[0]?.querySelector('.library-generation-badge')?.textContent.trim(),"
+            "reason:cards[0]?.querySelector('.library-smart-match-reason')?.textContent.trim(),"
+            "mixed:Boolean(document.querySelector('[data-generation-category=\"mixed\"]'))};})()"
+        )
+        assert generated_state == {
+            "ids": [str(generated_ids[0])],
+            "kinds": ["adaptive_study"],
+            "badge": "Adaptive Study practice",
+            "reason": "Saved practice built from source questions · safe to revisit or hide",
+            "mixed": False,
+        }
+        generated_contrast = _theme_contrast_snapshot(browser, {
+            "generated practice badge": ".library-generation-badge",
+            "generated practice reason": ".library-smart-match-reason",
+        })
+        for role, values in generated_contrast.items():
+            assert values["contrast"] >= 4.5, (theme, role, values)
+
+        browser.navigate(f"{base_url}/library?view=visible")
+        browser.wait_for(
+            "document.querySelector('.library-generation-badge-mixed')"
+        )
+        mixed_contrast = _theme_contrast_snapshot(browser, {
+            "mixed quiz badge": ".library-generation-badge-mixed",
+        })["mixed quiz badge"]
+        assert mixed_contrast["contrast"] >= 4.5, (theme, mixed_contrast)
+
+    for width, expected_columns in ((1280, 6), (700, 2), (420, 1)):
         browser.set_viewport(width, 900)
         layout = browser.evaluate(
             "(() => {const links=[...document.querySelectorAll('.library-smart-view-link')];"
@@ -716,8 +791,31 @@ def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
         )
 
     browser.navigate(f"{base_url}/library?view=visible")
-    browser.wait_for("document.querySelectorAll('.library-quiz-card').length === 2")
+    browser.wait_for("document.querySelectorAll('.library-quiz-card').length === 4")
     assert browser.evaluate("document.body.dataset.librarySmartView") == ""
+    presentation = browser.evaluate(
+        "(() => ({practice:document.querySelector('[data-generation-kind=\"adaptive_study\"]')"
+        ".querySelector('.library-generation-badge').textContent.trim(),"
+        "mixed:document.querySelector('[data-generation-kind=\"mixed_quiz\"]')"
+        ".querySelector('.library-generation-badge').textContent.trim()}))()"
+    )
+    assert presentation == {
+        "practice": "Adaptive Study practice",
+        "mixed": "Mixed Quiz",
+    }
+    browser.evaluate(
+        "(() => {const input=document.getElementById('librarySearch');"
+        "input.value='generated practice';"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()"
+    )
+    browser.wait_for(
+        "[...document.querySelectorAll('.library-quiz-card')]"
+        ".filter(card=>getComputedStyle(card).display!=='none').length === 1"
+    )
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.library-quiz-card')]"
+        ".find(card=>getComputedStyle(card).display!=='none').dataset.generationKind"
+    ) == "adaptive_study"
 
     browser.evaluate(f"localStorage.removeItem({json.dumps(recovery_key)});true")
     browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")

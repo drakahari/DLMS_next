@@ -733,6 +733,7 @@ def quiz_library(dependencies):
     finally:
         conn.close()
     smart_matches = smart_view_data["matches"]
+    generation_presentations = smart_view_data.get("generation", {})
     active_smart_view = next(
         (
             item
@@ -771,6 +772,7 @@ def quiz_library(dependencies):
                 smart_matches.get(smart, {}).get(q.get("id"))
                 if active_smart_view else None
             ),
+            "generation": generation_presentations.get(q.get("id")),
         }
         for q in render_filtered
     ]

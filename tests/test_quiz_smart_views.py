@@ -116,9 +116,12 @@ def test_smart_views_use_canonical_data_and_latest_attempt(tmp_path):
     assert 7 not in result["matches"]["ocr-imported"]
     assert 8 not in result["matches"]["ocr-imported"]
     assert result["matches"]["unfinished"] == {}
+    assert result["matches"]["generated-practice"] == {}
+    assert result["generation"] == {}
     assert registry == original_registry
     assert [view["key"] for view in result["views"]] == [
-        "needs-review", "recently-added", "low-score", "unfinished", "ocr-imported"
+        "needs-review", "recently-added", "low-score", "unfinished",
+        "ocr-imported", "generated-practice",
     ]
     assert RECENTLY_ADDED_DAYS == 30
     assert LOW_SCORE_PERCENT == 75.0
@@ -185,7 +188,130 @@ def test_smart_view_keys_are_strict_and_case_normalized():
     assert normalize_smart_view("unfinished") == "unfinished"
     assert normalize_smart_view("low score") is None
     assert normalize_smart_view("recently-added-extra") is None
+    assert normalize_smart_view("GENERATED-PRACTICE") == "generated-practice"
     assert normalize_smart_view(None) is None
+
+
+def test_repeated_generated_sessions_are_grouped_without_mixing_curated_quizzes(
+    tmp_path,
+):
+    database = bootstrap_current_schema_database(
+        tmp_path / "results.db", bootstrap_database=dlms.bootstrap_database
+    )
+    registry = []
+    generation_updates = []
+    generation_kinds = (
+        "adaptive_study",
+        "smart_review",
+        "native_spaced_review",
+        "spaced_review",
+        "concept_review",
+        "mixed_quiz",
+    )
+    quiz_id = 1
+    for repetition in range(4):
+        for kind in generation_kinds:
+            title = (
+                f"Curated mix {repetition + 1}"
+                if kind == "mixed_quiz"
+                else f"Saved practice {quiz_id}"
+            )
+            source_file = f"neutral-{quiz_id}.html"
+            _seed_quiz(
+                database,
+                quiz_id,
+                title,
+                source_file,
+                1000 + quiz_id,
+            )
+            generation_updates.append((kind, quiz_id))
+            registry.append({
+                "id": quiz_id,
+                "title": title,
+                "html": source_file,
+                "folder": "Uncategorized",
+            })
+            quiz_id += 1
+
+    connection = database.connect()
+    try:
+        connection.executemany(
+            "UPDATE quizzes SET generation_kind = ? WHERE id = ?",
+            generation_updates,
+        )
+        connection.commit()
+        result = build_quiz_smart_views(
+            connection.cursor(),
+            registry,
+            native_schedule=lambda _cursor, now=None: {"questions": []},
+            now=datetime(2026, 9, 13, 12, tzinfo=timezone.utc),
+        )
+    finally:
+        connection.close()
+
+    assert len(registry) == 24
+    assert len(result["generation"]) == 24
+    assert len(result["matches"]["generated-practice"]) == 20
+    assert result["views"][-1]["count"] == 20
+    assert {
+        item["label"] for item in result["generation"].values()
+        if item["category"] == "practice"
+    } == {
+        "Adaptive Study practice",
+        "Smart Review practice",
+        "Due Questions practice",
+        "Topic Retention practice",
+        "Concept Review practice",
+    }
+    mixed = {
+        quiz_id: item
+        for quiz_id, item in result["generation"].items()
+        if item["category"] == "mixed"
+    }
+    assert len(mixed) == 4
+    assert all(item["label"] == "Mixed Quiz" for item in mixed.values())
+    assert set(mixed).isdisjoint(result["matches"]["generated-practice"])
+
+
+def test_generated_view_prefers_metadata_and_keeps_legacy_fallback(tmp_path):
+    database = bootstrap_current_schema_database(
+        tmp_path / "results.db", bootstrap_database=dlms.bootstrap_database
+    )
+    cases = (
+        (1, "Smart Review — Ordinary", "smart_review_ordinary.html", "source"),
+        (2, "Renamed personal session", "renamed-session.html", "adaptive_study"),
+        (3, "Concept Review — Legacy", "legacy-session.html", None),
+    )
+    registry = []
+    for quiz_id, title, source_file, _kind in cases:
+        _seed_quiz(database, quiz_id, title, source_file, 2000 + quiz_id)
+        registry.append({
+            "id": quiz_id,
+            "title": title,
+            "html": source_file,
+            "folder": "Uncategorized",
+        })
+
+    connection = database.connect()
+    try:
+        connection.executemany(
+            "UPDATE quizzes SET generation_kind = ? WHERE id = ?",
+            [(kind, quiz_id) for quiz_id, _title, _source, kind in cases],
+        )
+        connection.commit()
+        result = build_quiz_smart_views(
+            connection.cursor(),
+            registry,
+            native_schedule=lambda _cursor, now=None: {"questions": []},
+            now=datetime(2026, 9, 13, 12, tzinfo=timezone.utc),
+        )
+    finally:
+        connection.close()
+
+    assert set(result["matches"]["generated-practice"]) == {2, 3}
+    assert 1 not in result["generation"]
+    assert result["generation"][2]["label"] == "Adaptive Study practice"
+    assert result["generation"][3]["label"] == "Concept Review practice"
 
 
 def test_smart_view_styles_use_semantic_themes_and_content_breakpoints():
@@ -213,3 +339,17 @@ def test_smart_view_styles_use_semantic_themes_and_content_breakpoints():
     assert "outline: 2px solid var(--theme-accent" in component
     assert "@container (max-width: 760px)" in css
     assert "@container (max-width: 430px)" in css
+
+    generated_start = css.index(".library-page .library-generation-badge {")
+    generated_end = css.index(".library-page .library-hidden-badge {", generated_start)
+    generated_component = css[generated_start:generated_end]
+    for token in (
+        "--semantic-info-text",
+        "--semantic-info-surface",
+        "--semantic-info-border",
+        "--semantic-secondary-control-text",
+        "--semantic-secondary-control-surface",
+        "--semantic-secondary-control-border",
+    ):
+        assert token in generated_component
+    assert "grid-template-columns: repeat(6, minmax(120px, 1fr))" in css

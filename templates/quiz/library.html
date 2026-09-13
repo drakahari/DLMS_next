@@ -166,7 +166,7 @@
             </div>
         </section>
 
-        <div class="library-tip">{% if active_smart_view %}This dynamic view does not move quizzes or change folder order. Search narrows these results further.{% else %}Drag folder headers to reorder folders. Drag quiz cards to reorder quizzes inside a folder. Use the Up and Down buttons for keyboard reordering.{% endif %}</div>
+        <div class="library-tip">{% if active_smart_view %}This dynamic view does not move quizzes or change folder order. Search narrows these results further.{% else %}Drag folder headers to reorder folders. Drag quiz cards to reorder quizzes inside a folder. Use the Up and Down buttons for keyboard reordering. Generated-practice badges mark saved review sessions you can revisit, hide, or ignore for now; Mixed Quiz badges mark reusable curated mixes.{% endif %}</div>
         <div id="libraryReorderStatus" class="library-reorder-status" aria-live="polite" aria-atomic="true"></div>
 
         {% if display_folder_names %}
@@ -229,7 +229,7 @@
                     <p class="library-folder-empty">No quizzes in this view.</p>
                     {% endif %}
                     {% for q in folder_quizzes %}
-                    <article class="quiz-card library-quiz-card" data-id="{{ q['html'] }}" data-quiz-id="{{ q['id'] }}" data-title="{{ q['title']|lower }}" data-search="{{ (q['title'] ~ ' ' ~ folder_name)|lower }}">
+                    <article class="quiz-card library-quiz-card" data-id="{{ q['html'] }}" data-quiz-id="{{ q['id'] }}" data-title="{{ q['title']|lower }}" data-generation-kind="{{ q.generation.kind if q.generation else '' }}" data-generation-category="{{ q.generation.category if q.generation else '' }}" data-search="{{ (q['title'] ~ ' ' ~ folder_name ~ ' ' ~ (q.generation.label if q.generation else '') ~ ' ' ~ ('generated practice' if q.generation and q.generation.category == 'practice' else '') ~ ' ' ~ ('curated mixed quiz' if q.generation and q.generation.category == 'mixed' else ''))|lower }}">
                         <div class="library-quiz-main">
                             <div class="library-quiz-title-row">
                                 {% if q['logo'] %}
@@ -243,9 +243,10 @@
                                         <span>Quiz #{{ q['id'] }}</span>
                                         <span>•</span>
                                         <span>{{ folder_name }}</span>
+                                        {% if q.generation %}<span class="library-generation-badge{% if q.generation.category == 'mixed' %} library-generation-badge-mixed{% endif %}" title="{{ 'Saved generated practice' if q.generation.category == 'practice' else 'Reusable quiz composed from multiple source quizzes' }}">{{ q.generation.label }}</span>{% endif %}
                                         {% if q.get('hidden') %}<span class="library-hidden-badge">Hidden</span>{% endif %}
                                         {% if folder_is_hidden %}<span class="library-folder-hidden-badge">Folder hidden</span>{% endif %}
-                                        {% if q.smart_match %}<span class="library-smart-match-badge">{{ q.smart_match.badge }}</span>{% endif %}
+                                        {% if q.smart_match and q.smart_match.badge %}<span class="library-smart-match-badge">{{ q.smart_match.badge }}</span>{% endif %}
                                     </div>
                                     {% if q.smart_match %}<p class="library-smart-match-reason">{{ q.smart_match.reason }}</p>{% endif %}
                                 </div>

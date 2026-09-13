@@ -3696,10 +3696,32 @@ a.settings-hub-card:active {
 .library-page .library-quiz-meta {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 7px;
     margin-top: 5px;
     color: #7f94af;
     font-size: 11px;
+}
+
+.library-page .library-generation-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border: 1px solid var(--semantic-info-border);
+    border-radius: 999px;
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    line-height: 1.35;
+    text-transform: uppercase;
+}
+
+.library-page .library-generation-badge-mixed {
+    color: var(--semantic-secondary-control-text);
+    background: var(--semantic-secondary-control-surface);
+    border-color: var(--semantic-secondary-control-border);
 }
 
 .library-page .library-hidden-badge {
@@ -14599,7 +14621,7 @@ body:not([class]) > .container > .hero-title {
 
 .library-page .library-smart-view-list {
     display: grid;
-    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    grid-template-columns: repeat(6, minmax(120px, 1fr));
     gap: 8px;
     min-width: 0;
 }
