@@ -1,167 +1,242 @@
-# DLMS – Digital Learning & Management System
+# DLMS
 
-**Current release: DLMS 3.1.0**
+**A private, local-first workspace for building, studying, and improving your
+own learning material.**
 
-👉 Download packaged releases from the [Releases page](../../releases).
+**Current release: DLMS 3.1.0** · [Download packaged releases](../../releases)
 
-DLMS is a local-first learning, quiz, study, analytics, and content-import
-application designed for study, practice, and exam preparation. It supports both
-**Study Mode** and **Exam Mode**, detailed attempt history, confidence analysis,
-and Anki export for long-term retention.
+DLMS is a single-user learning-management and study application that runs on
+your computer. It combines quiz authoring, document and image import, Study and
+Exam modes, learning history, targeted review, reusable Study Packs, and Anki
+export in one desktop-style experience. The interface opens in your browser,
+while the application and its data remain local by default.
 
-## Why DLMS Exists
+DLMS is an open-source, non-commercial project for personal learning, exam
+preparation, technical training, and other self-directed study. It is not a
+SaaS product, cloud service, or enterprise multi-user platform.
 
-DLMS was created to address a gap between simple quiz tools and full-scale learning
-management systems. Many existing solutions are either too limited for serious
-study or too complex, restrictive, or heavyweight for individual learners,
-educators, and IT professionals.
+## Why DLMS
 
-DLMS is designed to be local, transparent, and learner-focused. It gives users full
-control over their content, data, and study workflow without requiring cloud
-accounts, subscriptions, or external services. By running entirely on the user’s
-system as a local web application, DLMS prioritizes privacy, reliability, and
-portability.
+- **Private by default.** No account, hosted database, or cloud deployment is
+  required. OCR runs locally in the packaged releases.
+- **Built around learning, not only scoring.** Study feedback, concepts,
+  confidence, missed-question review, Learning Intelligence, and spaced review
+  turn attempts into a practical next-study plan.
+- **Flexible input, careful output.** Create material manually or from text,
+  PDFs, screenshots, images, matching lists, Study Packs, and structured output
+  from an external AI. Ambiguous imports go through Review & Repair instead of
+  being silently treated as correct.
+- **No required AI API subscription.** DLMS can prepare prompts and validate
+  returned content without calling an AI-provider API or storing an API key.
+  Using an external provider is optional and remains under the user's control.
+- **A desktop-style local experience.** Native packages launch a local Flask
+  application and open its browser UI; ordinary use does not require managing a
+  separate database or web server.
 
-For users who prefer deeper system integration, DLMS can also be enabled as a
-systemd service.
+## Highlights
 
-The project emphasizes learning effectiveness, not just assessment. Features like
-Study Mode, confidence analysis, Learning Intelligence, attempt history, and Anki
-export are intended to help users identify weak areas, reinforce understanding,
-and retain knowledge over time—especially in certification, technical training,
-and self-directed study scenarios.
+### Build and import study material
 
-DLMS exists because effective learning tools should be:
+- Create single- or multiple-answer quizzes manually, paste structured text,
+  upload question files, or import matching/terminology material.
+- Use **PDF & Image Import** for selectable-text question banks and
+  glossary/terminology documents.
+- Use bundled local OCR for screenshot batches, selected low-text scanned-PDF
+  pages, and supported mixed text/raster question layouts.
+- Send uncertain PDF, OCR, and structured-AI results through **Review &
+  Repair**, where questions, choices, answer mode, explanations, provenance,
+  and unassigned text can be inspected before publication.
+- Build ordinary image questions and hotspot activities, with non-destructive
+  image overlays and editable target regions.
 
-* Powerful without being bloated
-* Flexible without being fragile
-* Private by default
-* Open for inspection, improvement, and reuse
+### Study, test, and improve
 
-DLMS runs as a **local web application**.
+- Choose **Study Mode** for immediate feedback and explanations, or **Exam
+  Mode** for a timed, test-like attempt.
+- Resume eligible in-progress Study or Exam sessions after an interruption.
+- Review saved attempts, missed questions, scores, pass rates, trends, and
+  confidence information through **History** and **Analytics**.
+- Attach reusable **concepts** to questions so Learning Intelligence can show
+  topic accuracy, evidence, mastery, and weak areas.
+- Generate **Smart Review** sets from weak concepts and **Spaced Review** sets
+  from due material. Diagnostics can surface recurring choice confusions and
+  question-quality signals for inspection.
 
----
+### Organize and reuse content
 
-## 🚀 How to Use DLMS (Important)
+- Search, filter, hide, edit, reorder, and organize quizzes into custom folders
+  in the **Quiz Library**; export one quiz or a human-readable library reference.
+- Install validated **Study Packs** containing matching, multiple-choice,
+  mixed, image, or hotspot material. Content Packs can be inspected, exported,
+  and moved between DLMS installations.
+- Work in dedicated IT, Medical, Law, and Other Studies areas. Law Study also
+  supports case-review packets, briefs, Socratic work, IRAC practice, notes,
+  flashcards, and exports.
+- Create portable backups, validate them before restore, and preserve a safety
+  backup while applying a restore.
 
-After starting DLMS, use:
+### Continue outside DLMS
 
-👉 **[http://127.0.0.1:9001/](http://127.0.0.1:9001/)**
+- Build custom Anki decks from selected quiz questions, missed questions, and
+  Law Study material.
+- Export Anki packages or TSV data, or create printable physical flashcards.
+- Export reusable Content Packs and classic quiz text for study or transfer.
 
-This is the main interface for the application.
+### Personal, accessible desktop experience
 
-In an interactive desktop session, DLMS normally opens this address in the default
-browser after the local server is ready. In a headless or SSH session it prints the
-address but does not open a browser. See [Browser launch and server options](#browser-launch-and-server-options)
-for explicit controls.
+- Choose Light, Dark, Purple & Gold, or Maroon & Gold themes and customize the
+  visible study-area navigation.
+- Use semantic controls, visible focus states, keyboard-operable quiz choices,
+  and touch/keyboard alternatives for matching activities.
+- Keep all active data in the current user's application-data directory, with
+  no system-wide database or background service required by default.
 
-The browser is DLMS's interface, not the application process itself. When you
-are finished, use **Shutdown DLMS** in the application sidebar for an immediate,
-explicit stop. In an eligible loopback-only desktop session, the optional
-browser-presence shutdown feature may stop DLMS after the final DLMS browser
-presence disappears and its grace period expires. This automatic behavior does
-not apply when the feature is disabled or DLMS is running in LAN/server mode.
-To return to an instance that is still running, reopen a browser and visit
-**[http://127.0.0.1:9001/](http://127.0.0.1:9001/)** instead of starting another
-server copy. After shutdown, launch DLMS normally the next time you want to use
-it.
+## What makes DLMS different
 
----
+### Import uncertainty stays visible
 
-## ✨ Key Features
+Document parsing and OCR are probabilistic. DLMS preserves source context,
+reports incomplete or low-confidence records, and requires deliberate review
+where correctness is not established. That makes imported material repairable
+without pretending every extraction is trustworthy.
 
-* Study Mode and Exam Mode
-* Manual, pasted-text, file, matching, image, and Smart PDF quiz builders
-* Reusable Study Packs, including guided AI Study Pack ZIP validation and install
-* IT, Law, Medical, and other study-area workflows
-* Attempt History, Analytics, and Learning Intelligence review planning
-* Confidence analysis (optional)
-* Anki export and printable physical flashcards
-* Backups, restore validation, and configurable navigation
-* Purple & Gold, Light, Dark, and Maroon & Gold themes; Purple & Gold is the
-  default for new installations
+### Learning Intelligence reuses your own evidence
 
----
+DLMS connects concept-tagged Study interactions and completed Exam responses to
+topic-level views. Smart Review and Spaced Review select from questions you
+already own; they do not invent new questions or rewrite recorded answers.
 
-## 🧠 Study Mode & Learning Tools
+### AI assistance without an embedded provider dependency
 
-Study Mode is designed to help users learn and reinforce concepts rather than
-simulate a timed exam. Users can review questions, analyze confidence levels, and
-focus on missed material.
+The External AI Quiz Builder creates a provider-neutral prompt, accepts bounded
+structured quiz output, validates it, and stages it for review. The AI Study
+Pack Builder follows a separate prompt → ZIP → validate → install workflow.
+DLMS does not send prompts or retrieve responses automatically, so the learner
+chooses whether and where external AI is used.
 
-(See screenshots below. No logos or quiz questions/answers are provided.)
+### Reusable sources remain separate from practice copies
 
-### Study Mode Examples
+Question banks, terminology banks, and Study Packs can generate focused quizzes
+without reparsing the original source. This supports repeated practice while
+keeping source provenance and installed content manageable.
 
-![Study Mode Example 1](docs/screenshots/SS1.png)
-![Study Mode Example 2](docs/screenshots/SS2.png)
+## Screenshots
 
+These are existing screenshots from the DLMS 3.1.0 Help Center.
 
-## 🧩 Anki Integration
+| Smart PDF Review & Repair | Learning Intelligence | AI Study Pack Builder |
+| --- | --- | --- |
+| [![Smart PDF Review and Repair](static/help_assets/sample_cloud_questions_smart_pdf_review-repair.webp)](static/help_assets/sample_cloud_questions_smart_pdf_review-repair.webp) | [![Learning Intelligence topics and weak areas](static/help_assets/learning-topics.webp)](static/help_assets/learning-topics.webp) | [![AI Study Pack Builder](static/help_assets/ai_study_pack_builder.webp)](static/help_assets/ai_study_pack_builder.webp) |
 
-DLMS supports exporting missed questions to Anki, a proven spaced-repetition
-learning system. This allows users to turn weak areas into targeted study decks
-for long-term retention.
+## Installation and releases
 
----
+For normal use, download the package for your operating system from the
+[Releases page](../../releases). Every final package contains the native
+application, `README.txt`, and `sample_quiz.txt`.
 
+| Platform | DLMS 3.1.0 package |
+| --- | --- |
+| Fedora 44 x86-64 | `DLMS-3.1.0-fedora44-x86_64.tar.gz` |
+| Ubuntu 24.04 x86-64 | `DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz` |
+| Ubuntu 26.04 x86-64 | `DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz` |
+| Omarchy Quattro x86-64 | `DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz` |
+| Windows 11 x86-64 | `DLMS-3.1.0-windows11-x86_64.zip` |
+| macOS Apple Silicon (`arm64`) | `DLMS-3.1.0-macos-arm64.zip` |
 
-### Anki Export Examples
+Linux packages are distribution-specific; use the package named for your
+distribution. On Linux or Windows, extract the archive and run the DLMS
+executable inside it.
 
-![Anki Export Example 1](docs/screenshots/anki1.png)
-![Anki Export Example 2](docs/screenshots/anki2.png)
+### macOS Apple Silicon
 
----
+The macOS release is a native application bundle. The macOS ZIP exposes all three directly at
+its archive root: `DLMS.app`, `README.txt`, and `sample_quiz.txt`, with no
+wrapper directory around the app.
 
+1. Extract `DLMS-3.1.0-macos-arm64.zip`.
+2. Drag `DLMS.app` into `/Applications`.
+3. Open it from Finder or Applications.
+4. Because the release is not Developer ID-signed or notarized, Gatekeeper may
+   block its first launch. Where available, Control-click `DLMS.app`, choose
+   **Open**, and confirm. Otherwise, try once and then use **System Settings →
+   Privacy & Security → Open Anyway**.
 
-
-## 🖥️ Running DLMS
-
-### From the packaged releases (recommended)
-
-All six release packages contain the platform-specific application,
-`README.txt`, and `sample_quiz.txt`. The macOS ZIP exposes all three directly at
-its archive root, with no wrapper around `DLMS.app`. Supported builds are:
-
-* Fedora 44 x86-64
-* Ubuntu 24.04 x86-64
-* Ubuntu 26.04 x86-64
-* Windows 11 x86-64
-* macOS Apple Silicon (`arm64`)
-* Omarchy Quattro x86-64
-
-Linux packages are distribution-specific; download the build matching the named
-distribution. On Windows or Linux, extract the package, run the DLMS executable
-inside it, and allow it to open the browser. You can also open
-**[http://127.0.0.1:9001/](http://127.0.0.1:9001/)** yourself after DLMS starts.
-
-#### macOS on Apple Silicon
-
-1. Download and extract `DLMS-3.1.0-macos-arm64.zip` from **Releases**.
-2. Confirm `DLMS.app` appears directly in the extraction location, then drag it
-   into `/Applications`.
-3. Open DLMS from Finder or Applications. DLMS starts locally and normally opens
-   its browser interface automatically.
-4. Because this release is not signed with an Apple Developer ID and is not
-   notarized, Gatekeeper may block the first launch. Where available, Control-click
-   `DLMS.app`, choose **Open**, then confirm **Open**. Otherwise try opening the app
-   once, then use **System Settings → Privacy & Security → Open Anyway** and confirm
-   the launch.
-
-Removing the quarantine attribute is not part of the normal installation. If the
-two Gatekeeper choices above are unavailable, first verify the ZIP against the
-release `SHA256SUMS.txt`, then use this targeted troubleshooting fallback:
+Removing quarantine is not part of the normal installation. If those first-run
+choices are unavailable, verify the ZIP against `SHA256SUMS.txt` before using
+this targeted fallback:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/DLMS.app
 ```
 
-The documented macOS package is built for Apple Silicon (`arm64`). An Intel
-(`x86_64`) package should be published only when it has been built with an Intel
-Python environment and smoke-tested on Intel macOS; the Apple Silicon ZIP is not
-an Intel build.
+The published macOS package is for Apple Silicon, not Intel.
 
-### From source (advanced users)
+## Getting started
+
+1. Launch DLMS. In an interactive desktop session it normally opens the local
+   interface automatically.
+2. If needed, open [http://127.0.0.1:9001/](http://127.0.0.1:9001/) yourself.
+3. Start with **Build Quiz**, **PDF & Image Import**, an installed **Study
+   Pack**, or one of the subject study areas.
+4. Review imported material, then choose Study Mode or Exam Mode.
+5. Use History, Analytics, and Learning Intelligence to decide what to revisit;
+   send selected material to Anki when useful.
+
+DLMS uses the browser as its interface, but the local application process owns
+the session. When finished, use **Shutdown DLMS** in the sidebar for an immediate,
+explicit stop. In an eligible loopback-only desktop session, the optional
+browser-presence shutdown feature may stop DLMS after the final DLMS browser
+presence disappears and its grace period expires. Do not rely on that behavior
+when the feature is disabled or DLMS is running in LAN/server mode. If the
+process is still running, revisit the local address instead of starting another
+server copy.
+
+The included `sample_quiz.txt` is a quick way to try the classic text-import
+workflow. DLMS also includes a task-oriented Help Center covering quizzes,
+imports, Study Packs, Learning Intelligence, Anki, settings, data management,
+and troubleshooting.
+
+## Data, privacy, and portability
+
+DLMS creates its data directory on first run and initializes its local database
+and configuration automatically:
+
+- Windows: `%APPDATA%\DLMS`
+- macOS: `~/Library/Application Support/DLMS`
+- Linux: `~/.local/share/DLMS`
+
+Use **Settings → Backup & Restore** to download a portable backup, validate a
+backup before restoring it, or migrate persistent DLMS data. Keep important
+backups outside the live application-data directory.
+
+DLMS binds to `127.0.0.1:9001` by default. An intentional non-loopback bind is
+an advanced trusted-LAN/server configuration: DLMS has no user authentication,
+so it should not be exposed directly to the public internet.
+
+### Browser launch and server controls
+
+- `--browser` forces a browser-launch attempt.
+- `--no-browser` suppresses automatic launch.
+- `DLMS_NO_BROWSER=1` also suppresses launch and takes precedence over
+  `--browser`.
+- `--host 0.0.0.0` deliberately enables access through the host's network
+  interfaces; use it only on a trusted, appropriately firewalled LAN.
+
+Headless/SSH detection affects automatic browser launch, not the network bind.
+
+## Documentation
+
+- The in-application **Help Center** is the primary user guide.
+- [OCR setup and frozen packaging](docs/OCR_PACKAGING.md) explains source-mode
+  Tesseract setup and the strict native OCR bundle contract.
+- [Native release verification](docs/RELEASE_VERIFICATION.md) documents build,
+  artifact, final-package, checksum, and native smoke-test gates.
+- [Engineering audit summaries](docs/audits/) record evidence-based product and
+  release reviews; they are not third-party certifications or guarantees.
+
+## Development and contributing
+
+Ordinary users should prefer the packaged releases. To run from source:
 
 ```bash
 python -m venv .venv
@@ -170,389 +245,82 @@ python -m pip install -r requirements-lock.txt
 python app.py
 ```
 
-On Windows, activate the environment with `.venv\Scripts\activate`.
+On Windows, activate with `.venv\Scripts\activate`. Normal selectable-text PDF
+imports work without Tesseract in source mode; screenshot and scanned-page OCR
+need the local dependencies documented in
+[`docs/OCR_PACKAGING.md`](docs/OCR_PACKAGING.md).
 
-`requirements-lock.txt` records the dependency set used for the verified 3.1.0
-environment. Contributors who intentionally need compatible dependency updates can
-instead install the supported ranges in `requirements.txt`, run the full test suite,
-and then deliberately refresh the lock file.
+Before proposing a change, keep it focused, preserve local-data compatibility,
+and run the relevant tests. The standard non-browser suite is:
 
-OCR is optional in source mode. Normal selectable-text Smart PDF imports work
-without it; screenshot and selective scanned-page OCR additionally require a
-local Tesseract 5 executable, English trained data, and the standard TSV
-configuration. Official OCR-enabled frozen packages use a validated bundled
-runtime and intentionally ignore any system Tesseract. See
-[`docs/OCR_PACKAGING.md`](docs/OCR_PACKAGING.md) for exact Ubuntu 24.04 and
-other source-platform setup, verification commands, configuration overrides,
-and the target-native OCR release gates.
+```bash
+python -m pytest -q -p no:cacheprovider -m "not browser"
+```
 
-### Building release binaries
+Compatible dependency ranges are recorded in `requirements.txt`; the verified
+3.1.0 environment is pinned in `requirements-lock.txt`. This project is
+available under the [MIT License](LICENSE).
 
-Build on each target operating system from a clean checkout and isolated virtual
-environment:
+<details>
+<summary><strong>Maintainer release notes</strong></summary>
+
+### Native build inputs
+
+Build natively on each target from a clean checkout. Prepare the platform-native
+OCR bundle described in [`docs/OCR_PACKAGING.md`](docs/OCR_PACKAGING.md), set
+`DLMS_TESSERACT_BUNDLE_ROOT`, then use the canonical `DLMS.spec`:
 
 ```bash
 python -m pip install -r requirements-build.txt
 export DLMS_TESSERACT_BUNDLE_ROOT=/absolute/path/to/native-tesseract-bundle
-pyinstaller --clean --noconfirm DLMS.spec
-```
-
-On Windows PowerShell, set the equivalent variable before the build:
-
-```powershell
-$env:DLMS_TESSERACT_BUNDLE_ROOT = (Resolve-Path C:\path\to\native-tesseract-bundle).Path
 python -m PyInstaller --clean --noconfirm DLMS.spec
 ```
 
-The bundle must be for the target operating system and architecture and must
-contain Tesseract, its native dependencies, English trained data, TSV config,
-and the required Tesseract/tessdata/Leptonica licenses. See
-[`docs/OCR_PACKAGING.md`](docs/OCR_PACKAGING.md) for the exact layout and
-clean-machine screenshot/scanned-PDF OCR validation checklist.
+Verified native inputs use these exact names:
 
-`DLMS.spec` is the canonical platform-aware build manifest. Windows and Linux
-retain one-file executables. On macOS it creates a windowed, onedir-style native
-`dist/DLMS.app` bundle; the executable and its dependencies live inside the app
-bundle. Its only local data inputs are `static/` and `init.sql`; databases,
-settings, backups, logs, caches, tests, development directories, and per-user
-runtime data are not build inputs. Inspect the resulting `dist/` artifact and
-perform the release smoke tests before distribution.
+- `DLMS-3.1.0-fedora44-x86_64`
+- `DLMS-3.1.0-ubuntu24.04-x86_64`
+- `DLMS-3.1.0-ubuntu26.04-x86_64`
+- `DLMS-3.1.0-omarchy-quattro-x86_64`
+- `DLMS-3.1.0-windows11-x86_64.exe`
+- `DLMS-3.1.0-macos-arm64.zip`
 
-Build natively for each target architecture; PyInstaller does not produce
-cross-platform binaries. Stage the verified native inputs with these names:
-
-* Fedora 44: `DLMS-3.1.0-fedora44-x86_64`
-* Ubuntu 24.04: `DLMS-3.1.0-ubuntu24.04-x86_64`
-* Ubuntu 26.04: `DLMS-3.1.0-ubuntu26.04-x86_64`
-* Windows 11: `DLMS-3.1.0-windows11-x86_64.exe`
-* macOS Apple Silicon: `DLMS-3.1.0-macos-arm64.zip`
-* Omarchy Quattro: `DLMS-3.1.0-omarchy-quattro-x86_64`
-
-For the Apple Silicon build, use a native `arm64` Python environment on an Apple
-Silicon Mac, verify its architecture, build the canonical spec, and archive only
-the application bundle:
+On Apple Silicon, verify a native `arm64` Python, build `DLMS.spec`, and create
+the verified native-input ZIP with:
 
 ```bash
-python -c "import platform; assert platform.machine() == 'arm64', platform.machine()"
-python -m pip install -r requirements-build.txt
-python -m PyInstaller --clean --noconfirm DLMS.spec
-test -d dist/DLMS.app
-mkdir -p releases
 ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.1.0-macos-arm64.zip
 ```
 
-The ZIP should expose one top-level `DLMS.app`. The bundle contains
-`Contents/Info.plist`, `Contents/MacOS/DLMS`, and its packaged resources and
-frameworks. Do not include the `build/` directory, runtime data, or an additional
-raw DLMS executable in the release ZIP. If an Intel build is intentionally
-produced and tested from an `x86_64` Python environment, use the distinct name
-`DLMS-3.1.0-macos-x86_64.zip`.
+The bundle executable is `DLMS.app/Contents/MacOS/DLMS`. Do not place a wrapper
+directory around the app or include build/runtime data.
 
-After native verification and UAT, create these six final download packages.
-The repository-maintained `release_assets/README.txt` and
-`release_assets/sample_quiz.txt` are added to all six packages. The verified
-macOS app ZIP gains those two files at its root without adding a wrapper:
+### Final package gate
 
-* Fedora 44: `DLMS-3.1.0-fedora44-x86_64.tar.gz`
-* Ubuntu 24.04: `DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz`
-* Ubuntu 26.04: `DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz`
-* Windows 11: `DLMS-3.1.0-windows11-x86_64.zip`
-* macOS Apple Silicon: `DLMS-3.1.0-macos-arm64.zip`
-* Omarchy Quattro: `DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz`
+The six user-facing packages are:
 
-Clean-extract and smoke-test each exact final archive on its named native
-platform before generating the shared checksum manifest from those same six
-files. GitHub's automatic source archives provide the repository source; do not
-create or upload a separate DLMS source ZIP. The complete packaging,
-final-distributable verification, checksum, and post-upload commands are in
-[Native Release Verification](docs/RELEASE_VERIFICATION.md).
+- `DLMS-3.1.0-fedora44-x86_64.tar.gz`
+- `DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz`
+- `DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz`
+- `DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz`
+- `DLMS-3.1.0-windows11-x86_64.zip`
+- `DLMS-3.1.0-macos-arm64.zip`
 
-```bash
-PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.1.0-packages
-python tools/generate_sha256sums.py --output "$PACKAGE_DIR/SHA256SUMS.txt" \
-  "$PACKAGE_DIR/DLMS-3.1.0-fedora44-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.1.0-ubuntu24.04-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.1.0-ubuntu26.04-x86_64.tar.gz" \
-  "$PACKAGE_DIR/DLMS-3.1.0-windows11-x86_64.zip" \
-  "$PACKAGE_DIR/DLMS-3.1.0-macos-arm64.zip" \
-  "$PACKAGE_DIR/DLMS-3.1.0-omarchy-quattro-x86_64.tar.gz"
-```
-
-The user-facing release name is `DLMS 3.1.0`; the matching Git tag convention
-is `v3.1.0`.
-
-### Native artifact verification
-
-Follow [the native release-verification procedure](docs/RELEASE_VERIFICATION.md)
-for every staged Windows, Linux, and Apple Silicon macOS artifact. It provides a
-small structural/checksum verifier and a native start, route, Shutdown DLMS, and
-restart smoke test that uses a temporary controlled data directory. Native UAT on
-each target OS remains required for desktop launch, security prompts, browser
-behavior, and the representative quiz workflow; the procedure distinguishes those
-steps explicitly. It does not add signing, notarization, installers, publishing,
+Follow [Native Release Verification](docs/RELEASE_VERIFICATION.md) for the exact
+artifact and final-package checks, native smoke tests, UAT, and checksum steps.
+The tools validate structure, architecture, version, packaged resources,
+runtime-data exclusions, start/routes/shutdown/restart behavior, and the final
+archive layout. They do not add signing, notarization, installers, publication,
 or CI release automation.
 
-### Browser launch and server options
+GitHub's automatic source archives provide the repository source; do not upload
+a separately assembled source ZIP.
 
-Browser launch and network binding are separate choices:
+</details>
 
-* With no browser flag, DLMS opens a browser in an interactive Windows, macOS, or
-  Linux graphical desktop session. It skips automatic launch for SSH/headless
-  sessions. Headless/server detection controls automatic browser launch only; it
-  does not change the network bind address.
-* `python app.py --browser` forces a launch attempt even when a desktop session is
-  not detected.
-* `python app.py --no-browser` always suppresses automatic launch.
-* `DLMS_NO_BROWSER=1` also suppresses launch. The values `true`, `yes`, and `on`
-  are accepted case-insensitively. This setting and `--no-browser` take precedence
-  over `--browser`.
-* DLMS always defaults to `127.0.0.1:9001`, including in headless and SSH sessions.
-  `--host HOST` (or `--host=HOST`) changes only the bind address.
+## Project status
 
-This separation is intentional. Do not change or rely on headless detection to
-make DLMS LAN-accessible; request a non-loopback bind explicitly when that is the
-intended deployment.
-
-#### Intentional LAN or server access
-
-To accept connections through the host's network interfaces, start DLMS
-explicitly with `--host 0.0.0.0`:
-
-```bash
-python app.py --host 0.0.0.0
-```
-
-For a packaged Linux executable installed as `/usr/local/bin/DLMS`, a systemd
-service should use the equivalent explicit argument:
-
-```ini
-[Service]
-ExecStart=/usr/local/bin/DLMS --host 0.0.0.0
-```
-
-After starting the service, verify the listening address and port with:
-
-```bash
-ss -ltnp | grep ':9001'
-```
-
-Use the server's actual LAN address, such as `http://192.168.1.25:9001`, from
-another device. `0.0.0.0` is a bind address, not a browser destination.
-
-**Security:** Binding to `0.0.0.0` exposes DLMS to devices that can reach the host
-and port. DLMS has no user authentication, so use a non-loopback bind only on a
-trusted LAN, restrict access with host/network firewall rules as appropriate, and
-do not expose it directly to the public internet.
-
----
-
-## Engineering Audits
-
-DLMS undergoes periodic AI-assisted engineering and release reviews covering
-release readiness, product quality, native packaging, data integrity, and
-cross-platform validation. Curated summaries are available in
-[docs/audits/](docs/audits/).
-
-These reports are engineering review artifacts, not independent security
-certifications, third-party attestations, endorsements, or guarantees. Raw agent
-transcripts are intentionally not published.
-
----
-
-## 📂 Data & Configuration
-
-On first run, DLMS creates its data directory in your user profile and initializes
-its database and configuration files automatically.
-
-No external database or web server is required.
-
----
-
-## 📘 Question & Answer Formatting (Important)
-
-DLMS relies on a clear and consistent question format in order to correctly parse
-quiz content. Each question **must include an explicit answer line** so the system
-knows which option or options are correct.
-
-### ✅ Required Answer Line
-
-Every question must end with **one** of the following:
-
-* `Suggested Answer: X`
-* `Correct Answer: X`
-
-Where `X` is:
-
-* A single letter (e.g., `A`)
-* Multiple letters for multi-answer questions (e.g., `AC`)
-
-Both formats are treated identically by DLMS.
-
----
-
-### 🧪 Example: Single-Answer Question
-
-```
-1. Which component is responsible for providing electrical power to a computer system?
-
-A. Motherboard
-B. Power supply
-C. CPU
-D. Hard drive
-
-Suggested Answer: B
-```
-
----
-
-### 🧪 Example: Multi-Answer Question
-
-```
-2. Which of the following are common operating system functions?
-(Choose two.)
-
-A. Memory management
-B. Power distribution
-C. Process scheduling
-D. Monitor calibration
-E. File system management
-
-Correct Answer: AC
-```
-
----
-
-### 🧪 Example: Alternate Accepted Format
-
-```
-3. What does DNS primarily resolve?
-
-A. MAC addresses to IP addresses
-B. IP addresses to hostnames
-C. Hostnames to IP addresses
-D. Ports to services
-
-Correct Answer: C
-```
-
-`Suggested Answer:` and `Correct Answer:` are interchangeable.
-
----
-
-### ⚠️ Formatting Notes & Best Practices
-
-* Answer letters must match the choices exactly
-* Do **not** include punctuation or words in the answer line
-
-  * ❌ `Correct Answer: A, C`
-  * ❌ `Suggested Answer: A and C`
-  * ✅ `Correct Answer: AC`
-* Question numbers are optional but recommended
-* Blank lines between questions are allowed
-* Extra whitespace is ignored safely
-
----
-
-### 🧠 Tip for Pasted Questions
-
-If you are pasting questions from PDFs, documents, or study guides, DLMS includes
-regex-based parsing tools to help clean and normalize formatting before upload.
-Use these tools carefully to ensure answer lines remain intact.
-
----
-
-## 🧹 Removing DLMS & Cleaning Up Files
-
-DLMS does not install system-wide dependencies or background services by default.
-Removing the application is straightforward.
-
-### 🪟 Windows Cleanup
-
-1. Close DLMS and stop the application
-2. Delete the DLMS executable
-3. Remove the application data directory:
-
-```
-C:\Users\<YourUsername>\AppData\Roaming\DLMS
-```
-
-(Optional) If you ran development or test builds, you may also remove:
-
-```
-C:\Users\<YourUsername>\AppData\Local\Temp\_MEI*
-```
-
-These temporary folders are created by PyInstaller and are safe to delete.
-
----
-
-### 🍎 macOS Cleanup
-
-1. Quit DLMS.
-2. Remove `/Applications/DLMS.app`.
-3. Remove the application data directory if you also want to delete saved DLMS
-   content and settings:
-
-```text
-~/Library/Application Support/DLMS
-```
-
-Removing the app does not automatically remove this per-user data directory.
-
----
-
-### 🐧 Linux Cleanup
-
-1. Stop DLMS if it is running
-2. Remove the DLMS binary or source directory
-3. Remove the application data directory:
-
-```
-~/.local/share/DLMS
-```
-
-(Optional) If you enabled DLMS as a systemd service, disable and remove it:
-
-```bash
-sudo systemctl stop DLMS
-sudo systemctl disable DLMS
-sudo rm /etc/systemd/system/DLMS.service
-sudo systemctl daemon-reload
-```
-
-No additional cleanup is required. DLMS leaves no background services or hidden
-files once removed.
-
----
-
-## Release checklist
-
-1. Synchronize the release number in `app.py`, this README, and user-facing Help
-   text; confirm database and backup format versions are changed only when their
-   formats actually change.
-2. Review top-level and Help documentation against the release source, including
-   startup flags, data locations, and changed workflows.
-3. Create a clean environment from `requirements-lock.txt`; run targeted tests,
-   the full isolated test suite, Python compilation, and `git diff --check`.
-4. Build each supported platform artifact from `requirements-build.txt` with the
-   canonical `DLMS.spec`. Follow
-   [Native Release Verification](docs/RELEASE_VERIFICATION.md) on each target OS:
-   stage the prescribed name, run artifact structure/architecture validation and
-   the controlled native start/route/shutdown/restart smoke test, then complete
-   the required desktop UAT. On macOS, verify that the result is `dist/DLMS.app`,
-   ZIP that bundle with `ditto`, and confirm the archive has no separate raw
-   executable. Do not imply Intel macOS support without a native Intel build and
-   UAT.
-5. Review `git status`, then package the already-verified native artifacts. Add
-   the tracked `release_assets/README.txt` and `release_assets/sample_quiz.txt`
-   to every package, including beside the root-level `DLMS.app` on macOS.
-   Run `tools/verify_release_package.py --smoke` against each exact final archive
-   on its named native platform. This clean-extracts the archive and launches
-   the executable from the extracted user-facing layout. GitHub's automatic
-   source archives are sufficient; do not prepare a separate source ZIP.
-6. Only after all six exact final archives pass, generate
-   `SHA256SUMS.txt` from those same files. Re-run the package verifier with
-   `--complete-set` and `--checksums`, independently check the manifest, and
-   upload those unchanged files. Download each published asset once and confirm
-   its SHA-256 matches the pre-upload value; matching bytes do not require a
-   redundant second native smoke test.
+DLMS 3.1.0 is the current stable release. The capabilities described above are
+present in the 3.1.0 source and packages. Active development may continue on
+separate branches, but unreleased roadmap work is intentionally not presented
+here as stable functionality.
