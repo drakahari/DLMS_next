@@ -257,6 +257,9 @@ and run the relevant tests. The standard non-browser suite is:
 python -m pytest -q -p no:cacheprovider -m "not browser"
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the test environment, Firefox
+workflow expectations, fixture privacy rules, and release-impact guidance.
+
 Compatible dependency ranges are recorded in `requirements.txt`; the verified
 3.1.0 environment is pinned in `requirements-lock.txt`. This project is
 available under the [MIT License](LICENSE).

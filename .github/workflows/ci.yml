@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  non-browser-tests:
+    name: Non-browser tests (Python 3.14)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements-lock.txt
+            requirements-test.txt
+
+      - name: Install locked runtime and test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Check installed dependency consistency
+        run: python -m pip check
+
+      - name: Check changed-line whitespace
+        shell: bash
+        run: |
+          if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            git diff --check HEAD^ HEAD
+          else
+            git diff --check
+          fi
+
+      - name: Run focused release-tooling tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: >-
+          python -m pytest -q -p no:cacheprovider
+          tests/test_ocr_packaging.py
+          tests/test_prepare_ocr_bundle.py
+          tests/test_release_artifact_verification.py
+          tests/test_release_hygiene.py
+          tests/test_release_package_verification.py
+
+      - name: Run full non-browser suite
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest -q -p no:cacheprovider -m "not browser"
+
+      - name: Verify tests did not modify the checkout
+        shell: bash
+        run: |
+          status="$(git status --porcelain --untracked-files=all)"
+          if [[ -n "$status" ]]; then
+            printf '%s\n' "$status"
+            exit 1
+          fi
