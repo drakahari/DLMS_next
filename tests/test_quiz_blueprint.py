@@ -35,6 +35,7 @@ class QuizBlueprintTests(unittest.TestCase):
         "quiz.export_all_quizzes_txt": ("/export/all_quizzes.txt", {"GET"}),
         "quiz.export_single_quiz_txt": ("/export/quiz/<int:quiz_id>.txt", {"GET"}),
         "quiz.quiz_library": ("/library", {"GET"}),
+        "quiz.quiz_duplicate_report": ("/library/duplicates", {"GET"}),
         "quiz.mixed_quiz_builder": ("/quiz-composer", {"GET"}),
         "quiz.create_mixed_quiz": ("/quiz-composer/create", {"POST"}),
         "quiz.serve_data": ("/data/<path:filename>", {"GET"}),
@@ -66,6 +67,7 @@ class QuizBlueprintTests(unittest.TestCase):
         "delete_quiz_folder_metadata", "get_portal_title",
         "resolve_logo_filename", "debug_print", "get_db",
         "mixed_quiz_catalog", "mixed_quiz_filter_options",
+        "quiz_duplicate_report",
         "question_payload_from_db", "publish_quiz",
     }
     EDITOR_DEPENDENCIES = {

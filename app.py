@@ -55,6 +55,7 @@ from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
 from dlms.services import quiz_publication as _quiz_publication_service
 from dlms.services import quiz_composition as _quiz_composition_service
+from dlms.services import quiz_duplicates as _quiz_duplicate_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
@@ -6226,6 +6227,9 @@ app.register_blueprint(create_quiz_blueprint(
         ),
         mixed_quiz_filter_options=lambda catalog: (
             _quiz_composition_service.mixed_quiz_filter_options(catalog)
+        ),
+        quiz_duplicate_report=lambda cur, registry: (
+            _quiz_duplicate_service.build_quiz_duplicate_report(cur, registry)
         ),
         question_payload_from_db=lambda cur, question_id: (
             _question_payload_from_db(cur, question_id)

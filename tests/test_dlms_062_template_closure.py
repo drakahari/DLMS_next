@@ -152,7 +152,7 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
         self.assertEqual(TEMPLATE_ROOT.resolve(), Path(dlms.app.template_folder).resolve())
 
         templates = sorted(TEMPLATE_ROOT.rglob("*.html"))
-        self.assertEqual(66, len(templates))
+        self.assertEqual(67, len(templates))
         self.assertTrue((TEMPLATE_ROOT / "dashboard/index.html").is_file())
         self.assertFalse((ROOT / "static/index.html").exists())
         self.assertNotIn("static/index.html", self.app_source)

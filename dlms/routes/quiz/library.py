@@ -801,6 +801,25 @@ def mixed_quiz_builder(dependencies):
     )
 
 
+def quiz_duplicate_report(dependencies):
+    """Render a read-only comparison of ordinary source questions."""
+    with dependencies.registry_lock():
+        registry = dependencies.normalize_quiz_folders(
+            dependencies.load_registry()
+        )
+    conn = dependencies.get_db()
+    try:
+        report = dependencies.quiz_duplicate_report(conn.cursor(), registry)
+    finally:
+        conn.close()
+    return render_template(
+        "quiz/duplicates.html",
+        app_version=dependencies.app_version(),
+        portal_title=dependencies.get_portal_title(),
+        report=report,
+    )
+
+
 def create_mixed_quiz(dependencies):
     title = re.sub(r"\s+", " ", str(request.form.get("title") or "")).strip()
     selected_ids = []
@@ -889,6 +908,7 @@ def register_library_routes(
         ("/export/all_quizzes.txt", "export_all_quizzes_txt", export_all_quizzes_txt, ["GET"]),
         ("/export/quiz/<int:quiz_id>.txt", "export_single_quiz_txt", export_single_quiz_txt, ["GET"]),
         ("/library", "quiz_library", quiz_library, ["GET"]),
+        ("/library/duplicates", "quiz_duplicate_report", quiz_duplicate_report, ["GET"]),
         ("/quiz-composer", "mixed_quiz_builder", mixed_quiz_builder, ["GET"]),
         ("/quiz-composer/create", "create_mixed_quiz", create_mixed_quiz, ["POST"]),
     )

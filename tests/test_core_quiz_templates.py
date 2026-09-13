@@ -22,6 +22,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         "dlms_request_too_large": "errors/request-too-large.html",
         "home": "dashboard/index.html",
         "quiz_library": "quiz/library.html",
+        "quiz_duplicate_report": "quiz/duplicates.html",
         "edit_quiz": "quiz/edit.html",
         "upload_page": "quiz/upload.html",
         "paste_page": "quiz/paste.html",

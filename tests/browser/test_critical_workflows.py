@@ -7725,6 +7725,83 @@ def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sourc
             ).fetchone()[0] == 1
 
 
+def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
+    browser_stack,
+):
+    """Exercise the DLMS-132 Library entry point and read-only report."""
+    database_path = browser_stack.data_root / "results.db"
+    prompt = "Which neutral protocol provides secure remote access?"
+    quiz_ids = []
+    with sqlite3.connect(database_path) as connection:
+        for index in range(2):
+            cursor = connection.execute(
+                "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+                (f"Browser Duplicate Source {index + 1}", f"browser-duplicate-{index + 1}.html"),
+            )
+            quiz_id = cursor.lastrowid
+            quiz_ids.append(quiz_id)
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, 1, ?, 'choice', '', '{}')
+                """,
+                (quiz_id, prompt),
+            )
+            question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (question_id, "A", "Secure Shell", 1),
+                    (question_id, "B", "File Transfer", 0),
+                ],
+            )
+
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    for index, quiz_id in enumerate(quiz_ids):
+        registry.append({
+            "id": quiz_id,
+            "title": f"Browser Duplicate Source {index + 1}",
+            "html": f"browser-duplicate-{index + 1}.html",
+            "folder": "Browser Duplicate Sources",
+            "exam_minutes": 90,
+        })
+    registry_path.write_text(json.dumps(registry, indent=4), encoding="utf-8")
+
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector(\"a[href='/library/duplicates']\") !== null")
+    browser.click("a[href='/library/duplicates']")
+    browser.wait_for(
+        "location.pathname === '/library/duplicates' && "
+        "document.querySelectorAll('.duplicate-question-group').length >= 1"
+    )
+    state = browser.evaluate(
+        "(() => ({"
+        "heading:document.querySelector('h1')?.textContent.trim(),"
+        "exact:document.getElementById('exactDuplicateHeading')?.textContent.trim(),"
+        "sources:[...document.querySelectorAll('.duplicate-question-source strong')]"
+        ".map(node=>node.textContent.trim()),"
+        "editLinks:[...document.querySelectorAll('.duplicate-question-location a')]"
+        ".map(node=>node.getAttribute('href')),"
+        "hasMutationForm:document.querySelector('form') !== null"
+        "}))()"
+    )
+    assert state["heading"] == "Duplicate Question Review"
+    assert state["exact"] == "Exact duplicates"
+    assert {f"Browser Duplicate Source {index + 1}" for index in range(2)} <= set(state["sources"])
+    assert {f"/edit_quiz/{quiz_id}" for quiz_id in quiz_ids} <= set(state["editLinks"])
+    assert state["hasMutationForm"] is False
+
+    with sqlite3.connect(database_path) as connection:
+        for quiz_id in quiz_ids:
+            assert connection.execute(
+                "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
+            ).fetchone()[0] == 1
+
+
 def test_native_spaced_review_displays_due_reason_and_creates_session(browser_stack):
     """Exercise the DLMS-129 schedule UI and normal quiz-publication seam."""
     database_path = browser_stack.data_root / "results.db"
