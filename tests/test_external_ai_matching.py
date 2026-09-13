@@ -219,7 +219,7 @@ class ExternalAIMatchingRouteTests(unittest.TestCase):
         self.assertIn("Choice questions", body)
         self.assertIn("Matching / terminology", body)
         self.assertIn("AI Study Pack Builder", body)
-        self.assertIn("downloadable DLMS Study Pack archive", body)
+        self.assertIn("downloadable DLMS Study Pack ZIP", body)
 
         token = csrf_token(self.client, "/external-ai/quiz-builder")
         response = self.client.post(

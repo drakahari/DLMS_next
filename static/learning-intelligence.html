@@ -39,7 +39,7 @@
 <main class="dashboard-main">
 <header class="dashboard-header learning-intelligence-header">
   <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
-  <div><div class="build-eyebrow">DLMS-127 · CROSS-QUIZ CONCEPT INTELLIGENCE</div><h1>Topics, Mastery &amp; Weak Areas</h1><p>Concept-level insight across quizzes, Study Packs, and recorded learning activity.</p></div>
+  <div><div class="build-eyebrow">LEARNING INTELLIGENCE · CROSS-QUIZ TOPICS</div><h1>Topics, Mastery &amp; Weak Areas</h1><p>Concept-level insight across quizzes, Study Packs, and recorded learning activity.</p></div>
 </header>
 
 <section class="learning-intelligence-summary" aria-label="Learning intelligence summary">
@@ -82,7 +82,7 @@
 
 <section class="dashboard-panel learning-intelligence-actions-panel adaptive-study-panel">
   <div class="learning-intelligence-panel-head">
-    <div><div class="build-eyebrow">DLMS-125 · ADAPTIVE STUDY</div><h2>Study What I Need Most</h2><p>Build a focused session from your existing local learning history. DLMS favors weak concepts, recent misses, and material that is due or has not been reviewed recently.</p></div>
+    <div><div class="build-eyebrow">PERSONALIZED PRACTICE</div><h2>Study What I Need Most</h2><p>Build a focused Adaptive Study session from your existing local learning history. DLMS favors weak concepts, recent misses, and material that is due or has not been reviewed recently.</p></div>
   </div>
   <ul class="adaptive-study-signals" aria-label="Adaptive study priority rules">
     <li><strong>Needs attention</strong><span>Weak and developing concepts receive priority.</span></li>
@@ -99,18 +99,18 @@
 
 <section class="dashboard-panel learning-intelligence-actions-panel">
   <div class="learning-intelligence-panel-head">
-    <div><div class="build-eyebrow">DLMS-011 · SMART REVIEW</div><h2>Turn weak areas into targeted practice</h2><p>DLMS selects existing tagged questions from topics currently classified as weak. No AI-generated questions are required.</p></div>
+    <div><div class="build-eyebrow">WEAK-TOPIC PRACTICE</div><h2>Turn weak areas into targeted practice</h2><p>Smart Review selects existing tagged questions only from topics currently classified as weak. It is a narrower option than Adaptive Study and does not require AI-generated questions.</p></div>
     <a class="build-secondary-link" href="/learning-profile">Open Learning Profile</a>
   </div>
   <form class="learning-intelligence-review-form" method="post" action="/smart-review/generate">
     <label><span>Questions</span><select name="question_count"><option value="10">Up to 10</option><option value="20" selected>Up to 20</option><option value="30">Up to 30</option><option value="50">Up to 50</option></select></label>
-    <button class="build-primary-button" id="liSmartReviewButton" type="submit">Generate Smart Review Quiz</button>
+    <button class="build-primary-button" id="liSmartReviewButton" type="submit">Start Smart Review</button>
     <span id="liSmartReviewNote">Uses the weakest tagged concepts first.</span>
   </form>
 </section>
 
 <section class="dashboard-panel learning-intelligence-weak-panel">
-  <div class="build-eyebrow">DLMS-010 · WEAK-AREA DETECTION</div>
+  <div class="build-eyebrow">EVIDENCE-BASED TOPICS</div>
   <h2>Needs attention</h2>
   <p>Only topics with at least three deduplicated responses can be classified as weak. Untested or lightly tested topics remain “Not enough data.”</p>
   <div id="liWeakList" class="learning-intelligence-weak-list"></div>

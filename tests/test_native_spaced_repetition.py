@@ -334,10 +334,15 @@ class NativeSpacedRepetitionTests(unittest.TestCase):
         page = (Path(dlms.STATIC_ROOT) / "review-schedule.html").read_text(
             encoding="utf-8"
         )
-        self.assertIn("DLMS-129 · NATIVE SPACED REPETITION", page)
+        self.assertIn("Due Questions &amp; Topic Retention", page)
+        self.assertIn("Question-level schedule", page)
+        self.assertIn("Topic Retention Schedule", page)
+        self.assertNotIn("DLMS-129", page)
         self.assertIn('action="/native-spaced-review/generate"', page)
         self.assertIn("Start Due Review", page)
         self.assertIn("does not replace Anki export", page)
+        self.assertIn("Generated practice history", page)
+        self.assertNotIn("Canonical identity", page)
         self.assertIn('action="/spaced-review/generate"', page)
 
 

@@ -617,7 +617,7 @@ def _native_spaced_repetition_schedule(cur, now=None):
         "model": {
             "intervals": "Consecutive correct responses use 1, 3, 7, 14, then 30 day intervals.",
             "incorrect": "An incorrect response resets the next interval to 1 day.",
-            "identity": "Generated review and mixed-quiz copies contribute results to their canonical source question but are never scheduled independently.",
+            "identity": "Generated practice copies contribute results to their original question but are never scheduled separately.",
             "new_material": "Unseen questions remain visible as not yet scheduled and enter the schedule after their first recorded answer.",
         },
     }

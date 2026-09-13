@@ -376,7 +376,8 @@ class AdaptiveStudySessionTests(unittest.TestCase):
         page = (Path(dlms.STATIC_ROOT) / "learning-intelligence.html").read_text(
             encoding="utf-8"
         )
-        self.assertIn("DLMS-125 · ADAPTIVE STUDY", page)
+        self.assertIn("PERSONALIZED PRACTICE", page)
+        self.assertNotIn("DLMS-125", page)
         self.assertIn("Study What I Need Most", page)
         self.assertIn('action="/adaptive-study/generate"', page)
         for explanation in (

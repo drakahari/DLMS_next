@@ -7975,6 +7975,7 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         ("/external-ai/quiz-builder", "document.querySelector('.external-ai-builder-grid')", "true"),
         ("/", "document.querySelector('.daily-review-item')", "true"),
         ("/quiz-bundles", "document.querySelector('.portable-bundle-workflows')", "true"),
+        ("/help/learning-intelligence", "document.getElementById('which-review')", "true"),
     ):
         browser.set_viewport(420, 820)
         browser.navigate(base_url + path)
@@ -8099,6 +8100,15 @@ def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
                 "external AI build copy": ".build-option-card-external-ai p",
                 "PDF build label": ".build-option-card-pdf .build-method-label",
                 "PDF build copy": ".build-option-card-pdf p",
+            },
+        ),
+        (
+            "/help/learning-intelligence",
+            "document.getElementById('which-review')",
+            {
+                "review guide intro": "#which-review .help-callout",
+                "review guide table": "#which-review .help-table td",
+                "review guide action": ".help-topic-nav a",
             },
         ),
     )

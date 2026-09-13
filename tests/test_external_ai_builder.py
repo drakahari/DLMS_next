@@ -216,7 +216,8 @@ class ExternalAIBuilderTests(unittest.TestCase):
             "No API key is required", "does not connect to an AI",
             "AI answers may be wrong", "2–26 choices", "multiple-answer",
             "raw AI response is retained only", "AI Study Pack Builder",
-            "downloadable DLMS Study Pack archive", "Neither workflow replaces",
+            "downloadable DLMS Study Pack ZIP", "Matching / terminology",
+            "confirm every final pairing",
         ):
             self.assertIn(required, body)
 

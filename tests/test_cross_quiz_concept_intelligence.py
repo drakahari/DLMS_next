@@ -341,7 +341,8 @@ class CrossQuizConceptIntelligenceTests(unittest.TestCase):
         page = (Path(dlms.STATIC_ROOT) / "learning-intelligence.html").read_text(
             encoding="utf-8"
         )
-        self.assertIn("DLMS-127 · CROSS-QUIZ CONCEPT INTELLIGENCE", page)
+        self.assertIn("LEARNING INTELLIGENCE · CROSS-QUIZ TOPICS", page)
+        self.assertNotIn("DLMS-127", page)
         for field in (
             "question_count",
             "quiz_count",
