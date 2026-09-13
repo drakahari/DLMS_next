@@ -416,6 +416,22 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("state.model.generated_practice", page)
         self.assertIn("button:not([disabled]), summary, [href]", page)
 
+    def test_learning_intelligence_sticky_practice_cells_have_opaque_theme_base(self):
+        css = self._static("style.css")
+        for selector, overlay in (
+            (r"\.learning-intelligence-table th:last-child", "--theme-surface-2"),
+            (r"\.learning-intelligence-table td:last-child", "--theme-panel-1"),
+        ):
+            with self.subTest(selector=selector):
+                rules = re.findall(selector + r"\s*\{([^}]*)\}", css)
+                self.assertTrue(rules)
+                self.assertTrue(any(
+                    "background-color:var(--theme-body-base" in body
+                    and "background-image:linear-gradient" in body
+                    and body.count(overlay) >= 2
+                    for body in rules
+                ))
+
 
 if __name__ == "__main__":
     unittest.main()

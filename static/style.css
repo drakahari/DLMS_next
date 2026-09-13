@@ -11013,10 +11013,18 @@ body.help-page .dashboard-main *::after {
 }
 .learning-intelligence-table th:last-child{
     z-index:2;
-    background:var(--theme-surface-2,#0c2037);
+    background-color:var(--theme-body-base,#020713);
+    background-image:linear-gradient(
+        var(--theme-surface-2,#0c2037),
+        var(--theme-surface-2,#0c2037)
+    );
 }
 .learning-intelligence-table td:last-child{
-    background:var(--theme-panel-1,#07182e);
+    background-color:var(--theme-body-base,#020713);
+    background-image:linear-gradient(
+        var(--theme-panel-1,#07182e),
+        var(--theme-panel-1,#07182e)
+    );
 }
 .learning-intelligence-table tbody tr:last-child td{border-bottom:0;}
 .learning-intelligence-table td small{display:block;margin-top:4px;color:#8298b4;font-size:12px;}

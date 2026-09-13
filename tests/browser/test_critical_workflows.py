@@ -8127,8 +8127,11 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
 
     # Concept performance is intentionally a horizontally scrollable comparison
     # table at this width. Its Practice column remains pinned so the primary row
-    # action is reachable before and after the user scrolls the metrics.
+    # action is reachable before and after the user scrolls the metrics. The
+    # pinned cells use an opaque theme base beneath their themed overlay so
+    # neighboring metric text cannot show through them.
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.set_viewport(1024, 900)
         _set_theme(browser, theme)
         browser.navigate(base_url + "/learning-intelligence")
         browser.wait_for("document.getElementById('liLoading').hidden")
@@ -8141,13 +8144,31 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         table_state = browser.evaluate(
             "(() => {const wrap=document.getElementById('liTableWrap');"
             "const action=document.querySelector('.li-concept-review-form .build-secondary-link');"
-            "const cell=action.closest('td');const bounds=wrap.getBoundingClientRect();"
+            "const cell=action.closest('td');const header=document.querySelector("
+            "'.learning-intelligence-table th:last-child');"
+            "const bounds=wrap.getBoundingClientRect();"
+            "const resolve=value=>{const probe=document.createElement('span');"
+            "probe.style.color=value;document.body.appendChild(probe);"
+            "const result=getComputedStyle(probe).color;probe.remove();return result;};"
+            "const base=resolve(getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--theme-body-base'));"
+            "const occludes=target=>{const rect=target.getBoundingClientRect();"
+            "const top=document.elementFromPoint(rect.left+Math.min(8,rect.width/2),"
+            "rect.top+rect.height/2);return top?.closest('td,th')===target;};"
             "const contained=()=>{const rect=action.getBoundingClientRect();"
             "return rect.left>=bounds.left-1&&rect.right<=bounds.right+1;};"
-            "const before=contained();wrap.scrollLeft=wrap.scrollWidth;"
+            "const cellStyle=getComputedStyle(cell),headerStyle=getComputedStyle(header);"
+            "const before=contained(),cellTopBefore=occludes(cell),headerTopBefore=occludes(header);"
+            "wrap.scrollLeft=wrap.scrollWidth;"
             "return {scrollable:wrap.scrollWidth>wrap.clientWidth,"
             "practicePosition:getComputedStyle(cell).position,"
             "actionBeforeScroll:before,actionAfterScroll:contained(),"
+            "cellOpaqueBase:cellStyle.backgroundColor===base,"
+            "headerOpaqueBase:headerStyle.backgroundColor===base,"
+            "cellOverlay:cellStyle.backgroundImage!=='none',"
+            "headerOverlay:headerStyle.backgroundImage!=='none',"
+            "cellTopBefore,headerTopBefore,cellTopAfter:occludes(cell),"
+            "headerTopAfter:occludes(header),"
             "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
         )
         assert table_state == {
@@ -8155,8 +8176,38 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
             "practicePosition": "sticky",
             "actionBeforeScroll": True,
             "actionAfterScroll": True,
+            "cellOpaqueBase": True,
+            "headerOpaqueBase": True,
+            "cellOverlay": True,
+            "headerOverlay": True,
+            "cellTopBefore": True,
+            "headerTopBefore": True,
+            "cellTopAfter": True,
+            "headerTopAfter": True,
             "documentFits": True,
         }, (theme, table_state)
+
+        browser.set_viewport(1600, 1000)
+        wide_state = browser.evaluate(
+            "(() => {const cell=document.querySelector("
+            "'.learning-intelligence-table td:last-child');"
+            "const header=document.querySelector('.learning-intelligence-table th:last-child');"
+            "const resolve=value=>{const probe=document.createElement('span');"
+            "probe.style.color=value;document.body.appendChild(probe);"
+            "const result=getComputedStyle(probe).color;probe.remove();return result;};"
+            "const base=resolve(getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--theme-body-base'));"
+            "return {position:getComputedStyle(cell).position,"
+            "cellOpaque:getComputedStyle(cell).backgroundColor===base,"
+            "headerOpaque:getComputedStyle(header).backgroundColor===base,"
+            "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert wide_state == {
+            "position": "sticky",
+            "cellOpaque": True,
+            "headerOpaque": True,
+            "documentFits": True,
+        }, (theme, wide_state)
 
     browser.set_viewport(920, 900)
     browser.navigate(base_url + "/external-ai/quiz-builder")
