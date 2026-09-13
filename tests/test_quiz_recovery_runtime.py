@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "static" / "script.js").read_text(encoding="utf-8")
 RECOVERY = (ROOT / "static" / "quiz-recovery.js").read_text(encoding="utf-8")
+STYLE = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
 LIBRARY_TEMPLATE = (ROOT / "templates" / "quiz" / "library.html").read_text(encoding="utf-8")
 RESET_TEMPLATE = (ROOT / "templates" / "settings" / "reset-remove.html").read_text(encoding="utf-8")
 RESTORE_COMPLETE_TEMPLATE = (ROOT / "templates" / "settings" / "restore-complete.html").read_text(encoding="utf-8")
@@ -17,6 +18,16 @@ def test_recovery_is_a_dedicated_compatibility_loaded_runtime():
     assert "window.DLMSQuizRecovery" in RECOVERY
     assert "loadQuizRecoveryRuntime" in SCRIPT
     assert 'fetch(file, {cache: "no-store"})' in SCRIPT
+
+
+def test_recovery_actions_have_distinct_theme_safe_interaction_states():
+    assert ".mode-center button:not(.quiz-recovery-start-over)" in STYLE
+    assert ".quiz-recovery-actions .quiz-recovery-start-over" in STYLE
+    assert "var(--semantic-secondary-control-text" in STYLE
+    assert ".quiz-recovery-start-over:not(:disabled):hover" in STYLE
+    assert ".quiz-recovery-start-over:not(:disabled):focus-visible" in STYLE
+    assert ".quiz-recovery-start-over:not(:disabled):active" in STYLE
+    assert ".quiz-recovery-start-over:disabled" in STYLE
 
 
 def test_recovery_namespace_fingerprint_and_limits_are_versioned_and_bounded():

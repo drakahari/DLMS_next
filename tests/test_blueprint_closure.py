@@ -71,7 +71,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.admin_images.AdminImageRouteDependencies": 6,
         "dlms.routes.anki.AnkiRouteDependencies": 22,
         "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
-        "dlms.routes.core.CoreRouteDependencies": 16,
+        "dlms.routes.core.CoreRouteDependencies": 17,
         "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
         "dlms.routes.history.HistoryRouteDependencies": 9,
         "dlms.routes.it.ITStudyDependencies": 5,

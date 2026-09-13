@@ -2604,6 +2604,15 @@ def _schedule_automatic_browser_shutdown():
 
 @app.route("/api/shutdown", methods=["POST"])
 def shutdown_app():
+    if not _browser_presence_runtime_eligible():
+        print("[SYSTEM] Shutdown request rejected in LAN/server mode")
+        return jsonify(
+            status="unavailable",
+            error=(
+                "Shutdown DLMS is unavailable in LAN/server mode. "
+                "Stop DLMS from the host system."
+            ),
+        ), 403
     print("[SYSTEM] Shutdown requested via UI")
     _schedule_dlms_shutdown()
 
@@ -3056,6 +3065,7 @@ app.register_blueprint(create_core_blueprint(CoreRouteDependencies(
     quiz_asset_folder=lambda: QUIZ_ASSET_FOLDER,
     browser_presence_update=lambda token, closed: _update_browser_presence(token, closed),
     browser_presence_setting_loaded=lambda config: _browser_presence_setting_loaded(config),
+    browser_presence_runtime_eligible=lambda: _browser_presence_runtime_eligible(),
 )))
 app.register_blueprint(create_help_blueprint())
 

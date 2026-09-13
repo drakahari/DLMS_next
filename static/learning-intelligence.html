@@ -175,7 +175,30 @@ fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
  document.getElementById('liAverageMastery').textContent=pct(s.average_mastery);
  document.getElementById('liWeakAreas').textContent=s.weak_areas??0;
  document.getElementById('liLoading').hidden=true;
- document.getElementById('liModelContent').innerHTML=`<p><strong>Mastery:</strong> ${esc(state.model.mastery_formula||'')}</p><p><strong>Evidence:</strong> ${esc(state.model.evidence_credit||'')}</p><p><strong>Minimum evidence:</strong> ${esc(state.model.minimum_evidence||'')}</p><p><strong>Weak area:</strong> ${esc(state.model.weak_area_rule||'')}</p><p><strong>De-duplication:</strong> ${esc(state.model.deduplication||'')}</p><p><strong>Trend:</strong> ${esc(state.model.trend||'')}</p><p><strong>Coverage:</strong> ${esc(state.model.coverage||'')}</p>`;
+ document.getElementById('liModelContent').innerHTML=`
+  <p class="li-mastery-intro"><strong>Mastery is a 0–100 study signal for one concept.</strong> It combines how accurately you have answered, how you are doing lately, how much evidence DLMS has, and how recently you practiced. It is a guide for choosing what to study—not a course grade.</p>
+  <h3>Your score combines four things</h3>
+  <ol class="li-mastery-factors">
+   <li><strong><span>55%</span> Overall performance</strong><p>Your correct and incorrect answers for this concept. Repeated saves of the same response count once.</p></li>
+   <li><strong><span>20%</span> Recent performance</strong><p>Accuracy across up to your five most recent counted answers.</p></li>
+   <li><strong><span>15%</span> Evidence</strong><p>More responses make the signal more trustworthy. Full evidence credit is reached at eight responses.</p></li>
+   <li><strong><span>10%</span> Recency</strong><p>Recent practice receives more credit than older practice.</p></li>
+  </ol>
+  <section class="li-mastery-explanation">
+   <h3>When there is not enough evidence</h3>
+   <p><strong>Not enough data</strong> means the concept has fewer than three counted responses. DLMS can show a provisional mastery value, but it will not label the concept weak or strong yet.</p>
+   <p>To avoid false confidence from a tiny sample, mastery is capped at 59 with one or two responses and at 74 with three or four responses. Five or more responses can use the full score.</p>
+   <p>A concept becomes a <strong>Weak area</strong> only after at least three responses and when mastery is below 60 or overall accuracy is below 60%.</p>
+  </section>
+  <section class="li-mastery-explanation">
+   <h3>Trend and generated practice</h3>
+   <p><strong>Trend is different from Mastery.</strong> Mastery summarizes current evidence; Trend compares recent windows to show whether performance is improving, declining, or roughly stable. Trend needs at least six responses.</p>
+   <p>When you answer a generated practice question, DLMS credits the original source question and concept. Practice copies add learning evidence without inflating the number of source questions or quizzes.</p>
+  </section>
+  <details class="li-mastery-technical">
+   <summary tabindex="0">Technical details</summary>
+   <div><p><strong>Formula:</strong> ${esc(state.model.mastery_formula||'')}</p><p><strong>Evidence:</strong> ${esc(state.model.evidence_credit||'')}</p><p><strong>Recency bands:</strong> ${esc(state.model.recency_credit||'')}</p><p><strong>Evidence limits:</strong> ${esc(state.model.minimum_evidence||'')}</p><p><strong>Weak-area rule:</strong> ${esc(state.model.weak_area_rule||'')}</p><p><strong>Response de-duplication:</strong> ${esc(state.model.deduplication||'')}</p><p><strong>Trend:</strong> ${esc(state.model.trend||'')}</p><p><strong>Coverage:</strong> ${esc(state.model.coverage||'')}</p><p><strong>Generated practice:</strong> ${esc(state.model.generated_practice||'')}</p></div>
+  </details>`;
  render();renderWeak();
 }).catch(()=>{const loading=document.getElementById('liLoading');loading.setAttribute('role','alert');loading.setAttribute('aria-live','assertive');loading.textContent='Learning intelligence could not be loaded.';});
 document.querySelectorAll('[data-li-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-li-filter]').forEach(x=>{const selected=x===b;x.classList.toggle('active',selected);x.setAttribute('aria-pressed',String(selected));});state.filter=b.dataset.liFilter;render();}));
@@ -203,7 +226,7 @@ document.addEventListener('keydown',e=>{
   if(modal.hidden)return;
   if(e.key==='Escape'){e.preventDefault();closeModal();return;}
   if(e.key!=='Tab')return;
-  const focusable=[...modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+  const focusable=[...modal.querySelectorAll('button:not([disabled]), summary, [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
     .filter(el=>el.getClientRects().length);
   if(!focusable.length){e.preventDefault();return;}
   const first=focusable[0],last=focusable[focusable.length-1];

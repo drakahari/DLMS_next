@@ -29,6 +29,7 @@ class CoreRouteDependencies:
     quiz_asset_folder: Callable[[], str]
     browser_presence_update: Callable[[str, bool], bool]
     browser_presence_setting_loaded: Callable[[dict[str, Any]], None]
+    browser_presence_runtime_eligible: Callable[[], bool]
 
 
 def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
@@ -126,8 +127,18 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
             "\n[PORTAL CONFIG] ===== SERVING /config/portal.json ====="
         )
 
-        cfg = dependencies.load_portal_config()
+        cfg = dict(dependencies.load_portal_config())
         dependencies.browser_presence_setting_loaded(cfg)
+
+        # Runtime mode is deliberately not persisted in portal.json.  It is
+        # derived from the host selected for this process and tells the shared
+        # browser shell whether process shutdown is a valid desktop action.
+        cfg["manual_shutdown_available"] = bool(
+            dependencies.browser_presence_runtime_eligible()
+        )
+        cfg["runtime_mode"] = (
+            "local" if cfg["manual_shutdown_available"] else "lan_server"
+        )
 
         dependencies.debug_print("[PORTAL CONFIG] Loaded config:", cfg)
         dependencies.debug_print(

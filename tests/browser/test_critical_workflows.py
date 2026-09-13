@@ -14,6 +14,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -7822,6 +7823,34 @@ def test_browser_presence_runtime_mode_isolated_server(
         for path in ("/", "/library", "/library"):
             browser.navigate(base_url + path)
             browser.wait_for("window.dlmsBrowserPresence?.enabled === true")
+            browser.wait_for(
+                "document.getElementById('shutdownBtn')?.disabled === "
+                + ("false" if automatic_shutdown_expected else "true")
+            )
+            if automatic_shutdown_expected:
+                assert browser.evaluate(
+                    "document.getElementById('dashboardShutdownUnavailable')"
+                ) is None
+            else:
+                shutdown_state = browser.evaluate(
+                    "(() => {const button=document.getElementById('shutdownBtn');"
+                    "const note=document.getElementById('dashboardShutdownUnavailable');"
+                    "return {disabled:button.disabled,ariaDisabled:button.getAttribute('aria-disabled'),"
+                    "describedBy:button.getAttribute('aria-describedby'),"
+                    "label:button.querySelector('span:last-child').textContent.trim(),"
+                    "note:note?.textContent.trim(),role:note?.getAttribute('role')};})()"
+                )
+                assert shutdown_state == {
+                    "disabled": True,
+                    "ariaDisabled": "true",
+                    "describedBy": "dashboardShutdownUnavailable",
+                    "label": "Shutdown unavailable",
+                    "note": (
+                        "DLMS is running in LAN/server mode. "
+                        "Stop it from the host system."
+                    ),
+                    "role": "status",
+                }
             accepted = browser.evaluate(
                 "fetch('/api/browser-presence',{method:'POST',"
                 "headers:{'Content-Type':'application/json'},"
@@ -7876,9 +7905,17 @@ def test_browser_presence_runtime_mode_isolated_server(
                 data=b"",
                 headers={"X-CSRFToken": csrf_cookie},
             )
-            with opener.open(shutdown_request, timeout=3) as response:
-                assert json.load(response) == {"status": "ok"}
-            server_process.wait(timeout=5)
+            with pytest.raises(urllib.error.HTTPError) as rejected:
+                opener.open(shutdown_request, timeout=3)
+            assert rejected.value.code == 403
+            assert json.load(rejected.value) == {
+                "status": "unavailable",
+                "error": (
+                    "Shutdown DLMS is unavailable in LAN/server mode. "
+                    "Stop DLMS from the host system."
+                ),
+            }
+            assert server_process.poll() is None
     finally:
         if browser is not None:
             browser.close()
@@ -8324,6 +8361,139 @@ def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
         )["disabled copy action"]
         assert disabled["opacity"] == "1", (theme, disabled)
         assert disabled["cursor"] == "not-allowed", (theme, disabled)
+
+
+def test_mastery_explanation_and_recovery_actions_are_accessible_across_themes(
+    browser_stack,
+):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    def move_pointer(selector, *, pressed=False):
+        coordinates = browser.evaluate(
+            "(() => {const rect=document.querySelector("
+            + json.dumps(selector)
+            + ").getBoundingClientRect();return {x:rect.left+rect.width/2,"
+            "y:rect.top+rect.height/2};})()"
+        )
+        actions = [{
+            "type": "pointerMove",
+            "x": round(coordinates["x"]),
+            "y": round(coordinates["y"]),
+            "duration": 0,
+            "origin": "viewport",
+        }]
+        if pressed:
+            actions.append({"type": "pointerDown", "button": 0})
+        browser.command("input.performActions", {
+            "context": browser.context,
+            "actions": [{
+                "type": "pointer",
+                "id": "recovery-action-mouse",
+                "parameters": {"pointerType": "mouse"},
+                "actions": actions,
+            }],
+        })
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.set_viewport(520, 900)
+        browser.navigate(base_url + "/learning-intelligence")
+        browser.wait_for("document.getElementById('liLoading').hidden")
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/learning-intelligence")
+        browser.wait_for("document.getElementById('liLoading').hidden")
+        browser.click("#liModelButton")
+        browser.wait_for("!document.getElementById('liModel').hidden")
+        mastery = browser.evaluate(
+            "(() => {const dialog=document.querySelector('.learning-intelligence-model-dialog');"
+            "const factors=[...document.querySelectorAll('.li-mastery-factors li')];"
+            "return {text:dialog.innerText,factorCount:factors.length,"
+            "oneColumn:factors.length>1 && Math.abs(factors[0].getBoundingClientRect().left-"
+            "factors[1].getBoundingClientRect().left)<1,"
+            "overflow:document.documentElement.scrollWidth-window.innerWidth};})()"
+        )
+        assert mastery["factorCount"] == 4
+        assert mastery["oneColumn"] is True
+        assert mastery["overflow"] <= 1
+        for phrase in (
+            "Your score combines four things",
+            "Not enough data",
+            "Weak area",
+            "Trend is different from Mastery",
+            "Technical details",
+        ):
+            assert phrase in mastery["text"]
+        explanation_contrast = _theme_contrast_snapshot(browser, {
+            "mastery introduction": ".li-mastery-intro",
+            "mastery factor": ".li-mastery-factors li strong",
+            "mastery factor detail": ".li-mastery-factors li p",
+            "technical disclosure": ".li-mastery-technical summary",
+        })
+        for role, state in explanation_contrast.items():
+            assert state["contrast"] >= 4.5, (theme, role, state)
+        browser.wait_for(
+            "document.activeElement.matches('.learning-intelligence-model-close')"
+        )
+        browser.evaluate(
+            "document.querySelector('.li-mastery-technical summary').focus();true"
+        )
+        active_element = browser.evaluate(
+            "(() => ({tag:document.activeElement.tagName,"
+            "className:document.activeElement.className}))()"
+        )
+        assert active_element["tag"] == "SUMMARY", (theme, active_element)
+        browser.click(".li-mastery-technical summary")
+        assert browser.evaluate("document.querySelector('.li-mastery-technical').open") is True
+        browser.press_key("\ue00c")
+        assert browser.evaluate("document.getElementById('liModel').hidden") is True
+        assert browser.evaluate("document.activeElement.id") == "liModelButton"
+
+        browser.set_viewport(760, 800)
+        browser.navigate(base_url + "/")
+        browser.wait_for("document.querySelector('.daily-review-panel')")
+        browser.evaluate(
+            "(() => {const host=document.querySelector('.dashboard-main');"
+            "const panel=document.createElement('section');panel.className='mode-center';"
+            "panel.innerHTML='<div class=\"quiz-recovery-actions\">' +"
+            "'<button class=\"quiz-recovery-resume\">Resume</button>' +"
+            "'<button class=\"quiz-recovery-start-over\">Start Over</button></div>';"
+            "host.prepend(panel);return true;})()"
+        )
+        normal = _theme_contrast_snapshot(browser, {
+            "resume": ".quiz-recovery-resume",
+            "start over": ".quiz-recovery-start-over",
+        })
+        assert normal["start over"]["contrast"] >= 4.5, (theme, normal)
+        assert normal["resume"]["background"] != normal["start over"]["background"]
+
+        move_pointer(".quiz-recovery-start-over")
+        browser.wait_for("document.querySelector('.quiz-recovery-start-over').matches(':hover')")
+        hovered = _theme_contrast_snapshot(
+            browser, {"start over": ".quiz-recovery-start-over"},
+        )["start over"]
+        assert hovered["contrast"] >= 4.5, (theme, hovered)
+
+        move_pointer(".quiz-recovery-start-over", pressed=True)
+        browser.wait_for("document.querySelector('.quiz-recovery-start-over').matches(':active')")
+        active = _theme_contrast_snapshot(
+            browser, {"start over": ".quiz-recovery-start-over"},
+        )["start over"]
+        try:
+            assert active["contrast"] >= 4.5, (theme, active)
+        finally:
+            browser.command("input.releaseActions", {"context": browser.context})
+
+        browser.evaluate(
+            "document.querySelectorAll('.quiz-recovery-actions button')"
+            ".forEach(button=>button.disabled=true);true"
+        )
+        disabled = _theme_contrast_snapshot(
+            browser, {"start over": ".quiz-recovery-start-over"},
+        )
+        for role, state in disabled.items():
+            assert state["contrast"] >= 4.5, (theme, role, state)
+            assert state["opacity"] == "1", (theme, role, state)
+            assert state["cursor"] == "not-allowed", (theme, role, state)
 
 
 def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sources(

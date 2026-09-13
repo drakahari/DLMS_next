@@ -404,6 +404,17 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertEqual(page.count('class="build-secondary-link"'), 4)
         self.assertIn('class="build-secondary-link" id="liModelButton"', page)
         self.assertIn('class="build-secondary-link" id="liToggleZeroEvidence"', page)
+        self.assertIn("Your score combines four things", page)
+        for contribution in ("55%", "20%", "15%", "10%"):
+            self.assertIn(f"<span>{contribution}</span>", page)
+        self.assertIn("Not enough data", page)
+        self.assertIn("mastery is capped at 59", page)
+        self.assertIn("at 74 with three or four responses", page)
+        self.assertIn("Weak area", page)
+        self.assertIn("Trend is different from Mastery", page)
+        self.assertIn('<summary tabindex="0">Technical details</summary>', page)
+        self.assertIn("state.model.generated_practice", page)
+        self.assertIn("button:not([disabled]), summary, [href]", page)
 
 
 if __name__ == "__main__":

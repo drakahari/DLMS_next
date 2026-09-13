@@ -692,11 +692,13 @@ def _learning_intelligence_payload(
         "model": {
             "mastery_formula": "55% overall accuracy + 20% recent accuracy (last 5) + 15% evidence + 10% recency",
             "evidence_credit": "Full evidence credit at 8 deduplicated responses",
-            "minimum_evidence": "Fewer than 3 responses = Not enough data; 3-4 responses cannot exceed 74 mastery",
+            "recency_credit": "Recency credit is 100 within 7 days, 90 within 30 days, 75 within 90 days, 60 within 180 days, and 45 after 180 days; no activity receives 0",
+            "minimum_evidence": "Fewer than 3 responses = Not enough data and mastery cannot exceed 59; 3-4 responses cannot exceed 74 mastery",
             "weak_area_rule": "At least 3 responses and mastery below 60 or accuracy below 60",
             "deduplication": "Latest Study response per question/session and one Exam response per question/attempt",
             "trend": "At least 6 responses are required. DLMS compares two adjacent equal windows of 3-5 responses; a change under 15 percentage points is roughly stable.",
-            "coverage": "Question and quiz counts include tagged source material across quizzes and Study Packs, but exclude generated Smart, Spaced, Concept, and Adaptive Study copies.",
+            "coverage": "Question and quiz counts include tagged source material across quizzes and Study Packs, but exclude generated practice copies.",
+            "generated_practice": "Answers in generated practice follow explicit question lineage back to the source question when available. Generated copies contribute learning evidence without becoming additional source-question or quiz coverage.",
             "retention_separation": "Base mastery includes the existing recency component; retained mastery adds explicit post-due decay for review timing.",
         },
     }

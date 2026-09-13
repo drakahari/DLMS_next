@@ -342,9 +342,33 @@ class BrowserPresenceIntegrationTests(unittest.TestCase):
         manager.begin_critical_operation.assert_called_once_with()
         manager.end_critical_operation.assert_called_once_with()
 
-    def test_manual_shutdown_still_schedules_immediately_in_server_mode(self):
+    def test_manual_shutdown_is_rejected_in_server_mode(self):
         manager = mock.Mock()
         manager.runtime_eligible = False
+        with mock.patch.object(dlms, "browser_presence_manager", manager), mock.patch.object(
+            threading, "Timer"
+        ) as timer:
+            response = self.client.post(
+                "/api/shutdown", headers=csrf_headers(self.client)
+            )
+        self.assertEqual(403, response.status_code)
+        self.assertEqual(
+            {
+                "status": "unavailable",
+                "error": (
+                    "Shutdown DLMS is unavailable in LAN/server mode. "
+                    "Stop DLMS from the host system."
+                ),
+            },
+            response.get_json(),
+        )
+        timer.assert_not_called()
+        manager.begin_critical_operation.assert_called_once_with()
+        manager.end_critical_operation.assert_called_once_with()
+
+    def test_manual_shutdown_still_schedules_immediately_in_local_mode(self):
+        manager = mock.Mock()
+        manager.runtime_eligible = True
         with mock.patch.object(dlms, "browser_presence_manager", manager), mock.patch.object(
             threading, "Timer"
         ) as timer:
@@ -354,8 +378,24 @@ class BrowserPresenceIntegrationTests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual({"status": "ok"}, response.get_json())
         timer.assert_called_once()
-        manager.begin_critical_operation.assert_called_once_with()
-        manager.end_critical_operation.assert_called_once_with()
+
+    def test_portal_config_exposes_runtime_shutdown_availability_without_persisting_it(self):
+        config_path = Path(dlms.PORTAL_CONFIG)
+        before = config_path.read_text(encoding="utf-8")
+        manager = mock.Mock()
+        manager.runtime_eligible = False
+        with mock.patch.object(dlms, "browser_presence_manager", manager):
+            response = self.client.get("/config/portal.json")
+        self.assertEqual(200, response.status_code)
+        self.assertIs(False, response.get_json()["manual_shutdown_available"])
+        self.assertEqual("lan_server", response.get_json()["runtime_mode"])
+        self.assertEqual(before, config_path.read_text(encoding="utf-8"))
+
+        manager.runtime_eligible = True
+        with mock.patch.object(dlms, "browser_presence_manager", manager):
+            response = self.client.get("/config/portal.json")
+        self.assertIs(True, response.get_json()["manual_shutdown_available"])
+        self.assertEqual("local", response.get_json()["runtime_mode"])
 
     def test_shared_client_reports_presence_without_activity_tracking(self):
         source = Path(dlms.STATIC_ROOT, "nav-normalize.js").read_text(encoding="utf-8")
