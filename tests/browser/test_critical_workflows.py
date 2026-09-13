@@ -57,6 +57,54 @@ class BrowserServer:
     process_options: dict
 
 
+def _set_theme(browser, theme):
+    status = browser.evaluate(
+        f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+        f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+    )
+    assert status == 200
+
+
+def _theme_contrast_snapshot(browser, selectors):
+    """Measure rendered text contrast against each element's effective background."""
+    return browser.evaluate(
+        "(() => {"
+        "const selectors=" + json.dumps(selectors) + ";"
+        "const parseColor=value=>{"
+        "const rgb=value.match(/^rgba?\\(([^)]+)\\)$/);"
+        "if(rgb){const parts=rgb[1].split(/[, ]+/).filter(Boolean).map(Number);"
+        "return [parts[0]/255,parts[1]/255,parts[2]/255,parts.length>3?parts[3]:1];}"
+        "const srgb=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);"
+        "if(srgb)return [+srgb[1],+srgb[2],+srgb[3],srgb[4]===undefined?1:+srgb[4]];"
+        "throw new Error('Unsupported computed color: '+value);};"
+        "const resolveColor=value=>{const sample=document.createElement('span');"
+        "sample.style.color=value;document.body.appendChild(sample);"
+        "const result=getComputedStyle(sample).color;sample.remove();return parseColor(result);};"
+        "const composite=(foreground,background)=>foreground.slice(0,3).map((value,index)=>"
+        "value*foreground[3]+background[index]*(1-foreground[3]));"
+        "const luminance=rgb=>rgb.map(value=>value<=.04045?value/12.92:"
+        "Math.pow((value+.055)/1.055,2.4)).reduce((sum,value,index)=>"
+        "sum+value*[.2126,.7152,.0722][index],0);"
+        "const contrast=(foreground,background)=>{const a=luminance(foreground),b=luminance(background);"
+        "return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};"
+        "const root=getComputedStyle(document.documentElement);"
+        "const base=resolveColor(root.getPropertyValue('--theme-body-base')).slice(0,3);"
+        "const effectiveBackground=node=>{const layers=[];"
+        "for(let item=node;item;item=item.parentElement){layers.push(parseColor(getComputedStyle(item).backgroundColor));}"
+        "return layers.reverse().reduce((background,layer)=>composite(layer,background),base);};"
+        "const measure=(name,selector)=>{const node=document.querySelector(selector);"
+        "if(!node)throw new Error('Missing contrast target '+name+': '+selector);"
+        "const style=getComputedStyle(node),background=effectiveBackground(node);"
+        "const color=parseColor(style.color),foreground=composite(color,background);"
+        "return [name,{contrast:contrast(foreground,background),color:style.color,"
+        "background:style.backgroundColor,borderColor:style.borderColor,"
+        "borderStyle:style.borderStyle,outlineStyle:style.outlineStyle,"
+        "opacity:style.opacity,cursor:style.cursor,text:node.textContent.trim()}];};"
+        "return Object.fromEntries(Object.entries(selectors).map(([name,selector])=>measure(name,selector)));"
+        "})()"
+    )
+
+
 def _free_loopback_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -5922,6 +5970,23 @@ def test_external_ai_matching_review_and_publication(browser_stack):
     assert initial == {
         "pairs": 2, "confirmed": False, "choiceMode": False, "overflow": True,
     }
+    review_url = browser.evaluate("location.href")
+    matching_selectors = {
+        "matching field label": ".external-ai-matching-pair .build-field > span",
+        "matching optional label": ".external-ai-matching-pair .build-field em",
+        "matching confirmation": ".pdf-correctness-confirmation span",
+        "matching bulk status": ".pdf-review-bulk-status",
+        "matching bulk help": ".pdf-review-bulk-help summary",
+        "matching disabled bulk action": "#questionReviewConfirmSelected",
+    }
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(review_url)
+        browser.wait_for("document.querySelector('[data-matching-role=pair-row]')")
+        matching_theme = _theme_contrast_snapshot(browser, matching_selectors)
+        for role, state in matching_theme.items():
+            assert state["contrast"] >= 4.5, (theme, role, state)
+        assert matching_theme["matching disabled bulk action"]["opacity"] == "1"
     browser.set_viewport(840, 900)
     matching_layout = browser.evaluate(
         "(() => {const settings=document.querySelector('.external-ai-matching-settings');"
@@ -7761,6 +7826,162 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         ) is True, path
 
 
+def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
+    browser_stack,
+):
+    """Rendered 3.2.0 surfaces must keep semantic text contrast in every palette."""
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    browser.set_viewport(1280, 1000)
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelector('.daily-review-panel')")
+
+    pages = (
+        (
+            "/",
+            "document.querySelector('.daily-review-action')",
+            {
+                "daily intro": ".daily-review-intro",
+                "daily count": ".daily-review-count",
+                "daily explanation": ".daily-review-copy p",
+                "daily action": ".daily-review-action",
+            },
+        ),
+        (
+            "/learning-intelligence",
+            "document.getElementById('liLoading').hidden",
+            {
+                "intelligence description": ".learning-intelligence-panel-head p",
+                "adaptive signal": ".adaptive-study-signals li span",
+                "adaptive helper": ".learning-intelligence-review-form > span",
+                "active intelligence filter": ".learning-intelligence-filters button.active",
+                "mastery help action": "#liModelButton",
+            },
+        ),
+        (
+            "/review-schedule",
+            "document.querySelector('.review-schedule-actions')",
+            {
+                "due review description": ".native-review-actions p",
+                "due review field label": ".native-review-actions label",
+                "schedule model description": ".native-review-model p",
+            },
+        ),
+        (
+            "/quiz-composer",
+            "document.querySelector('.mixed-builder-filters')",
+            {
+                "mixed back link": ".mixed-builder-intro .build-secondary-link",
+                "mixed filter label": ".mixed-builder-filter-grid label",
+                "mixed bulk action": ".mixed-builder-bulk-actions button",
+                "mixed question metadata": ".mixed-builder-question-meta span",
+                "mixed create action": ".mixed-builder-plan .library-primary-action",
+            },
+        ),
+        (
+            "/external-ai/quiz-builder",
+            "document.getElementById('externalAiCopyPrompt')",
+            {
+                "external AI card copy": ".external-ai-builder-card .build-section-heading p",
+                "external AI field label": ".external-ai-builder-card .build-field",
+                "external AI field helper": ".external-ai-builder-card .build-field small",
+                "external AI status": "#externalAiCopyStatus",
+                "external AI disabled action": "#externalAiCopyPrompt",
+                "external AI back link": ".external-ai-builder-actions .build-secondary-link",
+            },
+        ),
+        (
+            "/pdf-import",
+            "document.getElementById('ocrMatchingUploadForm')",
+            {
+                "OCR matching label": "#ocrMatchingUploadForm .build-field",
+                "OCR matching helper": "#ocrMatchingUploadForm .build-field small",
+                "OCR matching guidance heading": "#ocrMatchingUploadForm .pdf-ocr-guidance strong",
+                "OCR matching guidance copy": "#ocrMatchingUploadForm .pdf-ocr-guidance span",
+                "OCR local note": "#ocrMatchingUploadForm .pdf-ocr-local-note",
+            },
+        ),
+        (
+            "/library/duplicates",
+            "document.querySelector('.duplicate-question-summary')",
+            {
+                "duplicate back link": ".duplicate-question-intro .build-secondary-link",
+                "duplicate explanation": ".duplicate-question-intro p",
+                "duplicate summary helper": ".duplicate-question-summary .library-stat-card small",
+            },
+        ),
+        (
+            "/quiz-bundles",
+            "document.querySelector('.portable-bundle-selection-actions')",
+            {
+                "bundle back link": ".portable-bundle-intro .build-secondary-link",
+                "bundle select all": "#selectAllBundleQuizzes",
+                "bundle clear": "#clearBundleQuizzes",
+                "bundle file label": ".portable-bundle-upload-form .build-field",
+                "bundle file helper": ".portable-bundle-upload-form .build-field small",
+                "bundle step": ".portable-bundle-step",
+                "bundle boundary copy": ".portable-bundle-boundary p",
+                "bundle validate action": ".portable-bundle-upload-form .library-primary-action",
+            },
+        ),
+        (
+            "/library",
+            "document.querySelector('.library-hero-actions a[href=\"/quiz-bundles\"]')",
+            {
+                "bundle library action": ".library-hero-actions a[href=\"/quiz-bundles\"]",
+                "duplicate library action": ".library-hero-actions a[href=\"/library/duplicates\"]",
+                "mixed library action": ".library-hero-actions a[href=\"/quiz-composer\"]",
+            },
+        ),
+        (
+            "/upload",
+            "document.querySelector('.build-option-card-external-ai')",
+            {
+                "external AI build label": ".build-option-card-external-ai .build-method-label",
+                "external AI build copy": ".build-option-card-external-ai p",
+                "PDF build label": ".build-option-card-pdf .build-method-label",
+                "PDF build copy": ".build-option-card-pdf p",
+            },
+        ),
+    )
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        for path, ready, selectors in pages:
+            browser.navigate(base_url + path)
+            browser.wait_for(ready)
+            snapshot = _theme_contrast_snapshot(browser, selectors)
+            for role, state in snapshot.items():
+                assert state["contrast"] >= 4.5, (theme, path, role, state)
+
+        browser.navigate(base_url + "/quiz-bundles")
+        browser.wait_for("document.getElementById('selectAllBundleQuizzes')")
+        browser.click("#selectAllBundleQuizzes")
+        assert browser.evaluate(
+            "document.getElementById('selectAllBundleQuizzes').matches(':hover')"
+        ) is True
+        hovered = _theme_contrast_snapshot(
+            browser, {"hovered bundle action": "#selectAllBundleQuizzes"},
+        )["hovered bundle action"]
+        assert hovered["contrast"] >= 4.5, (theme, hovered)
+        browser.evaluate("document.getElementById('selectAllBundleQuizzes').focus();true")
+        browser.press_key("\ue004")
+        assert browser.evaluate("document.activeElement.id") == "clearBundleQuizzes"
+        focused = _theme_contrast_snapshot(
+            browser, {"focused bundle action": "#clearBundleQuizzes"},
+        )["focused bundle action"]
+        assert focused["contrast"] >= 4.5, (theme, focused)
+        assert focused["borderStyle"] != "none", (theme, focused)
+
+        browser.navigate(base_url + "/external-ai/quiz-builder")
+        browser.wait_for("document.getElementById('externalAiCopyPrompt')")
+        disabled = _theme_contrast_snapshot(
+            browser, {"disabled copy action": "#externalAiCopyPrompt"},
+        )["disabled copy action"]
+        assert disabled["opacity"] == "1", (theme, disabled)
+        assert disabled["cursor"] == "not-allowed", (theme, disabled)
+
+
 def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sources(
     browser_stack,
 ):
@@ -7918,6 +8139,20 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
     assert {f"Browser Duplicate Source {index + 1}" for index in range(2)} <= set(state["sources"])
     assert {f"/edit_quiz/{quiz_id}" for quiz_id in quiz_ids} <= set(state["editLinks"])
     assert state["hasMutationForm"] is False
+
+    duplicate_url = browser.evaluate("location.href")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(duplicate_url)
+        browser.wait_for("document.querySelector('.duplicate-question-badge.exact')")
+        themed_duplicate = _theme_contrast_snapshot(browser, {
+            "exact badge": ".duplicate-question-badge.exact",
+            "source metadata": ".duplicate-question-source span",
+            "correct badge": ".duplicate-question-correct",
+            "edit action": ".duplicate-question-location .library-secondary-action",
+        })
+        for role, themed_state in themed_duplicate.items():
+            assert themed_state["contrast"] >= 4.5, (theme, role, themed_state)
 
     with sqlite3.connect(database_path) as connection:
         for quiz_id in quiz_ids:
@@ -8078,6 +8313,23 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
     assert review["quiz"] == import_title
     assert "Browser Imported Folder" in review["folder"]
     review_url = browser.evaluate("location.href")
+    review_selectors = {
+        "bundle review back link": ".portable-bundle-intro .build-secondary-link",
+        "bundle review summary helper": ".portable-bundle-summary .library-stat-card small",
+        "bundle review metadata": ".portable-bundle-review-meta span",
+        "bundle review preview": ".portable-bundle-review-quiz details summary",
+        "bundle review explanation": ".portable-bundle-confirm-panel p",
+        "bundle review confirmation": ".portable-bundle-confirm-actions label",
+        "bundle review cancel": ".portable-bundle-confirm-actions .library-secondary-action",
+        "bundle review submit": ".portable-bundle-confirm-actions .library-primary-action",
+    }
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(review_url)
+        browser.wait_for("document.querySelector('.portable-bundle-confirm-panel')")
+        themed_review = _theme_contrast_snapshot(browser, review_selectors)
+        for role, state in themed_review.items():
+            assert state["contrast"] >= 4.5, (theme, role, state)
     for width in (1024, 420):
         browser.set_viewport(width, 900 if width == 1024 else 820)
         browser.navigate(review_url)
