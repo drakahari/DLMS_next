@@ -11,6 +11,7 @@ from .question_identity import (
     is_generated_question,
     is_generated_quiz,
     legacy_question_identity,
+    quiz_generation_kind,
 )
 
 
@@ -1292,6 +1293,12 @@ def _daily_review_plan(
 
     valid_registry = []
     registry_by_quiz_id = {}
+    quiz_metadata = {
+        str(row["id"]): row
+        for row in cur.execute(
+            "SELECT id, title, source_file, generation_kind FROM quizzes"
+        ).fetchall()
+    }
     for raw in registry if isinstance(registry, list) else []:
         if not isinstance(raw, dict):
             continue
@@ -1301,13 +1308,23 @@ def _daily_review_plan(
             continue
         title = str(raw.get("title") or "Untitled Quiz").strip() or "Untitled Quiz"
         source_pack_id = str(raw.get("source_pack_id") or "").strip().casefold()
-        source_key = quiz_file.casefold()
-        title_key = title.casefold()
-        if source_key.startswith("spaced_review_native_"):
+        metadata = quiz_metadata.get(quiz_id)
+        stored_generation_kind = (
+            metadata["generation_kind"] if metadata is not None
+            else raw.get("generation_kind")
+        )
+        classified_generation_kind = quiz_generation_kind(
+            generation_kind=stored_generation_kind,
+            source_file=(metadata["source_file"] if metadata is not None else quiz_file),
+            title=(metadata["title"] if metadata is not None else title),
+        )
+        if classified_generation_kind == "native_spaced_review":
             generated_kind = "native_due"
-        elif source_key.startswith(("spaced_review_", "concept_review_", "smart_review_")):
+        elif classified_generation_kind in {
+            "spaced_review", "concept_review", "smart_review"
+        }:
             generated_kind = "concept_review"
-        elif source_key.startswith("adaptive_study_"):
+        elif classified_generation_kind == "adaptive_study":
             generated_kind = "adaptive"
         else:
             generated_kind = None
@@ -1316,6 +1333,7 @@ def _daily_review_plan(
             "title": title,
             "html": quiz_file,
             "source_pack_id": source_pack_id or None,
+            "generation_kind": stored_generation_kind,
             "generated_kind": generated_kind,
         }
         valid_registry.append(item)

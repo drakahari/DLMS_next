@@ -12,7 +12,12 @@ from tests._isolation import ensure_test_data_isolation
 
 ensure_test_data_isolation()
 import app as dlms
-from dlms.services.question_identity import canonical_learning_identity
+from dlms.services.question_identity import (
+    SOURCE_QUIZ_KIND,
+    canonical_learning_identity,
+    is_generated_question,
+    quiz_generation_kind,
+)
 from dlms.services.quiz_duplicates import build_quiz_duplicate_report
 from dlms.services.quiz_composition import build_mixed_quiz_catalog
 from tests.current_schema import seed_current_quiz
@@ -104,6 +109,7 @@ class QuestionIdentityV2Tests(unittest.TestCase):
         self.assertEqual(first_row["question_uid"], first_row["canonical_question_uid"])
         self.assertIsNone(first_row["source_question_uid"])
         self.assertEqual(0, first_row["is_generated_copy"])
+        self.assertEqual(SOURCE_QUIZ_KIND, first_row["generation_kind"])
         self.assertNotEqual(
             first_row["canonical_question_uid"], second_row["canonical_question_uid"]
         )
@@ -159,8 +165,9 @@ class QuestionIdentityV2Tests(unittest.TestCase):
                 SELECT q.*, z.generation_kind, z.source_file,
                        z.title AS quiz_title
                 FROM questions q JOIN quizzes z ON z.id = q.quiz_id
-                WHERE z.generation_kind IS NOT NULL ORDER BY z.id
-                """
+                WHERE z.generation_kind != ? ORDER BY z.id
+                """,
+                (SOURCE_QUIZ_KIND,),
             ).fetchall()
             self.assertEqual(6, len(rows))
             for row in rows:
@@ -224,6 +231,88 @@ class QuestionIdentityV2Tests(unittest.TestCase):
             "_lineage" not in path.read_text(encoding="utf-8")
             for path in runtime_files
         ))
+
+    def test_explicit_metadata_outweighs_generated_looking_names(self):
+        ordinary_quiz = self._publish(
+            "Smart Review — Independently Authored",
+            [self._choice("An ordinary source with a reserved-looking title?")],
+            filename_prefix="smart_review_independently_authored",
+        )
+        generated_quiz = self._publish(
+            "Initial generated title",
+            [self._choice("A generated source selection?")],
+            filename_prefix="identity_metadata_generated",
+            generation_kind="adaptive_study",
+        )
+        conn = dlms.get_db()
+        try:
+            conn.execute(
+                "UPDATE quizzes SET title = ?, source_file = ? WHERE id = ?",
+                (
+                    "Renamed personal session",
+                    "renamed-personal-session.html",
+                    generated_quiz,
+                ),
+            )
+            conn.commit()
+            ordinary = conn.execute(
+                """
+                SELECT q.*, z.generation_kind, z.source_file,
+                       z.title AS quiz_title
+                FROM questions q JOIN quizzes z ON z.id = q.quiz_id
+                WHERE q.quiz_id = ? ORDER BY q.id LIMIT 1
+                """,
+                (ordinary_quiz,),
+            ).fetchone()
+            generated = conn.execute(
+                """
+                SELECT q.*, z.generation_kind, z.source_file,
+                       z.title AS quiz_title
+                FROM questions q JOIN quizzes z ON z.id = q.quiz_id
+                WHERE q.quiz_id = ? ORDER BY q.id LIMIT 1
+                """,
+                (generated_quiz,),
+            ).fetchone()
+
+            self.assertEqual(SOURCE_QUIZ_KIND, ordinary["generation_kind"])
+            self.assertIsNone(quiz_generation_kind(
+                generation_kind=ordinary["generation_kind"],
+                source_file=ordinary["source_file"],
+                title=ordinary["quiz_title"],
+            ))
+            self.assertFalse(is_generated_question(ordinary))
+            self.assertEqual(
+                "adaptive_study",
+                quiz_generation_kind(
+                    generation_kind=generated["generation_kind"],
+                    source_file=generated["source_file"],
+                    title=generated["quiz_title"],
+                ),
+            )
+            self.assertTrue(is_generated_question(generated))
+
+            schedule = dlms._native_spaced_repetition_schedule(conn.cursor())
+            adaptive = dlms._adaptive_study_candidates(conn.cursor())
+            duplicate_report = build_quiz_duplicate_report(
+                conn.cursor(), dlms.load_registry()
+            )
+            composition = build_mixed_quiz_catalog(
+                conn.cursor(), dlms.load_registry()
+            )
+            portable = dlms._portable_quiz_bundle_service.portable_quiz_export_catalog(
+                conn.cursor(), dlms.load_registry()
+            )
+        finally:
+            conn.close()
+
+        self.assertEqual(1, schedule["summary"]["eligible_questions"])
+        self.assertEqual(1, len(adaptive))
+        self.assertEqual(1, duplicate_report["excluded_generated_count"])
+        self.assertEqual(1, len(composition))
+        self.assertEqual(
+            [ordinary_quiz],
+            [item["quiz_id"] for item in portable["quizzes"]],
+        )
 
     def test_edits_and_deletions_do_not_rewrite_or_cascade_lineage(self):
         source_quiz = self._publish("Editable Source", [self._choice()])
@@ -328,6 +417,34 @@ class QuestionIdentityV2Tests(unittest.TestCase):
         self.assertEqual(1, schedule["summary"]["eligible_questions"])
         self.assertEqual(source["id"], schedule["questions"][0]["question_id"])
         self.assertEqual(1, schedule["questions"][0]["incorrect"])
+
+    def test_all_legacy_generated_families_keep_centralized_fallback(self):
+        source_cases = {
+            "smart_review_old.html": "smart_review",
+            "spaced_review_old.html": "spaced_review",
+            "spaced_review_native_old.html": "native_spaced_review",
+            "concept_review_old.html": "concept_review",
+            "adaptive_study_old.html": "adaptive_study",
+            "mixed_quiz_old.html": "mixed_quiz",
+        }
+        for source_file, expected in source_cases.items():
+            with self.subTest(source_file=source_file):
+                self.assertEqual(
+                    expected,
+                    quiz_generation_kind(source_file=source_file),
+                )
+
+        title_cases = {
+            "Smart Review — Old": "smart_review",
+            "Spaced Review — Old": "spaced_review",
+            "Native Due Review — Old": "native_spaced_review",
+            "Concept Review — Old": "concept_review",
+            "Adaptive Study — Old": "adaptive_study",
+            "Mixed Quiz — Old": "mixed_quiz",
+        }
+        for title, expected in title_cases.items():
+            with self.subTest(title=title):
+                self.assertEqual(expected, quiz_generation_kind(title=title))
 
     def test_matching_questions_with_generic_stems_keep_independent_lineage(self):
         first = self._publish("Matching One", [self._matching()])

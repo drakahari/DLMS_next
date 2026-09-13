@@ -245,6 +245,71 @@ class DailyReviewPlanTests(unittest.TestCase):
         )
         self.assertEqual("/library", plan["empty_state"]["action"]["url"])
 
+    def test_quiz_index_prefers_metadata_and_keeps_legacy_fallback(self):
+        generated = seed_current_quiz(
+            dlms.get_db,
+            "Original Adaptive Name",
+            "adaptive_study_original.html",
+            [{"number": 1, "question": "Generated metadata question?"}],
+        )
+        explicit_source = seed_current_quiz(
+            dlms.get_db,
+            "Smart Review — Personal Notes",
+            "smart_review_personal_notes.html",
+            [{"number": 1, "question": "Explicit source question?"}],
+        )
+        legacy = seed_current_quiz(
+            dlms.get_db,
+            "Legacy due review",
+            "spaced_review_native_legacy.html",
+            [{"number": 1, "question": "Legacy generated question?"}],
+        )
+        connection = dlms.get_db()
+        try:
+            connection.execute(
+                """
+                UPDATE quizzes
+                SET title = 'Renamed generated session',
+                    source_file = 'renamed-generated-session.html',
+                    generation_kind = 'adaptive_study'
+                WHERE id = ?
+                """,
+                (generated,),
+            )
+            connection.execute(
+                "UPDATE quizzes SET generation_kind = 'source' WHERE id = ?",
+                (explicit_source,),
+            )
+            connection.commit()
+            registry = [
+                {
+                    "id": generated,
+                    "html": "renamed-generated-session.html",
+                    "title": "Renamed generated session",
+                },
+                {
+                    "id": explicit_source,
+                    "html": "smart_review_personal_notes.html",
+                    "title": "Smart Review — Personal Notes",
+                },
+                {
+                    "id": legacy,
+                    "html": "spaced_review_native_legacy.html",
+                    "title": "Legacy due review",
+                },
+            ]
+            plan = self._plan(cursor=connection.cursor(), registry=registry)
+        finally:
+            connection.close()
+
+        by_id = {item["id"]: item for item in plan["quiz_index"]}
+        self.assertEqual("adaptive_study", by_id[str(generated)]["generation_kind"])
+        self.assertEqual("adaptive", by_id[str(generated)]["generated_kind"])
+        self.assertEqual("source", by_id[str(explicit_source)]["generation_kind"])
+        self.assertIsNone(by_id[str(explicit_source)]["generated_kind"])
+        self.assertIsNone(by_id[str(legacy)]["generation_kind"])
+        self.assertEqual("native_due", by_id[str(legacy)]["generated_kind"])
+
     def test_api_returns_the_composed_plan_and_closes_connection(self):
         expected = {
             "items": [],

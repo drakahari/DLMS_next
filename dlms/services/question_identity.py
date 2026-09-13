@@ -12,6 +12,7 @@ import uuid
 
 
 QUESTION_UID_RE = re.compile(r"^[0-9a-f]{32}$")
+SOURCE_QUIZ_KIND = "source"
 GENERATED_QUIZ_KINDS = frozenset({
     "adaptive_study",
     "concept_review",
@@ -20,18 +21,21 @@ GENERATED_QUIZ_KINDS = frozenset({
     "smart_review",
     "spaced_review",
 })
-GENERATED_SOURCE_PREFIXES = (
-    "smart_review_",
-    "spaced_review_",
-    "concept_review_",
-    "adaptive_study_",
-    "mixed_quiz_",
+LEGACY_GENERATED_SOURCE_KINDS = (
+    ("spaced_review_native_", "native_spaced_review"),
+    ("smart_review_", "smart_review"),
+    ("spaced_review_", "spaced_review"),
+    ("concept_review_", "concept_review"),
+    ("adaptive_study_", "adaptive_study"),
+    ("mixed_quiz_", "mixed_quiz"),
 )
-GENERATED_TITLE_PREFIXES = (
-    "adaptive study —",
-    "concept review —",
-    "smart review —",
-    "spaced review —",
+LEGACY_GENERATED_TITLE_KINDS = (
+    ("native due review —", "native_spaced_review"),
+    ("adaptive study —", "adaptive_study"),
+    ("concept review —", "concept_review"),
+    ("smart review —", "smart_review"),
+    ("spaced review —", "spaced_review"),
+    ("mixed quiz —", "mixed_quiz"),
 )
 
 
@@ -47,7 +51,7 @@ def valid_question_uid(value):
 def validate_generation_kind(value):
     if value is None:
         return None
-    if value not in GENERATED_QUIZ_KINDS:
+    if value != SOURCE_QUIZ_KIND and value not in GENERATED_QUIZ_KINDS:
         raise ValueError(f"Unsupported generated quiz kind: {value}")
     return value
 
@@ -96,15 +100,36 @@ def canonical_learning_identity(row):
     )
 
 
-def is_generated_quiz(*, generation_kind=None, source_file=None, title=None):
-    """Prefer explicit metadata, with the historical naming convention fallback."""
+def quiz_generation_kind(*, generation_kind=None, source_file=None, title=None):
+    """Return an explicit generated kind or a conservative legacy inference.
+
+    ``source`` is the authoritative marker for ordinary quizzes created after
+    the metadata contract converged.  A null value remains intentionally
+    ambiguous because schema-v3 migration did not guess at historical quiz
+    origins; only those legacy rows use the filename/title compatibility map.
+    """
     if generation_kind in GENERATED_QUIZ_KINDS:
-        return True
+        return generation_kind
+    if generation_kind == SOURCE_QUIZ_KIND:
+        return None
     source = str(source_file or "").strip().casefold()
     label = str(title or "").strip().casefold()
-    return source.startswith(GENERATED_SOURCE_PREFIXES) or label.startswith(
-        GENERATED_TITLE_PREFIXES
-    )
+    for prefix, kind in LEGACY_GENERATED_SOURCE_KINDS:
+        if source.startswith(prefix):
+            return kind
+    for prefix, kind in LEGACY_GENERATED_TITLE_KINDS:
+        if label.startswith(prefix):
+            return kind
+    return None
+
+
+def is_generated_quiz(*, generation_kind=None, source_file=None, title=None):
+    """Prefer explicit metadata, with the historical naming convention fallback."""
+    return quiz_generation_kind(
+        generation_kind=generation_kind,
+        source_file=source_file,
+        title=title,
+    ) is not None
 
 
 def is_generated_question(row):

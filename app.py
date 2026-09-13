@@ -1315,6 +1315,10 @@ def _publish_quiz(
     generation_kind = _question_identity_service.validate_generation_kind(
         generation_kind
     )
+    # NULL remains the legacy/unknown state. Mark newly-published ordinary
+    # quizzes explicitly so user-chosen titles cannot imitate review prefixes.
+    if generation_kind is None:
+        generation_kind = _question_identity_service.SOURCE_QUIZ_KIND
     return _quiz_publication_service.publish_quiz(
         quiz_title,
         runtime_questions,

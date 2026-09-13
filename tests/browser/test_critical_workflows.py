@@ -8771,7 +8771,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
     with sqlite3.connect(database_path) as connection:
         generated = connection.execute(
             """
-            SELECT q.id
+            SELECT q.id, q.quiz_id, z.generation_kind
             FROM questions q
             JOIN quizzes z ON z.id = q.quiz_id
             WHERE z.source_file LIKE 'spaced_review_native_%'
@@ -8781,7 +8781,38 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
             (prompt,),
         ).fetchone()
         assert generated is not None
+        assert generated[2] == "native_spaced_review"
         assert connection.execute(
             "SELECT COUNT(*) FROM questions WHERE quiz_id = ? AND id = ?",
             (source_quiz_id, source_question_id),
         ).fetchone()[0] == 1
+
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for(
+        "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
+        + json.dumps(str(generated[1]))
+        + "]}).records.length === 1"
+    )
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE quizzes
+            SET title = 'Renamed due session',
+                source_file = 'renamed-due-session.html'
+            WHERE id = ?
+            """,
+            (generated[1],),
+        )
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for(
+        "document.getElementById('dailyReviewCount').textContent !== 'Loading…' && "
+        "document.querySelector('.daily-review-unfinished')"
+    )
+    assert browser.evaluate(
+        "document.querySelector('.daily-review-native_due') === null"
+    ) is True
+    assert "Spaced Review — Due Questions" in browser.evaluate(
+        "document.querySelector('.daily-review-unfinished').textContent"
+    )
