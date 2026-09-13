@@ -80,6 +80,23 @@
   </div>
 </section>
 
+<section class="dashboard-panel learning-intelligence-actions-panel adaptive-study-panel">
+  <div class="learning-intelligence-panel-head">
+    <div><div class="build-eyebrow">DLMS-125 · ADAPTIVE STUDY</div><h2>Study What I Need Most</h2><p>Build a focused session from your existing local learning history. DLMS favors weak concepts, recent misses, and material that is due or has not been reviewed recently.</p></div>
+  </div>
+  <ul class="adaptive-study-signals" aria-label="Adaptive study priority rules">
+    <li><strong>Needs attention</strong><span>Weak and developing concepts receive priority.</span></li>
+    <li><strong>Recent difficulty</strong><span>Missed questions and low recent accuracy move up.</span></li>
+    <li><strong>Review timing</strong><span>Overdue, stale, and unseen material is mixed in.</span></li>
+    <li><strong>Balanced practice</strong><span>Repeated exposure lowers priority and concept variety is favored.</span></li>
+  </ul>
+  <form class="learning-intelligence-review-form" method="post" action="/adaptive-study/generate">
+    <label><span>Questions</span><select name="question_count"><option value="10">Up to 10</option><option value="20" selected>Up to 20</option><option value="30">Up to 30</option><option value="50">Up to 50</option></select></label>
+    <button class="build-primary-button" id="liAdaptiveStudyButton" type="submit">Study What I Need Most</button>
+    <span>With little or no history, DLMS starts with a deterministic mix of available source questions.</span>
+  </form>
+</section>
+
 <section class="dashboard-panel learning-intelligence-actions-panel">
   <div class="learning-intelligence-panel-head">
     <div><div class="build-eyebrow">DLMS-011 · SMART REVIEW</div><h2>Turn weak areas into targeted practice</h2><p>DLMS selects existing tagged questions from topics currently classified as weak. No AI-generated questions are required.</p></div>

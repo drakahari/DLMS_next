@@ -4900,6 +4900,20 @@ def _review_select_candidates(candidates, topics, requested):
     )
 
 
+def _adaptive_study_candidates(cur, now=None):
+    return _learning_service._adaptive_study_candidates(
+        cur,
+        now=now,
+        learning_topics_with_retention=_learning_topics_with_retention,
+    )
+
+
+def _adaptive_study_select_candidates(candidates, requested):
+    return _learning_service._adaptive_study_select_candidates(
+        candidates, requested
+    )
+
+
 
 
 
@@ -5766,6 +5780,10 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
     ),
     review_select_candidates=lambda candidates, topics, requested: _review_select_candidates(
         candidates, topics, requested
+    ),
+    adaptive_study_candidates=lambda cur: _adaptive_study_candidates(cur),
+    adaptive_study_select_candidates=lambda candidates, requested: _adaptive_study_select_candidates(
+        candidates, requested
     ),
     question_payload_from_db=lambda cur, question_id: _question_payload_from_db(
         cur, question_id

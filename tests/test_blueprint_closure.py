@@ -41,7 +41,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "history": 13,
         "it": 3,
         "law": 16,
-        "learning": 16,
+        "learning": 17,
         "maintenance": 20,
         "medical": 6,
         "pdf_import": 25,
@@ -76,7 +76,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.history.HistoryRouteDependencies": 9,
         "dlms.routes.it.ITStudyDependencies": 5,
         "dlms.routes.law.LawRouteDependencies": 30,
-        "dlms.routes.learning.LearningRouteDependencies": 17,
+        "dlms.routes.learning.LearningRouteDependencies": 19,
         "dlms.routes.maintenance.MaintenanceRouteDependencies": 26,
         "dlms.routes.medical.MedicalRouteDependencies": 9,
         "dlms.routes.pdf_import.PDFImportRouteDependencies": 53,
@@ -87,7 +87,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "a69af1f90e9eba22c0467cf4e6bed424189067baffd589719c04aa05cdd9eaa4"
+        "addd0321f88b84de0a7cc649ddc24bb7aeb81d5d751f7214983edcc28639a500"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -138,13 +138,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_201_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_202_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(201, len(rules))
+        self.assertEqual(202, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(200, len(blueprint_rules))
+        self.assertEqual(201, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])

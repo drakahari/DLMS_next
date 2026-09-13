@@ -26,6 +26,8 @@ class LearningRouteDependencies:
     smart_review_select_candidates: Dependency
     review_candidates_for_topics: Dependency
     review_select_candidates: Dependency
+    adaptive_study_candidates: Dependency
+    adaptive_study_select_candidates: Dependency
     question_payload_from_db: Dependency
     publish_quiz: Dependency
     review_schedule_payload: Dependency
@@ -176,6 +178,56 @@ def smart_review_generate(dependencies):
         quiz_title,
         quiz_data,
         filename_prefix="smart_review",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
+    return redirect(f"/quizzes/{html_name}")
+
+
+def adaptive_study_generate(dependencies):
+    """Build a deterministic mixed study session from existing learner evidence."""
+    try:
+        requested = int(request.form.get("question_count", "20"))
+    except (TypeError, ValueError):
+        requested = 20
+    requested = max(1, min(requested, 50))
+
+    quiz_data = []
+    conn = dependencies.get_db()
+    cur = conn.cursor()
+    try:
+        candidates = dependencies.adaptive_study_candidates(cur)
+        if not candidates:
+            flash(
+                "Add at least one quiz question before starting an adaptive study session.",
+                "info",
+            )
+            return redirect("/learning-intelligence")
+        selected = dependencies.adaptive_study_select_candidates(
+            candidates, requested
+        )
+        for number, candidate in enumerate(selected, start=1):
+            item = dependencies.question_payload_from_db(
+                cur, candidate["question_id"]
+            )
+            if not item:
+                continue
+            item["number"] = number
+            quiz_data.append(item)
+    finally:
+        conn.close()
+
+    if not quiz_data:
+        flash(
+            "No usable source questions were available for adaptive study.",
+            "error",
+        )
+        return redirect("/learning-intelligence")
+
+    _quiz_id, html_name = dependencies.publish_quiz(
+        "Adaptive Study — What I Need Most",
+        quiz_data,
+        filename_prefix="adaptive_study",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )
@@ -446,6 +498,12 @@ def create_learning_blueprint(dependencies):
             "/smart-review/generate",
             "smart_review_generate",
             smart_review_generate,
+            ["POST"],
+        ),
+        (
+            "/adaptive-study/generate",
+            "adaptive_study_generate",
+            adaptive_study_generate,
             ["POST"],
         ),
         (

@@ -6,6 +6,72 @@ import re
 from datetime import datetime, timedelta, timezone
 
 
+_GENERATED_REVIEW_SOURCE_PREFIXES = (
+    "smart_review_",
+    "spaced_review_",
+    "concept_review_",
+    "adaptive_study_",
+)
+_GENERATED_REVIEW_TITLE_PREFIXES = (
+    "smart review —",
+    "spaced review —",
+    "concept review —",
+    "adaptive study —",
+)
+
+
+def _parse_learning_datetime(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").replace(
+                tzinfo=timezone.utc
+            )
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _is_generated_review_source(source_file, title=""):
+    source = str(source_file or "").strip().casefold()
+    normalized_title = str(title or "").strip().casefold()
+    return (
+        source.startswith(_GENERATED_REVIEW_SOURCE_PREFIXES)
+        or normalized_title.startswith(_GENERATED_REVIEW_TITLE_PREFIXES)
+    )
+
+
+def _deduplicated_learning_answer_events(cur):
+    """Return the canonical Study/Exam evidence rows used by learning analytics."""
+    rows = cur.execute("""
+        SELECT id, event_type, quiz_id, question_id, attempt_id, session_id,
+               mode, was_correct, response_json, occurred_at
+        FROM learning_events
+        WHERE event_type IN ('study_answer', 'exam_answer')
+          AND question_id IS NOT NULL
+          AND was_correct IS NOT NULL
+        ORDER BY occurred_at ASC, id ASC
+    """).fetchall()
+    deduplicated = {}
+    for row in rows:
+        if row["event_type"] == "exam_answer":
+            scope = row["attempt_id"] or f"exam-event-{row['id']}"
+        else:
+            scope = row["session_id"] or f"study-event-{row['id']}"
+        key = (row["event_type"], scope, row["question_id"])
+        deduplicated[key] = row
+    return sorted(
+        deduplicated.values(),
+        key=lambda row: (str(row["occurred_at"] or ""), int(row["id"])),
+    )
+
+
 def _normalize_concept_names(value):
     """Return stable, de-duplicated concept names from CSV/list input."""
     if isinstance(value, str):
@@ -95,9 +161,11 @@ def _learning_intelligence_topics(cur, now=None):
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'smart_review_%'
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'spaced_review_%'
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'concept_review_%'
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'adaptive_study_%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'smart review —%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'spaced review —%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'concept review —%'
+                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'adaptive study —%'
                    THEN qc.question_id
                END) AS question_count,
                COUNT(DISTINCT CASE
@@ -105,9 +173,11 @@ def _learning_intelligence_topics(cur, now=None):
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'smart_review_%'
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'spaced_review_%'
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'concept_review_%'
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'adaptive_study_%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'smart review —%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'spaced review —%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'concept review —%'
+                    AND LOWER(COALESCE(z.title, '')) NOT LIKE 'adaptive study —%'
                    THEN q.quiz_id
                END) AS quiz_count
         FROM concepts c
@@ -126,44 +196,10 @@ def _learning_intelligence_topics(cur, now=None):
     for row in links:
         concepts_by_question.setdefault(row["question_id"], []).append(row["concept_id"])
 
-    rows = cur.execute("""
-        SELECT id, event_type, quiz_id, question_id, attempt_id, session_id,
-               mode, was_correct, occurred_at
-        FROM learning_events
-        WHERE event_type IN ('study_answer', 'exam_answer')
-          AND question_id IS NOT NULL
-          AND was_correct IS NOT NULL
-        ORDER BY occurred_at ASC, id ASC
-    """).fetchall()
-
-    dedup = {}
-    for row in rows:
-        if row["event_type"] == "exam_answer":
-            scope = row["attempt_id"] or f"exam-event-{row['id']}"
-        else:
-            scope = row["session_id"] or f"study-event-{row['id']}"
-        key = (row["event_type"], scope, row["question_id"])
-        dedup[key] = row
-
     evidence_by_concept = {}
-    for row in dedup.values():
+    for row in _deduplicated_learning_answer_events(cur):
         for concept_id in concepts_by_question.get(row["question_id"], []):
             evidence_by_concept.setdefault(concept_id, []).append(row)
-
-    def parse_dt(value):
-        raw = str(value or "").strip()
-        if not raw:
-            return None
-        try:
-            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except ValueError:
-            try:
-                dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            except ValueError:
-                return None
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
 
     topics = []
     for concept in concept_rows:
@@ -190,7 +226,7 @@ def _learning_intelligence_topics(cur, now=None):
             if row["event_type"] == "study_answer"
         }
 
-        last_dt = parse_dt(events[-1]["occurred_at"]) if events else None
+        last_dt = _parse_learning_datetime(events[-1]["occurred_at"]) if events else None
         days_since = max(0, int((now - last_dt).total_seconds() // 86400)) if last_dt else None
         if days_since is None:
             recency_score = 0.0
@@ -275,22 +311,7 @@ def _retention_schedule_for_topic(topic, now=None):
     mastery = topic.get("mastery")
     last_raw = topic.get("last_activity")
 
-    def parse_dt(value):
-        raw = str(value or "").strip()
-        if not raw:
-            return None
-        try:
-            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except ValueError:
-            try:
-                dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            except ValueError:
-                return None
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-
-    last_dt = parse_dt(last_raw)
+    last_dt = _parse_learning_datetime(last_raw)
     if evidence <= 0 or mastery is None or last_dt is None:
         return {
             "review_state": "unscheduled",
@@ -439,7 +460,7 @@ def _learning_intelligence_payload(
             "weak_area_rule": "At least 3 responses and mastery below 60 or accuracy below 60",
             "deduplication": "Latest Study response per question/session and one Exam response per question/attempt",
             "trend": "At least 6 responses are required. DLMS compares two adjacent equal windows of 3-5 responses; a change under 15 percentage points is roughly stable.",
-            "coverage": "Question and quiz counts include tagged source material across quizzes and Study Packs, but exclude generated Smart, Spaced, and Concept Review copies.",
+            "coverage": "Question and quiz counts include tagged source material across quizzes and Study Packs, but exclude generated Smart, Spaced, Concept, and Adaptive Study copies.",
             "retention_separation": "Base mastery includes the existing recency component; retained mastery adds explicit post-due decay for review timing.",
         },
     }
@@ -625,9 +646,11 @@ def _review_candidates_for_topics(cur, topics):
           AND LOWER(z.source_file) NOT LIKE 'smart_review_%%'
           AND LOWER(z.source_file) NOT LIKE 'spaced_review_%%'
           AND LOWER(z.source_file) NOT LIKE 'concept_review_%%'
+          AND LOWER(z.source_file) NOT LIKE 'adaptive_study_%%'
           AND LOWER(z.title) NOT LIKE 'smart review —%%'
           AND LOWER(z.title) NOT LIKE 'spaced review —%%'
           AND LOWER(z.title) NOT LIKE 'concept review —%%'
+          AND LOWER(z.title) NOT LIKE 'adaptive study —%%'
     """ % ",".join("?" for _ in topic_by_id), tuple(topic_by_id)).fetchall()
     grouped = {}
     for row in rows:
@@ -738,6 +761,265 @@ def _review_select_candidates(
     return smart_review_select_candidates(candidates, topics, requested)
 
 
+def _adaptive_study_candidates(
+    cur,
+    now=None,
+    *,
+    learning_topics_with_retention=_learning_topics_with_retention,
+):
+    """Rank canonical source questions for a deterministic adaptive session.
+
+    Priority points intentionally use only existing, explainable evidence:
+    weak concepts (+40), developing concepts (+15), review timing (+8 to +25),
+    recent/previous misses (+10 to +35), low recent accuracy (+15), and unseen
+    or stale material (+5 to +20). More than two prior responses gradually
+    reduce priority, capped at 15 points, so frequently repeated questions do
+    not crowd out other useful material.
+    """
+    now = now or datetime.now(timezone.utc)
+    topics = learning_topics_with_retention(cur, now=now)
+    topics_by_id = {topic["concept_id"]: topic for topic in topics}
+
+    question_rows = cur.execute("""
+        SELECT q.id, q.quiz_id, q.question_number, q.question_text,
+               COALESCE(q.question_type, 'choice') AS question_type,
+               COALESCE(z.source_file, '') AS source_file,
+               COALESCE(z.title, '') AS quiz_title
+        FROM questions q
+        JOIN quizzes z ON z.id = q.quiz_id
+        ORDER BY q.quiz_id, q.question_number, q.id
+    """).fetchall()
+    concept_links = cur.execute("""
+        SELECT question_id, concept_id
+        FROM question_concepts
+        ORDER BY question_id, concept_id
+    """).fetchall()
+    concepts_by_question = {}
+    for link in concept_links:
+        concepts_by_question.setdefault(link["question_id"], []).append(
+            link["concept_id"]
+        )
+
+    groups = {}
+    question_to_key = {}
+    for row in question_rows:
+        normalized = re.sub(
+            r"\s+", " ", str(row["question_text"] or "").strip()
+        ).casefold()
+        key = (
+            str(row["question_type"] or "choice").casefold(),
+            normalized or f"question-id:{row['id']}",
+        )
+        question_to_key[row["id"]] = key
+        group = groups.setdefault(
+            key,
+            {
+                "source_rows": [],
+                "concept_ids": set(),
+                "events": [],
+            },
+        )
+        if _is_generated_review_source(row["source_file"], row["quiz_title"]):
+            continue
+        group["source_rows"].append(row)
+        group["concept_ids"].update(concepts_by_question.get(row["id"], []))
+
+    for event in _deduplicated_learning_answer_events(cur):
+        key = question_to_key.get(event["question_id"])
+        if key in groups:
+            groups[key]["events"].append(event)
+
+    candidates = []
+    for group in groups.values():
+        if not group["source_rows"]:
+            continue
+        source = group["source_rows"][0]
+        events = sorted(
+            group["events"],
+            key=lambda row: (str(row["occurred_at"] or ""), int(row["id"])),
+        )
+        linked_topics = [
+            topics_by_id[concept_id]
+            for concept_id in sorted(group["concept_ids"])
+            if concept_id in topics_by_id
+        ]
+        evidence = len(events)
+        recent = events[-5:]
+        recent_accuracy = None
+        if recent:
+            recent_accuracy = round(
+                sum(int(row["was_correct"] or 0) for row in recent)
+                * 100.0
+                / len(recent),
+                1,
+            )
+
+        last_activity = events[-1]["occurred_at"] if events else None
+        last_activity_dt = _parse_learning_datetime(last_activity)
+        days_since_activity = None
+        if last_activity_dt is not None:
+            days_since_activity = max(
+                0, int((now - last_activity_dt).total_seconds() // 86400)
+            )
+
+        incorrect_events = [
+            event for event in events if int(event["was_correct"] or 0) == 0
+        ]
+        last_miss = incorrect_events[-1] if incorrect_events else None
+        last_miss_dt = (
+            _parse_learning_datetime(last_miss["occurred_at"])
+            if last_miss is not None
+            else None
+        )
+        days_since_miss = None
+        if last_miss_dt is not None:
+            days_since_miss = max(
+                0, int((now - last_miss_dt).total_seconds() // 86400)
+            )
+
+        score = 0
+        components = {}
+        reasons = []
+        weak_topics = [topic for topic in linked_topics if topic["status"] == "weak"]
+        developing_topics = [
+            topic for topic in linked_topics if topic["status"] == "developing"
+        ]
+        if weak_topics:
+            components["weak_concept"] = 40
+            reasons.append(
+                "Weak concept: "
+                + ", ".join(topic["name"] for topic in weak_topics[:2])
+            )
+        elif developing_topics:
+            components["developing_concept"] = 15
+            reasons.append(
+                "Developing concept: "
+                + ", ".join(topic["name"] for topic in developing_topics[:2])
+            )
+
+        review_states = {topic.get("review_state") for topic in linked_topics}
+        if "overdue" in review_states:
+            components["review_recency"] = 25
+            reasons.append("Concept review is overdue")
+        elif "due" in review_states:
+            components["review_recency"] = 18
+            reasons.append("Concept review is due")
+        elif "due_soon" in review_states:
+            components["review_recency"] = 8
+            reasons.append("Concept review is due soon")
+
+        if last_miss is not None:
+            if days_since_miss is not None and days_since_miss <= 14:
+                components["recent_miss"] = 35
+                reasons.append("Missed within the last 14 days")
+            elif days_since_miss is not None and days_since_miss <= 30:
+                components["recent_miss"] = 20
+                reasons.append("Missed within the last 30 days")
+            else:
+                components["previous_miss"] = 10
+                reasons.append("Previously missed")
+
+        if len(recent) >= 3 and recent_accuracy is not None and recent_accuracy < 60:
+            components["low_recent_accuracy"] = 15
+            reasons.append("Recent accuracy is below 60%")
+
+        if evidence == 0:
+            components["study_recency"] = 20
+            reasons.append("Not studied yet")
+        elif days_since_activity is not None and days_since_activity >= 30:
+            components["study_recency"] = 20
+            reasons.append(f"Not reviewed for {days_since_activity} days")
+        elif days_since_activity is not None and days_since_activity >= 14:
+            components["study_recency"] = 12
+            reasons.append(f"Not reviewed for {days_since_activity} days")
+        elif days_since_activity is not None and days_since_activity >= 7:
+            components["study_recency"] = 5
+            reasons.append(f"Not reviewed for {days_since_activity} days")
+
+        repeat_penalty = min(15, max(0, evidence - 2) * 3)
+        if repeat_penalty:
+            components["repeat_penalty"] = -repeat_penalty
+        score = sum(components.values())
+        if not reasons:
+            reasons.append("Mixed review for continued practice")
+
+        candidates.append(
+            {
+                "question_id": source["id"],
+                "quiz_id": source["quiz_id"],
+                "question_number": source["question_number"],
+                "question_text": source["question_text"],
+                "question_type": source["question_type"],
+                "source_question_ids": [row["id"] for row in group["source_rows"]],
+                "topics": linked_topics,
+                "topic_names": sorted(
+                    {topic["name"] for topic in linked_topics}, key=str.casefold
+                ),
+                "concept_ids": sorted(group["concept_ids"]),
+                "priority_score": score,
+                "score_components": components,
+                "selection_reasons": reasons,
+                "evidence": evidence,
+                "recent_accuracy": recent_accuracy,
+                "last_activity": last_activity,
+                "days_since_activity": days_since_activity,
+                "days_since_miss": days_since_miss,
+            }
+        )
+
+    candidates.sort(
+        key=lambda candidate: (
+            -candidate["priority_score"],
+            candidate["evidence"],
+            -(
+                candidate["days_since_activity"]
+                if candidate["days_since_activity"] is not None
+                else 10**9
+            ),
+            candidate["quiz_id"],
+            candidate["question_number"],
+            candidate["question_id"],
+        )
+    )
+    return candidates
+
+
+def _adaptive_study_select_candidates(candidates, requested):
+    """Select deterministically while spreading concepts and source quizzes."""
+    requested = max(1, int(requested or 1))
+    remaining = list(enumerate(candidates))
+    selected = []
+    concept_uses = {}
+    quiz_uses = {}
+    while remaining and len(selected) < requested:
+        ranked = []
+        for original_index, candidate in remaining:
+            concept_ids = candidate.get("concept_ids") or []
+            diversity_penalty = 8 * max(
+                (concept_uses.get(concept_id, 0) for concept_id in concept_ids),
+                default=0,
+            )
+            quiz_id = candidate.get("quiz_id")
+            if quiz_id is not None:
+                diversity_penalty += 4 * quiz_uses.get(quiz_id, 0)
+            ranked.append(
+                (
+                    -(candidate.get("priority_score", 0) - diversity_penalty),
+                    original_index,
+                    candidate,
+                )
+            )
+        _adjusted, original_index, chosen = min(ranked, key=lambda item: item[:2])
+        selected.append(chosen)
+        for concept_id in chosen.get("concept_ids") or []:
+            concept_uses[concept_id] = concept_uses.get(concept_id, 0) + 1
+        quiz_id = chosen.get("quiz_id")
+        if quiz_id is not None:
+            quiz_uses[quiz_id] = quiz_uses.get(quiz_id, 0) + 1
+        remaining = [item for item in remaining if item[0] != original_index]
+    return selected
+
+
 def _response_selected_labels(value):
     """Normalize recorded choice selections into stable A-Z labels."""
     if isinstance(value, str):
@@ -785,8 +1067,7 @@ def _question_diagnostics_payload(
         })
         g['question_ids'].append(q['id'])
         g['quiz_titles'].add(q['quiz_title'] or '')
-        sf = (q['source_file'] or '').lower()
-        if not (sf.startswith('smart_review_') or sf.startswith('spaced_review_')):
+        if not _is_generated_review_source(q['source_file'], q['quiz_title']):
             g['source_question_ids'].append(q['id'])
         for concept in question_concepts(cur, q['id']):
             g['concepts'].add(concept)
@@ -798,19 +1079,8 @@ def _question_diagnostics_payload(
                 if choice['is_correct']:
                     g['correct_labels'].add(label)
 
-    erows = cur.execute("""
-        SELECT id,event_type,question_id,attempt_id,session_id,was_correct,response_json,occurred_at
-        FROM learning_events
-        WHERE event_type IN ('study_answer','exam_answer') AND question_id IS NOT NULL AND was_correct IS NOT NULL
-        ORDER BY occurred_at,id
-    """).fetchall()
-    dedup = {}
-    for event in erows:
-        scope = (event['attempt_id'] or f"exam-{event['id']}") if event['event_type'] == 'exam_answer' else (event['session_id'] or f"study-{event['id']}")
-        dedup[(event['event_type'], scope, event['question_id'])] = event
-
     evidence_by_group = {}
-    for event in dedup.values():
+    for event in _deduplicated_learning_answer_events(cur):
         key = question_to_key.get(event['question_id'])
         if key in groups:
             evidence_by_group.setdefault(key, []).append(event)
@@ -897,6 +1167,6 @@ def _question_diagnostics_payload(
         'model': {
             'confusion_rule': 'Repeated incorrect selected-answer → correct-answer pair, minimum 2 occurrences.',
             'quality_rule': 'Signals are review prompts, not proof a question is bad. Minimum 5 responses for general quality classification; distractor signals require at least 8.',
-            'clone_handling': 'Smart/Spaced Review copies are grouped with identical source question text so practice contributes evidence without creating duplicate rows.'
+            'clone_handling': 'Generated review copies are grouped with identical source question text so practice contributes evidence without creating duplicate rows.'
         }
     }
