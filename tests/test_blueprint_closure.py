@@ -45,7 +45,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "maintenance": 20,
         "medical": 6,
         "pdf_import": 25,
-        "quiz": 31,
+        "quiz": 33,
         "settings": 15,
         "study_packs": 9,
     }
@@ -82,12 +82,12 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.pdf_import.PDFImportRouteDependencies": 53,
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
-        "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 18,
+        "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 22,
         "dlms.routes.settings.SettingsRouteDependencies": 11,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "addd0321f88b84de0a7cc649ddc24bb7aeb81d5d751f7214983edcc28639a500"
+        "1d092badbcacfb7b091e44c32fc395c31babf70ba3ac3918b389a35be13066c8"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -138,13 +138,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_202_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_204_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(202, len(rules))
+        self.assertEqual(204, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(201, len(blueprint_rules))
+        self.assertEqual(203, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])

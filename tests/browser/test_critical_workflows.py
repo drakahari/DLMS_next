@@ -7535,3 +7535,91 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
         browser.navigate(base_url + path)
         browser.wait_for(ready)
         assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
+
+
+def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sources(
+    browser_stack,
+):
+    """Exercise the DLMS-128 client filtering and normal publication seam."""
+    database_path = browser_stack.data_root / "results.db"
+    source_rows = (
+        ("Browser Mixed Source A", "browser-mixed-a.html", "Browser mixed prompt A?"),
+        ("Browser Mixed Source B", "browser-mixed-b.html", "Browser mixed prompt B?"),
+    )
+    source_ids = []
+    with sqlite3.connect(database_path) as connection:
+        for title, source_file, prompt in source_rows:
+            cursor = connection.execute(
+                "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+                (title, source_file),
+            )
+            quiz_id = cursor.lastrowid
+            source_ids.append(quiz_id)
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, 1, ?, 'choice', ?, '{}')
+                """,
+                (quiz_id, prompt, f"Explanation for {prompt}"),
+            )
+            question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (question_id, "A", "Expected", 1),
+                    (question_id, "B", "Alternative", 0),
+                ],
+            )
+
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    for quiz_id, (title, source_file, _prompt) in zip(source_ids, source_rows):
+        registry.append({
+            "id": quiz_id,
+            "title": title,
+            "html": source_file,
+            "folder": "Browser Mixed Sources",
+            "exam_minutes": 90,
+        })
+    registry_path.write_text(json.dumps(registry, indent=4), encoding="utf-8")
+
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/quiz-composer")
+    browser.wait_for(
+        "document.querySelectorAll('.mixed-builder-question').length >= 2 && "
+        "document.querySelector('#mixedQuizForm input[name=csrf_token]')"
+    )
+    for quiz_id in source_ids:
+        browser.evaluate(
+            "(() => {const select=document.getElementById('sourceFilter');"
+            f"select.value='{quiz_id}';"
+            "select.dispatchEvent(new Event('input',{bubbles:true}));return true;})()"
+        )
+        browser.wait_for(
+            "document.querySelectorAll('.mixed-builder-question:not([hidden])').length === 1"
+        )
+        browser.click(
+            ".mixed-builder-question:not([hidden]) input[name='question_ids']"
+        )
+    browser.wait_for("document.getElementById('selectedCount').textContent === '2 selected'")
+    browser.evaluate(
+        "document.getElementById('mixedQuizTitle').value='Browser Composed Quiz'"
+    )
+    browser.click("#mixedQuizForm button[type='submit']")
+    browser.wait_for("location.pathname.startsWith('/quizzes/mixed_quiz_')")
+
+    with sqlite3.connect(database_path) as connection:
+        created = connection.execute(
+            "SELECT id, source_file FROM quizzes WHERE title = 'Browser Composed Quiz'"
+        ).fetchone()
+        assert created is not None
+        assert created[1].startswith("mixed_quiz_")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (created[0],)
+        ).fetchone()[0] == 2
+        for quiz_id in source_ids:
+            assert connection.execute(
+                "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
+            ).fetchone()[0] == 1

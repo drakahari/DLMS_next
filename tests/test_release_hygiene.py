@@ -78,7 +78,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
             for path in sorted((ROOT / "templates").rglob("*.html"))
         )
         self.assertEqual(dashboard.count("DLMS v{{ app_version }}"), 2)
-        self.assertEqual(server_template_source.count("DLMS v{{ app_version }}"), 7)
+        self.assertEqual(server_template_source.count("DLMS v{{ app_version }}"), 8)
         self.assertEqual(
             app_source.count('lines.append(f"# Exported from DLMS v{APP_VERSION}")')
             + quiz_route_source.count('lines.append(f"# Exported from DLMS v{APP_VERSION}")')

@@ -11,6 +11,7 @@ _GENERATED_REVIEW_SOURCE_PREFIXES = (
     "spaced_review_",
     "concept_review_",
     "adaptive_study_",
+    "mixed_quiz_",
 )
 _GENERATED_REVIEW_TITLE_PREFIXES = (
     "smart review —",
@@ -162,6 +163,7 @@ def _learning_intelligence_topics(cur, now=None):
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'spaced_review_%'
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'concept_review_%'
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'adaptive_study_%'
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'mixed_quiz_%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'smart review —%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'spaced review —%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'concept review —%'
@@ -174,6 +176,7 @@ def _learning_intelligence_topics(cur, now=None):
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'spaced_review_%'
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'concept_review_%'
                     AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'adaptive_study_%'
+                    AND LOWER(COALESCE(z.source_file, '')) NOT LIKE 'mixed_quiz_%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'smart review —%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'spaced review —%'
                     AND LOWER(COALESCE(z.title, '')) NOT LIKE 'concept review —%'
@@ -647,6 +650,7 @@ def _review_candidates_for_topics(cur, topics):
           AND LOWER(z.source_file) NOT LIKE 'spaced_review_%%'
           AND LOWER(z.source_file) NOT LIKE 'concept_review_%%'
           AND LOWER(z.source_file) NOT LIKE 'adaptive_study_%%'
+          AND LOWER(z.source_file) NOT LIKE 'mixed_quiz_%%'
           AND LOWER(z.title) NOT LIKE 'smart review —%%'
           AND LOWER(z.title) NOT LIKE 'spaced review —%%'
           AND LOWER(z.title) NOT LIKE 'concept review —%%'

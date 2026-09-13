@@ -35,6 +35,8 @@ class QuizBlueprintTests(unittest.TestCase):
         "quiz.export_all_quizzes_txt": ("/export/all_quizzes.txt", {"GET"}),
         "quiz.export_single_quiz_txt": ("/export/quiz/<int:quiz_id>.txt", {"GET"}),
         "quiz.quiz_library": ("/library", {"GET"}),
+        "quiz.mixed_quiz_builder": ("/quiz-composer", {"GET"}),
+        "quiz.create_mixed_quiz": ("/quiz-composer/create", {"POST"}),
         "quiz.serve_data": ("/data/<path:filename>", {"GET"}),
         "quiz.serve_quiz": ("/quizzes/<path:filename>", {"GET"}),
         "quiz.edit_quiz": ("/edit_quiz/<int:quiz_id>", {"GET"}),
@@ -63,6 +65,8 @@ class QuizBlueprintTests(unittest.TestCase):
         "save_quiz_folder_state", "rename_quiz_folder_metadata",
         "delete_quiz_folder_metadata", "get_portal_title",
         "resolve_logo_filename", "debug_print", "get_db",
+        "mixed_quiz_catalog", "mixed_quiz_filter_options",
+        "question_payload_from_db", "publish_quiz",
     }
     EDITOR_DEPENDENCIES = {
         "app_version", "data_folder", "browser_served_data_extensions",
@@ -209,7 +213,7 @@ class QuizBlueprintTests(unittest.TestCase):
         self.assertIn("quiz.edit_quiz", url_for_targets)
 
     def test_global_security_headers_csrf_and_strict_slash_behavior_are_preserved(self):
-        for path in ("/library", "/upload", "/paste", "/matching_bank_import", "/create_short_quiz"):
+        for path in ("/library", "/quiz-composer", "/upload", "/paste", "/matching_bank_import", "/create_short_quiz"):
             with self.subTest(path=path):
                 response = dlms.app.test_client().get(path)
                 self.assertEqual(200, response.status_code)

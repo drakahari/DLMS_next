@@ -234,6 +234,7 @@ class AdaptiveStudySessionTests(unittest.TestCase):
             ("Spaced Review — Old", "spaced_review_old.html"),
             ("Concept Review — Old", "concept_review_old.html"),
             ("Adaptive Study — Old", "adaptive_study_old.html"),
+            ("User Named Mix", "mixed_quiz_old.html"),
         )
         clone_ids = []
         for title, source_file in generated:

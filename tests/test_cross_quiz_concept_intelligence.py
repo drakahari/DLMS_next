@@ -252,6 +252,12 @@ class CrossQuizConceptIntelligenceTests(unittest.TestCase):
             "Original concept question?",
             ["Source Boundary"],
         )
+        self._seed_quiz(
+            "User Named Mix",
+            f"mixed_quiz_{uuid.uuid4()}.html",
+            "Original concept question?",
+            ["Source Boundary"],
+        )
         conn = dlms.get_db()
         cur = conn.cursor()
         self._record(

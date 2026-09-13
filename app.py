@@ -53,6 +53,7 @@ from dlms.services import external_ai_structured as _external_ai_structured_serv
 from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
 from dlms.services import quiz_publication as _quiz_publication_service
+from dlms.services import quiz_composition as _quiz_composition_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
@@ -3802,6 +3803,9 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
         if q.get("source_number") is not None and isinstance(media_payload, dict):
             media_payload = dict(media_payload)
             media_payload["source_number"] = q["source_number"]
+        if q.get("composition_sources") and isinstance(media_payload, dict):
+            media_payload = dict(media_payload)
+            media_payload["composition_sources"] = q["composition_sources"]
 
         cur.execute(
             """
@@ -6167,6 +6171,16 @@ app.register_blueprint(create_quiz_blueprint(
         resolve_logo_filename=lambda filename: resolve_logo_filename(filename),
         debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
         get_db=lambda: get_db(),
+        mixed_quiz_catalog=lambda cur, registry: (
+            _quiz_composition_service.build_mixed_quiz_catalog(cur, registry)
+        ),
+        mixed_quiz_filter_options=lambda catalog: (
+            _quiz_composition_service.mixed_quiz_filter_options(catalog)
+        ),
+        question_payload_from_db=lambda cur, question_id: (
+            _question_payload_from_db(cur, question_id)
+        ),
+        publish_quiz=lambda *args, **kwargs: _publish_quiz(*args, **kwargs),
     ),
     QuizEditorDependencies(
         app_version=lambda: APP_VERSION,

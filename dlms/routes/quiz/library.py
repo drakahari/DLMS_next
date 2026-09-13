@@ -775,6 +775,103 @@ def quiz_library(dependencies):
        view_quiz_count=view_quiz_count, view=view, app_version=APP_VERSION,
        active_quiz_ids=active_quiz_ids)
 
+
+def _mixed_quiz_page_context(dependencies, *, error=None, selected_ids=(), title=""):
+    with dependencies.registry_lock():
+        registry = dependencies.normalize_quiz_folders(dependencies.load_registry())
+    conn = dependencies.get_db()
+    try:
+        catalog = dependencies.mixed_quiz_catalog(conn.cursor(), registry)
+    finally:
+        conn.close()
+    return {
+        "app_version": dependencies.app_version(),
+        "portal_title": dependencies.get_portal_title(),
+        "catalog": catalog,
+        "filter_options": dependencies.mixed_quiz_filter_options(catalog),
+        "selected_ids": {int(value) for value in selected_ids},
+        "quiz_title": title,
+        "error": error,
+    }
+
+
+def mixed_quiz_builder(dependencies):
+    return render_template(
+        "quiz/mixed-builder.html", **_mixed_quiz_page_context(dependencies)
+    )
+
+
+def create_mixed_quiz(dependencies):
+    title = re.sub(r"\s+", " ", str(request.form.get("title") or "")).strip()
+    selected_ids = []
+    invalid_selection = False
+    for raw_id in request.form.getlist("question_ids"):
+        try:
+            question_id = int(raw_id)
+        except (TypeError, ValueError):
+            question_id = 0
+        if question_id <= 0:
+            invalid_selection = True
+        elif question_id not in selected_ids:
+            selected_ids.append(question_id)
+
+    context = _mixed_quiz_page_context(
+        dependencies, selected_ids=selected_ids, title=title
+    )
+    allowed = {item["question_id"]: item for item in context["catalog"]}
+    error = None
+    if not title:
+        error = "Enter a name for the mixed quiz."
+    elif len(title) > 200:
+        error = "Quiz names must be 200 characters or fewer."
+    elif len(selected_ids) < 2:
+        error = "Select at least two questions."
+    elif invalid_selection or any(
+        question_id not in allowed for question_id in selected_ids
+    ):
+        error = "One or more selected questions are no longer available. Review the selection and try again."
+    else:
+        source_quiz_ids = {
+            quiz_id
+            for question_id in selected_ids
+            for quiz_id in allowed[question_id]["source_quiz_ids"]
+        }
+        if len(source_quiz_ids) < 2:
+            error = "Select questions from at least two source quizzes."
+
+    if error:
+        context["error"] = error
+        return render_template("quiz/mixed-builder.html", **context), 400
+
+    conn = dependencies.get_db()
+    try:
+        cur = conn.cursor()
+        questions = []
+        for ordinal, question_id in enumerate(selected_ids, start=1):
+            payload = dependencies.question_payload_from_db(cur, question_id)
+            if payload is None:
+                context["error"] = "A selected question is no longer available. Review the selection and try again."
+                return render_template("quiz/mixed-builder.html", **context), 400
+            payload["number"] = ordinal
+            # Exact duplicates can carry concept links from more than one
+            # original bank; retain that canonical union in the new quiz.
+            payload["concepts"] = list(allowed[question_id]["concepts"])
+            payload["composition_sources"] = [
+                dict(source) for source in allowed[question_id]["sources"]
+            ]
+            questions.append(payload)
+    finally:
+        conn.close()
+
+    _quiz_id, html_name = dependencies.publish_quiz(
+        title,
+        questions,
+        filename_prefix="mixed_quiz",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
+    return redirect(f"/quizzes/{html_name}")
+
 def register_library_routes(
     blueprint: Blueprint, dependencies: QuizLibraryDependencies
 ) -> None:
@@ -792,6 +889,8 @@ def register_library_routes(
         ("/export/all_quizzes.txt", "export_all_quizzes_txt", export_all_quizzes_txt, ["GET"]),
         ("/export/quiz/<int:quiz_id>.txt", "export_single_quiz_txt", export_single_quiz_txt, ["GET"]),
         ("/library", "quiz_library", quiz_library, ["GET"]),
+        ("/quiz-composer", "mixed_quiz_builder", mixed_quiz_builder, ["GET"]),
+        ("/quiz-composer/create", "create_mixed_quiz", create_mixed_quiz, ["POST"]),
     )
     for rule, endpoint, view_func, methods in routes:
         blueprint.add_url_rule(

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mixed Quiz Builder - {{ portal_title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home mixed-quiz-builder-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+        </div>
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item active" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        </nav>
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button>
+        <div class="dashboard-sidebar-version">DLMS v{{ app_version }}</div>
+    </aside>
+
+    <main class="dashboard-main mixed-quiz-builder-main">
+        <header class="dashboard-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div><h1>Mixed Quiz Builder</h1><p>Quiz Library <span>•</span> Select <span>•</span> Preview <span>•</span> Create</p></div>
+        </header>
+
+        <section class="dashboard-panel mixed-builder-intro">
+            <div>
+                <span class="library-eyebrow">QUESTION-BANK COMPOSITION</span>
+                <h2>Build one quiz from your existing banks.</h2>
+                <p>Filter and preview original questions, then select material from at least two quizzes. Your source quizzes will not be changed.</p>
+            </div>
+            <a class="build-secondary-link" href="/library">Back to Quiz Library</a>
+        </section>
+
+        {% if error %}<div class="mixed-builder-error" role="alert">{{ error }}</div>{% endif %}
+
+        {% if catalog %}
+        <form method="POST" action="/quiz-composer/create" id="mixedQuizForm">
+            <section class="dashboard-panel mixed-builder-plan" aria-labelledby="mixedPlanHeading">
+                <div>
+                    <h2 id="mixedPlanHeading">New quiz</h2>
+                    <label for="mixedQuizTitle">Quiz name</label>
+                    <input id="mixedQuizTitle" type="text" name="title" maxlength="200" value="{{ quiz_title }}" placeholder="Example: Midterm Review Mix" required>
+                </div>
+                <div class="mixed-builder-selection-summary">
+                    <strong id="selectedCount" aria-live="polite">0 selected</strong>
+                    <span id="selectedSources">Choose questions from at least two quizzes.</span>
+                    <button class="library-primary-action" type="submit">Create Mixed Quiz</button>
+                </div>
+            </section>
+
+            <section class="dashboard-panel mixed-builder-filters" aria-labelledby="mixedFiltersHeading">
+                <div class="mixed-builder-section-heading">
+                    <div><h2 id="mixedFiltersHeading">Find questions</h2><p id="filterStatus" aria-live="polite"></p></div>
+                    <div class="mixed-builder-bulk-actions">
+                        <button type="button" id="selectVisible">Select visible</button>
+                        <button type="button" id="clearSelection">Clear selection</button>
+                    </div>
+                </div>
+                <div class="mixed-builder-filter-grid">
+                    <label>Folder
+                        <select id="folderFilter"><option value="">All folders</option>{% for folder in filter_options.folders %}<option value="{{ folder|lower }}">{{ folder }}</option>{% endfor %}</select>
+                    </label>
+                    <label>Source quiz
+                        <select id="sourceFilter"><option value="">All source quizzes</option>{% for quiz in filter_options.quizzes %}<option value="{{ quiz.id }}">{{ quiz.title }}</option>{% endfor %}</select>
+                    </label>
+                    <label>Concept
+                        <select id="conceptFilter"><option value="">All concepts</option>{% for concept in filter_options.concepts %}<option value="{{ concept|lower }}">{{ concept }}</option>{% endfor %}</select>
+                    </label>
+                    <label>Missed status
+                        <select id="missedFilter"><option value="">All questions</option><option value="missed">Missed before</option><option value="not-missed">Not previously missed</option></select>
+                    </label>
+                    <label class="mixed-builder-search">Search
+                        <input id="questionSearch" type="search" placeholder="Question, quiz, folder, or concept" autocomplete="off">
+                    </label>
+                </div>
+            </section>
+
+            <section class="mixed-builder-question-list" id="questionList" aria-label="Available questions">
+                {% for item in catalog %}
+                <article class="dashboard-panel mixed-builder-question" data-folder="{{ item.folders|map('lower')|join('||') }}" data-sources="{{ item.source_quiz_ids|join(',') }}" data-concepts="{{ item.concept_keys|join('||') }}" data-missed="{{ 'true' if item.ever_missed else 'false' }}" data-search="{{ ([item.question_text] + item.source_quiz_titles + item.folders + item.concepts)|join(' ')|lower }}">
+                    <label class="mixed-builder-question-select">
+                        <input type="checkbox" name="question_ids" value="{{ item.question_id }}" data-source-ids="{{ item.source_quiz_ids|join(',') }}" aria-label="Select {{ item.question_text }}" {% if item.question_id in selected_ids %}checked{% endif %}>
+                        <span class="mixed-builder-checkbox-text">Select question</span>
+                    </label>
+                    <div class="mixed-builder-question-content">
+                        <div class="mixed-builder-question-meta">
+                            <span>{{ item.question_type|capitalize }}</span>
+                            {% if item.question_type == 'matching' %}<span>{{ item.pair_count }} pairs</span>{% else %}<span>{{ item.choice_count }} choices</span>{% endif %}
+                            {% if item.ever_missed %}<span class="mixed-builder-missed">Missed before</span>{% endif %}
+                        </div>
+                        <h3>{{ item.question_text }}</h3>
+                        {% if item.choice_preview %}
+                        <details class="mixed-builder-preview"><summary>Preview answer choices</summary><ol>{% for choice in item.choice_preview %}<li><strong>{{ choice.label }}.</strong> {{ choice.text }}</li>{% endfor %}</ol></details>
+                        {% elif item.pair_preview %}
+                        <details class="mixed-builder-preview"><summary>Preview matching pairs</summary><ul>{% for pair in item.pair_preview %}<li>{{ pair.left }} <span aria-hidden="true">↔</span> {{ pair.right }}</li>{% endfor %}</ul></details>
+                        {% endif %}
+                        <div class="mixed-builder-provenance">
+                            <strong>Source{% if item.sources|length != 1 %}s{% endif %}:</strong>
+                            {% for source in item.sources %}<span>{{ source.quiz_title }}{% if source.question_number is not none %}, Q{{ source.question_number }}{% endif %} · {{ source.folder }}</span>{% endfor %}
+                        </div>
+                        {% if item.concepts %}<div class="mixed-builder-concepts" aria-label="Concepts">{% for concept in item.concepts %}<span>{{ concept }}</span>{% endfor %}</div>{% endif %}
+                        {% if item.duplicate_count > 1 %}<p class="mixed-builder-duplicate-note">One canonical question shared by {{ item.duplicate_count }} source records; it will be included once.</p>{% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </section>
+            <div class="dashboard-panel mixed-builder-no-match" id="noQuestionMatches" hidden>No questions match the active filters. Adjust or clear a filter.</div>
+        </form>
+        {% else %}
+        <section class="dashboard-panel mixed-builder-empty">
+            <h2>No source questions are available yet.</h2>
+            <p>Create or import at least two quizzes, then return here to compose a mixed quiz.</p>
+            <a class="library-primary-action" href="/upload">Build a Quiz</a>
+        </section>
+        {% endif %}
+    </main>
+</div>
+
+<script>
+(() => {
+    const cards = [...document.querySelectorAll('.mixed-builder-question')];
+    const checkboxes = [...document.querySelectorAll('input[name="question_ids"]')];
+    const filters = {
+        folder: document.getElementById('folderFilter'),
+        source: document.getElementById('sourceFilter'),
+        concept: document.getElementById('conceptFilter'),
+        missed: document.getElementById('missedFilter'),
+        search: document.getElementById('questionSearch')
+    };
+    const normalizedIncludes = (values, expected) => !expected || values.split('||').includes(expected);
+    function applyFilters() {
+        let shown = 0;
+        cards.forEach(card => {
+            const search = (filters.search?.value || '').trim().toLowerCase();
+            const sources = (card.dataset.sources || '').split(',');
+            const visible = normalizedIncludes(card.dataset.folder || '', filters.folder?.value || '') &&
+                (!filters.source?.value || sources.includes(filters.source.value)) &&
+                normalizedIncludes(card.dataset.concepts || '', filters.concept?.value || '') &&
+                (!filters.missed?.value || (filters.missed.value === 'missed') === (card.dataset.missed === 'true')) &&
+                (!search || (card.dataset.search || '').includes(search));
+            card.hidden = !visible;
+            if (visible) shown += 1;
+        });
+        const status = document.getElementById('filterStatus');
+        if (status) status.textContent = `${shown} of ${cards.length} questions shown`;
+        const empty = document.getElementById('noQuestionMatches');
+        if (empty) empty.hidden = shown !== 0;
+    }
+    function updateSelection() {
+        const selected = checkboxes.filter(box => box.checked);
+        const sources = new Set(selected.flatMap(box => (box.dataset.sourceIds || '').split(',').filter(Boolean)));
+        const count = document.getElementById('selectedCount');
+        if (count) count.textContent = `${selected.length} selected`;
+        const sourceText = document.getElementById('selectedSources');
+        if (sourceText) sourceText.textContent = sources.size >= 2
+            ? `Questions represented across ${sources.size} source quizzes.`
+            : 'Choose questions from at least two quizzes.';
+    }
+    Object.values(filters).forEach(control => control?.addEventListener('input', applyFilters));
+    checkboxes.forEach(box => box.addEventListener('change', updateSelection));
+    document.getElementById('selectVisible')?.addEventListener('click', () => {
+        cards.filter(card => !card.hidden).forEach(card => {
+            const box = card.querySelector('input[name="question_ids"]');
+            if (box) box.checked = true;
+        });
+        updateSelection();
+    });
+    document.getElementById('clearSelection')?.addEventListener('click', () => {
+        checkboxes.forEach(box => { box.checked = false; });
+        updateSelection();
+    });
+    applyFilters();
+    updateSelection();
+    const menuButton = document.getElementById('menuButton');
+    const sidebar = document.getElementById('dashboardSidebar');
+    menuButton?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+    document.getElementById('shutdownBtn')?.addEventListener('click', async () => {
+        if (!confirm('SHUTDOWN DLMS\n\nThis will stop the application.\n\nYou will need to restart it manually.\n\nContinue?')) return;
+        try {
+            await fetch('/api/shutdown', {method: 'POST'});
+            document.body.innerHTML = '<div class="shutdown-screen"><div class="shutdown-screen-card"><h1>DLMS has been shut down.</h1><p>You can close this browser tab.</p></div></div>';
+        } catch (_error) {
+            alert('DLMS may already be shutting down.');
+        }
+    });
+})();
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

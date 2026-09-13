@@ -92,7 +92,7 @@
 
   const isActive = (key) => {
     if (key === 'dashboard') return path === '/';
-    if (key === 'library') return path === '/library' || path.startsWith('/edit_quiz') || path.startsWith('/quiz/');
+    if (key === 'library') return path === '/library' || path.startsWith('/edit_quiz') || path.startsWith('/quiz/') || path.startsWith('/quiz-composer');
     if (key === 'build') return path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import' || path.startsWith('/pdf-import');
     if (key === 'study') return path.startsWith('/study-packs') && !medicalBuilder && !itBuilder && !otherBuilder && !otherStudies;
     if (key === 'it') return path === '/it' || path.startsWith('/it/') || itBuilder;

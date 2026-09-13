@@ -28,6 +28,10 @@ class QuizLibraryDependencies:
     resolve_logo_filename: Dependency
     debug_print: Dependency
     get_db: Dependency
+    mixed_quiz_catalog: Dependency
+    mixed_quiz_filter_options: Dependency
+    question_payload_from_db: Dependency
+    publish_quiz: Dependency
 
 
 @dataclass(frozen=True)
