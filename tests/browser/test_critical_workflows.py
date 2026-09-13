@@ -335,6 +335,23 @@ def _database_value(path, query, parameters=()):
     return row[0] if row else None
 
 
+def _close_context_after_pagehide(browser, closing_context, observer_context):
+    """Close one tab only after its synchronous pagehide handlers have run."""
+    marker_key = f"dlms.browser-test.pagehide:{time.monotonic_ns()}"
+    encoded_key = json.dumps(marker_key)
+    browser.context = closing_context
+    browser.evaluate(
+        "window.addEventListener('pagehide', () => "
+        f"localStorage.setItem({encoded_key}, 'complete'), {{once:true}}); true"
+    )
+    try:
+        browser.command("browsingContext.close", {"context": closing_context})
+    finally:
+        browser.context = observer_context
+    browser.wait_for(f"localStorage.getItem({encoded_key}) === 'complete'")
+    browser.evaluate(f"localStorage.removeItem({encoded_key}); true")
+
+
 def test_fresh_profile_defaults_to_purple_gold_and_theme_selection_persists(browser_stack, tmp_path):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
@@ -1867,9 +1884,7 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
         browser.wait_for("quizRecoveryController.ownsState === false")
         assert "another tab" in browser.evaluate("document.getElementById('quizRecoveryNotice').textContent")
     finally:
-        browser.context = second_context
-        browser.command("browsingContext.close", {"context": second_context})
-        browser.context = first_context
+        _close_context_after_pagehide(browser, second_context, first_context)
 
     assert browser.evaluate(
         f"(() => {{ const saved=JSON.parse(localStorage.getItem({json.dumps(storage_key)}));"
@@ -2426,6 +2441,7 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
     browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.evaluate("localStorage.setItem('unrelated.restore-segment118','preserve'); true")
 
@@ -2437,6 +2453,10 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
         "return true; })()"
     )
     browser.click("#edit-quiz-form .build-primary-button")
+    browser.wait_for_page_ready(
+        f"location.pathname === '/edit_quiz/{quiz_id}' && "
+        f"document.querySelector('[name=quiz_title]').value === {json.dumps(changed_title)}"
+    )
     _wait_for_database_value(
         database,
         "SELECT title FROM quizzes WHERE id = %d" % quiz_id,
@@ -2452,7 +2472,9 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("document.getElementById('backupFile') !== null")
     browser.set_files("#backupFile", [browser_stack.metadata["restore_path"]])
     browser.click("form[action='/settings/backup/restore/stage'] button[type='submit']")
-    browser.wait_for("document.querySelector('h1')?.textContent.includes('Review backup before restore')")
+    browser.wait_for_page_ready(
+        "document.querySelector('h1')?.textContent.includes('Review backup before restore')"
+    )
     assert _database_value(
         database,
         "SELECT title FROM quizzes WHERE id = ?",
@@ -2470,7 +2492,10 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
 
     browser.click("form[action*='/restore/confirm/'] button[type='submit']")
-    browser.wait_for("document.querySelector('h1')?.textContent.includes('Restore complete')", timeout=12.0)
+    browser.wait_for_page_ready(
+        "document.querySelector('h1')?.textContent.includes('Restore complete')",
+        timeout=12.0,
+    )
     browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
     assert browser.evaluate("localStorage.getItem('unrelated.restore-segment118')") == "preserve"
     _wait_for_database_value(
