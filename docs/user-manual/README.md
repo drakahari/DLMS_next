@@ -25,6 +25,9 @@ written. They provide the traceability needed to keep later editions accurate.
 - [1. Introduction](01-introduction.md)
 - [2. Installation and First Launch](02-installation-and-first-launch.md)
 - [3. Interface and Navigation](03-interface-and-navigation.md)
+- [4. Creating and Importing Content](04-creating-and-importing-content.md)
+- [5. Quiz Library and Organization](05-quiz-library-and-organization.md)
+- [6. Taking Quizzes](06-taking-quizzes.md)
 
 Later chapters remain in the architecture below until they contain substantive
 review-ready prose.
@@ -63,13 +66,13 @@ drafted. No empty chapter placeholders are part of Phase 1.
 3. **[Interface and Navigation](03-interface-and-navigation.md)** — persistent navigation, Dashboard,
    hidden subject areas, themes, Help Center, status messages, and common
    interaction patterns.
-4. **Creating and importing quizzes** — Build Quiz hub, manual builder, text
+4. **[Creating and Importing Content](04-creating-and-importing-content.md)** — Build Quiz hub, manual builder, text
    file and pasted-text parsing, matching CSV, editing, validation, and
    publication.
-5. **Quiz Library and organization** — visibility, folders, search, Smart
+5. **[Quiz Library and Organization](05-quiz-library-and-organization.md)** — visibility, folders, search, Smart
    Views, generated-practice labels, Mixed Quiz Builder, duplicate review, and
    safe quiz management.
-6. **Taking quizzes** — Study Mode, Exam Mode, choice/multi-answer, matching,
+6. **[Taking Quizzes](06-taking-quizzes.md)** — Study Mode, Exam Mode, choice/multi-answer, matching,
    images/hotspots, results, recovery, and the browser-local checkpoint model.
 7. **What to study next** — Today’s Review as the default starting point, Due
    Questions, Adaptive Study, Smart Review, Concept Review, Topic Retention
