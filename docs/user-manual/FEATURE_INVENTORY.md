@@ -745,6 +745,7 @@ below.
 | Screen / reach | Settings → Reset & Remove. |
 | What and why | Offers separate, deliberately scoped data-reset actions rather than one ambiguous reset. |
 | Actions | Clear saved attempts/missed history; reset Learning Intelligence evidence; reset Quiz Library and results; clear source content; reset settings; reset active data to fresh state while preserving backups; permanently remove the entire DLMS data directory and shut down. |
+| Settings-reset scope | Reset Application Settings restores the full portal configuration: appearance/background, navigation visibility, parsing, External AI preferences/templates, lifecycle preference, and folder configuration. Quiz records and their assigned folder values remain, while empty configured folders and hidden-folder state reset. |
 | Confirmation / preservation | Destructive actions explain inclusions/exclusions and create safety backups where specified. Permanent removal requires typing `REMOVE DLMS DATA`, has no in-directory recovery backup, leaves the executable/source installation, and warns users to copy/download a backup elsewhere first. |
 | Evidence | `templates/settings/reset-remove.html`; settings/maintenance services; reset scope/confirmation tests; Help. |
 | Manual / screenshot / status | Ch. 17; existing reset Help assets; **Verified**. |
@@ -991,6 +992,7 @@ Findings are documentation inputs, not changes to application behavior.
 | DAF-20 | The stable-release boundary must remain explicit during manual drafting. | Current source/version is 3.2.0 on a development branch; repository text may still correctly refer to 3.1.0 as the latest published release or historical baseline. | Label this manual source as documenting 3.2.0 behavior without claiming publication until the release exists. Preserve historical references. |
 | DAF-21 | No roadmap IDs were found in rendered user-facing copy during the audit scan. | `DLMS-###` strings under `static/` occur in CSS comments, not visible labels. Internal generation kinds and identity names likewise should not leak into manual prose. | Preserve the clean product-language boundary; use feature names from `TERMINOLOGY.md`. |
 | DAF-22 | Existing Adaptive Study descriptions overstate the current signal set. | The current selector ranks weak/developing concepts, topic review timing, recent misses, low recent accuracy, recency/unseen material, prior exposure, and source/concept diversity. It does not read a confidence field, although current Help says “available confidence.” | Document only the implemented signals. Propose correcting the existing Help wording separately; do not imply a confidence-based ranking. |
+| DAF-23 | The Reset Application Settings card understates its full scope. | The current Reset & Remove template names appearance, parsing, and AI settings, while the implementation removes the complete portal configuration. Navigation visibility, lifecycle preference, folder definitions, and hidden-folder state also return to defaults. Quiz records and their folder assignments are preserved; empty configured folders no longer exist after reset. The maintenance Help is broader but does not spell out the folder effect. | Chapter 17 documents the verified full scope and recommends a category-specific settings page for narrow changes. Propose clarifying the product card/confirmation separately; do not change it during manual drafting. |
 
 ## Second-pass completeness cross-check
 
@@ -1045,7 +1047,7 @@ Findings are documentation inputs, not changes to application behavior.
   cross-theme/responsive/accessibility contracts, and shutdown enforcement.
 - Existing Help was compared with implementation rather than treated as
   authoritative. Conflicts and likely stale screenshots are recorded in
-  DAF-01 through DAF-22 and `SCREENSHOT_PLAN.md`.
+  DAF-01 through DAF-23 and `SCREENSHOT_PLAN.md`.
 
 ## Audit coverage matrix
 

@@ -103,8 +103,8 @@ therefore represents durable application state, not every temporary work file.
 Restoring is a broader and more consequential action than importing quizzes.
 DLMS validates the archive, shows a confirmation page, and creates a safety
 backup of the current state before replacing it. The full procedure and restore
-warnings belong to Chapter 17, **Backup, Restore, Maintenance, and Data
-Removal**.
+warnings are in
+[Maintenance, Backup, and Data Management](17-maintenance-backup-and-data-management.md#restore-a-backup).
 
 Use this practical rule:
 

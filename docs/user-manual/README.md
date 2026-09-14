@@ -37,6 +37,9 @@ written. They provide the traceability needed to keep later editions accurate.
 - [13. Study Packs and Content Packs](13-study-packs-and-content-packs.md)
 - [14. Anki, Decks, and Printable Cards](14-anki-decks-and-printable-cards.md)
 - [15. Import, Export, and Portability](15-import-export-and-portability.md)
+- [16. Settings and Runtime](16-settings-and-runtime.md)
+- [17. Maintenance, Backup, and Data Management](17-maintenance-backup-and-data-management.md)
+- [18. Troubleshooting](18-troubleshooting.md)
 
 Later chapters remain in the architecture below until they contain substantive
 review-ready prose.
@@ -112,14 +115,14 @@ drafted. No empty chapter placeholders are part of Phase 1.
 15. **[Import, Export, and Portability](15-import-export-and-portability.md)** — text exports, Portable Quiz Bundles,
     Study Pack boundaries, collision handling, media, and what personal data is
     deliberately excluded.
-16. **Settings, appearance, and runtime behavior** — themes, navigation,
+16. **[Settings and Runtime](16-settings-and-runtime.md)** — themes, navigation,
     parsing, external-AI preferences, browser-presence shutdown, and the
     distinction between loopback desktop use and trusted-LAN server use,
     including the requirement to stop LAN/server processes from the host.
-17. **Backup, restore, maintenance, and data removal** — backup scope, staged
+17. **[Maintenance, Backup, and Data Management](17-maintenance-backup-and-data-management.md)** — backup scope, staged
     restore, resets, Rebuild All Quiz Pages, safety backups, and permanent data
     removal.
-18. **Troubleshooting and recovery** — launch/browser problems, OCR
+18. **[Troubleshooting](18-troubleshooting.md)** — launch/browser problems, OCR
     availability, parse failures, validation states, recovery, platform
     warnings, and safe diagnostic steps.
 19. **Feature and format reference** — supported inputs, relevant limits,
