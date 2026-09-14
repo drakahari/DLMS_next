@@ -28,6 +28,12 @@ written. They provide the traceability needed to keep later editions accurate.
 - [4. Creating and Importing Content](04-creating-and-importing-content.md)
 - [5. Quiz Library and Organization](05-quiz-library-and-organization.md)
 - [6. Taking Quizzes](06-taking-quizzes.md)
+- [7. Study and Review](07-study-and-review.md)
+- [8. Learning Intelligence](08-learning-intelligence.md)
+- [9. History, Results, and Progress](09-history-results-and-progress.md)
+- [10. PDF, Smart PDF, and OCR](10-pdf-smart-pdf-and-ocr.md)
+- [11. Matching, Terminology, and Image-Based Content](11-matching-terminology-and-image-based-content.md)
+- [12. External AI Workflows](12-external-ai-workflows.md)
 
 Later chapters remain in the architecture below until they contain substantive
 review-ready prose.
@@ -84,13 +90,13 @@ drafted. No empty chapter placeholders are part of Phase 1.
 9. **[History, Results, and Progress](09-history-results-and-progress.md)** —
    attempts, missed-result review, analytics, filters, missed answers, retakes,
    and study evidence.
-10. **PDF, Smart PDF, and OCR** — selectable PDFs, question/glossary
+10. **[PDF, Smart PDF, and OCR](10-pdf-smart-pdf-and-ocr.md)** — selectable PDFs, question/glossary
     classification, saved banks, targeted/scanned OCR, screenshot OCR, Review &
     Repair, source rights, and optional OCR availability.
-11. **Matching, terminology, images, and hotspots** — canonical matching
+11. **[Matching, terminology, images, and hotspots](11-matching-terminology-and-image-based-content.md)** — canonical matching
     activities, terminology banks, CSV/OCR sources, image-study authoring,
     overlays, and keyboard use.
-12. **External AI-assisted workflows** — provider-neutral choice and matching
+12. **[External AI-assisted workflows](12-external-ai-workflows.md)** — provider-neutral choice and matching
     prompt/paste flows, validation, Review & Repair, external explanation help,
     and the separate AI Study Pack ZIP flow. Emphasize that DLMS makes no
     provider API call.

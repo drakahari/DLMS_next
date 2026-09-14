@@ -84,10 +84,10 @@ below.
   users toward packaged releases. `release_assets/README.txt` is the compact
   package-side guide.
 - The in-app Help Center is the most complete existing user guide. Its topic
-  families are Getting Started, Quizzes, Build Quiz, External AI, Smart PDF,
-  Study Packs, Study Modules, Content Management, History & Analytics, Learning
-  Intelligence, Anki, Settings, Maintenance, and Troubleshooting. About, Quiz
-  Help, Advanced Features, and Regex Help are additional pages.
+  families are Getting Started, Quizzes, Build Quiz, External AI, PDF & Image
+  Import, Study Packs, Study Modules, Content Management, History & Analytics,
+  Learning Intelligence, Anki, Settings, Maintenance, and Troubleshooting.
+  About, Quiz Help, Advanced Features, and Regex Help are additional pages.
 - `static/help_assets/` contains 47 screenshots covering many 3.1-era and some
   current workflows. They are candidates, not automatically approved manual
   assets. The repository also has older `docs/screenshots/` images.
@@ -504,7 +504,7 @@ below.
 | Supported structure | Exact `Question #N` and a narrow repeated extended heading form with global/topic-local numbering; ordered A–Z choices (2–26); multiline/code choice bodies; explicit multi-answer wording can set mode but never select the correct choices. |
 | Conservative cases | No-answer banks remain review/incomplete; fill-in source records preserve text/numbering and remain unsupported/incomplete for the choice model; near-miss headings are rejected; trailing end matter is retained as unassigned diagnostics instead of appended to the last stem. |
 | Boundaries | Cross-page choice continuations stay with the known question. Separately numbered semantically similar questions remain separate. Correctness is accepted only from explicit evidence. |
-| Evidence | `dlms/parsing/smart_pdf.py`; PDF question parser/review tests; Help Smart PDF. |
+| Evidence | `dlms/parsing/smart_pdf.py`; PDF question parser/review tests; PDF & Image Import Help. |
 | Manual / screenshot / status | Ch. 10 and reference; UM-16; **Verified**. |
 
 #### Question Bank and Terminology Bank practice

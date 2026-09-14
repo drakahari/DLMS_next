@@ -185,9 +185,9 @@ whose answer is a region of the image. The workflow asks you to confirm that
 you have permission to use the uploaded images and records the generated pack
 as user-supplied material.
 
-The dedicated chapter on matching, terminology, images, and hotspots explains
-image preparation, clickable-region editing, and keyboard use. Use that path
-instead of trying to represent an image region as a text answer.
+[Matching, Terminology, and Image-Based Content](11-matching-terminology-and-image-based-content.md)
+explains image preparation, clickable-region editing, and keyboard use. Use
+that path instead of trying to represent an image region as a text answer.
 
 ## Understand import and staging workflows
 
@@ -206,7 +206,8 @@ Question and terminology extraction normally leads to Review & Repair and then
 to a reusable Question Bank or Terminology Bank. You can generate playable
 practice from that bank without discarding the reviewed source. OCR-assisted
 matching can instead publish reviewed term/definition pairs as normal matching
-content. The PDF and OCR chapter provides the complete procedures.
+content. [PDF, Smart PDF, and OCR](10-pdf-smart-pdf-and-ocr.md) provides the
+complete procedures.
 
 ### External AI structured content
 

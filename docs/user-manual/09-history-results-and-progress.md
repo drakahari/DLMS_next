@@ -93,8 +93,9 @@ attempt.
 
 Supported text questions can be selected for an `.apkg` Anki export or for an
 external-AI explanation prompt. Hotspot review remains visual and is not forced
-into text-only Anki or AI controls. The later Anki and External AI chapters
-explain those optional actions.
+into text-only Anki or AI controls. The later Anki chapter and
+[External AI Workflows](12-external-ai-workflows.md) explain those optional
+actions.
 
 ## Understand missed-question review
 

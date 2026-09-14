@@ -210,7 +210,8 @@ their next scheduled date.
 
 The missed-question page can also let you select supported items for an Anki
 package or prepare an explanation prompt for an external AI. Those optional
-actions are covered in the later Anki and External AI chapters.
+actions are covered in the later Anki chapter and in
+[External AI Workflows](12-external-ai-workflows.md).
 
 ## Understand Generated Practice
 
