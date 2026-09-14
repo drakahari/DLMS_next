@@ -77,21 +77,22 @@ the user must find and then explain it consistently.
 | **Study Pack** | An installed, learner-facing collection of matching, image/hotspot, or quiz material used to generate study activities. | Study Packs catalog and IT/Medical/Other subject spaces. | Sometimes users may call the ZIP itself a pack; management occurs under Content Packs. | Use *Study Pack* for the learner-facing catalog/content. Contrast with Content Pack. |
 | **Content Pack** | The managed, validated package installed, inspected, exported, or deleted through content management. | Content Packs screens and import review. | The installed content appears to learners as Study Packs. | Use *Content Pack* for lifecycle/administration and *Study Pack* for study use. |
 | **Deck** | A collection of cards prepared for Anki export or printing. | Anki Tools and custom deck builder. | A quiz is not a deck, although quiz questions can supply cards. | Use *deck* only for the Anki/flashcard output. |
-| **Anki Tools** | DLMS screens for exporting quiz, missed-question, custom, or Law cards as Anki packages and printable cards. | Navigation and Study Mode selection/export actions. | Legacy TSV exports may remain available; `.apkg` is the primary workflow. | Name the destination format and explain that Anki is an external application. |
+| **Anki Tools** | DLMS screens for exporting quiz, missed-question, custom, or Law cards as Anki packages and printable cards. | Navigation and Study Mode selection/export actions. | Two legacy tab-separated export endpoints remain for compatibility, but no current guided Anki Tools, quiz runtime, History Review, or Help control links to them. | Present `.apkg` and printable cards as the ordinary workflows and explain that Anki is an external application. Mention TSV only in an Advanced/Legacy Compatibility note if needed. |
 | **Backup** | A portable snapshot of persistent DLMS data and settings intended for recovery or transfer. | Settings → Backup & Restore. | It is broader than a Portable Quiz Bundle and excludes transient staging/cache data. | Explain scope, safe external storage, and difference from exports. |
 | **Restore** | A staged, validated replacement of persistent data from a DLMS backup, preceded by a safety backup. | Settings → Backup & Restore. | Not the same as importing a quiz/pack. | Describe review, confirmation, post-restore reload, and recovery clearing. |
 | **Rebuild All Quiz Pages** | An occasional maintenance/recovery action that regenerates derived playable HTML/JSON from canonical quiz data. | Settings → System Tools and Help. | It is not a required post-update step and is not a data migration. | Use the exact name. Explicitly list the data it does not change and when to use it. |
 | **Local desktop mode** | The normal loopback-only runtime at `127.0.0.1`, usually opened in a browser by the packaged application. | Launch behavior, lifecycle settings, shutdown guidance. | The UI is browser-based but DLMS is not a cloud service. | Explain local browser UI, data location, explicit Shutdown, and optional browser-presence shutdown. |
-| **LAN/server mode** | Explicit non-loopback binding that makes DLMS reachable on a trusted local network. | Launch/configuration guidance and disabled Shutdown UI. | It has no DLMS authentication or TLS and must not be exposed to the Internet. | Use *LAN/server mode*. Explain host-system shutdown and trusted/firewalled-network limitation prominently. |
+| **LAN/server mode** | Explicit non-loopback binding that makes DLMS reachable on a trusted local network. Runtime mode comes from the configured bind, not a requesting client’s address. | Launch/configuration guidance and disabled Shutdown UI. | Browser/API shutdown and automatic browser-presence shutdown are unavailable; closing client windows does not stop the server. It also has no DLMS authentication or TLS and must not be exposed to the Internet. | Use *LAN/server mode*. Tell users to stop the process/service from the host computer and explain the trusted/firewalled-network limitation prominently. |
 | **This browser** | A label indicating that an unfinished checkpoint exists only in the current browser profile/device. | Today’s Review, Unfinished Smart View, recovery UI. | Server-derived recommendations remain shared after refresh. | Preserve this phrase and explain why clients of one server may show different Resume cards. |
-| **Shutdown DLMS** | The immediate in-application stop action available in local loopback mode. | Navigation/footer/runtime UI. | Closing the last browser may also stop eligible local runs after a grace period; LAN/server mode blocks browser/API shutdown. | State mode-specific behavior; do not promise automatic shutdown or in-app shutdown in LAN mode. |
+| **Shutdown DLMS** | The immediate in-application stop action available in local loopback mode. | Navigation/footer/runtime UI. | Closing the last browser may also stop eligible local runs after a grace period. In LAN/server mode, in-app/API and automatic browser-presence shutdown are unavailable, and closing client windows does not stop DLMS. | State mode-specific behavior. In LAN/server mode, say “stop the DLMS process or service from the host computer”; avoid the ambiguous standalone phrase “manual shutdown.” |
 
 ## Inconsistencies the manual must handle
 
 - Existing Help and lifecycle copy does not consistently distinguish a
   host-system stop from the disabled in-app shutdown action in LAN/server mode.
-  The manual should not resolve that ambiguity by guessing; see the findings in
-  [FEATURE_INVENTORY.md](FEATURE_INVENTORY.md).
+  Current runtime enforcement is authoritative: the manual should explicitly
+  direct users to stop the process/service from the host computer; see the
+  findings in [FEATURE_INVENTORY.md](FEATURE_INVENTORY.md).
 - “Spaced Review” survives in some implementation and historical language for
   the concept-level workflow now presented as **Topic Retention Schedule**.
   **Due Questions** is the question-level native scheduler.
@@ -100,7 +101,10 @@ the user must find and then explain it consistently.
   Quiz** as its own curated type, and use the precise workflow name elsewhere.
 - “Study Pack” and “Content Pack” describe two views of related packaged
   content, not interchangeable screens.
-- The Law landing page labels several items as future/coming later even though
-  saved Case Reviews already contain IRAC, Socratic, and flashcard activities.
-  The manual should document the verified embedded case workflow and avoid
-  promising separate future modes.
+- The Law landing page previews standalone IRAC Practice, Socratic Prep, Rule
+  Flashcards, and Case Compare as future modes. Saved Case Reviews already
+  contain editable IRAC and Socratic work plus rule material and Law Anki
+  export, but no separate standalone modes exist and Case Compare is not
+  implemented. The manual should document the embedded workflow without
+  presenting preview cards as available features or calling rule material a
+  native interactive flashcard mode.

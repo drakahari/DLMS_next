@@ -82,14 +82,16 @@ drafted. No empty chapter placeholders are part of Phase 1.
 13. **Study Packs, Content Packs, and subject spaces** — learner catalog versus
     pack management, validation/install/export/delete, IT/Medical/Other views,
     Law Case Reviews, and image-pack creation.
-14. **Anki, decks, and printable cards** — quiz/history/Law exports, custom
-    deck selection, `.apkg`, compatibility exports, and printable cards.
+14. **Anki, decks, and printable cards** — guided quiz/history/Law `.apkg`
+    exports, custom deck selection, and printable cards, with legacy TSV only
+    as an optional advanced compatibility note.
 15. **Import, export, and portability** — text exports, Portable Quiz Bundles,
     Study Pack boundaries, collision handling, media, and what personal data is
     deliberately excluded.
 16. **Settings, appearance, and runtime behavior** — themes, navigation,
     parsing, external-AI preferences, browser-presence shutdown, and the
-    distinction between loopback desktop use and trusted-LAN server use.
+    distinction between loopback desktop use and trusted-LAN server use,
+    including the requirement to stop LAN/server processes from the host.
 17. **Backup, restore, maintenance, and data removal** — backup scope, staged
     restore, resets, Rebuild All Quiz Pages, safety backups, and permanent data
     removal.

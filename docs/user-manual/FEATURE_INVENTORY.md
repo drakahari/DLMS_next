@@ -155,9 +155,10 @@ below.
 | What and why | Creates a quiz directly without preparing an import file. |
 | Inputs | Title, optional logo, Exam Mode minutes, initial 1–100 question rows; choice/multi-answer questions or matching questions. Choice rows can be added/removed and every correct answer is checked. Matching requires pair rows, direction, and optional round size. |
 | Review / output | Client editing is revalidated server-side, then published through shared quiz publication/rendering. The resulting quiz can be edited further. |
-| Limits / clarification | Timer is 1–1440 minutes (90 default). Matching requires at least two pairs. The route’s minimum-choice validation should be confirmed before the manual states a universal authoring minimum; Review & Repair explicitly enforces 2–26. |
+| Choice contract | Choice questions normally start with four A–D rows. The supported builder UI allows 1–26 nonblank choices, requires at least one nonblank choice and one marked correct choice, and ignores blank unused rows. One marked correct answer produces single-answer behavior; multiple marked correct answers automatically produce multi-select behavior. There is no separate answer-mode selector. Four rows is the initial default, not an invariant for a newly cloned question block. |
+| Limits / validation | Timer is 1–1440 minutes (90 default). Matching requires at least two pairs. The browser prevents deleting the final choice row or adding beyond Z. The server rejects a choice question with no nonblank choice or no correct nonblank choice. The browser’s 26-choice maximum is not independently enforced by the current POST route; this is an implementation observation, not supported behavior beyond 26. |
 | Evidence | `templates/quiz/short-builder.html`; `dlms/routes/quiz/authoring.py`; publication and template tests. |
-| Manual / screenshot / status | Ch. 4 and 11; no separate screenshot beyond UM-02; **Needs clarification** on direct-builder choice minimum. |
+| Manual / screenshot / status | Ch. 4 and 11; no separate screenshot beyond UM-02; **Verified**. Use the 1–26 user-facing contract above and do not describe crafted requests beyond that range as supported. |
 
 #### Text-file import
 
@@ -681,10 +682,10 @@ below.
 | Screen / reach | Optional Law Study navigation → Create Case Review / Import Case Packet / Saved Imports / Case Reviews. |
 | What and why | Uses a provider-neutral prompt/paste flow to preserve a raw case packet, preview recognized sections, create a structured Case Review, and study it locally. |
 | Inputs / workflow | Case/course and chosen sections; external prompt; pasted complete packet; Save & Preview; review parsed headings; create exact saved Case Review. |
-| Study controls | Case brief sections, Socratic questions with saved answers/revealed key, IRAC response and drill, rule flashcards, notes, text export, and Law Anki export. Raw Saved Imports and created Case Reviews have separate management/deletion. |
-| Documentation caution | The Law landing also labels future standalone tools “IRAC Practice,” “Socratic Prep,” and “Rule Flashcards,” while these activities already exist inside a saved Case Review. The manual must document only the verified embedded workflow and not promise future standalone modes. |
+| Study controls | Case brief sections; an editable IRAC response with revealable imported guidance; Socratic questions with saved responses, progress, and revealable guidance; displayed rule material; notes; text export; and Law Anki export. Raw Saved Imports and created Case Reviews have separate management/deletion. |
+| Future-mode distinction | The four non-interactive `Future Study Modes` previews are IRAC Practice, Socratic Prep, Rule Flashcards, and Case Compare. There are no separate standalone IRAC, Socratic, or native interactive flashcard modes, although related activities/material already exist inside a saved Case Review. Case Compare is not implemented. The manual must document the embedded workflow without presenting the preview cards as available features. |
 | Evidence | `dlms/routes/law.py`; Law templates; `static/help-study-modules.html`; Law persistence/import/Anki tests. |
-| Manual / screenshot / status | Ch. 13–14; UM-23; **Verified** embedded workflow; **Needs clarification** on future-mode wording. |
+| Manual / screenshot / status | Ch. 13–14; UM-23; **Verified**. Distinguish embedded Case Review activities from unimplemented standalone preview modes. |
 
 ### 16. Anki, decks, and printable cards
 
@@ -695,10 +696,10 @@ below.
 | Screen / reach | Anki Tools navigation; quiz Study Mode; History/missed results; Law Study. |
 | What and why | Turns selected quiz questions, missed questions, or Law material into Anki-compatible study packages without replacing DLMS study/history. |
 | Controls | Export quiz questions; filter missed questions by quiz/all, minimum misses (1–100), and currently weak/repeated/recovered/once status; select individual cards into a named Custom Deck; preview first 20 while exporting all. |
-| Outputs | Primary `.apkg` deck export; selected compatibility TSV routes remain; printable physical flashcards with front/back and duplex flip controls. Law exports can select cases/course/all. |
+| Outputs | Current guided workflows produce `.apkg` decks or printable physical flashcards with front/back and duplex flip controls. Law exports can select cases/course/all. Two legacy TSV compatibility endpoints remain for quiz-choice and selected missed-question data, but no current Anki Tools, quiz runtime, History Review, or Help control links to them. |
 | External dependency | Anki is an external application used to import/open `.apkg`; DLMS creates the package locally. |
 | Evidence | `dlms/routes/anki.py`; Anki templates/services/tests; Study runtime; Help Anki/assets. |
-| Manual / screenshot / status | Ch. 14; UM-24; **Verified**; manual should present `.apkg` first and label TSV as compatibility where exposed. |
+| Manual / screenshot / status | Ch. 14; UM-24; **Verified**. Present `.apkg` and printable cards as ordinary workflows. Mention TSV, if needed, only as advanced/legacy compatibility and do not present the missed-question POST endpoint as a normal procedure. |
 
 ### 17. Settings, backup, maintenance, and removal
 
@@ -721,9 +722,9 @@ below.
 | What and why | Configures external handoffs, optional parsing tools, and eligible local browser-presence shutdown behavior. |
 | AI options | Helper enabled, auto-copy, named/local/custom provider URL, and editable explanation, Study Pack, Medical safety, and Law prompt templates; reset defaults. No provider credential/API storage is required. |
 | Parsing options | Confidence analysis, manual regular expressions, cleanup tools including invisible/BOM handling, and related authoring toggles. |
-| Lifecycle | Optional browser-presence shutdown applies only to eligible loopback use: after the final DLMS page disappears and a grace period of roughly five minutes expires, the local process may stop; reopening cancels it. It has no effect in LAN/server mode. |
+| Lifecycle | Optional browser-presence shutdown applies only to eligible loopback use: after the final DLMS page disappears and a grace period of roughly five minutes expires, the local process may stop; reopening cancels it. In LAN/server mode it is unavailable, closing client browser windows does not stop the server, and the process/service must be stopped from the host computer. |
 | Evidence | settings routes/templates/services; runtime lifecycle code/tests; Help. |
-| Manual / screenshot / status | Ch. 16; UM-25; behavior **Verified**, but current LAN shutdown prose conflicts in existing docs. |
+| Manual / screenshot / status | Ch. 16; UM-25; behavior **Verified**. Existing non-manual LAN shutdown prose conflicts with the authoritative behavior and should be corrected in separately approved work. |
 
 #### Backup and Restore
 
@@ -766,7 +767,7 @@ below.
 | --- | --- |
 | Screen / reach | Shutdown control in normal navigation/runtime UI; permanent removal in Reset & Remove. |
 | Local behavior | In loopback desktop mode, Shutdown DLMS is the immediate recommended stop action. Optional browser presence may stop the process after the last DLMS window closes and the grace period expires. |
-| LAN/server behavior | In explicit non-loopback mode, the UI presents shutdown as unavailable with an accessible explanation to stop DLMS on the host system. The server rejects direct browser/API shutdown with 403 based on configured runtime mode, not the individual request’s address. Auto shutdown is disabled. |
+| LAN/server behavior | In explicit non-loopback mode, the UI disables in-app shutdown and presents an accessible explanation to stop DLMS on the host system. `POST /api/shutdown` returns 403 and does not stop the process. Automatic browser-presence shutdown is unavailable, and closing client browser windows does not stop the server. Runtime mode comes from the configured bind/runtime mode, not an individual request’s address. |
 | Security warning | LAN mode has no DLMS authentication or TLS. It is for trusted/firewalled networks and must not be exposed directly to the Internet. |
 | Evidence | core/runtime routes and templates; lifecycle code/settings; shutdown/LAN/accessibility tests. |
 | Manual / screenshot / status | Ch. 16–18 and runtime appendix; UM-25; implementation **Verified**, existing docs **conflict**. |
@@ -877,7 +878,7 @@ endpoints and static assets are not pages.
 | Import/preview saved case packet | Law Study | Paste/save raw packet, inspect recognized sections, create case | Saved Import and structured Case Review | Workflow-only | 13 |
 | Law Case Review detail/editor | Law Case Reviews | Brief, Socratic, IRAC, rules, notes, export/edit/delete | Saves study work; Anki/export | Secondary | 13–14 |
 | Image Study Editor | System Tools/subject images | Choose pack/dataset; Clickable Regions or Image Prep | Saves regions/derived overlays; test result | Maintenance/authoring | 11 |
-| Anki Tools | Primary/secondary navigation | Choose quiz/history/Law/custom workflow | `.apkg`, compatibility export, printable cards | Primary family | 14 |
+| Anki Tools | Primary/secondary navigation | Choose quiz/history/Law/custom workflow | `.apkg` exports and printable cards; legacy TSV has no current guided control | Primary family | 14 |
 | Custom Deck Builder | Anki Tools | Filter/select cards, name, preview | Download `.apkg` or printable view | Secondary | 14 |
 | Printable cards | Custom Deck | Front/back preview and duplex flip controls | Print | Workflow-only | 14 |
 | Settings overview | Primary navigation | Open Appearance, Navigation, AI, Parsing, Lifecycle, Backup, Reset, System Tools | Specialized settings pages | Primary | 16–17 |
@@ -903,9 +904,10 @@ endpoints and static assets are not pages.
 - JSON endpoints for attempts, learning events, scheduling, recovery-aware
   Dashboard composition, folder ordering, maintenance, and shutdown support the
   visible screens; users should not be instructed to call them directly.
-- Compatibility export routes (including legacy TSV) may remain reachable from
-  supported controls or old links. The manual should emphasize current `.apkg`
-  and versioned bundle workflows rather than presenting raw endpoints.
+- Two legacy TSV compatibility endpoints remain technically reachable but are
+  not linked from the current Anki Tools, quiz runtime, History Review, or Help
+  UI. The manual should emphasize current `.apkg` and versioned bundle workflows
+  rather than presenting raw endpoints as ordinary procedures.
 - Staging status/cancel/cleanup routes are implementation support for import,
   backup, OCR, and External AI workflows. Document the visible status and cancel
   behavior, not route mechanics.
@@ -967,13 +969,13 @@ Findings are documentation inputs, not changes to application behavior.
 
 | ID | Finding | Evidence / impact | Phase 2 treatment |
 | --- | --- | --- | --- |
-| DAF-01 | Existing LAN shutdown guidance conflicts with enforced behavior. | The runtime/UI/server correctly disable browser/API shutdown in explicit LAN mode and instruct host-system stopping. `templates/settings/lifecycle.html` says “Manual shutdown remains available,” while `static/help-getting-started.html` and generic shutdown prose can imply the in-app control still works. | Treat implementation/tests as authoritative. Ask the owner whether “manual” meant host-system stop; write unambiguous mode-specific manual prose and separately propose correcting existing Help. |
+| DAF-01 | Existing LAN shutdown guidance conflicts with enforced behavior; the contract is now verified. | The runtime/UI/server disable browser/API shutdown in explicit LAN mode; `POST /api/shutdown` returns 403; browser-presence shutdown is unavailable; and closing clients does not stop the server. Runtime mode comes from the configured bind, not the requesting address. `templates/settings/lifecycle.html` says “Manual shutdown remains available,” while `static/help-getting-started.html` and generic prose can imply that the in-app control still works. | State that users must stop the process/service from the host computer, such as through the terminal, service manager, or process manager that started it. Avoid the ambiguous standalone phrase “manual shutdown.” Propose the existing Help correction separately. |
 | DAF-02 | Browser-local recovery versus server-shared recommendations is easy to misunderstand. | `Unfinished`/Resume comes from local storage and is marked `This browser`; due counts, concept state, history, and completed learning activity are server-derived. Two clients can correctly differ only in unfinished records. | Explain this boundary in first-use, Today’s Review, recovery, troubleshooting, and LAN sections; use one teaching screenshot. |
 | DAF-03 | Review vocabulary still has historical overlap. | “Spaced Review,” native scheduling, Due Questions, Topic Retention Schedule, Smart Review, and Adaptive Study coexist in code/history. Current Help converges much of the wording but old terms remain in implementation and some route concepts. | Use Today’s Review as default; consistently define Due Questions (question level) and Topic Retention Schedule (concept level); glossary cross-links the others. |
 | DAF-04 | Study Packs and Content Packs are two user-visible views of related content and are not self-explanatory. | Learners browse Study Packs; management validates/installs/exports/deletes Content Packs. The AI builder asks for a Study Pack ZIP that enters Content Pack validation. | Include a concise comparison before either procedure; never use the names interchangeably. |
 | DAF-05 | External AI has three distinct handoff patterns. | Structured choice JSON, structured matching JSON, and AI Study Pack ZIP are separate; explanation/Law helpers add more external prompt handoffs. | Start with the shared “DLMS does not call the provider” model, then a decision table by expected return format and destination. |
-| DAF-06 | The Law landing’s future-mode labels overlap with implemented Case Review activities. | Landing calls IRAC Practice, Socratic Prep, and Rule Flashcards future/coming later; saved Case Review detail already embeds IRAC, Socratic, and flashcard workflows. | Document embedded Case Review capabilities. Do not advertise standalone future modes; request owner clarification before describing the landing teaser. |
-| DAF-07 | Direct manual-builder choice-count behavior needs one narrow verification before stating a universal limit. | Review/import paths explicitly enforce 2–26 choices. Direct short-builder server validation visibly requires non-empty choices/correctness, but the audit did not establish the same lower/upper contract at every boundary. | In Phase 2, test or manually exercise 1 and 27 choices before publishing a single global limit for manual authoring. Do not infer. |
+| DAF-06 | The Law landing’s future-mode labels overlap with implemented Case Review activities; the distinction is now verified. | IRAC Practice, Socratic Prep, Rule Flashcards, and Case Compare are non-interactive future previews with no standalone routes. Saved Case Reviews already provide editable IRAC work with revealable guidance, Socratic questions/responses/progress/guidance, rule material, and Law Anki export. Case Compare is not implemented. | Document the embedded Case Review activities. State that the landing cards preview possible standalone tools and are not separate available workflows. Do not describe rule material as a full native interactive flashcard mode. |
+| DAF-07 | The direct Short Quiz Builder contract is verified, with one server-validation observation. | The UI starts with four rows, supports 1–26 nonblank choices, requires at least one nonblank and one marked correct choice, ignores blank unused rows, and derives single-answer versus multi-select from the number marked correct. The browser enforces the 26-choice maximum, but the POST route does not independently enforce that upper bound. | Document only the supported 1–26 UI contract. Record the missing server-side maximum as an implementation observation; do not imply that crafted submissions beyond 26 are supported. |
 | DAF-08 | Existing Help assets are broad but not automatically current enough for a 3.2 manual. | 47 assets cover core/3.1 and selected newer flows; Today’s Review, current Smart Views, matching External AI, portable bundles, and current recovery/LAN states lack clearly verified teaching captures. | Compare each candidate against current UI only when drafting its chapter; reuse materially accurate images and capture only planned gaps. |
 | DAF-09 | Older `docs/screenshots/` images have unclear current manual purpose. | SS1/SS2 and Anki images exist outside the versioned Help set and predate the new manual architecture. | Do not reuse until provenance, current accuracy, and license/privacy safety are confirmed. |
 | DAF-10 | Generated sessions are persistent Library records but there is no archive/automatic cleanup lifecycle. | Generated Practice Smart View and badges reduce clutter; users may hide or ignore quizzes, and Mixed Quiz stays distinct. No auto-delete is intentional. | Explain visibility and safe organization without promising archive/cleanup. Treat lifecycle enhancement as future product work, not missing manual behavior. |
@@ -983,7 +985,7 @@ Findings are documentation inputs, not changes to application behavior.
 | DAF-14 | Exact limits are numerous and can overwhelm workflows. | PDF, screenshots, bundles, backups, packs, text, timers, pairs, and counts each have validated bounds. | Put task-critical bounds next to the upload step; consolidate the full table in Feature/Format Reference. |
 | DAF-15 | Learning Intelligence can imply more precision than sparse evidence supports unless explained. | Mastery caps, `Not enough data`, recent windows, and Trend minimums deliberately constrain claims. | Lead with plain-language four-factor Mastery, then subordinate exact formulas and explain why sparse evidence is capped. |
 | DAF-16 | Generated-copy identity is important but implementation terminology is not user friendly. | Explicit lineage and generated metadata now make analytics/review/scheduling coherent; legacy fallback is conservative. | Explain the benefit (“practice answers count toward the source”) without exposing UIDs, contracts, fingerprints, or naming-prefix fallbacks. |
-| DAF-17 | Export formats can be confused. | Human-readable text, `.apkg`, legacy TSV, Portable Quiz Bundle, Content/Study Pack ZIP, and full Backup ZIP serve different purposes and preserve different data. | Add a “Which export should I use?” table in Chapters 14–17. |
+| DAF-17 | Export formats can be confused; TSV exposure is now verified. | Human-readable text, `.apkg`, legacy TSV, Portable Quiz Bundle, Content/Study Pack ZIP, and full Backup ZIP serve different purposes and preserve different data. The two TSV compatibility endpoints export quiz-choice or selected missed-question data, but no current guided Anki Tools, quiz runtime, History Review, or Help control links to them. | Add a “Which export should I use?” table in Chapters 14–17. Present `.apkg` and printable cards as ordinary Anki workflows. If TSV is mentioned, place it in an Advanced/Legacy Compatibility note; do not teach the missed-question POST endpoint as a normal workflow. |
 | DAF-18 | Destructive settings require more than a generic reset explanation. | Clear history, reset intelligence, reset library/results, clear source content, fresh state, and permanent removal have materially different scopes/backups. | Give each action a preservation/removal table and keep typed confirmation prominent. |
 | DAF-19 | Some advanced pages are reachable but should not dominate a beginner path. | Diagnostics, regex tools, source metadata, image masks/hotspot geometry, and Content Pack management are powerful secondary workflows. | Use progressive disclosure: quick-start links first, advanced/reference sections later. |
 | DAF-20 | The stable-release boundary must remain explicit during manual drafting. | Current source/version is 3.2.0 on a development branch; repository text may still correctly refer to 3.1.0 as the latest published release or historical baseline. | Label this manual source as documenting 3.2.0 behavior without claiming publication until the release exists. Preserve historical references. |
@@ -996,7 +998,7 @@ Findings are documentation inputs, not changes to application behavior.
 | Route or composition family inspected | User-visible surface accounted for | Inventory location | Omission/clarification result |
 | --- | --- | --- | --- |
 | Application/core/dashboard/runtime | Dashboard, generated quiz/media serving, runtime configuration, shutdown | Areas 1, 6, 17–18; screen/workflow maps | Asset/API routes intentionally not separate screens |
-| Quiz authoring | Build hub, file/paste/manual/CSV builders, parsing failure/preview | Areas 2–3 | Direct-builder choice limit remains DAF-07 |
+| Quiz authoring | Build hub, file/paste/manual/CSV builders, parsing failure/preview | Areas 2–3 | User-facing choice contract resolved; server-limit observation retained in DAF-07 |
 | Quiz editor/dependencies | Edit/delete/content dependencies and safe artifact regeneration | Area 3 | Destructive dependency details kept task-level, not internal |
 | Quiz Library | Folders, order, visibility, search, Smart Views, generated labels | Area 4 | Browser-local Unfinished explicitly covered |
 | Quiz composition | Mixed Quiz selection and source lineage | Area 5 | Generated source recursion/exact collapsing covered |
@@ -1010,9 +1012,9 @@ Findings are documentation inputs, not changes to application behavior.
 | Study Packs | Catalog, AI builder, image builder, generated activity | Areas 13–15 | Browser-local expansion state covered |
 | Content Packs | Import review/install/detail/export/delete/protection | Area 15 | Maintainer format internals omitted intentionally |
 | IT and Medical | Subject aggregation, matching/images/AI entry points | Area 15 | No independent duplicated persistence implied |
-| Law | Prompt/import/archive/case detail/IRAC/Socratic/rules/notes/export/Anki | Area 15–16 | Future-label conflict recorded DAF-06 |
+| Law | Prompt/import/archive/case detail/IRAC/Socratic/rules/notes/export/Anki | Areas 15–16 | Embedded activities versus standalone future previews resolved in DAF-06 |
 | Admin image editor | Clickable Regions, Image Prep, keyboard authoring | Area 13 | Spatial accessibility limitation noted |
-| Anki | Quiz/missed/custom/Law package exports and printable cards | Area 16 | Legacy TSV classified as compatibility |
+| Anki | Quiz/missed/custom/Law package exports and printable cards | Area 16 | Legacy TSV verified as unlinked compatibility endpoints |
 | Settings | Appearance, navigation, AI, parsing, lifecycle, backup, reset, tools | Area 17 | Each settings family included |
 | Maintenance | Restore staging, rebuild, scoped resets/removal | Area 17 | API mechanics omitted; user outcomes included |
 | Help | Topic index, contextual/specialized help, assets | Area 18/current-state section | Existing conflicts and missing 3.2 captures recorded |
@@ -1049,19 +1051,19 @@ Findings are documentation inputs, not changes to application behavior.
 | Product-surface category | Audited | Represented in inventory | Proposed manual location | Screenshot considered | Unresolved clarification |
 | --- | --- | --- | --- | --- | --- |
 | Primary navigation destinations | Yes | Dashboard, Library, Build, History, Learning, Packs, optional subjects, Anki, Settings, Help | Ch. 3 plus destination chapters | UM-01–03 and selected destinations | None affecting structure |
-| Secondary navigation and Library Tools | Yes | Smart Views, folders, Mixed Quiz, duplicates, bundles, editors, management | Ch. 5, 13–17 | UM-03–06, UM-22–27 | Law future-mode label (DAF-06) |
-| Major user-facing routes/pages | Yes | Grouped in 81 screen-map rows rather than raw endpoints | All chapters | Selective 27-image plan | Direct builder limit (DAF-07) |
-| Major modal/dialog workflows | Yes | Mastery, recovery, confirmations, OCR offer, import/restore reviews, status/error states | Ch. 6, 8, 10, 15, 17–18 | UM-09, 12, 16–18, 20, 26–27 | LAN copy conflict (DAF-01) |
+| Secondary navigation and Library Tools | Yes | Smart Views, folders, Mixed Quiz, duplicates, bundles, editors, management | Ch. 5, 13–17 | UM-03–06, UM-22–27 | None; future Law cards are not current workflows |
+| Major user-facing routes/pages | Yes | Grouped in 81 screen-map rows rather than raw endpoints | All chapters | Selective 27-image plan | No documentation ambiguity; server-limit observation remains DAF-07 |
+| Major modal/dialog workflows | Yes | Mastery, recovery, confirmations, OCR offer, import/restore reviews, status/error states | Ch. 6, 8, 10, 15, 17–18 | UM-09, 12, 16–18, 20, 26–27 | None; existing non-manual LAN copy conflict remains DAF-01 |
 | Quiz-taking workflows | Yes | Study, Exam, question types, results, save failure, recovery | Ch. 6 and 9 | UM-07–09, 14, 19 | No material omission found |
 | Review/study workflows | Yes | Today’s Review, Adaptive, Smart, Concept, Due, Topic Retention, misses | Ch. 7–8 | UM-01, 10–12 | Historical naming only (DAF-03) |
 | Import/content-acquisition workflows | Yes | Text/paste/CSV, PDF/OCR, External AI, packs, Law packet, image builder | Ch. 4, 10–13 | UM-02, 15–23 | Optional OCR setup distinction (DAF-12) |
 | Library/organization workflows | Yes | Visibility, folders/order/search, Smart Views, generated practice, mix, duplicates, bundles | Ch. 5 and 15 | UM-03–06 | Generated lifecycle is intentionally absent (DAF-10) |
 | Learning/history workflows | Yes | Profile, concepts, Mastery/Trend, diagnostics, schedules, History/Analytics | Ch. 7–9 | UM-10–14 | Sparse-evidence explanation required (DAF-15) |
 | Matching/image/hotspot workflows | Yes | Manual/CSV/bank/OCR/AI matching; image builder/editor; quiz keyboard operation | Ch. 10–13 | UM-18–19 | Manual assistive-tech review remains prudent |
-| Study/Content Pack and subject workflows | Yes | Catalog, management, AI ZIP, images, IT/Medical/Other, Law | Ch. 12–13 | UM-21–23 | Pack naming and Law teaser need careful prose |
-| Anki/external-study workflows | Yes | `.apkg`, custom/missed/Law decks, printable cards, compatibility TSV | Ch. 14 | UM-24 | Confirm which legacy TSV controls remain visibly linked during drafting |
-| Maintenance/data-management workflows | Yes | Backup/restore, scoped resets, fresh state/removal, rebuild, shutdown | Ch. 17–18 | UM-26–27 | Existing shutdown wording conflict (DAF-01) |
-| Settings/runtime workflows | Yes | Appearance, navigation, AI, parsing, lifecycle, local/LAN modes | Ch. 16 and appendix | UM-25 | Existing Help correction needs separate approval |
+| Study/Content Pack and subject workflows | Yes | Catalog, management, AI ZIP, images, IT/Medical/Other, Law | Ch. 12–13 | UM-21–23 | None; pack naming and the verified future-preview distinction need careful prose |
+| Anki/external-study workflows | Yes | `.apkg`, custom/missed/Law decks, printable cards, legacy TSV compatibility | Ch. 14 | UM-24 | None; TSV is not linked from current guided UI |
+| Maintenance/data-management workflows | Yes | Backup/restore, scoped resets, fresh state/removal, rebuild, shutdown | Ch. 17–18 | UM-26–27 | None for manual drafting; existing non-manual copy correction remains DAF-01 |
+| Settings/runtime workflows | Yes | Appearance, navigation, AI, parsing, lifecycle, local/LAN modes | Ch. 16 and appendix | UM-25 | None for manual drafting; existing Help correction needs separate approval |
 | Platform/runtime differences | Yes | Six target packages, data locations, signing warnings, packaged/source OCR, loopback/LAN | Ch. 2, 16, appendix | UM-25 only where instructive | Per-target release UAT remains external evidence |
 | Errors/warnings/confirmations | Yes | Parse/request errors, incomplete repair, staged reviews, destructive confirmations, failure preservation | Within task chapters + Ch. 18/reference | Consequential examples only | No material omission found |
 | Help and existing documentation/assets | Yes | Help topics/special pages, README/release guide, 47 assets, maintainer boundary | Ch. 3; manual maintenance architecture | All candidates assessed later | Asset currency must be checked per chapter |
@@ -1069,9 +1071,11 @@ Findings are documentation inputs, not changes to application behavior.
 **Coverage result:** all registered user-facing blueprint families, page/template
 families, major JavaScript workflows, and service-backed product domains found
 in the second pass map to at least one inventory entry and proposed manual
-location. Remaining questions are the narrow clarifications explicitly listed
-above, not unidentified product areas. This inventory is sufficiently complete
-to begin Phase 2 drafting after owner review of the findings and terminology.
+location. The four focused behavior clarifications are resolved. Remaining
+findings concern known implementation observations, future screenshot currency,
+or existing non-manual documentation that requires separately approved work—not
+unresolved Phase 1 product behavior. This inventory is sufficiently complete to
+begin Phase 2 drafting after owner review of the findings and terminology.
 
 Related Phase 1 artifacts: [manual architecture](README.md),
 [terminology audit](TERMINOLOGY.md), and
