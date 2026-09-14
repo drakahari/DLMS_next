@@ -216,6 +216,10 @@ class HelpDocumentationTests(unittest.TestCase):
             "Clear Imported / Source Content",
             "Packs marked as protected are preserved",
             "Reset Application Settings",
+            "application lifecycle, and Quiz Library folder preferences",
+            "Quizzes keep their existing folder assignments",
+            "empty configured folders are removed",
+            "hidden-folder state is cleared",
             "Reset DLMS to Fresh State",
             "backup ZIPs in the DLMS backup folder are deliberately preserved",
             "Remove DLMS Data from This Computer",
@@ -237,7 +241,9 @@ class HelpDocumentationTests(unittest.TestCase):
             "Download Quiz Library Reference (TXT)",
             "human-readable reference",
             "not a restorable or importable library package",
-            "import-friendly classic MCQ text file",
+            "classic choice-question text representation",
+            "does not preserve matching, image, or hotspot interaction",
+            "Quiz Bundles</strong> for rich quiz transfer",
             "migration to another DLMS installation or a full restore",
         ):
             with self.subTest(wording=wording):
@@ -280,10 +286,12 @@ class HelpDocumentationTests(unittest.TestCase):
 
         self.assertIn('id="lifecycle"', getting_started)
         for wording in (
+            "normal local desktop mode",
             "immediate and recommended way to stop the application",
             "closing the final DLMS browser window may trigger automatic shutdown",
-            "browser-presence shutdown does not apply when it is disabled",
-            "LAN/server service",
+            "in-app browser/API shutdown and automatic browser-presence shutdown are unavailable",
+            "Closing client browser windows does not stop the server",
+            "Stop the DLMS process or service from the host computer",
             "http://127.0.0.1:9001/",
             "instead of starting another server copy",
             "<strong>Shutdown DLMS</strong>",
@@ -294,9 +302,12 @@ class HelpDocumentationTests(unittest.TestCase):
 
         self.assertIn('id="browser-closed"', troubleshooting)
         for wording in (
+            "normal local desktop mode",
             "immediate, recommended way to stop the application",
             "closing the final DLMS browser window may stop the process automatically",
-            "does not promise to stop it",
+            "in-app browser/API shutdown and automatic browser-presence shutdown are unavailable",
+            "Closing client browser windows does not stop the server",
+            "Stop the DLMS process or service from the host computer",
             "already-running DLMS process",
             "<strong>Shutdown DLMS</strong>",
             "If the address no longer responds",
@@ -322,6 +333,17 @@ class HelpDocumentationTests(unittest.TestCase):
             "Missed-question review",
         ):
             with self.subTest(wording=wording):
+                self.assertIn(wording, learning)
+        self.assertNotIn("available confidence", learning)
+        for wording in (
+            "weak or developing concepts",
+            "recent misses",
+            "low recent accuracy",
+            "review timing",
+            "material not studied recently",
+            "repeated exposure",
+        ):
+            with self.subTest(adaptive_signal=wording):
                 self.assertIn(wording, learning)
         for wording in (
             "total number currently due",
@@ -386,12 +408,19 @@ class HelpDocumentationTests(unittest.TestCase):
             "Term: Definition",
             "two-column lists",
             "unassigned material",
-            "removed after publication, cancellation, or expiration",
+            "Once extraction becomes a matching Review &amp; Repair draft",
+            "removes the temporary uploaded images or rendered PDF pages",
+            "source names, diagnostics, and unassigned text",
+            "Keep your original source files available while reviewing",
         ):
             with self.subTest(surface="ocr", wording=wording):
                 self.assertIn(wording, pdf_image)
         self.assertNotIn(
             "Scanned-page OCR currently applies to question-bank imports, not glossary extraction",
+            pdf_image,
+        )
+        self.assertNotIn(
+            "temporary sources are removed after publication, cancellation, or expiration",
             pdf_image,
         )
 

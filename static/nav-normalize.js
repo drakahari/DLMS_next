@@ -99,7 +99,7 @@
       explanation.id = explanationId;
       explanation.className = 'dashboard-shutdown-unavailable';
       explanation.setAttribute('role', 'status');
-      explanation.textContent = 'DLMS is running in LAN/server mode. Stop it from the host system.';
+      explanation.textContent = 'DLMS is running in LAN/server mode. Stop the DLMS process or service from the host computer.';
       shutdownButton.after(explanation);
     }
   };

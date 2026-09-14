@@ -34,7 +34,7 @@
     {% if not browser_presence_shutdown_runtime_eligible %}
     <div class="settings-warning-panel">
         <strong>Unavailable in LAN/server mode</strong>
-        <span>Browser-presence shutdown is intended for normal local desktop use and is disabled while DLMS is bound for LAN or server access. Closing all remote browser tabs will not stop DLMS. Manual shutdown remains available.</span>
+        <span>Browser-presence shutdown and in-app browser/API shutdown are unavailable while DLMS is bound for LAN or server access. Closing client browser tabs will not stop DLMS. Stop the DLMS process or service from the host computer—for example, from the terminal, service manager, or process manager that started it.</span>
     </div>
     {% endif %}
 

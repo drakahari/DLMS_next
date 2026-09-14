@@ -255,7 +255,7 @@
                             <div class="library-quiz-actions">
                                 <a class="library-primary-action compact" href="/quizzes/{{ q['html'] }}">▶ Open Quiz</a>
                                 <a class="library-secondary-action compact" href="/edit_quiz/{{ q['id'] }}">✎ Edit</a>
-                                <a class="library-secondary-action compact" href="/export/quiz/{{ q['id'] }}.txt" title="Exports this quiz as an import-friendly DLMS text file.">⇩ Export</a>
+                                <a class="library-secondary-action compact" href="/export/quiz/{{ q['id'] }}.txt" title="Exports a classic choice-question text representation. Use Quiz Bundles to preserve matching, images, and hotspots." aria-label="Export {{ q['title'] }} as classic choice-question text">⇩ Export</a>
 
                                 {% if not active_smart_view and folder_quizzes|length > 1 %}
                                 <div class="library-reorder-controls" role="group" aria-label="Reorder {{ q['title'] }} within {{ folder_name }}">
@@ -327,7 +327,7 @@
         <section class="library-footer-actions dashboard-panel">
             <div>
                 <h2>Library Tools</h2>
-                <p>Download a human-readable TXT reference of your complete quiz library. This reference is not a restorable or importable library package. Use <strong>Export</strong> on an individual quiz for an import-friendly classic MCQ text file, or <a href="/settings/backup">Settings → Backup &amp; Restore</a> portable backup for migration or full restore.</p>
+                <p>Download a human-readable TXT reference of your complete quiz library. This reference is not a restorable or importable library package. <strong>Export</strong> on an individual quiz creates a classic choice-question text representation; it does not preserve matching, image, or hotspot interaction. Use <a href="/quiz-bundles">Quiz Bundles</a> for rich quiz transfer, or <a href="/settings/backup">Settings → Backup &amp; Restore</a> for migration or full restore.</p>
             </div>
             <div class="library-footer-buttons">
                 <a class="library-secondary-action" href="/create_short_quiz">✎ Create Short Quiz</a>

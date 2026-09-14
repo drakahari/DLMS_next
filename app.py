@@ -2610,7 +2610,7 @@ def shutdown_app():
             status="unavailable",
             error=(
                 "Shutdown DLMS is unavailable in LAN/server mode. "
-                "Stop DLMS from the host system."
+                "Stop the DLMS process or service from the host computer."
             ),
         ), 403
     print("[SYSTEM] Shutdown requested via UI")

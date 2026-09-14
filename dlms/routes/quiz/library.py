@@ -557,7 +557,8 @@ def export_single_quiz_txt(dependencies, quiz_id):
     lines.append(f"# Exported from DLMS v{APP_VERSION}")
     lines.append(f"# Exported on: {exported_on}")
     lines.append("# Format: DLMS text")
-    lines.append("# Import compatible: Yes")
+    lines.append("# Import compatibility: Classic choice-question text only")
+    lines.append("# Use a Portable Quiz Bundle to preserve matching, images, and hotspots")
     lines.append("")
 
     lines.append("=" * 60)

@@ -7987,7 +7987,7 @@ def test_browser_presence_runtime_mode_isolated_server(
                     "label": "Shutdown unavailable",
                     "note": (
                         "DLMS is running in LAN/server mode. "
-                        "Stop it from the host system."
+                        "Stop the DLMS process or service from the host computer."
                     ),
                     "role": "status",
                 }
@@ -8052,7 +8052,7 @@ def test_browser_presence_runtime_mode_isolated_server(
                 "status": "unavailable",
                 "error": (
                     "Shutdown DLMS is unavailable in LAN/server mode. "
-                    "Stop DLMS from the host system."
+                    "Stop the DLMS process or service from the host computer."
                 ),
             }
             assert server_process.poll() is None

@@ -121,6 +121,10 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn('data-generation-kind="adaptive_study"', reset_html)
             self.assertIn('data-generation-category="mixed"', reset_html)
             self.assertIn("revisit, hide, or ignore for now", reset_html)
+            self.assertIn(
+                "Use Quiz Bundles to preserve matching, images, and hotspots.",
+                reset_html,
+            )
             self.assertEqual(
                 mutation.headers["Location"],
                 "/library?view=visible&smart=low-score",
@@ -205,10 +209,60 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn('href="/export/all_quizzes.txt"', html)
             self.assertIn("human-readable TXT reference", html)
             self.assertIn("not a restorable or importable library package", html)
-            self.assertIn("import-friendly classic MCQ text file", html)
+            self.assertIn("classic choice-question text representation", html)
+            self.assertIn(
+                "does not preserve matching, image, or hotspot interaction", html
+            )
+            self.assertIn('href="/quiz-bundles">Quiz Bundles</a>', html)
             self.assertIn('href="/settings/backup"', html)
-            self.assertIn("portable backup for migration or full restore", html)
+            self.assertIn("for migration or full restore", html)
             self.assertNotIn("⇩ Export All Quizzes", html)
+
+    def test_single_quiz_text_export_states_classic_choice_compatibility_boundary(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-single-export-") as directory:
+            db_path = os.path.join(directory, "results.db")
+            quiz_registry = os.path.join(directory, "quizzes.json")
+            database = bootstrap_current_schema_database(
+                db_path,
+                bootstrap_database=dlms.bootstrap_database,
+            )
+            database.seed_quiz(
+                "Choice Export",
+                "choice-export.html",
+                [{
+                    "id": 11,
+                    "number": 1,
+                    "question": "Which option is correct?",
+                    "choices": [
+                        {"label": "A", "text": "Correct", "is_correct": True},
+                        {"label": "B", "text": "Incorrect", "is_correct": False},
+                    ],
+                }],
+                quiz_id=7,
+            )
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([{
+                    "id": 7,
+                    "title": "Choice Export",
+                    "html": "choice-export.html",
+                    "folder": "Uncategorized",
+                }], handle)
+
+            with mock.patch.object(dlms, "DB_PATH", db_path), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry):
+                response = dlms.app.test_client().get("/export/quiz/7.txt")
+
+            self.assertEqual(200, response.status_code)
+            export = response.get_data(as_text=True)
+            self.assertIn(
+                "# Import compatibility: Classic choice-question text only", export
+            )
+            self.assertIn(
+                "# Use a Portable Quiz Bundle to preserve matching, images, and hotspots",
+                export,
+            )
+            self.assertNotIn("# Import compatible: Yes", export)
+            self.assertIn("Correct Answer: A", export)
 
     def test_quiz_library_reference_keeps_existing_text_export_contract(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-reference-") as directory:

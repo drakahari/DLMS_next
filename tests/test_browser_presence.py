@@ -253,7 +253,11 @@ class BrowserPresenceIntegrationTests(unittest.TestCase):
         ):
             page = self.client.get("/settings/lifecycle").get_data(as_text=True)
             self.assertIn("Unavailable in LAN/server mode", page)
-            self.assertIn("Closing all remote browser tabs will not stop DLMS", page)
+            self.assertIn("Closing client browser tabs will not stop DLMS", page)
+            self.assertIn("in-app browser/API shutdown are unavailable", page)
+            self.assertIn(
+                "Stop the DLMS process or service from the host computer", page
+            )
             self.assertIn(
                 'name="automatic_browser_shutdown_enabled" checked disabled', page
             )
@@ -357,7 +361,7 @@ class BrowserPresenceIntegrationTests(unittest.TestCase):
                 "status": "unavailable",
                 "error": (
                     "Shutdown DLMS is unavailable in LAN/server mode. "
-                    "Stop DLMS from the host system."
+                    "Stop the DLMS process or service from the host computer."
                 ),
             },
             response.get_json(),
