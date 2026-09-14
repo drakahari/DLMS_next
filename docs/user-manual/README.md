@@ -1,8 +1,9 @@
 # DLMS User Manual source
 
-This directory is the planned canonical source for the DLMS end-user manual. It
-currently contains the Phase 1 product audit and manual architecture for **DLMS
-3.2.0**. It does not yet contain the finished manual.
+This directory is the canonical source for the DLMS end-user manual. It
+contains the Phase 1 product audit and manual architecture for **DLMS 3.2.0**,
+plus narrative chapters as they are completed in Phase 2. The manual is not yet
+complete.
 
 Markdown is the editable source of truth. A generated PDF will be a release
 artifact, not an editable source, and must not replace these files.
@@ -18,6 +19,15 @@ artifact, not an editable source, and must not replace these files.
 
 These audit artifacts should remain available after the narrative chapters are
 written. They provide the traceability needed to keep later editions accurate.
+
+## Drafted manual chapters
+
+- [1. Introduction](01-introduction.md)
+- [2. Installation and First Launch](02-installation-and-first-launch.md)
+- [3. Interface and Navigation](03-interface-and-navigation.md)
+
+Later chapters remain in the architecture below until they contain substantive
+review-ready prose.
 
 ## Intended audience and boundary
 
@@ -45,12 +55,12 @@ local-versus-LAN behavior still belong in the manual because they affect use.
 Phase 2 should create the following chapters only as substantive prose is
 drafted. No empty chapter placeholders are part of Phase 1.
 
-1. **Welcome to DLMS** — product purpose, local-first model, privacy boundary,
+1. **[Introduction](01-introduction.md)** — product purpose, local-first model, privacy boundary,
    supported question and study material types, and how to use the manual.
-2. **Installation and first launch** — release packages, platform security
+2. **[Installation and First Launch](02-installation-and-first-launch.md)** — release packages, platform security
    prompts, data locations, launch behavior, Dashboard orientation, and the
    source-installation alternative.
-3. **Interface, navigation, and Help** — persistent navigation, Dashboard,
+3. **[Interface and Navigation](03-interface-and-navigation.md)** — persistent navigation, Dashboard,
    hidden subject areas, themes, Help Center, status messages, and common
    interaction patterns.
 4. **Creating and importing quizzes** — Build Quiz hub, manual builder, text
