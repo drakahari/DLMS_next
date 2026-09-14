@@ -118,6 +118,18 @@ def test_study_and_exam_identities_survive_recovery_without_automatic_retry():
     assert "studyLearningEventSaves.set(record.eventId, record)" in SCRIPT
 
 
+def test_completed_study_recovery_is_pruned_from_current_and_legacy_checkpoints():
+    assert "isCompleted: record => studyRecoveryRecordIsComplete(record, rawQuiz)" in SCRIPT
+    assert "function studyRecoveryRecordIsComplete" in SCRIPT
+    assert 'record?.session?.mode !== "Study"' in SCRIPT
+    assert "record.unacknowledgedStudyEvents.length !== 0" in SCRIPT
+    assert "questions.every" in SCRIPT
+    assert "savedRecord && options.isCompleted?.(savedRecord)" in RECOVERY
+    assert RECOVERY.index("options.isCompleted?.(savedRecord)") < RECOVERY.index(
+        "if (savedRecord) renderPanel(savedRecord)"
+    )
+
+
 def test_all_playable_question_state_shapes_and_exact_matching_variant_are_covered():
     assert 'if (descriptor.type === "choice")' in RECOVERY
     assert 'descriptor.type === "hotspot"' in RECOVERY

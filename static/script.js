@@ -158,7 +158,7 @@ async function saveStudyLearningEvent(record, retrying = false) {
         if (latest && latest.eventId === record.eventId) {
             studyLearningEventSaves.delete(record.eventId);
             updateStudyLearningEventStatus();
-            checkpointQuizRecovery();
+            if (!completeStudyRecoveryIfReady()) checkpointQuizRecovery();
         }
         return true;
     } catch (error) {
@@ -304,6 +304,7 @@ async function loadQuiz() {
                 rawQuiz,
                 capture: captureQuizRecoveryState,
                 restore: restoreQuizRecoveryState,
+                isCompleted: record => studyRecoveryRecordIsComplete(record, rawQuiz),
                 finishSubmission: recoveredAttempt => { void submitQuiz(true, recoveredAttempt); },
                 startOver: () => {},
                 notify: showQuizRecoveryNotice,
@@ -1335,6 +1336,68 @@ function recoverySelectedForQuestion(questionIndex) {
             ? cloneRecoveryValue(answer) : {};
     }
     return Array.isArray(answer) ? answer.slice() : [];
+}
+
+function studyAnswerIsComplete(question, selected, matchingVariant = null) {
+    if (!question) return false;
+    if (question.type === "hotspot") {
+        return Boolean(
+            selected
+            && typeof selected === "object"
+            && !Array.isArray(selected)
+            && Number.isFinite(Number(selected.x))
+            && Number.isFinite(Number(selected.y))
+        );
+    }
+    if (question.type === "matching") {
+        if (!selected || typeof selected !== "object" || Array.isArray(selected)) return false;
+        const expectedCount = Array.isArray(matchingVariant?.sourcePairIndexes)
+            ? matchingVariant.sourcePairIndexes.length
+            : Array.isArray(question.pairs) ? question.pairs.length : 0;
+        return expectedCount >= 2
+            && Array.from({length: expectedCount}, (_, pairIndex) => String(pairIndex))
+                .every(pairIndex => Object.hasOwn(selected, pairIndex));
+    }
+    if (!Array.isArray(selected)) return false;
+    const correctCount = Array.isArray(question.correct) ? question.correct.length : 0;
+    return correctCount > 1 ? selected.length === correctCount : selected.length === 1;
+}
+
+function studyRecoveryRecordIsComplete(record, questions = rawQuiz) {
+    if (
+        record?.session?.mode !== "Study"
+        || record.session.phase !== "active"
+        || record.pendingAttempt !== null
+        || !Array.isArray(record.unacknowledgedStudyEvents)
+        || record.unacknowledgedStudyEvents.length !== 0
+        || !Array.isArray(questions)
+        || questions.length === 0
+    ) return false;
+    return questions.every((question, questionIndex) => {
+        const answer = record.answers?.[String(questionIndex)];
+        return answer && studyAnswerIsComplete(
+            question,
+            answer.selected,
+            record.matchingVariants?.[String(questionIndex)] || null,
+        );
+    });
+}
+
+function completeStudyRecoveryIfReady() {
+    if (
+        examMode
+        || !quizRecoveryController?.ownsState
+        || studyLearningEventSaves.size !== 0
+        || !quiz.length
+    ) return false;
+    const complete = quiz.every((question, questionIndex) => studyAnswerIsComplete(
+        question,
+        userAnswers[`q${questionIndex}`],
+        question.type === "matching" ? question._matching_variant : null,
+    ));
+    if (!complete) return false;
+    quizRecoveryController.complete();
+    return true;
 }
 
 function captureQuizRecoveryState() {

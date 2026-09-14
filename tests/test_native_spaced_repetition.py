@@ -302,6 +302,65 @@ class NativeSpacedRepetitionTests(unittest.TestCase):
         self.assertEqual(90, kwargs["exam_minutes"])
         self.assertTrue(kwargs["snapshot_existing_assets"])
 
+    def test_completed_twenty_question_batch_leaves_only_remaining_due_source(self):
+        questions = []
+        for number in range(1, 22):
+            question = self._question(f"Batch source question {number}?")
+            question["number"] = number
+            questions.append(question)
+        quiz_id = seed_current_quiz(
+            dlms.get_db,
+            "Twenty-one Due Sources",
+            "twenty-one-due-sources.html",
+            questions,
+        )
+        connection = dlms.get_db()
+        cursor = connection.cursor()
+        question_ids = [
+            row[0]
+            for row in cursor.execute(
+                "SELECT id FROM questions WHERE quiz_id = ? ORDER BY question_number",
+                (quiz_id,),
+            ).fetchall()
+        ]
+        for event_index, question_id in enumerate(question_ids, 1):
+            self._record(
+                cursor,
+                quiz_id,
+                question_id,
+                False,
+                self.now - timedelta(days=3),
+                event_index,
+            )
+        connection.commit()
+        connection.close()
+
+        before = self._schedule()
+        self.assertEqual(21, before["summary"]["due_now"])
+
+        connection = dlms.get_db()
+        cursor = connection.cursor()
+        for event_index, question_id in enumerate(question_ids[:20], 100):
+            self._record(
+                cursor,
+                quiz_id,
+                question_id,
+                True,
+                self.now,
+                event_index,
+            )
+        connection.commit()
+        connection.close()
+
+        after = self._schedule()
+        remaining_due = [
+            question
+            for question in after["questions"]
+            if question["schedule_state"] in {"due", "overdue"}
+        ]
+        self.assertEqual(1, after["summary"]["due_now"])
+        self.assertEqual(question_ids[-1], remaining_due[0]["question_id"])
+
     def test_no_due_questions_returns_without_publication(self):
         self._seed(
             "Unscheduled Source",

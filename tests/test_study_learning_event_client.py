@@ -61,6 +61,25 @@ def test_retry_reuses_failed_event_identity_and_success_clears_the_warning_state
     assert "await saveStudyLearningEvent(record)" in record
 
 
+def test_study_recovery_completes_only_after_every_answer_is_complete_and_acknowledged():
+    source = SCRIPT.read_text(encoding="utf-8")
+    save = _function_block(source, "saveStudyLearningEvent")
+    answer_complete = _function_block(source, "studyAnswerIsComplete")
+    complete = _function_block(source, "completeStudyRecoveryIfReady")
+
+    assert "studyLearningEventSaves.delete(record.eventId)" in save
+    assert "completeStudyRecoveryIfReady()" in save
+    assert save.index("studyLearningEventSaves.delete(record.eventId)") < save.index(
+        "completeStudyRecoveryIfReady()"
+    )
+    assert 'question.type === "hotspot"' in answer_complete
+    assert 'question.type === "matching"' in answer_complete
+    assert "selected.length === correctCount" in answer_complete
+    assert "studyLearningEventSaves.size !== 0" in complete
+    assert "quiz.every" in complete
+    assert "quizRecoveryController.complete()" in complete
+
+
 def test_choice_matching_and_hotspot_answer_handlers_save_without_blocking_progression():
     source = SCRIPT.read_text(encoding="utf-8")
     choice = _function_block(source, "selectChoice")

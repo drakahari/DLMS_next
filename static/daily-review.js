@@ -40,6 +40,7 @@
         reason: finishSaving
           ? `A completed Exam attempt is waiting to finish saving; last updated ${updatedText}.`
           : `Unfinished ${record.mode} session at question ${record.questionIndex + 1}; last updated ${updatedText}.`,
+        scope: "This browser",
         action: {
           label: finishSaving ? "Finish Saving" : "Resume Quiz",
           url: quizUrl(quiz.html),
@@ -99,7 +100,7 @@
       <article class="daily-review-item daily-review-${escapeHtml(item.kind)}">
         <div class="daily-review-rank" aria-hidden="true">${index + 1}</div>
         <div class="daily-review-copy">
-          <span>${escapeHtml(String(item.kind || "study").replaceAll("_", " "))}</span>
+          <span>${escapeHtml(String(item.kind || "study").replaceAll("_", " "))}${item.scope ? ` · ${escapeHtml(item.scope)}` : ""}</span>
           <h3>${escapeHtml(item.title)}</h3>
           <p>${escapeHtml(item.reason)}</p>
         </div>

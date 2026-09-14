@@ -715,6 +715,10 @@
     function initialize() {
       pruneStoredRecords();
       savedRecord = readStored();
+      if (savedRecord && options.isCompleted?.(savedRecord)) {
+        removeStored();
+        savedRecord = null;
+      }
       if (savedRecord) renderPanel(savedRecord);
       window.addEventListener("storage", event => {
         if (event.key !== storageKey || !owned) return;

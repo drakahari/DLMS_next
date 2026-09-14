@@ -1725,6 +1725,7 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser.navigate(quiz_url)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     browser.click(".exam-mode-btn")
+    exam_recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
     browser.click("#choices .choice[data-index='0']")
     browser.click("#nextBtn")
@@ -1733,6 +1734,9 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser.evaluate("window.confirm = () => true; true")
     browser.click("#submitBtn")
     browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
+    browser.wait_for(
+        f"localStorage.getItem({json.dumps(exam_recovery_key)}) === null"
+    )
     assert "Score: 2 / 2 (100%)" in browser.evaluate("document.getElementById('result').textContent")
     _wait_for_database_value(
         browser_stack.data_root / "results.db",
@@ -1889,6 +1893,81 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retr
     browser.wait_for(
         f"JSON.parse(localStorage.getItem({json.dumps(storage_key)})).unacknowledgedStudyEvents.length === 0"
     )
+
+
+def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    assert browser.evaluate(
+        f"localStorage.getItem({json.dumps(recovery_key)}) !== null"
+    ) is True
+
+    before = _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'",
+        (quiz_id,),
+    )
+    browser.click("#choices .choice[data-index='1']")
+    _wait_for_database_value(
+        browser_stack.data_root / "results.db",
+        f"SELECT COUNT(*) FROM learning_events WHERE quiz_id = {int(quiz_id)} AND event_type = 'study_answer'",
+        before + 1,
+    )
+    browser.wait_for(
+        f"localStorage.getItem({json.dumps(recovery_key)}) === null && "
+        "quizRecoveryController.ownsState === false"
+    )
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.daily-review-unfinished')]"
+        ".every(item => !item.textContent.includes('Browser Critical Workflow'))"
+    ) is True
+
+
+def test_final_study_answer_save_failure_keeps_recovery(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    assert browser.evaluate(
+        "window.__recoveryFetch = window.fetch.bind(window);"
+        "window.fetch = (...args) => String(args[0]).includes('/api/learning-events/study-response')"
+        " ? Promise.reject(new Error('simulated final-answer failure')) : window.__recoveryFetch(...args); true"
+    ) is True
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
+    saved = browser.evaluate(
+        f"JSON.parse(localStorage.getItem({json.dumps(recovery_key)}))"
+    )
+    assert saved["view"]["questionIndex"] == 1
+    assert len(saved["unacknowledgedStudyEvents"]) == 1
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for(
+        "document.querySelector('.daily-review-unfinished')?.textContent.includes('Browser Critical Workflow')"
+    )
+    recovery_copy = browser.evaluate(
+        "document.querySelector('.daily-review-unfinished').textContent"
+    )
+    assert "This browser" in recovery_copy
 
 
 def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement(browser_stack):
@@ -7717,7 +7796,6 @@ def test_quiz_deletion_prunes_only_deleted_progress_and_stops_former_owner(brows
         browser.navigate(companion_url)
         browser.wait_for("quizRecoveryReady === true")
         browser.click(".study-mode-btn")
-        browser.click("#choices .choice[data-index='0']")
         companion_key = browser.evaluate("quizRecoveryController.storageKey")
 
         browser.context = first_context
@@ -9221,7 +9299,6 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
         ).fetchone()[0] == 1
 
     browser.click(".study-mode-btn")
-    browser.click("#choices .choice[data-index='0']")
     browser.wait_for(
         "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
         + json.dumps(str(generated[1]))
@@ -9249,3 +9326,186 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
     assert "Spaced Review — Due Questions" in browser.evaluate(
         "document.querySelector('.daily-review-unfinished').textContent"
     )
+
+
+def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles(
+    browser_server,
+):
+    """Two browser profiles share scheduling data, never recovery checkpoints."""
+    database_path = browser_server.data_root / "results.db"
+    with sqlite3.connect(database_path) as connection:
+        for ordinal in (1, 2):
+            cursor = connection.execute(
+                "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+                (
+                    f"Shared due source {ordinal}",
+                    f"shared-due-source-{ordinal}.html",
+                ),
+            )
+            quiz_id = cursor.lastrowid
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, 1, ?, 'choice', 'Shared due explanation', '{}')
+                """,
+                (quiz_id, f"Shared due question {ordinal}?"),
+            )
+            question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (question_id, "A", "Expected", 1),
+                    (question_id, "B", "Alternative", 0),
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO learning_events (
+                    event_type, quiz_id, question_id, attempt_id, session_id,
+                    mode, was_correct, response_json, occurred_at
+                ) VALUES ('exam_answer', ?, ?, ?, NULL, 'Exam', 0, '{}', ?)
+                """,
+                (
+                    quiz_id,
+                    question_id,
+                    f"shared-due-history-{ordinal}",
+                    "2020-01-01T00:00:00+00:00",
+                ),
+            )
+
+    launched = []
+
+    def launch(label):
+        port = _free_loopback_port()
+        session_root = browser_server.work_root / f"multi-client-{label}"
+        profile = session_root / "profile"
+        profile.mkdir(parents=True)
+        log_path = session_root / "firefox.log"
+        output = log_path.open("w", encoding="utf-8")
+        process = subprocess.Popen(
+            [
+                browser_server.firefox,
+                "--headless",
+                "--no-remote",
+                "--profile",
+                str(profile),
+                "--remote-debugging-port",
+                str(port),
+                "about:blank",
+            ],
+            cwd=ROOT,
+            env=browser_server.env,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            **browser_server.process_options,
+        )
+        try:
+            browser = _connect_firefox(port, process, log_path)
+        except Exception:
+            _terminate_process_tree(process)
+            output.close()
+            raise
+        launched.append((browser, process, output))
+        return browser
+
+    def dashboard_state(browser, due_count):
+        browser.navigate(f"{browser_server.base_url}/")
+        due_condition = (
+            f"document.querySelector('.daily-review-native_due')?.textContent.includes('{due_count} source question')"
+            if due_count
+            else "document.getElementById('dailyReviewCount').textContent !== 'Loading…' && !document.querySelector('.daily-review-native_due')"
+        )
+        browser.wait_for(due_condition)
+        return browser.evaluate(
+            "(() => ({"
+            "due:document.querySelector('.daily-review-native_due')?.textContent||'',"
+            "unfinished:[...document.querySelectorAll('.daily-review-unfinished')].map(item=>item.textContent)"
+            "}))()"
+        )
+
+    def complete_one_due_question(browser):
+        assert browser.evaluate(
+            "(() => {const input=document.querySelector("
+            "'.daily-review-native_due input[name=question_count]');"
+            "if(!input)return false;input.value='1';return true;})()"
+        ) is True
+        browser.click(".daily-review-native_due button")
+        browser.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_')")
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 1")
+        browser.click(".study-mode-btn")
+        recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+        browser.click("#choices .choice[data-index='0']")
+        browser.wait_for(
+            f"localStorage.getItem({json.dumps(recovery_key)}) === null && "
+            "studyLearningEventSaves.size === 0"
+        )
+        return recovery_key
+
+    try:
+        first = launch("first")
+        second = launch("second")
+
+        first.navigate(
+            f"{browser_server.base_url}/quizzes/{browser_server.metadata['critical_html']}"
+        )
+        first.wait_for("quizRecoveryReady === true")
+        first.click(".study-mode-btn")
+        first_recovery_key = first.evaluate("quizRecoveryController.storageKey")
+
+        second.navigate(
+            f"{browser_server.base_url}/quizzes/{browser_server.metadata['companion_html']}"
+        )
+        second.wait_for("quizRecoveryReady === true")
+        second.click(".study-mode-btn")
+        second_recovery_key = second.evaluate("quizRecoveryController.storageKey")
+
+        first_state = dashboard_state(first, 2)
+        second_state = dashboard_state(second, 2)
+        assert "Browser Critical Workflow" in " ".join(first_state["unfinished"])
+        assert "Browser Companion" not in " ".join(first_state["unfinished"])
+        assert "Browser Companion" in " ".join(second_state["unfinished"])
+        assert "Browser Critical Workflow" not in " ".join(second_state["unfinished"])
+        assert "This browser" in " ".join(first_state["unfinished"])
+        assert "This browser" in " ".join(second_state["unfinished"])
+        assert first.evaluate(
+            f"localStorage.getItem({json.dumps(second_recovery_key)}) === null"
+        ) is True
+        assert second.evaluate(
+            f"localStorage.getItem({json.dumps(first_recovery_key)}) === null"
+        ) is True
+
+        first_generated_key = complete_one_due_question(first)
+        first_after = dashboard_state(first, 1)
+        second_after = dashboard_state(second, 1)
+        assert first_after["due"] == second_after["due"]
+        assert all(
+            "Spaced Review — Due Questions" not in text
+            for text in first_after["unfinished"]
+        )
+        assert first.evaluate(
+            f"localStorage.getItem({json.dumps(first_generated_key)}) === null"
+        ) is True
+
+        final_generated_key = complete_one_due_question(first)
+        first_final = dashboard_state(first, 0)
+        second_final = dashboard_state(second, 0)
+        assert not first_final["due"] and not second_final["due"]
+        assert all(
+            "Spaced Review — Due Questions" not in text
+            for text in first_final["unfinished"]
+        )
+        assert first.evaluate(
+            f"localStorage.getItem({json.dumps(final_generated_key)}) === null"
+        ) is True
+        assert "Browser Critical Workflow" in " ".join(first_final["unfinished"])
+        assert "Browser Companion" in " ".join(second_final["unfinished"])
+    finally:
+        for browser, process, output in reversed(launched):
+            try:
+                browser.command("browser.close", {}, timeout=3.0)
+            except Exception:
+                browser.close()
+            _terminate_process_tree(process)
+            output.close()
