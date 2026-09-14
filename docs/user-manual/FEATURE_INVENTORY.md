@@ -563,7 +563,7 @@ below.
 | What and why | Converts screenshots/images or a scanned PDF containing clear term-definition material into canonical matching content. |
 | Inputs | Up to 25 images or one scanned PDF of up to 25 selected pages; images and a PDF are not mixed in one submission. Local OCR supports explicit `Term — Definition`, colon forms, labeled separated lines, and reliable two-column layouts. |
 | Ambiguity / review | Ambiguous or incomplete text remains unassigned instead of being guessed. Candidate pairs and source/page context enter the matching Review & Repair workflow; users can edit/add/remove/reorder and must confirm all final pairings. Duplicate/invalid pairs are rejected on server-side revalidation. |
-| Retention | Original uploads/rendered temporary pages follow transient OCR staging and are removed after completion/cancel/expiry; published matching content uses normal persistence. |
+| Retention | After OCR produces candidate text and source/page labels for Review & Repair, the original uploaded images or rendered PDF pages are removed immediately. The staged textual candidates remain available for repair; published matching content uses normal persistence. |
 | Evidence | `dlms/parsing/ocr_matching.py`; `dlms/services/ocr_matching.py`; `templates/pdf_import/process-ocr-matching.html`; OCR matching tests/browser workflow. |
 | Manual / screenshot / status | Ch. 10–11; UM-18; **Verified**. |
 

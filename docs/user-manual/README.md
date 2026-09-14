@@ -2,11 +2,12 @@
 
 This directory is the canonical source for the DLMS end-user manual. It
 contains the Phase 1 product audit and manual architecture for **DLMS 3.2.0**,
-plus narrative chapters as they are completed in Phase 2. The manual is not yet
-complete.
+plus the substantive Phase 2 chapter draft. Editorial review, approved
+screenshot placement, and release preparation remain.
 
-Markdown is the editable source of truth. A generated PDF will be a release
-artifact, not an editable source, and must not replace these files.
+Markdown is the editable source of truth. A PDF may later be generated as an
+optional distribution artifact; it is not required to maintain or use the
+canonical manual and must not replace these files.
 
 ## Phase 1 files
 
@@ -40,9 +41,11 @@ written. They provide the traceability needed to keep later editions accurate.
 - [16. Settings and Runtime](16-settings-and-runtime.md)
 - [17. Maintenance, Backup, and Data Management](17-maintenance-backup-and-data-management.md)
 - [18. Troubleshooting](18-troubleshooting.md)
-
-Later chapters remain in the architecture below until they contain substantive
-review-ready prose.
+- [19. Feature and Format Reference](19-feature-and-format-reference.md)
+- [Appendix: Platform and Runtime Notes](appendix-platform-and-runtime-notes.md)
+- [Appendix: Privacy and Data Handling](appendix-privacy-and-data-handling.md)
+- [Appendix: Keyboard and Accessibility](appendix-keyboard-and-accessibility.md)
+- [Appendix: Glossary](appendix-glossary.md)
 
 ## Intended audience and boundary
 
@@ -65,10 +68,10 @@ The current maintainer sources are [OCR packaging](../OCR_PACKAGING.md),
 End-user installation, package contents, platform warnings, data locations, and
 local-versus-LAN behavior still belong in the manual because they affect use.
 
-## Proposed chapter architecture
+## Manual chapter architecture
 
-Phase 2 should create the following chapters only as substantive prose is
-drafted. No empty chapter placeholders are part of Phase 1.
+The substantive Phase 2 draft follows this modular chapter order. Each linked
+file contains review-ready prose; no empty chapter placeholders are used.
 
 1. **[Introduction](01-introduction.md)** — product purpose, local-first model, privacy boundary,
    supported question and study material types, and how to use the manual.
@@ -125,10 +128,20 @@ drafted. No empty chapter placeholders are part of Phase 1.
 18. **[Troubleshooting](18-troubleshooting.md)** — launch/browser problems, OCR
     availability, parse failures, validation states, recovery, platform
     warnings, and safe diagnostic steps.
-19. **Feature and format reference** — supported inputs, relevant limits,
+19. **[Feature and Format Reference](19-feature-and-format-reference.md)** — supported inputs, relevant limits,
     state/persistence summary, warnings, and confirmation behavior.
-20. **Appendices** — platform/runtime notes, privacy and LAN limitations, data
-    locations, keyboard reference, and glossary.
+20. **Appendices**
+    - **[Platform and Runtime Notes](appendix-platform-and-runtime-notes.md)** — native targets,
+      packaged/source differences, data locations, local desktop use, and
+      trusted-LAN behavior.
+    - **[Privacy and Data Handling](appendix-privacy-and-data-handling.md)** — local-first storage,
+      browser-local recovery, OCR staging, external-service boundaries, and
+      exported-file responsibilities.
+    - **[Keyboard and Accessibility](appendix-keyboard-and-accessibility.md)** — keyboard navigation,
+      matching and hotspot interaction, focus/status behavior, themes, zoom,
+      and current limitations.
+    - **[Glossary](appendix-glossary.md)** — concise definitions of recurring
+      user-facing DLMS terms.
 
 The narrative should link across chapters instead of repeating complete
 procedures. For example, the PDF chapter should link to the shared Review &
@@ -190,10 +203,11 @@ safety procedure.
 - [ ] Local/LAN or browser-local/server-shared behavior changed
 - [ ] Historical manual/PDF must be archived with the release
 
-## Proposed future PDF build path
+## Optional future PDF build path
 
-No PDF tooling is installed or configured by Phase 1. A later phase should use
-a small, pinned documentation toolchain rather than manually editing a PDF.
+No PDF tooling is installed or configured by the manual drafting work. If the
+project elects to distribute a PDF, a later phase should use a small, pinned
+documentation toolchain rather than manually editing a PDF.
 
 The recommended design is:
 
@@ -220,7 +234,8 @@ GitHub releases or retained in a versioned documentation archive.
 
 ## Phase boundaries
 
-Phase 1 inventories and designs. Phase 2 may draft chapters against this audit.
-Screenshot capture, a renderer prototype, PDF generation, and publication are
+Phase 1 inventories and designs. The substantive Phase 2 draft now covers all
+planned chapters and appendices. Full-manual editorial review, screenshot
+capture, a renderer prototype, optional PDF generation, and publication are
 later approved phases. They must not be inferred from the presence of this
 directory.
