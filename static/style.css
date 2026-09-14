@@ -11184,9 +11184,11 @@ body.help-page .dashboard-main *::after {
 .review-schedule-actions h2,.review-schedule-model h2,.review-schedule-list-panel h2{margin:3px 0 6px;}
 .review-schedule-actions p,.review-schedule-model p,.review-schedule-list-panel p{margin:0;opacity:.78;line-height:1.5;}
 .review-schedule-actions form{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:0;}
-.review-schedule-actions label{display:grid;gap:6px;font-size:12px;font-weight:700;color:#b8c7da;}
+.review-schedule-actions label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--theme-muted-text,#b8c7da);}
 .review-schedule-actions select{min-width:155px;margin:0;}
 .review-schedule-actions button{width:auto;margin:0;white-space:nowrap;}
+.native-review-batch-control{display:grid;gap:6px;min-width:220px;}
+.native-review-batch-summary{max-width:280px;color:var(--theme-muted-text,#b8c2cc);font-size:12px;font-weight:500;line-height:1.4;}
 .review-schedule-model-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
 .review-schedule-model-grid>div{padding:14px;border:1px solid rgba(98,159,220,.22);border-radius:10px;background:rgba(6,24,48,.55);display:grid;gap:6px;}
 .review-schedule-model-grid strong{color:#dce9f8;}

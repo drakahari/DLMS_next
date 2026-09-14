@@ -73,6 +73,7 @@ class DailyReviewPlanTests(unittest.TestCase):
         registry=None,
         packs=None,
         cursor=None,
+        due_batch_size=20,
     ):
         owned_connection = None
         if cursor is None:
@@ -91,6 +92,7 @@ class DailyReviewPlanTests(unittest.TestCase):
                     "topics": topics or []
                 },
                 adaptive_study_candidates=lambda _cur, now=None: adaptive or [],
+                due_batch_size=due_batch_size,
             )
         finally:
             if owned_connection is not None:
@@ -122,6 +124,50 @@ class DailyReviewPlanTests(unittest.TestCase):
         )
         self.assertEqual("POST", item["action"]["method"])
         self.assertEqual(2, plan["summary"]["due_questions"])
+        self.assertEqual(2, plan["summary"]["next_due_batch_questions"])
+        self.assertNotIn("Next review:", item["reason"])
+
+    def test_due_action_distinguishes_total_from_next_batch_only_when_limited(self):
+        def due_questions(count):
+            return [
+                {
+                    "question_id": number,
+                    "source_question_ids": [number],
+                    "schedule_state": "due",
+                    "concepts": [],
+                }
+                for number in range(1, count + 1)
+            ]
+
+        cases = (
+            (34, 20, 20, "Next review: up to 20 questions.", True),
+            (20, 20, 20, "Next review:", False),
+            (8, 20, 8, "Next review:", False),
+            (34, 10, 10, "Next review: up to 10 questions.", True),
+            (34, 50, 34, "Next review:", False),
+        )
+        for total, requested, expected_batch, wording, present in cases:
+            with self.subTest(total=total, requested=requested):
+                plan = self._plan(
+                    schedule=self._schedule(due_questions(total)),
+                    due_batch_size=requested,
+                )
+                item = plan["items"][0]
+                self.assertIn(f"{total} source questions are due now.", item["reason"])
+                self.assertEqual(
+                    str(expected_batch), item["action"]["fields"]["question_count"]
+                )
+                self.assertEqual(
+                    expected_batch,
+                    plan["summary"]["next_due_batch_questions"],
+                )
+                if present:
+                    self.assertIn(wording, item["reason"])
+                    self.assertIn(
+                        "recalculates the remaining total", item["reason"]
+                    )
+                else:
+                    self.assertNotIn(wording, item["reason"])
 
     def test_weak_concept_follows_unrelated_due_material(self):
         plan = self._plan(

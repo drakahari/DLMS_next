@@ -7,6 +7,11 @@ from typing import Any
 
 from flask import Blueprint, flash, jsonify, redirect, request, send_from_directory
 
+from dlms.services.daily_review import (
+    DEFAULT_DUE_QUESTION_BATCH_SIZE,
+    MAX_DUE_QUESTION_BATCH_SIZE,
+)
+
 
 Dependency = Callable[..., Any]
 
@@ -447,10 +452,14 @@ def spaced_review_generate(dependencies):
 def native_spaced_review_generate(dependencies):
     """Publish a normal quiz from canonical questions due under DLMS-129."""
     try:
-        requested = int(request.form.get("question_count", "20"))
+        requested = int(
+            request.form.get(
+                "question_count", str(DEFAULT_DUE_QUESTION_BATCH_SIZE)
+            )
+        )
     except (TypeError, ValueError):
-        requested = 20
-    requested = max(1, min(requested, 50))
+        requested = DEFAULT_DUE_QUESTION_BATCH_SIZE
+    requested = max(1, min(requested, MAX_DUE_QUESTION_BATCH_SIZE))
 
     conn = dependencies.get_db()
     cur = conn.cursor()

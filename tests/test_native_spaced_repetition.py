@@ -361,6 +361,42 @@ class NativeSpacedRepetitionTests(unittest.TestCase):
         self.assertEqual(1, after["summary"]["due_now"])
         self.assertEqual(question_ids[-1], remaining_due[0]["question_id"])
 
+        connection = dlms.get_db()
+        try:
+            remaining_plan = dlms._daily_review_plan(
+                connection.cursor(), now=self.now
+            )
+        finally:
+            connection.close()
+        due_action = next(
+            item for item in remaining_plan["items"] if item["kind"] == "native_due"
+        )
+        self.assertEqual("1", due_action["action"]["fields"]["question_count"])
+        self.assertIn("1 source question is due now.", due_action["reason"])
+        self.assertNotIn("Next review:", due_action["reason"])
+
+        connection = dlms.get_db()
+        cursor = connection.cursor()
+        self._record(
+            cursor,
+            quiz_id,
+            question_ids[-1],
+            True,
+            self.now,
+            999,
+        )
+        connection.commit()
+        final_schedule = dlms._native_spaced_repetition_schedule(
+            cursor, now=self.now
+        )
+        final_plan = dlms._daily_review_plan(cursor, now=self.now)
+        connection.close()
+        self.assertEqual(0, final_schedule["summary"]["due_now"])
+        self.assertFalse(
+            any(item["kind"] == "native_due" for item in final_plan["items"])
+        )
+        self.assertEqual(0, final_plan["summary"]["next_due_batch_questions"])
+
     def test_no_due_questions_returns_without_publication(self):
         self._seed(
             "Unscheduled Source",
@@ -399,6 +435,16 @@ class NativeSpacedRepetitionTests(unittest.TestCase):
         self.assertNotIn("DLMS-129", page)
         self.assertIn('action="/native-spaced-review/generate"', page)
         self.assertIn("Start Due Review", page)
+        self.assertIn('id="nrsBatchSize"', page)
+        self.assertIn('aria-describedby="nrsBatchSummary"', page)
+        self.assertIn(
+            'id="nrsBatchSummary" class="native-review-batch-summary" role="status" aria-live="polite" aria-atomic="true"',
+            page,
+        )
+        self.assertIn("function updateNativeBatchSummary()", page)
+        self.assertIn(
+            "addEventListener('change',updateNativeBatchSummary)", page
+        )
         self.assertIn("does not replace Anki export", page)
         self.assertIn("Generated practice history", page)
         self.assertNotIn("Canonical identity", page)

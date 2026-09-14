@@ -169,8 +169,15 @@ class HelpDocumentationTests(unittest.TestCase):
 
         maintenance = self._static("help-maintenance.html")
         self.assertIn("System Tools", maintenance)
+        self.assertIn("not a routine update step", maintenance)
+        self.assertIn("normally do not need to run it after updating DLMS", maintenance)
+        self.assertIn("when DLMS specifically instructs you", maintenance)
+        self.assertIn("look stale or inconsistent with the current quiz interface", maintenance)
+        self.assertIn("generated HTML or playable JSON", maintenance)
         self.assertIn("derived HTML and playable JSON", maintenance)
-        self.assertIn("concepts, lineage, folders, source details", maintenance)
+        self.assertIn("concepts, Question Identity lineage, folders", maintenance)
+        self.assertIn("source or provenance details", maintenance)
+        self.assertIn("learning events", maintenance)
         self.assertIn("portable backup", maintenance)
 
     def test_pdf_and_image_import_is_the_user_facing_help_name(self):
@@ -315,6 +322,14 @@ class HelpDocumentationTests(unittest.TestCase):
             "Missed-question review",
         ):
             with self.subTest(wording=wording):
+                self.assertIn(wording, learning)
+        for wording in (
+            "total number currently due",
+            "includes up to 20 questions",
+            "10, 20, 30, or 50 questions",
+            "recalculates the remaining due count",
+        ):
+            with self.subTest(due_batch_wording=wording):
                 self.assertIn(wording, learning)
 
     def test_help_explains_cross_quiz_evidence_trends_and_identity_in_plain_language(self):

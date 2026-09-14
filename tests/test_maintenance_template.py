@@ -45,8 +45,11 @@ class MaintenanceTemplateTests(unittest.TestCase):
         self.assertIn('id="dashboardSidebar"', page)
         self.assertIn("SETTINGS / SYSTEM TOOLS", page)
         self.assertIn("Rebuild All Quiz Pages", page)
+        self.assertIn("You normally do not need to run this after updating DLMS.", page)
+        self.assertIn("when DLMS specifically instructs you", page)
+        self.assertIn("look stale or inconsistent with the current quiz interface", page)
         self.assertIn(
-            "It does not change questions, answers, correctness, quiz or question IDs, concepts, lineage, folders, source details, scores, attempt history, or learning history.",
+            "It does not change questions, answers, correctness, quiz or question IDs, concepts, lineage, folders, source or provenance details, scores, attempt history, learning events, or other learning history.",
             page,
         )
         self.assertIn('href="/admin/image-editor"', page)

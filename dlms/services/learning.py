@@ -5,7 +5,10 @@ import math
 import re
 from datetime import datetime, timedelta, timezone
 
-from .daily_review import build_daily_review_plan
+from .daily_review import (
+    DEFAULT_DUE_QUESTION_BATCH_SIZE,
+    build_daily_review_plan,
+)
 from .question_identity import (
     canonical_learning_identity,
     duplicate_content_identity,
@@ -1280,6 +1283,7 @@ def _daily_review_plan(
     review_schedule_payload=_review_schedule_payload,
     learning_intelligence_payload=_learning_intelligence_payload,
     adaptive_study_candidates=_adaptive_study_candidates,
+    due_batch_size=DEFAULT_DUE_QUESTION_BATCH_SIZE,
 ):
     """Compatibility boundary for callers of the original learning service."""
     return build_daily_review_plan(
@@ -1292,6 +1296,7 @@ def _daily_review_plan(
         adaptive_study_candidates=adaptive_study_candidates,
         learning_answer_events=_deduplicated_learning_answer_events,
         parse_datetime=_parse_learning_datetime,
+        due_batch_size=due_batch_size,
     )
 
 

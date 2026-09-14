@@ -3346,6 +3346,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "statusLive:document.getElementById('rebuildStatus').getAttribute('aria-live'),"
         "statusRole:document.getElementById('rebuildStatus').getAttribute('role'),"
         "statusAtomic:document.getElementById('rebuildStatus').getAttribute('aria-atomic'),"
+        "guidance:document.querySelector('.system-tools-action p').textContent,"
         "imageEditorHref:document.querySelector('.system-tools-secondary-action').getAttribute('href')"
         "}))()"
     )
@@ -3358,6 +3359,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "statusLive": "polite",
         "statusRole": "status",
         "statusAtomic": "true",
+        "guidance": "Occasional maintenance: You normally do not need to run this after updating DLMS. Use it when DLMS specifically instructs you to refresh generated quiz pages, when existing quiz pages look stale or inconsistent with the current quiz interface, or when their generated page files need repair.",
         "imageEditorHref": "/admin/image-editor",
     }
 
@@ -8425,6 +8427,7 @@ def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
             {
                 "due review description": ".native-review-actions p",
                 "due review field label": ".native-review-actions label",
+                "due review batch summary": "#nrsBatchSummary",
                 "schedule model description": ".native-review-model p",
             },
         ),
@@ -9131,6 +9134,38 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
             """,
             (quiz_id, question_id, "browser-native-attempt", "2020-01-01T00:00:00+00:00"),
         )
+        for ordinal in range(2, 12):
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, ?, ?, 'choice', 'Browser schedule explanation', '{}')
+                """,
+                (quiz_id, ordinal, f"Browser batch question {ordinal}?"),
+            )
+            batch_question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (batch_question_id, "A", "Expected", 1),
+                    (batch_question_id, "B", "Alternative", 0),
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO learning_events (
+                    event_type, quiz_id, question_id, attempt_id, mode,
+                    was_correct, response_json, occurred_at
+                ) VALUES ('exam_answer', ?, ?, ?, 'Exam', 0, '{}', ?)
+                """,
+                (
+                    quiz_id,
+                    batch_question_id,
+                    f"browser-native-attempt-{ordinal}",
+                    "2020-01-01T00:00:00+00:00",
+                ),
+            )
 
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/review-schedule")
@@ -9143,11 +9178,31 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
         "(() => {const row=[...document.querySelectorAll('#nrsRows tr')].find(item=>"
         "item.textContent.includes(" + json.dumps(prompt) + "));"
         "return {due:Number(document.getElementById('nrsDue').textContent),"
+        "batch:document.getElementById('nrsBatchSummary').textContent,"
         "row:row?.textContent||'',status:row?.querySelector('.review-state')?.textContent||''};})()"
     )
-    assert schedule_state["due"] >= 1
+    assert schedule_state["due"] >= 11
+    assert schedule_state["batch"] == (
+        f"{schedule_state['due']} questions are due · "
+        f"This review includes all {schedule_state['due']}."
+    )
     assert "latest response was incorrect" in schedule_state["row"]
     assert schedule_state["status"] == "Overdue"
+
+    selected_batch = browser.evaluate(
+        "(() => {const select=document.getElementById('nrsBatchSize');"
+        "select.value='10';select.dispatchEvent(new Event('change',{bubbles:true}));"
+        "return document.getElementById('nrsBatchSummary').textContent;})()"
+    )
+    assert selected_batch == (
+        f"{schedule_state['due']} questions are due · "
+        "This review includes up to 10 questions."
+    )
+    browser.evaluate(
+        "document.getElementById('nrsBatchSize').value='20';"
+        "document.getElementById('nrsBatchSize').dispatchEvent("
+        "new Event('change',{bubbles:true}));true"
+    )
 
     browser.click(
         "form[action='/native-spaced-review/generate'] button[type='submit']"
@@ -9188,7 +9243,7 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
         assert copy_lineage == (source_lineage[1], source_lineage[0], 1)
         assert connection.execute(
             "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == 11
 
 
 def test_core_filter_state_and_repeated_builder_fields_are_accessible(browser_stack):

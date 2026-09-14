@@ -5,6 +5,10 @@ from datetime import datetime, timezone
 from .question_identity import quiz_generation_kind
 
 
+DEFAULT_DUE_QUESTION_BATCH_SIZE = 20
+MAX_DUE_QUESTION_BATCH_SIZE = 50
+
+
 def build_daily_review_plan(
     cur,
     *,
@@ -16,6 +20,7 @@ def build_daily_review_plan(
     learning_answer_events,
     parse_datetime,
     now=None,
+    due_batch_size=DEFAULT_DUE_QUESTION_BATCH_SIZE,
 ):
     """Compose canonical recommendations without owning their scoring rules.
 
@@ -90,7 +95,16 @@ def build_daily_review_plan(
         if question.get("schedule_state") in {"due", "overdue"}
     ]
     due_concepts = set()
+    next_due_batch_size = 0
     if due_questions:
+        try:
+            requested_due_batch_size = int(due_batch_size)
+        except (TypeError, ValueError):
+            requested_due_batch_size = DEFAULT_DUE_QUESTION_BATCH_SIZE
+        next_due_batch_size = min(
+            len(due_questions),
+            max(1, min(requested_due_batch_size, MAX_DUE_QUESTION_BATCH_SIZE)),
+        )
         for question in due_questions:
             source_ids = question.get("source_question_ids") or [
                 question.get("question_id")
@@ -118,6 +132,11 @@ def build_daily_review_plan(
                 f" {overdue_count} "
                 f"{'are' if overdue_count != 1 else 'is'} overdue."
             )
+        if len(due_questions) > next_due_batch_size:
+            reason += (
+                f" Next review: up to {next_due_batch_size} questions."
+                " Today’s Review recalculates the remaining total after you finish."
+            )
         items.append(
             {
                 "id": "native-due",
@@ -130,7 +149,7 @@ def build_daily_review_plan(
                     "url": "/native-spaced-review/generate",
                     "method": "POST",
                     "fields": {
-                        "question_count": str(min(20, len(due_questions)))
+                        "question_count": str(next_due_batch_size)
                     },
                 },
             }
@@ -280,6 +299,7 @@ def build_daily_review_plan(
         "items": items[:4],
         "summary": {
             "due_questions": len(due_questions),
+            "next_due_batch_questions": next_due_batch_size,
             "overdue_questions": sum(
                 question.get("schedule_state") == "overdue"
                 for question in due_questions
