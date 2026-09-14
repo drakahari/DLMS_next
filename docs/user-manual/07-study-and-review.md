@@ -11,15 +11,15 @@ other options remain useful when you already know the kind of review you want.
 
 ## Choose the right review option
 
-| Study option | Best for | What it selects or shows | Do you choose the topic? | Scheduling-based? | Creates Generated Practice? |
-| --- | --- | --- | --- | --- | --- |
-| **Today’s Review** | One clear place to begin | A short plan assembled from current due work, topic needs, unfinished work, Adaptive Study, and recent Study Pack activity | No | It can include scheduled work | No; it points to an existing action |
-| **Adaptive Study** | A balanced personalized session | Source questions ranked from several signals, including weak or developing concepts, recent misses, review timing, and prior exposure | No; you choose the session size | Partly | Yes |
-| **Smart Review** | Broad practice across weak concepts | Tagged source questions from concepts currently classified as weak | No; you choose the session size | No | Yes |
-| **Concept Review** | Focused practice on one concept you select | Source questions connected to that concept across relevant quizzes | Yes | No | Yes |
-| **Due Questions** | Question-level spaced review | Individual source questions that are due or overdue | No; you choose the batch size | Yes, per question | Yes |
-| **Topic Retention Schedule** | Concept-level reinforcement | Tagged questions from topics whose retention timing is due, upcoming, or otherwise selected | You choose the review window, not one topic | Yes, per concept | Yes |
-| **Missed-question review** | Understanding mistakes from one completed Exam attempt | The questions recorded as missed in that specific attempt | You choose the attempt | No | No |
+| Study option | Best for | Who chooses the focus? | Timing | Result |
+| --- | --- | --- | --- | --- |
+| **Today’s Review** | One clear place to begin | DLMS assembles a short plan from current signals | May include scheduled work | Links to the appropriate existing action |
+| **Adaptive Study** | A balanced personalized session | DLMS balances several learning signals; you choose the size | On demand, with review timing among its signals | Generated Practice |
+| **Smart Review** | Broad practice across weak concepts | DLMS selects currently weak concepts; you choose the size | On demand | Generated Practice |
+| **Concept Review** | Focused practice on one concept | You choose the concept | On demand | Generated Practice |
+| **Due Questions** | Question-level spaced review | DLMS selects due or overdue source questions; you choose the batch size | Scheduled per question | Generated Practice |
+| **Topic Retention Schedule** | Concept-level reinforcement | You choose a review window of scheduled topics | Scheduled per concept | Generated Practice |
+| **Missed-question review** | Understanding mistakes from one completed Exam | You choose the attempt | On demand | Review of that saved result |
 
 <!-- Screenshot: UM-10 — Review choices -->
 
@@ -76,8 +76,9 @@ stale Due action nor a stale Resume action should appear.
 ## Use Adaptive Study for a balanced focus
 
 Open **Learning Intelligence** and choose **Study What I Need Most**, or follow
-an Adaptive Study action from Today’s Review. Select a session size of up to
-10, 20, 30, or 50 questions where that control is offered.
+an Adaptive Study action from Today’s Review. Where a size control is offered,
+choose 10, 20, 30, or 50 questions. A session can be smaller when fewer source
+questions are eligible.
 
 Adaptive Study is the broadest personalized review option. It can draw from
 multiple quizzes and concepts, using the learning information that is actually
@@ -87,7 +88,8 @@ available. In practical terms, it favors material such as:
 - questions missed recently;
 - concepts that are due, overdue, or approaching review;
 - material with low recent performance;
-- questions not reviewed recently or not studied yet; and
+- questions not reviewed recently or not studied yet.
+
 DLMS also lowers the priority of repeatedly exposed material and spreads a
 session across concepts and source quizzes where possible. These are
 deterministic priorities, not predictions about you or claims of statistical
@@ -103,8 +105,9 @@ Smart Review instead when you specifically want the current weak-concept set.
 
 ## Use Smart Review for weak areas
 
-**Smart Review** is available from Learning Intelligence. Choose a session size
-of up to 10, 20, 30, or 50 questions, then choose **Start Smart Review**.
+**Smart Review** is available from Learning Intelligence. Choose 10, 20, 30,
+or 50 questions, then choose **Start Smart Review**. The resulting session can
+be smaller when fewer source questions qualify.
 
 Smart Review selects existing tagged source questions only from concepts that
 currently meet DLMS’s weak-area rule. It spreads the available selection across
@@ -232,17 +235,10 @@ grouped as transient Generated Practice. See
 [Quiz Library and Organization](05-quiz-library-and-organization.md) for the
 Library distinction.
 
-## Decide quickly
+## Put the choice into practice
 
-| If you want to… | Use… |
-| --- | --- |
-| Let DLMS give you one useful next action | **Today’s Review** |
-| Let DLMS balance several kinds of need across your library | **Adaptive Study** |
-| Practice the concepts currently classified as weak | **Smart Review** |
-| Select one concept yourself | **Concept Review** |
-| Work through individual questions whose dates have arrived | **Due Questions** |
-| Reinforce concepts according to their topic-level timing | **Topic Retention Schedule** |
-| Inspect mistakes from one completed Exam | **Missed-question review** |
-
-Whichever generated review you choose, the resulting quiz uses the normal
-Study and Exam experience described in [Taking Quizzes](06-taking-quizzes.md).
+Use the comparison at the beginning of this chapter whenever the options feel
+similar. Start with Today’s Review when you want one recommendation; move to a
+specialized option only when its focus matches your immediate goal. Generated
+review quizzes use the normal Study and Exam experience described in
+[Taking Quizzes](06-taking-quizzes.md).

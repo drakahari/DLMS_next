@@ -1,4 +1,4 @@
-# Feature and Format Reference
+# 19. Feature and Format Reference
 
 This chapter is a quick reference for users who already know the main DLMS
 workflows. Follow the links for complete instructions and safety guidance.
@@ -38,19 +38,19 @@ workflows. Follow the links for complete instructions and safety guidance.
 These formats solve different problems. In particular, a Portable Quiz Bundle
 is not a full backup, and an Anki deck is not an interactive DLMS quiz.
 
-| Format or output | Primary purpose | Importable into DLMS? | Full backup? | Preserves rich DLMS quiz types? | Intended for external study? | Guide |
-| --- | --- | --- | --- | --- | --- | --- |
-| DLMS backup ZIP | Recover or transfer the complete persistent DLMS workspace. | Yes, through Backup & Restore. | Yes, for the DLMS data covered by the backup. | Yes, as part of the saved workspace. | No. | [Backup and restore](17-maintenance-backup-and-data-management.md) |
-| Portable Quiz Bundle ZIP | Move selected ordinary quizzes, supported metadata, folders, and media between DLMS installations. | Yes. | No; it excludes personal study data and application-wide state. | Choice and matching content plus supported quiz media are preserved. | No. | [Portable Quiz Bundles](15-import-export-and-portability.md#move-quizzes-with-a-portable-quiz-bundle) |
-| Content Pack / Study Pack ZIP | Install, export, or exchange a reusable pack of supported study material. | Yes, through Content Packs. | No; it is content, not a personal data snapshot. | It preserves the material supported by the pack format. | Primarily for DLMS study. | [Study Packs and Content Packs](13-study-packs-and-content-packs.md) |
-| AI Study Pack ZIP | Carry a structured pack returned by an external conversational AI into DLMS validation and review. | Yes, through the AI Study Pack workflow. | No. | Only content allowed by the Study Pack contract. | It is an AI exchange format before becoming DLMS content. | [External AI Workflows](12-external-ai-workflows.md#create-an-ai-assisted-study-pack) |
-| Anki `.apkg` | Study exported cards in Anki. | No guided DLMS re-import. | No. | No; interactive DLMS behavior becomes cards. | Yes. | [Anki, Decks, and Printable Cards](14-anki-decks-and-printable-cards.md) |
-| Printable cards | Print or save a browser-formatted card layout. | No. | No. | No; this is a presentation format. | Yes. | [Printable cards](14-anki-decks-and-printable-cards.md#print-physical-cards) |
-| Individual quiz `.txt` | Export or import classic choice-question text. | Yes, for the supported classic choice format. | No. | No; do not use it to preserve matching, image/hotspot, concepts, or other rich metadata. | Sometimes, as readable text. | [Classic text export](15-import-export-and-portability.md#use-quiz-text-files) |
-| Quiz Library Reference `.txt` | Create a readable reference listing of the library. | No. | No. | No; it is a reference report rather than a transfer format. | Yes, for reading or printing. | [Reference and text exports](15-import-export-and-portability.md#download-the-full-library-reference) |
-| Matching CSV | Import rows of left/right matching content. | Yes. | No. | It represents matching pairs, not a complete rich quiz. | No. | [Matching CSV](11-matching-terminology-and-image-based-content.md#import-a-matching-csv) |
-| External AI structured JSON/text | Manually transfer generated choice or matching content back to DLMS. | Yes, through the matching External AI workflow. | No. | It preserves only the fields accepted by that workflow. | It is an exchange format with an external service. | [External AI Workflows](12-external-ai-workflows.md) |
-| Legacy Anki TSV | Compatibility export for older tab-separated workflows. | Not through the current guided DLMS interface. | No. | No. | Yes, as an advanced compatibility format. | [Legacy compatibility exports](14-anki-decks-and-printable-cards.md#advanced-legacy-tsv-compatibility) |
+| Format or output | Primary purpose | Return to DLMS? | Full backup? | Important boundary |
+| --- | --- | --- | --- | --- |
+| [Portable Backup ZIP](17-maintenance-backup-and-data-management.md) | Recover or transfer the persistent workspace. | Yes, through Backup & Restore. | Yes, for covered persistent data. | Includes personal study state; not an external-study format. |
+| [Portable Quiz Bundle ZIP](15-import-export-and-portability.md#move-quizzes-with-a-portable-quiz-bundle) | Move selected ordinary quizzes, folders, and media. | Yes. | No. | Preserves supported choice/matching content and media, but excludes personal study state. |
+| [Content Pack / Study Pack ZIP](13-study-packs-and-content-packs.md) | Exchange reusable pack material. | Yes, through Content Packs. | No. | Preserves only material supported by the pack format. |
+| [AI Study Pack ZIP](12-external-ai-workflows.md#create-an-ai-assisted-study-pack) | Return an externally produced pack for validation. | Yes, through the AI Study Pack workflow. | No. | AI exchange format that becomes pack content only after validation. |
+| [Anki `.apkg`](14-anki-decks-and-printable-cards.md) | Study exported cards in Anki. | No guided re-import. | No. | External-study cards; interactive DLMS behavior is not preserved. |
+| [Printable cards](14-anki-decks-and-printable-cards.md#print-physical-cards) | Print or save a card layout. | No. | No. | External-study presentation, not transferable DLMS content. |
+| [Individual quiz `.txt`](15-import-export-and-portability.md#use-quiz-text-files) | Edit or re-import classic choice text. | Yes, for the classic choice format. | No. | Does not preserve matching, images/hotspots, concepts, or rich metadata. |
+| [Quiz Library Reference `.txt`](15-import-export-and-portability.md#download-the-full-library-reference) | Read, search, or print a library listing. | No. | No. | Reference report, not a transfer format. |
+| [Matching CSV](11-matching-terminology-and-image-based-content.md#import-a-matching-csv) | Import left/right pairs. | Yes. | No. | Represents pairs, not a complete rich quiz. |
+| [External AI JSON/text](12-external-ai-workflows.md) | Return structured choice or matching content manually. | Yes, through its matching workflow. | No. | Untrusted exchange data; only accepted fields survive validation. |
+| [Legacy Anki TSV](14-anki-decks-and-printable-cards.md#advanced-legacy-tsv-compatibility) | Support older tab-separated card workflows. | Not through the guided interface. | No. | Advanced external-study compatibility only. |
 
 Other downloadable text, such as a Law Case Review export or a parser's
 cleaned working text, is useful for reading or a specific workflow. It is not a
@@ -89,7 +89,7 @@ correct the source material instead.
 
 | Option | Use it when | Selection level | Creates Generated Practice? |
 | --- | --- | --- | --- |
-| Today's Review | You want one recommended starting point based on current DLMS signals. | A planning surface that links to several existing actions. | No; the action you choose may create it. |
+| Today’s Review | You want one recommended starting point based on current DLMS signals. | A planning surface that links to several existing actions. | No; the action you choose may create it. |
 | Adaptive Study | You want DLMS to choose a balanced personalized session. | Questions across several learning signals and sources. | Yes. |
 | Smart Review | You want broad practice from weak concepts. | Source questions associated with weak concepts. | Yes. |
 | Concept Review | You want to choose one concept and study it directly. | One user-selected concept. | Yes. |
@@ -149,7 +149,7 @@ For privacy implications, see [Privacy and Data Handling](appendix-privacy-and-d
 
 ## Native packages
 
-DLMS 3.2.0 release tooling defines packages for these targets:
+DLMS 3.2.0 is packaged for these targets:
 
 - Fedora 44 x86-64;
 - Ubuntu 24.04 x86-64;

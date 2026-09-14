@@ -2,8 +2,9 @@
 
 This directory is the canonical source for the DLMS end-user manual. It
 contains the Phase 1 product audit and manual architecture for **DLMS 3.2.0**,
-plus the substantive Phase 2 chapter draft. Editorial review, approved
-screenshot placement, and release preparation remain.
+plus the substantive Phase 2 chapter draft and its first integrated editorial
+pass. Final human review, approved screenshot placement, and release
+preparation remain.
 
 Markdown is the editable source of truth. A PDF may later be generated as an
 optional distribution artifact; it is not required to maintain or use the
@@ -87,7 +88,7 @@ file contains review-ready prose; no empty chapter placeholders are used.
 5. **[Quiz Library and Organization](05-quiz-library-and-organization.md)** — visibility, folders, search, Smart
    Views, generated-practice labels, Mixed Quiz Builder, duplicate review, and
    safe quiz management.
-6. **[Taking Quizzes](06-taking-quizzes.md)** — Study Mode, Exam Mode, choice/multi-answer, matching,
+6. **[Taking Quizzes](06-taking-quizzes.md)** — Study Mode, Exam Mode, choice/multi-select, matching,
    images/hotspots, results, recovery, and the browser-local checkpoint model.
 7. **[Study and Review](07-study-and-review.md)** — Today’s Review as the
    default starting point, Due Questions, Adaptive Study, Smart Review,
@@ -235,7 +236,7 @@ GitHub releases or retained in a versioned documentation archive.
 ## Phase boundaries
 
 Phase 1 inventories and designs. The substantive Phase 2 draft now covers all
-planned chapters and appendices. Full-manual editorial review, screenshot
-capture, a renderer prototype, optional PDF generation, and publication are
-later approved phases. They must not be inferred from the presence of this
-directory.
+planned chapters and appendices, and the first integrated editorial pass is
+complete. Final human review, screenshot capture, a renderer prototype,
+optional PDF generation, and publication are later approved phases. They must
+not be inferred from the presence of this directory.

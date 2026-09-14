@@ -37,7 +37,7 @@ The bundle preserves supported quiz content such as:
 - supported images needed by the exported quizzes.
 
 It deliberately excludes attempts, scores, missed-question history, learning
-events, confidence and scheduling state, adaptive/review state, and other
+events, scheduling state, adaptive/review state, and other
 personal study data. Generated review/practice quizzes and Mixed Quizzes are
 not offered for portable export; use their ordinary source quizzes when you
 want transferable content.
@@ -71,10 +71,9 @@ portability boundary rather than lost source content.
 
 <!-- Screenshot: UM-06 — Portable Quiz Bundle export and validated import preview -->
 
-The imported quizzes appear in the indicated Quiz Library folders. They receive
-valid local identities in the receiving installation and behave as independent
-ordinary quizzes. Their portable source details can still be retained, but the
-new installation does not depend on database identifiers from the source
+The imported quizzes appear in the indicated Quiz Library folders and behave
+as independent ordinary quizzes in the receiving installation. DLMS can retain
+their portable source details without making them depend on the source
 computer.
 
 DLMS rejects a malformed, unsafe, unsupported, excessive, or unexpectedly
@@ -110,7 +109,7 @@ Use this practical rule:
 
 - choose a **Portable Quiz Bundle** to share or transfer selected quizzes
   without the learner's history;
-- choose a **Portable Backup** to recover or migrate the learner's whole DLMS
+- choose **Portable Backup** to recover or migrate the learner's whole DLMS
   environment.
 
 Because a backup can contain personal learning history and locally stored
@@ -263,6 +262,6 @@ and matching content, concepts, supported media, and other preserved metadata.
 ### An export did not include History
 
 Quiz text, Portable Quiz Bundles, Study Pack ZIPs, Anki packages, printable
-cards, and Law text exports are content-focused formats. Use a full Portable
-Backup when you need completed attempts, scores, and the broader persistent
+cards, and Law text exports are content-focused formats. Use a full **Portable
+Backup** when you need completed attempts, scores, and the broader persistent
 DLMS state.

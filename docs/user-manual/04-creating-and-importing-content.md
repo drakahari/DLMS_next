@@ -62,7 +62,7 @@ nonblank choices and must mark at least one as correct. Mark one correct answer
 for a single-answer question, or mark multiple correct answers to create a
 multi-select question. Blank unused answer rows are ignored.
 
-There is no separate single-answer or multi-answer mode selector. The number
+There is no separate single-answer or multi-select mode selector. The number
 of answers marked **Correct** determines how the question behaves. Use **Add
 Choice** to add rows and the delete control beside a row to remove one. DLMS
 does not let a choice question lose its final answer row.

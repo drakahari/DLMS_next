@@ -124,15 +124,12 @@ or link inside them when one is provided.
 
 ### Badges and status labels
 
-Badges identify states such as review status, generated practice type, or
-completion. Read the badge text rather than relying on color alone. In the Quiz
-Library, Adaptive, Smart, Concept, Due Questions, and Topic Retention sessions
-are labeled as generated practice. The **Generated Practice** Smart View can
-collect these records without moving them into a folder.
-
-A **Mixed Quiz** remains visually distinct. It is a deliberately curated quiz
-assembled from multiple sources, not treated as transient Generated Practice.
-The source quizzes are not changed by either kind of generated content.
+Badges identify states such as review status, Generated Practice type, or
+completion. Read the badge text rather than relying on color alone. The Quiz
+Library gives Generated Practice and reusable **Mixed Quiz** compositions
+different labels. Creating either one leaves its source quizzes unchanged. See
+[Quiz Library and Organization](05-quiz-library-and-organization.md#recognize-generated-practice)
+for the full distinction.
 
 ### Notices, errors, and confirmations
 
@@ -150,23 +147,14 @@ the page and assuming the change succeeded.
 
 ## Unfinished work and “This browser”
 
-An interrupted quiz can produce a Resume item marked **This browser**. That
-checkpoint is stored in the current browser profile so you can continue an
-unfinished Study Mode or Exam Mode session. It is not a completed History
-record and is not synchronized to other browsers.
+An interrupted quiz can produce a Resume item marked **This browser**. It is a
+checkpoint in the current browser profile, not a completed History record or a
+session synchronized to other browsers. Use **Start Over** only when you intend
+to discard that recoverable progress.
 
-DLMS clears a checkpoint only after the final Study Mode answer has been saved
-successfully or the final Exam Mode attempt has been persisted. If saving
-fails—or you leave before completing the last question—the checkpoint remains
-available. Use **Start Over** only when you intend to discard that browser's
-recoverable progress for the quiz.
-
-When two computers use the same DLMS LAN/server instance, they share
-server-derived information after refresh: quizzes, completed History, due
-counts, concept information, and completed learning activity. They can still
-show different **This browser** Resume items because each browser keeps its own
-interrupted-session checkpoint. One client's local checkpoint does not become
-another client's unfinished recommendation.
+Quizzes, completed History, and server-derived learning information still come
+from the DLMS host. The completion and cross-client recovery contract is
+explained in [Taking Quizzes](06-taking-quizzes.md#resume-an-interrupted-quiz).
 
 ## Use Help when you need task detail
 

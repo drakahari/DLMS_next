@@ -200,29 +200,11 @@ you simply want DLMS to recommend the next action, return to Today’s Review.
 
 ## Common questions
 
-### Why is my completed Exam in History but there is no Resume card?
-
-That is the normal completed state. Resume exists for an interrupted or not-yet-
-safely-saved session. Once the Exam attempt is saved, DLMS clears that
-browser’s completed checkpoint and keeps the durable result in History.
-
-### Why does another browser see my completed activity but not my unfinished quiz?
-
-Completed activity is stored by the DLMS host and is shared after refresh. The
-unfinished checkpoint is stored only in the browser profile where you began
-that session.
-
 ### Why is a Study session not listed in History?
 
 History lists saved Exam attempts. Study Mode saves question-level learning
 evidence for feedback, scheduling, and Learning Intelligence instead of
 creating a scored attempt row.
-
-### Why does missed-question review differ from Smart Review?
-
-Missed-question review uses the exact misses saved for one Exam. Smart Review
-uses the current weak-concept classification across recorded evidence and may
-select different source questions from several quizzes.
 
 ### Why did Learning Intelligence change after I finished a quiz?
 
@@ -237,3 +219,8 @@ Check whether the Exam result said that saving failed. A score can be
 calculated in the browser before the durable attempt is acknowledged. Use
 **Retry Saving Attempt** or **Finish Saving Submitted Attempt** when offered;
 the result reaches History only after the save succeeds.
+
+Questions about why Resume appears only in one browser are covered under
+[Shared history and local recovery](#shared-history-and-local-recovery). The
+distinction between missed-question review and other review choices is covered
+under [Understand missed-question review](#understand-missed-question-review).

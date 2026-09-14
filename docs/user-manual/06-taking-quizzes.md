@@ -88,7 +88,7 @@ location feedback.
 Use Previous and Next to revisit the set. Your last selection for each question
 is kept in the current session. A question is considered complete for recovery
 purposes only when it has a sufficient response: one selection for a
-single-answer question, the expected number of selections for a multi-answer
+single-answer question, the expected number of selections for a multi-select
 question, every required matching target filled, or a hotspot location chosen.
 
 ### Saving Study Mode progress
@@ -206,37 +206,14 @@ Schedule, and Learning Intelligence without confusing their different roles.
 When you are simply deciding what to study now, return to the Dashboard and
 start with **Today’s Review**.
 
-## Solve common quiz-taking problems
+## If a quiz does not proceed normally
 
-### An answer will not behave as expected
+First check the question type: multi-select answers toggle on and off, matching
+requires every presented target, and **Dropdowns** provides an alternative to
+drag and drop. If DLMS reports an unsaved Study response or Exam attempt, keep
+the page open and use the displayed **Retry** or **Finish Saving Submitted
+Attempt** action. The recovery checkpoint remains until the save is safe.
 
-Check the question type. A multi-select answer toggles on and off and is not
-complete until the expected number of choices has been selected. A matching
-answer must fill every presented target. For matching, switch to **Dropdowns**
-if drag-and-drop is inconvenient.
-
-### Learning progress was not saved
-
-Keep the quiz page open and choose **Retry**. Verify that the local DLMS process
-or LAN host is still reachable. The recovery checkpoint retains unacknowledged
-Study Mode activity so it is not mistaken for a completed session.
-
-### An Exam result was calculated but not saved
-
-Choose **Retry Saving Attempt** before leaving if you want the result in
-History, Analytics, Learning Intelligence, and missed-question Review. If the
-page is interrupted, reopen the quiz and use **Finish Saving Submitted
-Attempt** when offered.
-
-### Resume appears on only one computer
-
-This is expected. Resume checkpoints are stored per browser profile. Refreshing
-another client updates server-shared History and recommendation data, but it
-does not transfer the first browser's interrupted session.
-
-### A completed session still appears temporarily
-
-Refresh the Dashboard or Library after the final save has succeeded. A fully
-completed and acknowledged session should not remain available as Resume. If a
-save warning is still visible, use its Retry action instead of clearing the
-checkpoint prematurely.
+For browser-specific Resume questions, stale-looking completed state, and
+other symptoms, use the focused guidance in
+[Troubleshooting](18-troubleshooting.md#quiz-resume-and-history-problems).

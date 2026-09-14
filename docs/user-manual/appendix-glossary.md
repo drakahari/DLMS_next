@@ -56,7 +56,7 @@ combine evidence for the same concept across several quizzes.
 ### Concept Review
 
 A Generated Practice session focused on one concept selected by the user. It is
-also launched through **Study Concept** in Learning Intelligence. See
+also launched through **Study concept** in Learning Intelligence. See
 [Study and Review](07-study-and-review.md#use-concept-review-for-one-chosen-concept).
 
 ### Content Pack
@@ -195,6 +195,12 @@ A curated, reusable quiz composed from questions in two or more source quizzes.
 It remains visually distinct from transient Generated Practice. See
 [Quiz Library and Organization](05-quiz-library-and-organization.md#keep-mixed-quizzes-distinct).
 
+### Multi-select question
+
+A choice question with more than one correct answer. Select every answer you
+believe is correct. DLMS also uses **multiple-answer** in some import and Review
+& Repair screens for the same answer behavior.
+
 ## N
 
 ### Needs Review
@@ -313,7 +319,7 @@ Folder.
 An ordinary authored or imported question that supplies canonical learning
 content. Generated copies point back to it when that relationship is known.
 
-### Study Concept
+### Study concept
 
 The Learning Intelligence action that starts Concept Review for a selected
 concept.

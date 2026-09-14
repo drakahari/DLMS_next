@@ -66,7 +66,7 @@ this export view. A question can belong to overlapping summaries—for example,
 it can be both Repeatedly Missed and Currently Weak.
 
 The attempt-specific Review page can also export the missed questions captured
-for that one completed attempt. Use that route when the attempt itself defines
+for that one completed attempt. Use that workflow when the attempt itself defines
 the deck you want; use the Anki Tools filters when you want a history-wide
 selection. See
 [History, Results, and Progress](09-history-results-and-progress.md#understand-missed-question-review)

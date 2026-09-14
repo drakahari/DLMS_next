@@ -153,7 +153,7 @@ enter into a browser.
 
 DLMS does not provide account authentication or TLS for LAN/server mode. Use it
 only on a trusted, appropriately firewalled local network, and never expose the
-DLMS port directly to the public internet. All connected browsers act on the
+DLMS port directly to the public Internet. All connected browsers act on the
 same single-user DLMS data. Interrupted recovery checkpoints remain local to
 each browser profile, so two clients can show different **This browser** Resume
 items even while they share quiz data, History, and server-derived study

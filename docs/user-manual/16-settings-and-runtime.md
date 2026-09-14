@@ -148,7 +148,7 @@ host computer's DLMS address and work with the same single-user server data.
 
 DLMS does not provide account authentication or TLS for this mode. Use it only
 on a trusted, appropriately firewalled local network. Do not expose the DLMS
-port directly to the public internet.
+port directly to the public Internet.
 
 In LAN/server mode:
 

@@ -146,7 +146,7 @@ over. It is not necessary simply because a quiz score was disappointing.
 **Reset Quiz Library & Results** removes the published quiz collection and its
 related records: questions and choices, generated quiz page data and assets,
 quiz logos, attempts and missed-question History, concepts and learning events
-tied to the questions, and the Quiz Library registry.
+tied to the questions, and Quiz Library organization records.
 
 It preserves reusable source areas and configuration, including installed
 Study Packs and Content Packs, PDF & Image Import banks and drafts, Law Study

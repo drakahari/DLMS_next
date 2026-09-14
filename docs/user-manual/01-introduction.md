@@ -18,7 +18,7 @@ repository's maintainer documentation.
 ## What you can study with DLMS
 
 At the center of DLMS is the **quiz**: a saved set of questions that you can use
-in Study Mode or Exam Mode. A quiz may contain single-answer or multi-answer
+in Study Mode or Exam Mode. A quiz may contain single-answer or multi-select
 choices, matching activities, supporting images, or hotspot questions answered
 by selecting a region of an image.
 
@@ -48,7 +48,7 @@ on a trusted local network can reach the same installation. This remains a
 single-user application: it does not add accounts, permissions, collaboration,
 or device synchronization. LAN/server mode has no DLMS authentication or TLS,
 so it is suitable only for a trusted, appropriately firewalled network and must
-not be exposed directly to the public internet.
+not be exposed directly to the public Internet.
 
 Local-first does not remove the need to protect your computer and backups. A
 person who can access your operating-system account, DLMS data directory, or an
