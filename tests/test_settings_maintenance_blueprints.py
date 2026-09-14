@@ -427,7 +427,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
             'action="/settings/parsing/save"',
             'action="/settings/backup/create"',
             'action="/settings/backup/restore/stage"',
-            'fetch("/admin/rebuild_all_quiz_html", {method: "POST"})',
+            'body: JSON.stringify({confirmation: "rebuild-all-quiz-pages"})',
         ):
             self.assertIn(literal_url, template_source)
 

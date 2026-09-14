@@ -169,6 +169,8 @@ class HelpDocumentationTests(unittest.TestCase):
 
         maintenance = self._static("help-maintenance.html")
         self.assertIn("System Tools", maintenance)
+        self.assertIn("derived HTML and playable JSON", maintenance)
+        self.assertIn("concepts, lineage, folders, source details", maintenance)
         self.assertIn("portable backup", maintenance)
 
     def test_pdf_and_image_import_is_the_user_facing_help_name(self):

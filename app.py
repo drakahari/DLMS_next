@@ -3480,6 +3480,18 @@ def _restore_quiz_mutation_artifacts(promoted):
     )
 
 
+def _rebuild_registered_quiz_artifacts():
+    return _quiz_mutation_service.rebuild_registered_quiz_artifacts(
+        registry_lock=registry_lock,
+        load_registry=load_registry,
+        get_db=get_db,
+        stage_artifacts=_stage_quiz_mutation_artifacts,
+        promote_artifacts=_promote_quiz_mutation_artifacts,
+        remove_tree=shutil.rmtree,
+        print_message=print,
+    )
+
+
 def _remove_new_quiz_logo(filename, original_registry):
     return _quiz_mutation_service.remove_new_quiz_logo(
         filename,
@@ -6448,7 +6460,7 @@ app.register_blueprint(create_quiz_blueprint(
         publish_quiz_edit_request=lambda *args, **kwargs: _publish_quiz_edit_request(*args, **kwargs),
         delete_quiz_transaction=lambda *args, **kwargs: _delete_quiz_transaction(*args, **kwargs),
         cleanup_deleted_quiz_artifacts=lambda *args, **kwargs: _cleanup_deleted_quiz_artifacts(*args, **kwargs),
-        rebuild_quiz_html_from_registry=lambda *args, **kwargs: rebuild_quiz_html_from_registry(*args, **kwargs),
+        rebuild_registered_quiz_artifacts=lambda: _rebuild_registered_quiz_artifacts(),
         question_lineage_for_insert=lambda *args, **kwargs: (
             _question_identity_service.lineage_for_insert(*args, **kwargs)
         ),

@@ -347,6 +347,84 @@ def commit_quiz_mutation(conn):
     conn.commit()
 
 
+def rebuild_registered_quiz_artifacts(
+    *,
+    registry_lock,
+    load_registry,
+    get_db,
+    stage_artifacts,
+    promote_artifacts,
+    remove_tree=shutil.rmtree,
+    print_message=print,
+):
+    """Rebuild each registered quiz's derived JSON/HTML pair from canonical data.
+
+    The registry and SQLite rows are deliberately read-only. Artifact staging and
+    promotion reuse the same per-quiz rollback boundary as an existing-quiz edit,
+    so a failed promotion leaves that quiz's previous live pair in place.
+    """
+    rebuilt = 0
+    failed = []
+
+    with registry_lock:
+        registry = load_registry()
+        for entry in registry:
+            raw_quiz_id = entry.get("id")
+            if raw_quiz_id is None:
+                print_message("[REBUILD ALL] Failed registry entry with no quiz ID")
+                failed.append("missing-id")
+                continue
+
+            conn = None
+            staged = None
+            report_id = raw_quiz_id
+            try:
+                if isinstance(raw_quiz_id, bool):
+                    raise ValueError("Quiz ID must be an integer")
+                quiz_id = int(raw_quiz_id)
+                report_id = quiz_id
+                conn = get_db()
+                conn.execute("BEGIN")
+                quiz_row = conn.execute(
+                    "SELECT id FROM quizzes WHERE id = ?", (quiz_id,)
+                ).fetchone()
+                question_count = conn.execute(
+                    "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
+                ).fetchone()[0]
+                if quiz_row is None or question_count < 1:
+                    raise ValueError(
+                        "Registered quiz has no canonical persisted questions"
+                    )
+
+                staged = stage_artifacts(conn, quiz_id, entry)
+                promote_artifacts(staged)
+                rebuilt += 1
+            except Exception as exc:
+                print_message(
+                    f"[REBUILD ALL] Failed quiz_id={report_id}: {exc}"
+                )
+                failed.append(report_id)
+            finally:
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception as exc:
+                        print_message(
+                            f"[REBUILD ALL] Could not end read transaction for "
+                            f"quiz_id={report_id}: {exc}"
+                        )
+                    finally:
+                        conn.close()
+                if staged:
+                    remove_tree(staged["staging_dir"], ignore_errors=True)
+
+    return {
+        "total": len(registry),
+        "rebuilt": rebuilt,
+        "failed": failed,
+    }
+
+
 def stage_quiz_mutation_artifacts(
     conn,
     quiz_id,

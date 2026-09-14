@@ -83,7 +83,7 @@ class QuizBlueprintTests(unittest.TestCase):
         "quiz_owns_choice", "quiz_owns_matching_pair", "set_question_concepts",
         "quiz_edit_validation", "publish_quiz_edit_request",
         "delete_quiz_transaction", "cleanup_deleted_quiz_artifacts",
-        "rebuild_quiz_html_from_registry",
+        "rebuild_registered_quiz_artifacts",
         "question_lineage_for_insert",
     }
     AUTHORING_DEPENDENCIES = {

@@ -3342,7 +3342,10 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "menuControls:document.querySelector('[data-settings-menu]').getAttribute('aria-controls'),"
         "menuExpanded:document.querySelector('[data-settings-menu]').getAttribute('aria-expanded'),"
         "buttonType:document.getElementById('rebuildAllBtn').type,"
+        "buttonDescription:document.getElementById('rebuildAllBtn').getAttribute('aria-describedby'),"
         "statusLive:document.getElementById('rebuildStatus').getAttribute('aria-live'),"
+        "statusRole:document.getElementById('rebuildStatus').getAttribute('role'),"
+        "statusAtomic:document.getElementById('rebuildStatus').getAttribute('aria-atomic'),"
         "imageEditorHref:document.querySelector('.system-tools-secondary-action').getAttribute('href')"
         "}))()"
     )
@@ -3351,19 +3354,60 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "menuControls": "dashboardSidebar",
         "menuExpanded": "false",
         "buttonType": "button",
+        "buttonDescription": "rebuildDescription",
         "statusLive": "polite",
+        "statusRole": "status",
+        "statusAtomic": "true",
         "imageEditorHref": "/admin/image-editor",
     }
 
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        for width in (1280, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(f"{browser_stack.base_url}/admin/maintenance")
+            browser.wait_for("document.getElementById('rebuildAllBtn')")
+            layout = browser.evaluate(
+                "(() => {const panel=document.querySelector('.system-tools-panel');"
+                "const button=document.getElementById('rebuildAllBtn');"
+                "const p=panel.getBoundingClientRect(),b=button.getBoundingClientRect();"
+                "return {overflow:document.documentElement.scrollWidth<=window.innerWidth+1,"
+                "panelContained:p.left>=0&&p.right<=window.innerWidth+1,"
+                "buttonContained:b.left>=p.left&&b.right<=p.right,"
+                "buttonHeight:Math.round(b.height),descriptionLines:Math.round("
+                "document.getElementById('rebuildDescription').getBoundingClientRect().height/"
+                "parseFloat(getComputedStyle(document.getElementById('rebuildDescription')).lineHeight))};})()"
+            )
+            assert layout["overflow"] is True, (theme, width, layout)
+            assert layout["panelContained"] is True, (theme, width, layout)
+            assert layout["buttonContained"] is True, (theme, width, layout)
+            assert layout["buttonHeight"] >= 40, (theme, width, layout)
+            assert layout["descriptionLines"] <= (6 if width == 420 else 3), (
+                theme, width, layout,
+            )
+            contrast = _theme_contrast_snapshot(
+                browser,
+                {
+                    "rebuild description": "#rebuildDescription",
+                },
+            )
+            for role, state in contrast.items():
+                assert state["contrast"] >= 4.5, (theme, width, role, state)
+
+    browser.set_viewport(1280, 900)
+    browser.navigate(f"{browser_stack.base_url}/admin/maintenance")
+    browser.wait_for("window.dlmsCsrfToken && document.getElementById('rebuildAllBtn')")
+
     confirmation = (
-        "Rebuild all quiz pages using the current DLMS template?\n\n"
-        "Quiz questions, answers, IDs, and history will not be changed."
+        "Rebuild all registered quiz pages from saved quiz data?\n\n"
+        "Only derived page files will be replaced. Questions, answers, IDs, "
+        "lineage, folders, and learning history will not be changed."
     )
     cancelled = browser.evaluate(
         "(() => {window.__maintenanceCalls=[];window.__maintenanceConfirms=[];"
         "window.confirm=message=>{window.__maintenanceConfirms.push(message);return false};"
         "const originalFetch=window.fetch.bind(window);"
-        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method,body:init.body});"
         "return originalFetch(input,init)};document.getElementById('rebuildAllBtn').click();"
         "return {calls:window.__maintenanceCalls,confirms:window.__maintenanceConfirms,"
         "disabled:document.getElementById('rebuildAllBtn').disabled,"
@@ -3379,7 +3423,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
     assert browser.evaluate(
         "(() => {window.__maintenanceCalls=[];window.__maintenanceConfirms=[];"
         "window.confirm=message=>{window.__maintenanceConfirms.push(message);return true};"
-        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method,body:init.body});"
         "return new Promise(resolve=>{window.__resolveMaintenanceFetch=resolve})};return true;})()"
     ) is True
     browser.click("#rebuildAllBtn")
@@ -3394,7 +3438,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
     )
     browser.wait_for(
         "!document.getElementById('rebuildAllBtn').disabled && "
-        "document.getElementById('rebuildStatus').textContent.startsWith('Complete:')"
+        "document.getElementById('rebuildStatus').textContent.startsWith('Finished with issues:')"
     )
     safe_status = browser.evaluate(
         "(() => {const status=document.getElementById('rebuildStatus');return {"
@@ -3403,10 +3447,14 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "calls:window.__maintenanceCalls,confirms:window.__maintenanceConfirms};})()"
     )
     assert safe_status == {
-        "text": "Complete: <img id=maintenanceInjected> rebuilt, 1 failed.",
-        "html": "Complete: &lt;img id=maintenanceInjected&gt; rebuilt, 1 failed.",
+        "text": "Finished with issues: <img id=maintenanceInjected> rebuilt, 1 failed. Failed quizzes kept their previous page files. Check the server log.",
+        "html": "Finished with issues: &lt;img id=maintenanceInjected&gt; rebuilt, 1 failed. Failed quizzes kept their previous page files. Check the server log.",
         "injected": False,
-        "calls": [{"url": "/admin/rebuild_all_quiz_html", "method": "POST"}],
+        "calls": [{
+            "url": "/admin/rebuild_all_quiz_html",
+            "method": "POST",
+            "body": '{"confirmation":"rebuild-all-quiz-pages"}',
+        }],
         "confirms": [confirmation],
     }
 
@@ -3431,18 +3479,23 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
 
     browser.navigate(f"{browser_stack.base_url}/admin/maintenance?live=1")
     browser.wait_for("window.dlmsCsrfToken && document.getElementById('rebuildAllBtn')")
-    expected_rebuilt = sum(
-        entry.get("id") is not None
-        for entry in json.loads(
-            (browser_stack.data_root / "config" / "quizzes.json").read_text(
-                encoding="utf-8"
-            )
+    registered_quizzes = json.loads(
+        (browser_stack.data_root / "config" / "quizzes.json").read_text(
+            encoding="utf-8"
         )
     )
+    expected_rebuilt = sum(entry.get("id") is not None for entry in registered_quizzes)
+    live_entry = next(entry for entry in registered_quizzes if entry.get("id") is not None)
+    live_html = browser_stack.data_root / "quizzes" / live_entry["html"]
+    live_json = (
+        browser_stack.data_root / "data" / live_entry["html"].replace(".html", ".json")
+    )
+    live_html.write_text("browser stale html", encoding="utf-8")
+    live_json.write_text('[{"browser_stale":true}]', encoding="utf-8")
     assert browser.evaluate(
         "(() => {const protectedFetch=window.fetch.bind(window);window.__maintenanceCalls=[];"
         "window.confirm=()=>true;window.fetch=(input,init={})=>{"
-        "window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "window.__maintenanceCalls.push({url:String(input),method:init.method,body:init.body});"
         "return protectedFetch(input,init)};return true;})()"
     ) is True
     browser.click("#rebuildAllBtn")
@@ -3455,8 +3508,15 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         f"Complete: {expected_rebuilt} rebuilt, 0 failed."
     )
     assert browser.evaluate("window.__maintenanceCalls") == [
-        {"url": "/admin/rebuild_all_quiz_html", "method": "POST"}
+        {
+            "url": "/admin/rebuild_all_quiz_html",
+            "method": "POST",
+            "body": '{"confirmation":"rebuild-all-quiz-pages"}',
+        }
     ]
+    assert "browser stale html" not in live_html.read_text(encoding="utf-8")
+    rebuilt_payload = json.loads(live_json.read_text(encoding="utf-8"))
+    assert rebuilt_payload and "browser_stale" not in rebuilt_payload[0]
 
 
 def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stack):

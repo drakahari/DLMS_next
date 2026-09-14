@@ -74,7 +74,7 @@ class QuizEditorDependencies:
     publish_quiz_edit_request: Dependency
     delete_quiz_transaction: Dependency
     cleanup_deleted_quiz_artifacts: Dependency
-    rebuild_quiz_html_from_registry: Dependency
+    rebuild_registered_quiz_artifacts: Dependency
     question_lineage_for_insert: Dependency
 
 

@@ -306,11 +306,13 @@ class CsrfProtectionTests(unittest.TestCase):
         )
         self.assertEqual(bad_referer.status_code, 403)
 
-    def test_empty_body_fetch_with_header_token_reaches_handler(self):
-        with mock.patch.object(dlms, "load_registry", return_value=[]):
-            response = self.client.post("/admin/rebuild_all_quiz_html", headers=csrf_headers(self.client))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["rebuilt"], 0)
+    def test_rebuild_confirmation_is_required_after_csrf_validation(self):
+        with mock.patch.object(dlms, "_rebuild_registered_quiz_artifacts") as rebuild:
+            response = self.client.post(
+                "/admin/rebuild_all_quiz_html", headers=csrf_headers(self.client)
+            )
+        self.assertEqual(response.status_code, 400)
+        rebuild.assert_not_called()
 
     def test_cross_origin_destructive_requests_never_reach_handlers(self):
         token = csrf_token(self.client)
@@ -330,13 +332,18 @@ class CsrfProtectionTests(unittest.TestCase):
         with mock.patch.object(dlms, "load_registry") as registry:
             self.assertEqual(self.client.get("/admin/rebuild_all_quiz_html").status_code, 405)
             registry.assert_not_called()
-        with mock.patch.object(dlms, "load_registry", return_value=[{"id": 7}]), mock.patch.object(
-            dlms, "rebuild_quiz_html_from_registry", return_value=True
+        result = {"total": 1, "rebuilt": 1, "failed": []}
+        with mock.patch.object(
+            dlms, "_rebuild_registered_quiz_artifacts", return_value=result
         ) as rebuild:
-            response = self.client.post("/admin/rebuild_all_quiz_html", headers=csrf_headers(self.client))
+            response = self.client.post(
+                "/admin/rebuild_all_quiz_html",
+                json={"confirmation": "rebuild-all-quiz-pages"},
+                headers=csrf_headers(self.client),
+            )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["rebuilt"], 1)
-        rebuild.assert_called_once_with(7)
+        rebuild.assert_called_once_with()
 
     def test_multipart_pdf_backup_and_content_pack_requests_pass_csrf_layer(self):
         token = csrf_token(self.client)

@@ -122,39 +122,16 @@ def edit_quiz(dependencies, quiz_id):
     return render_template("quiz/edit.html", quiz=quiz, questions=question_list, exam_minutes=exam_minutes, app_version=APP_VERSION)
 
 def rebuild_all_quiz_html(dependencies):
-    load_registry = dependencies.load_registry
-    rebuild_quiz_html_from_registry = dependencies.rebuild_quiz_html_from_registry
+    confirmation = request.get_json(silent=True) or {}
+    if confirmation.get("confirmation") != "rebuild-all-quiz-pages":
+        return jsonify({
+            "status": "error",
+            "error": "Confirmation is required before rebuilding quiz pages.",
+        }), 400
 
-    registry = load_registry()
-
-    rebuilt = 0
-    failed = []
-
-    for entry in registry:
-        quiz_id = entry.get("id")
-
-        if quiz_id is None:
-            continue
-
-        try:
-            quiz_id = int(quiz_id)
-
-            if rebuild_quiz_html_from_registry(quiz_id):
-                rebuilt += 1
-            else:
-                failed.append(quiz_id)
-
-        except Exception as e:
-            print(
-                f"[REBUILD ALL] Failed quiz_id={quiz_id}: {e}"
-            )
-            failed.append(quiz_id)
-
-    return jsonify({
-        "status": "complete",
-        "rebuilt": rebuilt,
-        "failed": failed
-    })
+    result = dependencies.rebuild_registered_quiz_artifacts()
+    result["status"] = "complete" if not result["failed"] else "partial"
+    return jsonify(result)
 
 def save_edited_quiz(dependencies, quiz_id):
     get_db = dependencies.get_db
