@@ -34,6 +34,9 @@ written. They provide the traceability needed to keep later editions accurate.
 - [10. PDF, Smart PDF, and OCR](10-pdf-smart-pdf-and-ocr.md)
 - [11. Matching, Terminology, and Image-Based Content](11-matching-terminology-and-image-based-content.md)
 - [12. External AI Workflows](12-external-ai-workflows.md)
+- [13. Study Packs and Content Packs](13-study-packs-and-content-packs.md)
+- [14. Anki, Decks, and Printable Cards](14-anki-decks-and-printable-cards.md)
+- [15. Import, Export, and Portability](15-import-export-and-portability.md)
 
 Later chapters remain in the architecture below until they contain substantive
 review-ready prose.
@@ -100,13 +103,13 @@ drafted. No empty chapter placeholders are part of Phase 1.
     prompt/paste flows, validation, Review & Repair, external explanation help,
     and the separate AI Study Pack ZIP flow. Emphasize that DLMS makes no
     provider API call.
-13. **Study Packs, Content Packs, and subject spaces** — learner catalog versus
+13. **[Study Packs and Content Packs](13-study-packs-and-content-packs.md)** — learner catalog versus
     pack management, validation/install/export/delete, IT/Medical/Other views,
     Law Case Reviews, and image-pack creation.
-14. **Anki, decks, and printable cards** — guided quiz/history/Law `.apkg`
+14. **[Anki, Decks, and Printable Cards](14-anki-decks-and-printable-cards.md)** — guided quiz/history/Law `.apkg`
     exports, custom deck selection, and printable cards, with legacy TSV only
     as an optional advanced compatibility note.
-15. **Import, export, and portability** — text exports, Portable Quiz Bundles,
+15. **[Import, Export, and Portability](15-import-export-and-portability.md)** — text exports, Portable Quiz Bundles,
     Study Pack boundaries, collision handling, media, and what personal data is
     deliberately excluded.
 16. **Settings, appearance, and runtime behavior** — themes, navigation,
