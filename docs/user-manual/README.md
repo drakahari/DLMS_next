@@ -74,14 +74,16 @@ drafted. No empty chapter placeholders are part of Phase 1.
    safe quiz management.
 6. **[Taking Quizzes](06-taking-quizzes.md)** — Study Mode, Exam Mode, choice/multi-answer, matching,
    images/hotspots, results, recovery, and the browser-local checkpoint model.
-7. **What to study next** — Today’s Review as the default starting point, Due
-   Questions, Adaptive Study, Smart Review, Concept Review, Topic Retention
-   Schedule, and missed-question review.
-8. **Learning Intelligence** — Learning Profile, concept intelligence,
-   Mastery, Trend, limited evidence, diagnostics, question-quality signals,
-   and how generated practice contributes to source learning evidence.
-9. **History, results, and progress** — attempts, result review, analytics,
-   filters, missed answers, retakes, and study evidence.
+7. **[Study and Review](07-study-and-review.md)** — Today’s Review as the
+   default starting point, Due Questions, Adaptive Study, Smart Review,
+   Concept Review, Topic Retention Schedule, and missed-question review.
+8. **[Learning Intelligence](08-learning-intelligence.md)** — Learning
+   Profile, concept intelligence, Mastery, Trend, limited evidence,
+   diagnostics, question-quality signals, and how generated practice
+   contributes to source learning evidence.
+9. **[History, Results, and Progress](09-history-results-and-progress.md)** —
+   attempts, missed-result review, analytics, filters, missed answers, retakes,
+   and study evidence.
 10. **PDF, Smart PDF, and OCR** — selectable PDFs, question/glossary
     classification, saved banks, targeted/scanned OCR, screenshot OCR, Review &
     Repair, source rights, and optional OCR availability.

@@ -360,8 +360,8 @@ below.
 | Screen / reach | Today’s Review and Learning Intelligence actions. |
 | What and why | Builds a normal generated study quiz when the user wants DLMS to choose a balanced cross-library focus. |
 | Inputs / options | Session sizes 10, 20, 30, or 50 where offered. Eligible material is canonical source content, not recursively selected generated copies. |
-| Selection explanation | Deterministic ranking favors weak concepts, developing concepts, due/older material, recent misses, low confidence where available, and unseen/underexposed material; exposure penalties and diversity avoid repeatedly selecting the same content. The UI explains selection reasons without presenting false statistical precision. |
-| Fallback | With partial or no history, selection falls back to a balanced deterministic source set and safely handles questions without concept/confidence metadata. |
+| Selection explanation | Deterministic ranking favors weak concepts, developing concepts, due/older material, recent misses, low recent accuracy where supported by enough evidence, and unseen/underexposed material; exposure penalties and diversity avoid repeatedly selecting the same content. The UI explains selection reasons without presenting false statistical precision. |
+| Fallback | With partial or no history, selection falls back to a balanced deterministic source set and safely handles questions without concept metadata. |
 | Output / persistence | Creates a normal playable generated session with explicit source lineage and `Adaptive Study` presentation; resulting answers contribute evidence to source questions. |
 | Evidence | learning/adaptive services; Learning Intelligence routes/static pages; adaptive tests; identity tests. |
 | Manual / screenshot / status | Ch. 7; UM-10; **Verified**. |
@@ -467,7 +467,7 @@ below.
 | --- | --- |
 | Screen / reach | Primary navigation → History; links from quiz results and Dashboard recent activity. |
 | What and why | Lists durable completed attempts, opens a result for question-level review, and supports missed-question follow-up. |
-| Controls | Pagination and supported domain/source filters; open result; review correct/incorrect answers; retake/open quiz; export selected missed questions or use explanation actions where offered. |
+| Controls | Pagination and supported domain/source filters; open an attempt's missed-question review; inspect the saved expected/submitted context for misses; export supported selected missed questions or use explanation actions where offered. Exam results separately offer Retake Exam. |
 | State boundary | History is stored with DLMS server data and is shared across browsers of the same instance after refresh. It is distinct from an unfinished browser checkpoint. |
 | Evidence | `dlms/routes/history.py`; `dlms/services/history.py`; `static/history.html`; `static/review.html`; history tests/browser workflow. |
 | Manual / screenshot / status | Ch. 9; UM-14; **Verified**. |
@@ -834,7 +834,7 @@ endpoints and static assets are not pages.
 | Study Mode runtime | Mode chooser | Answer, immediate feedback/explanation, navigate, select/export cards, external help | Saves learning evidence; completes to next actions | Workflow-only | 6 |
 | Exam Mode runtime | Mode chooser | Timer/pause, answer/navigation, submit | Persists attempt then opens result | Workflow-only | 6 |
 | Recovery panel | Reopen interrupted quiz | Resume, Finish Saving where needed, or Start Over | Restores valid browser checkpoint or clears it | Major modal/panel | 6 |
-| Result / attempt review | Exam completion or History | Score, per-question review, missed items, retake/library/history | Durable result; follow-up review/export | Workflow-only | 9 |
+| Result / attempt review | Exam completion or History | Score and result actions; saved missed-question detail; Retake Exam from the result panel | Durable result; missed-item follow-up/export | Workflow-only | 9 |
 | History | Primary navigation | Filter/paginate attempts and open results | Attempt detail, missed review, quiz actions | Primary | 9 |
 | Progress & Performance / Analytics | History/analytics navigation | Overall and per-quiz attempt metrics/trends | Informational links back to activity | Secondary | 9 |
 | Missed Questions review | Completed result/History review action | Show recorded missed items and supported review/export/explanation controls | Review source material, open History/quiz, or export selected cards | Secondary | 7, 9 |
@@ -925,7 +925,7 @@ endpoints and static assets are not pages.
 | Take Study Mode | Open quiz → Study Mode → answer each question → inspect immediate feedback/explanation → continue | Each completed answer must be acknowledged; failed saves remain retryable/recoverable; generated evidence follows source lineage. | 6 |
 | Take Exam Mode | Open quiz → Exam Mode → answer/navigate/pause → submit or timeout → result review | One durable attempt is saved before recovery clears; failed acknowledgement preserves exact pending attempt. | 6, 9 |
 | Resume interrupted work | Open same quiz or Dashboard/Unfinished → inspect `This browser` record → Resume or Start Over | Browser-local only; 30-day/bounded/validated checkpoint; completed saved work does not remain resumable. | 6, 18 |
-| Review a completed attempt | Result or History → open attempt → inspect answers/misses → retake/review/export as offered | Durable shared server history, distinct from recovery. | 9 |
+| Review a completed attempt | Result or History → open attempt → inspect saved missed-question answers/context → review/export as offered | Durable shared server history, distinct from recovery; Retake Exam is offered on the Exam result panel. | 9 |
 | Decide what to study | Dashboard → Today’s Review → read “why” → take first appropriate action | Due first, then specific weak concept, unfinished local work as merged, broader Adaptive/pack suggestions; deterministic/deduplicated. | 7 |
 | Complete a limited Due batch | Today’s Review/Review Schedule → note total and next batch → finish generated session → return/refresh | Completed batch is not Resume. Remaining source questions are recalculated and a new Due action appears only if needed. | 7 |
 | Use Adaptive Study | Today’s Review/Learning Intelligence → choose supported size → review selection reasons → start generated quiz | Balanced deterministic source selection; safe fallback with little/no history; no generated-source recursion. | 7 |
@@ -990,6 +990,7 @@ Findings are documentation inputs, not changes to application behavior.
 | DAF-19 | Some advanced pages are reachable but should not dominate a beginner path. | Diagnostics, regex tools, source metadata, image masks/hotspot geometry, and Content Pack management are powerful secondary workflows. | Use progressive disclosure: quick-start links first, advanced/reference sections later. |
 | DAF-20 | The stable-release boundary must remain explicit during manual drafting. | Current source/version is 3.2.0 on a development branch; repository text may still correctly refer to 3.1.0 as the latest published release or historical baseline. | Label this manual source as documenting 3.2.0 behavior without claiming publication until the release exists. Preserve historical references. |
 | DAF-21 | No roadmap IDs were found in rendered user-facing copy during the audit scan. | `DLMS-###` strings under `static/` occur in CSS comments, not visible labels. Internal generation kinds and identity names likewise should not leak into manual prose. | Preserve the clean product-language boundary; use feature names from `TERMINOLOGY.md`. |
+| DAF-22 | Existing Adaptive Study descriptions overstate the current signal set. | The current selector ranks weak/developing concepts, topic review timing, recent misses, low recent accuracy, recency/unseen material, prior exposure, and source/concept diversity. It does not read a confidence field, although current Help says “available confidence.” | Document only the implemented signals. Propose correcting the existing Help wording separately; do not imply a confidence-based ranking. |
 
 ## Second-pass completeness cross-check
 
@@ -1044,7 +1045,7 @@ Findings are documentation inputs, not changes to application behavior.
   cross-theme/responsive/accessibility contracts, and shutdown enforcement.
 - Existing Help was compared with implementation rather than treated as
   authoritative. Conflicts and likely stale screenshots are recorded in
-  DAF-01 through DAF-21 and `SCREENSHOT_PLAN.md`.
+  DAF-01 through DAF-22 and `SCREENSHOT_PLAN.md`.
 
 ## Audit coverage matrix
 
