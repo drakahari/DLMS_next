@@ -464,6 +464,35 @@ class NavigationLayoutTests(unittest.TestCase):
             r"\.learning-profile-retention-grid\{grid-template-columns:1fr;\}",
         )
 
+    def test_review_schedule_question_queue_header_is_padded_and_responsive(self):
+        page = self._static("review-schedule.html")
+        css = self._static("style.css")
+
+        self.assertIn(
+            'class="learning-intelligence-panel-head native-review-list-head"',
+            page,
+        )
+        self.assertIn(
+            '<input id="nrsSearch" class="learning-intelligence-search"',
+            page,
+        )
+        self.assertIn('aria-label="Search scheduled questions"', page)
+
+        header = re.search(r"\.native-review-list-head\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(header)
+        self.assertIn("padding:22px 22px 0", header.group(1))
+        self.assertRegex(
+            css,
+            r"@media\(max-width:560px\)[\s\S]*?\.native-review-list-head"
+            r"\{padding:18px 18px 0;\}",
+        )
+        self.assertRegex(
+            css,
+            r"@container \(max-width: 760px\)[\s\S]*?"
+            r"\.native-review-list-head \.learning-intelligence-search\s*"
+            r"\{\s*max-width: none;\s*\}",
+        )
+
     def test_learning_intelligence_sticky_practice_cells_have_opaque_theme_base(self):
         css = self._static("style.css")
         for selector, overlay in (

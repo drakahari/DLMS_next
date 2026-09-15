@@ -8389,8 +8389,8 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         ) is True, path
 
 
-def test_review_schedule_summary_cards_keep_text_rows_separate(browser_stack):
-    """Review metrics must remain stacked, contained, and readable in every theme."""
+def test_review_schedule_summary_and_queue_header_stay_contained(browser_stack):
+    """Review metrics and the Question Queue header must remain contained."""
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     probe = (
@@ -8406,49 +8406,56 @@ def test_review_schedule_summary_cards_keep_text_rows_separate(browser_stack):
         "valueBeforeSupport:valueRect.bottom<=supportRect.top+1,"
         "contained:[labelRect,valueRect,supportRect].every(contained),"
         "fits:card.scrollWidth<=card.clientWidth+1};};"
-        "return {count:cards.length,cards:cards.map(inspect),"
+        "const panel=document.querySelector('.native-review-list-panel'),"
+        "head=panel.querySelector('.native-review-list-head'),"
+        "eyebrow=head.querySelector('.build-eyebrow'),heading=head.querySelector('h2'),"
+        "copy=head.querySelector('p'),search=head.querySelector('#nrsSearch'),"
+        "table=panel.querySelector('#nrsTableWrap'),panelRect=panel.getBoundingClientRect();"
+        "const inside=element=>{const rect=element.getBoundingClientRect();"
+        "return rect.left>=panelRect.left-1&&rect.right<=panelRect.right+1&&"
+        "rect.top>=panelRect.top-1&&rect.bottom<=panelRect.bottom+1;};"
+        "const headStyle=getComputedStyle(head),tableRect=table.getBoundingClientRect();"
+        "return {count:cards.length,cards:cards.map(inspect),queue:{"
+        "contained:[eyebrow,heading,copy,search].every(inside),"
+        "topInset:eyebrow.getBoundingClientRect().top-panelRect.top,"
+        "paddingTop:parseFloat(headStyle.paddingTop),"
+        "stacked:headStyle.flexDirection==='column',"
+        "searchBelowCopy:search.getBoundingClientRect().top>=copy.getBoundingClientRect().bottom-1,"
+        "tableFullWidth:Math.abs(tableRect.left-panelRect.left)<=1&&"
+        "Math.abs(tableRect.right-panelRect.right)<=1},"
         "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
     )
 
     browser.navigate(base_url + "/")
     browser.wait_for("document.querySelector('.dashboard-shell')")
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
-        browser.set_viewport(1024, 900)
         _set_theme(browser, theme)
-        browser.navigate(base_url + "/review-schedule")
-        browser.wait_for(
-            "document.getElementById('nrsDue').textContent !== '—' && "
-            "document.getElementById('rsDue').textContent !== '—'"
-        )
-        state = browser.evaluate(probe)
-        assert state["count"] == 8
-        assert state["documentFits"] is True
-        assert all(
-            card == {
-                "columns": 1,
-                "labelBeforeValue": True,
-                "valueBeforeSupport": True,
-                "contained": True,
-                "fits": True,
-            }
-            for card in state["cards"]
-        ), (theme, state)
-
-    _set_theme(browser, "light")
-    for width in (1440, 1024, 760, 420):
-        browser.set_viewport(width, 900)
-        browser.navigate(base_url + "/review-schedule")
-        browser.wait_for("document.getElementById('nrsDue').textContent !== '—'")
-        state = browser.evaluate(probe)
-        assert state["documentFits"] is True, (width, state)
-        assert all(
-            card["columns"] == 1
-            and card["labelBeforeValue"]
-            and card["valueBeforeSupport"]
-            and card["contained"]
-            and card["fits"]
-            for card in state["cards"]
-        ), (width, state)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(base_url + "/review-schedule")
+            browser.wait_for(
+                "document.getElementById('nrsDue').textContent !== '—' && "
+                "document.getElementById('rsDue').textContent !== '—'"
+            )
+            state = browser.evaluate(probe)
+            case = (theme, width, state)
+            assert state["count"] == 8, case
+            assert state["documentFits"] is True, case
+            expected_padding = 18 if width == 420 else 22
+            assert state["queue"]["paddingTop"] == expected_padding, case
+            assert state["queue"]["topInset"] >= expected_padding - 1, case
+            assert state["queue"]["contained"] is True, case
+            assert state["queue"]["stacked"] is (width <= 1024), case
+            assert state["queue"]["searchBelowCopy"] is (width <= 1024), case
+            assert state["queue"]["tableFullWidth"] is True, case
+            assert all(
+                card["columns"] == 1
+                and card["labelBeforeValue"]
+                and card["valueBeforeSupport"]
+                and card["contained"]
+                and card["fits"]
+                for card in state["cards"]
+            ), case
 
 
 def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
@@ -9250,6 +9257,22 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
     )
     assert "latest response was incorrect" in schedule_state["row"]
     assert schedule_state["status"] == "Overdue"
+
+    search_state = browser.evaluate(
+        "(() => {const input=document.getElementById('nrsSearch');"
+        "const count=()=>document.querySelectorAll('#nrsRows tr').length;"
+        "const original=count();input.value='Browser native spaced-review prompt';"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "const filtered=count(),text=document.getElementById('nrsRows').textContent;"
+        "input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "return {original,filtered,matches:text.includes("
+        + json.dumps(prompt)
+        + "),restored:count()};})()"
+    )
+    assert search_state["original"] >= 11
+    assert search_state["filtered"] == 1
+    assert search_state["matches"] is True
+    assert search_state["restored"] == search_state["original"]
 
     selected_batch = browser.evaluate(
         "(() => {const select=document.getElementById('nrsBatchSize');"
