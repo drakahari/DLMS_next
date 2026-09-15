@@ -145,7 +145,7 @@ def build_daily_review_plan(
                 "title": "Review due questions",
                 "reason": reason,
                 "action": {
-                    "label": "Start Due Review",
+                    "label": "Review Due Questions",
                     "url": "/native-spaced-review/generate",
                     "method": "POST",
                     "fields": {

@@ -123,6 +123,7 @@ class DailyReviewPlanTests(unittest.TestCase):
             "/native-spaced-review/generate", item["action"]["url"]
         )
         self.assertEqual("POST", item["action"]["method"])
+        self.assertEqual("Review Due Questions", item["action"]["label"])
         self.assertEqual(2, plan["summary"]["due_questions"])
         self.assertEqual(2, plan["summary"]["next_due_batch_questions"])
         self.assertNotIn("Next review:", item["reason"])

@@ -159,7 +159,7 @@ and explains the latest result and next date.
 
 Open **Learning Intelligence → Review Schedule** to see the full question
 queue. Choose 10, 20, 30, or 50 under **Questions in this review**, then choose
-**Start Due Review**. DLMS includes all due questions when the due total is
+**Review Due Questions**. DLMS includes all due questions when the due total is
 smaller than your selected batch size; otherwise it takes the selected number
 from the ordered due queue. The status beside the selector explains the total
 and the size of the next batch.

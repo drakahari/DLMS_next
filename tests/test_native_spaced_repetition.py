@@ -434,7 +434,8 @@ class NativeSpacedRepetitionTests(unittest.TestCase):
         self.assertIn("Topic Retention Schedule", page)
         self.assertNotIn("DLMS-129", page)
         self.assertIn('action="/native-spaced-review/generate"', page)
-        self.assertIn("Start Due Review", page)
+        self.assertIn("Review Due Questions", page)
+        self.assertNotIn("Start Due Review", page)
         self.assertIn('id="nrsBatchSize"', page)
         self.assertIn('aria-describedby="nrsBatchSummary"', page)
         self.assertIn(

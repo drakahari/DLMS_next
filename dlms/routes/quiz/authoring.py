@@ -6,6 +6,7 @@ import io
 from io import BytesIO
 import os
 import re
+import string
 import time
 
 from flask import (
@@ -19,6 +20,10 @@ from flask import (
 )
 
 from .dependencies import QuizAuthoringDependencies
+
+
+SHORT_QUIZ_CHOICE_LABELS = tuple(string.ascii_uppercase)
+SHORT_QUIZ_MAX_CHOICES = len(SHORT_QUIZ_CHOICE_LABELS)
 
 
 def _bind_dependencies(view_func, dependencies):
@@ -268,19 +273,38 @@ def save_short_quiz(dependencies):
             })
             continue
 
+        choice_prefix = f"choice_{qnum}_"
+        submitted_choices = []
+        for key in request.form.keys():
+            if not key.startswith(choice_prefix):
+                continue
+            label = key.replace(choice_prefix, "", 1)
+            choice_text = request.form.get(f"choice_{qnum}_{label}", "").strip()
+            if choice_text:
+                submitted_choices.append((label, choice_text))
+
+        if len(submitted_choices) > SHORT_QUIZ_MAX_CHOICES:
+            flash(
+                f"Question {qnum} cannot have more than "
+                f"{SHORT_QUIZ_MAX_CHOICES} answer choices.",
+                "error",
+            )
+            return redirect("/create_short_quiz")
+        if any(label not in SHORT_QUIZ_CHOICE_LABELS for label, _ in submitted_choices):
+            flash(
+                f"Question {qnum} contains an unsupported answer choice. "
+                "Use choices A through Z.",
+                "error",
+            )
+            return redirect("/create_short_quiz")
+
         choices = []
         correct_letters = []
-        choice_prefix = f"choice_{qnum}_"
-        choice_labels = sorted(
-            [key.replace(choice_prefix, "") for key in request.form.keys() if key.startswith(choice_prefix)],
-            key=lambda label: ord(label[0]) if label else 999
+        submitted_choices.sort(
+            key=lambda choice: SHORT_QUIZ_CHOICE_LABELS.index(choice[0])
         )
-
-        for label in choice_labels:
-            choice_text = request.form.get(f"choice_{qnum}_{label}", "").strip()
+        for label, choice_text in submitted_choices:
             is_correct = bool(request.form.get(f"correct_{qnum}_{label}"))
-            if not choice_text:
-                continue
             if is_correct:
                 correct_letters.append(label)
             choices.append({"label": label, "text": choice_text, "is_correct": is_correct})
