@@ -134,7 +134,7 @@
                     <span class="dashboard-heading-icon">◷</span>
                     <div>
                         <span class="daily-review-eyebrow">RECOMMENDED DAILY START</span>
-                        <h2 id="dailyReviewHeading">Today’s Review</h2>
+                        <h2 id="dailyReviewHeading" tabindex="-1">Today’s Review</h2>
                     </div>
                 </div>
                 <strong id="dailyReviewCount" class="daily-review-count" role="status" aria-live="polite">Loading…</strong>
@@ -144,6 +144,18 @@
                 <div class="dashboard-loading">Building today’s local review plan…</div>
             </div>
             <div id="dailyReviewEmpty" class="daily-review-empty" hidden></div>
+            <div id="dailyReviewStatus" class="daily-review-status" role="status" aria-live="polite" aria-atomic="true"></div>
+            <dialog id="dailyReviewClearDialog" class="daily-review-clear-dialog" aria-labelledby="dailyReviewClearTitle" aria-describedby="dailyReviewClearDescription dailyReviewClearQuiz">
+                <form method="dialog">
+                    <h2 id="dailyReviewClearTitle">Clear this unfinished session?</h2>
+                    <p id="dailyReviewClearQuiz"></p>
+                    <p id="dailyReviewClearDescription">This removes the saved resume point in this browser, including unfinished answers saved only there. The quiz, completed history, scores, and activity already saved to DLMS are kept. You will not be able to resume this saved session afterward.</p>
+                    <div class="daily-review-confirm-actions">
+                        <button class="daily-review-remove" value="cancel" autofocus>Cancel</button>
+                        <button class="daily-review-action" value="clear">Clear Saved Resume Point</button>
+                    </div>
+                </form>
+            </dialog>
         </section>
 
         <section class="dashboard-action-grid" aria-label="Quick access">

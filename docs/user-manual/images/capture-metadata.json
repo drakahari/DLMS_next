@@ -1,7 +1,7 @@
 {
   "application": "DLMS",
   "version": "3.2.0",
-  "generated_at": "2026-09-15T02:42:40.978555+00:00",
+  "generated_at": "2026-09-15T13:06:33.715093+00:00",
   "browser": "Firefox (headless WebDriver BiDi)",
   "theme": "light",
   "viewport": {
@@ -24,7 +24,7 @@
       "theme": "light",
       "viewport": "1440×1000",
       "dimensions": "1440×1000",
-      "fixture_version": "dlms-user-manual-3.2-v1",
+      "fixture_version": "dlms-user-manual-3.2-v2",
       "capture_route": "/"
     },
     {

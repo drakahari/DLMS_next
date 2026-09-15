@@ -9772,6 +9772,21 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
         "document.querySelector('.daily-review-unfinished').textContent"
     )
 
+    # Abandoning generated recovery restores its valid server recommendation,
+    # without deleting the generated quiz, lineage, saved activity or schedule.
+    with sqlite3.connect(database_path) as connection:
+        before_clear = list(connection.iterdump())
+    browser.click(".daily-review-unfinished .daily-review-remove")
+    browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
+    browser.click("#dailyReviewClearDialog button[value='clear']")
+    browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+    assert browser.evaluate("document.querySelector('.daily-review-native_due') !== null") is True
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.daily-review-unfinished')].every(card=>!card.textContent.includes('Spaced Review'))"
+    ) is True
+    with sqlite3.connect(database_path) as connection:
+        assert list(connection.iterdump()) == before_clear
+
 
 def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles(
     browser_server,
@@ -9921,6 +9936,21 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
             f"localStorage.getItem({json.dumps(first_recovery_key)}) === null"
         ) is True
 
+        # Clear one profile's checkpoint while the other keeps its own intact.
+        second.navigate(f"{browser_server.base_url}/quizzes/{browser_server.metadata['critical_html']}")
+        second.wait_for("quizRecoveryReady === true")
+        second.click(".exam-mode-btn")
+        dashboard_state(second, 2)
+        first.click(".daily-review-unfinished .daily-review-remove")
+        first.click("#dailyReviewClearDialog button[value='clear']")
+        first.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+        assert first.evaluate(f"localStorage.getItem({json.dumps(first_recovery_key)}) === null") is True
+        assert second.evaluate(f"localStorage.getItem({json.dumps(second_recovery_key)}) !== null") is True
+        assert second.evaluate(f"localStorage.getItem({json.dumps(first_recovery_key)}) !== null") is True
+        assert first.evaluate("document.querySelector('.daily-review-unfinished') === null") is True
+        second_state = dashboard_state(second, 2)
+        assert "Browser Companion" in " ".join(second_state["unfinished"])
+
         first_generated_key = complete_one_due_question(first)
         first_after = dashboard_state(first, 1)
         second_after = dashboard_state(second, 1)
@@ -9944,7 +9974,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         assert first.evaluate(
             f"localStorage.getItem({json.dumps(final_generated_key)}) === null"
         ) is True
-        assert "Browser Critical Workflow" in " ".join(first_final["unfinished"])
+        assert not first_final["unfinished"]  # This profile explicitly abandoned its session.
         assert "Browser Companion" in " ".join(second_final["unfinished"])
     finally:
         for browser, process, output in reversed(launched):
@@ -9954,3 +9984,185 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
                 browser.close()
             _terminate_process_tree(process)
             output.close()
+
+
+def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoints(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    # The mixed-type fixture has playable artifacts but is normally deliberately
+    # absent from the Library registry. Expose it here as the third real quiz.
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry.append({"id": "browser-recovery-mixed", "html": browser_stack.metadata["recovery_html"],
+                     "title": "Browser Recovery Mixed Types",
+                     "folder": "Browser Regression", "hidden": False})
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    keys = []
+    for name, mode in (("critical", "study"), ("companion", "exam"), ("recovery", "study")):
+        browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata[name + '_html']}")
+        browser.wait_for("quizRecoveryReady === true")
+        browser.click(f".{mode}-mode-btn")
+        keys.append(browser.evaluate("quizRecoveryController.storageKey"))
+    # Rename and move after checkpoint creation: recovery still targets quiz ID.
+    registry[-1].update({
+        "title": "Renamed Browser Recovery — a deliberately long quiz title for narrow-window wrapping",
+        "folder": "Uncategorized",
+    })
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+
+    # Exercise real Tab order, modal focus, contrast and geometry across palettes.
+    # This headless host never gains document focus: Enter/Space does not activate
+    # even an independent native button. Keep production native button semantics;
+    # use live-element clicks for activation rather than a test-only UI workaround.
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/")
+        browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 1000)
+            browser.wait_for_page_ready()
+            browser.activate()
+            browser.evaluate("document.querySelector('.daily-review-unfinished a').focus(); true")
+            browser.press_key("\ue004")
+            assert browser.evaluate("document.activeElement.className") == "daily-review-remove"
+            browser.click("#dailyReviewList .daily-review-remove")
+            browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
+            geometry = browser.evaluate(
+                "(() => {const d=document.getElementById('dailyReviewClearDialog');"
+                "const r=d.getBoundingClientRect();return {overflow:document.documentElement.scrollWidth-innerWidth,"
+                "dialogOverflow:d.scrollWidth-d.clientWidth,left:r.left,right:r.right,"
+                "cancelFocused:document.activeElement.value==='cancel',"
+                "contained:[...d.querySelectorAll('button')].every(n=>{const b=n.getBoundingClientRect();return b.left>=r.left&&b.right<=r.right}),"
+                "cards:[...document.querySelectorAll('.daily-review-item')].every(n=>n.scrollWidth<=n.clientWidth+1)};})()"
+            )
+            assert geometry["overflow"] <= 1 and geometry["dialogOverflow"] <= 1
+            assert geometry["left"] >= 0 and geometry["right"] <= width
+            assert geometry["cancelFocused"] and geometry["contained"] and geometry["cards"]
+            contrast = _theme_contrast_snapshot(browser, {
+                "secondary": ".daily-review-remove", "cancel": "#dailyReviewClearDialog button[value='cancel']",
+                "confirm": "#dailyReviewClearDialog button[value='clear']",
+                "description": "#dailyReviewClearDescription",
+            })
+            assert all(value["contrast"] >= 4.5 for value in contrast.values()), (theme, width, contrast)
+            browser.press_key("\ue004")
+            assert browser.evaluate("document.activeElement.value") == "clear"
+            browser.command("input.performActions", {
+                "context": browser.context,
+                "actions": [{"type": "key", "id": "keyboard", "actions": [
+                    {"type": "keyDown", "value": "\ue008"},
+                    {"type": "keyDown", "value": "\ue004"},
+                    {"type": "keyUp", "value": "\ue004"},
+                    {"type": "keyUp", "value": "\ue008"},
+                ]}],
+            })
+            browser.command("input.releaseActions", {"context": browser.context})
+            assert browser.evaluate("document.activeElement.value") == "cancel"
+            browser.click("#dailyReviewClearDialog button[value='cancel']")
+            browser.wait_for("!document.getElementById('dailyReviewClearDialog').open")
+            assert browser.evaluate("document.activeElement.classList.contains('daily-review-remove')") is True
+    assert browser.evaluate(f"{json.dumps(keys)}.every(key=>localStorage.getItem(key)!==null)") is True
+
+    # Cancel leaves the same record/card intact, including the older third slot.
+    target = ".daily-review-unfinished:has(a[href$='/browser_recovery_mixed.html']) .daily-review-remove"
+    before = browser.evaluate(f"{json.dumps(keys)}.map(key=>localStorage.getItem(key))")
+    browser.click(target)
+    browser.click("#dailyReviewClearDialog button[value='cancel']")
+    assert browser.evaluate(f"{json.dumps(keys)}.map(key=>localStorage.getItem(key))") == before
+
+    # A revision written during confirmation must not be cleared.
+    browser.click(target)
+    changed_key = browser.evaluate(
+        "(() => {const r=DLMSQuizRecovery.listStoredRecords().records.find(r=>r.quizId==='browser-recovery-mixed');"
+        "const key=DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId);"
+        "const record=JSON.parse(localStorage.getItem(key));record.session.revision++;"
+        "localStorage.setItem(key,JSON.stringify(record));return key;})()"
+    )
+    browser.click("#dailyReviewClearDialog button[value='clear']")
+    browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('session changed')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(changed_key)}) !== null") is True
+
+    # Removal failure is visible, preserves all records, and never hides the card.
+    for method in ("removeItem", "getItem"):
+        browser.evaluate(f"window.__storageMethod=Storage.prototype.{method};Storage.prototype.{method}=function(){{throw new Error('storage denied')}}; true")
+        try:
+            browser.click(target)
+            browser.click("#dailyReviewClearDialog button[value='clear']")
+            browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('could not be cleared')")
+            assert browser.evaluate("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+        finally:
+            browser.evaluate(f"Storage.prototype.{method}=window.__storageMethod; true")
+
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        saved_data = list(connection.iterdump())
+    saved_registry = registry_path.read_bytes()
+    browser.click(target)
+    browser.click("#dailyReviewClearDialog button[value='clear']")
+    browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(changed_key)}) === null") is True
+    assert browser.evaluate(f"{json.dumps(keys[:2])}.every(key=>localStorage.getItem(key)!==null)") is True
+    assert "Browser Critical Workflow" in browser.evaluate("document.getElementById('dailyReviewList').textContent")
+    # The remaining ordinary Exam checkpoint can also be abandoned.
+    browser.click(".daily-review-unfinished:has(a[href*='browser_companion']) .daily-review-remove")
+    browser.click("#dailyReviewClearDialog button[value='clear']")
+    browser.wait_for(f"localStorage.getItem({json.dumps(keys[1])}) === null")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        assert list(connection.iterdump()) == saved_data
+    assert registry_path.read_bytes() == saved_registry
+
+
+def test_today_review_clear_protects_failed_study_and_submitted_exam_saves(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    for name, mode, endpoint in (("critical", "study", "/api/learning-events/study-response"), ("companion", "exam", "/record_attempt")):
+        browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata[name + '_html']}")
+        browser.wait_for("quizRecoveryReady === true")
+        browser.evaluate(
+            "window.__originalFetch=window.fetch.bind(window);window.fetch=(...args)=>String(args[0]).includes("
+            + json.dumps(endpoint) + ")?Promise.reject(new Error('simulated save failure')):window.__originalFetch(...args); true"
+        )
+        browser.click(f".{mode}-mode-btn")
+        browser.click("#choices .choice[data-index='0']")
+        if mode == "exam":
+            browser.evaluate("window.confirm=()=>true; true")
+            browser.click("#submitBtn")
+            browser.wait_for("document.getElementById('result').textContent.includes('was not saved')")
+        else:
+            browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])')")
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+    before = browser.evaluate("DLMSQuizRecovery.listStoredRecords().records.map(r=>localStorage.getItem(DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId)))")
+    for name, message in (("companion", "Use Finish Saving"), ("critical", "Study answers waiting")):
+        browser.click(f".daily-review-unfinished:has(a[href*='browser_{name}']) .daily-review-remove")
+        browser.click("#dailyReviewClearDialog button[value='clear']")
+        browser.wait_for(f"document.getElementById('dailyReviewStatus').textContent.includes({json.dumps(message)})")
+        assert browser.evaluate("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+    assert browser.evaluate("DLMSQuizRecovery.listStoredRecords().records.map(r=>localStorage.getItem(DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId)))") == before
+
+
+def test_today_review_clear_does_not_control_or_resurrect_an_active_quiz_tab(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    key = browser.evaluate("quizRecoveryController.storageKey")
+    quiz_context = browser.context
+    dashboard_context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    try:
+        browser.context = dashboard_context
+        browser.navigate(browser_stack.base_url + "/")
+        browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
+        browser.click(".daily-review-remove")
+        browser.click("#dailyReviewClearDialog button[value='clear']")
+        browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+        browser.context = quiz_context
+        browser.wait_for("quizRecoveryController.ownsState === false")
+        assert browser.evaluate("quizRecoveryController.checkpoint()") is False
+        assert browser.evaluate("index === 0 && !examMode && !document.getElementById('quiz').hidden") is True
+        assert "cleared by another DLMS page" in browser.evaluate("document.getElementById('quizRecoveryNotice').textContent")
+        browser.navigate(browser_stack.base_url + "/")  # pagehide must not recreate it.
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(key)}) === null") is True
+    finally:
+        _close_context_after_pagehide(browser, dashboard_context, quiz_context)

@@ -54,6 +54,14 @@ computer sees when both use the same DLMS server. Successfully saved due
 counts, completed activity, concepts, and other server-derived recommendations
 are shared after refresh; interrupted checkpoints are not.
 
+If you no longer want to continue, choose **Remove from Today’s Review** on
+that card and confirm **Clear Saved Resume Point**. This clears only the
+saved resume point in this browser, including its unfinished answers. The
+quiz, completed history, scores, and activity already saved to DLMS remain.
+Other browsers and other unfinished sessions are unaffected. If Study answers
+or a submitted Exam attempt are still waiting to be saved, DLMS keeps the
+checkpoint and asks you to **Resume Quiz** or **Finish Saving** first.
+
 A genuinely interrupted generated session can replace the equivalent new
 recommendation on that browser. Once the session is complete and its activity
 has been saved, its recovery checkpoint is cleared. It should not return as a

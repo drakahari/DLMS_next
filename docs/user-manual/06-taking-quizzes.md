@@ -160,6 +160,10 @@ Resume action marked **This browser**. That label is important: an interrupted
 checkpoint belongs to the browser profile where it was created, not to every
 device connected to the same DLMS server.
 
+To abandon a saved session without removing the quiz, use the Dashboard card's
+**Remove from Today’s Review** action. See [unfinished cards](07-study-and-review.md#understand-unfinished-cards)
+for confirmation and pending-save protection.
+
 DLMS validates a checkpoint against the current playable quiz. A checkpoint
 that has expired, is malformed, or no longer matches an edited quiz is not
 silently applied to incompatible content.

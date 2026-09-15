@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  let serverPlan = null;
+
   const escapeHtml = value => String(value ?? "").replace(
     /[&<>"']/g,
     character => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"})[character],
@@ -41,6 +43,7 @@
           ? `A completed Exam attempt is waiting to finish saving; last updated ${updatedText}.`
           : `Unfinished ${record.mode} session at question ${record.questionIndex + 1}; last updated ${updatedText}.`,
         scope: "This browser",
+        recovery: record,
         action: {
           label: finishSaving ? "Finish Saving" : "Resume Quiz",
           url: quizUrl(quiz.html),
@@ -104,17 +107,67 @@
           <h3>${escapeHtml(item.title)}</h3>
           <p>${escapeHtml(item.reason)}</p>
         </div>
-        <div class="daily-review-item-action">${actionMarkup(item.action)}</div>
+        <div class="daily-review-item-action">${actionMarkup(item.action)}${item.kind === "unfinished" && item.recovery ? '<button class="daily-review-remove" type="button">Remove from Today’s Review</button>' : ""}</div>
       </article>`).join("");
     list.querySelectorAll("form").forEach(form => window.dlmsProtectForm?.(form));
+    list.querySelectorAll(".daily-review-item").forEach((card, index) => {
+      const button = card.querySelector(".daily-review-remove");
+      if (!button) return;
+      button.setAttribute("aria-label", `Remove unfinished session for ${items[index].title.replace(/^Resume |^Finish saving /, "")} from Today’s Review`);
+      button.addEventListener("click", () => clearUnfinishedItem(items[index]));
+    });
   }
 
-  async function loadDailyReview() {
+  function announce(message) {
+    const status = document.getElementById("dailyReviewStatus");
+    if (status) status.textContent = message;
+  }
+
+  function confirmClear(item) {
+    const dialog = document.getElementById("dailyReviewClearDialog");
+    document.getElementById("dailyReviewClearQuiz").textContent = item.title;
+    dialog.returnValue = "cancel";
+    return new Promise(resolve => {
+      dialog.addEventListener("close", () => resolve(dialog.returnValue === "clear"), {once: true});
+      dialog.showModal();
+    });
+  }
+
+  async function clearUnfinishedItem(item) {
+    if (!await confirmClear(item)) return;
+    const result = window.DLMSQuizRecovery.clearUnfinishedQuiz(item.recovery.quizId, item.recovery);
+    if (result.status === "pending_study") {
+      announce("This session has Study answers waiting to be saved. Resume Quiz and finish saving or retry the failed save before removing it.");
+      return;
+    }
+    if (result.status === "pending_exam") {
+      announce("This submitted Exam attempt is waiting for save confirmation. Use Finish Saving before removing it.");
+      return;
+    }
+    if (result.status === "storage_error") {
+      announce("The saved resume point could not be cleared in this browser. Nothing was removed. Check browser storage permissions and try again.");
+      return;
+    }
+    // Remerge the original server plan, never an already merged/suppressed plan.
+    if (serverPlan) renderDailyReview(mergeBrowserSessions(serverPlan));
+    const refreshed = await loadDailyReview({keepCurrent: true});
+    announce(result.status === "removed"
+      ? `Saved resume point cleared in this browser. The quiz and saved activity are kept.${refreshed ? "" : " Recommendations could not be refreshed; refresh the page when DLMS is available."}`
+      : `The unfinished session changed while confirmation was open. Nothing was cleared. Review the updated recommendations before trying again.${refreshed ? "" : " Server recommendations could not be refreshed; refresh the page when DLMS is available."}`);
+    const focusTarget = document.querySelector("#dailyReviewList a, #dailyReviewList button")
+      || document.getElementById("dailyReviewHeading");
+    focusTarget?.focus();
+  }
+
+  async function loadDailyReview({keepCurrent = false} = {}) {
     try {
       const response = await fetch("/api/daily-review-plan", {cache: "no-store"});
       if (!response.ok) throw new Error("Daily review plan was unavailable");
-      renderDailyReview(mergeBrowserSessions(await response.json()));
+      serverPlan = await response.json();
+      renderDailyReview(mergeBrowserSessions(serverPlan));
+      return true;
     } catch (error) {
+      if (keepCurrent) return false;
       const list = document.getElementById("dailyReviewList");
       const empty = document.getElementById("dailyReviewEmpty");
       const count = document.getElementById("dailyReviewCount");
@@ -125,6 +178,7 @@
         empty.innerHTML = "<strong>Today’s Review could not be loaded.</strong><span>The rest of DLMS remains available below.</span>";
       }
       console.error("Daily review plan failed:", error);
+      return false;
     }
   }
 

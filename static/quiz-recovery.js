@@ -384,6 +384,34 @@
     }
   }
 
+  // Dashboard abandonment must not discard persistence work or a newer session.
+  // This deliberately does not use the quiz controller's broader Start Over path.
+  function clearUnfinishedQuiz(quizId, expected) {
+    const key = `${STORAGE_PREFIX}${encodeURIComponent(String(quizId))}`;
+    try {
+      const raw = localStorage.getItem(key);
+      let record = null;
+      try { record = raw === null ? null : JSON.parse(raw); }
+      catch (_error) { return {status: "changed"}; }
+      if (!validateRecordEnvelope(record) || String(record.quiz.id) !== String(quizId)
+          || !expected || record.session.id !== expected.sessionId
+          || record.session.revision !== expected.revision
+          || record.session.ownerToken !== expected.ownerToken
+          || record.session.updatedAt !== expected.updatedAt) {
+        return {status: "changed"};
+      }
+      if (record.session.phase === "submitting" || record.pendingAttempt !== null) {
+        return {status: "pending_exam"};
+      }
+      if (record.unacknowledgedStudyEvents.length !== 0) {
+        return {status: "pending_study"};
+      }
+      return {status: removeStoredQuiz(quizId) ? "removed" : "storage_error"};
+    } catch (_error) {
+      return {status: "storage_error"};
+    }
+  }
+
   function clearAllStoredRecords() {
     try {
       const keys = recoveryStorageKeys();
@@ -455,6 +483,9 @@
               || (active !== null && !active.has(quizId))) return;
           records.push({
             quizId,
+            sessionId: record.session.id,
+            revision: record.session.revision,
+            ownerToken: record.session.ownerToken,
             mode: record.session.mode,
             phase: record.session.phase,
             questionIndex: record.view.questionIndex,
@@ -768,6 +799,7 @@
     pruneStoredRecords,
     listStoredRecords,
     removeStoredQuiz,
+    clearUnfinishedQuiz,
     clearAllStoredRecords,
   };
 })();

@@ -54,6 +54,19 @@ def test_lifecycle_cleanup_is_scoped_and_best_effort():
     assert "!current && savedRecord !== null && !allowTakeover" in RECOVERY
 
 
+def test_dashboard_clear_is_guarded_without_changing_start_over():
+    clear = RECOVERY[RECOVERY.index("function clearUnfinishedQuiz"):RECOVERY.index("function clearAllStoredRecords")]
+    assert "validateRecordEnvelope(record)" in clear
+    for field in ("sessionId", "revision", "ownerToken", "updatedAt"):
+        assert f"expected.{field}" in clear
+    assert 'status: "pending_exam"' in clear
+    assert 'status: "pending_study"' in clear
+    assert "record.unacknowledgedStudyEvents.length !== 0" in clear
+    assert "removeStoredQuiz(quizId)" in clear
+    assert "fetch(" not in clear
+    assert "clearAllStoredRecords(" not in clear
+
+
 def test_fingerprint_tracks_playable_artifact_not_display_title():
     fingerprint_start = RECOVERY.index("async function quizFingerprint")
     fingerprint_end = RECOVERY.index("function questionDescriptors", fingerprint_start)

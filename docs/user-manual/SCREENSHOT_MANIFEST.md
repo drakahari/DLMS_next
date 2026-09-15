@@ -36,7 +36,7 @@ the optional secondary states remain uninserted.
 
 | ID | Title | Classification | Capture status | File | Capture note |
 | --- | --- | --- | --- | --- | --- |
-| UM-01 | Dashboard and Today’s Review | Fully automatable | Captured | [UM-01-dashboard.png](images/UM-01-dashboard.png) | Populated recommendations and one genuine `This browser` checkpoint. |
+| UM-01 | Dashboard and Today’s Review | Fully automatable | Captured | [UM-01-dashboard.png](images/UM-01-dashboard.png) | Populated recommendations and one genuine `This browser` checkpoint, with Resume Quiz and the secondary Remove from Today’s Review action. |
 | UM-02 | Build Quiz hub | Fully automatable | Captured | [UM-02-build-quiz-hub.png](images/UM-02-build-quiz-hub.png) | Current content-acquisition choices without a selected local file. |
 | UM-03 | Generated Practice Smart View | Fully automatable | Captured | [UM-03-generated-practice-smart-view.png](images/UM-03-generated-practice-smart-view.png) | Refreshed with v2 synthetic lineage data; active dynamic view, generated badges, and aggregate source-quiz disclosures are visible. |
 | UM-04 | Mixed Quiz Builder | Fully automatable | Captured | [UM-04-mixed-quiz-builder.png](images/UM-04-mixed-quiz-builder.png) | Four questions selected from two synthetic sources. |
