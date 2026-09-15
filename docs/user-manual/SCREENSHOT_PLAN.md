@@ -23,6 +23,26 @@ Help asset must be compared with the current 3.2.0 screen at the target viewport
 - Recheck every planned image at release time. A screenshot is retained when it
   remains materially accurate even if cosmetic details changed.
 
+The first reproducible capture set uses Firefox at a 1440 × 1000 CSS-pixel
+viewport, device scale 1, and the Light theme. The capture tool creates a
+disposable data root containing only versioned synthetic demonstration data,
+starts the real application and a clean Firefox profile, captures the viewport,
+and removes its temporary server, browser, profile, and data files. Animations
+and the text caret are suppressed during capture; application styling and
+behavior are otherwise unchanged.
+
+Run the complete capture set from the repository root with:
+
+```text
+.venv/bin/python tools/capture_user_manual_screenshots.py
+```
+
+Use `--only UM-03,UM-12` for a focused refresh or `--list` to inspect the
+automation contract without starting DLMS or Firefox. Captured assets live in
+[`images/`](images/), and [`SCREENSHOT_MANIFEST.md`](SCREENSHOT_MANIFEST.md)
+records the automation classification, filename, status, and any deliberately
+deferred second state for every ID.
+
 ## Priority screenshots
 
 | ID | Manual chapter / section | Screen or workflow and required state | Exact teaching focus / suggested callouts | Safe demo data and privacy controls | Framing / themes | Existing Help asset candidate | Teaching value / staleness |
@@ -71,9 +91,17 @@ Help asset must be compared with the current 3.2.0 screen at the target viewport
 
 ## Capture sequencing
 
-Capture only after the relevant Phase 2 chapter is stable. Establish one
-versioned synthetic documentation dataset first, then capture UM-01 through
-UM-27 in workflow order so later states arise naturally from earlier actions.
-Record which existing Help assets were reused, replaced, or rejected. The
-manual source should reference images by stable semantic names rather than by
-screen order.
+The initial UM-01 through UM-27 set was captured from the versioned
+`dlms-user-manual-3.2-v1` synthetic fixture after the substantive chapters and
+integrated editorial pass stabilized. The automation runs the local-mode
+workflow in plan order and restarts the real application in explicit LAN/server
+mode for UM-25. No existing Help screenshot was reused: each asset is a clean,
+current DLMS 3.2.0 viewport capture.
+
+Several plan entries mention that two frames *may* teach a multi-stage workflow
+more clearly. The manifest labels these entries partially automatable when the
+canonical asset intentionally captures only the stronger primary state. Those
+optional companion frames should be considered during human asset review,
+rather than added automatically and increasing manual size before their value
+is established. The manual should ultimately reference approved images by
+stable semantic filenames.
