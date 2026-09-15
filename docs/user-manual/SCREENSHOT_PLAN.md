@@ -49,7 +49,7 @@ deferred second state for every ID.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | UM-01 | 2. Installation; 3. Navigation | Dashboard after first meaningful use, with Today’s Review populated | Primary navigation; “start here” Today’s Review; server-derived action versus a `This browser` Resume item; Quick Access | Three neutral quizzes, one due source question, one weak concept, one deliberately interrupted local checkpoint; no real history | Full window; Light only | `dashboard.webp` may provide orientation but must be checked for the 3.2 Today’s Review panel | Essential mental model; high staleness because recommendations evolve |
 | UM-02 | 4. Creating/importing | Build Quiz hub | Distinguish manual, text/paste, PDF/Image, matching CSV, and External AI paths | No uploads or local filenames visible | Focused full content area; Light | `build_quiz.webp` is a likely reusable candidate | High value, moderate staleness |
-| UM-03 | 5. Library organization | Quiz Library with one folder, active Generated Practice Smart View, badges, search, and Library Tools | Folder versus Smart View; active filter; Generated Practice badge; Mixed Quiz distinction; return to full library | Neutral quizzes and generated sessions only; use non-branded topics | Full window; Light, with narrow layout separately tested but not necessarily published | No verified current asset; `dashboard.webp` is not a substitute | Essential for 3.2; high staleness |
+| UM-03 | 5. Library organization | Quiz Library with one folder, active Generated Practice Smart View, badges, source summaries, search, and Library Tools | Folder versus Smart View; active filter; Generated Practice badge; aggregate source-quiz provenance; return to full library | Neutral source quizzes and generated sessions with deterministic question lineage; use non-branded topics | Viewport focused from the active Smart View through the generated cards; Light, with narrow layout separately tested but not necessarily published | No verified current asset; `dashboard.webp` is not a substitute | Essential for 3.2; high staleness |
 | UM-04 | 5. Mixed Quiz | Mixed Quiz Builder after filters are applied and questions from two sources selected | Source/folder/concept/missed filters; provenance; selected total; title and create action | Two small synthetic source quizzes with repeated neutral concepts | Focused content area; Light | None | High value; moderate staleness |
 | UM-05 | 5. Duplicate review | Duplicate Question Review containing one exact pair and one possible pair | Exact versus possible; source quiz/question context; advisory-only nature; Edit source link | Purpose-written synthetic questions; no copied material | Focused content area; Light | None | Useful for a non-obvious workflow; low-to-moderate staleness |
 | UM-06 | 5/15. Portable bundles | Quiz Bundles screen with export selection and a validated import preview | Selected source quizzes; bundle scope; preview, rename notice, confirm/cancel; distinction from Study Packs/backups | Two neutral quizzes, one harmless local image, one intentional title collision | Two focused captures may be clearer than one; Light | None | High value; moderate staleness |
@@ -91,9 +91,10 @@ deferred second state for every ID.
 
 ## Capture sequencing
 
-The initial UM-01 through UM-27 set was captured from the versioned
-`dlms-user-manual-3.2-v1` synthetic fixture after the substantive chapters and
-integrated editorial pass stabilized. The automation runs the local-mode
+The initial UM-01 through UM-27 set was captured from a versioned synthetic
+fixture after the substantive chapters and integrated editorial pass
+stabilized. UM-03 was refreshed with the `dlms-user-manual-3.2-v2` fixture to
+show aggregate source-quiz provenance. The automation runs the local-mode
 workflow in plan order and restarts the real application in explicit LAN/server
 mode for UM-25. No existing Help screenshot was reused: each asset is a clean,
 current DLMS 3.2.0 viewport capture.

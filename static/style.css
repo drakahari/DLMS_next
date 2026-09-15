@@ -14974,6 +14974,32 @@ body:not([class]) > .container > .hero-title {
     box-shadow: 0 10px 26px var(--theme-shadow, rgba(0,0,0,.24));
 }
 
+.library-page .library-folder-system {
+    border-color: var(--semantic-info-border) !important;
+}
+
+.library-page .library-folder-system .library-folder-header,
+.library-page .library-folder-system .library-folder-header:active {
+    cursor: default;
+}
+
+.library-page .library-system-group-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    padding: 2px 7px;
+    border: 1px solid var(--semantic-info-border);
+    border-radius: 999px;
+    color: var(--semantic-info-text);
+    background: var(--semantic-info-surface);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    line-height: 1.35;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
 .library-page .library-folder-header {
     min-width: 0;
     background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 4%, var(--theme-panel-1, rgba(6,20,45,.82))) !important;
@@ -14991,6 +15017,42 @@ body:not([class]) > .container > .hero-title {
 .library-page .library-folder-body {
     min-width: 0;
     background: color-mix(in srgb, var(--theme-accent, #1b9ff2) 2%, var(--theme-surface, rgba(5,18,39,.58)));
+}
+
+.library-page .library-source-provenance {
+    max-width: 100%;
+    margin-top: 7px;
+    color: var(--theme-muted-text, #b8c2cc);
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.library-page .library-source-provenance strong,
+.library-page .library-source-provenance summary {
+    color: var(--theme-page-text, #eaf2ff);
+}
+
+.library-page .library-source-provenance summary {
+    width: fit-content;
+    max-width: 100%;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.library-page .library-source-provenance summary:focus-visible {
+    outline: 2px solid var(--theme-accent, #1b9ff2);
+    outline-offset: 3px;
+    border-radius: 3px;
+}
+
+.library-page .library-source-provenance ul {
+    margin: 6px 0 0;
+    padding-left: 22px;
+}
+
+.library-page .library-source-provenance li + li {
+    margin-top: 3px;
 }
 
 .library-page .library-folder-title-group {

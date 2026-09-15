@@ -8,7 +8,7 @@ The Library does not replace History or Learning Intelligence. It organizes
 the quizzes you can use; History records completed attempts, and Learning
 Intelligence interprets saved learning evidence.
 
-![Quiz Library with the Generated Practice Smart View active, generated-practice badges, folders, search, and Library Tools](images/UM-03-generated-practice-smart-view.png)
+![Quiz Library with the Generated Practice Smart View active, generated-practice badges, source-quiz details, folders, search, and Library Tools](images/UM-03-generated-practice-smart-view.png)
 
 *The highlighted Smart View changes which quizzes are shown without moving
 them from their folders.*
@@ -116,7 +116,21 @@ Several review workflows create playable quizzes from existing source
 questions. Their Library cards carry a specific label such as **Adaptive Study
 practice**, **Smart Review practice**, **Concept Review practice**, **Due
 Questions practice**, or **Topic Retention practice**. The **Generated
-Practice** Smart View gathers these saved sessions in one place.
+Practice** Smart View gathers these saved sessions in one place, including
+sessions that you have moved to custom folders.
+
+In the full Library, generated practice that would otherwise appear under
+Uncategorized is collected in an automatic **Generated Practice** group. This
+is a view of the existing quiz placement, not a folder that DLMS saves or that
+you need to manage. If you deliberately move a generated session to a custom
+folder, it stays in that folder instead.
+
+When question lineage is available, a generated-practice card identifies its
+source quiz or reports the number of contributing source quizzes. Expand a
+multiple-source summary to see their current names. A renamed source uses its
+current name; old generated sessions or sessions whose source was deleted may
+instead say that source details are unavailable. DLMS does not guess provenance
+from similar question wording.
 
 Generated practice does not replace or modify its source quiz. DLMS keeps the
 relationship to the source questions so saved answers can contribute to the

@@ -335,6 +335,81 @@ def _generated_quiz_presentations(cur, registry_ids, registry):
     return presentations
 
 
+def _generated_quiz_source_provenance(cur, generated_quiz_ids):
+    """Resolve live source-quiz provenance for generated practice in one query.
+
+    Lineage is intentionally authoritative. Missing or deleted source rows stay
+    unresolved; this helper never falls back to comparing question text.
+    """
+    ordered_ids = list(dict.fromkeys(generated_quiz_ids))
+    provenance = {
+        quiz_id: {"sources": [], "unavailable_count": 0, "search_text": ""}
+        for quiz_id in ordered_ids
+    }
+    if not ordered_ids:
+        return provenance
+
+    placeholders = ",".join("?" for _ in ordered_ids)
+    rows = cur.execute(
+        f"""
+        SELECT generated.quiz_id AS generated_quiz_id,
+               generated.id AS generated_question_id,
+               generated.source_question_uid,
+               source.quiz_id AS source_quiz_id,
+               source_quiz.title AS source_quiz_title
+        FROM questions AS generated
+        LEFT JOIN questions AS source
+          ON source.question_uid = generated.source_question_uid
+        LEFT JOIN quizzes AS source_quiz
+          ON source_quiz.id = source.quiz_id
+        WHERE generated.quiz_id IN ({placeholders})
+        ORDER BY generated.quiz_id, generated.question_number, generated.id
+        """,
+        ordered_ids,
+    ).fetchall()
+
+    seen_source_ids = {quiz_id: set() for quiz_id in ordered_ids}
+    seen_unavailable = {quiz_id: set() for quiz_id in ordered_ids}
+    for row in rows:
+        quiz_id = int(row["generated_quiz_id"])
+        source_quiz_id = row["source_quiz_id"]
+        if source_quiz_id is None:
+            unavailable_key = (
+                "uid",
+                row["source_question_uid"],
+            ) if row["source_question_uid"] else (
+                "question",
+                int(row["generated_question_id"]),
+            )
+            if unavailable_key not in seen_unavailable[quiz_id]:
+                seen_unavailable[quiz_id].add(unavailable_key)
+                provenance[quiz_id]["unavailable_count"] += 1
+            continue
+        source_quiz_id = int(source_quiz_id)
+        if source_quiz_id in seen_source_ids[quiz_id]:
+            continue
+        seen_source_ids[quiz_id].add(source_quiz_id)
+        provenance[quiz_id]["sources"].append({
+            "quiz_id": source_quiz_id,
+            "title": str(row["source_quiz_title"] or "").strip(),
+        })
+
+    for item in provenance.values():
+        title_counts = {}
+        for source in item["sources"]:
+            title_key = source["title"].casefold()
+            title_counts[title_key] = title_counts.get(title_key, 0) + 1
+        for source in item["sources"]:
+            title = source["title"] or f"Quiz #{source['quiz_id']}"
+            if source["title"] and title_counts[source["title"].casefold()] > 1:
+                title = f"{title} (Quiz #{source['quiz_id']})"
+            source["display_title"] = title
+        item["search_text"] = " ".join(
+            source["display_title"] for source in item["sources"]
+        )
+    return provenance
+
+
 def build_quiz_smart_views(
     cur,
     registry,
@@ -349,6 +424,12 @@ def build_quiz_smart_views(
         now = now.replace(tzinfo=timezone.utc)
     registry_ids = _registry_quiz_ids(registry)
     generation = _generated_quiz_presentations(cur, registry_ids, registry)
+    generated_practice_ids = [
+        quiz_id
+        for quiz_id, presentation in generation.items()
+        if presentation["kind"] in GENERATED_PRACTICE_KINDS
+    ]
+    provenance = _generated_quiz_source_provenance(cur, generated_practice_ids)
     matches = {
         "needs-review": _due_quiz_matches(
             cur, registry_ids, native_schedule, now
@@ -366,12 +447,16 @@ def build_quiz_smart_views(
                     "revisit or hide"
                 ),
             }
-            for quiz_id, presentation in generation.items()
-            if presentation["kind"] in GENERATED_PRACTICE_KINDS
+            for quiz_id in generated_practice_ids
         },
     }
     views = [
         {**definition, "count": len(matches[definition["key"]])}
         for definition in SMART_VIEW_DEFINITIONS
     ]
-    return {"views": views, "matches": matches, "generation": generation}
+    return {
+        "views": views,
+        "matches": matches,
+        "generation": generation,
+        "provenance": provenance,
+    }

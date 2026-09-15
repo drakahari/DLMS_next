@@ -39,7 +39,7 @@ DEFAULT_OUTPUT = ROOT / "docs" / "user-manual" / "images"
 WIDTH = 1440
 HEIGHT = 1000
 THEME = "light"
-FIXTURE_VERSION = "dlms-user-manual-3.2-v1"
+FIXTURE_VERSION = "dlms-user-manual-3.2-v2"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -60,7 +60,7 @@ class CaptureSpec:
 CAPTURES = (
     CaptureSpec("UM-01", "Dashboard and Today’s Review", "UM-01-dashboard.png", "/", "document.getElementById('dailyReviewCount')?.textContent !== 'Loading…'"),
     CaptureSpec("UM-02", "Build Quiz hub", "UM-02-build-quiz-hub.png", "/upload", "document.querySelectorAll('.upload-method-card, .build-option-card, .upload-method').length >= 4"),
-    CaptureSpec("UM-03", "Generated Practice Smart View", "UM-03-generated-practice-smart-view.png", "/library?view=visible&smart=generated-practice", "document.getElementById('librarySmartViewCount')?.textContent !== '…'"),
+    CaptureSpec("UM-03", "Generated Practice Smart View", "UM-03-generated-practice-smart-view.png", "/library?view=visible&smart=generated-practice", "document.getElementById('librarySmartViewCount')?.textContent !== '…'", focus=".library-smart-active"),
     CaptureSpec("UM-04", "Mixed Quiz Builder", "UM-04-mixed-quiz-builder.png", "/quiz-composer", "document.querySelectorAll(\"input[name='question_ids']\").length >= 4", focus=".mixed-builder-plan"),
     CaptureSpec("UM-05", "Duplicate Question Review", "UM-05-duplicate-question-review.png", "/library/duplicates", "document.querySelector('.duplicate-question-summary')", focus=".duplicate-question-summary"),
     CaptureSpec("UM-06", "Portable Quiz Bundle review", "UM-06-portable-quiz-bundle-review.png", "/quiz-bundles", "document.querySelector(\"form[action='/quiz-bundles/import']\")", classification="Partially automatable", focus=".portable-bundle-workflows", note="The canonical asset captures the validated import review. The export-selection stage is automatable but would require a second image."),
@@ -355,11 +355,17 @@ def _seed_manual_data(dlms, metadata: dict) -> dict:
                     "INSERT INTO missed_questions (attempt_id,question_id,correct_letters,question_text,choices_text,selected_letters,selected_text,correct_text,attempt_question_number,question_type) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (attempt_id, row[0], "A", row[2], "A. Primary\nB. Related", "B", "B. Related", "A. Primary", row[1], "choice"),
                 )
+    generated_source_payloads = []
+    for number, source_index in enumerate((0, 4, 8), start=1):
+        payload = dlms._question_payload_from_db(
+            conn.cursor(), source_questions[source_index][1]
+        )
+        payload["number"] = number
+        generated_source_payloads.append(payload)
     conn.commit()
     conn.close()
 
     # Current generated-session metadata drives the Generated Practice view.
-    source_payloads = [_choice(1, "Which next step reinforces a weak topic?", "Study Planning")]
     for key, title, kind in (
         ("adaptive", "Adaptive Study — What I Need Most", "adaptive_study"),
         ("smart", "Smart Review — Access Control", "smart_review"),
@@ -368,7 +374,13 @@ def _seed_manual_data(dlms, metadata: dict) -> dict:
         ("concept", "Concept Review — Cloud Concepts", "concept_review"),
         ("mixed", "Mixed Quiz — Core Skills", "mixed_quiz"),
     ):
-        published[key] = dlms._publish_quiz(title, source_payloads, filename_prefix=f"manual_{key}", generation_kind=kind, exam_minutes=15)
+        published[key] = dlms._publish_quiz(
+            title,
+            generated_source_payloads,
+            filename_prefix=f"manual_{key}",
+            generation_kind=kind,
+            exam_minutes=15,
+        )
 
     registry = dlms.load_registry()
     folders = {
@@ -378,7 +390,15 @@ def _seed_manual_data(dlms, metadata: dict) -> dict:
         published["matching"][0]: "Study Skills",
     }
     for entry in registry:
-        entry["folder"] = folders.get(entry.get("id"), "Generated Sessions" if entry.get("generation_kind") and entry.get("generation_kind") != "source" else "Practice Library")
+        generation_kind = entry.get("generation_kind")
+        default_folder = (
+            "Uncategorized"
+            if generation_kind and generation_kind != "source" and generation_kind != "mixed_quiz"
+            else "Generated Sessions"
+            if generation_kind == "mixed_quiz"
+            else "Practice Library"
+        )
+        entry["folder"] = folders.get(entry.get("id"), default_folder)
     dlms.save_registry(registry)
     dlms.save_quiz_folders(["Uncategorized", "Core Skills", "Cloud Study", "Study Skills", "Practice Library", "Generated Sessions", "Future Topics"])
 
@@ -820,6 +840,22 @@ def main(argv=None) -> int:
         parser.error("output must remain under docs/user-manual")
     records = _run_capture(selected, output)
     manifest_path = output / "capture-metadata.json"
+    if selected != known and manifest_path.is_file():
+        try:
+            previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+            previous_records = {
+                record.get("screenshot_id"): record
+                for record in previous.get("captures", [])
+                if isinstance(record, dict) and record.get("screenshot_id") in known
+            }
+        except (OSError, ValueError):
+            previous_records = {}
+        previous_records.update({record["screenshot_id"]: record for record in records})
+        records = [
+            previous_records[item.screenshot_id]
+            for item in CAPTURES
+            if item.screenshot_id in previous_records
+        ]
     manifest_path.write_text(json.dumps({
         "application": "DLMS", "version": _application_version(), "generated_at": datetime.now(timezone.utc).isoformat(),
         "browser": "Firefox (headless WebDriver BiDi)", "theme": THEME,

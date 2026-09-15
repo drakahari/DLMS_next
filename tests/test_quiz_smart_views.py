@@ -118,6 +118,7 @@ def test_smart_views_use_canonical_data_and_latest_attempt(tmp_path):
     assert result["matches"]["unfinished"] == {}
     assert result["matches"]["generated-practice"] == {}
     assert result["generation"] == {}
+    assert result["provenance"] == {}
     assert registry == original_registry
     assert [view["key"] for view in result["views"]] == [
         "needs-review", "recently-added", "low-score", "unfinished",
@@ -314,6 +315,138 @@ def test_generated_view_prefers_metadata_and_keeps_legacy_fallback(tmp_path):
     assert result["generation"][3]["label"] == "Concept Review practice"
 
 
+def test_generated_practice_provenance_uses_lineage_and_live_source_quizzes(
+    tmp_path,
+):
+    database = bootstrap_current_schema_database(
+        tmp_path / "results.db", bootstrap_database=dlms.bootstrap_database
+    )
+    for quiz_id, title, question_id in (
+        (1, "Shared Title", 101),
+        (2, "Shared Title", 201),
+        (3, "Original Name", 301),
+        (10, "Generated Across Sources", 1001),
+        (11, "Generated From One Source", 1101),
+        (12, "Legacy Generated", 1201),
+        (13, "Curated Mix", 1301),
+    ):
+        _seed_quiz(database, quiz_id, title, f"quiz-{quiz_id}.html", question_id)
+
+    registry = [
+        {
+            "id": quiz_id,
+            "title": title,
+            "html": f"quiz-{quiz_id}.html",
+            "folder": "Uncategorized",
+        }
+        for quiz_id, title in (
+            (1, "Shared Title"),
+            (2, "Shared Title"),
+            (3, "Original Name"),
+            (10, "Generated Across Sources"),
+            (11, "Generated From One Source"),
+            (12, "Legacy Generated"),
+            (13, "Curated Mix"),
+        )
+    ]
+    connection = database.connect()
+    try:
+        cursor = connection.cursor()
+        cursor.executemany(
+            "UPDATE questions SET question_uid = ?, canonical_question_uid = ? WHERE id = ?",
+            [
+                ("a" * 32, "a" * 32, 101),
+                ("b" * 32, "b" * 32, 201),
+                ("c" * 32, "c" * 32, 301),
+            ],
+        )
+        cursor.executemany(
+            "UPDATE quizzes SET generation_kind = ? WHERE id = ?",
+            [
+                ("source", 1), ("source", 2), ("source", 3),
+                ("adaptive_study", 10), ("smart_review", 11),
+                ("concept_review", 12), ("mixed_quiz", 13),
+            ],
+        )
+        cursor.execute(
+            "UPDATE questions SET source_question_uid = ?, is_generated_copy = 1 WHERE id = 1001",
+            ("a" * 32,),
+        )
+        cursor.execute(
+            "UPDATE questions SET source_question_uid = ?, is_generated_copy = 1 WHERE id = 1101",
+            ("c" * 32,),
+        )
+        for question_id, number, source_uid in (
+            (1002, 2, "b" * 32),
+            (1003, 3, "c" * 32),
+            (1004, 4, "d" * 32),
+            (1005, 5, None),
+        ):
+            cursor.execute(
+                """
+                INSERT INTO questions (
+                    id, quiz_id, question_number, question_text,
+                    question_type, source_question_uid, is_generated_copy
+                ) VALUES (?, 10, ?, ?, 'choice', ?, 1)
+                """,
+                (question_id, number, "Neutral prompt 1?", source_uid),
+            )
+        connection.commit()
+
+        traced = []
+        connection.set_trace_callback(traced.append)
+        first = build_quiz_smart_views(
+            cursor,
+            registry,
+            native_schedule=lambda _cursor, now=None: {"questions": []},
+        )
+        connection.set_trace_callback(None)
+
+        multiple = first["provenance"][10]
+        assert [source["quiz_id"] for source in multiple["sources"]] == [1, 2, 3]
+        assert [source["display_title"] for source in multiple["sources"]] == [
+            "Shared Title (Quiz #1)",
+            "Shared Title (Quiz #2)",
+            "Original Name",
+        ]
+        assert multiple["unavailable_count"] == 2
+        assert first["provenance"][11]["sources"][0]["display_title"] == "Original Name"
+        assert first["provenance"][12] == {
+            "sources": [], "unavailable_count": 1, "search_text": ""
+        }
+        assert 13 not in first["provenance"]
+        assert len([
+            statement for statement in traced
+            if "FROM questions AS generated" in statement
+        ]) == 1
+
+        cursor.execute("UPDATE quizzes SET title = 'Renamed Source' WHERE id = 3")
+        connection.commit()
+        renamed = build_quiz_smart_views(
+            cursor,
+            registry,
+            native_schedule=lambda _cursor, now=None: {"questions": []},
+        )
+        assert renamed["provenance"][11]["sources"][0]["display_title"] == "Renamed Source"
+
+        cursor.execute("DELETE FROM quizzes WHERE id = 3")
+        connection.commit()
+        deleted = build_quiz_smart_views(
+            cursor,
+            registry,
+            native_schedule=lambda _cursor, now=None: {"questions": []},
+        )
+        assert deleted["provenance"][11] == {
+            "sources": [], "unavailable_count": 1, "search_text": ""
+        }
+        assert deleted["provenance"][10]["unavailable_count"] == 3
+        # Question 1005 deliberately has matching text but no lineage. It
+        # remains unavailable rather than being guessed from content.
+        assert deleted["provenance"][10]["unavailable_count"] > 0
+    finally:
+        connection.close()
+
+
 def test_smart_view_styles_use_semantic_themes_and_content_breakpoints():
     css = (Path(__file__).resolve().parents[1] / "static" / "style.css").read_text(
         encoding="utf-8"
@@ -353,3 +486,10 @@ def test_smart_view_styles_use_semantic_themes_and_content_breakpoints():
     ):
         assert token in generated_component
     assert "grid-template-columns: repeat(6, minmax(120px, 1fr))" in css
+    for selector in (
+        ".library-page .library-folder-system {",
+        ".library-page .library-system-group-badge {",
+        ".library-page .library-source-provenance {",
+        ".library-page .library-source-provenance summary:focus-visible {",
+    ):
+        assert selector in css

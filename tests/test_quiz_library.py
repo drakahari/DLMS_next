@@ -56,6 +56,17 @@ class QuizLibraryTests(unittest.TestCase):
                     1: {"kind": "mixed_quiz", "label": "Mixed Quiz", "category": "mixed"},
                     2: {"kind": "adaptive_study", "label": "Adaptive Study practice", "category": "practice"},
                 },
+                "provenance": {
+                    2: {
+                        "sources": [{
+                            "quiz_id": 1,
+                            "title": "Alpha Quiz",
+                            "display_title": "Alpha Quiz",
+                        }],
+                        "unavailable_count": 0,
+                        "search_text": "Alpha Quiz",
+                    },
+                },
             }
 
             with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
@@ -86,7 +97,7 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn('aria-current="page"', low_html)
             self.assertIn("Latest completed score: 60%", low_html)
             self.assertIn("Beta Quiz", low_html)
-            self.assertNotIn("Alpha Quiz", low_html)
+            self.assertNotIn('data-title="alpha quiz"', low_html)
             self.assertIn("<h2>Beta</h2>", low_html)
             self.assertNotIn("<h2>Alpha</h2>", low_html)
             self.assertNotIn('class="library-reorder-controls"', low_html)
@@ -112,8 +123,9 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn("Adaptive Study practice", generated_html)
             self.assertIn("Saved practice built from source questions", generated_html)
             self.assertIn("Beta Quiz", generated_html)
-            self.assertNotIn("Alpha Quiz", generated_html)
+            self.assertNotIn('data-title="alpha quiz"', generated_html)
             self.assertNotIn("Mixed Quiz", generated_html)
+            self.assertIn("Source: <strong>Alpha Quiz</strong>", generated_html)
 
             reset_html = reset.get_data(as_text=True)
             self.assertIn("Adaptive Study practice", reset_html)
@@ -129,6 +141,146 @@ class QuizLibraryTests(unittest.TestCase):
                 mutation.headers["Location"],
                 "/library?view=visible&smart=low-score",
             )
+
+    def test_uncategorized_generated_practice_uses_virtual_group_without_mutation(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-generated-group-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "Course"]}, handle)
+            registry = [
+                {"id": 1, "title": "Due Practice", "html": "due.html", "folder": "Uncategorized"},
+                {"id": 2, "title": "Ordinary Source", "html": "source.html", "folder": "Uncategorized"},
+                {"id": 3, "title": "Custom Practice", "html": "custom.html", "folder": "Course"},
+                {"id": 4, "title": "Curated Mix", "html": "mixed.html", "folder": "Uncategorized"},
+                {"id": 5, "title": "Hidden Practice", "html": "hidden.html", "folder": "Uncategorized", "hidden": True},
+            ]
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump(registry, handle)
+
+            definitions = [
+                {"key": "unfinished", "label": "Unfinished", "description": "Local.", "client_derived": True},
+                {"key": "generated-practice", "label": "Generated Practice", "description": "Saved practice.", "client_derived": False},
+            ]
+            generation = {
+                1: {"kind": "native_spaced_review", "label": "Due Questions practice", "category": "practice"},
+                3: {"kind": "adaptive_study", "label": "Adaptive Study practice", "category": "practice"},
+                4: {"kind": "mixed_quiz", "label": "Mixed Quiz", "category": "mixed"},
+                5: {"kind": "concept_review", "label": "Concept Review practice", "category": "practice"},
+            }
+            smart_data = {
+                "views": definitions,
+                "matches": {
+                    "unfinished": {},
+                    "generated-practice": {
+                        quiz_id: {"reason": "Saved practice"}
+                        for quiz_id in (1, 3, 5)
+                    },
+                },
+                "generation": generation,
+                "provenance": {
+                    1: {
+                        "sources": [
+                            {
+                                "quiz_id": 2,
+                                "title": "Ordinary Source",
+                                "display_title": "Ordinary Source",
+                            },
+                            {
+                                "quiz_id": 6,
+                                "title": "Shared Name",
+                                "display_title": "Shared Name (Quiz #6)",
+                            },
+                            {
+                                "quiz_id": 7,
+                                "title": "Shared Name",
+                                "display_title": "Shared Name (Quiz #7)",
+                            },
+                        ],
+                        "unavailable_count": 1,
+                        "search_text": "Ordinary Source Shared Name Quiz #6 Quiz #7",
+                    },
+                    3: {"sources": [], "unavailable_count": 1, "search_text": ""},
+                    5: {"sources": [], "unavailable_count": 1, "search_text": ""},
+                },
+            }
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}), \
+                    mock.patch.object(
+                        dlms._quiz_smart_view_service,
+                        "build_quiz_smart_views",
+                        return_value=smart_data,
+                    ):
+                client = dlms.app.test_client()
+                visible_html = client.get("/library?view=visible").get_data(as_text=True)
+                hidden_html = client.get("/library?view=hidden").get_data(as_text=True)
+                all_html = client.get("/library?view=all").get_data(as_text=True)
+                generated_html = client.get(
+                    "/library?view=all&smart=generated-practice"
+                ).get_data(as_text=True)
+                with open(quiz_registry, encoding="utf-8") as handle:
+                    registry_after_reads = json.load(handle)
+                move_response = client.post(
+                    "/move_quiz_folder",
+                    data={"id": "1", "folder": "Course", "view": "visible"},
+                    headers=csrf_headers(client, "/library?view=visible"),
+                )
+                moved_html = client.get("/library?view=visible").get_data(as_text=True)
+
+            self.assertEqual(visible_html.count('data-generated-practice-group="true"'), 1)
+            self.assertIn("Automatic group", visible_html)
+            self.assertLess(visible_html.index("Due Practice"), visible_html.index("Ordinary Source"))
+            self.assertIn("Custom Practice", visible_html)
+            self.assertIn("Curated Mix", visible_html)
+            self.assertIn("Sources: 3 quizzes", visible_html)
+            self.assertIn("1 source unavailable", visible_html)
+            self.assertIn("Shared Name (Quiz #6)", visible_html)
+            self.assertIn("Shared Name (Quiz #7)", visible_html)
+            self.assertIn(
+                'aria-label="Show 3 source quizzes for Due Practice; 1 source unavailable"',
+                visible_html,
+            )
+            self.assertIn("Ordinary Source", visible_html)
+            self.assertIn("library-folder-system", visible_html)
+            self.assertNotIn("Hidden Practice", visible_html)
+            self.assertNotIn("Hide Generated Practice folder", visible_html)
+            self.assertNotIn('option value="__dlms_generated_practice__"', visible_html)
+            self.assertIn("Source details unavailable", visible_html)
+
+            self.assertEqual(hidden_html.count('data-generated-practice-group="true"'), 1)
+            self.assertIn("Hidden Practice", hidden_html)
+            self.assertNotIn("Due Practice", hidden_html)
+
+            self.assertEqual(all_html.count('data-generated-practice-group="true"'), 1)
+            self.assertIn("Due Practice", all_html)
+            self.assertIn("Hidden Practice", all_html)
+
+            self.assertNotIn('data-generated-practice-group="true"', generated_html)
+            for title in ("Due Practice", "Custom Practice", "Hidden Practice"):
+                self.assertIn(title, generated_html)
+            self.assertNotIn("Curated Mix", generated_html)
+            self.assertIn("<h2>Uncategorized</h2>", generated_html)
+            self.assertIn("<h2>Course</h2>", generated_html)
+
+            self.assertEqual(registry_after_reads, registry)
+            self.assertEqual(move_response.status_code, 302)
+            self.assertNotIn('data-generated-practice-group="true"', moved_html)
+            self.assertLess(moved_html.index("<h2>Course</h2>"), moved_html.index("Due Practice"))
+            with open(quiz_registry, encoding="utf-8") as handle:
+                moved_registry = json.load(handle)
+            self.assertEqual(
+                next(item for item in moved_registry if item["id"] == 1)["folder"],
+                "Course",
+            )
+            with open(portal_config, encoding="utf-8") as handle:
+                self.assertEqual(
+                    json.load(handle)["quiz_folders"],
+                    ["Uncategorized", "Course"],
+                )
 
     def test_server_derived_smart_view_has_a_useful_empty_state(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-smart-empty-") as directory:
@@ -174,7 +326,7 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertNotIn("cdnjs.cloudflare.com/ajax/libs/Sortable", html)
             self.assertIn("Sortable.create(folderList", html)
             self.assertIn(
-                'draggable: ".library-folder:not(.library-view-search-only)"',
+                'draggable: ".library-folder:not(.library-view-search-only):not(.library-folder-system)"',
                 html,
             )
             self.assertIn('handle: ".library-folder-header"', html)

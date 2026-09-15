@@ -22,6 +22,9 @@ from dlms.services.quiz_smart_views import normalize_smart_view
 from .dependencies import QuizLibraryDependencies
 
 
+VIRTUAL_GENERATED_PRACTICE_GROUP = ("dlms-virtual", "generated-practice")
+
+
 def _bind_dependencies(view_func, dependencies):
     @wraps(view_func)
     def bound_view(**view_args):
@@ -688,6 +691,11 @@ def quiz_library(dependencies):
         view = "all"
 
     folder_names = list(identity.folders)
+    virtual_generated_practice_client_key = "__dlms_generated_practice__"
+    while identity.resolve(virtual_generated_practice_client_key) is not None:
+        virtual_generated_practice_client_key = (
+            "_" + virtual_generated_practice_client_key
+        )
     configured_folder_keys = identity.configured_keys
     hidden_folder_keys = {
         identity.key(folder) for folder in hidden_folder_names
@@ -735,6 +743,7 @@ def quiz_library(dependencies):
         conn.close()
     smart_matches = smart_view_data["matches"]
     generation_presentations = smart_view_data.get("generation", {})
+    source_provenance = smart_view_data.get("provenance", {})
     active_smart_view = next(
         (
             item
@@ -764,6 +773,18 @@ def quiz_library(dependencies):
         # must not leak outside the selected base scope in a dynamic view.
         render_filtered = list(normal_filtered)
 
+    def quiz_group_name(quiz):
+        folder = quiz_folder_name(quiz)
+        presentation = generation_presentations.get(quiz.get("id"))
+        if (
+            not active_smart_view
+            and identity.is_uncategorized(folder)
+            and presentation
+            and presentation.get("category") == "practice"
+        ):
+            return VIRTUAL_GENERATED_PRACTICE_GROUP
+        return folder
+
     quizzes = [
         {
             **q,
@@ -774,55 +795,83 @@ def quiz_library(dependencies):
                 if active_smart_view else None
             ),
             "generation": generation_presentations.get(q.get("id")),
+            "source_provenance": source_provenance.get(q.get("id")),
         }
         for q in render_filtered
     ]
     normal_grouped_quizzes = {folder: [] for folder in folder_names}
     for q in normal_filtered:
-        folder = quiz_folder_name(q)
+        folder = quiz_group_name(q)
         if folder not in normal_grouped_quizzes:
             normal_grouped_quizzes[folder] = []
         normal_grouped_quizzes[folder].append(q)
 
     grouped_quizzes = {folder: [] for folder in folder_names}
     for q in quizzes:
-        folder = quiz_folder_name(q)
+        folder = quiz_group_name(q)
         if folder not in grouped_quizzes:
             grouped_quizzes[folder] = []
         grouped_quizzes[folder].append(q)
 
+    group_names = list(folder_names)
+    if normal_grouped_quizzes.get(VIRTUAL_GENERATED_PRACTICE_GROUP):
+        uncategorized_index = next(
+            (
+                index
+                for index, folder in enumerate(group_names)
+                if identity.is_uncategorized(folder)
+            ),
+            len(group_names),
+        )
+        group_names.insert(
+            uncategorized_index, VIRTUAL_GENERATED_PRACTICE_GROUP
+        )
+
     # Persistent custom folders remain visible when empty in Visible and All.
     # Hidden shows only hidden folders or folders containing filtered hidden
     # quizzes. Assignment-only legacy folders retain their discovery behavior.
-    normal_display_folder_names = [
-        folder for folder in folder_names
-        if not (
-            view == "visible"
-            and identity.key(folder) in hidden_folder_keys
-        )
-        and (
-            normal_grouped_quizzes.get(folder)
-            or (
-                not active_smart_view
-                and
-                identity.key(folder) in configured_folder_keys
-                and not identity.is_uncategorized(folder)
-                and (
-                    view != "hidden"
-                    or identity.key(folder) in hidden_folder_keys
-                )
+    def normal_group_is_displayed(folder):
+        if folder == VIRTUAL_GENERATED_PRACTICE_GROUP:
+            return bool(normal_grouped_quizzes.get(folder))
+        if view == "visible" and identity.key(folder) in hidden_folder_keys:
+            return False
+        if normal_grouped_quizzes.get(folder):
+            return True
+        return bool(
+            not active_smart_view
+            and identity.key(folder) in configured_folder_keys
+            and not identity.is_uncategorized(folder)
+            and (
+                view != "hidden"
+                or identity.key(folder) in hidden_folder_keys
             )
         )
+
+    normal_display_folder_names = [
+        folder for folder in group_names
+        if normal_group_is_displayed(folder)
     ]
     display_folder_names = [
-        folder for folder in folder_names
+        folder for folder in group_names
         if folder in normal_display_folder_names
         or (
+            folder != VIRTUAL_GENERATED_PRACTICE_GROUP
+            and
             not active_smart_view
             and view == "visible"
             and identity.key(folder) in hidden_folder_keys
             and grouped_quizzes.get(folder)
         )
+    ]
+    normal_display_folder_count = sum(
+        1
+        for folder in normal_display_folder_names
+        if folder != VIRTUAL_GENERATED_PRACTICE_GROUP
+    )
+    collapsible_group_names = [
+        virtual_generated_practice_client_key
+        if folder == VIRTUAL_GENERATED_PRACTICE_GROUP else folder
+        for folder in group_names
     ]
 
     visible_count = sum(
@@ -844,10 +893,14 @@ def quiz_library(dependencies):
     return render_template("quiz/library.html", quizzes=quizzes, grouped_quizzes=grouped_quizzes, folder_names=folder_names,
        display_folder_names=display_folder_names,
        normal_display_folder_names=normal_display_folder_names,
+       normal_display_folder_count=normal_display_folder_count,
        hidden_folder_keys=hidden_folder_keys, portal_title=portal_title,
        visible_count=visible_count, hidden_count=hidden_count,
        view_quiz_count=view_quiz_count, view=view, app_version=APP_VERSION,
        active_quiz_ids=active_quiz_ids,
+       virtual_generated_practice_group=VIRTUAL_GENERATED_PRACTICE_GROUP,
+       virtual_generated_practice_client_key=virtual_generated_practice_client_key,
+       collapsible_group_names=collapsible_group_names,
        smart=smart, smart_views=smart_views,
        active_smart_view=active_smart_view,
        smart_eligible_quiz_ids=sorted(base_normal_ids))

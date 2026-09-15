@@ -1,7 +1,7 @@
 {
   "application": "DLMS",
   "version": "3.2.0",
-  "generated_at": "2026-09-15T00:53:07.314774+00:00",
+  "generated_at": "2026-09-15T02:18:50.188093+00:00",
   "browser": "Firefox (headless WebDriver BiDi)",
   "theme": "light",
   "viewport": {
@@ -9,7 +9,7 @@
     "height": 1000,
     "device_scale": 1
   },
-  "fixture_version": "dlms-user-manual-3.2-v1",
+  "fixture_version": "dlms-user-manual-3.2-v2",
   "captures": [
     {
       "screenshot_id": "UM-01",
@@ -50,13 +50,13 @@
       "route": "/library?view=visible&smart=generated-practice",
       "ready": "document.getElementById('librarySmartViewCount')?.textContent !== '…'",
       "classification": "Fully automatable",
-      "focus": null,
+      "focus": ".library-smart-active",
       "note": "",
       "status": "Captured",
       "theme": "light",
       "viewport": "1440×1000",
       "dimensions": "1440×1000",
-      "fixture_version": "dlms-user-manual-3.2-v1",
+      "fixture_version": "dlms-user-manual-3.2-v2",
       "capture_route": "/library?view=visible&smart=generated-practice"
     },
     {
