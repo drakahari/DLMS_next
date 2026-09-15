@@ -63,13 +63,13 @@
             <form method="GET" action="/library/duplicates" class="duplicate-question-filters">
                 <label class="build-field"><span>Source quiz in results</span><select name="quiz" id="duplicateQuizFilter"><option value="">All source quizzes</option>{% for id, title in duplicate_view.quizzes %}<option value="{{ id }}"{% if duplicate_view.quiz == id|string %} selected{% endif %}>{{ title }} · Quiz #{{ id }}</option>{% endfor %}</select></label>
                 <label class="build-field"><span>Folder in results</span><select name="folder" id="duplicateFolderFilter"><option value="">All folders</option>{% for folder in duplicate_view.folders %}<option value="{{ folder }}"{% if duplicate_view.folder == folder %} selected{% endif %}>{{ folder }}</option>{% endfor %}</select></label>
+                <label class="build-field"><span>Result type</span><select name="result_type" id="duplicateResultTypeFilter"><option value="all"{% if duplicate_view.result_type == 'all' %} selected{% endif %}>All results</option><option value="exact"{% if duplicate_view.result_type == 'exact' %} selected{% endif %}>Exact duplicates</option><option value="possible"{% if duplicate_view.result_type == 'possible' %} selected{% endif %}>Possible matches</option></select></label>
                 <label class="build-field"><span>Question or quiz title</span><input type="search" name="search" id="duplicateSearch" value="{{ duplicate_view.search }}" placeholder="Search duplicate results"></label>
-                <button class="library-primary-action" type="submit">Apply filters</button>
-                <a class="library-secondary-action" href="/library/duplicates">Clear filters</a>
+                <div class="duplicate-question-filter-actions"><button class="library-primary-action" type="submit">Apply filters</button><a class="library-secondary-action" href="/library/duplicates">Clear filters</a></div>
             </form>
             <p class="duplicate-question-generated-note">A group matches a quiz or folder when at least one source record belongs to it, including hidden quizzes. Filters only change this view, not the scan or your content.</p>
             <div class="duplicate-question-navigation">
-                <p role="status">Showing {{ duplicate_view.start }}–{{ duplicate_view.end }} of {{ duplicate_view.matched_count }} matching groups · {{ duplicate_view.total_count }} groups in the full scan.</p>
+                <p role="status">Showing {{ duplicate_view.start }}–{{ duplicate_view.end }} of {{ duplicate_view.matched_count }} {{ duplicate_view.result_label }} · {{ duplicate_view.total_count }} group{% if duplicate_view.total_count != 1 %}s{% endif %} in the full scan.</p>
                 {% if duplicate_view.matched_count %}<button class="library-secondary-action compact" type="button" id="expandDuplicateGroups">Expand all on page</button><button class="library-secondary-action compact" type="button" id="collapseDuplicateGroups">Collapse all on page</button>{% endif %}
             </div>
         </section>

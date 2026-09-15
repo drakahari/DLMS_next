@@ -9043,6 +9043,8 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
     browser.press_key('\ue004')
     assert browser.evaluate("document.activeElement.id") == 'duplicateFolderFilter'
     browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.id") == 'duplicateResultTypeFilter'
+    browser.press_key('\ue004')
     assert browser.evaluate("document.activeElement.id") == 'duplicateSearch'
 
     duplicate_url = browser.evaluate("location.href")
@@ -9068,6 +9070,7 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
             "metric description": ".duplicate-question-summary .library-stat-card small",
             "filter label": ".duplicate-question-filters .build-field span",
             "quiz selector": "#duplicateQuizFilter",
+            "result type selector": "#duplicateResultTypeFilter",
             "search text": "#duplicateSearch",
             "collapse action": "#collapseDuplicateGroups",
         })
@@ -9101,6 +9104,11 @@ def test_duplicate_question_large_results_filters_and_pagination(browser_stack):
                                             (ids[-1], number, f'Compare synthetic item {number}: which option applies?'))
                 connection.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',
                                        [(cursor.lastrowid, 'A', 'Expected', 1), (cursor.lastrowid, 'B', 'Alternative', 0)])
+            prompt = ('Which command displays the active network configuration?' if index == 0
+                      else 'Which command displays active network configuration?')
+            cursor = connection.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type) VALUES(?,45,?,'choice')", (ids[-1], prompt))
+            connection.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',
+                                   [(cursor.lastrowid, 'A', 'Expected', 1), (cursor.lastrowid, 'B', 'Alternative', 0)])
         connection.commit()
         before = list(connection.iterdump())
     registry_path = browser_stack.data_root / 'config' / 'quizzes.json'
@@ -9114,12 +9122,30 @@ def test_duplicate_question_large_results_filters_and_pagination(browser_stack):
     url = f'{browser_stack.base_url}/library/duplicates'
     browser.navigate(url)
     browser.wait_for("document.querySelector('details.duplicate-question-group')")
+    full_totals = browser.evaluate("[...document.querySelectorAll('.duplicate-question-summary strong')].map(n=>n.textContent)")
     assert browser.evaluate("document.querySelectorAll('details.duplicate-question-group').length") == 20
     assert browser.evaluate("[...document.querySelectorAll('details.duplicate-question-group')].every(g=>!g.open)")
     browser.click('a[rel=next]')
     browser.wait_for("new URLSearchParams(location.search).get('page')==='2'")
     assert browser.evaluate("document.querySelectorAll('details.duplicate-question-group').length") <= 20
-    browser.navigate(url)
+    browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value='{ids[1]}';document.querySelector('#duplicateFolderFilter').value='Uncategorized';document.querySelector('#duplicateSearch').value='network configuration';document.querySelector('#duplicateResultTypeFilter').value='possible'")
+    browser.click('.duplicate-question-filters button[type=submit]')
+    browser.wait_for("new URLSearchParams(location.search).get('result_type')==='possible'&&document.querySelector('#nearDuplicateHeading')")
+    assert browser.evaluate("!new URLSearchParams(location.search).has('page')&&document.querySelector('#duplicateResultTypeFilter').value==='possible'")
+    assert browser.evaluate("document.querySelector('#exactDuplicateHeading')===null&&document.querySelectorAll('details.duplicate-question-group').length===1")
+    assert browser.evaluate("document.querySelector('.duplicate-question-navigation [role=status]').textContent.includes('of 1 possible match')")
+    assert browser.evaluate("[...document.querySelectorAll('.duplicate-question-summary strong')].map(n=>n.textContent)") == full_totals
+    browser.click('#expandDuplicateGroups')
+    browser.wait_for("document.querySelector('details.duplicate-question-group').open")
+    browser.click('#collapseDuplicateGroups')
+    browser.wait_for("!document.querySelector('details.duplicate-question-group').open")
+    browser.evaluate("document.querySelector('#duplicateResultTypeFilter').value='exact';document.querySelector('#duplicateSearch').value=''")
+    browser.click('.duplicate-question-filters button[type=submit]')
+    browser.wait_for("new URLSearchParams(location.search).get('result_type')==='exact'&&document.querySelector('#exactDuplicateHeading')")
+    assert browser.evaluate("document.querySelector('#nearDuplicateHeading')===null&&document.querySelector('a[rel=next]').href.includes('result_type=exact')")
+    browser.click('a[rel=next]')
+    browser.wait_for("new URLSearchParams(location.search).get('page')==='2'")
+    assert browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value==='{ids[1]}'&&document.querySelector('#duplicateFolderFilter').value==='Uncategorized'&&document.querySelector('#duplicateResultTypeFilter').value==='exact'")
     browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value='{ids[1]}';document.querySelector('#duplicateFolderFilter').value='Uncategorized';document.querySelector('#duplicateSearch').value='item 44:'")
     browser.click('.duplicate-question-filters button[type=submit]')
     browser.wait_for("new URLSearchParams(location.search).get('search')==='item 44:'")
@@ -9130,6 +9156,7 @@ def test_duplicate_question_large_results_filters_and_pagination(browser_stack):
     browser.wait_for("document.querySelector('.duplicate-question-empty h2')?.textContent==='No matching groups'")
     browser.click('.duplicate-question-filters a')
     browser.wait_for("!location.search&&document.querySelectorAll('details.duplicate-question-group').length===20")
+    assert browser.evaluate("document.querySelector('#duplicateResultTypeFilter').value") == 'all'
     with sqlite3.connect(database) as connection:
         assert before == list(connection.iterdump())
 

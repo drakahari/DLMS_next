@@ -298,7 +298,7 @@ class QuizDuplicateDetectionTests(unittest.TestCase):
         self.assertIn('details class="dashboard-panel duplicate-question-group" open', html)
         self.assertIn('Expand all on page', html)
         self.assertIn('Collapse all on page', html)
-        self.assertIn('Showing 1–1 of 1 matching groups', html)
+        self.assertIn('Showing 1–1 of 1 matching group', html)
         empty = client.get('/library/duplicates?search=nonexistent').get_data(as_text=True)
         self.assertIn('No matching groups', empty)
         self.assertNotIn('details class="dashboard-panel duplicate-question-group"', empty)
@@ -321,6 +321,45 @@ class QuizDuplicateDetectionTests(unittest.TestCase):
             self.assertIn('Showing 1–20 of 221 matching groups', html)
             self.assertIn('Next page', html)
             self.assertEqual(221, len(report['exact_groups']))
+
+    def test_result_type_route_preserves_scan_and_filters_before_pagination(self):
+        first = self._seed('Source Bank', 'first.html', [self._choice('Repeated question')], folder='CISM')
+        self._seed('Second Bank', 'second.html', [self._choice('Repeated question')])
+        self._seed('Original', 'original.html', [self._choice('Which command displays the active network configuration?')], folder='CISM')
+        self._seed('Rewrite', 'rewrite.html', [self._choice('Which command displays active network configuration?')])
+        report = self._report()
+        self.assertEqual((1, 1), (report['exact_group_count'], report['near_group_count']))
+        report['exact_groups'] *= 221
+        report['near_groups'] *= 38
+        report['exact_group_count'], report['near_group_count'] = 221, 38
+        connection = dlms.get_db()
+        before = list(connection.iterdump())
+        connection.close()
+        client = dlms.app.test_client()
+        with mock.patch.object(dlms._quiz_duplicate_service, 'build_quiz_duplicate_report', return_value=report):
+            possible = client.get('/library/duplicates?result_type=possible&page=13').get_data(as_text=True)
+            self.assertIn('Showing 21–38 of 38 possible matches', possible)
+            self.assertIn('id="nearDuplicateHeading"', possible)
+            self.assertNotIn('id="exactDuplicateHeading"', possible)
+            self.assertIn('value="possible" selected', possible)
+            self.assertIn('result_type=possible&amp;', possible)
+            self.assertNotIn('name="page"', possible)  # Applying filters starts at page one.
+            for total in (221, 38):
+                self.assertIn(f'<strong>{total}</strong>', possible)
+            exact = client.get('/library/duplicates', query_string=dict(result_type='exact', quiz=first, folder='CISM', search='Repeated', page=2)).get_data(as_text=True)
+            self.assertIn('Showing 21–40 of 221 exact duplicate groups', exact)
+            self.assertIn('id="exactDuplicateHeading"', exact)
+            self.assertNotIn('id="nearDuplicateHeading"', exact)
+            empty = client.get('/library/duplicates', query_string=dict(result_type='possible', quiz=first)).get_data(as_text=True)
+            self.assertIn('No matching groups', empty)
+            reset = client.get('/library/duplicates').get_data(as_text=True)
+            self.assertIn('value="all" selected', reset)
+            self.assertIn('Showing 1–20 of 259 matching groups', reset)
+        connection = dlms.get_db()
+        try:
+            self.assertEqual(before, list(connection.iterdump()))
+        finally:
+            connection.close()
 
 
 if __name__ == "__main__":

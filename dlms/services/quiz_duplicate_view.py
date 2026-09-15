@@ -12,6 +12,9 @@ def duplicate_report_view(report, args):
     quiz = str(args.get('quiz') or '')
     folder = str(args.get('folder') or '')
     search = str(args.get('search') or '').strip()
+    result_type = str(args.get('result_type') or 'all')
+    if result_type not in {'all', 'exact', 'possible'}:
+        result_type = 'all'
     needle = search.casefold()
     all_groups = [('exact', group, group['questions']) for group in report['exact_groups']]
     all_groups += [
@@ -25,6 +28,8 @@ def duplicate_report_view(report, args):
         for record in records:
             quizzes[record['quiz_id']] = record['quiz_title']
             folders.add(record['folder'])
+        if result_type != 'all' and kind != ('near' if result_type == 'possible' else 'exact'):
+            continue
         if quiz and not any(str(record['quiz_id']) == quiz for record in records):
             continue
         if folder and not any(record['folder'] == folder for record in records):
@@ -45,8 +50,15 @@ def duplicate_report_view(report, args):
 
     def page_url(number):
         return '/library/duplicates?' + urlencode({
+            'result_type': result_type,
             'quiz': quiz, 'folder': folder, 'search': search, 'page': number,
         })
+
+    result_labels = {
+        'all': ('matching group', 'matching groups'),
+        'exact': ('exact duplicate group', 'exact duplicate groups'),
+        'possible': ('possible match', 'possible matches'),
+    }
 
     return {
         'report': {**report,
@@ -54,6 +66,8 @@ def duplicate_report_view(report, args):
                    'near_groups': [group for kind, group in visible if kind == 'near']},
         'duplicate_view': {
             'quiz': quiz, 'folder': folder, 'search': search,
+            'result_type': result_type,
+            'result_label': result_labels[result_type][len(matches) != 1],
             'quizzes': sorted(quizzes.items(), key=lambda item: (item[1].casefold(), item[0])),
             'folders': sorted(folders, key=str.casefold),
             'matched_count': len(matches), 'total_count': len(all_groups),

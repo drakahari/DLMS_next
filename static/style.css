@@ -152,6 +152,7 @@
 :is(.duplicate-question-summary,.portable-bundle-summary) .library-stat-card>*{min-width:0;overflow-wrap:anywhere;}
 .duplicate-question-tools{padding:22px;min-width:0;}
 .duplicate-question-filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-bottom:12px;}
+.duplicate-question-filter-actions{display:flex;flex-wrap:wrap;gap:12px;}
 .duplicate-question-filters .build-field{flex:1 1 200px;min-width:0;max-width:100%;}
 .duplicate-question-filters input,.duplicate-question-filters select{width:100%;min-width:0;max-width:100%;}
 .duplicate-question-navigation{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:16px 0;}
