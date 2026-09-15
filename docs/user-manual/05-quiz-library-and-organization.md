@@ -188,11 +188,23 @@ The report shows the source quiz, folder, question number, question text, and
 answers or matching pairs. Generated review and composition copies are excluded
 from this source-library scan so they do not create expected noise.
 
+Use **Source quiz in results**, **Folder in results**, and the question/quiz-title
+search together, then choose **Apply filters**. A group matches a quiz or folder
+if at least one of its source records belongs to it; hidden quizzes are included.
+**Clear filters** restores the full result view. The summary still describes the
+complete scan, not just the filtered results.
+
+Results are shown in pages of up to 20 groups, with exact and possible matches
+kept separate. Large scans start with groups collapsed. Open a group's heading
+to inspect its records, or use **Expand all on page** and **Collapse all on page**.
+Use **Previous page** and **Next page** to move through the results. These controls
+only change what you see; they do not change the duplicate findings or any quiz.
+
 This tool is advisory only. It does not merge, rewrite, or delete anything, and
 a possible match is not a claim that two questions are interchangeable. Use
 **Edit source quiz** if you decide that a manual change is appropriate.
 
-![Duplicate Question Review showing exact and possible matches with their source quizzes](images/UM-05-duplicate-question-review.png)
+![Duplicate Question Review showing result filters and expandable exact-match records with their source quizzes](images/UM-05-duplicate-question-review.png)
 
 ## Move quizzes between DLMS installations
 

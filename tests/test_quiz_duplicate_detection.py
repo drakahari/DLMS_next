@@ -175,6 +175,10 @@ class QuizDuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(
             "Very similar wording with the same answer structure", pair["reason"]
         )
+        html = dlms.app.test_client().get('/library/duplicates').get_data(as_text=True)
+        self.assertIn('id="nearDuplicateHeading"', html)
+        self.assertNotIn('id="exactDuplicateHeading"', html)
+        self.assertIn('details class="dashboard-panel duplicate-question-group" open', html)
 
     def test_near_duplicate_resists_shared_terms_negation_and_answer_differences(self):
         self._seed(
@@ -282,6 +286,41 @@ class QuizDuplicateDetectionTests(unittest.TestCase):
         self.assertIn(f'href="/edit_quiz/{second_quiz}"', html)
         self.assertIn("nothing is merged, deleted, or rewritten", html)
         self.assertNotIn("Merge", html)
+
+    def test_filtered_page_keeps_summary_and_source_content_unchanged(self):
+        first = self._seed('Repeated Bank', 'first.html', [self._choice('Same source question')], folder='Uncategorized')
+        self._seed('Other Bank', 'second.html', [self._choice('Same source question')], folder='Custom')
+        connection = dlms.get_db()
+        before = list(connection.iterdump())
+        connection.close()
+        client = dlms.app.test_client()
+        html = client.get('/library/duplicates', query_string={'quiz': first, 'folder': 'Custom', 'search': 'same'}).get_data(as_text=True)
+        self.assertIn('details class="dashboard-panel duplicate-question-group" open', html)
+        self.assertIn('Expand all on page', html)
+        self.assertIn('Collapse all on page', html)
+        self.assertIn('Showing 1–1 of 1 matching groups', html)
+        empty = client.get('/library/duplicates?search=nonexistent').get_data(as_text=True)
+        self.assertIn('No matching groups', empty)
+        self.assertNotIn('details class="dashboard-panel duplicate-question-group"', empty)
+        connection = dlms.get_db()
+        try:
+            self.assertEqual(before, list(connection.iterdump()))
+        finally:
+            connection.close()
+
+    def test_large_report_is_paginated_before_rendering(self):
+        self._seed('First', 'first.html', [self._choice('Repeated question')])
+        self._seed('Second', 'second.html', [self._choice('Repeated question')])
+        report = self._report()
+        report['exact_groups'] *= 221
+        report['exact_group_count'] = 221
+        with mock.patch.object(dlms._quiz_duplicate_service, 'build_quiz_duplicate_report', return_value=report):
+            html = dlms.app.test_client().get('/library/duplicates').get_data(as_text=True)
+            self.assertEqual(20, html.count('details class="dashboard-panel duplicate-question-group"'))
+            self.assertNotIn('duplicate-question-group" open', html)
+            self.assertIn('Showing 1–20 of 221 matching groups', html)
+            self.assertIn('Next page', html)
+            self.assertEqual(221, len(report['exact_groups']))
 
 
 if __name__ == "__main__":

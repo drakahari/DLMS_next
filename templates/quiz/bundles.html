@@ -39,10 +39,13 @@
         <div class="portable-bundle-workflows">
             <section class="dashboard-panel portable-bundle-panel" aria-labelledby="bundleExportHeading">
                 <div class="portable-bundle-panel-heading"><div><span class="portable-bundle-step">1</span><h2 id="bundleExportHeading">Export quizzes</h2></div><p>Select one or more normal source quizzes. Export does not modify them.</p></div>
+                <p class="portable-bundle-helper" id="bundleCandidateSummary"><strong>{{ catalog.candidate_count }} source quiz{% if catalog.candidate_count != 1 %}zes{% endif %} available</strong> from {{ catalog.library_count }} Library entries. Hidden quizzes included: {{ catalog.hidden_included }}. Folder visibility does not limit export.</p>
+                <p class="portable-bundle-helper">Choice and matching questions, including supported images, are supported. Selected content and media are validated when you download.</p>
                 {% if catalog.quizzes %}
                 <form method="POST" action="/quiz-bundles/export" id="portableBundleExportForm">
                     <div class="portable-bundle-selection-actions"><button type="button" id="selectAllBundleQuizzes">Select all</button><button type="button" id="clearBundleQuizzes">Clear</button><strong id="bundleQuizCount" aria-live="polite">0 selected</strong></div>
-                    <div class="portable-bundle-quiz-list">
+                    <p class="portable-bundle-helper" id="bundleScrollHelp">Scroll within the list to see all {{ catalog.candidate_count }} candidates. Select all includes the entire list, not just the quizzes currently in view. Export up to {{ catalog.max_quizzes }} quizzes per bundle.</p>
+                    <div class="portable-bundle-quiz-list" tabindex="0" role="group" aria-label="All export candidates" aria-describedby="bundleScrollHelp">
                         {% for quiz in catalog.quizzes %}
                         <label class="portable-bundle-quiz"><input type="checkbox" name="quiz_ids" value="{{ quiz.quiz_id }}"><span><strong>{{ quiz.title }}</strong><small>{{ quiz.folder }} · {{ quiz.question_count }} question{% if quiz.question_count != 1 %}s{% endif %}{% if quiz.matching_count %} · {{ quiz.matching_count }} matching{% endif %}</small></span></label>
                         {% endfor %}
@@ -53,6 +56,9 @@
                 <div class="portable-bundle-empty"><strong>No exportable source quizzes</strong><p>Create or import a normal quiz first.</p></div>
                 {% endif %}
                 {% if catalog.excluded_generated_count %}<p class="portable-bundle-helper">{{ catalog.excluded_generated_count }} generated review/composition quiz{% if catalog.excluded_generated_count != 1 %}zes are{% else %} is{% endif %} intentionally excluded.</p>{% endif %}
+                {% if catalog.unavailable %}<p class="portable-bundle-helper">Excluded unavailable or unusable Library entries: {{ catalog.unavailable }}. Their saved quiz data is unavailable or their entry cannot be used safely.</p>{% endif %}
+                {% if catalog.empty %}<p class="portable-bundle-helper">Quizzes excluded with no saved questions: {{ catalog.empty }}.</p>{% endif %}
+                {% if catalog.unsupported %}<p class="portable-bundle-helper">Quizzes excluded with unsupported question types: {{ catalog.unsupported }}. Hotspots are not supported by this bundle format. Use a full backup to preserve your complete DLMS data.</p>{% endif %}
             </section>
 
             <section class="dashboard-panel portable-bundle-panel" aria-labelledby="bundleImportHeading">

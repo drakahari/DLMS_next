@@ -599,12 +599,17 @@ def validate_portable_quiz_bundle_manifest(manifest):
 def portable_quiz_export_catalog(
     cur, registry, *, is_generated_source=_is_generated_review_source
 ):
-    """List registry-backed, non-generated quizzes eligible for export."""
+    """List source quizzes independently of Library visibility, with accounting.
+
+    Content/media validation still runs when the selected archive is built.
+    Each Library entry receives one candidate or exclusion reason.
+    """
     rows = cur.execute("""
         SELECT z.id, z.title, COALESCE(z.source_file, '') AS source_file,
                z.generation_kind,
                COUNT(q.id) AS question_count,
-               SUM(CASE WHEN COALESCE(q.question_type, 'choice') = 'matching' THEN 1 ELSE 0 END) AS matching_count
+               SUM(CASE WHEN LOWER(COALESCE(NULLIF(TRIM(q.question_type), ''), 'choice')) NOT IN ('choice', 'matching') THEN 1 ELSE 0 END) AS unsupported_count,
+               SUM(CASE WHEN LOWER(COALESCE(NULLIF(TRIM(q.question_type), ''), 'choice')) = 'matching' THEN 1 ELSE 0 END) AS matching_count
         FROM quizzes z
         LEFT JOIN questions q ON q.quiz_id = z.id
         GROUP BY z.id, z.title, z.source_file, z.generation_kind
@@ -612,13 +617,21 @@ def portable_quiz_export_catalog(
     rows_by_id = {row["id"]: row for row in rows}
     catalog = []
     excluded_generated_count = 0
+    counts = dict(unavailable=0, empty=0, unsupported=0, hidden_included=0)
+    seen = set()
     for entry in registry or []:
         try:
             quiz_id = int(entry.get("id"))
         except (AttributeError, TypeError, ValueError):
+            counts['unavailable'] += 1
             continue
+        if quiz_id in seen:
+            counts['unavailable'] += 1
+            continue
+        seen.add(quiz_id)
         row = rows_by_id.get(quiz_id)
-        if row is None or not int(row["question_count"] or 0):
+        if row is None:
+            counts['unavailable'] += 1
             continue
         generated = is_generated_quiz(
             generation_kind=row["generation_kind"],
@@ -630,6 +643,14 @@ def portable_quiz_export_catalog(
         if generated:
             excluded_generated_count += 1
             continue
+        if not int(row['question_count'] or 0):
+            counts['empty'] += 1
+            continue
+        if int(row['unsupported_count'] or 0):
+            counts['unsupported'] += 1
+            continue
+        if entry.get('hidden'):
+            counts['hidden_included'] += 1
         catalog.append({
             "quiz_id": quiz_id,
             "title": row["title"],
@@ -638,7 +659,12 @@ def portable_quiz_export_catalog(
             "choice_count": int(row["question_count"] or 0) - int(row["matching_count"] or 0),
             "matching_count": int(row["matching_count"] or 0),
         })
-    return {"quizzes": catalog, "excluded_generated_count": excluded_generated_count}
+    return {
+        "quizzes": catalog, "excluded_generated_count": excluded_generated_count,
+        "library_count": len(registry or []), "candidate_count": len(catalog),
+        "max_quizzes": PORTABLE_QUIZ_BUNDLE_MAX_QUIZZES,
+        **counts,
+    }
 
 
 def _export_media(question, *, add_asset):

@@ -56,6 +56,19 @@ Export does not edit, move, or delete the source quizzes. If DLMS reports that
 generated review or composition quizzes were excluded, that is an intentional
 portability boundary rather than lost source content.
 
+The export panel reports how many source quizzes are available from your Library
+and how many hidden quizzes are included. Hidden quizzes and hidden folders do
+not limit export eligibility. The list scrolls within the panel: seeing only a
+few quizzes at once does not mean that only those quizzes are available.
+**Select all** includes the entire candidate list; select up to 100 quizzes per
+bundle.
+
+DLMS separately reports excluded generated/Mixed quizzes, entries whose saved
+quiz data is unavailable, empty quizzes, and quizzes with unsupported question
+types. This format supports choice and matching questions with supported images,
+not interactive hotspots. Use a full backup for your complete DLMS state. The
+selected questions and media still need to pass validation when you download.
+
 ### Import a bundle
 
 1. On the receiving installation, open **Quiz Library → Quiz Bundles**.

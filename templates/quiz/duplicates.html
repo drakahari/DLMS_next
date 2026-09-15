@@ -59,10 +59,24 @@
         <p class="duplicate-question-generated-note">{{ report.excluded_generated_count }} generated review/composition question{% if report.excluded_generated_count != 1 %}s were{% else %} was{% endif %} excluded from this source-library scan.</p>
         {% endif %}
 
-        {% if not report.exact_groups and not report.near_groups %}
+        <section class="dashboard-panel duplicate-question-tools" aria-label="Filter duplicate results">
+            <form method="GET" action="/library/duplicates" class="duplicate-question-filters">
+                <label class="build-field"><span>Source quiz in results</span><select name="quiz" id="duplicateQuizFilter"><option value="">All source quizzes</option>{% for id, title in duplicate_view.quizzes %}<option value="{{ id }}"{% if duplicate_view.quiz == id|string %} selected{% endif %}>{{ title }} · Quiz #{{ id }}</option>{% endfor %}</select></label>
+                <label class="build-field"><span>Folder in results</span><select name="folder" id="duplicateFolderFilter"><option value="">All folders</option>{% for folder in duplicate_view.folders %}<option value="{{ folder }}"{% if duplicate_view.folder == folder %} selected{% endif %}>{{ folder }}</option>{% endfor %}</select></label>
+                <label class="build-field"><span>Question or quiz title</span><input type="search" name="search" id="duplicateSearch" value="{{ duplicate_view.search }}" placeholder="Search duplicate results"></label>
+                <button class="library-primary-action" type="submit">Apply filters</button>
+                <a class="library-secondary-action" href="/library/duplicates">Clear filters</a>
+            </form>
+            <p class="duplicate-question-generated-note">A group matches a quiz or folder when at least one source record belongs to it, including hidden quizzes. Filters only change this view, not the scan or your content.</p>
+            <div class="duplicate-question-navigation">
+                <p role="status">Showing {{ duplicate_view.start }}–{{ duplicate_view.end }} of {{ duplicate_view.matched_count }} matching groups · {{ duplicate_view.total_count }} groups in the full scan.</p>
+                {% if duplicate_view.matched_count %}<button class="library-secondary-action compact" type="button" id="expandDuplicateGroups">Expand all on page</button><button class="library-secondary-action compact" type="button" id="collapseDuplicateGroups">Collapse all on page</button>{% endif %}
+            </div>
+        </section>
+
+        {% if not duplicate_view.matched_count %}
         <section class="dashboard-panel duplicate-question-empty">
-            <h2>No duplicates found</h2>
-            <p>No exact or high-confidence possible duplicates were found among the current source questions.</p>
+            {% if duplicate_view.total_count %}<h2>No matching groups</h2><p>Try another quiz, folder, or search, or clear the filters to see the complete results.</p>{% else %}<h2>No duplicates found</h2><p>No exact or high-confidence possible duplicates were found among the current source questions.</p>{% endif %}
         </section>
         {% endif %}
 
@@ -74,8 +88,8 @@
             </div>
             <div class="duplicate-question-results">
                 {% for group in report.exact_groups %}
-                <article class="dashboard-panel duplicate-question-group">
-                    <div class="duplicate-question-group-title"><strong>{{ group.questions|length }} matching source records</strong><span>{{ group.question_type|capitalize }}</span></div>
+                <details class="dashboard-panel duplicate-question-group"{% if duplicate_view.expanded %} open{% endif %}>
+                    <summary class="duplicate-question-group-title"><strong>{{ group.questions[0].question_text|truncate(110) }}</strong><span>{{ group.questions|length }} matching source records · {{ group.question_type|capitalize }}</span></summary>
                     <div class="duplicate-question-locations exact-locations">
                         {% for question in group.questions %}
                         <section class="duplicate-question-location">
@@ -90,7 +104,7 @@
                         </section>
                         {% endfor %}
                     </div>
-                </article>
+                </details>
                 {% endfor %}
             </div>
         </section>
@@ -104,8 +118,8 @@
             </div>
             <div class="duplicate-question-results">
                 {% for group in report.near_groups %}
-                <article class="dashboard-panel duplicate-question-group">
-                    <div class="duplicate-question-group-title"><strong>{{ group.reason }}</strong><span>Advisory only</span></div>
+                <details class="dashboard-panel duplicate-question-group"{% if duplicate_view.expanded %} open{% endif %}>
+                    <summary class="duplicate-question-group-title"><strong>{{ group.left.questions[0].question_text|truncate(110) }}</strong><span>{{ group.reason }} · Advisory only</span></summary>
                     <div class="duplicate-question-locations possible-locations">
                         {% for side in (group.left, group.right) %}
                         <div class="duplicate-question-side">
@@ -124,12 +138,17 @@
                         </div>
                         {% endfor %}
                     </div>
-                </article>
+                </details>
                 {% endfor %}
             </div>
         </section>
         {% endif %}
 
+        <nav class="duplicate-question-navigation" aria-label="Duplicate result pages">
+            {% if duplicate_view.previous_url %}<a class="library-secondary-action" rel="prev" href="{{ duplicate_view.previous_url }}">Previous page</a>{% endif %}
+            <span>Page {{ duplicate_view.page }} of {{ duplicate_view.pages }}</span>
+            {% if duplicate_view.next_url %}<a class="library-secondary-action" rel="next" href="{{ duplicate_view.next_url }}">Next page</a>{% endif %}
+        </nav>
         <section class="dashboard-panel duplicate-question-safety-note">
             <strong>Resolve manually when needed.</strong>
             <p>This report never changes question IDs, source quizzes, concepts, history, or provenance. Use each source quiz’s existing editor if you decide to make a change.</p>
@@ -137,5 +156,6 @@
     </main>
 </div>
 <script src="/static/nav-normalize.js"></script>
+<script src="/static/quiz-duplicate-review.js"></script>
 </body>
 </html>

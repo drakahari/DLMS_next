@@ -8957,6 +8957,18 @@ def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sourc
             ).fetchone()[0] == 1
 
 
+def _assert_library_tool_metrics_contained(browser, selector):
+    geometry = browser.evaluate(
+        "(() => {const rect=n=>n.getBoundingClientRect();"
+        f"const cards=[...document.querySelectorAll('{selector} .library-stat-card')];"
+        "return {count:cards.length,overflow:document.documentElement.scrollWidth>innerWidth+1,"
+        "contained:cards.every(card=>{const b=rect(card),c=[...card.children].map(rect);"
+        "return c.length===3&&c.every(r=>r.left>=b.left+10&&r.right<=b.right-10&&"
+        "r.top>=b.top&&r.bottom<=b.bottom)&&c[0].bottom<=c[1].top&&c[1].bottom<=c[2].top;})};})()"
+    )
+    assert geometry == {'count': 4, 'overflow': False, 'contained': True}, geometry
+
+
 def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
     browser_stack,
 ):
@@ -9018,7 +9030,7 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
         ".map(node=>node.textContent.trim()),"
         "editLinks:[...document.querySelectorAll('.duplicate-question-location a')]"
         ".map(node=>node.getAttribute('href')),"
-        "hasMutationForm:document.querySelector('form') !== null"
+        "hasMutationForm:[...document.querySelectorAll('form')].some(form=>form.method.toLowerCase() !== 'get')"
         "}))()"
     )
     assert state["heading"] == "Duplicate Question Review"
@@ -9027,7 +9039,22 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
     assert {f"/edit_quiz/{quiz_id}" for quiz_id in quiz_ids} <= set(state["editLinks"])
     assert state["hasMutationForm"] is False
 
+    browser.evaluate("document.querySelector('#duplicateQuizFilter').focus()")
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.id") == 'duplicateFolderFilter'
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.id") == 'duplicateSearch'
+
     duplicate_url = browser.evaluate("location.href")
+    browser.click('#collapseDuplicateGroups')
+    browser.wait_for("[...document.querySelectorAll('.duplicate-question-group')].every(g=>!g.open&&g.querySelector('summary').getAttribute('aria-expanded')==='false')")
+    # Firefox retains layout rectangles under closed native details; check paint visibility.
+    assert browser.evaluate("[...document.querySelectorAll('.duplicate-question-location')].every(n=>!n.checkVisibility())")
+    browser.click('#expandDuplicateGroups')
+    browser.wait_for("[...document.querySelectorAll('.duplicate-question-group')].every(g=>g.open&&g.querySelector('summary').getAttribute('aria-expanded')==='true')")
+    browser.click('details.duplicate-question-group summary')
+    browser.wait_for("!document.querySelector('details.duplicate-question-group').open")
+    browser.click('details.duplicate-question-group summary')
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
         _set_theme(browser, theme)
         browser.navigate(duplicate_url)
@@ -9037,15 +9064,74 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
             "source metadata": ".duplicate-question-source span",
             "correct badge": ".duplicate-question-correct",
             "edit action": ".duplicate-question-location .library-secondary-action",
+            "metric label": ".duplicate-question-summary .library-stat-card span",
+            "metric description": ".duplicate-question-summary .library-stat-card small",
+            "filter label": ".duplicate-question-filters .build-field span",
+            "quiz selector": "#duplicateQuizFilter",
+            "search text": "#duplicateSearch",
+            "collapse action": "#collapseDuplicateGroups",
         })
         for role, themed_state in themed_duplicate.items():
             assert themed_state["contrast"] >= 4.5, (theme, role, themed_state)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 1000)
+            _assert_library_tool_metrics_contained(browser, '.duplicate-question-summary')
+            assert browser.evaluate("(() => {const p=document.querySelector('.duplicate-question-tools').getBoundingClientRect();return [...document.querySelectorAll('.duplicate-question-filters input,.duplicate-question-filters select,.duplicate-question-filters button')].every(n=>{const r=n.getBoundingClientRect();return r.left>=p.left&&r.right<=p.right;});})()")
+            browser.evaluate("document.querySelector('.duplicate-question-summary .library-stat-card span').textContent='Source questions scanned across your entire library'")
+            _assert_library_tool_metrics_contained(browser, '.duplicate-question-summary')
 
     with sqlite3.connect(database_path) as connection:
         for quiz_id in quiz_ids:
             assert connection.execute(
                 "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
             ).fetchone()[0] == 1
+
+
+def test_duplicate_question_large_results_filters_and_pagination(browser_stack):
+    """Exercise a real large scan, bounded DOM, and presentation-only filters."""
+    database = browser_stack.data_root / 'results.db'
+    ids = []
+    with sqlite3.connect(database) as connection:
+        for index in range(2):
+            cursor = connection.execute('INSERT INTO quizzes(title,source_file,generation_kind) VALUES(?,?,?)',
+                                        (f'Large Source {index + 1}', f'large-{index}.html', 'source'))
+            ids.append(cursor.lastrowid)
+            for number in range(1, 45):
+                cursor = connection.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type) VALUES(?,?,?,'choice')",
+                                            (ids[-1], number, f'Compare synthetic item {number}: which option applies?'))
+                connection.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',
+                                       [(cursor.lastrowid, 'A', 'Expected', 1), (cursor.lastrowid, 'B', 'Alternative', 0)])
+        connection.commit()
+        before = list(connection.iterdump())
+    registry_path = browser_stack.data_root / 'config' / 'quizzes.json'
+    registry = json.loads(registry_path.read_text())
+    registry.extend(dict(id=quiz, title=f'Large Source {i + 1}', html=f'large-{i}.html',
+                         folder='Uncategorized' if i == 0 else 'Hidden folder', hidden=i == 1)
+                    for i, quiz in enumerate(ids))
+    # Mechanical fixture serialization, isolated from the user's data.
+    registry_path.write_text(json.dumps(registry))
+    browser = browser_stack.browser
+    url = f'{browser_stack.base_url}/library/duplicates'
+    browser.navigate(url)
+    browser.wait_for("document.querySelector('details.duplicate-question-group')")
+    assert browser.evaluate("document.querySelectorAll('details.duplicate-question-group').length") == 20
+    assert browser.evaluate("[...document.querySelectorAll('details.duplicate-question-group')].every(g=>!g.open)")
+    browser.click('a[rel=next]')
+    browser.wait_for("new URLSearchParams(location.search).get('page')==='2'")
+    assert browser.evaluate("document.querySelectorAll('details.duplicate-question-group').length") <= 20
+    browser.navigate(url)
+    browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value='{ids[1]}';document.querySelector('#duplicateFolderFilter').value='Uncategorized';document.querySelector('#duplicateSearch').value='item 44:'")
+    browser.click('.duplicate-question-filters button[type=submit]')
+    browser.wait_for("new URLSearchParams(location.search).get('search')==='item 44:'")
+    assert browser.evaluate("document.querySelectorAll('details.duplicate-question-group').length") == 1
+    assert browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value==='{ids[1]}'")
+    browser.evaluate("document.querySelector('#duplicateSearch').value='no such source question'")
+    browser.click('.duplicate-question-filters button[type=submit]')
+    browser.wait_for("document.querySelector('.duplicate-question-empty h2')?.textContent==='No matching groups'")
+    browser.click('.duplicate-question-filters a')
+    browser.wait_for("!location.search&&document.querySelectorAll('details.duplicate-question-group').length===20")
+    with sqlite3.connect(database) as connection:
+        assert before == list(connection.iterdump())
 
 
 def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
@@ -9218,6 +9304,9 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
         themed_review = _theme_contrast_snapshot(browser, review_selectors)
         for role, state in themed_review.items():
             assert state["contrast"] >= 4.5, (theme, role, state)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 1000)
+            _assert_library_tool_metrics_contained(browser, '.portable-bundle-summary')
     for width in (1024, 420):
         browser.set_viewport(width, 900 if width == 1024 else 820)
         browser.navigate(review_url)

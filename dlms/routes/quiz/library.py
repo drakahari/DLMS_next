@@ -18,6 +18,7 @@ from flask import (
 )
 
 from dlms.services.quiz_smart_views import normalize_smart_view
+from dlms.services.quiz_duplicate_view import duplicate_report_view
 
 from .dependencies import QuizLibraryDependencies
 
@@ -946,7 +947,7 @@ def quiz_duplicate_report(dependencies):
         "quiz/duplicates.html",
         app_version=dependencies.app_version(),
         portal_title=dependencies.get_portal_title(),
-        report=report,
+        **duplicate_report_view(report, request.args),
     )
 
 

@@ -408,6 +408,76 @@ class PortableQuizBundleTests(unittest.TestCase):
         self.assertEqual(1, catalog["excluded_generated_count"])
         with self.assertRaisesRegex(bundles.PortableQuizBundleError, "not exportable"):
             self._export([generated_id])
+
+    def test_catalog_accounts_for_visibility_types_and_unavailable_entries(self):
+        visible = self._seed('Visible source', 'visible.html', [self._choice()])
+        hidden = self._seed('Hidden source', 'hidden.html', [self._choice()], folder='Custom')
+        matching = self._seed('Matching source', 'matching.html', [self._matching()])
+        image = self._seed('Image source', 'image.html', [self._choice(image_url='/media/demo.png')])
+        legacy = self._seed('Legacy ordinary', 'legacy.html', [self._choice()])
+        generated = self._seed('Due practice', 'generated.html', [self._choice()])
+        mixed = self._seed('Curated mixture', 'mixed.html', [self._choice()])
+        hotspot = self._seed('Hotspot source', 'hotspot.html', [self._choice()])
+        self._seed('Empty source', 'empty.html', [])
+        registry = dlms.load_registry()
+        next(item for item in registry if item['id'] == hidden)['hidden'] = True
+        registry += [{'id': 999999, 'title': 'Unavailable'}, {'id': 'invalid'}]
+        dlms.save_registry(registry)
+        connection = dlms.get_db()
+        try:
+            connection.execute("UPDATE quizzes SET generation_kind='source' WHERE id=?", (visible,))
+            connection.execute("UPDATE quizzes SET generation_kind='native_spaced_review' WHERE id=?", (generated,))
+            connection.execute("UPDATE quizzes SET generation_kind='mixed_quiz' WHERE id=?", (mixed,))
+            connection.execute("UPDATE questions SET question_type='hotspot' WHERE quiz_id=?", (hotspot,))
+            connection.commit()
+            before = list(connection.iterdump())
+            catalog = bundles.portable_quiz_export_catalog(connection.cursor(), registry)
+            self.assertEqual({visible, hidden, matching, image, legacy}, {q['quiz_id'] for q in catalog['quizzes']})
+            self.assertEqual(11, catalog['library_count'])
+            self.assertEqual(5, catalog['candidate_count'])
+            self.assertEqual(1, catalog['hidden_included'])
+            self.assertEqual(2, catalog['excluded_generated_count'])
+            self.assertEqual(2, catalog['unavailable'])
+            self.assertEqual(1, catalog['empty'])
+            self.assertEqual(1, catalog['unsupported'])
+            self.assertEqual(before, list(connection.iterdump()))
+        finally:
+            connection.close()
+        html = dlms.app.test_client().get('/quiz-bundles').get_data(as_text=True)
+        self.assertIn('5 source quizzes available', html)
+        self.assertIn('Hidden quizzes included: 1', html)
+        self.assertIn('Scroll within the list to see all 5 candidates', html)
+        self.assertIn('Folder visibility does not limit export', html)
+        with self.assertRaises(bundles.PortableQuizBundleError):
+            self._export([hotspot])
+
+    def test_large_catalog_is_not_limited_to_the_visible_scroll_window(self):
+        ids = [self._seed(f'Source {index}', f'source-{index}.html', [self._choice()]) for index in range(191)]
+        registry = dlms.load_registry()
+        for entry in registry[37:]:
+            entry['hidden'] = True
+        dlms.save_registry(registry)
+        html = dlms.app.test_client().get('/quiz-bundles').get_data(as_text=True)
+        self.assertEqual(191, html.count('name="quiz_ids"'))
+        self.assertIn('191 source quizzes available', html)
+        self.assertIn('Hidden quizzes included: 154', html)
+        self.assertIn(f'value="{ids[-1]}"', html)
+
+    def test_explicit_generation_metadata_and_legacy_type_normalization(self):
+        ordinary = self._seed('Adaptive Study — authored source', 'authored.html', [self._choice()])
+        kinds = ('adaptive_study', 'smart_review', 'concept_review', 'native_spaced_review', 'spaced_review', 'mixed_quiz')
+        generated = [(self._seed(f'Generated {kind}', f'{kind}.html', [self._choice()]), kind) for kind in kinds]
+        connection = dlms.get_db()
+        try:
+            connection.execute("UPDATE quizzes SET generation_kind='source' WHERE id=?", (ordinary,))
+            connection.execute("UPDATE questions SET question_type=' Choice ' WHERE quiz_id=?", (ordinary,))
+            connection.executemany('UPDATE quizzes SET generation_kind=? WHERE id=?', [(kind, quiz) for quiz, kind in generated])
+            connection.commit()
+            catalog = bundles.portable_quiz_export_catalog(connection.cursor(), dlms.load_registry())
+            self.assertEqual([ordinary], [quiz['quiz_id'] for quiz in catalog['quizzes']])
+            self.assertEqual(6, catalog['excluded_generated_count'])
+        finally:
+            connection.close()
         with self.assertRaisesRegex(bundles.PortableQuizBundleError, "Select at least one"):
             self._export([])
 
