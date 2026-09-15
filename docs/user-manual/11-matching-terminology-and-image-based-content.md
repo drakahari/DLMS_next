@@ -127,7 +127,10 @@ Repair draft, then removes the original temporary images or rendered PDF pages.
 Use the retained source labels and unassigned text to compare against your own
 original files while repairing the result.
 
-<!-- Screenshot: UM-18 — OCR matching Review & Repair -->
+![OCR matching Review and Repair showing extracted pairs, diagnostics, and unassigned source text](images/UM-18-ocr-matching-review.png)
+
+*Unassigned text remains visible for comparison instead of being silently
+invented into a pair.*
 
 ### Review and publish OCR matching
 
@@ -222,7 +225,7 @@ The keyboard stage uses the same arrow-key and Enter/Space controls as hotspot
 creation. Status messages announce placement, tests, saves, and errors without
 relying only on color.
 
-<!-- Screenshot: UM-19 — Image Study Editor Clickable Regions mode -->
+![Image Study Editor in Clickable Regions mode with a keyboard-authored polygon and visible keyboard cursor](images/UM-19-image-study-editor.png)
 
 ### Image Prep
 

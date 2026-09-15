@@ -17,7 +17,7 @@ In other words, use **Study Packs** to study and **Content Packs** to manage
 pack files. A Study Pack is not a Quiz Library folder, a Portable Quiz Bundle,
 or a full DLMS backup.
 
-<!-- Screenshot: UM-22 — Study Pack catalog and Content Pack validation -->
+![Study Packs catalog showing an installed synthetic pack with matching, image, and quiz activities](images/UM-22-study-packs-catalog.png)
 
 ## Choose how to obtain a Study Pack
 
@@ -197,7 +197,7 @@ handoff is covered in
 and Law deck export is covered in
 [Anki, Decks, and Printable Cards](14-anki-decks-and-printable-cards.md#export-law-study-cards).
 
-<!-- Screenshot: UM-23 — Saved Law Case Review -->
+![Saved Law Case Review showing editable case details, a case brief, and embedded IRAC practice](images/UM-23-law-case-review.png)
 
 The **Future Study Modes** cards on the Law Study landing page are previews,
 not buttons for available standalone tools. Saved Case Reviews already contain

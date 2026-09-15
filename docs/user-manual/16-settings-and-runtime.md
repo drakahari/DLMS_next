@@ -162,7 +162,7 @@ The runtime mode comes from how the host starts and binds DLMS, not from the
 network address of an individual browser. A browser on the host computer does
 not turn a LAN/server launch back into local desktop mode.
 
-<!-- Screenshot: UM-25 — Settings overview and LAN/server lifecycle state -->
+![Application Lifecycle settings in LAN server mode with browser-presence shutdown disabled and host shutdown guidance](images/UM-25-lan-server-lifecycle.png)
 
 ## Use browser-presence shutdown in local mode
 

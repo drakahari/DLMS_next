@@ -103,5 +103,5 @@ more clearly. The manifest labels these entries partially automatable when the
 canonical asset intentionally captures only the stronger primary state. Those
 optional companion frames should be considered during human asset review,
 rather than added automatically and increasing manual size before their value
-is established. The manual should ultimately reference approved images by
-stable semantic filenames.
+is established. The manual now references the approved primary images once each
+by stable semantic filenames.

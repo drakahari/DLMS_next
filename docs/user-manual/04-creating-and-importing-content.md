@@ -10,7 +10,7 @@ Most quiz-building paths begin at **Build Quiz** in the sidebar. Portable Quiz
 Bundles are imported from **Quiz Library → Quiz Bundles**, while Study Packs
 are installed and managed through the pack screens.
 
-<!-- Screenshot: UM-02 — Build Quiz hub -->
+![Build Quiz hub showing text upload, External AI, paste, PDF and image, manual-entry, and matching options](images/UM-02-build-quiz-hub.png)
 
 ## Choose a creation method
 

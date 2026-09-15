@@ -101,6 +101,8 @@ term/definition pairs.
    response back into DLMS.
 4. Choose **Validate & Review**.
 
+![External AI Quiz Builder configured for a provider-neutral matching and terminology request](images/UM-20-external-ai-matching.png)
+
 The requested structure contains one matching question, a direction, the pairs
 shown per attempt, term/definition values, optional per-pair categories and
 explanations, question-level concepts and explanation, and source metadata.
@@ -110,8 +112,6 @@ round size; and confirm every final relationship. A missing side, repeated term,
 repeated definition, conflicting mapping, unsupported field, invalid type, or
 out-of-range count blocks publication until repaired. DLMS validates your edited
 version again on the server.
-
-<!-- Screenshot: UM-20 — External AI matching prompt and Review & Repair -->
 
 The published result uses the same normal matching format described in
 [Matching, Terminology, and Image-Based Content](11-matching-terminology-and-image-based-content.md).
@@ -138,7 +138,10 @@ Do not use this path when a normal quiz is sufficient.
 7. Install the pack, then open Study Packs and choose the activity you want to
    generate. Installation itself does not immediately create a quiz.
 
-<!-- Screenshot: UM-21 — AI Study Pack ZIP workflow -->
+![AI Study Pack Builder showing topic, difficulty, pack size, provider, and content-type choices](images/UM-21-ai-study-pack-builder.png)
+
+*This workflow requests a complete Study Pack ZIP rather than the JSON text
+used by the External AI Quiz Builder.*
 
 This workflow requires an actual ZIP with the expected manifest, data, and any
 required assets. Plain pasted prose or JSON from the quiz builder is not an

@@ -24,7 +24,7 @@ faster and more reliable than optical character recognition (OCR), and DLMS
 always treats that embedded text as the primary source. OCR is for text that is
 present only as pixels, such as a scan or screenshot.
 
-<!-- Screenshot: UM-15 — PDF & Image Import start screen -->
+![PDF and Image Import page with a selectable-text PDF chosen and source-rights confirmation enabled](images/UM-15-pdf-image-import.png)
 
 ## Import a selectable-text PDF
 
@@ -94,7 +94,10 @@ Bulk actions apply to records you select. **Select All Visible** uses the
 current filter, while **Clear Selection** clears selections across all filters.
 Exclusion or deletion marks are not committed until you save the reviewed bank.
 
-<!-- Screenshot: UM-16 — PDF question-bank Review & Repair -->
+![Question-bank Review and Repair showing status filters, bulk selection, editable choices, and unassigned text](images/UM-16-review-and-repair.png)
+
+*Status filters and bulk actions help separate ready questions from records
+that still need correction or exclusion.*
 
 ## Save and use a source bank
 
@@ -148,12 +151,12 @@ use that region to fill missing question content without reparsing the entire
 page or creating a duplicate question. You still review every OCR-added choice
 against its temporary preview.
 
-<!-- Screenshot: UM-17 — Scanned-PDF OCR page selection -->
-
 ## Import quiz screenshots
 
 Use **Import Quiz Screenshots** for clear screenshots of structured choice
 questions.
+
+![PDF and Image Import page with a synthetic quiz screenshot selected for local OCR](images/UM-17-screenshot-ocr-selection.png)
 
 1. Select up to 25 PNG, JPG/JPEG, or WebP images. Multiple images are processed
    in the order you submit them.

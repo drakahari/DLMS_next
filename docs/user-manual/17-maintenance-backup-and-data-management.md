@@ -77,7 +77,7 @@ import. Use it only with a DLMS backup you trust.
    you intend to use. Choose **Cancel Restore** to remove the staged upload and
    leave current data unchanged.
 
-<!-- Screenshot: UM-26 — Backup & Restore with a validated restore staged for confirmation -->
+![Validated DLMS backup staged on the Review backup before restore confirmation page](images/UM-26-backup-restore-confirmation.png)
 
 Before applying a confirmed restore, DLMS creates a pre-restore safety backup
 of the current workspace. It then replaces persistent data and rebuilds trusted
@@ -257,7 +257,7 @@ To run it:
 4. Wait for the live status to report the number rebuilt and the number that
    failed.
 
-<!-- Screenshot: UM-27 — Rebuild All Quiz Pages and its confirmation -->
+![System Tools card explaining the occasional Rebuild All Quiz Pages maintenance action](images/UM-27-rebuild-all-quiz-pages.png)
 
 Each quiz's derived files are replaced safely. If one quiz cannot be rebuilt,
 DLMS keeps that quiz's previous page files, continues reporting the overall

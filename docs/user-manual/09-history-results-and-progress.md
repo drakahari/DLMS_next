@@ -65,7 +65,7 @@ source area. These filters do not delete or alter anything. If the result set
 spans several pages, use **Previous** and **Next**; the summary continues to
 describe the selected origin, not just the rows on the current page.
 
-<!-- Screenshot: UM-14 — History -->
+![History page showing completed quiz attempts, score filters, dates, modes, and Review actions](images/UM-14-history.png)
 
 The Dashboard’s recent activity list also links to recently saved attempts. If
 you arrive at History with one attempt selected, DLMS highlights and scrolls to

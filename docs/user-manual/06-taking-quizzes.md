@@ -115,7 +115,7 @@ temporary session selection, with an `.apkg` export action available at the end
 when questions are marked. The External AI and Anki chapters explain these
 optional workflows.
 
-<!-- Screenshot: UM-07 — Study Mode feedback after an incorrect response -->
+![Study Mode showing an incorrect answer, immediate feedback, and the next-question controls](images/UM-07-study-mode-feedback.png)
 
 ## Use Exam Mode for a test-like attempt
 
@@ -141,7 +141,7 @@ If the final attempt cannot be persisted, the result explicitly says it was
 not saved and offers **Retry Saving Attempt**. The exact pending attempt remains
 recoverable; DLMS does not clear it merely because a score appeared on screen.
 
-<!-- Screenshot: UM-08 — Exam Mode timer, navigation, and submission -->
+![Exam Mode in progress on a multi-answer question with timer and navigation controls](images/UM-08-exam-mode.png)
 
 ## Resume an interrupted quiz
 
@@ -169,7 +169,7 @@ clears that completed checkpoint. Exam Mode clears its checkpoint only after
 the final attempt is successfully persisted. If you leave on an unanswered
 final question or a save fails, recovery remains available.
 
-<!-- Screenshot: UM-09 — Interrupted quiz recovery panel -->
+![Interrupted quiz recovery panel showing Resume and Start Over for a saved Exam Mode checkpoint](images/UM-09-quiz-recovery.png)
 
 ## Understand shared and browser-local state
 

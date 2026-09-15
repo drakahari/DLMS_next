@@ -3,8 +3,8 @@
 This directory is the canonical source for the DLMS end-user manual. It
 contains the Phase 1 product audit and manual architecture for **DLMS 3.2.0**,
 plus the substantive Phase 2 chapter draft and its first integrated editorial
-pass. A reproducible first screenshot set has also been captured; final human
-review, approved screenshot placement, and release preparation remain.
+pass. The reproducible screenshot set has also been integrated into the
+chapters. Final human review and release preparation remain.
 
 Markdown is the editable source of truth. A PDF may later be generated as an
 optional distribution artifact; it is not required to maintain or use the
@@ -239,8 +239,7 @@ GitHub releases or retained in a versioned documentation archive.
 
 Phase 1 inventories and designs. The substantive Phase 2 draft now covers all
 planned chapters and appendices, and the first integrated editorial pass is
-complete. The first reproducible screenshot set is captured but not yet placed
-in the chapters. Final human review, screenshot selection/insertion, a renderer
-prototype,
-optional PDF generation, and publication are later approved phases. They must
-not be inferred from the presence of this directory.
+complete. The first reproducible screenshot set is integrated into the
+chapters. Final human review, an optional renderer prototype and PDF, and
+publication are later approved phases. They must not be inferred from the
+presence of this directory.

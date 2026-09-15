@@ -21,7 +21,7 @@ other options remain useful when you already know the kind of review you want.
 | **Topic Retention Schedule** | Concept-level reinforcement | You choose a review window of scheduled topics | Scheduled per concept | Generated Practice |
 | **Missed-question review** | Understanding mistakes from one completed Exam | You choose the attempt | On demand | Review of that saved result |
 
-<!-- Screenshot: UM-10 — Review choices -->
+![Help comparison explaining when to use Today’s Review, Adaptive Study, Smart Review, Concept Review, Due Questions, and Topic Retention](images/UM-10-review-options-guide.png)
 
 These options reuse the same local quizzes and saved learning evidence. They do
 not alter the source questions, and none of them requires an AI service.
@@ -170,8 +170,6 @@ relationship is known.
 
 ## Follow the Topic Retention Schedule
 
-<!-- Screenshot: UM-11 — Review Schedule -->
-
 The **Topic Retention Schedule** appears on the same Review Schedule page, but
 it is not another name for Due Questions.
 
@@ -179,6 +177,11 @@ it is not another name for Due Questions.
   correct and incorrect response history.
 - Topic Retention Schedule schedules **concepts** from concept Mastery,
   evidence, and time since the latest activity.
+
+![Review Schedule showing separate Due Questions and Topic Retention sections](images/UM-11-review-schedule.png)
+
+*The upper section schedules source questions; the lower section schedules
+concept-level reinforcement.*
 
 A concept needs at least three counted responses before it enters the topic
 schedule. Current mastery bands use review intervals of about one day below 60,

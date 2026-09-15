@@ -69,7 +69,7 @@ portability boundary rather than lost source content.
    the existing quiz.
 6. Select **Create these quizzes**, then choose **Import Portable Bundle**.
 
-<!-- Screenshot: UM-06 — Portable Quiz Bundle export and validated import preview -->
+![Validated Portable Quiz Bundle preview showing a title collision, proposed rename, and import controls](images/UM-06-portable-quiz-bundle-review.png)
 
 The imported quizzes appear in the indicated Quiz Library folders and behave
 as independent ordinary quizzes in the receiving installation. DLMS can retain

@@ -60,11 +60,14 @@ Older compatible material continues to contribute conservatively.
 
 ## Read the concept table
 
-<!-- Screenshot: UM-12 — Learning Intelligence -->
-
 The Topic Intelligence page begins with summary cards for topics with evidence,
 average accuracy, average Mastery, and weak areas. The concept table then gives
 more detail for each topic.
+
+![Learning Intelligence concept table with the How DLMS calculates mastery explanation open](images/UM-12-learning-intelligence-mastery.png)
+
+*The explanation separates Mastery from Trend and describes how limited
+evidence affects the result.*
 
 | Column or indicator | What it means |
 | --- | --- |
@@ -211,8 +214,6 @@ needed instead of assigning unsupported strengths or weaknesses.
 
 ## Use Diagnostics as a review prompt
 
-<!-- Screenshot: UM-13 — Learning Diagnostics -->
-
 **Diagnostics** looks for two kinds of patterns:
 
 - **Repeated answer confusions** identify an incorrect choice that has been
@@ -223,6 +224,8 @@ needed instead of assigning unsupported strengths or weaknesses.
 These findings are advisory. A difficult question can be useful and correct;
 a signal does not automatically change, delete, or condemn it. Use the filters,
 search, and expandable details to inspect what supports each signal.
+
+![Learning Diagnostics showing repeated answer confusions and question-review signals](images/UM-13-learning-diagnostics.png)
 
 Choice-confusion analysis applies only where answer choices make sense.
 Matching and hotspot responses are not forced into that model. General

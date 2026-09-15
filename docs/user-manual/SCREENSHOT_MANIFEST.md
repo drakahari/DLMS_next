@@ -31,6 +31,8 @@ Audit result: **21 fully automatable**, **6 partially automatable**, **0
 manual/native-OS captures**, and **0 redundant entries**. All 27 IDs have a
 captured primary PNG. For the six partial entries, the capture note identifies
 the second state that remains intentionally outside the canonical 27-file set.
+All 27 canonical PNGs are now referenced exactly once in the narrative manual;
+the optional secondary states remain uninserted.
 
 | ID | Title | Classification | Capture status | File | Capture note |
 | --- | --- | --- | --- | --- | --- |

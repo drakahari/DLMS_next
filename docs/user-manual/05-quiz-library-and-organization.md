@@ -8,7 +8,10 @@ The Library does not replace History or Learning Intelligence. It organizes
 the quizzes you can use; History records completed attempts, and Learning
 Intelligence interprets saved learning evidence.
 
-<!-- Screenshot: UM-03 — Quiz Library organization and Generated Practice -->
+![Quiz Library with the Generated Practice Smart View active, generated-practice badges, folders, search, and Library Tools](images/UM-03-generated-practice-smart-view.png)
+
+*The highlighted Smart View changes which quizzes are shown without moving
+them from their folders.*
 
 ## Read the Library at a glance
 
@@ -155,7 +158,7 @@ duplicated in the output. The builder notes when one underlying question is
 represented by multiple source records. Creating the mix leaves every source
 quiz unchanged and records source relationships for the new questions.
 
-<!-- Screenshot: UM-04 — Mixed Quiz Builder selection and provenance -->
+![Mixed Quiz Builder with questions selected from multiple source quizzes](images/UM-04-mixed-quiz-builder.png)
 
 ## Review possible duplicates
 
@@ -175,7 +178,7 @@ This tool is advisory only. It does not merge, rewrite, or delete anything, and
 a possible match is not a claim that two questions are interchangeable. Use
 **Edit source quiz** if you decide that a manual change is appropriate.
 
-<!-- Screenshot: UM-05 — Exact and possible duplicate-question review -->
+![Duplicate Question Review showing exact and possible matches with their source quizzes](images/UM-05-duplicate-question-review.png)
 
 ## Move quizzes between DLMS installations
 

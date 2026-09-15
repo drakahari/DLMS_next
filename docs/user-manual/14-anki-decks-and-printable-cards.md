@@ -107,7 +107,7 @@ than one source—for example as both a quiz card and a history card—DLMS keep
 one copy in the custom deck. The preview shows the first 20 cards, while export
 includes the complete deduplicated selection.
 
-<!-- Screenshot: UM-24 — Custom deck selection and printable-card preview -->
+![Custom Anki Deck page showing deck naming and grouped quiz-question selection](images/UM-24-custom-anki-deck.png)
 
 ## Export Law Study cards
 

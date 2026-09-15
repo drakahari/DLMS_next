@@ -27,7 +27,10 @@ recent Study Pack information; it is not a separate scoring system. A new or
 low-history installation may show introductory actions until DLMS has enough
 saved learning evidence to make more specific recommendations.
 
-<!-- Screenshot: UM-01 — Dashboard after first meaningful use, with Today’s Review populated -->
+![Today’s Review dashboard showing Due Questions and an unfinished quiz saved in this browser](images/UM-01-dashboard.png)
+
+*Today’s Review combines server-derived study recommendations with Resume
+items marked for this browser.*
 
 Today’s Review only introduces the available actions. The review chapter later
 distinguishes Adaptive Study, Smart Review, Concept Review, Due Questions,
