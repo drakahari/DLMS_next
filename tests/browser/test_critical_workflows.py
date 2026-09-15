@@ -19,6 +19,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -8457,8 +8458,8 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         ) is True, path
 
 
-def test_review_schedule_summary_and_queue_header_stay_contained(browser_stack):
-    """Review metrics and the Question Queue header must remain contained."""
+def test_review_schedule_summary_and_queue_controls_stay_contained(browser_stack):
+    """Review metrics and the Question Queue controls remain contained."""
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     probe = (
@@ -8477,18 +8478,25 @@ def test_review_schedule_summary_and_queue_header_stay_contained(browser_stack):
         "const panel=document.querySelector('.native-review-list-panel'),"
         "head=panel.querySelector('.native-review-list-head'),"
         "eyebrow=head.querySelector('.build-eyebrow'),heading=head.querySelector('h2'),"
-        "copy=head.querySelector('p'),search=head.querySelector('#nrsSearch'),"
-        "table=panel.querySelector('#nrsTableWrap'),panelRect=panel.getBoundingClientRect();"
+        "count=head.querySelector('#nrsQueueCount'),toggle=head.querySelector('#nrsQueueToggle'),"
+        "body=panel.querySelector('#nrsQueueBody'),copy=body.querySelector('p'),"
+        "toolbar=body.querySelector('.native-review-queue-toolbar'),"
+        "filters=[...body.querySelectorAll('[data-question-status]')],"
+        "search=body.querySelector('#nrsSearch'),table=panel.querySelector('#nrsTableWrap'),"
+        "panelRect=panel.getBoundingClientRect();"
         "const inside=element=>{const rect=element.getBoundingClientRect();"
         "return rect.left>=panelRect.left-1&&rect.right<=panelRect.right+1&&"
         "rect.top>=panelRect.top-1&&rect.bottom<=panelRect.bottom+1;};"
-        "const headStyle=getComputedStyle(head),tableRect=table.getBoundingClientRect();"
+        "const headStyle=getComputedStyle(head),toolbarStyle=getComputedStyle(toolbar),"
+        "tableRect=table.getBoundingClientRect();"
         "return {count:cards.length,cards:cards.map(inspect),queue:{"
-        "contained:[eyebrow,heading,copy,search].every(inside),"
+        "contained:[eyebrow,heading,count,toggle,copy,search,...filters].every(inside),"
         "topInset:eyebrow.getBoundingClientRect().top-panelRect.top,"
         "paddingTop:parseFloat(headStyle.paddingTop),"
-        "stacked:headStyle.flexDirection==='column',"
-        "searchBelowCopy:search.getBoundingClientRect().top>=copy.getBoundingClientRect().bottom-1,"
+        "stacked:headStyle.gridTemplateColumns.split(' ').length===1,"
+        "toolbarStacked:toolbarStyle.flexDirection==='column',"
+        "expanded:toggle.getAttribute('aria-expanded'),bodyHidden:body.hidden,"
+        "selected:filters.filter(button=>button.getAttribute('aria-pressed')==='true').map(button=>button.dataset.questionStatus),"
         "tableFullWidth:Math.abs(tableRect.left-panelRect.left)<=1&&"
         "Math.abs(tableRect.right-panelRect.right)<=1},"
         "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
@@ -8514,7 +8522,10 @@ def test_review_schedule_summary_and_queue_header_stay_contained(browser_stack):
             assert state["queue"]["topInset"] >= expected_padding - 1, case
             assert state["queue"]["contained"] is True, case
             assert state["queue"]["stacked"] is (width <= 1024), case
-            assert state["queue"]["searchBelowCopy"] is (width <= 1024), case
+            assert state["queue"]["toolbarStacked"] is (width <= 1024), case
+            assert state["queue"]["expanded"] == "true", case
+            assert state["queue"]["bodyHidden"] is False, case
+            assert state["queue"]["selected"] == ["all"], case
             assert state["queue"]["tableFullWidth"] is True, case
             assert all(
                 card["columns"] == 1
@@ -8524,6 +8535,16 @@ def test_review_schedule_summary_and_queue_header_stay_contained(browser_stack):
                 and card["fits"]
                 for card in state["cards"]
             ), case
+            if width == 1440:
+                contrast = _theme_contrast_snapshot(browser, {
+                    "queue toggle": "#nrsQueueToggle",
+                    "selected status": "[data-question-status='all']",
+                    "inactive status": "[data-question-status='upcoming']",
+                    "question count": "#nrsQueueCount",
+                })
+                assert all(item["contrast"] >= 4.5 for item in contrast.values()), (
+                    theme, contrast,
+                )
 
 
 def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
@@ -9303,6 +9324,47 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
                     "2020-01-01T00:00:00+00:00",
                 ),
             )
+        for ordinal, question_text in (
+            (12, "Browser not-yet-scheduled filter question?"),
+            (13, "Browser upcoming filter question?"),
+        ):
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, ?, ?, 'choice', 'Browser schedule explanation', '{}')
+                """,
+                (quiz_id, ordinal, question_text),
+            )
+            filtered_question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (filtered_question_id, "A", "Expected", 1),
+                    (filtered_question_id, "B", "Alternative", 0),
+                ],
+            )
+            if ordinal == 13:
+                connection.execute(
+                    """
+                    INSERT INTO learning_events (
+                        event_type, quiz_id, question_id, attempt_id, mode,
+                        was_correct, response_json, occurred_at
+                    ) VALUES ('exam_answer', ?, ?, ?, 'Exam', 1, '{}', ?)
+                    """,
+                    (
+                        quiz_id,
+                        filtered_question_id,
+                        "browser-native-attempt-upcoming",
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
+
+        schedule_db_snapshot = (
+            connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0],
+            connection.execute("SELECT COUNT(*) FROM learning_events").fetchone()[0],
+        )
 
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/review-schedule")
@@ -9341,6 +9403,121 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
     assert search_state["filtered"] == 1
     assert search_state["matches"] is True
     assert search_state["restored"] == search_state["original"]
+
+    default_queue = browser.evaluate(
+        "(() => {const toggle=document.getElementById('nrsQueueToggle');"
+        "return {expanded:toggle.getAttribute('aria-expanded'),"
+        "bodyHidden:document.getElementById('nrsQueueBody').hidden,"
+        "pressed:[...document.querySelectorAll('[data-question-status]')]"
+        ".filter(button=>button.getAttribute('aria-pressed')==='true')"
+        ".map(button=>button.dataset.questionStatus),"
+        "count:document.getElementById('nrsQueueCount').textContent};})()"
+    )
+    assert default_queue == {
+        "expanded": "true",
+        "bodyHidden": False,
+        "pressed": ["all"],
+        "count": f"{search_state['original']} questions",
+    }
+
+    browser.activate()
+    assert browser.evaluate(
+        "(() => {const toggle=document.getElementById('nrsQueueToggle');toggle.focus();"
+        "return document.activeElement===toggle&&toggle.tagName==='BUTTON'&&"
+        "toggle.type==='button'&&toggle.tabIndex===0;})()"
+    ) is True
+    browser.click("#nrsQueueToggle")
+    browser.wait_for(
+        "document.getElementById('nrsQueueToggle').getAttribute('aria-expanded')==='false' && "
+        "document.getElementById('nrsQueueBody').hidden"
+    )
+    assert browser.evaluate(
+        "localStorage.getItem('dlms.reviewSchedule.questionQueueCollapsed')"
+    ) == "1"
+    browser.navigate(f"{browser_stack.base_url}/review-schedule")
+    browser.wait_for("document.getElementById('nrsQueueCount').textContent.includes('questions')")
+    assert browser.evaluate(
+        "document.getElementById('nrsQueueToggle').getAttribute('aria-expanded')==='false' && "
+        "document.getElementById('nrsQueueBody').hidden"
+    ) is True
+    assert browser.evaluate(
+        "(() => {const toggle=document.getElementById('nrsQueueToggle');toggle.focus();"
+        "return document.activeElement===toggle&&toggle.tagName==='BUTTON'&&"
+        "toggle.type==='button'&&toggle.tabIndex===0;})()"
+    ) is True
+    browser.click("#nrsQueueToggle")
+    browser.wait_for(
+        "document.getElementById('nrsQueueToggle').getAttribute('aria-expanded')==='true' && "
+        "!document.getElementById('nrsQueueBody').hidden"
+    )
+
+    def question_filter_state():
+        return browser.evaluate(
+            "(() => {const rows=[...document.querySelectorAll('#nrsRows tr')];"
+            "return {count:rows.length,statuses:[...new Set(rows.map(row=>"
+            "row.querySelector('.review-state')?.textContent.trim()))],"
+            "text:document.getElementById('nrsRows').textContent,"
+            "emptyHidden:document.getElementById('nrsEmpty').hidden,"
+            "empty:document.getElementById('nrsEmpty').textContent,"
+            "summary:document.getElementById('nrsQueueCount').textContent,"
+            "pressed:[...document.querySelectorAll('[data-question-status]')]"
+            ".filter(button=>button.getAttribute('aria-pressed')==='true')"
+            ".map(button=>button.dataset.questionStatus)};})()"
+        )
+
+    browser.click("[data-question-status='overdue']")
+    overdue_filter = question_filter_state()
+    assert overdue_filter["count"] >= 11
+    assert overdue_filter["statuses"] == ["Overdue"]
+    assert overdue_filter["pressed"] == ["overdue"]
+
+    browser.click("[data-question-status='upcoming']")
+    upcoming_filter = question_filter_state()
+    assert upcoming_filter["count"] == 1
+    assert upcoming_filter["statuses"] == ["Upcoming"]
+    assert "Browser upcoming filter question?" in upcoming_filter["text"]
+
+    browser.click("[data-question-status='unscheduled']")
+    unscheduled_filter = question_filter_state()
+    assert unscheduled_filter["count"] >= 1
+    assert unscheduled_filter["statuses"] == ["Not yet scheduled"]
+    assert "Browser not-yet-scheduled filter question?" in unscheduled_filter["text"]
+
+    browser.click("[data-question-status='due']")
+    due_filter = question_filter_state()
+    assert due_filter["statuses"] in ([], ["Due now"])
+    assert due_filter["emptyHidden"] is bool(due_filter["count"])
+    if not due_filter["count"]:
+        assert due_filter["empty"] == "No questions match the current search and status filter."
+    assert due_filter["pressed"] == ["due"]
+
+    browser.click("[data-question-status='overdue']")
+    combined_filter = browser.evaluate(
+        "(() => {const input=document.getElementById('nrsSearch');"
+        "input.value='Browser native spaced-review prompt';"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "return document.querySelectorAll('#nrsRows tr').length;})()"
+    )
+    assert combined_filter == 1
+    browser.click("#nrsQueueToggle")
+    browser.click("#nrsQueueToggle")
+    assert question_filter_state()["count"] == 1
+
+    browser.evaluate(
+        "document.getElementById('nrsSearch').value='';"
+        "document.getElementById('nrsSearch').dispatchEvent(new Event('input',{bubbles:true}));true"
+    )
+    browser.click("[data-question-status='all']")
+    restored_filter = question_filter_state()
+    assert restored_filter["count"] == search_state["original"]
+    assert restored_filter["pressed"] == ["all"]
+    assert restored_filter["summary"] == f"{search_state['original']} questions"
+
+    with sqlite3.connect(database_path) as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0],
+            connection.execute("SELECT COUNT(*) FROM learning_events").fetchone()[0],
+        ) == schedule_db_snapshot
 
     selected_batch = browser.evaluate(
         "(() => {const select=document.getElementById('nrsBatchSize');"
@@ -9396,7 +9573,7 @@ def test_native_spaced_review_displays_due_reason_and_creates_session(browser_st
         assert copy_lineage == (source_lineage[1], source_lineage[0], 1)
         assert connection.execute(
             "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
-        ).fetchone()[0] == 11
+        ).fetchone()[0] == 13
 
 
 def test_core_filter_state_and_repeated_builder_fields_are_accessible(browser_stack):

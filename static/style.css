@@ -11234,8 +11234,79 @@ body.help-page .dashboard-main *::after {
 .native-review-heading{margin:8px 0 14px;}
 .native-review-heading h2{margin:3px 0 6px;}
 .native-review-heading p{margin:0;opacity:.78;line-height:1.5;}
-.native-review-list-panel{margin-bottom:28px;}
-.native-review-list-head{padding:22px 22px 0;}
+.native-review-list-panel{margin-bottom:28px;overflow:hidden;}
+.native-review-list-head{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:16px;
+    align-items:center;
+    padding:22px;
+}
+.native-review-list-heading{min-width:0;}
+.native-review-list-title-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+.native-review-list-title-row h2{margin:3px 0 0;}
+.native-review-queue-count{
+    display:inline-flex;
+    max-width:100%;
+    padding:4px 9px;
+    color:var(--theme-muted-text,#b8c2cc);
+    background:var(--theme-surface-2,rgba(17,31,56,.78));
+    border:1px solid var(--theme-border-soft,rgba(98,155,255,.24));
+    border-radius:999px;
+    font-size:12px;
+    font-weight:750;
+    line-height:1.3;
+    overflow-wrap:anywhere;
+}
+.native-review-queue-toggle{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    width:auto;
+    min-height:40px;
+    margin:0;
+    padding:8px 12px;
+    color:var(--theme-page-text,#eaf2ff);
+    background:var(--theme-surface-2,rgba(17,31,56,.78));
+    border:1px solid var(--theme-border-soft,rgba(98,155,255,.24));
+    border-radius:9px;
+    font-size:13px;
+    font-weight:750;
+    white-space:nowrap;
+}
+.native-review-queue-toggle:hover{background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 12%,var(--theme-surface-2,rgba(17,31,56,.78)));}
+.native-review-queue-toggle:focus-visible{outline:2px solid var(--theme-accent,#1b9ff2);outline-offset:2px;}
+.native-review-queue-chevron{display:inline-block;transition:transform .16s ease;}
+.native-review-list-panel.is-collapsed .native-review-queue-chevron{transform:rotate(180deg);}
+.native-review-queue-controls{padding:0 22px 18px;}
+.native-review-queue-controls>p{margin:0 0 14px;color:var(--theme-muted-text,#b8c2cc);line-height:1.5;}
+.native-review-queue-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;}
+.native-review-status-filters{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0;}
+.native-review-status-filters button{
+    width:auto;
+    min-height:36px;
+    margin:0;
+    padding:7px 10px;
+    color:var(--theme-page-text,#eaf2ff);
+    background:var(--theme-surface-2,rgba(17,31,56,.78));
+    border:1px solid var(--theme-border-soft,rgba(98,155,255,.24));
+    border-radius:999px;
+    font-size:12px;
+    font-weight:750;
+    line-height:1.25;
+    white-space:normal;
+}
+.native-review-status-filters button:hover{background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 12%,var(--theme-surface-2,rgba(17,31,56,.78)));}
+.native-review-status-filters button[aria-pressed="true"]{
+    color:var(--theme-page-text,#fff);
+    background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 22%,var(--theme-surface-2,rgba(17,31,56,.78)));
+    border-color:color-mix(in srgb,var(--theme-accent,#1b9ff2) 58%,var(--theme-border-soft,rgba(98,155,255,.24)));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--theme-accent,#1b9ff2) 22%,transparent);
+}
+.native-review-status-filters button:focus-visible{outline:2px solid var(--theme-accent,#1b9ff2);outline-offset:2px;}
+.native-review-queue-toolbar .learning-intelligence-search{flex:0 1 260px;width:260px;min-width:190px;min-height:36px;}
+.native-review-queue-empty{margin:0 22px 22px;}
 .native-review-table{min-width:960px;}
 .learning-profile-retention-panel{padding:22px;margin-bottom:18px;}
 .learning-profile-retention-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:14px;}
@@ -11246,7 +11317,7 @@ body.help-page .dashboard-main *::after {
 .learning-profile-retention-grid strong{font-size:23px;}
 .learning-profile-retention-grid span{font-size:12px;opacity:.72;}
 @media(max-width:900px){.review-schedule-summary,.learning-profile-retention-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.review-schedule-actions{align-items:stretch;flex-direction:column;}.review-schedule-model-grid{grid-template-columns:1fr;}.learning-profile-retention-head{flex-direction:column;}}
-@media(max-width:560px){.review-schedule-summary,.learning-profile-retention-grid{grid-template-columns:1fr;}.review-schedule-actions,.review-schedule-model,.review-schedule-list-panel,.learning-profile-retention-panel{padding:18px;}.native-review-list-head{padding:18px 18px 0;}}
+@media(max-width:560px){.review-schedule-summary,.learning-profile-retention-grid{grid-template-columns:1fr;}.review-schedule-actions,.review-schedule-model,.review-schedule-list-panel,.learning-profile-retention-panel{padding:18px;}.native-review-list-head{padding:18px;}.native-review-queue-controls{padding:0 18px 18px;}.native-review-queue-empty{margin:0 18px 18px;}}
 
 /* DLMS-015/016 — Learning diagnostics */
 .learning-diagnostics-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}.learning-diagnostics-panel{padding:22px;margin-bottom:18px}.learning-diagnostics-panel>h2{margin:4px 0 6px}.learning-diagnostics-panel>p{margin:0 0 16px;color:var(--muted,#aebbd0)}.learning-diagnostics-head{display:flex;justify-content:space-between;gap:18px;align-items:end;margin-bottom:14px}.learning-diagnostics-head h2{margin:4px 0}.learning-diagnostics-head p{margin:0;color:var(--muted,#aebbd0)}.learning-diagnostics-head input{width:min(310px,100%);min-width:220px}.learning-diagnostics-filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}.learning-diagnostics-filters button{width:auto;margin:0;padding:8px 12px}.learning-diagnostics-filters button.active{background:#167fd1;border-color:#54b7ff}.learning-diagnostics-list{display:grid;gap:10px}.learning-diagnostic-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 18px;align-items:start;padding:14px 16px;border:1px solid rgba(83,156,220,.3);border-radius:12px;background:rgba(7,28,53,.55)}.learning-diagnostic-main{min-width:0}.learning-diagnostic-main strong{display:block;font-size:15px;overflow-wrap:anywhere}.learning-diagnostic-main span,.learning-diagnostic-card small{display:block;margin-top:5px;color:#96a8c1}.learning-diagnostic-card ul{grid-column:1/-1;margin:0;padding-left:20px;color:#c9d4e4}.learning-diagnostic-status{white-space:nowrap;border-radius:999px;padding:5px 9px;font-size:12px;border:1px solid rgba(93,151,201,.4)}.learning-diagnostic-status.review{color:#ff9da5;border-color:rgba(255,78,91,.45);background:rgba(103,20,31,.35)}.learning-diagnostic-status.healthy{color:#79e3c0;border-color:rgba(50,190,143,.38);background:rgba(14,75,59,.32)}.learning-diagnostic-status.insufficient{color:#bdc8d8;background:rgba(78,91,108,.28)}.learning-diagnostic-card.confusion{display:block}.learning-diagnostic-card.confusion strong span{color:#60bdff;padding:0 6px}@media(max-width:900px){.learning-diagnostics-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.learning-diagnostics-head{align-items:stretch;flex-direction:column}.learning-diagnostics-head input{width:100%;min-width:0}}@media(max-width:600px){.learning-diagnostics-summary{grid-template-columns:1fr}.learning-diagnostic-card{grid-template-columns:1fr}.learning-diagnostic-status{justify-self:start}}
@@ -15327,7 +15398,23 @@ button.build-secondary-link:disabled {
         flex-direction: column;
     }
 
-    .native-review-list-head .learning-intelligence-search {
+    .native-review-list-head {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .native-review-queue-toggle {
+        justify-self: start;
+    }
+
+    .native-review-queue-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .native-review-queue-toolbar .learning-intelligence-search {
+        flex-basis: auto;
+        width: 100%;
+        min-width: 0;
         max-width: none;
     }
 

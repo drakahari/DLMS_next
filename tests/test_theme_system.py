@@ -1693,6 +1693,16 @@ class ThemeSystemTests(unittest.TestCase):
             ".review-schedule-table th": (
                 "--theme-muted-text", "--theme-surface-2", "--theme-border-soft",
             ),
+            ".native-review-queue-toggle": (
+                "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".native-review-status-filters button": (
+                "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            '.native-review-status-filters button[aria-pressed="true"]': (
+                "--theme-page-text", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft",
+            ),
             ".learning-intelligence-model-dialog": (
                 "--theme-panel-1", "--theme-border-soft", "--theme-shadow",
             ),

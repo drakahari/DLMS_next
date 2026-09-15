@@ -464,33 +464,60 @@ class NavigationLayoutTests(unittest.TestCase):
             r"\.learning-profile-retention-grid\{grid-template-columns:1fr;\}",
         )
 
-    def test_review_schedule_question_queue_header_is_padded_and_responsive(self):
+    def test_review_schedule_question_queue_is_collapsible_and_filterable(self):
         page = self._static("review-schedule.html")
         css = self._static("style.css")
 
         self.assertIn(
-            'class="learning-intelligence-panel-head native-review-list-head"',
+            'class="dashboard-panel native-review-list-panel" id="nrsQueuePanel"',
             page,
         )
+        self.assertIn(
+            'id="nrsQueueToggle" class="native-review-queue-toggle" type="button" aria-expanded="true" aria-controls="nrsQueueBody"',
+            page,
+        )
+        self.assertIn('id="nrsQueueBody" class="native-review-queue-body"', page)
+        self.assertIn('id="nrsQueueCount" class="native-review-queue-count" role="status" aria-live="polite"', page)
         self.assertIn(
             '<input id="nrsSearch" class="learning-intelligence-search"',
             page,
         )
         self.assertIn('aria-label="Search scheduled questions"', page)
+        self.assertIn(
+            'role="group" aria-label="Filter Question Queue by status"', page
+        )
+        for status, label in (
+            ("all", "All"),
+            ("overdue", "Overdue"),
+            ("due", "Due now"),
+            ("upcoming", "Upcoming"),
+            ("unscheduled", "Not yet scheduled"),
+        ):
+            self.assertRegex(
+                page,
+                rf'data-question-status="{status}"[^>]*aria-pressed="(?:true|false)"'
+                rf'>{label}</button>',
+            )
+        self.assertIn("questionQueueCollapseKey='dlms.reviewSchedule.questionQueueCollapsed'", page)
+        self.assertIn("body.hidden=!expanded", page)
+        self.assertIn("toggle.setAttribute('aria-expanded',String(expanded))", page)
+        self.assertIn("item.schedule_state===status", page)
+        self.assertIn("No questions match the current search and status filter.", page)
 
         header = re.search(r"\.native-review-list-head\s*\{([^}]*)\}", css)
         self.assertIsNotNone(header)
-        self.assertIn("padding:22px 22px 0", header.group(1))
+        self.assertIn("grid-template-columns:minmax(0,1fr) auto", header.group(1))
+        self.assertIn("padding:22px", header.group(1))
         self.assertRegex(
             css,
             r"@media\(max-width:560px\)[\s\S]*?\.native-review-list-head"
-            r"\{padding:18px 18px 0;\}",
+            r"\{padding:18px;\}",
         )
         self.assertRegex(
             css,
             r"@container \(max-width: 760px\)[\s\S]*?"
-            r"\.native-review-list-head \.learning-intelligence-search\s*"
-            r"\{\s*max-width: none;\s*\}",
+            r"\.native-review-queue-toolbar \.learning-intelligence-search\s*"
+            r"\{[\s\S]*?width: 100%;[\s\S]*?max-width: none;\s*\}",
         )
 
     def test_learning_intelligence_sticky_practice_cells_have_opaque_theme_base(self):

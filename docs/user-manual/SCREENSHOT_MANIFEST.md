@@ -46,7 +46,7 @@ the optional secondary states remain uninserted.
 | UM-08 | Exam Mode in progress | Fully automatable | Captured | [UM-08-exam-mode.png](images/UM-08-exam-mode.png) | Multi-answer question in progress without correctness feedback. |
 | UM-09 | Interrupted quiz recovery | Fully automatable | Captured | [UM-09-quiz-recovery.png](images/UM-09-quiz-recovery.png) | Real browser-local checkpoint with Resume and Start Over. |
 | UM-10 | Which review should I use? | Fully automatable | Captured | [UM-10-review-options-guide.png](images/UM-10-review-options-guide.png) | Current Help comparison rather than an artificial collage. |
-| UM-11 | Review Schedule | Fully automatable | Captured | [UM-11-review-schedule.png](images/UM-11-review-schedule.png) | Due Questions and Topic Retention shown together. |
+| UM-11 | Review Schedule | Fully automatable | Captured | [UM-11-review-schedule.png](images/UM-11-review-schedule.png) | Due Questions and Topic Retention shown together; Question Queue expanded with search and status filters. |
 | UM-12 | Learning Intelligence and Mastery | Fully automatable | Captured | [UM-12-learning-intelligence-mastery.png](images/UM-12-learning-intelligence-mastery.png) | Mastery explanation open over a populated concept table. |
 | UM-13 | Learning Diagnostics | Fully automatable | Captured | [UM-13-learning-diagnostics.png](images/UM-13-learning-diagnostics.png) | Repeated confusion and question-review signals from synthetic evidence. |
 | UM-14 | History | Partially automatable | Primary state captured | [UM-14-history.png](images/UM-14-history.png) | Populated History list captured; attempt detail is an optional second frame. |

@@ -309,4 +309,9 @@ def test_learning_tables_expose_column_header_and_live_status_semantics():
     assert intelligence.count('scope="col"') == 7
     assert schedule.count('scope="col"') == 9
     assert schedule.count('role="status" aria-live="polite"') >= 2
+    assert 'aria-expanded="true" aria-controls="nrsQueueBody"' in schedule
+    assert 'role="group" aria-label="Filter Question Queue by status"' in schedule
+    assert schedule.count('data-question-status=') == 5
+    assert schedule.count('aria-pressed="true"') >= 1
+    assert schedule.count('aria-pressed="false"') >= 4
     assert 'id="historyPaginationStatus" role="status" aria-live="polite"' in history

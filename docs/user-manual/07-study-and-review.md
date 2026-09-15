@@ -154,7 +154,7 @@ The schedule uses a small, explainable sequence:
 | 5 or more | 30 days |
 
 An incorrect response resets the next interval to one day. The Review Schedule
-labels questions **Due**, **Overdue**, **Upcoming**, or **Not yet scheduled**
+labels questions **Due now**, **Overdue**, **Upcoming**, or **Not yet scheduled**
 and explains the latest result and next date.
 
 Open **Learning Intelligence → Review Schedule** to see the full question
@@ -163,6 +163,13 @@ queue. Choose 10, 20, 30, or 50 under **Questions in this review**, then choose
 smaller than your selected batch size; otherwise it takes the selected number
 from the ordered due queue. The status beside the selector explains the total
 and the size of the next batch.
+
+The Question Queue is expanded by default. Use **Hide Queue** when you only
+need the planning summaries; DLMS remembers that choice in the current
+browser. When the queue is open, combine its text search with **All**,
+**Overdue**, **Due now**, **Upcoming**, or **Not yet scheduled** to narrow the
+rows. These controls only change what the table displays—they do not change
+question schedules or the ordered queue used to build a review session.
 
 Generated practice does not receive a second independent schedule. Answers to
 a generated copy are credited to its original source question when that
@@ -178,7 +185,7 @@ it is not another name for Due Questions.
 - Topic Retention Schedule schedules **concepts** from concept Mastery,
   evidence, and time since the latest activity.
 
-![Review Schedule showing separate Due Questions and Topic Retention sections](images/UM-11-review-schedule.png)
+![Review Schedule showing Due Questions status filters and separate question-level and topic-level schedules](images/UM-11-review-schedule.png)
 
 *The upper section schedules source questions; the lower section schedules
 concept-level reinforcement.*
