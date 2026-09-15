@@ -416,6 +416,54 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("state.model.generated_practice", page)
         self.assertIn("button:not([disabled]), summary, [href]", page)
 
+    def test_review_schedule_summary_uses_full_width_text_rows(self):
+        page = self._static("review-schedule.html")
+        css = self._static("style.css")
+
+        card = re.search(
+            r"\.review-schedule-summary\s+\.dashboard-stat-card\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(card)
+        self.assertIn("grid-template-columns:minmax(0,1fr)", card.group(1))
+        self.assertIn("grid-template-rows:auto auto minmax(0,1fr)", card.group(1))
+        self.assertIn("align-items:start", card.group(1))
+        self.assertIn("min-height:124px", card.group(1))
+
+        text_rows = re.search(
+            r"\.review-schedule-summary\s+\.dashboard-stat-card>span,\s*"
+            r"\.review-schedule-summary\s+\.dashboard-stat-card>strong,\s*"
+            r"\.review-schedule-summary\s+\.dashboard-stat-card>small\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(text_rows)
+        self.assertIn("width:100%", text_rows.group(1))
+        self.assertIn("overflow-wrap:break-word", text_rows.group(1))
+        self.assertIn("word-break:normal", text_rows.group(1))
+
+        for label, value_id in (
+            ("DUE QUESTIONS", "nrsDue"),
+            ("OVERDUE", "nrsOverdue"),
+            ("NEXT 7 DAYS", "nrsUpcoming"),
+            ("NOT SCHEDULED", "nrsUnscheduled"),
+        ):
+            self.assertRegex(
+                page,
+                rf'<article class="dashboard-stat-card"><span>{label}</span>'
+                rf'<strong id="{value_id}">—</strong><small>[^<]+</small></article>',
+            )
+
+        self.assertRegex(
+            css,
+            r"@media\(max-width:900px\)\{\.review-schedule-summary,"
+            r"\.learning-profile-retention-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)",
+        )
+        self.assertRegex(
+            css,
+            r"@media\(max-width:560px\)\{\.review-schedule-summary,"
+            r"\.learning-profile-retention-grid\{grid-template-columns:1fr;\}",
+        )
+
     def test_learning_intelligence_sticky_practice_cells_have_opaque_theme_base(self):
         css = self._static("style.css")
         for selector, overlay in (

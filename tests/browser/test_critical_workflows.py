@@ -8389,6 +8389,68 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         ) is True, path
 
 
+def test_review_schedule_summary_cards_keep_text_rows_separate(browser_stack):
+    """Review metrics must remain stacked, contained, and readable in every theme."""
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    probe = (
+        "(() => {const cards=[...document.querySelectorAll("
+        "'.review-schedule-summary .dashboard-stat-card')];"
+        "const inspect=card=>{const [label,value,support]=card.children;"
+        "const cardRect=card.getBoundingClientRect(),labelRect=label.getBoundingClientRect(),"
+        "valueRect=value.getBoundingClientRect(),supportRect=support.getBoundingClientRect();"
+        "const contained=rect=>rect.left>=cardRect.left-1&&rect.right<=cardRect.right+1&&"
+        "rect.top>=cardRect.top-1&&rect.bottom<=cardRect.bottom+1;"
+        "return {columns:getComputedStyle(card).gridTemplateColumns.split(' ').length,"
+        "labelBeforeValue:labelRect.bottom<=valueRect.top+1,"
+        "valueBeforeSupport:valueRect.bottom<=supportRect.top+1,"
+        "contained:[labelRect,valueRect,supportRect].every(contained),"
+        "fits:card.scrollWidth<=card.clientWidth+1};};"
+        "return {count:cards.length,cards:cards.map(inspect),"
+        "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelector('.dashboard-shell')")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.set_viewport(1024, 900)
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/review-schedule")
+        browser.wait_for(
+            "document.getElementById('nrsDue').textContent !== '—' && "
+            "document.getElementById('rsDue').textContent !== '—'"
+        )
+        state = browser.evaluate(probe)
+        assert state["count"] == 8
+        assert state["documentFits"] is True
+        assert all(
+            card == {
+                "columns": 1,
+                "labelBeforeValue": True,
+                "valueBeforeSupport": True,
+                "contained": True,
+                "fits": True,
+            }
+            for card in state["cards"]
+        ), (theme, state)
+
+    _set_theme(browser, "light")
+    for width in (1440, 1024, 760, 420):
+        browser.set_viewport(width, 900)
+        browser.navigate(base_url + "/review-schedule")
+        browser.wait_for("document.getElementById('nrsDue').textContent !== '—'")
+        state = browser.evaluate(probe)
+        assert state["documentFits"] is True, (width, state)
+        assert all(
+            card["columns"] == 1
+            and card["labelBeforeValue"]
+            and card["valueBeforeSupport"]
+            and card["contained"]
+            and card["fits"]
+            for card in state["cards"]
+        ), (width, state)
+
+
 def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
     browser_stack,
 ):
