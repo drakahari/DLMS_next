@@ -158,16 +158,24 @@ managed and used after validation.
 
 ## Ask for an external explanation
 
-When enabled under **Settings → AI Integration**, explanation controls can
-prepare a bounded prompt for supported Study Mode questions and missed-question
-review.
+For supported choice questions in Study Mode, **Question Tools** offers two ways
+to use the same AI-ready prompt. **Review with AI** copies it and opens the
+configured provider, where you can paste it for an explanation.
+**Copy Question** puts the prompt on your clipboard and leaves you on the quiz
+page; paste it into any AI conversation you already have open. Copy Question is a
+local clipboard action: clicking it does not send anything to an AI provider or
+require a particular provider.
 
-In Study Mode, **Review with AI** prepares the current question and rendered
-answer context, copies the prompt, and opens the configured provider.
-**Copy Question** copies the same prompt without opening a page; paste it into
-an AI conversation you already have open. In missed-question review, you can
-copy a prompt for one item or select supported missed questions for a combined
-prompt. Automatic copying can be turned off in Settings.
+Depending on the current rendered question state, the prompt can include the
+question, answer choices, your current answer or available correctness context,
+and visible explanation text. When no correct answer is exposed, it may say
+**Correct answer not visible**. It does not add the quiz title or mode label,
+and question images are not embedded. These two Question Tools are not offered
+for matching or hotspot questions and are hidden in Exam Mode.
+
+With the AI Helper enabled under **Settings → AI Integration**, missed-question
+review can prepare a prompt for one item or a combined prompt for selected
+supported missed questions. Its automatic copying can be turned off in Settings.
 
 This is a one-way learning aid. DLMS does not automatically retrieve, validate,
 or save the provider's explanation, and the external response does not replace
