@@ -2113,20 +2113,39 @@ function resetDatabase() {
    Study question AI prompt and actions
 ===================================================== */
 function copyStudyAIPromptSynchronously(text) {
+    const previousFocus = document.activeElement;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     const textarea = document.createElement("textarea");
     textarea.value = text;
     textarea.style.position = "fixed";
     textarea.style.left = "-9999px";
     textarea.style.top = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
 
     try {
+        document.body.appendChild(textarea);
+        textarea.focus({preventScroll: true});
+        textarea.select();
         return document.execCommand("copy");
     } finally {
-        document.body.removeChild(textarea);
+        if (textarea.parentNode) textarea.parentNode.removeChild(textarea);
+        if (previousFocus?.isConnected) previousFocus.focus({preventScroll: true});
+        if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+            window.scrollTo(scrollX, scrollY);
+        }
     }
+}
+
+async function copyStudyAIPromptWithFallback(text) {
+    try {
+        if (window.isSecureContext && typeof navigator.clipboard?.writeText === "function") {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch (error) {
+        console.warn("[AI Study Mode] Modern clipboard copy failed; trying fallback:", error);
+    }
+    return copyStudyAIPromptSynchronously(text) === true;
 }
 
 function buildCurrentQuestionAIPrompt() {
@@ -2272,10 +2291,8 @@ window.copyCurrentQuestion = async function() {
     if (status) status.textContent = "";
     try {
         const prompt = buildCurrentQuestionAIPrompt();
-        if (!navigator.clipboard?.writeText) {
-            throw new Error("Clipboard access is unavailable in this browser.");
-        }
-        await navigator.clipboard.writeText(prompt);
+        const copied = await copyStudyAIPromptWithFallback(prompt);
+        if (!copied) throw new Error("Clipboard copy failed.");
         if (status) status.textContent = "Copied to clipboard";
     } catch (error) {
         console.warn("[AI Study Mode] Clipboard copy failed:", error);

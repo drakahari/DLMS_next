@@ -2564,6 +2564,7 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
 
 def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_stack):
     browser = browser_stack.browser
+    browser.set_viewport(1440, 1000)
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
@@ -2572,8 +2573,10 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
     browser.evaluate(
         "studyAIConfig={ai_helper_enabled:true,ai_provider:'chatgpt'};"
         "window.__toolCalls={opens:[],copies:[],requests:[]};"
+        "window.__syncCopies=0;"
         "window.open=(...args)=>{window.__toolCalls.opens.push(args);return null};"
-        "document.execCommand=command=>{if(command==='copy'){window.__toolCalls.copies.push(document.activeElement.value);return true}return false};"
+        "window.__reviewExecCommand=command=>{if(command==='copy'){window.__syncCopies++;window.__toolCalls.copies.push(document.activeElement.value);return true}return false};"
+        "document.execCommand=window.__reviewExecCommand;"
         "Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__toolCalls.copies.push(text)}}});"
         "window.__toolFetch=window.fetch;window.fetch=(...args)=>{window.__toolCalls.requests.push(String(args[0]));return window.__toolFetch(...args)};true"
     )
@@ -2601,16 +2604,19 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
     assert success["prompt"] == review["prompt"]
     assert success["opens"] == 1
     assert success["requests"] == []
+    assert browser.evaluate("window.__syncCopies") == 1
     assert {key: success[key] for key in before} == before
     browser.evaluate("document.getElementById('studyCopyBtn').focus();true")
     assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
     browser.evaluate(
-        "navigator.clipboard.writeText=async()=>{throw new Error('denied')};true"
+        "navigator.clipboard.writeText=async()=>{throw new Error('denied')};"
+        "document.execCommand=()=>false;true"
     )
     browser.click("#studyCopyBtn")
     browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
     assert browser.evaluate("window.__toolCalls.opens.length") == 1
     assert browser.evaluate("JSON.stringify(userAnswers)") == before["answers"]
+    browser.evaluate("document.execCommand=window.__reviewExecCommand;true")
 
     browser.click("#nextBtn")
     browser.wait_for("document.getElementById('qText').textContent.includes('multi-answer')")
@@ -2640,6 +2646,76 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
     browser.click(".exam-mode-btn")
     assert browser.evaluate("getComputedStyle(document.getElementById('questionTools')).display") == "none"
     assert browser.evaluate("(() => {try {buildCurrentQuestionAIPrompt();return false}catch(error){return true}})()") is True
+
+
+def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unavailable(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.evaluate(
+        "Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined});"
+        "window.__fallbackAttempts=0;window.__copiedSelection=null;window.__opens=0;"
+        "window.open=()=>{window.__opens++};"
+        "window.__nativeExec=document.execCommand.bind(document);"
+        "document.execCommand=command=>{window.__fallbackAttempts++;return window.__nativeExec(command)};"
+        "document.addEventListener('copy',()=>{const field=document.activeElement;"
+        "window.__copiedSelection=field.value.slice(field.selectionStart,field.selectionEnd)});"
+        "studyAIConfig={ai_helper_enabled:true,ai_provider:'chatgpt'};"
+        "const button=document.getElementById('studyCopyBtn');"
+        "button.scrollIntoView({block:'center'});button.focus();true"
+    )
+    browser.click("#studyAiBtn")
+    review_prompt = browser.evaluate("window.__copiedSelection")
+    assert browser.evaluate("window.__opens") == 1
+    browser.evaluate("window.__opens=0;window.__fallbackAttempts=0;window.__copiedSelection=null;"
+                     "document.getElementById('studyCopyBtn').scrollIntoView({block:'center'});"
+                     "document.getElementById('studyCopyBtn').focus();true")
+    before = browser.evaluate(
+        "({prompt:buildCurrentQuestionAIPrompt(),focus:document.activeElement.id,scrollY,"
+        "answers:JSON.stringify(userAnswers),anki:[...studyAnkiSelections],"
+        "recovery:localStorage.getItem(quizRecoveryController.storageKey),index,"
+        "textareas:document.querySelectorAll('textarea').length})"
+    )
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    copied = browser.evaluate(
+        "({selection:window.__copiedSelection,attempts:window.__fallbackAttempts,"
+        "focus:document.activeElement.id,scrollY,answers:JSON.stringify(userAnswers),"
+        "anki:[...studyAnkiSelections],recovery:localStorage.getItem(quizRecoveryController.storageKey),"
+        "index,textareas:document.querySelectorAll('textarea').length,opens:window.__opens})"
+    )
+    assert copied["selection"] == review_prompt == before["prompt"]
+    assert copied["attempts"] == 1
+    assert copied["opens"] == 0
+    assert {key: copied[key] for key in before if key != "prompt"} == {
+        key: before[key] for key in before if key != "prompt"
+    }
+
+    browser.evaluate(
+        "Object.defineProperty(navigator,'clipboard',{configurable:true,"
+        "value:{writeText:async()=>{window.__modernAttempts=(window.__modernAttempts||0)+1;throw new Error('denied')}}});true"
+    )
+    browser.click("#studyCopyBtn")
+    browser.wait_for("window.__fallbackAttempts === 2 && document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    assert browser.evaluate("window.__modernAttempts") == 1
+    assert browser.evaluate("window.__copiedSelection") == before["prompt"]
+    assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
+
+    browser.evaluate("document.execCommand=()=>false;true")
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
+    assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
+    assert browser.evaluate("window.__opens") == 0
+    assert browser.evaluate("JSON.stringify(userAnswers)") == before["answers"]
+
+    browser.evaluate("document.execCommand=()=>{throw new Error('blocked')};true")
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
+    assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
 
 
 def test_quiz_question_tools_wrap_across_themes_and_widths(browser_stack):

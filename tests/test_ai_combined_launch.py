@@ -82,9 +82,12 @@ class AICombinedLaunchTests(unittest.TestCase):
         for helper in (history_helper, study_helper):
             with self.subTest(helper=helper.splitlines()[0]):
                 self.assertIn('document.createElement("textarea")', helper)
-                self.assertIn("textarea.focus()", helper)
                 self.assertIn("textarea.select()", helper)
                 self.assertIn('document.execCommand("copy")', helper)
+        self.assertIn("textarea.focus()", history_helper)
+        self.assertIn("textarea.focus({preventScroll: true})", study_helper)
+        self.assertIn("previousFocus.focus({preventScroll: true})", study_helper)
+        self.assertIn("if (textarea.parentNode) textarea.parentNode.removeChild(textarea)", study_helper)
 
     def test_study_mode_preloads_config_and_combined_action_stays_synchronous(self):
         block = self.study_source[
@@ -118,7 +121,15 @@ class AICombinedLaunchTests(unittest.TestCase):
         self.assertIn("Answer Choices:", builder)
         self.assertIn("buildCurrentQuestionAIPrompt()", review)
         self.assertIn("buildCurrentQuestionAIPrompt()", copy)
-        self.assertIn("await navigator.clipboard.writeText(prompt)", copy)
+        self.assertIn("await copyStudyAIPromptWithFallback(prompt)", copy)
+        clipboard = source_block(
+            self.study_source,
+            "async function copyStudyAIPromptWithFallback(text)",
+            "function buildCurrentQuestionAIPrompt()",
+        )
+        self.assertIn("window.isSecureContext", clipboard)
+        self.assertIn("await navigator.clipboard.writeText(text)", clipboard)
+        self.assertIn("copyStudyAIPromptSynchronously(text) === true", clipboard)
         self.assertNotIn("window.open(", copy)
         self.assertNotIn("fetch(", copy)
 
