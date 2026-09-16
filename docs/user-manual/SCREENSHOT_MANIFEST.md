@@ -42,7 +42,7 @@ the optional secondary states remain uninserted.
 | UM-04 | Mixed Quiz Builder | Fully automatable | Captured | [UM-04-mixed-quiz-builder.png](images/UM-04-mixed-quiz-builder.png) | Four questions selected from two synthetic sources. |
 | UM-05 | Duplicate Question Review | Fully automatable | Captured | [UM-05-duplicate-question-review.png](images/UM-05-duplicate-question-review.png) | Advisory matches with result-type/quiz/folder/search filters and page-scoped expand/collapse controls. |
 | UM-06 | Portable Quiz Bundle review | Partially automatable | Primary state captured | [UM-06-portable-quiz-bundle-review.png](images/UM-06-portable-quiz-bundle-review.png) | Validated collision/rename preview with stacked summary metrics; export selection is an optional second frame. |
-| UM-07 | Study Mode feedback | Fully automatable | Captured | [UM-07-study-mode-feedback.png](images/UM-07-study-mode-feedback.png) | Saved incorrect answer with immediate feedback. |
+| UM-07 | Study Mode feedback | Fully automatable | Captured | [UM-07-study-mode-feedback.png](images/UM-07-study-mode-feedback.png) | Saved incorrect answer, navigation, and the three Question Tools. |
 | UM-08 | Exam Mode in progress | Fully automatable | Captured | [UM-08-exam-mode.png](images/UM-08-exam-mode.png) | Multi-answer question in progress without correctness feedback. |
 | UM-09 | Interrupted quiz recovery | Fully automatable | Captured | [UM-09-quiz-recovery.png](images/UM-09-quiz-recovery.png) | Real browser-local checkpoint with Resume and Start Over. |
 | UM-10 | Which review should I use? | Fully automatable | Captured | [UM-10-review-options-guide.png](images/UM-10-review-options-guide.png) | Current Help comparison rather than an artificial collage. |

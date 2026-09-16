@@ -89,6 +89,7 @@ class AICombinedLaunchTests(unittest.TestCase):
     def test_study_mode_preloads_config_and_combined_action_stays_synchronous(self):
         block = self.study_source[
             self.study_source.index("window.reviewCurrentQuestionWithAI = function"):
+            self.study_source.index("window.copyCurrentQuestion = async function")
         ]
         self.assertIn("loadStudyAIConfig();", self.study_source)
         self.assertIn("const aiConfig = studyAIConfig", block)
@@ -100,6 +101,26 @@ class AICombinedLaunchTests(unittest.TestCase):
             block.index("copyStudyAIPromptSynchronously(finalPrompt)"),
             block.index('window.open(url, "_blank", "noopener,noreferrer")'),
         )
+
+    def test_study_review_and_copy_share_one_prompt_builder(self):
+        builder = source_block(
+            self.study_source,
+            "function buildCurrentQuestionAIPrompt()",
+            "window.reviewCurrentQuestionWithAI = function",
+        )
+        review = source_block(
+            self.study_source,
+            "window.reviewCurrentQuestionWithAI = function",
+            "window.copyCurrentQuestion = async function",
+        )
+        copy = self.study_source[self.study_source.index("window.copyCurrentQuestion = async function"):]
+        self.assertEqual(self.study_source.count("Answer Choices:"), 1)
+        self.assertIn("Answer Choices:", builder)
+        self.assertIn("buildCurrentQuestionAIPrompt()", review)
+        self.assertIn("buildCurrentQuestionAIPrompt()", copy)
+        self.assertIn("await navigator.clipboard.writeText(prompt)", copy)
+        self.assertNotIn("window.open(", copy)
+        self.assertNotIn("fetch(", copy)
 
     def test_study_pack_builder_combined_action_is_unchanged(self):
         self.assertIn(

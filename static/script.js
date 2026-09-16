@@ -472,9 +472,13 @@ function renderQuestion() {
     // Matching v1 is intentionally kept out of AI/Anki single-choice helpers.
     // Those workflows assume A-Z choices and can be extended separately later.
     const studyAiBtn = document.getElementById("studyAiBtn");
+    const studyCopyBtn = document.getElementById("studyCopyBtn");
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
     if (studyAiBtn) studyAiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
+    if (studyCopyBtn) studyCopyBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
     if (studyAnkiBtn) studyAnkiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
+    const copyStatus = document.getElementById("questionCopyStatus");
+    if (copyStatus) copyStatus.textContent = "";
 
     if (q.type === "hotspot") {
         renderHotspotQuestion(q, key, selected, choicesEl);
@@ -1448,8 +1452,12 @@ function captureQuizRecoveryState() {
 }
 
 function showActiveQuizUI() {
+    const questionTools = document.getElementById("questionTools");
+    if (questionTools) questionTools.style.display = examMode ? "none" : "block";
     const studyAiBtn = document.getElementById("studyAiBtn");
     if (studyAiBtn) studyAiBtn.style.display = examMode ? "none" : "inline-block";
+    const studyCopyBtn = document.getElementById("studyCopyBtn");
+    if (studyCopyBtn) studyCopyBtn.style.display = examMode ? "none" : "inline-block";
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
     if (studyAnkiBtn) studyAnkiBtn.style.display = examMode ? "none" : "inline-block";
     const submitBtn = document.querySelector("button[onclick='submitQuiz()']");
@@ -2102,7 +2110,7 @@ function resetDatabase() {
 }
 
 /* =====================================================
-   Review Study Question with AI (NEW FEATURE)
+   Study question AI prompt and actions
 ===================================================== */
 function copyStudyAIPromptSynchronously(text) {
     const textarea = document.createElement("textarea");
@@ -2121,75 +2129,63 @@ function copyStudyAIPromptSynchronously(text) {
     }
 }
 
-window.reviewCurrentQuestionWithAI = function() {
-    try {
-        const aiConfig = studyAIConfig;
+function buildCurrentQuestionAIPrompt() {
+    if (examMode || !quiz[index] || quiz[index].type !== "choice") {
+        throw new Error("AI review is available only for Study Mode choice questions.");
+    }
 
-        if (!aiConfig) {
-            loadStudyAIConfig();
-            alert("AI Helper settings are still loading. Please try again.");
-            return;
+    // Read the same rendered question context used by the existing AI review action.
+    const questionEl = document.getElementById("qText");
+    if (!questionEl) {
+        throw new Error("Could not find question text on page");
+    }
+
+    const questionText = questionEl.innerText.trim();
+
+    // Get all answer choices
+    const choiceEls = document.querySelectorAll("#choices label, #choices div, #choices button");
+    let choicesText = "";
+
+    choiceEls.forEach(el => {
+        const txt = el.innerText.trim();
+        if (txt) {
+            choicesText += txt + "\n";
         }
+    });
 
-        if (!aiConfig || !aiConfig.ai_helper_enabled) {
-            alert("AI Helper is disabled in Settings.");
-            return;
-        }
+    // Try to find correct answer (Study Mode usually shows it)
+    let correctText = "(Correct answer not visible)";
+    const correctEl = document.querySelector(".correct, .correct-answer");
+    if (correctEl) {
+        correctText = correctEl.innerText.trim();
+    }
 
-        // =========================
-        // READ CURRENT QUESTION FROM DOM
-        // =========================
-        const questionEl = document.getElementById("qText");
-        if (!questionEl) {
-            throw new Error("Could not find question text on page");
-        }
+    let userAnswer = "Not answered yet — I am studying this question and want help understanding it.";
 
-        const questionText = questionEl.innerText.trim();
+    // Study Mode marks the chosen answer visually.
+    // Look for the selected/highlighted answer inside #choices.
+    const selectedChoice = Array.from(document.querySelectorAll("#choices button, #choices div, #choices label"))
+        .find(el => {
+            const cls = (el.className || "").toString().toLowerCase();
+            const style = (el.getAttribute("style") || "").toLowerCase();
 
-        // Get all answer choices
-        const choiceEls = document.querySelectorAll("#choices label, #choices div, #choices button");
-        let choicesText = "";
-
-        choiceEls.forEach(el => {
-            const txt = el.innerText.trim();
-            if (txt) {
-                choicesText += txt + "\n";
-            }
+            return (
+                cls.includes("selected") ||
+                cls.includes("wrong") ||
+                cls.includes("incorrect") ||
+                cls.includes("correct") ||
+                style.includes("green") ||
+                style.includes("red") ||
+                style.includes("00ff80") ||
+                style.includes("ff4d4d")
+            );
         });
 
-        // Try to find correct answer (Study Mode usually shows it)
-        let correctText = "(Correct answer not visible)";
-        const correctEl = document.querySelector(".correct, .correct-answer");
-        if (correctEl) {
-            correctText = correctEl.innerText.trim();
-        }
+    if (selectedChoice) {
+        userAnswer = selectedChoice.innerText.trim();
+    }
 
-        let userAnswer = "Not answered yet — I am studying this question and want help understanding it.";
-
-        // Study Mode marks the chosen answer visually.
-        // Look for the selected/highlighted answer inside #choices.
-        const selectedChoice = Array.from(document.querySelectorAll("#choices button, #choices div, #choices label"))
-            .find(el => {
-                const cls = (el.className || "").toString().toLowerCase();
-                const style = (el.getAttribute("style") || "").toLowerCase();
-
-                return (
-                    cls.includes("selected") ||
-                    cls.includes("wrong") ||
-                    cls.includes("incorrect") ||
-                    cls.includes("correct") ||
-                    style.includes("green") ||
-                    style.includes("red") ||
-                    style.includes("00ff80") ||
-                    style.includes("ff4d4d")
-                );
-            });
-
-        if (selectedChoice) {
-            userAnswer = selectedChoice.innerText.trim();
-        }
-
-        const questionBlock = `Question
+    const questionBlock = `Question
 ---------------------
 ${questionText}
 
@@ -2205,7 +2201,7 @@ ${userAnswer}`;
 // =========================
 // STUDY MODE AI PROMPT
 // =========================
-const finalPrompt = `I am studying this question and want help understanding it.
+    return `I am studying this question and want help understanding it.
 
 Please:
 1. Explain the core concept being tested in simple terms.
@@ -2217,6 +2213,24 @@ Please:
 ---
 
 ${questionBlock.trim()}`;
+}
+
+window.reviewCurrentQuestionWithAI = function() {
+    try {
+        const aiConfig = studyAIConfig;
+
+        if (!aiConfig) {
+            loadStudyAIConfig();
+            alert("AI Helper settings are still loading. Please try again.");
+            return;
+        }
+
+        if (!aiConfig.ai_helper_enabled) {
+            alert("AI Helper is disabled in Settings.");
+            return;
+        }
+
+        const finalPrompt = buildCurrentQuestionAIPrompt();
 
         // =========================
         // COPY TO CLIPBOARD
@@ -2250,5 +2264,21 @@ ${questionBlock.trim()}`;
     } catch (err) {
         console.error("[AI Study Mode] Failed:", err);
         alert("AI feature failed:\n\n" + err.message);
+    }
+};
+
+window.copyCurrentQuestion = async function() {
+    const status = document.getElementById("questionCopyStatus");
+    if (status) status.textContent = "";
+    try {
+        const prompt = buildCurrentQuestionAIPrompt();
+        if (!navigator.clipboard?.writeText) {
+            throw new Error("Clipboard access is unavailable in this browser.");
+        }
+        await navigator.clipboard.writeText(prompt);
+        if (status) status.textContent = "Copied to clipboard";
+    } catch (error) {
+        console.warn("[AI Study Mode] Clipboard copy failed:", error);
+        if (status) status.textContent = "Could not copy question. Check clipboard permission and try again.";
     }
 };

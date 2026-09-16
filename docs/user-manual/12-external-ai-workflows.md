@@ -162,9 +162,10 @@ When enabled under **Settings → AI Integration**, explanation controls can
 prepare a bounded prompt for supported Study Mode questions and missed-question
 review.
 
-In Study Mode, **Review This Question with AI** prepares the current question,
-choices, correct answer, your answer, and available explanation, copies the
-prompt, and opens the configured provider. In missed-question review, you can
+In Study Mode, **Review with AI** prepares the current question and rendered
+answer context, copies the prompt, and opens the configured provider.
+**Copy Question** copies the same prompt without opening a page; paste it into
+an AI conversation you already have open. In missed-question review, you can
 copy a prompt for one item or select supported missed questions for a combined
 prompt. Automatic copying can be turned off in Settings.
 

@@ -64,7 +64,7 @@ CAPTURES = (
     CaptureSpec("UM-04", "Mixed Quiz Builder", "UM-04-mixed-quiz-builder.png", "/quiz-composer", "document.querySelectorAll(\"input[name='question_ids']\").length >= 4", focus=".mixed-builder-plan"),
     CaptureSpec("UM-05", "Duplicate Question Review", "UM-05-duplicate-question-review.png", "/library/duplicates", "document.querySelector('.duplicate-question-summary')", focus=".duplicate-question-summary"),
     CaptureSpec("UM-06", "Portable Quiz Bundle review", "UM-06-portable-quiz-bundle-review.png", "/quiz-bundles", "document.querySelector(\"form[action='/quiz-bundles/import']\")", classification="Partially automatable", focus=".portable-bundle-workflows", note="The canonical asset captures the validated import review. The export-selection stage is automatable but would require a second image."),
-    CaptureSpec("UM-07", "Study Mode feedback", "UM-07-study-mode-feedback.png", "@critical_quiz", "quizRecoveryReady === true && quiz.length >= 2", focus="#quizPanel"),
+    CaptureSpec("UM-07", "Study Mode feedback", "UM-07-study-mode-feedback.png", "@critical_quiz", "quizRecoveryReady === true && quiz.length >= 2", focus=".quiz-progress-card"),
     CaptureSpec("UM-08", "Exam Mode in progress", "UM-08-exam-mode.png", "@recovery_quiz", "quizRecoveryReady === true && quiz.length === 4", focus="#quizPanel"),
     CaptureSpec("UM-09", "Interrupted quiz recovery", "UM-09-quiz-recovery.png", "@recovery_quiz", "quizRecoveryReady === true && quiz.length === 4", focus=".quiz-recovery-panel"),
     CaptureSpec("UM-10", "Which review should I use", "UM-10-review-options-guide.png", "/help/learning-intelligence#which-review", "document.querySelector('#which-review .help-table, .help-table')", focus="#which-review"),

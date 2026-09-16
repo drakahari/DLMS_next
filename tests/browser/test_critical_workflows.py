@@ -2562,6 +2562,123 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
             assert shell["titleColor"] == shell["shellText"]
 
 
+def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    browser.click(".study-mode-btn")
+    browser.wait_for("document.getElementById('studyCopyBtn').offsetParent !== null")
+    browser.evaluate(
+        "studyAIConfig={ai_helper_enabled:true,ai_provider:'chatgpt'};"
+        "window.__toolCalls={opens:[],copies:[],requests:[]};"
+        "window.open=(...args)=>{window.__toolCalls.opens.push(args);return null};"
+        "document.execCommand=command=>{if(command==='copy'){window.__toolCalls.copies.push(document.activeElement.value);return true}return false};"
+        "Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__toolCalls.copies.push(text)}}});"
+        "window.__toolFetch=window.fetch;window.fetch=(...args)=>{window.__toolCalls.requests.push(String(args[0]));return window.__toolFetch(...args)};true"
+    )
+    browser.click("#studyAnkiBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("[...studyLearningEventSaves.values()].every(record => record.state === 'failed')")
+    browser.evaluate("window.__toolCalls.requests=[];true")
+    before = browser.evaluate(
+        "({answers:JSON.stringify(userAnswers),anki:[...studyAnkiSelections],"
+        "recovery:localStorage.getItem(quizRecoveryController.storageKey),index})"
+    )
+    browser.click("#studyAiBtn")
+    review = browser.evaluate("({prompt:window.__toolCalls.copies.at(-1),opens:window.__toolCalls.opens})")
+    assert review["opens"] == [["https://chatgpt.com/", "_blank", "noopener,noreferrer"]]
+    assert "Recovery single-choice question?" in review["prompt"]
+    assert "Answer Choices:" in review["prompt"]
+    assert "My Answer:" in review["prompt"]
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    success = browser.evaluate(
+        "({prompt:window.__toolCalls.copies.at(-1),opens:window.__toolCalls.opens.length,"
+        "requests:window.__toolCalls.requests,answers:JSON.stringify(userAnswers),"
+        "anki:[...studyAnkiSelections],recovery:localStorage.getItem(quizRecoveryController.storageKey),index})"
+    )
+    assert success["prompt"] == review["prompt"]
+    assert success["opens"] == 1
+    assert success["requests"] == []
+    assert {key: success[key] for key in before} == before
+    browser.evaluate("document.getElementById('studyCopyBtn').focus();true")
+    assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
+    browser.evaluate(
+        "navigator.clipboard.writeText=async()=>{throw new Error('denied')};true"
+    )
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    assert browser.evaluate("window.__toolCalls.opens.length") == 1
+    assert browser.evaluate("JSON.stringify(userAnswers)") == before["answers"]
+
+    browser.click("#nextBtn")
+    browser.wait_for("document.getElementById('qText').textContent.includes('multi-answer')")
+    assert browser.evaluate("document.getElementById('studyCopyBtn').offsetParent !== null")
+    browser.evaluate(
+        "quiz[1].image_url='/static/favicon.ico';renderQuestion();"
+        "navigator.clipboard.writeText=async text=>{window.__toolCalls.copies.push(text)};true"
+    )
+    assert browser.evaluate("Boolean(document.querySelector('#choices .question-media-image'))") is True
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#choices .choice[data-index='2']")
+    browser.click("#studyAiBtn")
+    multi_prompt = browser.evaluate("window.__toolCalls.copies.at(-1)")
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    assert browser.evaluate("window.__toolCalls.copies.at(-1)") == multi_prompt
+    assert "First" in multi_prompt and "Third" in multi_prompt
+    browser.click("#nextBtn")
+    browser.wait_for("document.getElementById('qText').textContent.includes('matching')")
+    assert browser.evaluate("getComputedStyle(document.getElementById('studyCopyBtn')).display") == "none"
+    browser.click("#nextBtn")
+    browser.wait_for("document.getElementById('qText').textContent.includes('hotspot')")
+    assert browser.evaluate("getComputedStyle(document.getElementById('studyCopyBtn')).display") == "none"
+
+    browser.navigate(f"{quiz_url}?exam=1")
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".exam-mode-btn")
+    assert browser.evaluate("getComputedStyle(document.getElementById('questionTools')).display") == "none"
+    assert browser.evaluate("(() => {try {buildCurrentQuestionAIPrompt();return false}catch(error){return true}})()") is True
+
+
+def test_quiz_question_tools_wrap_across_themes_and_widths(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings")
+        _set_theme(browser, theme)
+        browser.navigate(quiz_url)
+        browser.wait_for("quizRecoveryReady === true")
+        browser.click(".study-mode-btn")
+        browser.evaluate("quiz[0].question='Long question '+ 'W'.repeat(180);renderQuestion();true")
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            layout = browser.evaluate(
+                "(() => {const ids=['prevBtn','nextBtn','studyAiBtn','studyAnkiBtn','studyCopyBtn'];"
+                "const buttons=ids.map(id=>document.getElementById(id));"
+                "const bounds=buttons.map(button=>button.getBoundingClientRect());"
+                "return {overflow:document.documentElement.scrollWidth>innerWidth,"
+                "order:buttons.map(button=>button.id),"
+                "contained:bounds.every(rect=>rect.left>=0&&rect.right<=innerWidth),"
+                "navAboveTools:bounds[1].bottom<bounds[2].top,"
+                "toolRows:new Set(bounds.slice(2).map(rect=>Math.round(rect.top))).size,"
+                "types:buttons.map(button=>button.tagName),"
+                "statusRole:document.getElementById('questionCopyStatus').getAttribute('role')};})()"
+            )
+            assert layout["overflow"] is False, (theme, width, layout)
+            assert layout["contained"] is True, (theme, width, layout)
+            assert layout["navAboveTools"] is True, (theme, width, layout)
+            assert layout["order"] == ["prevBtn", "nextBtn", "studyAiBtn", "studyAnkiBtn", "studyCopyBtn"]
+            assert layout["types"] == ["BUTTON"] * 5
+            assert layout["statusRole"] == "status"
+            if width == 420:
+                assert layout["toolRows"] == 3
+            contrast = _theme_contrast_snapshot(browser, {"tool": "#studyCopyBtn", "heading": ".quiz-question-tools h2"})
+            assert contrast["tool"]["contrast"] >= 4.5, (theme, width, contrast)
+            assert contrast["heading"]["contrast"] >= 4.5, (theme, width, contrast)
+
+
 def test_anki_summary_cards_across_themes_and_widths(browser_stack):
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/anki/custom")

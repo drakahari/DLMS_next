@@ -108,14 +108,16 @@ the final question does not count as completion.
 
 ### Optional learning actions
 
-Supported choice questions in Study Mode can offer **Review This Question with
-AI** and **Mark for Anki**. The first prepares context for an external provider;
-DLMS does not call an AI API. The second adds the current question to a
-temporary session selection, with an `.apkg` export action available at the end
-when questions are marked. The External AI and Anki chapters explain these
-optional workflows.
+Supported choice questions in Study Mode show **Question Tools** below the
+Previous and Next controls. **Review with AI** copies an AI-ready prompt and
+opens the configured provider workflow. **Copy Question** copies that same
+prompt without opening a page, so you can paste it into an AI conversation you
+already have open. DLMS does not call an AI API. **Mark for Anki** adds the
+current question to a temporary session selection, with an `.apkg` export
+action available at the end when questions are marked. The External AI and Anki
+chapters explain these optional workflows.
 
-![Study Mode showing an incorrect answer, immediate feedback, and the next-question controls](images/UM-07-study-mode-feedback.png)
+![Study Mode showing an incorrect answer, navigation, and Question Tools](images/UM-07-study-mode-feedback.png)
 
 ## Use Exam Mode for a test-like attempt
 

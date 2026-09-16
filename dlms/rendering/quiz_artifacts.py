@@ -473,28 +473,41 @@ def build_quiz_html(
                 <button id="prevBtn" onclick="prev()">← Previous Question</button>
 
                 <button id="nextBtn" onclick="next()">Next Question →</button>
-
-                <button id="studyAiBtn"
-                        type="button"
-                        class="hidden"
-                        onclick="reviewCurrentQuestionWithAI()">
-                    ✨ Review This Question with AI
-                </button>
-
-                <button id="studyAnkiBtn"
-                        type="button"
-                        class="hidden"
-                        onclick="toggleCurrentQuestionForAnki()">
-                    ⭐ Mark for Anki
-                </button>
-
-                <button id="studyAnkiExportBtn"
-                        type="button"
-                        class="hidden"
-                        onclick="exportStudyAnkiSelections()">
-                    📦 Export Selected to Anki
-                </button>
             </div>
+
+            <section id="questionTools" class="quiz-question-tools" aria-label="Question tools">
+                <h2>Question Tools</h2>
+                <div class="quiz-question-tool-actions">
+                    <button id="studyAiBtn"
+                            type="button"
+                            class="hidden"
+                            onclick="reviewCurrentQuestionWithAI()">
+                        ✨ Review with AI
+                    </button>
+
+                    <button id="studyAnkiBtn"
+                            type="button"
+                            class="hidden"
+                            onclick="toggleCurrentQuestionForAnki()">
+                        ⭐ Mark for Anki
+                    </button>
+
+                    <button id="studyCopyBtn"
+                            type="button"
+                            class="hidden"
+                            onclick="copyCurrentQuestion()">
+                        📋 Copy Question
+                    </button>
+
+                    <button id="studyAnkiExportBtn"
+                            type="button"
+                            class="hidden"
+                            onclick="exportStudyAnkiSelections()">
+                        📦 Export Selected to Anki
+                    </button>
+                </div>
+                <p id="questionCopyStatus" class="quiz-question-copy-status" role="status" aria-live="polite"></p>
+            </section>
         </div>
 
         <div id="result" class="hidden"></div>
