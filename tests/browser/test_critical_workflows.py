@@ -2562,6 +2562,122 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
             assert shell["titleColor"] == shell["shellText"]
 
 
+def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and_widths(browser_stack):
+    browser = browser_stack.browser
+    quiz_folder = browser_stack.data_root / "quizzes"
+    logo_folder = browser_stack.data_root / "static" / "logos"
+    logo_folder.mkdir(parents=True, exist_ok=True)
+    (logo_folder / "header-test.png").write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    ))
+    title = "Smart Review — " + "LongUnbrokenTopicName" * 6 + " practice"
+    html_name = "browser_header_branded.html"
+    build_quiz_html(
+        html_name, browser_stack.metadata["recovery_json"], str(quiz_folder / html_name),
+        "Mike's Training & Practice Center", title, "header-test.png",
+        browser_stack.metadata["critical_id"], 5,
+        normalize_exam_minutes=lambda value: int(value),
+    )
+    quiz_url = f"{browser_stack.base_url}/quizzes/{html_name}"
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings")
+        _set_theme(browser, theme)
+        for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
+            browser.set_viewport(1440, 1000)
+            browser.navigate(quiz_url)
+            browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+            browser.click(mode_selector)
+            browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+            for width in (1440, 1024, 760, 420):
+                browser.set_viewport(width, 1000)
+                layout = browser.evaluate(
+                    "(() => {const hero=document.querySelector('.hero-title');"
+                    "const banner=document.querySelector('.active-quiz-logo-banner');"
+                    "const title=document.querySelector('.active-quiz-title');"
+                    "const logos=[...banner.querySelectorAll('.active-logo-slot img')];"
+                    "const bounds=node=>{const r=node.getBoundingClientRect();"
+                    "return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};};"
+                    "return {hero:hero.textContent.trim(),heroChildren:hero.children.length,"
+                    "heroBounds:bounds(hero),bannerBounds:bounds(banner),"
+                    "title:title.textContent.trim(),titleTag:title.tagName,titleBounds:bounds(title),"
+                    "logos:logos.map(img=>({loaded:img.complete&&img.naturalWidth>0,bounds:bounds(img)})),"
+                    "progress:!!document.querySelector('.quiz-progress-card'),"
+                    "studyBadge:getComputedStyle(document.getElementById('studyModeBadge')||document.body).display,"
+                    "timer:getComputedStyle(document.getElementById('timer')).display,"
+                    "question:document.getElementById('qText').textContent.trim(),"
+                    "overflow:document.documentElement.scrollWidth>innerWidth};})()"
+                )
+                assert layout["hero"] == "Mike's Training & Practice Center"
+                assert layout["heroChildren"] == 0
+                if width == 1440:
+                    assert layout["heroBounds"]["bottom"] - layout["heroBounds"]["top"] < 100
+                assert layout["title"] == title
+                assert layout["titleTag"] == "H2"
+                assert len(layout["logos"]) == 2
+                assert all(logo["loaded"] for logo in layout["logos"])
+                assert layout["bannerBounds"]["top"] >= layout["heroBounds"]["bottom"]
+                assert layout["titleBounds"]["left"] >= layout["bannerBounds"]["left"]
+                assert layout["titleBounds"]["right"] <= layout["bannerBounds"]["right"]
+                assert layout["titleBounds"]["bottom"] <= layout["bannerBounds"]["bottom"]
+                if width > 600:
+                    assert layout["logos"][0]["bounds"]["right"] <= layout["titleBounds"]["left"]
+                    assert layout["titleBounds"]["right"] <= layout["logos"][1]["bounds"]["left"]
+                else:
+                    assert layout["logos"][0]["bounds"]["bottom"] <= layout["titleBounds"]["top"]
+                    assert layout["titleBounds"]["bottom"] <= layout["logos"][1]["bounds"]["top"]
+                assert all(logo["bounds"]["right"] <= layout["bannerBounds"]["right"]
+                           for logo in layout["logos"])
+                assert layout["progress"] and layout["question"]
+                assert not layout["overflow"]
+                if mode_selector == ".study-mode-btn":
+                    assert layout["studyBadge"] != "none"
+                    assert layout["timer"] == "none"
+                else:
+                    assert layout["timer"] != "none"
+
+    no_logo_name = "browser_header_generated_no_logo.html"
+    no_logo_title = "Spaced Review — Due Questions"
+    build_quiz_html(
+        no_logo_name, browser_stack.metadata["recovery_json"],
+        str(quiz_folder / no_logo_name), "DLMS", no_logo_title, None,
+        browser_stack.metadata["critical_id"], 5,
+        normalize_exam_minutes=lambda value: int(value),
+    )
+    for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
+        browser.set_viewport(420, 1000)
+        browser.navigate(f"{browser_stack.base_url}/quizzes/{no_logo_name}")
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+        browser.click(mode_selector)
+        browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+        assert browser.evaluate(
+            "(() => {const banner=document.querySelector('.active-quiz-logo-banner');"
+            "return document.querySelector('.hero-title').textContent.trim()==='DLMS'"
+            "&& banner.querySelector('.active-quiz-title').textContent.trim()==="
+            + json.dumps(no_logo_title) + ";})()"
+        )
+        assert browser.evaluate(
+            "document.querySelectorAll('.active-quiz-logo-banner img').length"
+        ) == 0
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+    # Previously published HTML is served from disk; its old subtitle is removed on load.
+    legacy_name = "browser_header_legacy.html"
+    legacy = (quiz_folder / html_name).read_text(encoding="utf-8")
+    legacy = legacy.replace(
+        '<h1 class="hero-title">Mike\'s Training &amp; Practice Center</h1>',
+        '<h1 class="hero-title">Mike\'s Training &amp; Practice Center<br>'
+        f'<span style="font-size:20px;opacity:.85">{title}</span></h1>',
+    )
+    (quiz_folder / legacy_name).write_text(legacy, encoding="utf-8")
+    browser.navigate(f"{browser_stack.base_url}/quizzes/{legacy_name}")
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    assert browser.evaluate("document.querySelector('.hero-title').textContent.trim()") == (
+        "Mike's Training & Practice Center"
+    )
+    assert browser.evaluate("document.querySelector('.hero-title').children.length") == 0
+
+
 def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_stack):
     browser = browser_stack.browser
     browser.set_viewport(1440, 1000)
@@ -2625,7 +2741,7 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
         "quiz[1].image_url='/static/favicon.ico';renderQuestion();"
         "navigator.clipboard.writeText=async text=>{window.__toolCalls.copies.push(text)};true"
     )
-    assert browser.evaluate("Boolean(document.querySelector('#choices .question-media-image'))") is True
+    browser.wait_for("document.querySelector('#choices .question-media-image')?.complete === true")
     browser.click("#choices .choice[data-index='0']")
     browser.click("#choices .choice[data-index='2']")
     browser.click("#studyAiBtn")

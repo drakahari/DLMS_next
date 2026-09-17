@@ -213,9 +213,18 @@ async function recordStudyLearningEvent(q, wasCorrect, selected) {
 
 
 /* =====================================================
-   SAFELY RELOCATE SUBMIT BUTTON (OLD QUIZZES → NEW UI)
+   LEGACY QUIZ HTML COMPATIBILITY
 ===================================================== */
 document.addEventListener("DOMContentLoaded", () => {
+    // Existing saved quiz pages may still contain the old generated subtitle.
+    // New pages omit it in build_quiz_html; remove only that known legacy markup.
+    const hero = document.querySelector("#quizWrapper > .container > .hero-title");
+    const subtitle = hero?.querySelector(":scope > span");
+    if (subtitle && subtitle.textContent.trim() === String(window.quiz_title || "").trim()) {
+        if (subtitle.previousElementSibling?.tagName === "BR") subtitle.previousElementSibling.remove();
+        subtitle.remove();
+    }
+
     // Find submit button
     const submitBtn = document.getElementById("submitBtn");
     if (!submitBtn) return;   // nothing to do

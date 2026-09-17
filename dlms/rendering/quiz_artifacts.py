@@ -381,10 +381,7 @@ def build_quiz_html(
     <div class="container">
 
         <!-- Readable Centered Banner -->
-        <h1 class="hero-title">
-            {portal_title_html}<br>
-            <span style="font-size:20px;opacity:.85">{quiz_title_html}</span>
-        </h1>
+        <h1 class="hero-title">{portal_title_html}</h1>
 
                 <!-- Mode Select -->
         <div id="modeSelect" class="card quiz-mode-card">
@@ -421,9 +418,9 @@ def build_quiz_html(
                     {mode_logo}
                 </div>
 
-                <div class="active-quiz-title">
+                <h2 class="active-quiz-title">
                     {quiz_title_html}
-                </div>
+                </h2>
 
                 <div class="active-logo-slot">
                     {mode_logo}

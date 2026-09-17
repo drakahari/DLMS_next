@@ -808,10 +808,13 @@ body.home .quiz-card img {
 
 .active-quiz-title {
     flex: 1;
+    min-width: 0;
+    margin: 0;
     text-align: center;
     font-size: 20px;
     font-weight: 800;
     letter-spacing: 0.4px;
+    overflow-wrap: anywhere;
     color: light-dark(var(--theme-panel-1, #fff), var(--theme-heading, #fff));
     text-shadow: 0 0 8px rgba(0,0,0,0.75);
 }
@@ -831,7 +834,6 @@ body.home .quiz-card img {
         0 0 20px color-mix(in srgb, var(--theme-accent, #1b9ff2) 6%, transparent);
 }
 
-#quizWrapper > .container > .hero-title span,
 .active-quiz-title {
     color: light-dark(var(--theme-panel-1, #fff), var(--theme-heading, #fff)) !important;
     text-shadow: 0 2px 8px rgba(0,0,0,.72) !important;
