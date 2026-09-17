@@ -2678,6 +2678,142 @@ def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and
     assert browser.evaluate("document.querySelector('.hero-title').children.length") == 0
 
 
+def test_study_session_panel_is_study_only_and_contained_across_themes(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    quiz_url = f"{base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(base_url + "/settings")
+        _set_theme(browser, theme)
+        browser.navigate(quiz_url)
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+        if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
+            browser.click(".quiz-recovery-start-over")
+        browser.click(".study-mode-btn")
+        browser.wait_for("document.getElementById('studySessionIntro') !== null")
+
+        contrast = _theme_contrast_snapshot(browser, {
+            "eyebrow": ".study-session-eyebrow",
+            "heading": ".study-session-intro h3",
+            "detail": ".study-session-intro p",
+            "badge": ".study-mode-badge",
+        })
+        assert all(item["contrast"] >= 4.5 for item in contrast.values()), (theme, contrast)
+
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            layout = browser.evaluate(
+                "(() => {const bar=document.querySelector('.top-bar');"
+                "const intro=document.getElementById('studySessionIntro');"
+                "const badge=document.getElementById('studyModeBadge');"
+                "const progress=document.querySelector('.quiz-progress-card');"
+                "const a=intro.getBoundingClientRect(),b=badge.getBoundingClientRect(),t=bar.getBoundingClientRect();"
+                "return {visible:!intro.hidden&&!badge.hidden,"
+                "wording:intro.textContent.includes('Untimed practice with feedback as you answer.'),"
+                "singleTagline:bar.textContent.split('Learn at your own pace').length===2,"
+                "studyControlsHidden:['submitBtn','timer','pauseBtn'].every(id=>getComputedStyle(document.getElementById(id)).display==='none'),"
+                "progressAfter:progress.previousElementSibling===bar&&progress.getBoundingClientRect().top>=t.bottom,"
+                "contained:a.left>=t.left&&a.right<=t.right&&b.left>=t.left&&b.right<=t.right,"
+                "badgeCompact:b.width<t.width*.7,"
+                "separate:a.right<=b.left+1||a.bottom<=b.top+1,"
+                "overflow:document.documentElement.scrollWidth>innerWidth};})()"
+            )
+            assert layout == {
+                "visible": True, "wording": True, "singleTagline": True,
+                "studyControlsHidden": True,
+                "progressAfter": True, "contained": True, "badgeCompact": True,
+                "separate": True,
+                "overflow": False,
+            }, (theme, width, layout)
+
+        if theme == "light":
+            for expected in ("choice", "matching", "hotspot"):
+                browser.evaluate("next(); true")
+                assert browser.evaluate("quiz[index].type") == expected
+                assert browser.evaluate(
+                    "!document.getElementById('studySessionIntro').hidden && "
+                    "!document.getElementById('studyModeBadge').hidden"
+                ) is True
+
+    # The same published quiz renderer is used by Adaptive and Concept Review.
+    quiz_folder = browser_stack.data_root / "quizzes"
+    for filename, title in (
+        ("study_panel_adaptive.html", "Adaptive Study — What I Need Most"),
+        ("study_panel_concept.html", "Concept Review — " + "VeryLongSharedTopic" * 6),
+    ):
+        build_quiz_html(
+            filename, browser_stack.metadata["recovery_json"],
+            str(quiz_folder / filename), "DLMS", title, None,
+            browser_stack.metadata["critical_id"], 5,
+            normalize_exam_minutes=lambda value: int(value),
+        )
+        browser.set_viewport(420, 900)
+        browser.navigate(f"{base_url}/quizzes/{filename}")
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+        if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
+            browser.click(".quiz-recovery-start-over")
+        browser.click(".study-mode-btn")
+        assert browser.evaluate(
+            "document.querySelector('.active-quiz-title').textContent.trim()==="
+            + json.dumps(title) + "&& !document.getElementById('studySessionIntro').hidden"
+            "&& document.documentElement.scrollWidth<=innerWidth"
+        ) is True
+
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
+        browser.click(".quiz-recovery-start-over")
+    browser.click(".study-mode-btn")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.wait_for(
+        f"JSON.parse(localStorage.getItem({json.dumps(recovery_key)})).view.questionIndex === 1"
+    )
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for(
+        "index===1 && !document.getElementById('studySessionIntro').hidden && "
+        "!document.getElementById('studyModeBadge').hidden"
+    )
+
+    browser.evaluate("startQuiz(true); true")
+    exam = browser.evaluate(
+        "(() => {const bar=document.querySelector('.top-bar');"
+        "const intro=document.getElementById('studySessionIntro');"
+        "const badge=document.getElementById('studyModeBadge');"
+        "const visible=id=>getComputedStyle(document.getElementById(id)).display!=='none';"
+        "return {introHidden:intro.hidden,badgeHidden:badge.hidden,"
+        "submit:visible('submitBtn'),timer:visible('timer'),pause:visible('pauseBtn'),"
+        "progressAfter:document.querySelector('.quiz-progress-card').previousElementSibling===bar};})()"
+    )
+    assert exam == {
+        "introHidden": True, "badgeHidden": True, "submit": True,
+        "timer": True, "pause": True, "progressAfter": True,
+    }
+
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
+        browser.click(".quiz-recovery-start-over")
+    browser.click(".exam-mode-btn")
+    fresh_exam = browser.evaluate(
+        "(() => {const bar=document.querySelector('.top-bar');"
+        "return {introAbsent:!document.getElementById('studySessionIntro'),"
+        "badgeAbsent:!document.getElementById('studyModeBadge'),"
+        "submitInLeft:bar.querySelector('.top-left > #submitBtn') !== null,"
+        "timerInRight:bar.querySelector(':scope > #timer.top-right') !== null,"
+        "timerVisible:getComputedStyle(document.getElementById('timer')).display !== 'none',"
+        "progressAfter:document.querySelector('.quiz-progress-card').previousElementSibling===bar};})()"
+    )
+    assert fresh_exam == {
+        "introAbsent": True, "badgeAbsent": True, "submitInLeft": True,
+        "timerInRight": True, "timerVisible": True, "progressAfter": True,
+    }, fresh_exam
+
+
 def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_stack):
     browser = browser_stack.browser
     browser.set_viewport(1440, 1000)

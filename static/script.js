@@ -1125,36 +1125,39 @@ function updateTimerLabelUI() {
 ===================================================== */
 function updateStudyModeBadge() {
     let badge = document.getElementById("studyModeBadge");
+    let sessionIntro = document.getElementById("studySessionIntro");
 
     if (!examMode) {
+        if (!sessionIntro) {
+            const topLeft = document.querySelector(".top-bar .top-left");
+            if (topLeft) {
+                sessionIntro = document.createElement("div");
+                sessionIntro.id = "studySessionIntro";
+                sessionIntro.className = "study-session-intro";
+                sessionIntro.innerHTML = `
+                    <span class="study-session-eyebrow">Study Session</span>
+                    <h3>Learn at your own pace</h3>
+                    <p>Untimed practice with feedback as you answer.</p>
+                `;
+                topLeft.appendChild(sessionIntro);
+            }
+        }
         if (!badge) {
             badge = document.createElement("div");
             badge.id = "studyModeBadge";
-            badge.innerHTML = `
-                <div style="font-size:16px;font-weight:600;letter-spacing:.3px">
-                    📘 Study Mode
-                </div>
-                <div style="font-size:12px;opacity:.9;margin-top:2px">
-                    Learn at your own pace
-                </div>
-            `;
-
-            badge.style.padding = "10px 14px";
-            badge.style.borderRadius = "8px";
-            badge.style.background = "rgba(255,255,255,0.15)";
-            badge.style.border = "1px solid rgba(255,255,255,0.25)";
-            badge.style.textAlign = "center";
-            badge.style.boxShadow = "0 0 10px rgba(0,0,0,.35)";
-
+            badge.className = "study-mode-badge";
+            badge.innerHTML = '<span aria-hidden="true">📘</span><span>Study Mode</span>';
 
             const timer = document.getElementById("timer");
             if (timer && timer.parentNode) {
                 timer.parentNode.insertBefore(badge, timer.nextSibling);
             }
         }
-        badge.style.display = "block";
+        if (sessionIntro) sessionIntro.hidden = false;
+        if (badge) badge.hidden = false;
     } else {
-        if (badge) badge.style.display = "none";
+        if (sessionIntro) sessionIntro.hidden = true;
+        if (badge) badge.hidden = true;
     }
 }
 

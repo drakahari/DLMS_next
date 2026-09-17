@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "static" / "script.js"
+ARTIFACT_RENDERER = Path(__file__).resolve().parents[1] / "dlms" / "rendering" / "quiz_artifacts.py"
 
 
 def _function_block(source: str, name: str) -> str:
@@ -65,3 +66,30 @@ def test_exam_mode_keeps_study_feedback_suppressed():
 
     assert "if (!examMode && hasAnswer)" in hotspot
     assert 'if (examMode || chosen === "") return "";' in matching
+
+
+def test_study_session_copy_uses_only_verified_shared_behavior():
+    source = SCRIPT.read_text(encoding="utf-8")
+    panel = _function_block(source, "updateStudyModeBadge")
+
+    assert panel.count("Learn at your own pace") == 1
+    assert "Study Session" in panel
+    assert "Untimed practice with feedback as you answer." in panel
+    assert "explanation" not in panel.lower()
+    assert "resume" not in panel.lower()
+    assert 'sessionIntro.hidden = false' in panel
+    assert 'sessionIntro.hidden = true' in panel
+    assert 'badge.hidden = true' in panel
+
+
+def test_exam_controls_and_question_progress_remain_in_original_artifact_order():
+    artifact = ARTIFACT_RENDERER.read_text(encoding="utf-8")
+    top_bar = artifact.index('class="top-bar quiz-toolbar"')
+    submit = artifact.index('id="submitBtn"', top_bar)
+    timer = artifact.index('id="timer"', submit)
+    pause = artifact.index('id="pauseBtn"', timer)
+    progress = artifact.index('class="quiz-progress-card"', pause)
+    question = artifact.index('class="quiz-question-card"', progress)
+
+    assert top_bar < submit < timer < pause < progress < question
+    assert 'id="studySessionIntro"' not in artifact
