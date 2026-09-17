@@ -245,9 +245,14 @@ them as **Generated Practice** so you can distinguish them from ordinary
 source quizzes. Their questions retain links to the original source material,
 so their answers can strengthen the same learning record.
 
-After a generated review is successfully finished and saved, its Library card
-shows **Completed** and a date. Uncategorized sessions move from the active
-**Generated Practice** group to the collapsed **Completed Generated Practice**
+In Study Mode, answer the review questions, then select **Finish Review** on
+the final question. Answering the final question alone leaves the session
+available to resume. Finish Review waits for saved answers and confirms the
+whole session before closing its browser resume point.
+
+After Finish Review succeeds, its Library card shows **Completed** and a date.
+Uncategorized sessions move from the active **Generated Practice** group to the
+collapsed **Completed Generated Practice**
 group. The **Generated Practice** Smart View still finds both, and a session
 moved to a custom folder stays there. Completed reviews remain playable and
 saved; DLMS does not automatically delete them. Learning evidence, History,

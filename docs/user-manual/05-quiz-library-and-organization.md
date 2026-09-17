@@ -138,8 +138,9 @@ sessions that you have moved to custom folders.
 
 In the full Library, generated practice that would otherwise appear under
 Uncategorized is collected in an automatic **Generated Practice** group while
-it is active. Once a review is successfully completed and saved, it appears in
-the collapsed **Completed Generated Practice** group instead. These are views
+it is active. In Study Mode, answering the final question leaves the review
+active until you select **Finish Review**. Once that action succeeds, it
+appears in the collapsed **Completed Generated Practice** group instead. These are views
 of existing quiz placement, not saved folders. If you deliberately move a
 generated session to a custom folder, it stays there and shows a Completed
 badge and date when appropriate. The **Generated Practice** Smart View finds

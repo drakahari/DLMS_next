@@ -530,8 +530,8 @@
     };
 
     function removeStored() {
-      try { localStorage.removeItem(storageKey); }
-      catch (_error) { storageWarning(); }
+      try { localStorage.removeItem(storageKey); return true; }
+      catch (_error) { storageWarning(); return false; }
     }
 
     function readStored({discardInvalid = true} = {}) {
@@ -768,9 +768,10 @@
     }
 
     function complete() {
-      if (owned) removeStored();
+      if (owned && !removeStored()) return false;
       owned = false;
       savedRecord = null;
+      return true;
     }
 
     return {

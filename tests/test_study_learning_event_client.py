@@ -39,8 +39,9 @@ def test_network_http_and_malformed_acknowledgement_failures_show_one_retry_stat
     assert 'getElementById("studyLearningEventStatus")' in ensure_status
     assert 'status.setAttribute("role", "status")' in ensure_status
     assert 'status.setAttribute("aria-live", "polite")' in ensure_status
-    assert 'message.textContent = studyCompletionInProgress && !failed.length' in update_status
-    assert '"Review completion was not saved. Retry before leaving this quiz."' in update_status
+    assert '"Waiting for learning progress to save…"' in update_status
+    assert '"Saving review completion…"' in update_status
+    assert 'studyCompletionMessage' in update_status
     assert '"Learning progress was not saved."' in update_status
     assert 'retry.textContent = "Retry"' in ensure_status
     assert 'record.state = "failed"' in save
@@ -54,12 +55,12 @@ def test_retry_reuses_failed_event_identity_and_success_clears_the_warning_state
     save = _function_block(source, "saveStudyLearningEvent")
     record = _function_block(source, "recordStudyLearningEvent")
 
-    assert "failed.map(record => saveStudyLearningEvent(record, true))" in retry
+    assert "failed.map(record => startStudyLearningEventSave(record, true))" in retry
     assert "body: JSON.stringify(record.payload)" in save
     assert "studyLearningEventSaves.delete(record.eventId)" in save
     assert "updateStudyLearningEventStatus()" in save
     assert "eventId: eventId" in record
-    assert "await saveStudyLearningEvent(record)" in record
+    assert "await startStudyLearningEventSave(record)" in record
 
 
 def test_study_recovery_completes_only_after_every_answer_is_complete_and_acknowledged():
@@ -78,8 +79,27 @@ def test_study_recovery_completes_only_after_every_answer_is_complete_and_acknow
     assert "selected.length === correctCount" in answer_complete
     assert "studyLearningEventSaves.size !== 0" in complete
     assert "quiz.every" in complete
-    assert "quizRecoveryController?.complete()" in complete
-    assert 'requestGeneratedPracticeCompletion("Study", learningSessionId)' in complete
+    assert "generatedPracticeStatus?.is_transient !== false" in complete
+    assert "quizRecoveryController.complete()" in complete
+    assert "requestGeneratedPracticeCompletion" not in complete
+
+
+def test_generated_review_finishes_only_after_explicit_action_and_acknowledged_saves():
+    source = SCRIPT.read_text(encoding="utf-8")
+    navigation = _function_block(source, "updateNavButtons")
+    finish = _function_block(source, "finishGeneratedPracticeReview")
+    assert 'finishBtn.textContent = "Finish Review"' in navigation
+    assert 'finishBtn.addEventListener("click", () => { void finishGeneratedPracticeReview(); })' in navigation
+    assert 'generatedPracticeStatus?.is_transient === true' in navigation
+    assert 'index === quiz.length - 1' in navigation
+    assert 'await Promise.all(saving.map(record => record.savePromise))' in finish
+    assert 'studyLearningEventSaves.size !== 0' in finish
+    assert 'quiz.findIndex' in finish
+    assert 'await requestGeneratedPracticeCompletion("Study", sessionId)' in finish
+    assert 'completion.applicable !== true' in finish
+    assert finish.index('await requestGeneratedPracticeCompletion("Study", sessionId)') < finish.index(
+        'quizRecoveryController.complete()'
+    )
 
 
 def test_choice_matching_and_hotspot_answer_handlers_save_without_blocking_progression():

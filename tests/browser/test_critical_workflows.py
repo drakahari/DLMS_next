@@ -1977,6 +1977,7 @@ def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
     browser.wait_for("studyLearningEventSaves.size === 0")
     browser.click("#nextBtn")
     browser.wait_for("index === 1")
+    assert browser.evaluate("document.getElementById('finishReviewBtn') === null") is True
     assert browser.evaluate(
         f"localStorage.getItem({json.dumps(recovery_key)}) !== null"
     ) is True
@@ -2012,6 +2013,8 @@ def test_adaptive_study_completion_survives_late_partial_multiselect_save(browse
     registry_path = browser_stack.data_root / "config" / "quizzes.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     entry = next(item for item in registry if item["id"] == quiz_id)
+    entry["folder"] = "Uncategorized"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
     json_path = browser_stack.data_root / "data" / Path(entry["html"]).with_suffix(".json").name
     questions = json.loads(json_path.read_text(encoding="utf-8"))
     questions[1]["choices"][0]["is_correct"] = True
@@ -2039,6 +2042,11 @@ def test_adaptive_study_completion_survives_late_partial_multiselect_save(browse
     browser.wait_for("studyLearningEventSaves.size === 0")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     assert browser.evaluate("generatedPracticeStatus.completed") is False
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        "document.querySelector('.study-learning-save-message')?.textContent.includes('Question 2 needs a complete answer')"
+    )
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     browser.evaluate(
         "(() => { const original = window.fetch.bind(window);"
         "window.fetch = (...args) => {"
@@ -2060,15 +2068,126 @@ def test_adaptive_study_completion_survives_late_partial_multiselect_save(browse
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     assert browser.evaluate("generatedPracticeStatus.completed") is False
     browser.evaluate("window.releasePartialStudySave(); true")
-    browser.wait_for(
-        f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector('[data-generated-practice-group=true]') !== null")
+    assert "Browser Critical Workflow" in browser.evaluate(
+        "document.querySelector('[data-generated-practice-group=true]').textContent"
     )
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for(
+        "document.querySelector('.daily-review-unfinished')?.textContent.includes('Browser Critical Workflow')"
+    )
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("index === 1 && document.getElementById('finishReviewBtn')?.style.display !== 'none'")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.click("#finishReviewBtn")
+    browser.wait_for(f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null")
+    assert browser.evaluate(
+        "document.querySelector('.study-learning-save-message').textContent.includes('Review completed')"
+    ) is True
     browser.navigate(f"{browser_stack.base_url}/")
     browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
     assert browser.evaluate(
         "[...document.querySelectorAll('.daily-review-unfinished')]"
         ".every(item => !item.textContent.includes('Browser Critical Workflow'))"
     ) is True
+
+
+def test_generated_finish_review_waits_for_save_and_requires_earlier_answers(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'adaptive_study' WHERE id = ?", (quiz_id,),
+        )
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1 && document.getElementById('finishReviewBtn') !== null")
+    browser.set_viewport(420, 900)
+    assert browser.evaluate(
+        "(() => { const button=document.getElementById('finishReviewBtn');"
+        "button.focus(); return document.activeElement===button && button.tagName==='BUTTON'"
+        "&& button.type==='button' && document.documentElement.scrollWidth<=innerWidth; })()"
+    ) is True
+    browser.evaluate(
+        "(() => { const original = window.fetch.bind(window);"
+        "window.fetch = (...args) => {"
+        "if (String(args[0]).includes('/api/learning-events/study-response')) {"
+        "window.fetch = original;"
+        "return new Promise(resolve => { window.releaseFinalStudySave = () => resolve(original(...args)); });"
+        "} return original(...args); }; return true; })()"
+    )
+    browser.click("#choices .choice[data-index='1']")
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        "studyCompletionInProgress === true && "
+        "document.querySelector('.study-learning-save-message')?.textContent.includes('Waiting for learning progress')"
+    )
+    assert browser.evaluate(
+        f"document.getElementById('finishReviewBtn').disabled && localStorage.getItem({json.dumps(recovery_key)}) !== null"
+    ) is True
+    browser.evaluate("window.releaseFinalStudySave(); true")
+    browser.wait_for(
+        "studyCompletionInProgress === false && "
+        "document.querySelector('.study-learning-save-message')?.textContent.includes('Question 1 needs a complete answer')"
+    )
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.click("#prevBtn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"
+    )
+
+
+def test_generated_finish_review_retries_failed_browser_checkpoint_clear(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'smart_review' WHERE id = ?", (quiz_id,),
+        )
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.evaluate(
+        "(() => {const original=Storage.prototype.removeItem;let fail=true;"
+        f"const recoveryKey={json.dumps(recovery_key)};"
+        "Storage.prototype.removeItem=function(key){"
+        "if(fail&&key===recoveryKey){fail=false;throw new Error('blocked storage');}"
+        "return original.call(this,key);};return true;})()"
+    )
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        "studyCompletionFailed === true && "
+        "document.querySelector('.study-learning-save-message')?.textContent.includes('could not clear its resume point')"
+    )
+    assert browser.evaluate(
+        f"quizRecoveryController.ownsState && localStorage.getItem({json.dumps(recovery_key)}) !== null"
+    ) is True
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        f"studyCompletionFailed === false && localStorage.getItem({json.dumps(recovery_key)}) === null"
+    )
 
 
 def test_generated_practice_study_completion_retry_library_and_retake(browser_stack):
@@ -2096,7 +2215,8 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     assert browser.evaluate(
         "(() => { const original = window.fetch.bind(window); let failCompletion = true, failStudy = true;"
         "window.fetch = (...args) => { const target = String(args[0]);"
-        "if (failStudy && target.includes('/api/learning-events/study-response')) {"
+        "if (failStudy && target.includes('/api/learning-events/study-response')"
+        " && JSON.parse(args[1].body).questionOrdinal === 2) {"
         "failStudy = false; return Promise.resolve(new Response(JSON.stringify({error:'forced Study save failure'}),"
         "{status:503,headers:{'Content-Type':'application/json'}})); }"
         "if (failCompletion && target.includes('/api/generated-practice/complete')) {"
@@ -2106,20 +2226,25 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.click(".study-mode-btn")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
     browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent === 'Learning progress was not saved.'")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Retry the failed Study save')")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     with registry_path.open(encoding="utf-8") as handle:
         assert "generated_practice_completion" not in next(item for item in json.load(handle) if item["id"] == quiz_id)
     browser.click(".study-learning-save-retry")
     browser.wait_for("studyLearningEventSaves.size === 0")
-    browser.click("#nextBtn")
-    browser.click("#choices .choice[data-index='1']")
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    browser.click("#finishReviewBtn")
     browser.wait_for("studyCompletionFailed === true")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     assert browser.evaluate("document.querySelector('.study-learning-save-message').textContent") == (
-        "Review completion was not saved. Retry before leaving this quiz."
+        "forced completion failure"
     )
-    browser.click(".study-learning-save-retry")
+    browser.click("#finishReviewBtn")
     browser.wait_for(
         f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"
     )
@@ -2176,6 +2301,10 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     assert browser.evaluate("quizRecoveryController.ownsState") is True
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate("quizRecoveryController.ownsState") is True
     browser.navigate(f"{browser_stack.base_url}/")
     browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
     browser.wait_for(
@@ -2184,6 +2313,13 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     assert "This browser" in browser.evaluate(
         "document.querySelector('.daily-review-unfinished').textContent"
     )
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("index === 1 && generatedPracticeStatus.completed === true")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.click("#finishReviewBtn")
+    browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
 
 
 def test_generated_practice_exam_completion_requires_saved_attempt(browser_stack):
@@ -2206,6 +2342,7 @@ def test_generated_practice_exam_completion_requires_saved_attempt(browser_stack
     browser.click("#choices .choice[data-index='0']")
     browser.click("#nextBtn")
     browser.click("#choices .choice[data-index='1']")
+    assert browser.evaluate("document.getElementById('finishReviewBtn') === null") is True
     browser.evaluate(
         "(() => { const original=window.fetch.bind(window); let fail=true;"
         "window.fetch=(...args)=>{if(fail&&String(args[0]).includes('/record_attempt')){"

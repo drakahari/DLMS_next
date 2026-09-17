@@ -131,10 +131,12 @@ def test_study_and_exam_identities_survive_recovery_without_automatic_retry():
     assert "studyLearningEventSaves.set(record.eventId, record)" in SCRIPT
 
 
-def test_completed_study_recovery_is_pruned_from_current_and_legacy_checkpoints():
+def test_ordinary_completed_study_is_pruned_but_generated_review_waits_for_finish():
     assert "isCompleted: record => (" in SCRIPT
-    assert "generatedPracticeStatus?.is_transient === true && !generatedPracticeStatus.completed" in SCRIPT
+    assert "generatedPracticeStatus?.is_transient === true" in SCRIPT
     assert "studyRecoveryRecordIsComplete(record, rawQuiz)" in SCRIPT
+    assert "generatedPracticeStatus?.is_transient !== false" in SCRIPT
+    assert "async function finishGeneratedPracticeReview()" in SCRIPT
     assert "function studyRecoveryRecordIsComplete" in SCRIPT
     assert 'record?.session?.mode !== "Study"' in SCRIPT
     assert "record.unacknowledgedStudyEvents.length !== 0" in SCRIPT
