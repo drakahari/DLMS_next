@@ -1,5 +1,25 @@
 @import url("/dynamic.css");
 
+/* Learning Scope uses the shared semantic palette in every DLMS theme. */
+.learning-scope-intro { padding: 20px; margin-bottom: 20px; background: var(--semantic-section-surface); border-color: var(--semantic-section-border); color: var(--page-text); }
+.learning-scope-intro h2 { margin: 0 0 8px; }
+.learning-scope-intro p { line-height: 1.5; }
+.learning-scope-folders { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
+.learning-scope-folder { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; background: var(--semantic-section-surface); border-color: var(--semantic-section-border); color: var(--page-text); }
+.learning-scope-folder-copy { min-width: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
+.learning-scope-folder h3 { margin: 0 0 4px; }
+.learning-scope-folder p { margin: 0 0 6px; color: var(--muted-text); }
+.learning-scope-folder strong { font-size: .9rem; }
+.learning-scope-folder form { flex: 0 1 auto; }
+.learning-scope-button { width: auto; min-height: 42px; padding: 9px 14px; border: 1px solid var(--semantic-secondary-control-border); border-radius: 9px; background: var(--semantic-secondary-control-surface); color: var(--semantic-secondary-control-text); font: inherit; cursor: pointer; }
+.learning-scope-button:hover { background: var(--semantic-secondary-control-hover); }
+.learning-scope-button:focus-visible { outline: 3px solid var(--theme-accent, #1b9ff2); outline-offset: 2px; }
+.learning-scope-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; padding: 14px 18px; margin-bottom: 18px; background: var(--semantic-section-surface); border: 1px solid var(--semantic-section-border); border-radius: 12px; color: var(--page-text); }
+.learning-scope-summary p { margin: 0; }
+.learning-scope-messages { margin-bottom: 14px; }
+.library-learning-scope-badge { display: inline-block; margin-left: 7px; padding: 2px 7px; border: 1px solid var(--semantic-info-border); border-radius: 999px; background: var(--semantic-info-surface); color: var(--semantic-info-text); font-size: .7em; font-weight: 700; vertical-align: middle; }
+@media (max-width: 520px) { .learning-scope-folder form, .learning-scope-button { width: 100%; } }
+
 /* =========================================================
    DLMS STYLE.CSS - CLEANED THEME VERSION
    Notes:

@@ -106,7 +106,7 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'data-confirm-text="Reset Application Settings?&#10;&#10;This returns appearance, parsing, AI Integration, navigation, lifecycle, and Quiz Library folder preferences to defaults. Quizzes and their populated folder assignments remain; empty custom folders and hidden-folder state reset.&#10;&#10;DLMS will create a safety backup first. Continue?"',
+            'data-confirm-text="Reset Application Settings?&#10;&#10;This returns appearance, parsing, AI Integration, navigation, lifecycle, and Quiz Library folder preferences to defaults. Quizzes and their populated folder assignments remain; empty custom folders and hidden-folder state reset. All folders become included in Learning Scope. Learning evidence and history remain saved.&#10;&#10;DLMS will create a safety backup first. Continue?"',
             page,
         )
         self.assertIn(

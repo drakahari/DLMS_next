@@ -36,9 +36,9 @@ the optional secondary states remain uninserted.
 
 | ID | Title | Classification | Capture status | File | Capture note |
 | --- | --- | --- | --- | --- | --- |
-| UM-01 | Dashboard and Today’s Review | Fully automatable | Captured | [UM-01-dashboard.png](images/UM-01-dashboard.png) | Populated recommendations and one genuine `This browser` checkpoint, with Resume Quiz and the secondary Remove from Today’s Review action. |
+| UM-01 | Dashboard and Today’s Review | Fully automatable | Captured | [UM-01-dashboard.png](images/UM-01-dashboard.png) | Refreshed with the Manage Learning Scope link; populated recommendations and one genuine `This browser` checkpoint remain visible. |
 | UM-02 | Build Quiz hub | Fully automatable | Captured | [UM-02-build-quiz-hub.png](images/UM-02-build-quiz-hub.png) | Current content-acquisition choices without a selected local file. |
-| UM-03 | Generated Practice Smart View | Fully automatable | Captured | [UM-03-generated-practice-smart-view.png](images/UM-03-generated-practice-smart-view.png) | Refreshed with v2 synthetic lineage data; active dynamic view, generated badges, and aggregate source-quiz disclosures are visible. |
+| UM-03 | Generated Practice Smart View | Fully automatable | Captured | [UM-03-generated-practice-smart-view.png](images/UM-03-generated-practice-smart-view.png) | Refreshed with the Manage Learning Scope link; v2 synthetic lineage data, active dynamic view, generated badges, and source-quiz disclosures remain visible. |
 | UM-04 | Mixed Quiz Builder | Fully automatable | Captured | [UM-04-mixed-quiz-builder.png](images/UM-04-mixed-quiz-builder.png) | Four questions selected from two synthetic sources. |
 | UM-05 | Duplicate Question Review | Fully automatable | Captured | [UM-05-duplicate-question-review.png](images/UM-05-duplicate-question-review.png) | Advisory matches with result-type/quiz/folder/search filters and page-scoped expand/collapse controls. |
 | UM-06 | Portable Quiz Bundle review | Partially automatable | Primary state captured | [UM-06-portable-quiz-bundle-review.png](images/UM-06-portable-quiz-bundle-review.png) | Validated collision/rename preview with stacked summary metrics; export selection is an optional second frame. |
@@ -47,7 +47,7 @@ the optional secondary states remain uninserted.
 | UM-09 | Interrupted quiz recovery | Fully automatable | Captured | [UM-09-quiz-recovery.png](images/UM-09-quiz-recovery.png) | Real browser-local checkpoint with Resume and Start Over. |
 | UM-10 | Which review should I use? | Fully automatable | Captured | [UM-10-review-options-guide.png](images/UM-10-review-options-guide.png) | Current Help comparison rather than an artificial collage. |
 | UM-11 | Review Schedule | Fully automatable | Captured | [UM-11-review-schedule.png](images/UM-11-review-schedule.png) | Due Questions and Topic Retention shown together; Question Queue expanded with search and status filters. |
-| UM-12 | Learning Intelligence and Mastery | Fully automatable | Captured | [UM-12-learning-intelligence-mastery.png](images/UM-12-learning-intelligence-mastery.png) | Mastery explanation open over a populated concept table. |
+| UM-12 | Learning Intelligence and Mastery | Fully automatable | Captured | [UM-12-learning-intelligence-mastery.png](images/UM-12-learning-intelligence-mastery.png) | Refreshed with the Learning Scope summary behind the Mastery explanation and populated concept table. |
 | UM-13 | Learning Diagnostics | Fully automatable | Captured | [UM-13-learning-diagnostics.png](images/UM-13-learning-diagnostics.png) | Repeated confusion and question-review signals from synthetic evidence. |
 | UM-14 | History | Partially automatable | Primary state captured | [UM-14-history.png](images/UM-14-history.png) | Populated History list captured; attempt detail is an optional second frame. |
 | UM-15 | PDF & Image Import | Fully automatable | Captured | [UM-15-pdf-image-import.png](images/UM-15-pdf-image-import.png) | Synthetic PDF selected with source-rights acknowledgement. |

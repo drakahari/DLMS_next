@@ -27,6 +27,8 @@ HISTORY_ROUTE_PATH = ROOT / "dlms" / "routes" / "history.py"
 
 class LearningHistoryBlueprintTests(unittest.TestCase):
     EXPECTED_RULES = {
+        ("learning.learning_scope_summary_api", "/api/learning-scope", frozenset({"GET"})),
+        ("learning.manage_learning_scope", "/learning-scope", frozenset({"GET", "POST"})),
         ("learning.record_attempt", "/record_attempt", frozenset({"POST"})),
         (
             "learning.record_study_learning_event",
@@ -160,6 +162,8 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
         "static_folder",
         "static_root",
         "get_db",
+        "learning_scope_summary",
+        "set_learning_scope",
         "learning_payload_error",
         "persist_attempt",
         "persist_study_learning_event",
@@ -227,7 +231,7 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
             for rule in rules
         }
         self.assertEqual(self.EXPECTED_RULES, actual)
-        self.assertEqual(32, len(rules))
+        self.assertEqual(34, len(rules))
         for rule in rules:
             with self.subTest(endpoint=rule.endpoint, rule=rule.rule):
                 self.assertTrue(rule.strict_slashes)

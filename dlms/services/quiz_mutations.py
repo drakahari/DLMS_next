@@ -122,13 +122,20 @@ def _restore_quiz_folder_metadata(
     save_quiz_folder_state,
     get_quiz_folders,
     get_hidden_quiz_folders,
+    excluded_folders=None,
+    get_excluded_learning_folders=None,
 ):
     """Restore and validate only portal fields owned by the Quiz Library."""
-    save_quiz_folder_state(folders, hidden_folders)
+    if get_excluded_learning_folders is None:
+        save_quiz_folder_state(folders, hidden_folders)
+    else:
+        save_quiz_folder_state(folders, hidden_folders, excluded_folders)
     restored_folders = get_quiz_folders()
     restored_hidden = get_hidden_quiz_folders(restored_folders)
     if restored_folders != folders or restored_hidden != hidden_folders:
         raise RuntimeError("Restored Quiz Library folder metadata did not validate")
+    if get_excluded_learning_folders is not None and get_excluded_learning_folders() != excluded_folders:
+        raise RuntimeError("Restored Learning Scope folder metadata did not validate")
 
 
 def _persist_quiz_folder_metadata(
@@ -144,10 +151,16 @@ def _persist_quiz_folder_metadata(
     get_quiz_folders,
     get_hidden_quiz_folders,
     save_quiz_folder_state,
+    original_excluded_folders=None,
+    target_excluded_folders=None,
+    get_excluded_learning_folders=None,
     print_message=print,
 ):
     """Publish portal then registry state, compensating only a known-safe failure."""
-    save_quiz_folder_state(target_folders, target_hidden_folders)
+    if get_excluded_learning_folders is None:
+        save_quiz_folder_state(target_folders, target_hidden_folders)
+    else:
+        save_quiz_folder_state(target_folders, target_hidden_folders, target_excluded_folders)
     try:
         save_registry(target_registry)
     except Exception as registry_error:
@@ -176,6 +189,8 @@ def _persist_quiz_folder_metadata(
                     save_quiz_folder_state=save_quiz_folder_state,
                     get_quiz_folders=get_quiz_folders,
                     get_hidden_quiz_folders=get_hidden_quiz_folders,
+                    excluded_folders=original_excluded_folders,
+                    get_excluded_learning_folders=get_excluded_learning_folders,
                 )
             except Exception as rollback_error:
                 print_message(
@@ -215,6 +230,7 @@ def rename_quiz_folder_metadata(
     get_quiz_folders,
     get_hidden_quiz_folders,
     save_quiz_folder_state,
+    get_excluded_learning_folders=None,
     print_message=print,
 ):
     """Coordinate a case-insensitive folder rename across both JSON stores."""
@@ -229,6 +245,10 @@ def rename_quiz_folder_metadata(
         original_folders = list(get_quiz_folders())
         original_hidden_folders = list(
             get_hidden_quiz_folders(original_folders)
+        )
+        original_excluded_folders = (
+            list(get_excluded_learning_folders())
+            if get_excluded_learning_folders is not None else None
         )
         identity = build_quiz_folder_identity(
             original_folders, original_registry
@@ -252,6 +272,11 @@ def rename_quiz_folder_metadata(
             else folder
             for folder in original_hidden_folders
         ]
+        target_excluded_folders = (
+            [new_display if quiz_folder_identity_key(name) == old_key else name
+             for name in original_excluded_folders]
+            if original_excluded_folders is not None else None
+        )
         target_registry = deepcopy(original_registry)
         for quiz in target_registry:
             if quiz_folder_identity_key(quiz.get("folder")) == old_key:
@@ -260,6 +285,7 @@ def rename_quiz_folder_metadata(
         if (
             target_folders == original_folders
             and target_hidden_folders == original_hidden_folders
+            and target_excluded_folders == original_excluded_folders
             and target_registry == original_registry
         ):
             return False
@@ -269,6 +295,9 @@ def rename_quiz_folder_metadata(
             original_hidden_folders=original_hidden_folders,
             target_folders=target_folders,
             target_hidden_folders=target_hidden_folders,
+            original_excluded_folders=original_excluded_folders,
+            target_excluded_folders=target_excluded_folders,
+            get_excluded_learning_folders=get_excluded_learning_folders,
             original_registry=original_registry,
             target_registry=target_registry,
             load_registry=load_registry,
@@ -290,6 +319,7 @@ def delete_quiz_folder_metadata(
     get_quiz_folders,
     get_hidden_quiz_folders,
     save_quiz_folder_state,
+    get_excluded_learning_folders=None,
     print_message=print,
 ):
     """Coordinate a folder deletion and quiz reassignment across both stores."""
@@ -302,6 +332,10 @@ def delete_quiz_folder_metadata(
         original_folders = list(get_quiz_folders())
         original_hidden_folders = list(
             get_hidden_quiz_folders(original_folders)
+        )
+        original_excluded_folders = (
+            list(get_excluded_learning_folders())
+            if get_excluded_learning_folders is not None else None
         )
         identity = build_quiz_folder_identity(
             original_folders, original_registry
@@ -320,6 +354,11 @@ def delete_quiz_folder_metadata(
             for hidden_folder in original_hidden_folders
             if quiz_folder_identity_key(hidden_folder) != folder_key
         ]
+        target_excluded_folders = (
+            [name for name in original_excluded_folders
+             if quiz_folder_identity_key(name) != folder_key]
+            if original_excluded_folders is not None else None
+        )
         target_registry = deepcopy(original_registry)
         for quiz in target_registry:
             if quiz_folder_identity_key(quiz.get("folder")) == folder_key:
@@ -330,6 +369,9 @@ def delete_quiz_folder_metadata(
             original_hidden_folders=original_hidden_folders,
             target_folders=target_folders,
             target_hidden_folders=target_hidden_folders,
+            original_excluded_folders=original_excluded_folders,
+            target_excluded_folders=target_excluded_folders,
+            get_excluded_learning_folders=get_excluded_learning_folders,
             original_registry=original_registry,
             target_registry=target_registry,
             load_registry=load_registry,

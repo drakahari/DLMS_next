@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any
 
-from flask import Blueprint, flash, jsonify, redirect, request, send_from_directory
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory
 
 from dlms.services.daily_review import (
     DEFAULT_DUE_QUESTION_BATCH_SIZE,
@@ -23,6 +23,8 @@ class LearningRouteDependencies:
     static_folder: Dependency
     static_root: Dependency
     get_db: Dependency
+    learning_scope_summary: Dependency
+    set_learning_scope: Dependency
     learning_payload_error: Dependency
     persist_attempt: Dependency
     persist_study_learning_event: Dependency
@@ -541,9 +543,31 @@ def learning_intelligence_topics_api(dependencies):
         conn.close()
 
 
+def learning_scope_summary_api(dependencies):
+    return jsonify(dependencies.learning_scope_summary())
+
+
+def manage_learning_scope(dependencies):
+    if request.method == "POST":
+        state = request.form.get("included")
+        try:
+            name = dependencies.set_learning_scope(request.form.get("folder"), state)
+        except ValueError:
+            flash("Learning Scope could not be changed. Refresh and try again.", "error")
+            return redirect("/learning-scope")
+        flash(
+            f"{name} is {'included in' if state == '1' else 'excluded from'} Learning Scope.",
+            "success",
+        )
+        return redirect("/learning-scope")
+    return render_template("learning/scope.html", scope=dependencies.learning_scope_summary())
+
+
 def create_learning_blueprint(dependencies):
     blueprint = Blueprint("learning", __name__)
     rules = (
+        ("/api/learning-scope", "learning_scope_summary_api", learning_scope_summary_api, ["GET"]),
+        ("/learning-scope", "manage_learning_scope", manage_learning_scope, ["GET", "POST"]),
         ("/record_attempt", "record_attempt", record_attempt, ["POST"]),
         (
             "/api/learning-events/study-response",

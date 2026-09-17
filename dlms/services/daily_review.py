@@ -21,6 +21,7 @@ def build_daily_review_plan(
     parse_datetime,
     now=None,
     due_batch_size=DEFAULT_DUE_QUESTION_BATCH_SIZE,
+    scope=None,
 ):
     """Compose canonical recommendations without owning their scoring rules.
 
@@ -252,6 +253,8 @@ def build_daily_review_plan(
     recent_pack_recommended = False
     if installed_by_id:
         for event in learning_answer_events(cur):
+            if scope is not None and event["question_id"] not in scope.eligible_question_ids:
+                continue
             quiz = registry_by_quiz_id.get(str(event["quiz_id"] or ""))
             pack_id = quiz.get("source_pack_id") if quiz else None
             occurred_at = parse_datetime(event["occurred_at"])

@@ -41,7 +41,7 @@ A backup includes persistent material such as:
 - quizzes, generated quiz artifacts, question data, quiz assets, and logos;
 - the database containing attempts, History, missed-question records, and
   learning activity;
-- application settings and the custom background;
+- application settings, including Learning Scope, and the custom background;
 - installed Study Packs and Content Packs;
 - PDF & Image Import question and terminology banks and relevant saved drafts;
 - Law Study content; and
@@ -63,6 +63,7 @@ copy.
 
 Restore replaces the current persistent workspace; it is not an additive quiz
 import. Use it only with a DLMS backup you trust.
+Older backups without a Learning Scope setting restore with all folders included.
 
 1. Open **Settings → Backup & Restore**.
 2. Under **Restore from Backup**, select a DLMS portable-backup ZIP. The upload
@@ -182,13 +183,15 @@ custom background, then recreates current defaults. This resets:
 - Parsing options;
 - External AI helper, provider, URL, and prompt-template settings;
 - the Application Lifecycle preference; and
-- Quiz Library folder definitions and hidden-folder settings.
+- Quiz Library folder definitions and hidden-folder settings; and
+- Learning Scope exclusions (all folders become included again).
 
 Quizzes and their existing folder assignments remain. A folder still assigned
 to a quiz can continue to appear from that assignment, but empty custom folders
 and saved hidden-folder state are lost. Quizzes, History, Study Packs, Content
 Packs, PDF & Image Import banks, Law Study content, and backup archives are
-otherwise preserved.
+otherwise preserved. Learning evidence and schedules are also preserved; they
+are used again when the folders return to Learning Scope.
 
 DLMS creates a safety backup first. Prefer an individual settings page when
 you only want to change one category.

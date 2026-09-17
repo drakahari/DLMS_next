@@ -8767,6 +8767,107 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
         ) is True, path
 
 
+def test_learning_scope_management_filters_active_recommendations_across_themes_and_widths(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    portal_path = browser_stack.data_root / "config" / "portal.json"
+    portal = json.loads(portal_path.read_text(encoding="utf-8"))
+    long_folder = "ArchivedCourseWithoutSpaces" * 5
+    portal["quiz_folders"].append(long_folder)
+    portal_path.write_text(json.dumps(portal), encoding="utf-8")
+
+    browser.navigate(base_url + "/learning-scope")
+    browser.wait_for("document.querySelectorAll('.learning-scope-folder').length === 3")
+    assert browser.evaluate(
+        "document.body.textContent.includes('2 source quizzes included')"
+    ) is True
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/learning-scope")
+        browser.wait_for("document.querySelectorAll('.learning-scope-folder').length === 3")
+        contrast = _theme_contrast_snapshot(browser, {
+            "folder name": ".learning-scope-folder h3",
+            "folder detail": ".learning-scope-folder p",
+            "folder status": ".learning-scope-folder strong",
+            "folder action": ".learning-scope-folder button",
+        })
+        assert all(item["contrast"] >= 4.5 for item in contrast.values()), (theme, contrast)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            layout = browser.evaluate(
+                "(() => {const rows=[...document.querySelectorAll('.learning-scope-folder')];"
+                "return {overflow:document.documentElement.scrollWidth>window.innerWidth+1,"
+                "buttons:rows.every(row=>{const button=row.querySelector('button');"
+                "const rect=button.getBoundingClientRect();return rect.width>=100&&rect.right<=window.innerWidth+1}),"
+                "names:rows.every(row=>row.querySelector('h3').scrollWidth<=row.querySelector('h3').clientWidth+1)};})()"
+            )
+            assert layout == {"overflow": False, "buttons": True, "names": True}, (theme, width, layout)
+
+    browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata['critical_html']}")
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    browser.navigate(base_url + "/learning-scope")
+    browser.wait_for("document.querySelectorAll('.learning-scope-folder').length === 3")
+    browser.set_viewport(1024, 900)
+    browser.activate()
+    assert browser.evaluate(
+        "(() => {const form=[...document.querySelectorAll('.learning-scope-folder form')]"
+        ".find(item=>item.querySelector('[name=folder]').value==='Browser Regression');"
+        "form.querySelector('button').focus();return document.activeElement===form.querySelector('button');})()"
+    ) is True
+    browser.click(".learning-scope-folder form:has([name=folder][value='Browser Regression']) button")
+    browser.wait_for("document.body.textContent.includes('Browser Regression is excluded from Learning Scope')")
+    assert browser.evaluate(
+        "fetch('/api/learning-scope').then(r=>r.json()).then(x=>x.excluded_folders===1&&x.included_source_quizzes===0)"
+    ) is True
+    assert browser.evaluate(
+        "fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(x=>x.summary.concepts===0)"
+    ) is True
+    assert browser.evaluate(
+        "fetch('/api/review-schedule').then(r=>r.json()).then(x=>x.question_summary.eligible_questions===0)"
+    ) is True
+    assert browser.evaluate(
+        "fetch('/api/daily-review-plan').then(r=>r.json()).then(x=>x.summary.adaptive_candidates===0)"
+    ) is True
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(base_url + "/learning-intelligence")
+            browser.wait_for(
+                "document.getElementById('liScopeSummary')?.textContent.includes('1 folder excluded')"
+            )
+            assert browser.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth + 1"
+            ) is True, (theme, width, "Learning Intelligence")
+            browser.navigate(base_url + "/library?view=all")
+            browser.wait_for("document.querySelector('.library-learning-scope-badge')")
+            assert browser.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth + 1"
+            ) is True, (theme, width, "Quiz Library")
+    browser.navigate(base_url + "/")
+    browser.wait_for(
+        "document.querySelector('.daily-review-unfinished')?.textContent.includes('Browser Critical Workflow')"
+    )
+    assert browser.evaluate(
+        "document.querySelector('.daily-review-unfinished').textContent.includes('This browser')"
+    ) is True
+
+    browser.navigate(base_url + "/library?view=all")
+    browser.wait_for("document.querySelector('.library-folder')")
+    assert browser.evaluate(
+        "document.body.textContent.includes('Excluded from Learning Scope') && "
+        "document.body.textContent.includes('Browser Critical Workflow')"
+    ) is True
+    browser.navigate(base_url + "/history")
+    browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
+
+
 def test_review_schedule_summary_and_queue_controls_stay_contained(browser_stack):
     """Review metrics and the Question Queue controls remain contained."""
     browser = browser_stack.browser

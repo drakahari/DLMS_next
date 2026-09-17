@@ -42,6 +42,11 @@
   <div><div class="build-eyebrow">LEARNING INTELLIGENCE · CROSS-QUIZ TOPICS</div><h1>Topics, Mastery &amp; Weak Areas</h1><p>Concept-level insight across quizzes, Study Packs, and recorded learning activity.</p></div>
 </header>
 
+<section class="learning-scope-summary" aria-label="Learning Scope">
+  <p><strong>Learning Scope</strong><br><span id="liScopeSummary" role="status" aria-live="polite">Loading current scope…</span></p>
+  <a class="build-secondary-link" href="/learning-scope">Manage Learning Scope</a>
+</section>
+
 <section class="learning-intelligence-summary" aria-label="Learning intelligence summary">
   <article class="dashboard-stat-card"><span>TOPICS WITH EVIDENCE</span><strong id="liEvidenceTopics">—</strong><small id="liEvidenceNote">of — concepts</small></article>
   <article class="dashboard-stat-card"><span>AVERAGE ACCURACY</span><strong id="liAverageAccuracy">—</strong><small>across topics with evidence</small></article>
@@ -162,6 +167,9 @@ function renderWeak(){
  if(!weak.length){el.innerHTML='<div class="learning-intelligence-empty">No weak areas currently meet the evidence threshold.</div>';return;}
  el.innerHTML=weak.map(t=>`<article><div><strong>${esc(t.name)}</strong><span>${t.evidence} responses · ${pct(t.accuracy)} accuracy</span></div><div class="li-weak-score">${pct(t.mastery)} mastery</div></article>`).join('');
 }
+fetch('/api/learning-scope', {cache:'no-store'}).then(r=>r.json()).then(data=>{
+ document.getElementById('liScopeSummary').textContent=`${data.included_source_quizzes} source quiz${data.included_source_quizzes===1?'':'zes'} included · ${data.excluded_folders} folder${data.excluded_folders===1?'':'s'} excluded`;
+}).catch(()=>{document.getElementById('liScopeSummary').textContent='Current scope unavailable';});
 fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
  state.topics=data.topics||[];state.model=data.model||{};
  const s=data.summary||{};

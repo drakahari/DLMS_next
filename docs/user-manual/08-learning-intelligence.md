@@ -16,6 +16,35 @@ Use this area when you want to answer questions such as:
 Learning Intelligence is a guide for choosing study work. Its indicators are
 not course grades, diagnoses, or permanent judgments about what you know.
 
+## Choose your Learning Scope
+
+**Learning Scope** answers “What am I actively studying now?” All folders,
+including Uncategorized, start included. Open **Manage Learning Scope** on
+Topic Intelligence to exclude an inactive folder. The management page lists
+visible, hidden, and empty folders and shows the current included source-quiz
+count.
+
+Excluded quizzes remain saved and playable. Their attempts, scores, concepts,
+answer evidence, and schedules stay intact. Current Topic Intelligence,
+Learning Profile, Diagnostics, Due Questions, Topic Retention, Adaptive Study,
+Smart Review, Concept Review, and automatic Today’s Review recommendations use
+only included source material. A concept shared by included and excluded
+quizzes is calculated from its included questions and answers only. When no
+included source question remains, it leaves the active topic view.
+
+**Hide** in Quiz Library controls browsing visibility separately. A hidden quiz
+in an included folder still counts; a visible quiz in an excluded folder does
+not. History, Analytics, missed-question review, and manual Mixed Quiz selection
+continue to cover the full Library.
+
+Generated practice follows each original source question’s folder, even when
+one session mixes several sources. Older generated answers without a reliable
+source link are omitted from active calculations while any folder is excluded.
+Manually answering an excluded quiz still saves the activity. When you include
+the folder again, DLMS uses its saved evidence and elapsed time, so questions
+may immediately be due or overdue. Learning Scope never pauses or resets the
+schedule.
+
 ## Understand the Learning Intelligence area
 
 The Learning Intelligence navigation contains several related views:

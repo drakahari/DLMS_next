@@ -53,6 +53,7 @@ from dlms.services import content_pack_mutations as _content_pack_mutation_servi
 from dlms.services import external_ai_structured as _external_ai_structured_service
 from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
+from dlms.services import learning_scope as _learning_scope_service
 from dlms.services import quiz_publication as _quiz_publication_service
 from dlms.services import quiz_composition as _quiz_composition_service
 from dlms.services import quiz_duplicates as _quiz_duplicate_service
@@ -2853,7 +2854,16 @@ def get_hidden_quiz_folders(configured_folders=None):
     )
 
 
-def save_quiz_folder_state(folders, hidden_folders):
+def get_excluded_learning_folders():
+    return load_portal_config().get("excluded_learning_folders", [])
+
+
+app.jinja_env.globals["learning_scope_excluded_keys"] = lambda: {
+    name.lower() for name in get_excluded_learning_folders()
+}
+
+
+def save_quiz_folder_state(folders, hidden_folders, excluded_learning_folders=None):
     """Persist folder order and hidden state together in portal.json."""
     return _portal_repository.save_quiz_folder_state(
         PORTAL_CONFIG,
@@ -2862,6 +2872,7 @@ def save_quiz_folder_state(folders, hidden_folders):
         load_config=load_portal_config,
         atomic_write_json=_atomic_write_json,
         clean_hidden_quiz_folders=_clean_hidden_quiz_folders,
+        excluded_learning_folders=excluded_learning_folders,
     )
 
 
@@ -2947,6 +2958,39 @@ def save_registry(registry):
         registry_lock=registry_lock,
         atomic_write_json=_atomic_write_json,
     )
+
+
+def _learning_scope_summary():
+    with registry_lock:
+        registry = load_registry()
+        folders = get_quiz_folders()
+        excluded = get_excluded_learning_folders()
+        hidden = get_hidden_quiz_folders(folders)
+    conn = get_db()
+    try:
+        return _learning_scope_service.learning_scope_summary(
+            conn.cursor(), registry, folders, excluded, hidden,
+        )
+    finally:
+        conn.close()
+
+
+def _set_learning_scope(requested, state):
+    if not isinstance(requested, str) or state not in {"0", "1"}:
+        raise ValueError("Invalid Learning Scope request")
+    with registry_lock:
+        registry = load_registry()
+        folders = get_quiz_folders()
+        identity = _quiz_mutation_service.build_quiz_folder_identity(folders, registry)
+        name = identity.resolve(requested)
+        if name is None:
+            raise ValueError("That folder no longer exists")
+        excluded = [item for item in get_excluded_learning_folders()
+                    if identity.key(item) != identity.key(name)]
+        if state == "0":
+            excluded.append(name)
+        save_quiz_folder_state(folders, get_hidden_quiz_folders(folders), excluded)
+    return name
 
 
 def normalize_quiz_folders(registry):
@@ -3535,6 +3579,7 @@ def _rename_quiz_folder_metadata(old_folder, new_folder):
         save_registry=save_registry,
         get_quiz_folders=get_quiz_folders,
         get_hidden_quiz_folders=get_hidden_quiz_folders,
+        get_excluded_learning_folders=get_excluded_learning_folders,
         save_quiz_folder_state=save_quiz_folder_state,
         print_message=print,
     )
@@ -3548,6 +3593,7 @@ def _delete_quiz_folder_metadata(folder):
         save_registry=save_registry,
         get_quiz_folders=get_quiz_folders,
         get_hidden_quiz_folders=get_hidden_quiz_folders,
+        get_excluded_learning_folders=get_excluded_learning_folders,
         save_quiz_folder_state=save_quiz_folder_state,
         print_message=print,
     )
@@ -4885,8 +4931,31 @@ def _learning_foundation_summary(cur):
 
 
 
+_MISSING_LEARNING_SCOPE = object()
+
+
+def _current_learning_scope(cur, registry=None):
+    if has_request_context():
+        cached = getattr(g, "learning_scope_snapshot", _MISSING_LEARNING_SCOPE)
+        if cached is not _MISSING_LEARNING_SCOPE:
+            return cached
+    with registry_lock:
+        excluded = load_portal_config().get("excluded_learning_folders", [])
+        if excluded and registry is None:
+            registry = load_registry()
+    scope = (
+        _learning_scope_service.build_learning_scope(cur, registry, excluded)
+        if excluded else None
+    )
+    if has_request_context():
+        g.learning_scope_snapshot = scope
+    return scope
+
+
 def _learning_intelligence_topics(cur, now=None):
-    return _learning_service._learning_intelligence_topics(cur, now=now)
+    return _learning_service._learning_intelligence_topics(
+        cur, now=now, scope=_current_learning_scope(cur)
+    )
 
 
 def _retention_schedule_for_topic(topic, now=None):
@@ -4911,8 +4980,10 @@ def _review_schedule_payload(cur, now=None):
     )
 
 
-def _native_spaced_repetition_schedule(cur, now=None):
-    return _learning_service._native_spaced_repetition_schedule(cur, now=now)
+def _native_spaced_repetition_schedule(cur, now=None, *, registry=None):
+    return _learning_service._native_spaced_repetition_schedule(
+        cur, now=now, scope=_current_learning_scope(cur, registry=registry)
+    )
 
 
 def _learning_intelligence_payload(cur, now=None):
@@ -4928,6 +4999,7 @@ def _learning_profile_payload(cur):
         cur,
         learning_intelligence_payload=_learning_intelligence_payload,
         review_schedule_payload=_review_schedule_payload,
+        scope=_current_learning_scope(cur),
     )
 
 
@@ -5105,7 +5177,9 @@ def _snapshot_existing_quiz_asset_refs(value, bucket, *, destination_root=None, 
 
 
 def _review_candidates_for_topics(cur, topics):
-    return _learning_service._review_candidates_for_topics(cur, topics)
+    return _learning_service._review_candidates_for_topics(
+        cur, topics, scope=_current_learning_scope(cur)
+    )
 
 
 def _smart_review_candidates(cur):
@@ -5136,6 +5210,7 @@ def _adaptive_study_candidates(cur, now=None):
         cur,
         now=now,
         learning_topics_with_retention=_learning_topics_with_retention,
+        scope=_current_learning_scope(cur),
     )
 
 
@@ -5146,14 +5221,18 @@ def _adaptive_study_select_candidates(candidates, requested):
 
 
 def _daily_review_plan(cur, now=None):
+    with registry_lock:
+        registry = load_registry()
+        scope = _current_learning_scope(cur, registry=registry)
     return _learning_service._daily_review_plan(
         cur,
-        registry=load_registry(),
+        registry=registry,
         installed_content_packs=content_pack_summary(),
         now=now,
         review_schedule_payload=_review_schedule_payload,
         learning_intelligence_payload=_learning_intelligence_payload,
         adaptive_study_candidates=_adaptive_study_candidates,
+        scope=scope,
     )
 
 
@@ -5180,6 +5259,7 @@ def _question_diagnostics_payload(cur):
         cur,
         question_concepts=_question_concepts,
         response_selected_labels=_response_selected_labels,
+        scope=_current_learning_scope(cur),
     )
 
 
@@ -5991,6 +6071,8 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
     static_folder=lambda: app.static_folder,
     static_root=lambda: STATIC_ROOT,
     get_db=lambda: get_db(),
+    learning_scope_summary=lambda: _learning_scope_summary(),
+    set_learning_scope=lambda folder, state: _set_learning_scope(folder, state),
     learning_payload_error=lambda: LearningPayloadError,
     persist_attempt=lambda conn, cur, data: _attempt_service.persist_attempt(
         conn,
@@ -6433,7 +6515,11 @@ app.register_blueprint(create_quiz_blueprint(
             _quiz_smart_view_service.build_quiz_smart_views(
                 cur,
                 registry,
-                native_schedule=_native_spaced_repetition_schedule,
+                native_schedule=lambda schedule_cur, now=None: (
+                    _native_spaced_repetition_schedule(
+                        schedule_cur, now=now, registry=registry,
+                    )
+                ),
                 bank_ocr_quiz_ids=_ocr_generated_quiz_ids(),
             )
         ),

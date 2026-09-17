@@ -83,6 +83,23 @@ Hiding is a visibility choice, not deletion.
 When you unhide a folder, quizzes that were also individually hidden remain
 hidden. This lets folder visibility and quiz visibility remain separate.
 
+### Set the Learning Scope for a folder
+
+Use **Manage Learning Scope** from Quiz Library or Topic Intelligence when a
+folder is no longer part of your current studies. Excluded folders are marked
+**Excluded from Learning Scope** in the Library. Their quizzes stay visible
+according to the ordinary Hide setting and remain playable, movable, and
+exportable. Hide and Learning Scope are independent.
+
+Moving a quiz changes which folder's Learning Scope setting applies. Renaming
+a folder keeps its setting. Deleting a folder moves its quizzes to
+Uncategorized, where they use Uncategorized's setting. See
+[Learning Intelligence](08-learning-intelligence.md#choose-your-learning-scope)
+for the effect on recommendations and schedules.
+
+Portable Quiz Bundles do not carry the originating installation's Learning
+Scope exclusions. Imported quizzes use the destination folder's setting.
+
 Renaming a custom folder changes its Library label. Deleting a custom folder
 does not delete its quizzes; DLMS moves them to Uncategorized and preserves
 their individual hidden state. The confirmation shown before folder deletion

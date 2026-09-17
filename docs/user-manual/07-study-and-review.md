@@ -31,7 +31,10 @@ not alter the source questions, and none of them requires an AI service.
 **Today’s Review** is a planning surface on the Dashboard, not a separate
 review algorithm. It asks the existing scheduling and Learning Intelligence
 features for their current signals, then presents a short list of actions with
-a reason for each one.
+a reason for each one. **Manage Learning Scope** beside the
+plan lets you choose which folders inform those automatic recommendations;
+saved **Resume** cards from this browser remain available even when their
+folder is excluded.
 
 Depending on your material and activity, the list can include:
 

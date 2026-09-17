@@ -160,6 +160,13 @@ DLMS's concept-oriented view of learning evidence across quizzes. It presents
 accuracy, recent performance, Mastery, Trend, evidence, and actions for targeted
 practice. See [Learning Intelligence](08-learning-intelligence.md).
 
+### Learning Scope
+
+The folders currently included in Learning Intelligence, Due Questions, and
+automatic study recommendations. Excluding a folder preserves its quizzes,
+history, and schedules; it does not hide the folder in Quiz Library. See
+[Choose your Learning Scope](08-learning-intelligence.md#choose-your-learning-scope).
+
 ### Local desktop mode
 
 The normal loopback-only runtime in which DLMS runs on the user's computer and

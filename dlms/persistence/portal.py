@@ -22,6 +22,7 @@ def _portal_defaults(
         "theme": default_theme,
         "quiz_folders": ["Uncategorized"],
         "hidden_quiz_folders": [],
+        "excluded_learning_folders": [],
         "study_area_visibility": {
             "it": True,
             "law": True,
@@ -115,6 +116,13 @@ def load_portal_config(
             )
         )
     )
+    malformed_excluded_learning_folders = (
+        "excluded_learning_folders" in data
+        and (
+            not isinstance(data["excluded_learning_folders"], list)
+            or any(not isinstance(folder, str) for folder in data["excluded_learning_folders"])
+        )
+    )
     malformed_study_area_visibility = (
         "study_area_visibility" in data
         and not isinstance(data["study_area_visibility"], dict)
@@ -122,6 +130,7 @@ def load_portal_config(
     if (
         malformed_quiz_folders
         or malformed_hidden_quiz_folders
+        or malformed_excluded_learning_folders
         or malformed_study_area_visibility
     ):
         preserve_malformed_json(portal_path)
@@ -136,10 +145,17 @@ def load_portal_config(
     if malformed_hidden_quiz_folders:
         data = data.copy()
         data["hidden_quiz_folders"] = []
+    if malformed_excluded_learning_folders:
+        data = data.copy()
+        data["excluded_learning_folders"] = []
 
     # Merge defaults with stored values
     cfg = default.copy()
     cfg.update(data)
+    # An absent or malformed setting always retains the pre-scope behavior.
+    cfg["excluded_learning_folders"] = clean_excluded_learning_folders(
+        cfg.get("excluded_learning_folders")
+    )
 
     # Normalize booleans (checkbox safety)
     cfg["show_confidence"] = bool(cfg.get("show_confidence", False))
@@ -236,6 +252,22 @@ def get_quiz_folders(*, load_config):
     return cleaned
 
 
+def clean_excluded_learning_folders(value):
+    """Validate case-insensitive folder identities without guessing bad data."""
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        return []
+    cleaned = []
+    seen = set()
+    for item in value:
+        name = item.strip()
+        key = name.lower()
+        if not name or key in seen:
+            continue
+        cleaned.append(name)
+        seen.add(key)
+    return cleaned
+
+
 def save_quiz_folders(
     portal_path,
     folders,
@@ -328,6 +360,7 @@ def save_quiz_folder_state(
     load_config,
     atomic_write_json=json_files._atomic_write_json,
     clean_hidden_quiz_folders=None,
+    excluded_learning_folders=None,
 ):
     """Persist folder order and hidden state together in portal.json."""
     if clean_hidden_quiz_folders is None:
@@ -353,6 +386,10 @@ def save_quiz_folder_state(
     cfg["hidden_quiz_folders"] = clean_hidden_quiz_folders(
         hidden_folders, cleaned_folders
     )
+    if excluded_learning_folders is not None:
+        cfg["excluded_learning_folders"] = clean_excluded_learning_folders(
+            excluded_learning_folders
+        )
     atomic_write_json(portal_path, cfg, expected_type=dict)
 
 

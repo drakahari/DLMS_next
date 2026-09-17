@@ -148,7 +148,7 @@ def _concept_performance_trend(
     }
 
 
-def _learning_intelligence_topics(cur, now=None):
+def _learning_intelligence_topics(cur, now=None, *, scope=None):
     """Build explainable concept-level learning metrics for DLMS-008/009/010.
 
     Study responses are de-duplicated to the latest response for a question in a
@@ -191,6 +191,8 @@ def _learning_intelligence_topics(cur, now=None):
     for row in question_rows:
         if is_generated_question(row):
             continue
+        if scope is not None and not scope.allows_source(row):
+            continue
         identity = question_to_identity[row["id"]]
         for concept_id in concepts_by_question.get(row["id"], []):
             source_concepts_by_identity.setdefault(identity, set()).add(concept_id)
@@ -201,6 +203,8 @@ def _learning_intelligence_topics(cur, now=None):
     for row in _deduplicated_learning_answer_events(cur):
         question = question_by_id.get(row["question_id"])
         if question is None:
+            continue
+        if scope is not None and not scope.allows_question(question):
             continue
         identity = question_to_identity[row["question_id"]]
         if identity[0] == "lineage":
@@ -216,6 +220,8 @@ def _learning_intelligence_topics(cur, now=None):
 
     topics = []
     for concept in concept_rows:
+        if scope is not None and not source_question_ids_by_concept.get(concept["id"]):
+            continue
         events = evidence_by_concept.get(concept["id"], [])
         events.sort(key=lambda r: (str(r["occurred_at"] or ""), int(r["id"])))
         evidence = len(events)
@@ -509,7 +515,7 @@ def _native_question_schedule_entry(events, *, now):
     }
 
 
-def _native_spaced_repetition_schedule(cur, now=None):
+def _native_spaced_repetition_schedule(cur, now=None, *, scope=None):
     """Schedule canonical source questions from existing learning events."""
     now = now or datetime.now(timezone.utc)
     question_rows = cur.execute("""
@@ -524,6 +530,7 @@ def _native_spaced_repetition_schedule(cur, now=None):
         JOIN quizzes z ON z.id = q.quiz_id
         ORDER BY q.quiz_id, q.question_number, q.id
     """).fetchall()
+    question_by_id = {row["id"]: row for row in question_rows}
     concept_links = cur.execute("""
         SELECT qc.question_id, c.name
         FROM question_concepts qc
@@ -546,11 +553,17 @@ def _native_spaced_repetition_schedule(cur, now=None):
         )
         if is_generated_question(row):
             continue
+        if scope is not None and not scope.allows_source(row):
+            continue
         group["source_rows"].append(row)
         for concept in concepts_by_question.get(row["id"], []):
             group["concepts"].setdefault(concept.casefold(), concept)
 
     for event in _deduplicated_learning_answer_events(cur):
+        if scope is not None:
+            question = question_by_id.get(event["question_id"])
+            if question is None or not scope.allows_question(question):
+                continue
         key = question_to_key.get(event["question_id"])
         if key in groups:
             groups[key]["events"].append(event)
@@ -712,6 +725,7 @@ def _learning_profile_payload(
     *,
     learning_intelligence_payload=_learning_intelligence_payload,
     review_schedule_payload=_review_schedule_payload,
+    scope=None,
 ):
     """Summarize learner-level progress from the explainable topic model."""
     payload = learning_intelligence_payload(cur)
@@ -725,19 +739,43 @@ def _learning_profile_payload(
     developing = [t for t in topics if t.get("status") == "developing"]
     insufficient = [t for t in topics if t.get("status") == "insufficient"]
 
-    event_counts = cur.execute("""
-        SELECT event_type, COUNT(*) AS count
-        FROM learning_events
-        GROUP BY event_type
-    """).fetchall()
-    event_counts = {r["event_type"]: r["count"] for r in event_counts}
-
-    activity = cur.execute("""
-        SELECT COUNT(DISTINCT CASE WHEN event_type='attempt_completed' THEN attempt_id END) AS completed_attempts,
-               COUNT(DISTINCT quiz_id) AS quizzes_studied,
-               MAX(occurred_at) AS last_activity
-        FROM learning_events
-    """).fetchone()
+    if scope is None:
+        event_counts = cur.execute("""
+            SELECT event_type, COUNT(*) AS count
+            FROM learning_events
+            GROUP BY event_type
+        """).fetchall()
+        event_counts = {r["event_type"]: r["count"] for r in event_counts}
+        activity = cur.execute("""
+            SELECT COUNT(DISTINCT CASE WHEN event_type='attempt_completed' THEN attempt_id END) AS completed_attempts,
+                   COUNT(DISTINCT quiz_id) AS quizzes_studied,
+                   MAX(occurred_at) AS last_activity
+            FROM learning_events
+        """).fetchone()
+    else:
+        rows = cur.execute("""
+            SELECT event_type, question_id, quiz_id, attempt_id, occurred_at
+            FROM learning_events
+            WHERE question_id IS NOT NULL OR event_type = 'attempt_completed'
+        """).fetchall()
+        scoped = [event for event in rows
+                  if event["question_id"] in scope.eligible_question_ids]
+        scoped_exam_attempts = {
+            event["attempt_id"] for event in scoped
+            if event["event_type"] == "exam_answer" and event["attempt_id"]
+        }
+        completed = [event for event in rows
+                     if event["event_type"] == "attempt_completed"
+                     and event["attempt_id"] in scoped_exam_attempts]
+        event_counts = {
+            kind: sum(event["event_type"] == kind for event in scoped)
+            for kind in ("study_answer", "exam_answer")
+        }
+        activity = {
+            "completed_attempts": len({event["attempt_id"] for event in completed}),
+            "quizzes_studied": len({event["quiz_id"] for event in scoped if event["quiz_id"] is not None}),
+            "last_activity": max((event["occurred_at"] for event in scoped + completed), default=None),
+        }
 
     due_topics = [t for t in review_schedule.get("topics", []) if t.get("review_state") in ("due", "overdue")]
 
@@ -882,13 +920,13 @@ def _question_payload_from_db(
     return item
 
 
-def _review_candidates_for_topics(cur, topics):
+def _review_candidates_for_topics(cur, topics, *, scope=None):
     """Return unique source questions associated with the supplied concepts."""
     if not topics:
         return []
     topic_by_id = {t["concept_id"]: t for t in topics}
     rows = cur.execute("""
-        SELECT qc.question_id, qc.concept_id, q.quiz_id, q.question_number,
+        SELECT q.id, qc.question_id, qc.concept_id, q.quiz_id, q.question_number,
                q.question_text, COALESCE(q.question_type, 'choice') AS question_type,
                q.question_uid, q.canonical_question_uid,
                COALESCE(q.is_generated_copy, 0) AS is_generated_copy,
@@ -902,6 +940,8 @@ def _review_candidates_for_topics(cur, topics):
     grouped = {}
     for row in rows:
         if is_generated_question(row):
+            continue
+        if scope is not None and not scope.allows_source(row):
             continue
         g = grouped.setdefault(row["question_id"], {
             "question_id": row["question_id"], "quiz_id": row["quiz_id"],
@@ -1023,6 +1063,7 @@ def _adaptive_study_candidates(
     now=None,
     *,
     learning_topics_with_retention=_learning_topics_with_retention,
+    scope=None,
 ):
     """Rank canonical source questions for a deterministic adaptive session.
 
@@ -1049,6 +1090,7 @@ def _adaptive_study_candidates(
         JOIN quizzes z ON z.id = q.quiz_id
         ORDER BY q.quiz_id, q.question_number, q.id
     """).fetchall()
+    question_by_id = {row["id"]: row for row in question_rows}
     concept_links = cur.execute("""
         SELECT question_id, concept_id
         FROM question_concepts
@@ -1075,10 +1117,16 @@ def _adaptive_study_candidates(
         )
         if is_generated_question(row):
             continue
+        if scope is not None and not scope.allows_source(row):
+            continue
         group["source_rows"].append(row)
         group["concept_ids"].update(concepts_by_question.get(row["id"], []))
 
     for event in _deduplicated_learning_answer_events(cur):
+        if scope is not None:
+            question = question_by_id.get(event["question_id"])
+            if question is None or not scope.allows_question(question):
+                continue
         key = question_to_key.get(event["question_id"])
         if key in groups:
             groups[key]["events"].append(event)
@@ -1284,6 +1332,7 @@ def _daily_review_plan(
     learning_intelligence_payload=_learning_intelligence_payload,
     adaptive_study_candidates=_adaptive_study_candidates,
     due_batch_size=DEFAULT_DUE_QUESTION_BATCH_SIZE,
+    scope=None,
 ):
     """Compatibility boundary for callers of the original learning service."""
     return build_daily_review_plan(
@@ -1297,6 +1346,7 @@ def _daily_review_plan(
         learning_answer_events=_deduplicated_learning_answer_events,
         parse_datetime=_parse_learning_datetime,
         due_batch_size=due_batch_size,
+        scope=scope,
     )
 
 
@@ -1323,6 +1373,7 @@ def _question_diagnostics_payload(
     *,
     question_concepts=_question_concepts,
     response_selected_labels=_response_selected_labels,
+    scope=None,
 ):
     """DLMS-015/016: explainable confusion and question-quality signals."""
     qrows = cur.execute("""
@@ -1339,6 +1390,8 @@ def _question_diagnostics_payload(
     groups = {}
     question_to_key = {}
     for q in qrows:
+        if scope is not None and not scope.allows_question(q):
+            continue
         qtype = (q['question_type'] or 'choice').lower()
         key = canonical_learning_identity(q)
         question_to_key[q['id']] = key
