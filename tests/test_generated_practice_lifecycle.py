@@ -151,6 +151,31 @@ class GeneratedPracticeLifecycleTests(unittest.TestCase):
                 self.assertEqual(200, saved.status_code, saved.get_data(as_text=True))
                 self.assertEqual(200, self.complete(self.completion_payload(quiz_id, selected=finished)).status_code)
 
+    def test_late_partial_response_does_not_override_acknowledged_complete_answer(self):
+        quiz_id, _ = self.publish(questions=[self.choice(multi=True)], kind="adaptive_study")
+        # The browser can issue both clicks before the first request finishes.
+        # The complete response may commit before the earlier partial response.
+        self.assertEqual(200, self.save_study(
+            quiz_id, selected=["A", "B"], was_correct=True,
+        ).status_code)
+        self.assertEqual(200, self.save_study(
+            quiz_id, selected=["A"], was_correct=None,
+        ).status_code)
+        completed = self.complete(self.completion_payload(quiz_id, selected=["A", "B"]))
+        self.assertEqual(200, completed.status_code, completed.get_data(as_text=True))
+
+    def test_current_partial_answer_stays_incomplete_after_earlier_complete_response(self):
+        quiz_id, _ = self.publish(questions=[self.choice(multi=True)], kind="adaptive_study")
+        self.assertEqual(200, self.save_study(
+            quiz_id, selected=["A", "B"], was_correct=True,
+        ).status_code)
+        self.assertEqual(200, self.save_study(
+            quiz_id, selected=["A"], was_correct=None,
+        ).status_code)
+        partial = self.complete(self.completion_payload(quiz_id, selected=["A"]))
+        self.assertEqual(400, partial.status_code)
+        self.assertIsNone(self.marker(quiz_id))
+
     def test_failed_marker_write_preserves_study_event_and_can_retry(self):
         quiz_id, _ = self.publish()
         self.assertEqual(200, self.save_study(quiz_id, selected=["A"], was_correct=True).status_code)

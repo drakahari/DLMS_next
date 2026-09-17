@@ -2005,6 +2005,72 @@ def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
     ) is True
 
 
+def test_adaptive_study_completion_survives_late_partial_multiselect_save(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    entry = next(item for item in registry if item["id"] == quiz_id)
+    json_path = browser_stack.data_root / "data" / Path(entry["html"]).with_suffix(".json").name
+    questions = json.loads(json_path.read_text(encoding="utf-8"))
+    questions[1]["choices"][0]["is_correct"] = True
+    questions[1]["correct"] = ["A", "B"]
+    json_path.write_text(json.dumps(questions), encoding="utf-8")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'adaptive_study' WHERE id = ?", (quiz_id,),
+        )
+        connection.execute(
+            "UPDATE choices SET is_correct = 1 WHERE question_id = "
+            "(SELECT id FROM questions WHERE quiz_id = ? AND question_number = 2) AND label = 'A'",
+            (quiz_id,),
+        )
+
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    browser.evaluate(
+        "(() => { const original = window.fetch.bind(window);"
+        "window.fetch = (...args) => {"
+        "if (String(args[0]).includes('/api/learning-events/study-response')"
+        " && JSON.parse(args[1].body).questionOrdinal === 2"
+        " && JSON.parse(args[1].body).selected.length === 0) {"
+        "return new Promise(resolve => { window.releasePartialStudySave = () => resolve(original(...args)); });"
+        "} return original(...args); }; return true; })()"
+    )
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("typeof window.releasePartialStudySave === 'function'")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for(
+        "studyLearningEventSaves.size === 1 && "
+        "[...studyLearningEventSaves.values()][0].payload.selected.length === 0"
+    )
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    browser.evaluate("window.releasePartialStudySave(); true")
+    browser.wait_for(
+        f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"
+    )
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.daily-review-unfinished')]"
+        ".every(item => !item.textContent.includes('Browser Critical Workflow'))"
+    ) is True
+
+
 def test_generated_practice_study_completion_retry_library_and_retake(browser_stack):
     browser = browser_stack.browser
     quiz_id = browser_stack.metadata["critical_id"]

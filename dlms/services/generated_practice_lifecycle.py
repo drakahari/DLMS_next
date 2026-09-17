@@ -76,7 +76,7 @@ def _verify_study(cur, quiz_id, reference, questions, answers):
     if not isinstance(answers, list) or len(answers) != len(questions):
         raise ValueError("Every quiz question needs a saved Study response.")
     expected = {row["id"] for row in questions}
-    latest = {}
+    responses_by_question = {}
     rows = cur.execute(
         """SELECT id, question_id, was_correct, response_json
            FROM learning_events
@@ -86,20 +86,30 @@ def _verify_study(cur, quiz_id, reference, questions, answers):
     ).fetchall()
     for row in rows:
         if row["question_id"] in expected:
-            latest[row["question_id"]] = row
-    if set(latest) != expected:
+            responses_by_question.setdefault(row["question_id"], []).append(row)
+    if set(responses_by_question) != expected:
         raise ValueError("Every quiz question needs a saved Study response.")
     for ordinal, question in enumerate(questions, start=1):
         answer = answers[ordinal - 1]
         if not isinstance(answer, dict) or set(answer) != {"ordinal", "selected"}:
             raise ValueError("Study response details are incomplete.")
-        if answer["ordinal"] != ordinal or latest[question["id"]]["was_correct"] is None:
+        if answer["ordinal"] != ordinal:
             raise ValueError("A Study response is incomplete or not saved.")
-        try:
-            saved = json.loads(latest[question["id"]]["response_json"] or "{}")
-        except (TypeError, ValueError):
-            raise ValueError("A saved Study response is unavailable.") from None
-        if saved.get("question_number") != ordinal or saved.get("selected") != answer["selected"]:
+        # Concurrent Study saves can commit out of click order. A late partial
+        # multi-select response must not replace an acknowledged complete one.
+        # Match the current browser selection to persisted, complete evidence.
+        matching_response = False
+        for row in responses_by_question[question["id"]]:
+            if row["was_correct"] is None:
+                continue
+            try:
+                saved = json.loads(row["response_json"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if saved.get("question_number") == ordinal and saved.get("selected") == answer["selected"]:
+                matching_response = True
+                break
+        if not matching_response:
             raise ValueError("The current Study answer has not been saved.")
 
 
