@@ -31,6 +31,12 @@ let quizRecoveryController = null;
 let quizRecoveryReady = false;
 let studyLearningEventSequence = 0;
 const studyLearningEventSaves = new Map();
+let quizContentFingerprint = null;
+let generatedPracticeStatus = null;
+let studyCompletionInProgress = false;
+let studyCompletionFailed = false;
+let studyCompletionRevision = 0;
+let pendingGeneratedPracticeCompletion = null;
 
 function loadStudyAIConfig() {
     if (studyAIConfigRequest) return studyAIConfigRequest;
@@ -88,7 +94,11 @@ function ensureStudyLearningEventStatus() {
     retry.className = "study-learning-save-retry";
     retry.textContent = "Retry";
     retry.addEventListener("click", () => {
-        void retryStudyLearningEventSaves();
+        if (Array.from(studyLearningEventSaves.values()).some(record => record.state === "failed")) {
+            void retryStudyLearningEventSaves();
+        } else {
+            completeStudyRecoveryIfReady(true);
+        }
     });
     status.appendChild(retry);
 
@@ -102,26 +112,31 @@ function updateStudyLearningEventStatus() {
     const retrying = Array.from(studyLearningEventSaves.values())
         .some(record => record.retrying === true);
     const status = document.getElementById("studyLearningEventStatus")
-        || ((failed.length || retrying) ? ensureStudyLearningEventStatus() : null);
+        || ((failed.length || retrying || studyCompletionFailed || studyCompletionInProgress)
+            ? ensureStudyLearningEventStatus() : null);
     if (!status) return;
 
     const message = status.querySelector(".study-learning-save-message");
     const retry = status.querySelector(".study-learning-save-retry");
-    if (!failed.length && !retrying) {
+    if (!failed.length && !retrying && !studyCompletionFailed && !studyCompletionInProgress) {
         status.hidden = true;
         return;
     }
 
     status.hidden = false;
-    status.classList.toggle("is-retrying", retrying && !failed.length);
+    status.classList.toggle("is-retrying", (retrying || studyCompletionInProgress) && !failed.length);
     if (message) {
-        message.textContent = retrying && !failed.length
+        message.textContent = studyCompletionInProgress && !failed.length
+            ? "Saving review completion…"
+            : studyCompletionFailed && !failed.length
+                ? "Review completion was not saved. Retry before leaving this quiz."
+                : retrying && !failed.length
             ? "Retrying learning progress save…"
             : "Learning progress was not saved.";
     }
     if (retry) {
-        retry.hidden = failed.length === 0;
-        retry.disabled = retrying;
+        retry.hidden = failed.length === 0 && !studyCompletionFailed;
+        retry.disabled = retrying || studyCompletionInProgress;
     }
 }
 
@@ -188,6 +203,8 @@ async function retryStudyLearningEventSaves() {
 
 async function recordStudyLearningEvent(q, wasCorrect, selected) {
     if (examMode || !q || !window.QUIZ_ID) return;
+    studyCompletionRevision += 1;
+    studyCompletionFailed = false;
     const eventId = createStudyLearningEventId();
     const payload = {
         quizId: window.QUIZ_ID,
@@ -297,6 +314,13 @@ async function loadQuiz() {
         rawQuiz = parsed.map(q => ({...q, type: (q.type || "choice").toLowerCase()}));
         quiz = [];
         try {
+            const statusResponse = await fetch(`/api/generated-practice/status/${window.QUIZ_ID}`, {cache: "no-store"});
+            if (!statusResponse.ok) throw new Error("Generated Practice status unavailable");
+            generatedPracticeStatus = await statusResponse.json();
+        } catch (_error) {
+            generatedPracticeStatus = null;
+        }
+        try {
             const recovery = await loadQuizRecoveryRuntime();
             if (!recovery) throw new Error("Quiz recovery module did not initialize");
             const fingerprint = await recovery.quizFingerprint({
@@ -305,6 +329,7 @@ async function loadQuiz() {
                 quizFile: file,
                 examMinutes: examDurationMinutes,
             });
+            quizContentFingerprint = fingerprint;
             quizRecoveryController = recovery.createController({
                 quizId: window.QUIZ_ID,
                 quizFile: file,
@@ -313,7 +338,13 @@ async function loadQuiz() {
                 rawQuiz,
                 capture: captureQuizRecoveryState,
                 restore: restoreQuizRecoveryState,
-                isCompleted: record => studyRecoveryRecordIsComplete(record, rawQuiz),
+                isCompleted: record => (
+                    generatedPracticeStatus?.is_transient === true && !generatedPracticeStatus.completed
+                        ? false
+                        : generatedPracticeStatus === null
+                            ? false
+                            : studyRecoveryRecordIsComplete(record, rawQuiz)
+                ),
                 finishSubmission: recoveredAttempt => { void submitQuiz(true, recoveredAttempt); },
                 startOver: () => {},
                 notify: showQuizRecoveryNotice,
@@ -1399,10 +1430,45 @@ function studyRecoveryRecordIsComplete(record, questions = rawQuiz) {
     });
 }
 
-function completeStudyRecoveryIfReady() {
+function generatedPracticeStudyAnswers() {
+    return quiz.map((question, questionIndex) => {
+        let selected = userAnswers[`q${questionIndex}`];
+        if (question.type === "hotspot") {
+            selected = selected ? {x: Number(selected.x), y: Number(selected.y)} : null;
+        } else if (question.type === "matching") {
+            selected = selected && typeof selected === "object" ? {...selected} : {};
+        } else {
+            selected = Array.isArray(selected)
+                ? selected.map(value => String.fromCharCode(65 + value)) : [];
+        }
+        return {ordinal: questionIndex + 1, selected};
+    });
+}
+
+async function requestGeneratedPracticeCompletion(mode, reference) {
+    const response = await fetch("/api/generated-practice/complete", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            quizId: window.QUIZ_ID,
+            mode,
+            reference,
+            questionCount: quiz.length,
+            fingerprint: quizContentFingerprint,
+            answers: mode === "Study" ? generatedPracticeStudyAnswers() : undefined,
+        }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok !== true) {
+        throw new Error(data.error || "Review completion could not be saved.");
+    }
+    generatedPracticeStatus = {is_transient: Boolean(data.applicable), completed: Boolean(data.applicable)};
+    return data;
+}
+
+function completeStudyRecoveryIfReady(retry = false) {
     if (
         examMode
-        || !quizRecoveryController?.ownsState
         || studyLearningEventSaves.size !== 0
         || !quiz.length
     ) return false;
@@ -1412,7 +1478,39 @@ function completeStudyRecoveryIfReady() {
         question.type === "matching" ? question._matching_variant : null,
     ));
     if (!complete) return false;
-    quizRecoveryController.complete();
+    if (generatedPracticeStatus?.is_transient === false) {
+        if (quizRecoveryController?.ownsState) quizRecoveryController.complete();
+        return true;
+    }
+    if (studyCompletionInProgress || (studyCompletionFailed && !retry)) return true;
+    studyCompletionFailed = false;
+    studyCompletionInProgress = true;
+    const revision = studyCompletionRevision;
+    updateStudyLearningEventStatus();
+    void requestGeneratedPracticeCompletion("Study", learningSessionId)
+        .then(() => {
+            studyCompletionFailed = false;
+            const currentAnswersComplete = quiz.every((question, questionIndex) => studyAnswerIsComplete(
+                question,
+                userAnswers[`q${questionIndex}`],
+                question.type === "matching" ? question._matching_variant : null,
+            ));
+            if (revision === studyCompletionRevision && studyLearningEventSaves.size === 0 && currentAnswersComplete) {
+                quizRecoveryController?.complete();
+            }
+        })
+        .catch(error => {
+            studyCompletionFailed = true;
+            console.warn("Generated Practice completion save failed:", error);
+            checkpointQuizRecovery();
+        })
+        .finally(() => {
+            studyCompletionInProgress = false;
+            updateStudyLearningEventStatus();
+            if (!studyCompletionFailed && revision !== studyCompletionRevision) {
+                completeStudyRecoveryIfReady();
+            }
+        });
     return true;
 }
 
@@ -1534,6 +1632,7 @@ function restoreQuizRecoveryState(record) {
     if (overlay) overlay.classList.toggle("show", paused);
     document.body.classList.toggle("blurred", paused);
     renderQuestion();
+    if (!examMode) queueMicrotask(() => completeStudyRecoveryIfReady());
     if (record.session.phase === "submitting") {
         stopExamTimer();
     } else if (examMode) {
@@ -1557,6 +1656,10 @@ function startQuiz(isExam) {
     learningSessionId = createLearningSessionId();
     studyLearningEventSequence = 0;
     studyLearningEventSaves.clear();
+    studyCompletionInProgress = false;
+    studyCompletionFailed = false;
+    studyCompletionRevision = 0;
+    pendingGeneratedPracticeCompletion = null;
     updateStudyLearningEventStatus();
 
     console.log("START QUIZ. examMode =", examMode);
@@ -1685,6 +1788,10 @@ function renderExamResult(pending, state) {
         : saving
             ? `<button disabled aria-disabled="true">Saving Attempt…</button>`
             : `<button onclick="retryExamAttemptSave()">Retry Saving Attempt</button>`;
+    const completionNotice = saved && pendingGeneratedPracticeCompletion
+        ? `<p role="alert">The Exam attempt was saved, but Generated Practice completion was not recorded.</p>
+           <button type="button" onclick="retryGeneratedPracticeCompletion()">Retry Review Completion</button>`
+        : "";
 
     resultDiv.classList.remove("hidden");
     resultDiv.style.display = "block";
@@ -1693,6 +1800,7 @@ function renderExamResult(pending, state) {
         <p><b>Score:</b> ${pending.score} / ${pending.total} (${pending.percent}%)</p>
         ${persistenceStatus}
         ${persistenceAction}
+        ${completionNotice}
 
         <button onclick="location.href='/history'">
             📜 View Full History
@@ -1744,6 +1852,17 @@ async function savePendingExamAttempt() {
         pendingExamAttempt = null;
         quizRecoveryController?.complete();
         renderExamResult(pending, "saved");
+        if (generatedPracticeStatus?.is_transient !== false) {
+            try {
+                await requestGeneratedPracticeCompletion("Exam", pending.attemptId);
+            } catch (completionError) {
+                pendingGeneratedPracticeCompletion = {
+                    mode: "Exam", reference: pending.attemptId, pending,
+                };
+                renderExamResult(pending, "saved");
+                console.warn("Generated Practice completion save failed:", completionError);
+            }
+        }
         console.log("RESULT UI RENDERED. Attempt ID:", pending.attemptId);
     } catch (error) {
         console.error("Attempt persistence failed:", error);
@@ -1751,6 +1870,18 @@ async function savePendingExamAttempt() {
         checkpointQuizRecovery();
     } finally {
         examAttemptSaveInProgress = false;
+    }
+}
+
+async function retryGeneratedPracticeCompletion() {
+    const pending = pendingGeneratedPracticeCompletion;
+    if (!pending) return;
+    try {
+        await requestGeneratedPracticeCompletion(pending.mode, pending.reference);
+        pendingGeneratedPracticeCompletion = null;
+        renderExamResult(pending.pending, "saved");
+    } catch (error) {
+        console.warn("Generated Practice completion retry failed:", error);
     }
 }
 

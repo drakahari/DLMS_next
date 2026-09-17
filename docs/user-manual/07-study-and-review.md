@@ -245,10 +245,14 @@ them as **Generated Practice** so you can distinguish them from ordinary
 source quizzes. Their questions retain links to the original source material,
 so their answers can strengthen the same learning record.
 
-Generated Practice can remain visible in the Quiz Library after use. DLMS does
-not currently promise automatic cleanup or archiving. Use the **Generated
-Practice** Smart View to find these sessions, and use normal Library visibility
-controls if you want to reduce clutter without deleting learning history.
+After a generated review is successfully finished and saved, its Library card
+shows **Completed** and a date. Uncategorized sessions move from the active
+**Generated Practice** group to the collapsed **Completed Generated Practice**
+group. The **Generated Practice** Smart View still finds both, and a session
+moved to a custom folder stays there. Completed reviews remain playable and
+saved; DLMS does not automatically delete them. Learning evidence, History,
+Analytics, and schedules remain intact. An unfinished retake may still show a
+browser-local Resume card, independent of its completed Library status.
 
 A **Mixed Quiz** is different. Although DLMS builds it from questions in other
 quizzes, it is a deliberate, named composition intended for reuse and is not

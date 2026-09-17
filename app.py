@@ -54,6 +54,7 @@ from dlms.services import external_ai_structured as _external_ai_structured_serv
 from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
 from dlms.services import learning_scope as _learning_scope_service
+from dlms.services import generated_practice_lifecycle as _generated_practice_lifecycle
 from dlms.services import quiz_publication as _quiz_publication_service
 from dlms.services import quiz_composition as _quiz_composition_service
 from dlms.services import quiz_duplicates as _quiz_duplicate_service
@@ -6094,6 +6095,17 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
         validate_question_response=_validate_question_response,
         record_learning_event=_record_learning_event,
         json_module=json,
+    ),
+    generated_practice_status=lambda cur, quiz_id: _generated_practice_lifecycle.generated_practice_status(
+        cur, quiz_id, load_registry(),
+    ),
+    complete_generated_practice=lambda cur, data: _generated_practice_lifecycle.complete_generated_practice(
+        cur, data,
+        registry_lock=registry_lock,
+        load_registry=load_registry,
+        save_registry=save_registry,
+        data_folder=DATA_FOLDER,
+        quiz_artifact_names=_quiz_artifact_names,
     ),
     learning_foundation_summary=lambda cur: _learning_foundation_summary(cur),
     smart_review_candidates=lambda cur: _smart_review_candidates(cur),

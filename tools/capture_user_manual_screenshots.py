@@ -399,6 +399,12 @@ def _seed_manual_data(dlms, metadata: dict) -> dict:
             else "Practice Library"
         )
         entry["folder"] = folders.get(entry.get("id"), default_folder)
+        if entry.get("id") == published["smart"][0]:
+            entry["generated_practice_completion"] = {
+                "completed_at": (now - timedelta(days=1)).isoformat(),
+                "mode": "Study",
+                "reference": "manual-completed-smart-review",
+            }
     dlms.save_registry(registry)
     dlms.save_quiz_folders(["Uncategorized", "Core Skills", "Cloud Study", "Study Skills", "Practice Library", "Generated Sessions", "Future Topics"])
 

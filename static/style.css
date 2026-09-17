@@ -15214,6 +15214,23 @@ body:not([class]) > .container > .hero-title {
     border-color: var(--semantic-info-border) !important;
 }
 
+.library-page .library-folder-completed-practice {
+    border-color: var(--theme-border-soft, var(--semantic-info-border)) !important;
+}
+
+.library-page .library-completed-badge {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: .3em;
+    padding: 2px 7px;
+    border: 1px solid var(--semantic-secondary-control-border);
+    border-radius: 999px;
+    color: var(--semantic-secondary-control-text);
+    background: var(--semantic-secondary-control-surface);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
 .library-page .library-folder-system .library-folder-header,
 .library-page .library-folder-system .library-folder-header:active {
     cursor: default;

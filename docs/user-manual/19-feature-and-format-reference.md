@@ -111,12 +111,12 @@ Practice**:
 - Due Questions practice;
 - Topic Retention practice.
 
-These saved sessions can remain visible in the library; DLMS does not
-automatically clean them up. Uncategorized sessions appear in the automatic
-**Generated Practice** group, while the Smart View finds them across custom
-folders as well. Cards show live source-quiz summaries when lineage can be
-resolved. A **Mixed Quiz** remains a separate, curated and reusable category
-even though DLMS composed it from other quizzes. See
+These saved sessions remain in the library; DLMS does not automatically delete
+them. Active Uncategorized sessions appear in the automatic **Generated
+Practice** group, and completed ones in **Completed Generated Practice**. The
+Smart View finds both across custom folders. Cards show live source-quiz
+summaries when lineage can be resolved. A **Mixed Quiz** remains a separate,
+curated and reusable category even though DLMS composed it from other quizzes. See
 [Generated Practice](05-quiz-library-and-organization.md#recognize-generated-practice)
 for the practical library behavior.
 

@@ -132,7 +132,9 @@ def test_study_and_exam_identities_survive_recovery_without_automatic_retry():
 
 
 def test_completed_study_recovery_is_pruned_from_current_and_legacy_checkpoints():
-    assert "isCompleted: record => studyRecoveryRecordIsComplete(record, rawQuiz)" in SCRIPT
+    assert "isCompleted: record => (" in SCRIPT
+    assert "generatedPracticeStatus?.is_transient === true && !generatedPracticeStatus.completed" in SCRIPT
+    assert "studyRecoveryRecordIsComplete(record, rawQuiz)" in SCRIPT
     assert "function studyRecoveryRecordIsComplete" in SCRIPT
     assert 'record?.session?.mode !== "Study"' in SCRIPT
     assert "record.unacknowledgedStudyEvents.length !== 0" in SCRIPT

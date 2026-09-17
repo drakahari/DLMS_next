@@ -21,6 +21,7 @@ GENERATED_QUIZ_KINDS = frozenset({
     "smart_review",
     "spaced_review",
 })
+TRANSIENT_REVIEW_KINDS = GENERATED_QUIZ_KINDS - {"mixed_quiz"}
 LEGACY_GENERATED_SOURCE_KINDS = (
     ("spaced_review_native_", "native_spaced_review"),
     ("smart_review_", "smart_review"),

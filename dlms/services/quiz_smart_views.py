@@ -4,18 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from dlms.services.question_identity import quiz_generation_kind
+from dlms.services.question_identity import quiz_generation_kind, TRANSIENT_REVIEW_KINDS
+from dlms.services.generated_practice_lifecycle import completion_metadata
 
 
 RECENTLY_ADDED_DAYS = 30
 LOW_SCORE_PERCENT = 75.0
-GENERATED_PRACTICE_KINDS = frozenset({
-    "adaptive_study",
-    "concept_review",
-    "native_spaced_review",
-    "smart_review",
-    "spaced_review",
-})
+GENERATED_PRACTICE_KINDS = TRANSIENT_REVIEW_KINDS
 GENERATION_PRESENTATION = {
     "adaptive_study": {
         "label": "Adaptive Study practice",
@@ -424,6 +419,18 @@ def build_quiz_smart_views(
         now = now.replace(tzinfo=timezone.utc)
     registry_ids = _registry_quiz_ids(registry)
     generation = _generated_quiz_presentations(cur, registry_ids, registry)
+    completion = {}
+    for entry in registry if isinstance(registry, list) else []:
+        if not isinstance(entry, dict) or isinstance(entry.get("id"), bool):
+            continue
+        try:
+            quiz_id = int(entry.get("id"))
+        except (TypeError, ValueError):
+            continue
+        presentation = generation.get(quiz_id)
+        marker = completion_metadata(entry, presentation["kind"]) if presentation else None
+        if marker:
+            completion[quiz_id] = marker
     generated_practice_ids = [
         quiz_id
         for quiz_id, presentation in generation.items()
@@ -458,5 +465,6 @@ def build_quiz_smart_views(
         "views": views,
         "matches": matches,
         "generation": generation,
+        "completion": completion,
         "provenance": provenance,
     }

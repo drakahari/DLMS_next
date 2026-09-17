@@ -39,7 +39,8 @@ def test_network_http_and_malformed_acknowledgement_failures_show_one_retry_stat
     assert 'getElementById("studyLearningEventStatus")' in ensure_status
     assert 'status.setAttribute("role", "status")' in ensure_status
     assert 'status.setAttribute("aria-live", "polite")' in ensure_status
-    assert 'message.textContent = retrying && !failed.length' in update_status
+    assert 'message.textContent = studyCompletionInProgress && !failed.length' in update_status
+    assert '"Review completion was not saved. Retry before leaving this quiz."' in update_status
     assert '"Learning progress was not saved."' in update_status
     assert 'retry.textContent = "Retry"' in ensure_status
     assert 'record.state = "failed"' in save
@@ -77,7 +78,8 @@ def test_study_recovery_completes_only_after_every_answer_is_complete_and_acknow
     assert "selected.length === correctCount" in answer_complete
     assert "studyLearningEventSaves.size !== 0" in complete
     assert "quiz.every" in complete
-    assert "quizRecoveryController.complete()" in complete
+    assert "quizRecoveryController?.complete()" in complete
+    assert 'requestGeneratedPracticeCompletion("Study", learningSessionId)' in complete
 
 
 def test_choice_matching_and_hotspot_answer_handlers_save_without_blocking_progression():

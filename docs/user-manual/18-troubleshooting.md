@@ -256,6 +256,8 @@ Adaptive Study, Smart Review, Due Questions, Topic Retention Schedule, and
 Concept Review can publish Generated Practice quizzes. DLMS does not
 automatically delete them. Use the **Generated Practice** Smart View and the
 generation-kind badges to distinguish them from ordinary source quizzes.
+Successfully completed sessions show a Completed badge and remain playable;
+their Library group is collapsed by default when they are Uncategorized.
 
 A Mixed Quiz is curated and reusable, so it is labeled separately rather than
 treated as transient Generated Practice. Hiding or deleting a quiz has the

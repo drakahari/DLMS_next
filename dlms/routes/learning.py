@@ -28,6 +28,8 @@ class LearningRouteDependencies:
     learning_payload_error: Dependency
     persist_attempt: Dependency
     persist_study_learning_event: Dependency
+    generated_practice_status: Dependency
+    complete_generated_practice: Dependency
     learning_foundation_summary: Dependency
     smart_review_candidates: Dependency
     smart_review_select_candidates: Dependency
@@ -89,6 +91,30 @@ def record_study_learning_event(dependencies):
         conn.rollback()
         print(f"[LEARNING EVENT ERROR] {type(exc).__name__}: {exc}")
         return jsonify({"error": "The learning event could not be recorded."}), 500
+    finally:
+        conn.close()
+
+
+def generated_practice_status_api(dependencies, quiz_id):
+    conn = dependencies.get_db()
+    try:
+        return jsonify(dependencies.generated_practice_status(conn.cursor(), quiz_id))
+    finally:
+        conn.close()
+
+
+def complete_generated_practice_api(dependencies):
+    conn = dependencies.get_db()
+    try:
+        result = dependencies.complete_generated_practice(
+            conn.cursor(), request.get_json(silent=True)
+        )
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        print(f"[GENERATED PRACTICE COMPLETION ERROR] {type(exc).__name__}: {exc}")
+        return jsonify({"error": "Review completion could not be saved. Retry without leaving this quiz."}), 500
     finally:
         conn.close()
 
@@ -569,6 +595,8 @@ def create_learning_blueprint(dependencies):
         ("/api/learning-scope", "learning_scope_summary_api", learning_scope_summary_api, ["GET"]),
         ("/learning-scope", "manage_learning_scope", manage_learning_scope, ["GET", "POST"]),
         ("/record_attempt", "record_attempt", record_attempt, ["POST"]),
+        ("/api/generated-practice/status/<int:quiz_id>", "generated_practice_status_api", generated_practice_status_api, ["GET"]),
+        ("/api/generated-practice/complete", "complete_generated_practice_api", complete_generated_practice_api, ["POST"]),
         (
             "/api/learning-events/study-response",
             "record_study_learning_event",

@@ -71,7 +71,7 @@ def test_search_controls_have_programmatic_names_not_only_placeholders():
 
 def test_library_folder_collapse_and_icon_actions_have_accessible_semantics():
     assert 'class="folder-toggle-icon library-folder-toggle-button"' in LIBRARY_SOURCE
-    assert 'aria-expanded="true"' in LIBRARY_SOURCE
+    assert 'aria-expanded="{{ \'false\' if folder_is_completed_practice else \'true\' }}"' in LIBRARY_SOURCE
     assert 'aria-controls="library-folder-body-{{ loop.index }}"' in LIBRARY_SOURCE
     assert 'icon.setAttribute("aria-expanded", String(!collapsed))' in LIBRARY_SOURCE
     assert 'aria-label="Rename {{ folder_name }}"' in LIBRARY_SOURCE

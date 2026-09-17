@@ -2005,6 +2005,165 @@ def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
     ) is True
 
 
+def test_generated_practice_study_completion_retry_library_and_retake(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'native_spaced_review' WHERE id = ?",
+            (quiz_id,),
+        )
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    next(item for item in registry if item["id"] == quiz_id)["folder"] = "Uncategorized"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector('[data-generated-practice-group=true]') !== null")
+    assert "Browser Critical Workflow" in browser.evaluate(
+        "document.querySelector('[data-generated-practice-group=true]').textContent"
+    )
+
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    assert browser.evaluate(
+        "(() => { const original = window.fetch.bind(window); let failCompletion = true, failStudy = true;"
+        "window.fetch = (...args) => { const target = String(args[0]);"
+        "if (failStudy && target.includes('/api/learning-events/study-response')) {"
+        "failStudy = false; return Promise.resolve(new Response(JSON.stringify({error:'forced Study save failure'}),"
+        "{status:503,headers:{'Content-Type':'application/json'}})); }"
+        "if (failCompletion && target.includes('/api/generated-practice/complete')) {"
+        "failCompletion = false; return Promise.resolve(new Response(JSON.stringify({error:'forced completion failure'}),"
+        "{status:503,headers:{'Content-Type':'application/json'}})); } return original(...args); }; return true; })()"
+    ) is True
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent === 'Learning progress was not saved.'")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    with registry_path.open(encoding="utf-8") as handle:
+        assert "generated_practice_completion" not in next(item for item in json.load(handle) if item["id"] == quiz_id)
+    browser.click(".study-learning-save-retry")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyCompletionFailed === true")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    assert browser.evaluate("document.querySelector('.study-learning-save-message').textContent") == (
+        "Review completion was not saved. Retry before leaving this quiz."
+    )
+    browser.click(".study-learning-save-retry")
+    browser.wait_for(
+        f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"
+    )
+    with (browser_stack.data_root / "config" / "quizzes.json").open(encoding="utf-8") as handle:
+        registry = json.load(handle)
+    assert next(item for item in registry if item["id"] == quiz_id)["generated_practice_completion"]["mode"] == "Study"
+
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector('.library-folder-completed-practice') !== null")
+    assert browser.evaluate(
+        "document.querySelector('[data-generated-practice-group=true]') === null && "
+        "document.querySelector('.library-folder-completed-practice .library-quiz-card') !== null"
+    ) is True
+    browser.evaluate(
+        "(() => { const input=document.getElementById('librarySearch');"
+        "input.value='Browser Critical Workflow'; input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()"
+    )
+    browser.wait_for(
+        "document.querySelector('.library-folder-completed-practice .library-folder-toggle-button').getAttribute('aria-expanded') === 'true'"
+    )
+    browser.evaluate(
+        "(() => { const input=document.getElementById('librarySearch');"
+        "input.value=''; input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()"
+    )
+    browser.wait_for(
+        "document.querySelector('.library-folder-completed-practice .library-folder-toggle-button').getAttribute('aria-expanded') === 'false'"
+    )
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(f"{browser_stack.base_url}/library")
+        browser.wait_for("document.querySelector('.library-folder-completed-practice') !== null")
+        contrast = _theme_contrast_snapshot(browser, {
+            "completed status": ".library-completed-badge",
+            "completed section": ".library-folder-completed-practice h2",
+        })
+        assert all(item["contrast"] >= 4.5 for item in contrast.values()), (theme, contrast)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 1000)
+            assert browser.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth + 1 && "
+                "document.querySelector('.library-folder-completed-practice button').getAttribute('aria-expanded') === 'false'"
+            ) is True, (theme, width)
+    assert browser.evaluate(
+        "(() => { const button=document.querySelector('.library-folder-completed-practice .library-folder-toggle-button');"
+        "button.focus(); return document.activeElement===button && button.tagName==='BUTTON' && button.type==='button'; })()"
+    ) is True
+    browser.click(".library-folder-completed-practice .library-folder-toggle-button")
+    assert browser.evaluate(
+        "document.querySelector('.library-folder-completed-practice .library-folder-toggle-button').getAttribute('aria-expanded')"
+    ) == "true"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate("quizRecoveryController.ownsState") is True
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    browser.wait_for(
+        "document.querySelector('.daily-review-unfinished')?.textContent.includes('Browser Critical Workflow')"
+    )
+    assert "This browser" in browser.evaluate(
+        "document.querySelector('.daily-review-unfinished').textContent"
+    )
+
+
+def test_generated_practice_exam_completion_requires_saved_attempt(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    attempts_before = _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM attempts WHERE quiz_id = ? AND mode = 'Exam'",
+        (quiz_id,),
+    )
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'smart_review' WHERE id = ?",
+            (quiz_id,),
+        )
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".exam-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.evaluate(
+        "(() => { const original=window.fetch.bind(window); let fail=true;"
+        "window.fetch=(...args)=>{if(fail&&String(args[0]).includes('/record_attempt')){"
+        "fail=false;return Promise.resolve(new Response(JSON.stringify({error:'forced attempt failure'}),"
+        "{status:503,headers:{'Content-Type':'application/json'}}));}return original(...args);};"
+        "window.confirm=()=>true;return true;})()"
+    )
+    browser.click("#submitBtn")
+    browser.wait_for("document.getElementById('result').textContent.includes('was not saved')")
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    with registry_path.open(encoding="utf-8") as handle:
+        assert "generated_practice_completion" not in next(item for item in json.load(handle) if item["id"] == quiz_id)
+    browser.click("#result button[onclick='retryExamAttemptSave()']")
+    browser.wait_for("generatedPracticeStatus.completed === true")
+    with registry_path.open(encoding="utf-8") as handle:
+        marker = next(item for item in json.load(handle) if item["id"] == quiz_id)["generated_practice_completion"]
+    assert marker["mode"] == "Exam"
+    assert _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM attempts WHERE quiz_id = ? AND mode = 'Exam'",
+        (quiz_id,),
+    ) == attempts_before + 1
+
+
 def test_final_study_answer_save_failure_keeps_recovery(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
@@ -10405,6 +10564,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
             (source_quiz_id, source_question_id),
         ).fetchone()[0] == 1
 
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
     browser.wait_for(
         "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["

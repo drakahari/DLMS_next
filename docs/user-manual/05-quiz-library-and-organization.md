@@ -137,10 +137,13 @@ Practice** Smart View gathers these saved sessions in one place, including
 sessions that you have moved to custom folders.
 
 In the full Library, generated practice that would otherwise appear under
-Uncategorized is collected in an automatic **Generated Practice** group. This
-is a view of the existing quiz placement, not a folder that DLMS saves or that
-you need to manage. If you deliberately move a generated session to a custom
-folder, it stays in that folder instead.
+Uncategorized is collected in an automatic **Generated Practice** group while
+it is active. Once a review is successfully completed and saved, it appears in
+the collapsed **Completed Generated Practice** group instead. These are views
+of existing quiz placement, not saved folders. If you deliberately move a
+generated session to a custom folder, it stays there and shows a Completed
+badge and date when appropriate. The **Generated Practice** Smart View finds
+both active and completed sessions across folders.
 
 When question lineage is available, a generated-practice card identifies its
 source quiz or reports the number of contributing source quizzes. Expand a
@@ -151,10 +154,12 @@ from similar question wording.
 
 Generated practice does not replace or modify its source quiz. DLMS keeps the
 relationship to the source questions so saved answers can contribute to the
-appropriate learning record. Generated sessions are persistent Library items:
-there is no automatic cleanup or archive process. You can revisit one, hide it
-to reduce everyday clutter, or ignore it for now. Hiding it does not remove the
-source quiz or learning history.
+appropriate learning record. Generated sessions remain persistent Library items
+after completion. You can open a completed review again, hide it, or move it.
+DLMS does not automatically delete it. Its saved answers, History, Analytics,
+and review schedules remain intact. A later unfinished retake can still have a
+browser-local Resume card; that checkpoint is separate from the completed
+Library status.
 
 The later study-and-review chapter explains when to choose each generator. If
 you simply want DLMS's current recommendation, start with **Today’s Review** on

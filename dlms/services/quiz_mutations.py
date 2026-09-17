@@ -3,10 +3,13 @@
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
+import json
 import os
 import shutil
 import tempfile
 from types import MappingProxyType
+
+from .generated_practice_lifecycle import COMPLETION_KEY
 
 
 UNCATEGORIZED_FOLDER = "Uncategorized"
@@ -614,6 +617,19 @@ def finish_quiz_mutation(
                 quiz_entry.update(registry_updates)
 
             staged = stage_artifacts(conn, quiz_id, quiz_entry)
+            if COMPLETION_KEY in quiz_entry:
+                staged_json, current_json = staged["files"][0]
+                try:
+                    with open(staged_json, encoding="utf-8") as staged_file:
+                        new_questions = json.load(staged_file)
+                    with open(current_json, encoding="utf-8") as current_file:
+                        old_questions = json.load(current_file)
+                except (OSError, ValueError):
+                    # An unreadable prior artifact cannot prove the edited
+                    # question set is the one that was completed.
+                    old_questions, new_questions = None, object()
+                if new_questions != old_questions:
+                    quiz_entry.pop(COMPLETION_KEY, None)
             promoted = promote_artifacts(staged)
             registry_attempted = True
             save_registry(updated_registry)

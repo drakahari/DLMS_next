@@ -14,6 +14,67 @@ from tests.csrf_test_utils import csrf_headers
 
 
 class QuizLibraryTests(unittest.TestCase):
+    def test_completed_generated_practice_has_secondary_group_and_custom_folder_stays_put(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-completed-review-") as directory:
+            config_dir = os.path.join(directory, "config")
+            os.makedirs(config_dir, exist_ok=True)
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "Course"]}, handle)
+            registry = [
+                {"id": 1, "title": "Active Review", "html": "active.html", "folder": "Uncategorized"},
+                {"id": 2, "title": "Finished Review", "html": "finished.html", "folder": "Uncategorized"},
+                {"id": 3, "title": "Course Review", "html": "course.html", "folder": "Course"},
+                {"id": 4, "title": "Ordinary Source", "html": "source.html", "folder": "Uncategorized"},
+                {"id": 5, "title": "Mixed Quiz", "html": "mixed.html", "folder": "Uncategorized"},
+                {"id": 6, "title": "Hidden Finished Review", "html": "hidden-finished.html", "folder": "Uncategorized", "hidden": True},
+            ]
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump(registry, handle)
+            marker = {"completed_at": "2026-01-02T03:04:05+00:00", "mode": "Study", "reference": "run"}
+            data = {
+                "views": [{"key": "generated-practice", "label": "Generated Practice", "description": "Saved.", "client_derived": False}],
+                "matches": {"generated-practice": {quiz_id: {"reason": "Saved review"} for quiz_id in (1, 2, 3, 6)}},
+                "generation": {
+                    quiz_id: {"kind": "adaptive_study", "label": "Adaptive Study practice", "category": "practice"}
+                    for quiz_id in (1, 2, 3, 6)
+                } | {5: {"kind": "mixed_quiz", "label": "Mixed Quiz", "category": "mixed"}},
+                "completion": {2: marker, 3: marker, 6: marker},
+                "provenance": {2: {"sources": [{"display_title": "Ordinary Source", "title": "Ordinary Source", "quiz_id": 4}], "unavailable_count": 0, "search_text": "Ordinary Source"}},
+            }
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}), \
+                    mock.patch.object(dlms._quiz_smart_view_service, "build_quiz_smart_views", return_value=data):
+                client = dlms.app.test_client()
+                normal = client.get("/library?view=visible").get_data(as_text=True)
+                hidden = client.get("/library?view=hidden").get_data(as_text=True)
+                all_quizzes = client.get("/library?view=all").get_data(as_text=True)
+                smart = client.get("/library?view=visible&smart=generated-practice").get_data(as_text=True)
+
+            self.assertIn("<h2>Generated Practice", normal)
+            self.assertIn("<h2>Completed Generated Practice", normal)
+            self.assertLess(normal.index("Active Review"), normal.index("Finished Review"))
+            self.assertIn('data-default-collapsed="true"', normal)
+            self.assertIn('aria-label="Expand Completed Generated Practice" aria-expanded="false"', normal)
+            self.assertIn("Completed <time datetime=", normal)
+            self.assertIn("Source: <strong>Ordinary Source</strong>", normal)
+            self.assertIn("<h2>Course</h2>", normal)
+            self.assertIn("Course Review", normal)
+            self.assertIn("<h2>Uncategorized</h2>", normal)
+            self.assertIn("Mixed Quiz", normal)
+            self.assertNotIn("Hidden Finished Review", normal)
+            self.assertIn("Hidden Finished Review", hidden)
+            self.assertNotIn('data-title="finished review"', hidden)
+            self.assertIn("Hidden Finished Review", all_quizzes)
+            self.assertIn("Finished Review", all_quizzes)
+            self.assertIn("Finished Review", smart)
+            self.assertIn("Course Review", smart)
+            self.assertIn("Completed <time datetime=", smart)
+            self.assertNotIn("Ordinary Source</h3>", smart)
+            self.assertIn('setLibraryFolderCollapsed(folder, false)', normal)
+
     def test_smart_views_filter_without_mutating_folders_and_reset_cleanly(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-smart-views-") as directory:
             config_dir = os.path.join(directory, "config")

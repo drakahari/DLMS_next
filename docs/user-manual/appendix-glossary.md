@@ -117,9 +117,10 @@ still surface relevant quizzes. A Folder is different from a Smart View.
 The Quiz Library category for saved Adaptive Study, Smart Review, Concept
 Review, Due Questions, and Topic Retention practice. Generated copies preserve
 their relationship to source questions so answers contribute to the right
-learning evidence. Uncategorized sessions appear in an automatic Library group,
-and cards can show live source-quiz summaries when lineage is available. They
-are not automatically cleaned up. See
+learning evidence. Active Uncategorized sessions appear in the automatic
+Generated Practice group; successfully completed ones appear in the collapsed
+Completed Generated Practice group. Cards can show live source-quiz summaries
+when lineage is available. They are not automatically deleted. See
 [Quiz Library and Organization](05-quiz-library-and-organization.md#recognize-generated-practice).
 
 ## H

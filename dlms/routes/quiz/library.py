@@ -24,6 +24,7 @@ from .dependencies import QuizLibraryDependencies
 
 
 VIRTUAL_GENERATED_PRACTICE_GROUP = ("dlms-virtual", "generated-practice")
+VIRTUAL_COMPLETED_GENERATED_PRACTICE_GROUP = ("dlms-virtual", "completed-generated-practice")
 
 
 def _bind_dependencies(view_func, dependencies):
@@ -697,6 +698,9 @@ def quiz_library(dependencies):
         virtual_generated_practice_client_key = (
             "_" + virtual_generated_practice_client_key
         )
+    virtual_completed_practice_client_key = "__dlms_completed_generated_practice__"
+    while identity.resolve(virtual_completed_practice_client_key) is not None:
+        virtual_completed_practice_client_key = "_" + virtual_completed_practice_client_key
     configured_folder_keys = identity.configured_keys
     hidden_folder_keys = {
         identity.key(folder) for folder in hidden_folder_names
@@ -744,6 +748,7 @@ def quiz_library(dependencies):
         conn.close()
     smart_matches = smart_view_data["matches"]
     generation_presentations = smart_view_data.get("generation", {})
+    completion_presentations = smart_view_data.get("completion", {})
     source_provenance = smart_view_data.get("provenance", {})
     active_smart_view = next(
         (
@@ -783,7 +788,11 @@ def quiz_library(dependencies):
             and presentation
             and presentation.get("category") == "practice"
         ):
-            return VIRTUAL_GENERATED_PRACTICE_GROUP
+            return (
+                VIRTUAL_COMPLETED_GENERATED_PRACTICE_GROUP
+                if completion_presentations.get(quiz.get("id"))
+                else VIRTUAL_GENERATED_PRACTICE_GROUP
+            )
         return folder
 
     quizzes = [
@@ -796,6 +805,7 @@ def quiz_library(dependencies):
                 if active_smart_view else None
             ),
             "generation": generation_presentations.get(q.get("id")),
+            "completion": completion_presentations.get(q.get("id")),
             "source_provenance": source_provenance.get(q.get("id")),
         }
         for q in render_filtered
@@ -815,7 +825,11 @@ def quiz_library(dependencies):
         grouped_quizzes[folder].append(q)
 
     group_names = list(folder_names)
-    if normal_grouped_quizzes.get(VIRTUAL_GENERATED_PRACTICE_GROUP):
+    virtual_groups = (
+        VIRTUAL_GENERATED_PRACTICE_GROUP,
+        VIRTUAL_COMPLETED_GENERATED_PRACTICE_GROUP,
+    )
+    if any(normal_grouped_quizzes.get(group) for group in virtual_groups):
         uncategorized_index = next(
             (
                 index
@@ -824,15 +838,15 @@ def quiz_library(dependencies):
             ),
             len(group_names),
         )
-        group_names.insert(
-            uncategorized_index, VIRTUAL_GENERATED_PRACTICE_GROUP
-        )
+        group_names[uncategorized_index:uncategorized_index] = [
+            group for group in virtual_groups if normal_grouped_quizzes.get(group)
+        ]
 
     # Persistent custom folders remain visible when empty in Visible and All.
     # Hidden shows only hidden folders or folders containing filtered hidden
     # quizzes. Assignment-only legacy folders retain their discovery behavior.
     def normal_group_is_displayed(folder):
-        if folder == VIRTUAL_GENERATED_PRACTICE_GROUP:
+        if folder in virtual_groups:
             return bool(normal_grouped_quizzes.get(folder))
         if view == "visible" and identity.key(folder) in hidden_folder_keys:
             return False
@@ -856,7 +870,7 @@ def quiz_library(dependencies):
         folder for folder in group_names
         if folder in normal_display_folder_names
         or (
-            folder != VIRTUAL_GENERATED_PRACTICE_GROUP
+            folder not in virtual_groups
             and
             not active_smart_view
             and view == "visible"
@@ -867,11 +881,12 @@ def quiz_library(dependencies):
     normal_display_folder_count = sum(
         1
         for folder in normal_display_folder_names
-        if folder != VIRTUAL_GENERATED_PRACTICE_GROUP
+        if folder not in virtual_groups
     )
     collapsible_group_names = [
-        virtual_generated_practice_client_key
-        if folder == VIRTUAL_GENERATED_PRACTICE_GROUP else folder
+        (virtual_generated_practice_client_key if folder == VIRTUAL_GENERATED_PRACTICE_GROUP
+         else virtual_completed_practice_client_key if folder == VIRTUAL_COMPLETED_GENERATED_PRACTICE_GROUP
+         else folder)
         for folder in group_names
     ]
 
@@ -901,6 +916,8 @@ def quiz_library(dependencies):
        active_quiz_ids=active_quiz_ids,
        virtual_generated_practice_group=VIRTUAL_GENERATED_PRACTICE_GROUP,
        virtual_generated_practice_client_key=virtual_generated_practice_client_key,
+       virtual_completed_practice_group=VIRTUAL_COMPLETED_GENERATED_PRACTICE_GROUP,
+       virtual_completed_practice_client_key=virtual_completed_practice_client_key,
        collapsible_group_names=collapsible_group_names,
        smart=smart, smart_views=smart_views,
        active_smart_view=active_smart_view,

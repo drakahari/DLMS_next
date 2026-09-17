@@ -167,6 +167,8 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
         "learning_payload_error",
         "persist_attempt",
         "persist_study_learning_event",
+        "generated_practice_status",
+        "complete_generated_practice",
         "learning_foundation_summary",
         "smart_review_candidates",
         "smart_review_select_candidates",
