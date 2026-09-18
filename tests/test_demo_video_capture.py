@@ -1,0 +1,110 @@
+"""Contracts for the separate video capture project; no production data access."""
+import importlib.util
+import json
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+TOOLS = ROOT / 'tools'
+
+
+def load_tool(monkeypatch):
+    monkeypatch.syspath_prepend(str(TOOLS))
+    spec = importlib.util.spec_from_file_location('demo_video_capture_test', TOOLS/'capture_demo_video_screenshots.py')
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_manifest_story_contract(monkeypatch):
+    tool = load_tool(monkeypatch)
+    assert [f.id for f in tool.FRAMES] == [f'{i:03}' for i in range(1,37)]
+    assert len({f.filename for f in tool.FRAMES}) == 36
+    assert 300 <= sum(f.seconds for f in tool.FRAMES) <= 420
+    assert all(f.filename.startswith(f.id+'-') and f.filename.endswith('.png') for f in tool.FRAMES)
+    assert all(f.fixture and f.state and f.ready for f in tool.FRAMES)
+    assert (tool.WIDTH, tool.HEIGHT) == (1920,1080)
+    assert tool.THEMES['Purple & Gold'] == 'purple-gold'
+    assert tool.manual.THEME == 'light'
+    assert (tool.manual.WIDTH,tool.manual.HEIGHT) == (1440,1000)
+
+
+def test_list_is_side_effect_free_and_focused(monkeypatch,capsys):
+    tool = load_tool(monkeypatch)
+    monkeypatch.setattr(tool,'capture',lambda *a,**kw: (_ for _ in ()).throw(AssertionError('capture started')))
+    assert tool.main(['--list','--only','1,003,014','--theme','Purple & Gold']) == 0
+    assert [f['id'] for f in json.loads(capsys.readouterr().out)] == ['001','003','014']
+
+
+def test_reject_invalid_id_and_manual_output(monkeypatch):
+    import pytest
+    tool = load_tool(monkeypatch)
+    for args in (['--only','999'],['--only','001','--output',str(ROOT/'docs/user-manual/images')]):
+        with pytest.raises(SystemExit) as error:
+            tool.main(args)
+        assert error.value.code == 2
+
+
+def test_original_questions_and_evidence_contract(monkeypatch):
+    load_tool(monkeypatch)
+    import demo_video_fixture as fixture
+    assert len(fixture.SOURCES) == 4
+    for source in fixture.SOURCES:
+        for question in fixture.questions(source):
+            assert question['correct'] == ['A']
+            assert [c['label'] for c in question['choices'] if c['is_correct']] == ['A']
+            assert question['explanation'] and question['concepts']
+    assert fixture.SOURCES[0][5] == [1]*6
+    assert fixture.SOURCES[1][5][-3:] == [0]*3
+    assert fixture.SOURCES[2][5][-3:] == [1]*3
+    assert fixture.SOURCES[3][5] == []
+
+
+def test_direct_server_rejects_unowned_root(monkeypatch,tmp_path):
+    tool = load_tool(monkeypatch)
+    monkeypatch.setenv('QUIZAPP_DATA_DIR',str(tmp_path))
+    import pytest
+    with pytest.raises(RuntimeError,match='capture-owned'):
+        tool.serve()
+
+
+def test_plan_and_storyboard_cover_every_frame(monkeypatch):
+    tool = load_tool(monkeypatch)
+    plan = (ROOT/'docs/demo-video/SCREENSHOT_PLAN.md').read_text()
+    storyboard = (ROOT/'docs/demo-video/STORYBOARD.md').read_text()
+    for f in tool.FRAMES:
+        assert f.filename in plan
+        assert f'| {f.id} |' in storyboard
+
+
+def test_proof_dimensions_and_theme(monkeypatch):
+    tool = load_tool(monkeypatch)
+    proof = ROOT/'docs/demo-video/proof'
+    records = json.loads((proof/'capture-001-003-014.json').read_text())
+    assert records['theme'] == 'purple-gold'
+    assert records['viewport'] == {'width':1920,'height':1080,'device_scale':1}
+    assert len(list(proof.glob('*.png'))) == 3
+    for f in records['captures']:
+        assert tool.manual._png_dimensions(proof/f['filename']) == (1920,1080)
+
+
+def test_manual_server_start_failure_cleans_own_process(monkeypatch,tmp_path):
+    tool = load_tool(monkeypatch)
+    class Process:
+        pass
+    process = Process()
+    stopped = []
+    monkeypatch.setattr(tool.manual,'_free_port',lambda:12345)
+    monkeypatch.setattr(tool.manual.subprocess,'Popen',lambda *a,**kw:process)
+    def fail(*args):
+        raise RuntimeError('server failed')
+    monkeypatch.setattr(tool.manual,'_wait_http',fail)
+    def stop(p,**kwargs):
+        stopped.append((p,kwargs))
+        p._dlms_log_handle.close()
+    monkeypatch.setattr(tool.manual,'_stop_process',stop)
+    import pytest
+    with pytest.raises(RuntimeError,match='server failed'):
+        tool.manual._start_server(tmp_path,tmp_path/'data',lan=False,reuse=False)
+    assert stopped == [(process,{'interrupt':True})]

@@ -584,7 +584,7 @@ def _wait_firefox(port: int, process: subprocess.Popen, log: Path):
     raise RuntimeError(f"Firefox did not start: {last_error}\n{output[-4000:]}")
 
 
-def _start_server(work: Path, data_root: Path, *, lan: bool, reuse: bool):
+def _start_server(work: Path, data_root: Path, *, lan: bool, reuse: bool, entrypoint: Path | None = None):
     port = _free_port()
     log = work / ("server-lan.log" if lan else "server-local.log")
     env = os.environ.copy()
@@ -599,12 +599,16 @@ def _start_server(work: Path, data_root: Path, *, lan: bool, reuse: bool):
     options = {"start_new_session": True} if os.name == "posix" else {}
     handle = log.open("w", encoding="utf-8")
     process = subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), "--serve", *( ["--lan"] if lan else [] )],
+        [sys.executable, str(entrypoint or Path(__file__).resolve()), "--serve", *( ["--lan"] if lan else [] )],
         cwd=ROOT, env=env, stdout=handle, stderr=subprocess.STDOUT, **options,
     )
     process._dlms_log_handle = handle  # type: ignore[attr-defined]
-    _wait_http(f"http://127.0.0.1:{port}/", process, log)
-    _wait_fixture(data_root / "browser_fixture.json", process, log)
+    try:
+        _wait_http(f"http://127.0.0.1:{port}/", process, log)
+        _wait_fixture(data_root / "browser_fixture.json", process, log)
+    except BaseException:
+        _stop_process(process, interrupt=True)
+        raise
     return process, f"http://127.0.0.1:{port}", env
 
 
@@ -630,7 +634,11 @@ def _start_firefox(work: Path, env: dict):
         cwd=ROOT, env=env, stdout=handle, stderr=subprocess.STDOUT, **options,
     )
     process._dlms_log_handle = handle  # type: ignore[attr-defined]
-    return process, _wait_firefox(port, process, log)
+    try:
+        return process, _wait_firefox(port, process, log)
+    except BaseException:
+        _stop_process(process)
+        raise
 
 
 def _stop_process(process, *, interrupt: bool = False) -> None:

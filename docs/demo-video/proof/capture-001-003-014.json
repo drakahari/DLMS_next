@@ -1,0 +1,78 @@
+{
+  "version": "3.2.0",
+  "revision": "0c63670735228967b55bea544f1526b6d15620e0",
+  "dirty": true,
+  "captured_at": "2026-09-18T17:49:43.895624+00:00",
+  "theme": "purple-gold",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale": 1
+  },
+  "fixture_version": "dlms-demo-video-v1",
+  "captures": [
+    {
+      "id": "001",
+      "filename": "001-dashboard.png",
+      "title": "A personal learning workspace",
+      "route": "/",
+      "ready": "document.getElementById('dailyReviewCount') && !['Loading…',''].includes(document.getElementById('dailyReviewCount').textContent.trim())",
+      "state": "Default controls; no search; no open dialogs.",
+      "fixture": "Evidence, due questions, no browser Resume.",
+      "focus": "",
+      "action": "",
+      "seconds": 10,
+      "essential": true,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v1",
+      "evidence_anchor": "2026-09-18T12:00:00+00:00"
+    },
+    {
+      "id": "003",
+      "filename": "003-quiz-library.png",
+      "title": "Organize original study content",
+      "route": "/library",
+      "ready": "document.querySelector('main')",
+      "state": "Visible; no Smart View/search; folders expanded; Completed collapsed.",
+      "fixture": "Base synthetic library.",
+      "focus": "#quizList",
+      "action": "",
+      "seconds": 10,
+      "essential": true,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v1",
+      "evidence_anchor": "2026-09-18T12:00:00+00:00"
+    },
+    {
+      "id": "014",
+      "filename": "014-learning-intelligence.png",
+      "title": "See the learning pattern",
+      "route": "/learning-intelligence",
+      "ready": "document.querySelector('#liRows tr') && !document.getElementById('liScopeSummary').textContent.includes('Loading')",
+      "state": "All concepts, empty search; mastery explanation closed; scope summary visible.",
+      "fixture": "Strong Data Safety; declining Networking; improving Access Control; low-evidence Cloud.",
+      "focus": "",
+      "action": "",
+      "seconds": 14,
+      "essential": true,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v1",
+      "evidence_anchor": "2026-09-18T12:00:00+00:00"
+    }
+  ]
+}
