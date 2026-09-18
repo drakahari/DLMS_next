@@ -1,8 +1,13 @@
 # DLMS demo-video screenshot project
 
-Preparation project for **develop/3.2.0**, not a release announcement. The video
-will use real application screenshots with narration. No final narration or full
-final screenshot set has been produced.
+Screenshot capture is complete on **develop/3.2.0** after visual stabilization.
+The canonical set contains **36 final screenshots** in [captures/](captures/).
+No narration, audio, or final video has been produced. This is not a release announcement.
+
+Editing handoff: [video-manifest.json](video-manifest.json), [storyboard](STORYBOARD.md),
+and contact sheets [1](contact-sheet-01.png), [2](contact-sheet-02.png),
+[3](contact-sheet-03.png), [4](contact-sheet-04.png), [5](contact-sheet-05.png),
+[6](contact-sheet-06.png).
 
 ## Capture standard
 
@@ -43,8 +48,7 @@ machine-readable manifest; `--list` prints all per-frame state requirements.
 .venv/bin/python tools/capture_demo_video_screenshots.py \
   --check --only 023,024,025 --output docs/demo-video/validation
 
-# FINAL CAPTURE, LATER: no --only means the complete sequence.
-# Do not run during this preparation pass.
+# Regenerate the canonical full set: no --only means the complete sequence.
 .venv/bin/python tools/capture_demo_video_screenshots.py \
   --theme 'Purple & Gold' --output docs/demo-video/captures
 ```
@@ -174,12 +178,39 @@ with original synthetic quiz names, generic identity and no debug overlays or
 browser chrome. Dashboard has two genuine recommendations and no Resume.
 Intelligence fits the scope summary, metrics and four concept rows. Library is
 a focused teaching frame with active and collapsed completed groups plus source
-cards; the sidebar is scrolled and its top is clipped. Use this as a detail shot,
-not the opening product overview. Leave small margins when choosing the final
+cards; the sidebar is scrolled and its top is clipped. This remains a historical proof; final frame 003 now collapses surrounding
+groups to give the source folder more room. Leave small margins when choosing the final
 scroll position; do not solve framing by changing product CSS.
 
-After 3.2 UI stabilization: rerun the state checks, review every final PNG at
-100%, tune **capture recipes** for framing only, verify current counts and theme,
-then write narration. The proof set is not a frozen final release asset. The
-non-proof frame recipes have no visual approval yet, even when state checks
-pass. Record final screenshot hashes and final edit timings at that stage.
+## Final handoff and regeneration
+
+All final frames were visually reviewed in order on the six contact sheets,
+with full-resolution checks of dense intelligence, queue, Anki and Study states.
+See [VALIDATION.md](VALIDATION.md) for findings, recaptures and checks.
+The original proof directory remains unchanged.
+
+```sh
+# Recapture selected frames while replaying earlier answers/completion first:
+.venv/bin/python tools/capture_demo_video_screenshots.py \
+  --only 013,023 --replay-prefix --theme 'Purple & Gold'
+
+# Rebuild contact sheets and production metadata without altering screenshots:
+.venv/bin/python tools/prepare_demo_video_assets.py
+```
+
+Fixture v2 adjusts the Networking response sequence so its declining trend
+survives the two demonstrated source Study sessions. Scores and selections
+remain consistent; no rendered percentages were altered. Frame 013 corrects
+the initial wrong answer, exposing the real explanation. Frame 019 selects
+Overdue rather than the empty Due-now subset. Frame 030 filters the intended
+source duplicate and 032 makes a real single-question Anki selection.
+
+A focused recapture writes only requested PNGs. `--replay-prefix` executes prior
+story actions without recapturing their images, preserving downstream learning
+counts and lifecycle state. Without it, focused capture uses a fresh fixture.
+The asset tool selects the newest per-frame capture record and emits hashes;
+keep all capture sidecars for provenance. Its six 1968 × 1824 PNG sheets contain
+six 960 × 540 labeled thumbnails each. Original screenshots stay untouched.
+
+Next phase: choose optional cuts and write narration against the canonical
+manifest, then create audio and assemble the video. None of those tasks ran here.

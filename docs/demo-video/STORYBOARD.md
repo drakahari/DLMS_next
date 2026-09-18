@@ -1,44 +1,50 @@
-# Initial demo-video storyboard
+# Captured demo-video storyboard
 
-Narration objectives only; write the final script after final captures. Use restrained cuts or 0.3-second dissolves between chapters. Within a workflow, use straight cuts; avoid animated mouse simulation or transitions implying an unperformed action. Hold details long enough to explain one idea, not read every label.
+All 36 frames are captured in `captures/`. Narration objectives only; the final script belongs to the next phase. Use restrained cuts or 0.3-second dissolves between chapters. Within a workflow, use straight cuts; avoid animated mouse simulation or transitions implying an unperformed action. Hold details long enough to explain one idea, not read every label.
 
-| Frame | Viewer should notice / narration objective | Duration | Transition |
-|---|---|---:|---|
-| 001 | DLMS connects content, practice and reflection in one local workspace. | ~10s | Dissolve into chapter |
-| 002 | Two real next actions replace a large undirected to-do list; no unfinished browser session is shown. | ~12s | Straight cut |
-| 003 | Organized sources coexist with derived active and retained completed reviews. | ~10s | Straight cut |
-| 004 | Past Projects is excluded from active intelligence without deleting its content or history. | ~12s | Straight cut |
-| 005 | The excluded folder remains visible and playable; Hide and Scope differ. | ~10s | Straight cut |
-| 006 | Choose a content-building method rather than use a provided question bank. | ~10s | Dissolve into chapter |
-| 007 | PDF and image import are input workflows, not guarantees of perfect extraction. | ~10s | Straight cut |
-| 008 | An original source image can be selected with a rights acknowledgement. | ~12s | Straight cut |
-| 009 | Review staged output before publishing; introduce this as a separate prepared example. | ~12s | Straight cut |
-| 010 | Missing answers need human review; DLMS should not guess. | ~10s | Straight cut |
-| 011 | Study at your own pace with the current compact header and separate progress bar. | ~10s | Dissolve into chapter |
-| 012 | An incorrect answer provides visible feedback and an explanation. | ~12s | Straight cut |
-| 013 | Review with AI opens a provider; Copy Question copies the same available prompt locally; Mark for Anki is optional. | ~14s | Straight cut |
-| 014 | Learning Scope and four real concept patterns help explain the next study decision. | ~14s | Dissolve into chapter |
-| 015 | Contrast declining Networking, improving Access Control, strong Data Safety and low evidence; percentages need context. | ~14s | Straight cut |
-| 016 | Mastery is an explainable estimate based on evidence, not a certification score. | ~12s | Straight cut |
-| 017 | See a concise profile and suggested next action; optional bridge, not another dashboard tour. | ~10s (optional) | Straight cut |
-| 018 | Source questions retain their own due schedules and intervals. | ~12s | Dissolve into chapter |
-| 019 | Use a status filter to inspect a bounded queue; Due and Overdue are distinct. | ~12s | Straight cut |
-| 020 | Topic Retention is separate from question scheduling; collapse the queue to focus. | ~10s (optional) | Straight cut |
-| 021 | Adaptive review is derived practice, not a new independent source pool. | ~12s | Straight cut |
-| 022 | Three source quizzes remain discoverable from the generated card. | ~12s | Straight cut |
-| 023 | All answers saved is preparation to finish; the user explicitly selects Finish Review. | ~12s | Straight cut |
-| 024 | Success follows acknowledged saves and server verification; the saved review session closes. | ~10s | Straight cut |
-| 025 | Completed reviews remain stored and playable; no automatic deletion or storage reclamation. | ~12s | Straight cut |
-| 026 | Attempts and scores remain useful historical records. | ~10s | Dissolve into chapter |
-| 027 | Analytics tells the all-history story; it is not another active Scope filter. | ~10s | Straight cut |
-| 028 | Portable bundles move eligible source content without personal learning history. | ~12s | Dissolve into chapter |
-| 029 | Duplicate review surfaces source overlap; counts are deliberately small. | ~10s | Straight cut |
-| 030 | Compare sources and answers before deciding on a manual edit; no automatic deletion. | ~12s | Straight cut |
-| 031 | Anki is an optional study-output workflow. | ~10s | Dissolve into chapter |
-| 032 | Select source material for a custom deck; do not imply a download occurred. | ~10s | Straight cut |
-| 033 | External AI is optional; the user controls the provider workflow. | ~10s (optional) | Straight cut |
-| 034 | Full backups preserve the local workspace; this is not a restore demonstration. | ~12s | Dissolve into chapter |
-| 035 | Theme and application settings belong to the learner; no production settings were changed. | ~10s (optional) | Straight cut |
-| 036 | Close on a useful next step; recommend learning, not managing a crowded library. | ~10s | Dissolve into chapter |
+| Frame | Viewer should notice / narration objective | Duration | Transition | Image | Suggested focus |
+|---|---|---:|---|---|---|
+| 001 | DLMS connects content, practice and reflection in one local workspace. | ~10s | Dissolve into chapter | [PNG](captures/001-dashboard.png) | A personal learning workspace; static hold or gentle emphasis, keep controls readable. |
+| 002 | Two real next actions replace a large undirected to-do list; no unfinished browser session is shown. | ~12s | Straight cut | [PNG](captures/002-todays-review.png) | Choose a useful next step; static hold or gentle emphasis, keep controls readable. |
+| 003 | Organized sources coexist with derived active and retained completed reviews. | ~10s | Straight cut | [PNG](captures/003-quiz-library.png) | Organize original study content; static hold or gentle emphasis, keep controls readable. |
+| 004 | Past Projects is excluded from active intelligence without deleting its content or history. | ~12s | Straight cut | [PNG](captures/004-learning-scope.png) | Choose active material; static hold or gentle emphasis, keep controls readable. |
+| 005 | The excluded folder remains visible and playable; Hide and Scope differ. | ~10s | Straight cut | [PNG](captures/005-scope-library.png) | Saved does not mean active; static hold or gentle emphasis, keep controls readable. |
+| 006 | Choose a content-building method rather than use a provided question bank. | ~10s | Dissolve into chapter | [PNG](captures/006-build-quiz.png) | Bring your own content; static hold or gentle emphasis, keep controls readable. |
+| 007 | PDF and image import are input workflows, not guarantees of perfect extraction. | ~10s | Straight cut | [PNG](captures/007-pdf-import.png) | PDF and image import; static hold or gentle emphasis, keep controls readable. |
+| 008 | An original source image can be selected with a rights acknowledgement. | ~12s | Straight cut | [PNG](captures/008-ocr-source.png) | An original image as input; static hold or gentle emphasis, keep controls readable. |
+| 009 | Review staged output before publishing; introduce this as a separate prepared example. | ~12s | Straight cut | [PNG](captures/009-review-repair.png) | Inspect before publishing; static hold or gentle emphasis, keep controls readable. |
+| 010 | Missing answers need human review; DLMS should not guess. | ~10s | Straight cut | [PNG](captures/010-repair-detail.png) | Missing answers remain your decision; static hold or gentle emphasis, keep controls readable. |
+| 011 | Study at your own pace with the current compact header and separate progress bar. | ~10s | Dissolve into chapter | [PNG](captures/011-study-start.png) | Start a self-paced session; static hold or gentle emphasis, keep controls readable. |
+| 012 | An incorrect answer provides immediate feedback; the corrected answer and explanation follow in frame 013. | ~12s | Straight cut | [PNG](captures/012-study-feedback.png) | Learn from an answer; static hold or gentle emphasis, keep controls readable. |
+| 013 | Review with AI opens a provider; Copy Question copies the same available prompt locally; Mark for Anki is optional. | ~14s | Straight cut | [PNG](captures/013-question-tools.png) | Use optional question tools; static hold or gentle emphasis, keep controls readable. |
+| 014 | Learning Scope and four real concept patterns help explain the next study decision. | ~14s | Dissolve into chapter | [PNG](captures/014-learning-intelligence.png) | See the learning pattern; static hold or gentle emphasis, keep controls readable. |
+| 015 | Contrast declining Networking, improving Access Control, strong Data Safety and low evidence; percentages need context. | ~14s | Straight cut | [PNG](captures/015-concept-trends.png) | Compare evidence and trends; static hold or gentle emphasis, keep controls readable. |
+| 016 | Mastery is an explainable estimate based on evidence, not a certification score. | ~12s | Straight cut | [PNG](captures/016-mastery-model.png) | Explainable intelligence; static hold or gentle emphasis, keep controls readable. |
+| 017 | See a concise profile and suggested next action; optional bridge, not another dashboard tour. | ~10s (optional) | Straight cut | [PNG](captures/017-learning-profile.png) | Turn results into a next action; static hold or gentle emphasis, keep controls readable. |
+| 018 | Source questions retain their own due schedules and intervals. | ~12s | Dissolve into chapter | [PNG](captures/018-review-schedule.png) | Review when it is due; static hold or gentle emphasis, keep controls readable. |
+| 019 | The Overdue filter shows three actual source questions; Due now is a separate status. | ~12s | Straight cut | [PNG](captures/019-due-queue.png) | Inspect the source question queue; static hold or gentle emphasis, keep controls readable. |
+| 020 | Topic Retention is separate from question scheduling; collapse the queue to focus. | ~10s (optional) | Straight cut | [PNG](captures/020-topic-retention.png) | Question timing and topic retention; static hold or gentle emphasis, keep controls readable. |
+| 021 | Adaptive review is derived practice, not a new independent source pool. | ~12s | Straight cut | [PNG](captures/021-generated-practice.png) | A review built from your sources; static hold or gentle emphasis, keep controls readable. |
+| 022 | Three source quizzes remain discoverable from the generated card. | ~12s | Straight cut | [PNG](captures/022-source-provenance.png) | Keep the connection to source material; static hold or gentle emphasis, keep controls readable. |
+| 023 | All answers saved is preparation to finish; the user explicitly selects Finish Review. | ~12s | Straight cut | [PNG](captures/023-finish-review.png) | Explicitly close the review; static hold or gentle emphasis, keep controls readable. |
+| 024 | Success follows acknowledged saves and server verification; the saved review session closes. | ~10s | Straight cut | [PNG](captures/024-review-finished.png) | Finish with acknowledged saves; static hold or gentle emphasis, keep controls readable. |
+| 025 | Completed reviews remain stored and playable; no automatic deletion or storage reclamation. | ~12s | Straight cut | [PNG](captures/025-completed-practice.png) | Completed is retained, not deleted; static hold or gentle emphasis, keep controls readable. |
+| 026 | Attempts and scores remain useful historical records. | ~10s | Dissolve into chapter | [PNG](captures/026-history.png) | Keep a record of learning; static hold or gentle emphasis, keep controls readable. |
+| 027 | Analytics tells the all-history story; it is not another active Scope filter. | ~10s | Straight cut | [PNG](captures/027-analytics.png) | Look back across your history; static hold or gentle emphasis, keep controls readable. |
+| 028 | Portable bundles move eligible source content without personal learning history. | ~12s | Dissolve into chapter | [PNG](captures/028-bundles.png) | Move content without moving personal history; static hold or gentle emphasis, keep controls readable. |
+| 029 | Duplicate review surfaces source overlap; counts are deliberately small. | ~10s | Straight cut | [PNG](captures/029-duplicates.png) | Find duplicate source questions; static hold or gentle emphasis, keep controls readable. |
+| 030 | Compare sources and answers before deciding on a manual edit; no automatic deletion. | ~12s | Straight cut | [PNG](captures/030-duplicate-detail.png) | Compare before editing; static hold or gentle emphasis, keep controls readable. |
+| 031 | Anki is an optional study-output workflow. | ~10s | Dissolve into chapter | [PNG](captures/031-anki-tools.png) | Take study material further; static hold or gentle emphasis, keep controls readable. |
+| 032 | Select source material for a custom deck; do not imply a download occurred. | ~10s | Straight cut | [PNG](captures/032-anki-selection.png) | Choose an export deliberately; static hold or gentle emphasis, keep controls readable. |
+| 033 | External AI is optional; the user controls the provider workflow. | ~10s (optional) | Straight cut | [PNG](captures/033-external-ai.png) | An optional external workflow; static hold or gentle emphasis, keep controls readable. |
+| 034 | Full backups preserve the local workspace; this is not a restore demonstration. | ~12s | Dissolve into chapter | [PNG](captures/034-backup.png) | Preserve your local workspace; static hold or gentle emphasis, keep controls readable. |
+| 035 | Theme and application settings belong to the learner; no production settings were changed. | ~10s (optional) | Straight cut | [PNG](captures/035-settings.png) | Your workspace, your choices; static hold or gentle emphasis, keep controls readable. |
+| 036 | Close on a useful next step; recommend learning, not managing a crowded library. | ~10s | Dissolve into chapter | [PNG](captures/036-closing-dashboard.png) | Return to the next useful step; static hold or gentle emphasis, keep controls readable. |
 
 Frame IDs resolve to exact filenames, routes, filters and fixture states in [SCREENSHOT_PLAN.md](SCREENSHOT_PLAN.md). Do not describe a staged Review & Repair fixture as the result of the preceding file-selection action. No full narration script is included.
+
+## Editorial options
+
+Preserve all files. Frames **017, 020, 033, 035** remain optional. 017 overlaps the concept overview; 035 is the most expendable broad tour. 020 explains a distinct schedule and 033 expands the optional AI story. 001/002 and 014/015 intentionally pair an overview with detail; 001/036 bookend the story. No cuts have been made. The full duration estimate remains 402 seconds; omitting the four optional frames yields 362 seconds, before transitions.
+
+The canonical [video manifest](video-manifest.json) carries exact filenames, timing, objectives, focus suggestions, optional flags, hashes and capture provenance. See [validation](VALIDATION.md) for visual-review limits and the existing hover-contrast finding.

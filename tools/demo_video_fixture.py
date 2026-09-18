@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-FIXTURE_VERSION = 'dlms-demo-video-v1'
+FIXTURE_VERSION = 'dlms-demo-video-v2'
 IDENTITY = 'DLMS Demo Training & Practice Center'
 # Correct choice is always A; event selections below match their recorded result.
 SOURCES = (
@@ -16,7 +16,7 @@ SOURCES = (
         ('What should be recorded before changing a network setting?', 'The current setting and observed problem', 'Only the desired result', 'An unrelated password'),
         ('What makes a troubleshooting test useful?', 'Change one variable and compare results', 'Change every setting together', 'Skip the baseline'),
         ('What should you do after resolving a connection problem?', 'Verify the result and document the change', 'Discard the working settings', 'Assume every device is fixed'),
-    ], [1, 1, 1, 0, 0, 0]),
+    ], [0, 1, 1, 1, 0, 0]),
     ('access', 'Practical Access Decisions', 'Access Control', 'Core Skills', [
         ('How much access should a new helper receive?', 'Only what the assigned task needs', 'Every available permission', 'Another person’s account'),
         ('What should happen when a temporary task ends?', 'Remove the temporary access', 'Keep all access forever', 'Publish the credentials'),

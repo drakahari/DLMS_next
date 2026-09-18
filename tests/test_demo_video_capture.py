@@ -56,7 +56,7 @@ def test_original_questions_and_evidence_contract(monkeypatch):
             assert [c['label'] for c in question['choices'] if c['is_correct']] == ['A']
             assert question['explanation'] and question['concepts']
     assert fixture.SOURCES[0][5] == [1]*6
-    assert fixture.SOURCES[1][5][-3:] == [0]*3
+    assert fixture.SOURCES[1][5] == [0, 1, 1, 1, 0, 0]  # Decline survives demonstrated Study saves.
     assert fixture.SOURCES[2][5][-3:] == [1]*3
     assert fixture.SOURCES[3][5] == []
 
@@ -108,3 +108,40 @@ def test_manual_server_start_failure_cleans_own_process(monkeypatch,tmp_path):
     with pytest.raises(RuntimeError,match='server failed'):
         tool.manual._start_server(tmp_path,tmp_path/'data',lan=False,reuse=False)
     assert stopped == [(process,{'interrupt':True})]
+
+
+def test_final_video_manifest_matches_canonical_images(monkeypatch):
+    import hashlib
+    from PIL import Image
+    tool = load_tool(monkeypatch)
+    project = ROOT/'docs/demo-video'
+    manifest = json.loads((project/'video-manifest.json').read_text())
+    assert [r['id'] for r in manifest] == list(range(1,37))
+    assert len(list((project/'captures').glob('*.png'))) == 36
+    assert [r['id'] for r in manifest if r['optional']] == [17,20,33,35]
+    assert sum(r['duration_estimate'] for r in manifest) == 402
+    for frame, record in zip(tool.FRAMES,manifest):
+        path = project/record['image']
+        assert path.name == frame.filename
+        assert record['state'] == frame.state
+        assert record['sha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
+        assert record['theme'] == 'purple-gold'
+        assert record['narration_objective'] and record['focus']
+        source = json.loads((project/record['capture_metadata']).read_text())
+        assert any(r['id'] == frame.id and r['status'] == 'captured' for r in source['captures'])
+        with Image.open(path) as image:
+            assert image.size == (1920,1080)
+            # Secondary visual-theme guard: the outside canvas is dark purple,
+            # including on the dimmed mastery-dialog frame, never Light.
+            red, green, blue = image.convert('RGB').getpixel((0,540))
+            assert blue > red > green
+
+
+def test_final_contact_sheets_cover_complete_sequence():
+    from PIL import Image
+    project = ROOT/'docs/demo-video'
+    sheets = sorted(project.glob('contact-sheet-*.png'))
+    assert [p.name for p in sheets] == [f'contact-sheet-{i:02}.png' for i in range(1,7)]
+    for path in sheets:
+        with Image.open(path) as image:
+            assert image.size == (1968,1824)

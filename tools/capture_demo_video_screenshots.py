@@ -36,6 +36,7 @@ class Frame:
     action: str = ''
     seconds: int = 10
     essential: bool = True
+    scroll_margin: int = 24
 
 
 def frame(number, slug, title, route, ready="document.querySelector('main')", state='Default controls; no search; no open dialogs.', fixture='Base synthetic library.', **kwargs):
@@ -48,36 +49,36 @@ SCHEDULE_READY = "document.getElementById('nrsDue')?.textContent !== '—' && do
 FRAMES = (
     frame(1,'dashboard','A personal learning workspace','/',DASH_READY,fixture='Evidence, due questions, no browser Resume.'),
     frame(2,'todays-review','Choose a useful next step','/',DASH_READY,focus='.daily-review-panel',fixture='Real server-derived recommendations; no fabricated ranking.',seconds=12),
-    frame(3,'quiz-library','Organize original study content','/library',focus='#quizList',state='Visible; no Smart View/search; folders expanded; Completed collapsed.'),
+    frame(3,'quiz-library','Organize original study content','/library',focus='#quizList',action='library-overview',state='Visible; no Smart View/search; Core Skills expanded; all other groups collapsed.'),
     frame(4,'learning-scope','Choose active material','/learning-scope',state='Past Projects excluded; other folders and Uncategorized included.',fixture='One excluded saved source; no hiding or deletion.',seconds=12),
-    frame(5,'scope-library','Saved does not mean active','/library',focus='[data-folder-label="Past Projects"]',state='Past Projects visible, expanded, excluded from Learning Scope.'),
+    frame(5,'scope-library','Saved does not mean active','/library',focus='#quizList',action='scope-folder',state='Visible; Past Projects expanded and excluded from Learning Scope; other groups collapsed.'),
     frame(6,'build-quiz','Bring your own content','/upload'),
     frame(7,'pdf-import','PDF and image import','/pdf-import',state='Empty form; no extraction claims.',seconds=10),
     frame(8,'ocr-source','An original image as input','/pdf-import',focus='.pdf-ocr-import-panel',action='ocr',state='Original study-skills.png selected; rights confirmed; not submitted.',fixture='Pillow-rendered original text; no external content.',seconds=12),
     frame(9,'review-repair','Inspect before publishing','/pdf-import/review/video_review',focus='.pdf-import-summary-grid',state='Seeded staged draft: one complete, one incomplete; nothing published.',fixture='Original synthetic staged parser draft; not a claim of OCR accuracy.',seconds=12),
-    frame(10,'repair-detail','Missing answers remain your decision','/pdf-import/review/video_review',focus='.pdf-import-question-card:last-of-type',state='Incomplete recovered question; no answer invented.',fixture='Same staged draft.',seconds=10),
-    frame(11,'study-start','Start a self-paced session','@critical_quiz',QUIZ_READY,action='study',focus='.quiz-progress-card',state='Study Mode, question 1; no answer selected.',fixture='Network Troubleshooting source quiz.'),
-    frame(12,'study-feedback','Learn from an answer','@critical_quiz',QUIZ_READY,action='feedback',focus='.quiz-progress-card',state='Study Mode question 1, B selected; incorrect feedback visible.',fixture='Original network question.',seconds=12),
-    frame(13,'question-tools','Use optional question tools','@critical_quiz',QUIZ_READY,action='feedback',focus='#questionTools',state='Same answered question; Review with AI, Mark for Anki, Copy Question visible; no provider opened.',fixture='Same original source question.',seconds=14),
+    frame(10,'repair-detail','Missing answers remain your decision','/pdf-import/review/video_review',focus='.pdf-import-filter-row',action='incomplete',state='Incomplete filter selected; recovered question visible; no answer invented.',fixture='Same staged draft.',seconds=10),
+    frame(11,'study-start','Start a self-paced session','@critical_quiz',QUIZ_READY,action='study',focus='.active-quiz-logo-banner',state='Study Mode, question 1; no answer selected.',fixture='Network Troubleshooting source quiz.'),
+    frame(12,'study-feedback','Learn from an answer','@critical_quiz',QUIZ_READY,action='feedback',focus='.quiz-toolbar',state='Study Mode question 1, B selected; incorrect feedback visible.',fixture='Original network question.',seconds=12),
+    frame(13,'question-tools','Use optional question tools','@critical_quiz',QUIZ_READY,action='feedback-complete',focus='.quiz-toolbar',scroll_margin=8,state='Correct answer selected after feedback; explanation and Question Tools visible; no provider opened.',fixture='Same original source question.',seconds=14),
     frame(14,'learning-intelligence','See the learning pattern','/learning-intelligence',LI_READY,state='All concepts, empty search; mastery explanation closed; scope summary visible.',fixture='Strong Data Safety; declining Networking; improving Access Control; low-evidence Cloud.',seconds=14),
-    frame(15,'concept-trends','Compare evidence and trends','/learning-intelligence',LI_READY,focus='#liTableWrap',state='All concepts, no filter; compare actual calculated values.',fixture='18 responses per established concept, one Cloud response.',seconds=14),
+    frame(15,'concept-trends','Compare evidence and trends','/learning-intelligence',LI_READY,focus='#liToolbar',state='All concepts, no filter; compare actual calculated values.',fixture='18 baseline responses per established concept plus demonstrated Study saves; one Cloud response.',seconds=14),
     frame(16,'mastery-model','Explainable intelligence','/learning-intelligence',LI_READY,action='model',state='How mastery works dialog open.',fixture='Same evidence; no invented percentages.',seconds=12),
     frame(17,'learning-profile','Turn results into a next action','/learning-profile',"document.getElementById('lpAccuracy')?.textContent !== '—'",fixture='Scoped evidence.',essential=False),
     frame(18,'review-schedule','Review when it is due','/review-schedule',SCHEDULE_READY,state='Queue expanded; All status; blank search; default batch size.',fixture='Recent and older source evidence; unseen Cloud questions.',seconds=12),
-    frame(19,'due-queue','Inspect the source question queue','/review-schedule',SCHEDULE_READY,focus='#nrsQueuePanel',action='due',state='Due status; queue expanded; empty search.',fixture='Only genuinely due source questions.',seconds=12),
+    frame(19,'due-queue','Inspect the source question queue','/review-schedule',SCHEDULE_READY,focus='#nrsQueuePanel',action='due',state='Overdue status; queue expanded; empty search.',fixture='Real overdue source backlog; Due now is a separate status.',seconds=12),
     frame(20,'topic-retention','Question timing and topic retention','/review-schedule',SCHEDULE_READY,action='collapse-queue',focus='.review-schedule-summary:not(.native-review-summary)',state='Question Queue collapsed; Topic Retention visible.',fixture='Derived concept evidence.',essential=False),
-    frame(21,'generated-practice','A review built from your sources','/library',focus='[data-generated-practice-group="true"]',state='Visible Library; active Generated Practice group open; Completed collapsed.',fixture='Adaptive active plus a retained completed Smart Review.',seconds=12),
-    frame(22,'source-provenance','Keep the connection to source material','/library?view=visible&smart=generated-practice',action='provenance',focus='.library-source-provenance',state='Generated Practice Smart View (all review sessions); first source disclosure expanded; normal folder grouping.',fixture='Question Identity v2 payloads from three real source quiz rows.',seconds=12),
-    frame(23,'finish-review','Explicitly close the review','@adaptive_quiz',QUIZ_READY,action='finish-ready',focus='.quiz-progress-card',state='All 3 questions answered and saved; final question; Finish Review not yet clicked.',fixture='Fresh Adaptive Study session; completion marker absent.',seconds=12),
-    frame(24,'review-finished','Finish with acknowledged saves','@adaptive_quiz',QUIZ_READY,action='finish',focus='.quiz-progress-card',state='Finish Review succeeded; success status visible; checkpoint cleared.',fixture='Real Study saves and server completion handshake.',seconds=10),
-    frame(25,'completed-practice','Completed is retained, not deleted','/library',action='completed',focus='.library-folder-completed-practice',state='Completed Generated Practice expanded; quizzes playable.',fixture='Seeded retained Smart Review; Adaptive also completed during a full run.',seconds=12),
+    frame(21,'generated-practice','A review built from your sources','/library',focus='#quizList',action='active-folder',state='Visible Library; active Generated Practice expanded; other groups collapsed.',fixture='Adaptive active plus a retained completed Smart Review.',seconds=12),
+    frame(22,'source-provenance','Keep the connection to source material','/library?view=visible&smart=generated-practice',action='provenance',focus='.library-smart-active',state='Generated Practice Smart View (all review sessions); first source disclosure expanded; normal folder grouping.',fixture='Question Identity v2 payloads from three real source quiz rows.',seconds=12),
+    frame(23,'finish-review','Explicitly close the review','@adaptive_quiz',QUIZ_READY,action='finish-ready',focus='.quiz-toolbar',scroll_margin=8,state='All 3 questions answered and saved; final question; Finish Review not yet clicked.',fixture='Fresh Adaptive Study session; completion marker absent.',seconds=12),
+    frame(24,'review-finished','Finish with acknowledged saves','@adaptive_quiz',QUIZ_READY,action='finish',focus='.active-quiz-logo-banner',state='Finish Review succeeded; success status visible; checkpoint cleared.',fixture='Real Study saves and server completion handshake.',seconds=10),
+    frame(25,'completed-practice','Completed is retained, not deleted','/library',action='completed',focus='#quizList',state='Completed Generated Practice expanded; other groups collapsed; quizzes playable.',fixture='Seeded retained Smart Review; Adaptive also completed during a full run.',seconds=12),
     frame(26,'history','Keep a record of learning','/history',"document.getElementById('historyTotalAttempts')?.textContent !== '—'",fixture='18 original synthetic Exam attempts, Demo Learner.'),
     frame(27,'analytics','Look back across your history','/dashboard',"Number(document.getElementById('analyticsTotalAttempts')?.textContent) === 18",fixture='Same completed attempts; all-history view.',seconds=10),
     frame(28,'bundles','Move content without moving personal history','/quiz-bundles',focus='.portable-bundle-workflows',state='Export/import landing; source candidates only; no upload yet.',fixture='Source quizzes eligible; generated sessions excluded.',seconds=12),
     frame(29,'duplicates','Find duplicate source questions','/library/duplicates',focus='.duplicate-question-summary',state='All types; page 1; small result groups expanded by current product default; no search.',fixture='One deliberate exact duplicate across source quizzes.'),
-    frame(30,'duplicate-detail','Compare before editing','/library/duplicates?result_type=exact&expanded=1',focus='.duplicate-question-group',state='Exact filter, first group expanded, page 1; no automatic deletion.',fixture='Change Readiness Checklist and Everyday Data Safety.',seconds=12),
+    frame(30,'duplicate-detail','Compare before editing','/library/duplicates?result_type=exact&search=risky',focus='.duplicate-question-group',state='Exact filter; search risky; one matching group expanded; page 1; no automatic deletion.',fixture='Change Readiness Checklist and Everyday Data Safety.',seconds=12),
     frame(31,'anki-tools','Take study material further','/anki',state='Tools overview; no external program launched.'),
-    frame(32,'anki-selection','Choose an export deliberately','/anki/custom',"document.getElementById('customAnkiForm')",focus='.anki-tools-header',state='Custom deck form; no download or native dialog.',fixture='Original sources and missed records.',seconds=10),
+    frame(32,'anki-selection','Choose an export deliberately','/anki/custom',"document.getElementById('customAnkiForm')",focus='.anki-custom-quiz-filter',action='anki-select',state='Filter Everyday Data Safety; expand source and select its first question; no download.',fixture='Original sources and missed records.',seconds=10),
     frame(33,'external-ai','An optional external workflow','/external-ai/quiz-builder',"document.getElementById('externalAiBuilderForm')",state='Provider-neutral builder; no provider opened; no claim of local AI.',essential=False),
     frame(34,'backup','Preserve your local workspace','/settings/backup',state='Backup/restore overview; no restore/reset initiated.',seconds=12),
     frame(35,'settings','Your workspace, your choices','/settings',state='Purple & Gold; isolated demo identity; no destructive action.',essential=False),
@@ -107,12 +108,15 @@ def serve():
 
 def prepare(browser, item, metadata, data_root):
     action = item.action
-    if action in {'study','feedback','finish-ready','finish'}:
+    if action in {'study','feedback','feedback-complete','finish-ready','finish'}:
         browser.click('.study-mode-btn')
         browser.wait_for("document.querySelector('#choices .choice')")
-        if action == 'feedback':
+        if action in {'feedback','feedback-complete'}:
             browser.click('#choices .choice[data-index="1"]')
             browser.wait_for("document.querySelector('#choices .wrong-choice')")
+            if action == 'feedback-complete':
+                browser.click('#choices .choice[data-index="0"]')
+                browser.wait_for('studyLearningEventSaves.size === 0')
         elif action in {'finish-ready','finish'}:
             for index in range(3):
                 browser.click('#choices .choice[data-index="0"]')
@@ -129,11 +133,24 @@ def prepare(browser, item, metadata, data_root):
         browser.click('#liModelButton')
         browser.wait_for("!document.getElementById('liModel').hidden")
     elif action == 'due':
-        browser.click('[data-question-status="due"]')
+        browser.click('[data-question-status="overdue"]')
     elif action == 'collapse-queue':
         browser.click('#nrsQueueToggle')
-    elif action == 'completed':
-        browser.click('.library-folder-completed-practice .library-folder-toggle-button')
+    elif action in {'completed','library-overview','scope-folder','active-folder'}:
+        label = {'completed':'Completed Generated Practice','library-overview':'Core Skills','scope-folder':'Past Projects','active-folder':'Generated Practice'}[action]
+        browser.evaluate(f"""(() => {{
+            document.querySelectorAll('.library-folder').forEach(folder => {{
+                const button = folder.querySelector('.library-folder-toggle-button');
+                const wanted = folder.dataset.folderLabel === {json.dumps(label)};
+                if ((button.getAttribute('aria-expanded') === 'true') !== wanted) button.click();
+            }}); return true;
+        }})()""")
+    elif action == 'incomplete':
+        browser.click('[data-filter="incomplete"]')
+    elif action == 'anki-select':
+        browser.evaluate("(() => {const input=document.getElementById('ankiQuizFilter');input.value='Everyday Data Safety';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()")
+        browser.click('.anki-custom-quiz-group:not([hidden]) summary')
+        browser.click('.anki-custom-quiz-group:not([hidden]) input[type=checkbox]')
     elif action == 'provenance':
         browser.click('.library-source-provenance summary')
     elif action == 'ocr':
@@ -141,7 +158,7 @@ def prepare(browser, item, metadata, data_root):
         browser.click("form[action='/pdf-import/screenshots'] input[name='rights_ok']")
 
 
-def capture(items, output, theme, *, check_only=False):
+def capture(items, output, theme, *, check_only=False, replay_prefix=False):
     output.mkdir(parents=True, exist_ok=True)
     records = []
     with tempfile.TemporaryDirectory(prefix='dlms-video-capture-') as directory:
@@ -159,7 +176,9 @@ def capture(items, output, theme, *, check_only=False):
             status = browser.evaluate("fetch('/api/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:"+json.dumps(theme)+"})}).then(r=>r.status)")
             if status != 200:
                 raise RuntimeError(f'Theme selection failed: {status}')
-            for item in items:
+            selected_ids = {item.id for item in items}
+            steps = [item for item in FRAMES if item.id <= max(selected_ids)] if replay_prefix else items
+            for item in steps:
                 # Every frame is independently reproducible. No stale Resume
                 # cards; this clears only the disposable automation profile.
                 browser.navigate(url+'/settings')
@@ -174,11 +193,21 @@ def capture(items, output, theme, *, check_only=False):
                     raise RuntimeError(f'Route failed: {route}')
                 prepare(browser,item,metadata,data_root)
                 manual._stable_page(browser)
+                if item.id not in selected_ids:
+                    continue
                 if item.route == '/' and browser.evaluate("document.querySelector('.daily-review-panel')?.innerText.includes('UNFINISHED')"):
                     raise RuntimeError('Unexpected Resume card in the clean video profile')
                 if item.focus:
                     browser.wait_for(f'document.querySelector({json.dumps(item.focus)})')
-                    browser.evaluate(f'document.querySelector({json.dumps(item.focus)}).scrollIntoView({{block:"start"}}); true')
+                    browser.evaluate(f'window.scrollTo(0, Math.max(0, document.querySelector({json.dumps(item.focus)}).getBoundingClientRect().top + scrollY - {item.scroll_margin})); true')
+                # Real pointer movement removes accidental hover styles and
+                # tooltips without changing the application CSS or state.
+                browser.command('input.performActions', {
+                    'context': browser.context,
+                    'actions': [{'type':'pointer','id':'video-pointer',
+                                 'parameters':{'pointerType':'mouse'},
+                                 'actions':[{'type':'pointerMove','x':1,'y':1,'origin':'viewport'}]}],
+                })
                 actual_viewport = browser.evaluate('[innerWidth,innerHeight,devicePixelRatio]')
                 if actual_viewport != [WIDTH, HEIGHT, 1]:
                     raise RuntimeError(f'Unexpected viewport: {actual_viewport}')
@@ -204,6 +233,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--list',action='store_true')
     parser.add_argument('--check',action='store_true',help='Exercise selected states without writing screenshots')
+    parser.add_argument('--replay-prefix',action='store_true',help='Replay earlier story actions before focused recaptures, without overwriting their images')
     parser.add_argument('--only',help='Comma-separated numeric frame IDs, e.g. 001,003,014')
     parser.add_argument('--theme',choices=tuple(THEMES),default='Purple & Gold')
     parser.add_argument('--output',type=Path,default=PROJECT/'captures')
@@ -222,7 +252,7 @@ def main(argv=None):
     output = args.output.resolve()
     if PROJECT.resolve() not in output.parents:
         parser.error('Output must be a subdirectory of docs/demo-video (keeps manual assets separate)')
-    records = capture(items,output,THEMES[args.theme],check_only=args.check)
+    records = capture(items,output,THEMES[args.theme],check_only=args.check,replay_prefix=args.replay_prefix)
     # Each run has its own sidecar: a focused refresh cannot silently relabel
     # old images as the new theme/fixture/revision.
     revision = subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
@@ -230,7 +260,7 @@ def main(argv=None):
                     dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT)),
                     captured_at=datetime.now(timezone.utc).isoformat(),theme=THEMES[args.theme],
                     viewport=dict(width=WIDTH,height=HEIGHT,device_scale=1),fixture_version=FIXTURE_VERSION,
-                    captures=records)
+                    replay_prefix=args.replay_prefix, captures=records)
     (output/(('check-' if args.check else 'capture-')+('-'.join(s.id for s in items) if args.only else 'all')+'.json')).write_text(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n')
     return 0
 
