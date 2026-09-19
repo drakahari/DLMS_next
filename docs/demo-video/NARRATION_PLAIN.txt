@@ -42,9 +42,21 @@ The incomplete question has no detected correct answer. Repair it or exclude it,
 
 With a published quiz, Study Mode gives you time to think. This networking example is untimed, so you can work at your own pace.
 
+=== SCENE 011A ===
+
+For assessment, each quiz has a configurable Exam Mode time limit, while Study Mode stays untimed.
+
+=== SCENE 011B ===
+
+In this separate Exam example, answers stay selected, but correctness and explanations wait until you finish.
+
+=== SCENE 011C ===
+
+Pause freezes the countdown and obscures the exam behind this overlay. Resume continues the same attempt.
+
 === SCENE 012 ===
 
-An incorrect choice gets immediate feedback and an invitation to try again. You can reconsider your reasoning while the question is still in front of you.
+Back in Study Mode, an incorrect choice gets immediate feedback and an invitation to try again. You can reconsider your reasoning while the question is still in front of you.
 
 === SCENE 013 ===
 

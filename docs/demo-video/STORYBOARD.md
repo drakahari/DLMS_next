@@ -1,5 +1,7 @@
 # Captured demo-video storyboard
 
+**CONTENT COMPLETE / FINAL CANDIDATE.** Current main: 40 scenes, 911 words, 7:45.700; long plan: 41 scenes. The authoritative narration supersedes historical capture-phase estimates below. Static lossless holds and clean cuts only. Content is frozen except review defects.
+
 The 36 V2 frames and four approved V3 additions are captured in `captures/`. The revised V3 [narration/editorial plan](NARRATION.md) supersedes the original capture timings for assembly: **37 narrated scenes, 859 words, 7:05 minimum targets, and approximately 7:19 with calibrated Heart delivery**. Cut 017 and 035, reserve 020 for the long version, and keep 033. The sequence inserts 013A and 013B after 013, then 028A and 028B after 028, without renumbering V2. The builder uses static holds, short chapter fades, and straight cuts within workflows. Avoid animated mouse simulation or transitions implying an unperformed action.
 
 The additions are documented in sequence below and in the [V3 additions manifest](v3-additions-manifest.json). Their holds total 44 seconds; tightening existing Scene 028 makes the V3 editorial target 35 seconds longer than V2. The [V3 additions contact sheet](v3-additions-contact-sheet.png) contains only these frames. The completed narrated V3 main build runs 7:19.667; the long cut remains ungenerated.
@@ -57,14 +59,14 @@ The canonical [video manifest](video-manifest.json) carries exact filenames, tim
 
 The physical flash-card print layout is not a V3 capture. Its deterministic HTML view is deliberately print-neutral and a full Letter sheet is taller than the fixed 1080-pixel viewport once the browser toolbar and duplex guidance are present. Capturing it would either clip the sheet or depart from the Purple & Gold capture standard. Scene 032 therefore continues to carry the overview mention; a print-focused tutorial can show front and back sheets with framing designed for paper output.
 
-## Exam workflow supplemental captures
+## Exam workflow — integrated final-candidate scenes
 
-These optional proof captures are separate from the 37-scene main and 38-scene long production plans. A focused Exam tutorial can use them together after introducing the Study/Exam distinction. They are not inserted under unrelated approved narration. All are 1920×1080, device scale 1, Purple & Gold, synthetic content, captured with the existing isolated tool.
+These three captures are now essential main/long scenes, in order 011 → 011A → 011B → 011C → 012. Holds are 9, 9, and at least 8 seconds. Each has approved narration; 012 explicitly returns to Study Mode. All are 1920×1080, device scale 1, Purple & Gold, synthetic content.
 
 | ID | Screenshot | Purpose / state | Proposed placement | Status |
 |---|---|---|---|---|
-| 011A | `exam-additions/011A-quiz-timing.png` | Editor: Exam Mode Timer changed to 20 minutes, unsaved | Before starting an exam in a focused tutorial | Optional; not narrated |
-| 011B | `exam-additions/011B-exam-mode.png` | Exam answer selected, timer and Pause visible; no Study feedback | After timer setup explanation | Optional; not narrated |
-| 011C | `exam-additions/011C-exam-paused.png` | Real Pause overlay, covered/frosted quiz and Resume | Immediately after 011B | Optional; not narrated |
+| 011A | `exam-additions/011A-quiz-timing.png` | Editor: Exam Mode Timer changed to 20 minutes, unsaved | After 011 | Essential; narrated |
+| 011B | `exam-additions/011B-exam-mode.png` | Exam answer selected, timer and Pause visible; no Study feedback | After 011A | Essential; narrated |
+| 011C | `exam-additions/011C-exam-paused.png` | Real Pause overlay, covered/frosted quiz and Resume | After 011B, before 012 | Essential; narrated |
 
 The editor value is an unsaved demonstration; the independent Exam captures retain the source quiz's 90-minute default. The capture harness stops only its disposable timer for deterministic stills. No production timer behavior changes. Scene 028A is refreshed to reflect the corrected stacked Content Pack metrics. Static overview rendering now uses lossless H.264 and cuts while preserving every approved audio slot.

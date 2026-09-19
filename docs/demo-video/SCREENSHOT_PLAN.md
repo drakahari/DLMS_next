@@ -1,5 +1,7 @@
 # Demo-video screenshot plan — captured sequence
 
+**CONTENT COMPLETE / FINAL CANDIDATE.** Current main: 40 scenes, 911 words, 7:45.700; long plan: 41 scenes. The authoritative narration supersedes historical capture-phase estimates below. Static lossless holds and clean cuts only. Content is frozen except review defects.
+
 All 36 V2 frames remain captured in [captures/](captures/), separate from proof and manual images. Purple & Gold · 1920 × 1080 · scale 1. Four approved additive V3 frames use alphanumeric IDs so none of the V2 assets need renumbering. The six V2 contact sheets and [video-manifest.json](video-manifest.json) remain stable; the V3 handoff is [v3-additions-manifest.json](v3-additions-manifest.json) and [v3-additions-contact-sheet.png](v3-additions-contact-sheet.png).
 
 **36 frames · 402 seconds (6:42)** before transitions. Frames 017, 020, 033, 035 are optional and retained. See [STORYBOARD.md](STORYBOARD.md) for narration objectives and focus suggestions.
@@ -420,14 +422,14 @@ Framing uses real page scrolling and existing collapse/filter controls. Only the
 
 `@critical_quiz` resolves to the fixture Network Troubleshooting source quiz; `@adaptive_quiz` resolves to the fixture Adaptive Study generated review. Full-run state includes real Study saves from earlier frames. Focused recaptures use `--replay-prefix` to reproduce them.
 
-## Exam workflow supplemental captures
+## Exam workflow — integrated final-candidate scenes
 
-These optional proof captures are separate from the 37-scene main and 38-scene long production plans. A focused Exam tutorial can use them together after introducing the Study/Exam distinction. They are not inserted under unrelated approved narration. All are 1920×1080, device scale 1, Purple & Gold, synthetic content, captured with the existing isolated tool.
+These three captures are now essential main/long scenes, in order 011 → 011A → 011B → 011C → 012. Holds are 9, 9, and at least 8 seconds. Each has approved narration; 012 explicitly returns to Study Mode. All are 1920×1080, device scale 1, Purple & Gold, synthetic content.
 
 | ID | Screenshot | Purpose / state | Proposed placement | Status |
 |---|---|---|---|---|
-| 011A | `exam-additions/011A-quiz-timing.png` | Editor: Exam Mode Timer changed to 20 minutes, unsaved | Before starting an exam in a focused tutorial | Optional; not narrated |
-| 011B | `exam-additions/011B-exam-mode.png` | Exam answer selected, timer and Pause visible; no Study feedback | After timer setup explanation | Optional; not narrated |
-| 011C | `exam-additions/011C-exam-paused.png` | Real Pause overlay, covered/frosted quiz and Resume | Immediately after 011B | Optional; not narrated |
+| 011A | `exam-additions/011A-quiz-timing.png` | Editor: Exam Mode Timer changed to 20 minutes, unsaved | After 011 | Essential; narrated |
+| 011B | `exam-additions/011B-exam-mode.png` | Exam answer selected, timer and Pause visible; no Study feedback | After 011A | Essential; narrated |
+| 011C | `exam-additions/011C-exam-paused.png` | Real Pause overlay, covered/frosted quiz and Resume | After 011B, before 012 | Essential; narrated |
 
 The editor value is an unsaved demonstration; the independent Exam captures retain the source quiz's 90-minute default. The capture harness stops only its disposable timer for deterministic stills. No production timer behavior changes. Scene 028A is refreshed to reflect the corrected stacked Content Pack metrics. Static overview rendering now uses lossless H.264 and cuts while preserving every approved audio slot.

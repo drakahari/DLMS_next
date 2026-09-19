@@ -1,21 +1,27 @@
-# DLMS demo video — V3 narration and editorial plan
+# DLMS demo video — final-candidate narration and editorial plan
 
-Authoritative narration and editorial timing for `develop/3.2.0`, reviewed against the current repository, all 36 V2 captures, and the four approved V3 additions on 2026-09-19. This is a product overview for independent and certification learners, technical users, privacy-oriented users, and prospective GitHub users. All examples use the prepared synthetic learner data.
+**CONTENT COMPLETE / FINAL CANDIDATE — not publicly released.** Content is frozen except for actual defects identified in final review. Further feature detail belongs in focused videos.
+
+Authoritative narration and editorial timing for `develop/3.2.0`, reviewed against the current repository, all 36 V2 captures, the four approved V3 additions, and three Exam captures on 2026-09-19. This is a product overview for independent and certification learners, technical users, privacy-oriented users, and prospective GitHub users. All examples use the prepared synthetic learner data.
 
 ## Recording cut and timing
 
-- **37 narrated scenes:** 36 essential frames plus optional frame **033 kept**.
-- **859 narration words**, excluding separators, production notes, and alternate lines for omitted frames. V3 redistributes the existing Study and Packs explanation across four new visual scenes.
-- **Estimated speech: 6:02**, using scene-specific reference rates of 138–148 words per minute. At 135–150 WPM, the written-word envelope is **5:44–6:22**. The completed V3 Heart clips contain **6:30.300 of spoken audio**; natural pauses and acronym letter names explain the difference from the written estimate.
-- **Editorial scene targets total 7:05 (425 seconds)**. The completed static V3 review build uses actual narration durations and runs **7:19.667**. Its 37-cue subtitle timestamps come from that actual timeline.
-- **Long version: 38 scenes, 888 words**, adding only frame 020 and its 13-second target; not being produced in this pass.
+- **40 narrated main scenes:** 39 essential frames plus optional frame **033 kept**.
+- **911 narration words**, excluding production notes and omitted alternates.
+- **Actual spoken audio: 6:53.200**, af_heart, speed 1.0. Acronym transforms remain synthesis-only.
+- **Editorial targets total 7:31 (451 seconds)**; the actual-audio timeline is **7:45.700**, with 40 subtitle cues. Added runtime over V3 is **26.033 seconds**.
+- **Long plan: 41 scenes, 940 words**, including only the existing long-only Scene 020. Not rendered in this pass.
 - **CUT:** 017 and 035. **KEEP FOR LONG VERSION:** 020. **KEEP:** 033. No assets deleted, renamed, reordered, altered, or recaptured.
 
 The scene numbers below retain the capture IDs, including additive alphanumeric IDs that avoid renumbering V2. Gaps in the recording cut are intentional. [NARRATION_PLAIN.txt](NARRATION_PLAIN.txt) contains only the 37 main-cut passages with `=== SCENE NNN ===` or `=== SCENE NNNA ===` separators; separators are not spoken. Alternate narration is retained here for every omitted frame, excluded from main totals and plain text.
 
 Word counts use whitespace-separated written tokens: contractions and hyphenated words count once. Written acronyms retain normal spelling, including AI, OCR and API; their individual letter names add spoken syllables. Pronounce DLMS as “dee el em ess,” AI as “ay eye,” OCR/API/PDF/CSV as letters, and Anki as “AHN-kee.” Allow the opening acronym to breathe. Do not read production notes. Use a calm conversational delivery, with modest emphasis on the practical consequence of each feature.
 
-## V3 editorial integration
+## Final Exam integration
+
+Insert **011 → 011A → 011B → 011C → 012**. The three assessment scenes explain configuration, deferred feedback, and Pause without a tutorial detour. Only 012 changes among existing narration: “Back in Study Mode” explicitly returns to the learning workflow. The timer field shows an unsaved 20-minute edit; 011B explicitly identifies a separate example using the 90-minute default. No claim of a continuous saved configuration or tamper-proof exam is made.
+
+## V3 editorial integration (retained)
 
 Added: **013A** (Matching), **013B** (Hotspot), **028A** (Content Packs), and **028B** (Study Packs). Tightened: **013** keeps Question Tools separate from richer question types, while **028** now introduces portable bundles and the distinct packaged-dataset path. The approved V2 wording remains elsewhere, including the concise printable physical-card mention in **032**. Pronunciation changes still live only in the synthesis adapter. Individual scene notes mark V3 changes.
 
@@ -27,13 +33,13 @@ Use the canonical 1920 × 1080 Purple & Gold PNGs. Targets are minimum complete 
 
 Use static screenshots throughout. Do not add zoom, pan, Ken Burns movement, fake cursor, typing, click, download, or processing animation. A screenshot of a control establishes an available workflow, not that the action has run.
 
-The story stays in capture order: priorities → sources and Scope → import and repair → Study feedback → evidence and interpretation → scheduling → generated practice and completion → history → portability and source maintenance → Anki → optional external AI → backup → Dashboard. Scope chooses eligible material; intelligence interprets evidence; generated practice assembles questions. These explanations have separate jobs.
+The story stays in capture order: priorities → sources and Scope → import and repair → Study introduction → timing, Exam and Pause → Study feedback → evidence and interpretation → scheduling → generated practice and completion → history → portability and source maintenance → Anki → optional external AI → backup → Dashboard. Scope chooses eligible material; intelligence interprets evidence; generated practice assembles questions. These explanations have separate jobs.
 
-[video-manifest.json](video-manifest.json) remains the unchanged V2 capture/provenance contract. [v3-additions-manifest.json](v3-additions-manifest.json) supplies the four additive capture records. Their capture-phase `duration_estimate` values do **not** drive the narrated cut. This document owns editorial inclusion, final spoken text, and revised scene durations; the production tool derives its sequence from both capture manifests plus this narration. Do not regenerate capture assets for narration changes.
+[video-manifest.json](video-manifest.json) remains the unchanged V2 capture/provenance contract. [v3-additions-manifest.json](v3-additions-manifest.json) supplies the four additive capture records. Their capture-phase `duration_estimate` values do **not** drive the narrated cut. This document owns editorial inclusion, final spoken text, and revised scene durations; the production tool derives its sequence from the V2, V3, and [Exam capture manifests](exam-additions-manifest.json) plus this narration. Do not regenerate capture assets for narration changes.
 
 ## Redundancy decisions
 
-All 40 production frames were assessed, including the essential frames; the original optional flags did not determine the outcome alone.
+All 43 available production frames were assessed, including the essential frames; the original optional flags did not determine the outcome alone.
 
 | Frames | Decision and reason |
 | --- | --- |
@@ -74,7 +80,10 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 | 009 | Essential | 26 | 145 | 10.8s | 13s |
 | 010 | Essential | 22 | 145 | 9.1s | 10s |
 | 011 | Essential | 24 | 148 | 9.7s | 11s |
-| 012 | Essential | 26 | 148 | 10.5s | 12s |
+| 011A | Essential | 16 | 145 | 6.6s | 9s |
+| 011B | Essential | 16 | 145 | 6.6s | 9s |
+| 011C | Essential | 16 | 145 | 6.6s | 8s |
+| 012 | Essential | 30 | 148 | 12.2s | 12s |
 | 013 | Essential | 26 | 138 | 11.3s | 14s |
 | 013A | Essential | 19 | 138 | 8.3s | 11s |
 | 013B | Essential | 24 | 138 | 10.4s | 11s |
@@ -279,18 +288,63 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Production / transition note:** 0.3-second dissolve. This quiz is not the preceding repair draft.
 
+## Scene 011A — Set an assessment time limit
+
+**Image:** [011A-quiz-timing.png](exam-additions/011A-quiz-timing.png)
+**Status:** Essential — KEEP
+**Target:** 9 sec
+**Speech estimate:** 16 words; 6.6 sec at 145 WPM
+**Visual focus:** Exam Mode Timer field; this 20-minute edit is an unsaved configuration example.
+**Motion:** Static hold; fixed native screenshot geometry.
+
+**Narration**
+
+> For assessment, each quiz has a configurable Exam Mode time limit, while Study Mode stays untimed.
+
+**Production / transition note:** Clean cut. Final content expansion; approved for main and long plans. Keep this a brief assessment overview, not a setup tutorial.
+
+## Scene 011B — Take a timed assessment
+
+**Image:** [011B-exam-mode.png](exam-additions/011B-exam-mode.png)
+**Status:** Essential — KEEP
+**Target:** 9 sec
+**Speech estimate:** 16 words; 6.6 sec at 145 WPM
+**Visual focus:** Selected answer, timer, Submit Exam and Pause. This independent example uses the 90-minute default.
+**Motion:** Static hold; fixed native screenshot geometry.
+
+**Narration**
+
+> In this separate Exam example, answers stay selected, but correctness and explanations wait until you finish.
+
+**Production / transition note:** Clean cut. Final content expansion; approved for main and long plans. Keep this a brief assessment overview, not a setup tutorial.
+
+## Scene 011C — Pause and obscure the exam
+
+**Image:** [011C-exam-paused.png](exam-additions/011C-exam-paused.png)
+**Status:** Essential — KEEP
+**Target:** 8 sec
+**Speech estimate:** 16 words; 6.6 sec at 145 WPM
+**Visual focus:** Exam Paused overlay and frosted underlying quiz. Visual covering, not a security or proctoring guarantee.
+**Motion:** Static hold; fixed native screenshot geometry.
+
+**Narration**
+
+> Pause freezes the countdown and obscures the exam behind this overlay. Resume continues the same attempt.
+
+**Production / transition note:** Clean cut. Final content expansion; approved for main and long plans. Return explicitly to Study Mode in 012.
+
 ## Scene 012 — Use feedback
 
 **Image:** [012-study-feedback.png](captures/012-study-feedback.png)
 **Status:** Essential — KEEP
 **Target:** 12 sec
-**Speech estimate:** 26 words; 10.5 sec at 148 WPM
+**Speech estimate:** 30 words; 12.2 sec at 148 WPM
 **Visual focus:** Red choice B and “Not quite” feedback.
 **Motion:** Static hold matched to 013 as closely as existing framing permits.
 
 **Narration**
 
-> An incorrect choice gets immediate feedback and an invitation to try again. You can reconsider your reasoning while the question is still in front of you.
+> Back in Study Mode, an incorrect choice gets immediate feedback and an invitation to try again. You can reconsider your reasoning while the question is still in front of you.
 
 **Production / transition note:** Straight cut. The explanation appears only after the corrected answer in 013.
 
@@ -783,3 +837,13 @@ This phase produces revised text and isolated production-tooling changes. No rea
 - Text consistency: 40 scene entries; 37 main-cut passages in deterministic V3 order; plain-text passages exactly match their narration blocks; 859 main-cut words; 425 seconds of main-cut targets.
 - All linked local files resolve. All 36 V2 image hashes match the unchanged capture manifest, and all four additions match their V3 manifest records.
 - Focused narration/video/capture tests and `git diff --check` are the V3 handoff gates. No application code changed; no full render is needed for this editorial/tooling pass.
+
+## Final assessment behavior audit
+
+Current sources: `templates/quiz/edit.html` (minute field), `app.py:normalize_exam_minutes` (1–1440 minutes, default 90), `dlms/rendering/quiz_artifacts.py` (saved duration and pause wrapper), `static/script.js` (`startQuiz`, choice/Matching/Hotspot feedback guards, `startExamTimer`, `pauseExam`, `resumeExam`), `static/style.css` (`body.blurred .blur-wrapper`, `.pause-overlay`), and `docs/user-manual/06-taking-quizzes.md`. Existing browser tests cover Study/Exam feedback, saved attempts, paused recovery and resumed countdown.
+
+The countdown starts when Exam Mode begins, pauses without resetting the attempt, and resumes from remaining time. The question wrapper is blurred and pointer interaction is covered; this is visual obscuring, not proctoring, encryption, or guaranteed prevention of inspection. Correctness/explanations and Study Question Tools are suppressed during the exam. The overview makes no stronger claims.
+
+## Content freeze and focused videos
+
+The overview is CONTENT COMPLETE / FINAL CANDIDATE, pending user review, not publicly released. Only actual defects should reopen overview content. Future detail belongs in PDF/OCR/CSV importing, Review & Repair, Exam Mode and timing, Matching/Hotspot, Study Packs/Content Packs, Anki/physical cards, Learning Intelligence, Generated Practice, and Learning Scope videos. No delivery encode or long cut is authorized in this pass.

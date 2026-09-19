@@ -163,6 +163,23 @@ def validate_wav(path):
     return duration
 
 
+def validate_recorded_audio(scene, path, voice, speed):
+    """Fail closed on stale text, synthesis transforms, voice or WAV payload."""
+    try:
+        record = json.loads(path.with_suffix('.generation.json').read_text(encoding='utf-8'))
+        expected = {'source_text': scene['narration'],
+                    'synthesis_text': synthesis_text(scene['narration']),
+                    'voice': voice, 'speed': speed,
+                    'audio_filename': scene['audio_filename'], 'sha256': video.sha256(path)}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise video.BuildError(f'{path.name}: missing or invalid production audio provenance: {exc}') from exc
+    if not isinstance(record, dict):
+        raise video.BuildError(f'{path.name}: invalid production audio provenance object')
+    mismatches = [key for key, value in expected.items() if record.get(key) != value]
+    if mismatches:
+        raise video.BuildError(f'{path.name}: stale production audio ({", ".join(mismatches)})')
+
+
 def generate_scenes(client, scenes, destination, voice, speed, force=False):
     paths = [destination / s['audio_filename'] for s in scenes]
     existing = [p.name for p in paths if p.exists() or p.is_symlink()]
@@ -208,6 +225,7 @@ def main(argv=None):
     parser.add_argument('--timeout', type=float, default=300, help='Per synthesis request timeout in seconds.')
     parser.add_argument('--output-set', help='Audition candidate directory name, e.g. af_sarah.')
     parser.add_argument('--force', action='store_true')
+    parser.add_argument('--only', help='Generate only these exact scene IDs, e.g. 011A,011B,011C,012.')
     parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args(argv)
     try:
@@ -235,6 +253,12 @@ def main(argv=None):
                 print(voice + (' (American female)' if voice.startswith('af_') else ' (American male)'))
             return 0
         manifest, scenes = narration_scenes(args.audition, args.cut)
+        if args.only:
+            requested = set(args.only.upper().split(','))
+            available = {video.scene_label(s['id']) for s in scenes}
+            if not requested <= available:
+                raise video.BuildError('--only contains scenes outside the selected cut.')
+            scenes = [s for s in scenes if video.scene_label(s['id']) in requested]
         work = video.ROOT / 'build/demo-video'
         if args.audition:
             export = video.export_audition(manifest, work)

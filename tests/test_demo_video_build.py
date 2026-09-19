@@ -26,9 +26,10 @@ def copied_project(tmp_path):
     project = tmp_path / 'project with spaces'
     project.mkdir()
     for name in ('NARRATION.md', 'NARRATION_PLAIN.txt', 'video-manifest.json',
-                 'v3-additions-manifest.json'):
+                 'v3-additions-manifest.json', 'exam-additions-manifest.json'):
         shutil.copyfile(video.PROJECT / name, project / name)
     (project / 'captures').symlink_to(video.PROJECT / 'captures', target_is_directory=True)
+    (project / 'exam-additions').symlink_to(video.PROJECT / 'exam-additions', target_is_directory=True)
     return project
 
 
@@ -37,16 +38,16 @@ def test_cuts_and_editorial_durations(manifest):
     long = video.select_scenes(manifest, 'long')
     ordered = [int(label) if label.isdigit() else label
                for label in video.PRODUCTION_SCENE_LABELS]
-    assert len(manifest['scenes']) == 40
+    assert len(manifest['scenes']) == 43
     assert [s['id'] for s in manifest['scenes']] == ordered
     assert [s['id'] for s in main] == [scene_id for scene_id in ordered
                                        if scene_id not in {17, 20, 35}]
     assert [s['id'] for s in long] == [scene_id for scene_id in ordered
                                        if scene_id not in {17, 35}]
-    assert sum(s['target_seconds'] for s in main) == 425
-    assert sum(s['target_seconds'] for s in long) == 438
-    assert sum(s['narration_words'] for s in main) == 859
-    assert sum(s['narration_words'] for s in long) == 888
+    assert sum(s['target_seconds'] for s in main) == 451
+    assert sum(s['target_seconds'] for s in long) == 464
+    assert sum(s['narration_words'] for s in main) == 911
+    assert sum(s['narration_words'] for s in long) == 940
     assert all(s['motion'] == 'static' for s in manifest['scenes'])
     assert manifest == video.production_manifest()  # no timestamps/unstable iteration
 
@@ -91,8 +92,20 @@ def test_v3_capture_hash_drift_rejected(copied_project):
         video.production_manifest(copied_project)
 
 
+def test_exam_capture_hash_and_sequence(copied_project, manifest):
+    main = video.select_scenes(manifest, 'main')
+    start = next(i for i, scene in enumerate(main) if scene['id'] == 11)
+    assert [s['id'] for s in main[start:start + 5]] == [11, '011A', '011B', '011C', 12]
+    path = copied_project / 'exam-additions-manifest.json'
+    data = json.loads(path.read_text())
+    data['scenes'][1]['sha256'] = '0' * 64
+    video.write_json(path, data)
+    with pytest.raises(video.BuildError, match='changed screenshot'):
+        video.production_manifest(copied_project)
+
+
 def test_exports_are_exact_and_repeatable(tmp_path, manifest):
-    for cut, count in [('main', 37), ('long', 38)]:
+    for cut, count in [('main', 40), ('long', 41)]:
         destination = video.export_pack(manifest, cut, tmp_path)
         index = json.loads((destination / 'index.json').read_text())
         assert len(list(destination.glob('*.txt'))) == count
@@ -147,7 +160,7 @@ def test_audio_probe_mapping_excludes_unused(tmp_path, manifest, monkeypatch):
     monkeypatch.setattr(video, 'probe', fake_probe)
     monkeypatch.setattr(video, 'run', lambda *a, **kw: subprocess.CompletedProcess([], 0, '', ''))
     clips = video.audio_inputs(scenes, tmp_path, {'ffmpeg': 'ffmpeg'})
-    assert len(clips) == 37
+    assert len(clips) == 40
     assert '020.wav' not in calls
     assert '013A.wav' in calls and '028B.wav' in calls
     assert clips[1]['seconds'] == 1.123
@@ -360,7 +373,7 @@ def test_audition_missing_audio(monkeypatch, tmp_path, manifest, capsys, directo
     assert not list(work.glob('*.mp4'))
 
 
-@pytest.mark.parametrize('audition,cut,count', [(True, 'main', 3), (False, 'main', 37), (False, 'long', 38)])
+@pytest.mark.parametrize('audition,cut,count', [(True, 'main', 3), (False, 'main', 40), (False, 'long', 41)])
 @pytest.mark.parametrize('motion', [None, 'none', 'planned'])
 def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest, audition, cut, count, motion):
     monkeypatch.setattr(video, 'ROOT', tmp_path)

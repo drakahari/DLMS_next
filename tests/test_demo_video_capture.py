@@ -23,7 +23,7 @@ def test_manifest_story_contract(monkeypatch):
     assert [f.id for f in tool.V3_ADDITIONS] == ['013A', '013B', '028A', '028B']
     assert len({f.filename for f in tool.FRAMES}) == 43
     assert [f.id for f in tool.EXAM_ADDITIONS] == ['011A', '011B', '011C']
-    assert all(not f.essential for f in tool.EXAM_ADDITIONS)
+    assert all(f.essential for f in tool.EXAM_ADDITIONS)
     assert 300 <= sum(f.seconds for f in tool.V2_FRAMES) <= 420
     assert sum(f.seconds for f in tool.V3_ADDITIONS) == 44
     assert all(f.filename.startswith(f.id+'-') and f.filename.endswith('.png') for f in tool.FRAMES)

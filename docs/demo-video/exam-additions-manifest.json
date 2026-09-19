@@ -1,0 +1,41 @@
+{
+  "status": "final-candidate main integration",
+  "scenes": [
+    {
+      "id": "011A",
+      "image": "exam-additions/011A-quiz-timing.png",
+      "sha256": "a38cd2528c6978e4142c7158a37ef4da9745b2ce205bd2f16408580b10da34a7",
+      "theme": "purple-gold",
+      "width": 1920,
+      "height": 1080,
+      "device_scale": 1,
+      "state": "Quiz editor; Exam Mode Timer set to 20 minutes; unsaved demonstration.",
+      "capture_metadata": "exam-additions/capture-011A-011B-011C.json",
+      "target_seconds": 9
+    },
+    {
+      "id": "011B",
+      "image": "exam-additions/011B-exam-mode.png",
+      "sha256": "6b53f0d32210c0ae6d0c223c313428a9662d7599af66c73d13c53a184913d7a0",
+      "theme": "purple-gold",
+      "width": 1920,
+      "height": 1080,
+      "device_scale": 1,
+      "state": "Exam Mode; first answer selected without immediate Study feedback; timer and Pause visible.",
+      "capture_metadata": "exam-additions/capture-011A-011B-011C.json",
+      "target_seconds": 9
+    },
+    {
+      "id": "011C",
+      "image": "exam-additions/011C-exam-paused.png",
+      "sha256": "a5df55c9f398bcf6ac7345420c68174748093ce08f43ac95ec6383211e04eaf6",
+      "theme": "purple-gold",
+      "width": 1920,
+      "height": 1080,
+      "device_scale": 1,
+      "state": "Exam Paused overlay; frosted underlying quiz; Resume action visible.",
+      "capture_metadata": "exam-additions/capture-011A-011B-011C.json",
+      "target_seconds": 8
+    }
+  ]
+}

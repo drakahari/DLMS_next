@@ -23,8 +23,9 @@ FADE_FRAMES = 5  # 1/6 second on each side, 1/3 second through black total.
 AUDITION_SCENE_IDS = (1, 13, 14)
 BASE_SCENE_LABELS = tuple(f'{scene_id:03}' for scene_id in range(1, 37))
 ADDITION_SCENE_LABELS = ('013A', '013B', '028A', '028B')
+EXAM_SCENE_LABELS = ('011A', '011B', '011C')
 PRODUCTION_SCENE_LABELS = (
-    BASE_SCENE_LABELS[:13] + ADDITION_SCENE_LABELS[:2]
+    BASE_SCENE_LABELS[:11] + EXAM_SCENE_LABELS + BASE_SCENE_LABELS[11:13] + ADDITION_SCENE_LABELS[:2]
     + BASE_SCENE_LABELS[13:28] + ADDITION_SCENE_LABELS[2:]
     + BASE_SCENE_LABELS[28:]
 )
@@ -56,6 +57,10 @@ def production_manifest(project=PROJECT):
     text = source.read_text(encoding='utf-8')
     capture_manifest = project / 'video-manifest.json'
     additions_manifest = project / 'v3-additions-manifest.json'
+    exam_manifest = project / 'exam-additions-manifest.json'
+    exam_additions = json.loads(exam_manifest.read_text(encoding='utf-8'))['scenes']
+    if [r['id'] for r in exam_additions] != list(EXAM_SCENE_LABELS):
+        raise BuildError('Exam additions must be ordered 011A, 011B, 011C.')
     captures = json.loads(capture_manifest.read_text(encoding='utf-8'))
     additions = json.loads(additions_manifest.read_text(encoding='utf-8'))['scenes']
     if [r['id'] for r in captures] != list(range(1, 37)):
@@ -64,6 +69,7 @@ def production_manifest(project=PROJECT):
         raise BuildError('V3 additions manifest must contain ordered scenes 013A, 013B, 028A, 028B.')
     captures_by_label = {scene_label(row['id']): row for row in captures}
     captures_by_label.update({row['id']: row for row in additions})
+    captures_by_label.update({row['id']: row for row in exam_additions})
     blocks = list(re.finditer(r'^## Scene (\d{3}[A-Z]?) — ([^\n]+)\n(.*?)(?=^## |\Z)', text, re.M | re.S))
     if [m[1] for m in blocks] != list(PRODUCTION_SCENE_LABELS):
         raise BuildError('NARRATION.md must contain the ordered V3 production sequence.')
@@ -89,11 +95,12 @@ def production_manifest(project=PROJECT):
         }
         if status not in statuses:
             raise BuildError(f'Scene {label}: unknown editorial status: {status}')
-        image_match = re.fullmatch(r'\[([^]]+)\]\((captures/[^)]+\.png)\)', field('Image'))
+        image_match = re.fullmatch(r'\[([^]]+)\]\(((?:captures|exam-additions)/[^)]+\.png)\)', field('Image'))
         if not image_match or image_match[2] != capture['image']:
             raise BuildError(f'Scene {label}: image differs from capture manifest.')
         image_path = project / capture['image']
-        if image_path.resolve().parent != (project / 'captures').resolve():
+        image_directory = 'exam-additions' if label in EXAM_SCENE_LABELS else 'captures'
+        if image_path.resolve().parent != (project / image_directory).resolve():
             raise BuildError(f'Scene {label}: image outside canonical captures.')
         if not image_path.is_file() or sha256(image_path) != capture['sha256']:
             raise BuildError(f'Scene {label}: missing or changed screenshot: {image_path}')
@@ -142,6 +149,7 @@ def production_manifest(project=PROJECT):
         'narration_sha256': sha256(source),
         'capture_manifest_sha256': sha256(capture_manifest),
         'v3_additions_manifest_sha256': sha256(additions_manifest),
+        'exam_additions_manifest_sha256': sha256(exam_manifest),
         'image_base': 'docs/demo-video', 'fps': FPS, 'width': WIDTH, 'height': HEIGHT,
         'transition': 'static mode uses cuts; historical fade allowances retained for audio timing',
         'scenes': scenes,
@@ -511,6 +519,8 @@ def main(argv=None):
     parser.add_argument('--tail', type=float, default=0.6, help='Minimum post-audio visual tail in seconds.')
     parser.add_argument('--mux-subtitles', action='store_true')
     parser.add_argument('--normalization', choices=('ebu', 'none'), default='ebu')
+    parser.add_argument('--verify-production-audio', action='store_true',
+                        help='Require exact recorded text, synthesis, af_heart speed 1 and WAV hashes before building.')
     parser.add_argument('--motion', choices=('none', 'planned'), default='none',
                         help='Default none: lossless static screenshots and cuts, preserving audio timing. planned restores historical fades/motion.')
     parser.add_argument('--overwrite', action='store_true', help='Replace existing video/SRT outputs.')
@@ -540,6 +550,15 @@ def main(argv=None):
             if args.audition and not audio_dir.is_dir():
                 raise BuildError(f'Missing audition audio directory: {audio_dir}; required WAVs: ' + ', '.join(s['audio_filename'] for s in scenes))
             clips = audio_inputs(scenes, audio_dir, media)
+            if args.verify_production_audio:
+                from generate_demo_narration import validate_recorded_audio
+                for scene in scenes:
+                    try:
+                        validate_recorded_audio(scene, audio_dir / scene['audio_filename'], 'af_heart', 1.0)
+                    except ValueError as exc:
+                        # The adapter imports this module by name; CLI execution
+                        # also has a __main__ module, so normalize its error type.
+                        raise BuildError(str(exc)) from exc
         rows = timeline(scenes, clips, args.tail)
         if args.action == 'validate':
             print(f"Validated {len(manifest['scenes'])} screenshots; main={len(select_scenes(manifest, 'main'))}, long={len(select_scenes(manifest, 'long'))}; {len(rows)} {'audition' if args.audition else args.cut} scenes, {sum(r['frames'] for r in rows)/FPS:.3f}s.")

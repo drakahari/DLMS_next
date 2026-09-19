@@ -1,14 +1,22 @@
 # DLMS demo-video project
 
-Screenshot capture is complete on **develop/3.2.0** after visual stabilization.
-The production sequence uses the **36 unchanged V2 screenshots** plus four
-approved V3 additions in [captures/](captures/). The revised
-[V3 narration/editorial plan](NARRATION.md) and
-[recording script](NARRATION_PLAIN.txt) contain **37 scenes, 859 words**, with a
-7:05 minimum editorial timeline. The completed V3 narrated review build uses
-**af_heart** at speed 1.0 and runs **7:19.667**. It has 37 actual-timeline SRT
-cues plus a selectable English subtitle track. The previous **6:43.600** V2
-build and all 33 of its clips are archived under `build/demo-video/archive-v2-before-v3/`.
+**CONTENT COMPLETE / FINAL CANDIDATE — not publicly released.**
+
+The main overview now contains **40 narrated scenes, 911 words**, and runs
+**7:45.700**. It uses af_heart at speed 1.0, native Purple & Gold screenshots,
+lossless static H.264, clean cuts, and 40 selectable English subtitle cues.
+The long plan contains 41 scenes but is not rendered. The final expansion adds
+011A timing, 011B Exam Mode, and 011C Pause after 011; only 012's existing
+narration changes to return explicitly to Study Mode. Thirty-six audio clips
+are reused unchanged. No screenshots are recaptured in this pass.
+
+Content is frozen except actual defects found in final review. Future feature
+detail belongs in focused videos, as listed in [NARRATION.md](NARRATION.md).
+Do not make a delivery encode until the user approves this content. The previous
+7:19.667 lossless master is archived in `build/demo-video/archive-before-final-exam/`.
+Current evidence and listening timestamps are in
+[FINAL_CANDIDATE.md](FINAL_CANDIDATE.md). Sections below retain prior production
+history where their counts differ from this final-candidate summary.
 
 The targeted V3 expansion shows completed Matching and Hotspot interactions
 after 013, then Content Pack management and the Study Packs catalog after 028.
@@ -783,23 +791,36 @@ The archived V1 media, screenshots and all three audition sets remain intact.
 
 Good follow-ups are importing PDFs/scans/images/CSV; OCR and Review & Repair;
 Learning Intelligence; Generated Practice; Study Packs and Content Packs;
-question types including Matching and Hotspot; Anki and printable physical flash
+Exam Mode and timing; question types including Matching and Hotspot; Anki and printable physical flash
 cards; building/importing quizzes; and Learning Scope. [The V2 audit](EDITORIAL_V2.md#future-focused-videos)
 gives a short scope for the existing recommendations. This is planning only;
 none of those videos is being created now.
 
-### V3 stability and Content Pack layout follow-up
+### Historical V3 stability and Content Pack layout follow-up
 
 The previous V3 review build is preserved under `build/demo-video/followup-before/`.
 The canonical 37-scene review is rebuilt with unchanged narration WAVs, timing,
 normalization, and subtitles; only transition/encoding behavior and the corrected
 028A Content Pack image change. See [follow-up validation](FOLLOWUP_VALIDATION.md).
 
-Three new optional Exam workflow stills are in `exam-additions/`: timer setup,
-active Exam Mode, and the real Pause frosted/covered-screen state. They remain
-outside the main/long production manifests because inserting them would require
-additional narration to explain the switch from Study Mode. Capture them with:
+The three Exam workflow stills in `exam-additions/` were initially optional.
+The final-candidate pass now integrates all three with dedicated narration and
+a return-to-Study transition. The existing focused capture command is:
 
 ```sh
 python tools/capture_demo_video_screenshots.py --only 011A,011B,011C --output docs/demo-video/exam-additions
 ```
+
+### Reproduce the final candidate
+
+```sh
+python tools/generate_demo_narration.py --cut main --only 011A,011B,011C,012 --voice af_heart --speed 1.0 --force
+python tools/build_demo_video.py build --cut main --motion none --verify-production-audio --mux-subtitles --overwrite
+```
+
+The first command is only for explicitly requested regeneration of those four
+clips. Normal rebuilds use the second command alone. Production audio verification
+fails closed on missing sidecars, stale authoritative or synthesis text, wrong
+voice/speed, filename mismatch, or changed WAV hashes. Audition and provider-neutral
+workflows retain their existing defaults. The Exam capture manifest protects
+all three existing files in their original directory.

@@ -32,16 +32,16 @@ def scenes():
 def test_scene_sources_and_contract(scenes, tmp_path):
     manifest, main = tts.narration_scenes(False, 'main')
     _, long = tts.narration_scenes(False, 'long')
-    assert len(main) == 37 and len(long) == 38
+    assert len(main) == 40 and len(long) == 41
     assert [s['id'] for s in scenes] == [1, 13, 14]
     assert {s['id'] for s in long} - {s['id'] for s in main} == {20}
     export = tts.video.export_audition(manifest, tmp_path)
     for scene in scenes:
         assert (export / scene['text_filename']).read_text() == scene['narration'] + '\n'
         assert scene['audio_filename'] == f"{tts.video.scene_label(scene['id'])}.wav"
-    assert sum(s['narration_words'] for s in main) == 859
+    assert sum(s['narration_words'] for s in main) == 911
     assert [s['audio_filename'] for s in main if isinstance(s['id'], str)] == [
-        '013A.wav', '013B.wav', '028A.wav', '028B.wav'
+        '011A.wav', '011B.wav', '011C.wav', '013A.wav', '013B.wav', '028A.wav', '028B.wav'
     ]
 
 
@@ -169,7 +169,7 @@ def test_unknown_voice_no_generation(tmp_path, scenes):
 @pytest.mark.parametrize('args,suffix,count', [
     (['--audition'], 'voice-audition/audio', 3),
     (['--audition', '--output-set', 'sarah'], 'voice-audition/candidates/sarah', 3),
-    (['--cut', 'main'], 'audio', 37), (['--cut', 'long'], 'audio', 38),
+    (['--cut', 'main'], 'audio', 40), (['--cut', 'long'], 'audio', 41),
 ])
 def test_cli_destinations(tmp_path, monkeypatch, args, suffix, count):
     monkeypatch.setattr(tts.video, 'ROOT', tmp_path)
@@ -186,6 +186,30 @@ def test_cli_failure_is_concise(monkeypatch, capsys):
     monkeypatch.setattr(tts.KokoroClient, 'voices', Mock(side_effect=tts.video.BuildError('Start the local Kokoro container first.')))
     assert tts.main(['--list-voices']) == 2
     assert 'Traceback' not in capsys.readouterr().err
+
+
+def test_focused_exam_generation_is_ordered(monkeypatch):
+    generation = Mock()
+    monkeypatch.setattr(tts, 'generate_scenes', generation)
+    assert tts.main(['--cut', 'main', '--only', '012,011C,011A,011B', '--voice', 'af_heart']) == 0
+    assert [s['id'] for s in generation.call_args.args[1]] == ['011A', '011B', '011C', 12]
+    assert tts.main(['--cut', 'main', '--only', '020']) == 2
+
+
+@pytest.mark.parametrize('field,value', [('source_text', 'stale'), ('synthesis_text', 'stale'),
+                                       ('voice', 'af_sarah'), ('speed', 1.1), ('sha256', 'wrong')])
+def test_production_reuse_rejects_stale_metadata(tmp_path, scenes, field, value):
+    scene = scenes[0]
+    path = tmp_path / scene['audio_filename']
+    path.write_bytes(b'approved payload')
+    record = dict(source_text=scene['narration'], synthesis_text=tts.synthesis_text(scene['narration']),
+                  voice='af_heart', speed=1.0, audio_filename=path.name, sha256=tts.video.sha256(path))
+    tts.video.write_json(path.with_suffix('.generation.json'), record)
+    tts.validate_recorded_audio(scene, path, 'af_heart', 1.0)
+    record[field] = value
+    tts.video.write_json(path.with_suffix('.generation.json'), record)
+    with pytest.raises(tts.video.BuildError, match='stale production audio'):
+        tts.validate_recorded_audio(scene, path, 'af_heart', 1.0)
 
 
 @pytest.mark.parametrize('args', [

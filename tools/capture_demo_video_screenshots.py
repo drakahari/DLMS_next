@@ -118,22 +118,22 @@ V3_ADDITIONS = (
 _ADDITIONS_BY_ID = {item.id: item for item in V3_ADDITIONS}
 EXAM_ADDITIONS = (
     addition('011A','quiz-timing','Set a quiz-specific exam duration','@critical_edit',
-             action='exam-timing',focus='.build-section',essential=False,
+             action='exam-timing',focus='.build-section',seconds=9,
              state='Quiz editor; Exam Mode Timer set to 20 minutes; unsaved demonstration.',
              fixture='Original Network Troubleshooting quiz; no source data changed.'),
     addition('011B','exam-mode','Answer in timed Exam Mode','@critical_quiz',QUIZ_READY,
-             action='exam',focus='.active-quiz-logo-banner',essential=False,
+             action='exam',focus='.active-quiz-logo-banner',seconds=9,
              state='Exam Mode; first answer selected without immediate Study feedback; timer and Pause visible.',
              fixture='Original Network Troubleshooting quiz; capture-only clock stopped at initial duration.'),
     addition('011C','exam-paused','Pause and cover the exam','@critical_quiz',QUIZ_READY,
-             action='exam-paused',essential=False,
+             action='exam-paused',seconds=8,
              state='Exam Paused overlay; frosted underlying quiz; Resume action visible.',
              fixture='Original Network Troubleshooting quiz; real Pause control.'),
 )
 FRAMES = (
-    *V2_FRAMES[:13], _ADDITIONS_BY_ID['013A'], _ADDITIONS_BY_ID['013B'],
+    *V2_FRAMES[:11], *EXAM_ADDITIONS, *V2_FRAMES[11:13], _ADDITIONS_BY_ID['013A'], _ADDITIONS_BY_ID['013B'],
     *V2_FRAMES[13:28], _ADDITIONS_BY_ID['028A'], _ADDITIONS_BY_ID['028B'],
-    *V2_FRAMES[28:], *EXAM_ADDITIONS,
+    *V2_FRAMES[28:],
 )
 
 
