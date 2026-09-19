@@ -21,6 +21,27 @@ DEFAULT_BASE_URL = 'http://127.0.0.1:7860'
 DEFAULT_VOICE = 'af_sarah'
 
 
+def american_voice_ids(data):
+    """Normalize speaker IDs/maps or the richer /tts/voices inventory."""
+    error = 'Unexpected Kokoro voices response; expected American English speaker IDs or voice objects.'
+    if not isinstance(data, dict):
+        raise video.BuildError(error)
+    if 'speakers' in data:
+        speakers = data['speakers']
+        ids = list(speakers.values()) if isinstance(speakers, dict) else speakers
+    else:
+        voices = data.get('voices')
+        if not isinstance(voices, list) or not all(
+                isinstance(v, dict) and isinstance(v.get('id'), str)
+                and isinstance(v.get('language'), str) for v in voices):
+            raise video.BuildError(error)
+        ids = [v['id'] for v in voices if v['language'] == 'a']
+    if not isinstance(ids, list) or not ids or not all(
+            isinstance(v, str) and re.fullmatch(r'a[fm]_[a-z0-9_]+', v) for v in ids):
+        raise video.BuildError(error)
+    return sorted(set(ids))
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -72,13 +93,8 @@ class KokoroClient:
             raise video.BuildError(f'Kokoro returned invalid JSON at {route}.') from exc
 
     def voices(self):
-        # The documented speakers endpoint returns a display-name -> voice-ID map.
-        data = self.json_request('/tts/speakers?language=a')
-        speakers = data.get('speakers') if isinstance(data, dict) else None
-        if not isinstance(speakers, dict) or not speakers or not all(
-                isinstance(v, str) and re.fullmatch(r'a[fm]_[a-z0-9_]+', v) for v in speakers.values()):
-            raise video.BuildError('Unexpected Kokoro speakers response; expected an American English speaker map.')
-        return sorted(set(speakers.values()))
+        # Current servers return a list; retain compatibility with older maps.
+        return american_voice_ids(self.json_request('/tts/speakers?language=a'))
 
     def generate(self, text, voice, speed):
         # Omitted output_format requests the documented default lossless WAV.

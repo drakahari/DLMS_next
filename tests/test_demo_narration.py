@@ -161,3 +161,40 @@ def test_cli_failure_is_concise(monkeypatch, capsys):
 ])
 def test_invalid_cli_options(args):
     assert tts.main(args) == 2
+
+
+@pytest.mark.parametrize('response', [
+    {'language': 'a', 'language_name': 'American English',
+     'speakers': ['af_sarah', 'af_heart', 'am_adam', 'af_sarah']},
+    {'voices': [
+        {'id': 'af_sarah', 'name': 'Sarah', 'language': 'a', 'language_name': 'American English'},
+        {'id': 'af_heart', 'name': 'Heart', 'language': 'a'},
+        {'id': 'am_adam', 'name': 'Adam', 'language': 'a'},
+        {'id': 'bf_emma', 'name': 'Emma', 'language': 'b'},
+    ]},
+    {'speakers': {'Sarah': 'af_sarah', 'Heart': 'af_heart', 'Adam': 'am_adam'}},
+])
+def test_live_discovery_shapes(response, monkeypatch, tmp_path, scenes, wav_bytes, capsys):
+    monkeypatch.setattr(tts.KokoroClient, 'json_request', lambda self, route: response)
+    client = tts.KokoroClient(tts.DEFAULT_BASE_URL)
+    assert client.voices() == ['af_heart', 'af_sarah', 'am_adam']
+    assert tts.main(['--list-voices']) == 0
+    assert 'af_sarah (American female)' in capsys.readouterr().out
+    client.generate = Mock(return_value=wav_bytes)
+    tts.generate_scenes(client, scenes, tmp_path / 'accepted', 'af_sarah', 1.0)
+    assert client.generate.call_count == 3
+    with pytest.raises(tts.video.BuildError, match="Voice 'af_unknown' is not advertised"):
+        tts.generate_scenes(client, scenes, tmp_path / 'rejected', 'af_unknown', 1.0)
+    assert client.generate.call_count == 3
+
+
+@pytest.mark.parametrize('response', [
+    None, {}, {'speakers': []}, {'speakers': 'af_sarah'},
+    {'speakers': ['af_sarah', 42]}, {'speakers': ['bf_emma']},
+    {'voices': ['af_sarah']}, {'voices': [{'id': 'af_sarah'}]},
+    {'voices': [{'id': None, 'language': 'a'}]},
+    {'voices': [{'id': 'bf_emma', 'language': 'b'}]},
+])
+def test_malformed_discovery_shapes(response):
+    with pytest.raises(tts.video.BuildError, match='Unexpected Kokoro voices response'):
+        tts.american_voice_ids(response)
