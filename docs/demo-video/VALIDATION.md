@@ -111,4 +111,22 @@ Four additive frames were captured with fixture v3 and alphanumeric IDs; the 36 
 - Focused results: 11 demo-capture tests passed; 55 demo-build tests passed; 55 pack/catalog tests plus 39 subtests passed; 29 matching/OCR/image workflow tests passed. Python compilation and `git diff --check` passed.
 - All 36 hashes in the canonical V2 manifest still match their PNGs. Capture cleanup left no Firefox, geckodriver, or demo server process.
 
-The V3 narration text is now integrated into a deterministic 37-scene main sequence. Narration audio, subtitles, and the video remain unregenerated.
+The V3 narration text is integrated into a deterministic 37-scene main sequence.
+
+## V3 narrated review build — 2026-09-19
+
+The completed static review build runs **439.667 seconds (7:19.667)**. Six clips
+were generated with local Kokoro `af_heart` at speed 1.0: 013, 013A, 013B, 028,
+028A, and 028B. The other 31 V2 Heart clips were reused only after their source
+text, synthesis text, voice, speed, filename, sidecar hash, and archived bytes
+matched the authoritative V3 sequence.
+
+- All 37 WAVs pass ffprobe and map exactly to current narration. Total spoken audio is 390.300 seconds; shortest is 024 at 5.275 seconds, longest is 008 at 16.625 seconds, and the mean is 10.549 seconds.
+- The MP4 contains 13,190 frames of 1920 × 1080 H.264/yuv420p video at 30 fps, mono AAC audio at 48 kHz, and a selectable English `mov_text` subtitle track.
+- The separate SRT has 37 cues. Extracting the selectable track reproduces the same cue text and timing.
+- A full FFmpeg decode passes. Every narration interval is non-silent, no clip is truncated, and every scene retains at least its required tail.
+- The timeline reports `motion_mode: none`; its filters contain no scale, zoompan, crop, or interpolation. Early/late samples show fixed geometry with only small H.264 compression differences.
+- Full-resolution encoded frames for 001, 013–014, 028–029, and 036 align with narration. No mismatch, clipping, or transition artifact was found in the new sequences.
+- All 40 screenshot hashes and 1920 × 1080 dimensions still match their manifests. No screenshot was recaptured or modified.
+- The 6:43.600 V2 build, complete 33-clip audio set, narration exports, manifest, and review evidence are preserved under `build/demo-video/archive-v2-before-v3/`.
+- The listening checklist is `build/demo-video/v3-review/LISTENING_REVIEW.md`. Human listening review remains required before publication.

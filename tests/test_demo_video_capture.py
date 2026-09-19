@@ -162,6 +162,10 @@ def test_v3_additions_handoff(monkeypatch):
     assert payload['redistributed_existing_target_seconds'] == -9
     assert payload['net_editorial_target_change_seconds'] == 35
     assert payload['estimated_v3_runtime_seconds'] == 438.6
+    assert payload['actual_spoken_audio_seconds'] == 390.3
+    assert payload['actual_v3_runtime_seconds'] == 439.666667
+    assert payload['production_voice'] == 'af_heart'
+    assert payload['production_speed'] == 1.0
     assert [row['id'] for row in payload['scenes']] == [f.id for f in tool.V3_ADDITIONS]
     for frame, row in zip(tool.V3_ADDITIONS, payload['scenes']):
         path = project/row['image']

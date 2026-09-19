@@ -6,8 +6,8 @@ Authoritative narration and editorial timing for `develop/3.2.0`, reviewed again
 
 - **37 narrated scenes:** 36 essential frames plus optional frame **033 kept**.
 - **859 narration words**, excluding separators, production notes, and alternate lines for omitted frames. V3 redistributes the existing Study and Packs explanation across four new visual scenes.
-- **Estimated speech: 6:02**, using scene-specific reference rates of 138–148 words per minute. At 135–150 WPM, the written-word envelope is **5:44–6:22**. Calibrating against the approved V2 Heart delivery gives approximately **6:30 of spoken audio**. Acronym letter names and natural pauses can take longer than the written estimate suggests.
-- **Editorial scene targets total 7:05 (425 seconds)**. Applying the V2 difference between minimum targets and the completed static build gives an estimated complete runtime of approximately **7:19**. Plan for **7:15–7:35** pending new recordings and listening review. These are estimates, not subtitle timestamps; no V3 audio has been generated.
+- **Estimated speech: 6:02**, using scene-specific reference rates of 138–148 words per minute. At 135–150 WPM, the written-word envelope is **5:44–6:22**. The completed V3 Heart clips contain **6:30.300 of spoken audio**; natural pauses and acronym letter names explain the difference from the written estimate.
+- **Editorial scene targets total 7:05 (425 seconds)**. The completed static V3 review build uses actual narration durations and runs **7:19.667**. Its 37-cue subtitle timestamps come from that actual timeline.
 - **Long version: 38 scenes, 888 words**, adding only frame 020 and its 13-second target; not being produced in this pass.
 - **CUT:** 017 and 035. **KEEP FOR LONG VERSION:** 020. **KEEP:** 033. No assets deleted, renamed, reordered, altered, or recaptured.
 

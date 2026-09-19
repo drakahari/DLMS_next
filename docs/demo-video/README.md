@@ -5,10 +5,10 @@ The production sequence uses the **36 unchanged V2 screenshots** plus four
 approved V3 additions in [captures/](captures/). The revised
 [V3 narration/editorial plan](NARRATION.md) and
 [recording script](NARRATION_PLAIN.txt) contain **37 scenes, 859 words**, with a
-7:05 minimum editorial timeline and an estimated complete runtime of about
-**7:19** after narration. The existing V2 review build still uses **af_heart** at
-speed 1.0 and runs **6:43.600**; no V3 narration audio, subtitles, or video have
-been generated.
+7:05 minimum editorial timeline. The completed V3 narrated review build uses
+**af_heart** at speed 1.0 and runs **7:19.667**. It has 37 actual-timeline SRT
+cues plus a selectable English subtitle track. The previous **6:43.600** V2
+build and all 33 of its clips are archived under `build/demo-video/archive-v2-before-v3/`.
 
 The targeted V3 expansion shows completed Matching and Hotspot interactions
 after 013, then Content Pack management and the Study Packs catalog after 028.
@@ -644,6 +644,26 @@ HTTP is mocked. Tiny PCM test fixtures validate file handling; no model or real
 speech is used. At implementation time, no server was listening on the default
 local port, so no live narration was generated or auditioned. Docker was neither
 installed nor started automatically.
+
+### Complete V3 narrated review build
+
+The 37-scene static V3 main cut was assembled with local Kokoro `af_heart` at
+speed 1.0. Only changed scenes **013, 013A, 013B, 028, 028A, and 028B** were
+generated. The other 31 V2 clips were reused after exact narration,
+synthesis-text, voice, speed, filename, sidecar-hash, and archived-byte checks.
+
+- Review MP4: `build/demo-video/DLMS-3.2-demo.mp4` — **7:19.667**, 13,190 frames; H.264, 1920×1080, 30 fps, yuv420p; AAC 48 kHz mono.
+- Source audio: 37 mono PCM WAVs totaling **6:30.300**; shortest 024 at 5.275 seconds, longest 008 at 16.625 seconds, mean 10.549 seconds.
+- SRT: `build/demo-video/DLMS-3.2-demo.srt` — 37 actual-timeline cues, also muxed as selectable English `mov_text` and never burned in.
+- Presentation: `--motion none`; native static screenshots, established cuts and chapter fades, no zoom, pan, crop, resampling, or interpolation.
+- Listening checklist: `build/demo-video/v3-review/LISTENING_REVIEW.md`.
+- Evidence: `build/demo-video/v3-review/REVIEW_BUILD.md` and representative full-resolution frames under `build/demo-video/v3-review/frames/`.
+- V2 archive: `build/demo-video/archive-v2-before-v3/`, including the 6:43.600 MP4 and complete 33-clip audio set.
+
+All 37 audio mappings and all 40 screenshot hashes pass. The MP4 fully decodes;
+every narration interval is non-silent and retains its required tail; the muxed
+subtitle track roundtrips to the separate SRT. Human listening review remains
+required before publication. No long cut was generated.
 
 ### Complete V2 narrated review build
 

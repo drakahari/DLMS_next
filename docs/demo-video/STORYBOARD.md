@@ -2,7 +2,7 @@
 
 The 36 V2 frames and four approved V3 additions are captured in `captures/`. The revised V3 [narration/editorial plan](NARRATION.md) supersedes the original capture timings for assembly: **37 narrated scenes, 859 words, 7:05 minimum targets, and approximately 7:19 with calibrated Heart delivery**. Cut 017 and 035, reserve 020 for the long version, and keep 033. The sequence inserts 013A and 013B after 013, then 028A and 028B after 028, without renumbering V2. The builder uses static holds, short chapter fades, and straight cuts within workflows. Avoid animated mouse simulation or transitions implying an unperformed action.
 
-The additions are documented in sequence below and in the [V3 additions manifest](v3-additions-manifest.json). Their holds total 44 seconds; tightening existing Scene 028 makes the V3 editorial target 35 seconds longer than V2. The [V3 additions contact sheet](v3-additions-contact-sheet.png) contains only these frames. Narration text is integrated; audio, subtitles, and video remain V2 until the later production pass.
+The additions are documented in sequence below and in the [V3 additions manifest](v3-additions-manifest.json). Their holds total 44 seconds; tightening existing Scene 028 makes the V3 editorial target 35 seconds longer than V2. The [V3 additions contact sheet](v3-additions-contact-sheet.png) contains only these frames. The completed narrated V3 main build runs 7:19.667; the long cut remains ungenerated.
 
 | Frame | Viewer should notice / narration objective | Duration | Transition | Image | Suggested focus |
 |---|---|---:|---|---|---|

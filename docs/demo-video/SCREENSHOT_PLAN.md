@@ -4,7 +4,7 @@ All 36 V2 frames remain captured in [captures/](captures/), separate from proof 
 
 **36 frames · 402 seconds (6:42)** before transitions. Frames 017, 020, 033, 035 are optional and retained. See [STORYBOARD.md](STORYBOARD.md) for narration objectives and focus suggestions.
 
-The four approved V3 additions total **44 seconds** of new holds. Narration redistribution reduces existing Scene 028 by nine seconds, producing a **425-second main editorial target** and an estimated complete V3 runtime of approximately **7:19**. Narration text is integrated; audio, subtitles, and video have not been regenerated.
+The four approved V3 additions total **44 seconds** of new holds. Narration redistribution reduces existing Scene 028 by nine seconds, producing a **425-second main editorial target**. The completed static narrated V3 review build runs **7:19.667** using actual audio durations.
 
 Framing uses real page scrolling and existing collapse/filter controls. Only the target teaching area needs to fit; adjoining long-page content may continue beyond the viewport. No UI text, layout, or data values were painted over. Pointer moved off controls for the final Study detail captures.
 
