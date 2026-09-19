@@ -1,6 +1,6 @@
 # Captured demo-video storyboard
 
-All 36 frames are captured in `captures/`. Narration objectives only; the final script belongs to the next phase. Use restrained cuts or 0.3-second dissolves between chapters. Within a workflow, use straight cuts; avoid animated mouse simulation or transitions implying an unperformed action. Hold details long enough to explain one idea, not read every label.
+All 36 frames are captured in `captures/`. This table preserves the original capture objectives and timing. The completed first-pass [narration/editorial plan](NARRATION.md) supersedes these timings for assembly: 33 narrated scenes, 797 words, target 6:15. Cut 017 and 035, reserve 020 for the long version, and keep 033. All assets remain intact. Use restrained cuts or 0.3-second dissolves between chapters. Within a workflow, use straight cuts; avoid animated mouse simulation or transitions implying an unperformed action. Hold details long enough to explain one idea, not read every label.
 
 | Frame | Viewer should notice / narration objective | Duration | Transition | Image | Suggested focus |
 |---|---|---:|---|---|---|
@@ -41,9 +41,9 @@ All 36 frames are captured in `captures/`. Narration objectives only; the final 
 | 035 | Theme and application settings belong to the learner; no production settings were changed. | ~10s (optional) | Straight cut | [PNG](captures/035-settings.png) | Your workspace, your choices; static hold or gentle emphasis, keep controls readable. |
 | 036 | Close on a useful next step; recommend learning, not managing a crowded library. | ~10s | Dissolve into chapter | [PNG](captures/036-closing-dashboard.png) | Return to the next useful step; static hold or gentle emphasis, keep controls readable. |
 
-Frame IDs resolve to exact filenames, routes, filters and fixture states in [SCREENSHOT_PLAN.md](SCREENSHOT_PLAN.md). Do not describe a staged Review & Repair fixture as the result of the preceding file-selection action. No full narration script is included.
+Frame IDs resolve to exact filenames, routes, filters and fixture states in [SCREENSHOT_PLAN.md](SCREENSHOT_PLAN.md). Do not describe a staged Review & Repair fixture as the result of the preceding file-selection action. The full script is in [NARRATION.md](NARRATION.md).
 
-## Editorial options
+## Original capture-phase editorial options (historical)
 
 Preserve all files. Frames **017, 020, 033, 035** remain optional. 017 overlaps the concept overview; 035 is the most expendable broad tour. 020 explains a distinct schedule and 033 expands the optional AI story. 001/002 and 014/015 intentionally pair an overview with detail; 001/036 bookend the story. No cuts have been made. The full duration estimate remains 402 seconds; omitting the four optional frames yields 362 seconds, before transitions.
 

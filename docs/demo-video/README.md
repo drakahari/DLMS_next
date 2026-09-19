@@ -2,7 +2,10 @@
 
 Screenshot capture is complete on **develop/3.2.0** after visual stabilization.
 The canonical set contains **36 final screenshots** in [captures/](captures/).
-No narration, audio, or final video has been produced. This is not a release announcement.
+The first-pass [narration and editorial plan](NARRATION.md) and
+[recording script](NARRATION_PLAIN.txt) are complete: 33 scenes, approximately
+6:15 including pauses and transitions. No audio or final video has been produced.
+This is not a release announcement.
 
 Editing handoff: [video-manifest.json](video-manifest.json), [storyboard](STORYBOARD.md),
 and contact sheets [1](contact-sheet-01.png), [2](contact-sheet-02.png),
@@ -212,5 +215,6 @@ The asset tool selects the newest per-frame capture record and emits hashes;
 keep all capture sidecars for provenance. Its six 1968 × 1824 PNG sheets contain
 six 960 × 540 labeled thumbnails each. Original screenshots stay untouched.
 
-Next phase: choose optional cuts and write narration against the canonical
-manifest, then create audio and assemble the video. None of those tasks ran here.
+The narration/editorial phase is complete. [NARRATION.md](NARRATION.md) owns the
+revised cut and timing; the capture manifest retains its original estimates and
+provenance. Audio recording and video assembly are future phases and have not run.
