@@ -20,6 +20,7 @@ SAMPLE_RATE = 48000
 # Incoming chapter boundaries from NARRATION.md; short fades replace dissolves.
 CHAPTER_STARTS = {6, 9, 11, 14, 18, 21, 26, 28, 31, 33, 34, 36}
 FADE_FRAMES = 5  # 1/6 second on each side, 1/3 second through black total.
+AUDITION_SCENE_IDS = (1, 13, 14)
 
 
 class BuildError(ValueError):
@@ -120,6 +121,67 @@ def production_manifest(project=PROJECT):
 
 def select_scenes(manifest, cut):
     return [s for s in manifest['scenes'] if cut in s['included_cuts']]
+
+
+def audition_scenes(manifest):
+    """A fixed, ordered sample of the main cut, without changing either cut."""
+    main = select_scenes(manifest, 'main')
+    scenes = [s for s in main if s['id'] in AUDITION_SCENE_IDS]
+    if len(scenes) != 3 or tuple(s['id'] for s in scenes) != AUDITION_SCENE_IDS:
+        raise BuildError('Audition requires exactly three ordered main-cut scenes: 001, 013, 014.')
+    return scenes
+
+
+def export_audition(manifest, work):
+    scenes = audition_scenes(manifest)
+    destination = work / 'voice-audition'
+    (destination / 'audio').mkdir(parents=True, exist_ok=True)
+    for scene in scenes:
+        (destination / scene['text_filename']).write_text(scene['narration'] + '\n', encoding='utf-8')
+    write_json(destination / 'manifest.json', {
+        'schema_version': 1, 'authority': manifest['authority'],
+        'narration_sha256': manifest['narration_sha256'],
+        'image_base': manifest['image_base'], 'audio_base': 'audio',
+        'scene_order': [s['id'] for s in scenes],
+        'total_words': sum(s['narration_words'] for s in scenes),
+        'target_seconds': sum(s['target_seconds'] for s in scenes),
+        'scenes': scenes,
+    })
+    (destination / 'README.txt').write_text(
+        'DLMS voice audition: 001 (opening), 013 (Study workflow), 014 (Learning Intelligence).\n'
+        'Generate one WAV for each numbered text file using the SAME voice and settings.\n'
+        'Use natural US English: calm, professional, conversational, without sales emphasis.\n'
+        'Read only the numbered text files. Do not add introductions, music, or effects.\n'
+        'Preserve normal pacing and sentence pauses; targets are not strict clip lengths.\n'
+        'Read PRONUNCIATION_NOTES.md before recording. Do not change the script.\n'
+        'Return lossless PCM WAV if supported. The builder requires mono/stereo PCM WAV;\n'
+        'if necessary, convert a copy locally without changing the original recording.\n'
+        'Place files under audio/ and use exactly these names from manifest.json:\n'
+        + ''.join(f"  {s['text_filename']} -> audio/{s['audio_filename']}\n" for s in scenes)
+        + 'Keep each candidate voice in its own directory; use --audio-dir to select it.\n'
+        'Evaluate cadence, acronym clarity, sentence endings, and consistency across scenes.\n'
+        'No audio is created by export. Production audio remains in build/demo-video/audio/.\n',
+        encoding='utf-8')
+    (destination / 'PRONUNCIATION_NOTES.md').write_text(
+        '# Audition pronunciation notes\n\n'
+        'These are recording instructions, not spoken text. The numbered exports preserve\n'
+        'NARRATION.md exactly. Use provider pronunciation controls or human direction,\n'
+        'where available, without rewriting the authoritative script.\n\n'
+        '- **DLMS** (001): “dee el em ess,” four individual letters. Let the opening\n'
+        '  acronym breathe. This is the presentation specified in NARRATION.md.\n'
+        '- **Anki** (013): “AHN-kee,” stress the first syllable, as NARRATION.md directs.\n'
+        '- **A I** (013): “ay eye,” two letters; the spacing in the script is intentional.\n'
+        '- **Question Tools**, **Study**, **Exam**, **Learning Intelligence** (013/014):\n'
+        '  ordinary English words naming product features or modes; no extra pauses\n'
+        '  merely because they are capitalized.\n'
+        '- **local-first** (001): a connected phrase, not a pause at the hyphen.\n'
+        '- **tagged concepts**, **accuracy**, **evidence**, **mastery** (014): use normal\n'
+        '  US English, clear consonants, and a light list cadence rather than overemphasis.\n\n'
+        'OCR and FFmpeg do not occur in these three scripts and should not be added.\n'
+        'For later narration, the existing “O C R” spelling means “oh see ar.”\n'
+        'FFmpeg is assembly tooling, not a spoken term in this audition.\n',
+        encoding='utf-8')
+    return destination
 
 
 def prerequisites():
@@ -401,8 +463,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('validate', 'export', 'preview', 'build', 'subtitles'))
     parser.add_argument('--cut', choices=('main', 'long'), default='main')
+    parser.add_argument('--audition', action='store_true', help='Use scenes 001, 013, 014 and separate audition audio/output.')
     parser.add_argument('--work-dir', type=Path, default=ROOT / 'build/demo-video')
-    parser.add_argument('--audio-dir', type=Path, help='Default: WORK_DIR/audio. Exact PCM WAV names: 001.wav, etc.')
+    parser.add_argument('--audio-dir', type=Path, help='Default: WORK_DIR/audio, or WORK_DIR/voice-audition/audio with --audition. Exact PCM WAV names: 001.wav, etc.')
     parser.add_argument('--require-audio', action='store_true', help='Also validate audio with the validate action.')
     parser.add_argument('--tail', type=float, default=0.6, help='Minimum post-audio visual tail in seconds.')
     parser.add_argument('--mux-subtitles', action='store_true')
@@ -414,24 +477,32 @@ def main(argv=None):
         if not work.is_relative_to((ROOT / 'build').resolve()) or work == (ROOT / 'build').resolve():
             raise BuildError('--work-dir must be a subdirectory of the repository build/ directory.')
         manifest = production_manifest()
-        scenes = select_scenes(manifest, args.cut)
+        if args.audition and (args.cut != 'main' or args.action == 'preview'):
+            raise BuildError('--audition uses main-cut scenes and requires real audio to build; do not combine with --cut long or preview.')
+        scenes = audition_scenes(manifest) if args.audition else select_scenes(manifest, args.cut)
         if args.action == 'export':
-            destination = export_pack(manifest, args.cut, work)
+            destination = export_audition(manifest, work) if args.audition else export_pack(manifest, args.cut, work)
             print(f'Exported {len(scenes)} narration units to {destination}')
             return 0
         media = prerequisites()
         clips = None
         if args.action in {'build', 'subtitles'} or args.require_audio:
-            clips = audio_inputs(scenes, args.audio_dir or work / 'audio', media)
+            audio_dir = args.audio_dir or (work / 'voice-audition/audio' if args.audition else work / 'audio')
+            if args.audition and not audio_dir.is_dir():
+                raise BuildError(f'Missing audition audio directory: {audio_dir}; required WAVs: ' + ', '.join(s['audio_filename'] for s in scenes))
+            clips = audio_inputs(scenes, audio_dir, media)
         rows = timeline(scenes, clips, args.tail)
         if args.action == 'validate':
-            print(f"Validated {len(manifest['scenes'])} screenshots; main={len(select_scenes(manifest, 'main'))}, long={len(select_scenes(manifest, 'long'))}; {len(rows)} {args.cut} scenes, {sum(r['frames'] for r in rows)/FPS:.3f}s.")
+            print(f"Validated {len(manifest['scenes'])} screenshots; main={len(select_scenes(manifest, 'main'))}, long={len(select_scenes(manifest, 'long'))}; {len(rows)} {'audition' if args.audition else args.cut} scenes, {sum(r['frames'] for r in rows)/FPS:.3f}s.")
             print(f"FFmpeg: {media['ffmpeg']}; ffprobe: {media['ffprobe']}; audio {'validated' if clips else 'not required (use --require-audio)' }.")
             return 0
         if args.action == 'preview' and (args.require_audio or args.mux_subtitles):
             raise BuildError('Silent preview cannot use --require-audio or --mux-subtitles.')
-        export_pack(manifest, args.cut, work)
-        base = 'DLMS-3.2-demo' + ('-long' if args.cut == 'long' else '')
+        if args.audition:
+            export_audition(manifest, work)
+        else:
+            export_pack(manifest, args.cut, work)
+        base = 'DLMS-3.2-voice-audition' if args.audition else 'DLMS-3.2-demo' + ('-long' if args.cut == 'long' else '')
         if args.action == 'subtitles':
             path = work / (base + '.srt')
             if path.exists() and not args.overwrite:

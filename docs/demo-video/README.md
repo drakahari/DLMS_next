@@ -424,3 +424,67 @@ and encoded timing. It skips explicitly when the media tools are absent.
 No voice provider was chosen and no narration audio, final narrated demo, or
 production SRT was generated during this phase. Production application behavior,
 APP_VERSION, release metadata, canonical screenshots and narration are unchanged.
+
+### Voice audition
+
+The fixed audition samples **001 → 013 → 014**, preserving main-cut order:
+
+| Scene | Purpose | Words | Editorial target |
+| --- | --- | ---: | ---: |
+| 001 — Dashboard | Opening, product positioning, DLMS pronunciation | 25 | 11 sec |
+| 013 — Question Tools | Conversational Study workflow, Anki and A I pronunciation | 29 | 14 sec |
+| 014 — Learning Intelligence | Technical explanation, evidence and mastery, list cadence | 23 | 11 sec |
+
+These screenshots have been inspected against their narration. The selection
+includes short and longer sentences, an opening acronym, and a transition from
+Study answers to learning evidence. Total: **77 words, 36 seconds of editorial
+target time**. Actual WAV lengths may extend the audition; pacing is not forced.
+
+From the repository root:
+
+```sh
+python tools/build_demo_video.py export --audition
+python tools/build_demo_video.py validate --audition
+# After supplying all three real narration WAVs:
+python tools/build_demo_video.py validate --audition --require-audio
+python tools/build_demo_video.py build --audition
+```
+
+Export writes `build/demo-video/voice-audition/001.txt`, `013.txt`, and `014.txt`
+containing only exact spoken text from `NARRATION.md`. The derived `manifest.json`
+records scene order, screenshots, text, word counts, targets, future audio names,
+and the usual production motion/transition metadata. `README.txt` provides
+provider-neutral recording instructions; `PRONUNCIATION_NOTES.md` documents
+letter-by-letter DLMS and A I, Anki, and technical phrasing. Neither file is
+spoken narration. Re-export is deterministic and does not overwrite audio.
+
+Supply **lossless mono/stereo PCM WAV** files with these exact paths:
+
+```text
+build/demo-video/voice-audition/audio/001.wav
+build/demo-video/voice-audition/audio/013.wav
+build/demo-video/voice-audition/audio/014.wav
+```
+
+Use the same voice/settings for all three, natural US English, normal pauses,
+and no music or effects. Keep each candidate's originals in a separate directory;
+`--audio-dir "path with spaces/candidate/audio"` selects it. To preserve separate
+outputs, add `--work-dir build/demo-video-candidate-a` (export there first if
+using its default audio location). Production audio remains
+`build/demo-video/audio/NNN.wav`; audition clips are not promoted automatically.
+
+The build writes `build/demo-video/DLMS-3.2-voice-audition.mp4`, its timeline JSON,
+and scene-level SRT through the **same production renderer**: actual audio timing,
+visual tails, 2% opening push, static workflow/intelligence frames, clean cut to
+013, short fade through black into 014, and default two-pass normalization.
+`--mux-subtitles` and `subtitles --audition` also work. Missing WAVs fail with their
+exact names; no placeholder speech or silent audition is substituted. Audition
+cannot be combined with `preview` or `--cut long`. Main/long cuts remain 33/34
+scenes, with their existing exclusions unchanged.
+
+No audio or audition MP4 is created by export/validation. To run deterministic
+regressions without the existing media smoke test that generates test tones:
+
+```sh
+.venv/bin/python -m pytest -q tests/test_demo_video_build.py tests/test_demo_video_capture.py tests/test_manual_screenshot_capture.py -k 'not real_media_smoke'
+```

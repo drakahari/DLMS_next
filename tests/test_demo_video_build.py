@@ -264,3 +264,88 @@ def test_real_media_smoke(tmp_path, manifest):
     (audio / '001.wav').write_bytes(b'not a WAV file')
     with pytest.raises(video.BuildError, match='malformed 001.wav'):
         video.audio_inputs(scenes, audio, media)
+
+
+def test_audition_export_exact_repeatable(tmp_path, manifest):
+    before_manifest = json.dumps(manifest, sort_keys=True)
+    destination = video.export_audition(manifest, tmp_path / 'work with spaces')
+    index = json.loads((destination / 'manifest.json').read_text())
+    assert index['scene_order'] == [1, 13, 14]
+    assert index['total_words'] == 77
+    assert index['target_seconds'] == 36
+    assert sorted(p.name for p in destination.glob('[0-9]*.txt')) == ['001.txt', '013.txt', '014.txt']
+    for scene in index['scenes']:
+        authoritative = manifest['scenes'][scene['id'] - 1]
+        assert scene == authoritative
+        assert (destination / scene['text_filename']).read_text() == authoritative['narration'] + '\n'
+        assert scene['audio_filename'] == f"{scene['id']:03}.wav"
+    before = {p.name: p.read_bytes() for p in destination.iterdir() if p.is_file()}
+    video.export_audition(manifest, tmp_path / 'work with spaces')
+    assert before == {p.name: p.read_bytes() for p in destination.iterdir() if p.is_file()}
+    assert not list((destination / 'audio').iterdir())
+    assert json.dumps(manifest, sort_keys=True) == before_manifest
+
+
+@pytest.mark.parametrize('ids', [(1, 13), (1, 13, 13), (1, 17, 14), (1, 20, 14), (14, 13, 1)])
+def test_invalid_audition_selection_rejected(monkeypatch, manifest, ids):
+    monkeypatch.setattr(video, 'AUDITION_SCENE_IDS', ids)
+    with pytest.raises(video.BuildError, match='exactly three ordered main-cut'):
+        video.audition_scenes(manifest)
+
+
+@pytest.mark.parametrize('directory_exists', [False, True])
+def test_audition_missing_audio(monkeypatch, tmp_path, manifest, capsys, directory_exists):
+    monkeypatch.setattr(video, 'ROOT', tmp_path)
+    monkeypatch.setattr(video, 'production_manifest', lambda: manifest)
+    monkeypatch.setattr(video, 'prerequisites', lambda: {})
+    monkeypatch.setattr(video, 'render', lambda *a, **kw: pytest.fail('Must not render without real audio'))
+    work = tmp_path / 'build/work with spaces'
+    if directory_exists:
+        (work / 'voice-audition/audio').mkdir(parents=True)
+    assert video.main(['build', '--audition', '--work-dir', str(work)]) == 2
+    message = capsys.readouterr().err
+    for name in ('001.wav', '013.wav', '014.wav'):
+        assert name in message
+    assert '002.wav' not in message
+    assert not list(work.glob('*.mp4'))
+
+
+@pytest.mark.parametrize('audition,cut,count', [(True, 'main', 3), (False, 'main', 33), (False, 'long', 34)])
+def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest, audition, cut, count):
+    monkeypatch.setattr(video, 'ROOT', tmp_path)
+    monkeypatch.setattr(video, 'production_manifest', lambda: manifest)
+    monkeypatch.setattr(video, 'prerequisites', lambda: {})
+    work = tmp_path / 'build/work with spaces'
+    expected_audio = work / ('voice-audition/audio' if audition else 'audio')
+    expected_audio.mkdir(parents=True)
+
+    def inputs(scenes, directory, media):
+        assert directory == expected_audio
+        assert len(scenes) == count
+        if audition:
+            assert [s['id'] for s in scenes] == [1, 13, 14]
+        assert all(s['audio_filename'] == f"{s['id']:03}.wav" for s in scenes)
+        return {s['id']: {'path': str(directory / s['audio_filename']), 'seconds': 12.5} for s in scenes}
+
+    def render(rows, output, media, **kwargs):
+        assert len(rows) == count
+        assert kwargs['normalization'] == 'ebu'
+        assert all(r['duration_seconds'] >= 13.1 for r in rows)
+        assert all(r['audio'] is not None for r in rows)
+        if audition:
+            assert output == work / 'DLMS-3.2-voice-audition.mp4'
+            assert [r['motion'] for r in rows] == ['push', 'static', 'static']
+            assert rows[2]['fade_in_frames'] == video.FADE_FRAMES
+        return {'duration_seconds': sum(r['duration_seconds'] for r in rows)}
+
+    monkeypatch.setattr(video, 'audio_inputs', inputs)
+    monkeypatch.setattr(video, 'render', render)
+    args = ['build', '--cut', cut, '--work-dir', str(work)]
+    assert video.main(args + (['--audition'] if audition else [])) == 0
+
+
+@pytest.mark.parametrize('args', [['preview', '--audition'], ['export', '--audition', '--cut', 'long']])
+def test_incompatible_audition_options(manifest, monkeypatch, capsys, args):
+    monkeypatch.setattr(video, 'production_manifest', lambda: manifest)
+    assert video.main(args) == 2
+    assert '--audition uses main-cut scenes' in capsys.readouterr().err
