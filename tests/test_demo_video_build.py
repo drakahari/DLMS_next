@@ -37,11 +37,19 @@ def test_cuts_and_editorial_durations(manifest):
     assert len(manifest['scenes']) == 36
     assert [s['id'] for s in main] == [i for i in range(1, 37) if i not in {17, 20, 35}]
     assert [s['id'] for s in long] == [i for i in range(1, 37) if i not in {17, 35}]
-    assert sum(s['target_seconds'] for s in main) == 375
-    assert sum(s['target_seconds'] for s in long) == 388
-    assert sum(s['narration_words'] for s in main) == 797
-    assert sum(s['narration_words'] for s in long) == 826
+    assert sum(s['target_seconds'] for s in main) == 390
+    assert sum(s['target_seconds'] for s in long) == 403
+    assert sum(s['narration_words'] for s in main) == 790
+    assert sum(s['narration_words'] for s in long) == 819
     assert manifest == video.production_manifest()  # no timestamps/unstable iteration
+
+
+@pytest.mark.parametrize('line_break', ['', '<br>', '<br/>', '<br />'])
+def test_editorial_html_line_breaks(copied_project, manifest, line_break):
+    path = copied_project / 'NARRATION.md'
+    path.write_text(path.read_text().replace('<br>', line_break))
+    parsed = video.production_manifest(copied_project)
+    assert parsed['scenes'] == manifest['scenes']
 
 
 @pytest.mark.parametrize('filename,old,new,error', [
@@ -144,7 +152,7 @@ def test_timeline_audio_never_truncated(manifest):
     clips = {1: {'seconds': 14.123}, 6: {'seconds': 2.0}}
     rows = video.timeline(scenes, clips)
     assert rows[0]['frames'] == math.ceil((14.123 + .6) * 30)
-    assert rows[1]['frames'] == 300  # editorial viewing time preserved
+    assert rows[1]['frames'] == 450  # revised 15-second editorial viewing time preserved
     assert rows[1]['start_frame'] == rows[0]['frames']
     assert rows[1]['audio_lead_frames'] == 5
     for row in rows:
@@ -271,8 +279,8 @@ def test_audition_export_exact_repeatable(tmp_path, manifest):
     destination = video.export_audition(manifest, tmp_path / 'work with spaces')
     index = json.loads((destination / 'manifest.json').read_text())
     assert index['scene_order'] == [1, 13, 14]
-    assert index['total_words'] == 77
-    assert index['target_seconds'] == 36
+    assert index['total_words'] == 71
+    assert index['target_seconds'] == 35
     assert sorted(p.name for p in destination.glob('[0-9]*.txt')) == ['001.txt', '013.txt', '014.txt']
     for scene in index['scenes']:
         authoritative = manifest['scenes'][scene['id'] - 1]

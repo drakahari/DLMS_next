@@ -53,7 +53,8 @@ def production_manifest(project=PROJECT):
             found = re.findall(r'^\*\*' + re.escape(name) + r':\*\* (.+)$', body, re.M)
             if len(found) != 1:
                 raise BuildError(f'Scene {scene_id:03}: expected one {name} field.')
-            return found[0].strip()
+            # Markdown layout breaks are presentation, not field values.
+            return re.sub(r'<br\s*/?>\s*$', '', found[0]).strip()
 
         status = field('Status')
         statuses = {
@@ -170,7 +171,7 @@ def export_audition(manifest, work):
         '- **DLMS** (001): “dee el em ess,” four individual letters. Let the opening\n'
         '  acronym breathe. This is the presentation specified in NARRATION.md.\n'
         '- **Anki** (013): “AHN-kee,” stress the first syllable, as NARRATION.md directs.\n'
-        '- **A I** (013): “ay eye,” two letters; the spacing in the script is intentional.\n'
+        '- **AI** (013): “ay eye,” two letters. Keep the written acronym unchanged.\n'
         '- **Question Tools**, **Study**, **Exam**, **Learning Intelligence** (013/014):\n'
         '  ordinary English words naming product features or modes; no extra pauses\n'
         '  merely because they are capitalized.\n'

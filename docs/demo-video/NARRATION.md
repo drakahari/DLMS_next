@@ -1,23 +1,29 @@
-# DLMS demo video — first-pass narration and editorial plan
+# DLMS demo video — V2 narration and editorial plan
 
 Authoritative narration and editorial timing for `develop/3.2.0`, reviewed against the current repository and all 36 final captures on 2026-09-19. This is a product overview for independent and certification learners, technical users, privacy-oriented users, and prospective GitHub users. All examples use the prepared synthetic learner data.
 
 ## Recording cut and timing
 
 - **33 narrated scenes:** 32 essential frames plus optional frame **033 kept**.
-- **797 spoken words**, excluding separators, production notes, and alternate lines for omitted frames.
-- **Estimated speech: 5:35**, using scene-specific rates of 138–148 words per minute. At a uniform 135–150 words per minute, the envelope is **5:19–5:54**.
-- **Target complete runtime: 6:15 (375 seconds)**, including about **40.3 seconds** for breaths, visual settling, transitions, and the closing hold/fade. Across the broader speech-rate envelope with that allowance, expect roughly **6:00–6:35**. Adjust holds to the eventual recording; these are estimates, not subtitle timestamps.
-- **Long version: 34 scenes, 826 words, approximately 6:28**, adding only frame 020 and its 13-second slot.
+- **790 narration words**, excluding separators, production notes, and alternate lines for omitted frames. V1 had 797; V2 adds coverage while removing repetition.
+- **Estimated speech: 5:32**, using scene-specific reference rates of 138–148 words per minute. At 135–150 WPM, the written-word envelope is **5:16–5:51**. Acronym letter names and natural pauses can take longer than this count suggests.
+- **Editorial scene targets total 6:30 (390 seconds)**. Calibrating each scene against V1 Heart delivery, with acronym letter counts treated consistently, gives approximately **5:58 spoken audio and 6:44 complete video** under the existing builder's minimum holds, 0.6-second tails and chapter fades. Plan for **6:30–7:00** pending new recordings and listening review. These are estimates, not subtitle timestamps; no V2 audio has been generated.
+- **Long version: 34 scenes, 819 words**, adding only frame 020 and its 13-second target; not being produced in this pass.
 - **CUT:** 017 and 035. **KEEP FOR LONG VERSION:** 020. **KEEP:** 033. No assets deleted, renamed, reordered, altered, or recaptured.
 
 The scene numbers below retain the capture IDs. Gaps in the recording cut are intentional. [NARRATION_PLAIN.txt](NARRATION_PLAIN.txt) contains only the 33 main-cut passages with `=== SCENE NNN ===` separators; separators are not spoken. Alternate narration is retained here for every omitted frame, excluded from main totals and plain text.
 
-Word counts use whitespace-separated spoken tokens: contractions and hyphenated words count once, and the explicitly spaced letters in “O C R,” “A I,” and “A P I” count separately. Pronounce DLMS as “dee el em ess,” PDF as letters, and Anki as “AHN-kee.” Allow the opening acronym to breathe. Do not read production notes. Use a calm conversational delivery, with modest emphasis on the practical consequence of each feature.
+Word counts use whitespace-separated written tokens: contractions and hyphenated words count once. Written acronyms retain normal spelling, including AI, OCR and API; their individual letter names add spoken syllables. Pronounce DLMS as “dee el em ess,” AI as “ay eye,” OCR/API/PDF/CSV as letters, and Anki as “AHN-kee.” Allow the opening acronym to breathe. Do not read production notes. Use a calm conversational delivery, with modest emphasis on the practical consequence of each feature.
+
+## V2 editorial changes
+
+Substantially rewritten: **006–009** (source material → extraction → OCR → review), **028** (portable quizzes versus reusable Study Packs / Content Packs), and **032** (selected cards can also be printed). Tightened: **005, 014–016, 019, 024, 027**. **013 and 033** retain their message with normal written acronym spelling; pronunciation changes live only in the synthesis adapter. Individual scene notes mark these changes.
+
+No scenes added, removed, replaced or reordered in V2. All 36 captures were inspected through the six contact sheets, with full-size inspection of the import, pack callout and card-selection frames. Existing 028 and 032 establish availability without pretending to show the pack catalog or print layout. Their production notes state those visual limits. Dedicated walkthrough captures would help a focused tutorial, but are not needed for these brief overview explanations. See [V2 audit and pronunciation review](EDITORIAL_V2.md) for implementation evidence, timing method and future-video ideas.
 
 ## Assembly notes
 
-Use the canonical 1920 × 1080 Purple & Gold PNGs. Target durations are complete scene slots, including pauses and transition allowance. Use straight cuts within workflows and the specified 0.3-second dissolves between chapters. Dissolves belong inside the scene budget, not on top of it; allow overlap handles during later assembly. Leave a brief pause where the picture needs more time than the voice. Never stretch speech to fill a slot.
+Use the canonical 1920 × 1080 Purple & Gold PNGs. Targets are minimum complete scene slots. The existing builder uses straight cuts within workflows and five-frame fades on either side of chapter boundaries, about one third of a second through black in total, with no narration overlap. Earlier scene notes saying “0.3-second dissolve” mean this implemented chapter fade; no new transition implementation is requested. Actual narration duration plus the builder's tail/incoming fade allowance can extend a slot. Leave a brief pause where the picture needs more time than the voice. Never stretch speech to fill a slot.
 
 Start motion at 100% scale and cap a push at 102%; the closing pull may run from 102% to 100%. Keep the narrated text and controls inside the frame. Static holds are preferable on dense comparisons. Motion suggestions are optional editorial treatment for later assembly, not changes to the canonical assets. No fake cursor, typing, click, download, or processing animation. A screenshot of a control establishes an available workflow, not that the action has run.
 
@@ -43,9 +49,9 @@ All 36 frames were assessed, including the essential frames; the original option
 | 021–022 | Keep the saved Adaptive session and its expanded provenance. Do not repeat the Library tour. |
 | 023–025 | Keep explicit finish, successful acknowledgment, and retained playable session. Shorten the acknowledgment hold rather than remove this evidence. |
 | 026–027 | Keep individual Exam attempts and aggregate results, with one clear distinction from Study evidence. |
-| 028 | Keep content portability separate from backup. |
+| 028 | Keep content portability separate from backup; use the visible Study Pack callout to explain reusable packages and their two workspaces. |
 | 029–030 | Keep scan context and one exact comparison. These prove manual source maintenance without promising automatic cleanup. |
-| 031–032 | Keep export choices and deliberate question selection. Avoid narrating invisible preview/download steps. |
+| 031–032 | Keep digital export and shared card selection; mention browser-printable physical cards without pretending the offscreen print layout is displayed. |
 | 033 | **KEEP.** Makes optional, provider-neutral content creation and manual return explicit; 013 covers a different question-explanation handoff. |
 | 034 | Keep persistent-workspace backup and local ownership context. |
 | 035 | **CUT.** Most expendable: a broad settings menu would delay the close and repeat preferences/backup context. |
@@ -61,35 +67,35 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 | 002 | Essential | 24 | 145 | 9.9s | 11s |
 | 003 | Essential | 27 | 148 | 10.9s | 12s |
 | 004 | Essential | 25 | 138 | 10.9s | 12s |
-| 005 | Essential | 22 | 148 | 8.9s | 10s |
-| 006 | Essential | 22 | 148 | 8.9s | 10s |
-| 007 | Essential | 25 | 145 | 10.3s | 11s |
-| 008 | Essential | 24 | 138 | 10.4s | 12s |
-| 009 | Essential | 23 | 145 | 9.5s | 11s |
+| 005 | Essential | 12 | 148 | 4.9s | 7s |
+| 006 | Essential | 31 | 148 | 12.6s | 15s |
+| 007 | Essential | 29 | 145 | 12.0s | 15s |
+| 008 | Essential | 36 | 138 | 15.7s | 18s |
+| 009 | Essential | 26 | 145 | 10.8s | 13s |
 | 010 | Essential | 22 | 145 | 9.1s | 10s |
 | 011 | Essential | 24 | 148 | 9.7s | 11s |
 | 012 | Essential | 26 | 148 | 10.5s | 12s |
-| 013 | Essential | 29 | 138 | 12.6s | 14s |
-| 014 | Essential | 23 | 138 | 10.0s | 11s |
-| 015 | Essential | 24 | 138 | 10.4s | 12s |
-| 016 | Essential | 24 | 138 | 10.4s | 12s |
+| 013 | Essential | 28 | 138 | 12.2s | 14s |
+| 014 | Essential | 18 | 138 | 7.8s | 10s |
+| 015 | Essential | 15 | 138 | 6.5s | 8s |
+| 016 | Essential | 16 | 138 | 7.0s | 9s |
 | 017 | CUT | 21 | 145 | 8.7s | 0s |
 | 018 | Essential | 24 | 138 | 10.4s | 12s |
-| 019 | Essential | 23 | 138 | 10.0s | 11s |
+| 019 | Essential | 19 | 138 | 8.3s | 10s |
 | 020 | LONG VERSION | 29 | 145 | 12.0s | 0s |
 | 021 | Essential | 25 | 145 | 10.3s | 11s |
 | 022 | Essential | 25 | 138 | 10.9s | 12s |
 | 023 | Essential | 20 | 138 | 8.7s | 10s |
-| 024 | Essential | 17 | 145 | 7.0s | 9s |
+| 024 | Essential | 13 | 145 | 5.4s | 8s |
 | 025 | Essential | 20 | 148 | 8.1s | 9s |
 | 026 | Essential | 24 | 145 | 9.9s | 11s |
-| 027 | Essential | 25 | 145 | 10.3s | 11s |
-| 028 | Essential | 25 | 138 | 10.9s | 12s |
+| 027 | Essential | 16 | 145 | 6.6s | 9s |
+| 028 | Essential | 38 | 138 | 16.5s | 21s |
 | 029 | Essential | 21 | 148 | 8.5s | 10s |
 | 030 | Essential | 22 | 148 | 8.9s | 10s |
 | 031 | Essential | 25 | 148 | 10.1s | 11s |
-| 032 | Essential | 24 | 148 | 9.7s | 11s |
-| 033 | Optional — KEEP | 32 | 138 | 13.9s | 15s |
+| 032 | Essential | 29 | 148 | 11.8s | 15s |
+| 033 | Optional — KEEP | 29 | 138 | 12.6s | 15s |
 | 034 | Essential | 28 | 138 | 12.2s | 13s |
 | 035 | CUT | 22 | 145 | 9.1s | 0s |
 | 036 | Essential | 28 | 145 | 11.6s | 15s |
@@ -158,14 +164,16 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [005-scope-library.png](captures/005-scope-library.png)
 **Status:** Essential — KEEP
-**Target:** 10 sec
-**Speech estimate:** 22 words; 8.9 sec at 148 WPM
+**Target:** 7 sec
+**Speech estimate:** 12 words; 4.9 sec at 148 WPM
 **Visual focus:** Past Projects exclusion badge, Open Quiz and Hide controls.
 **Motion:** Slow 2% push toward the expanded Past Projects card.
 
+**V2 change:** Tightened to fund the stronger content workflow.
+
 **Narration**
 
-> That older quiz can still be opened. Scope controls what informs your study plan. Hiding a folder is a separate browsing choice.
+> Excluded quizzes remain available. Hiding a folder is a separate browsing choice.
 
 **Production / transition note:** This is evidence of retained access, not a second Library tour.
 
@@ -173,14 +181,16 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [006-build-quiz.png](captures/006-build-quiz.png)
 **Status:** Essential — KEEP
-**Target:** 10 sec
-**Speech estimate:** 22 words; 8.9 sec at 148 WPM
-**Visual focus:** Text upload plus Paste questions and Create a short quiz cards.
+**Target:** 15 sec
+**Speech estimate:** 31 words; 12.6 sec at 148 WPM
+**Visual focus:** Text upload, Paste questions, PDF import and Import matching pairs cards.
 **Motion:** Static hold across the two columns.
+
+**V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
 
 **Narration**
 
-> Start with material you choose. Upload structured text, paste questions, or create a short quiz manually, depending on what you already have.
+> You do not have to enter every question by hand. Bring in a formatted text file, paste questions for cleanup and preview, or turn a CSV terminology list into matching practice.
 
 **Production / transition note:** Use a 0.3-second chapter dissolve into 006.
 
@@ -188,14 +198,16 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [007-pdf-import.png](captures/007-pdf-import.png)
 **Status:** Essential — KEEP
-**Target:** 11 sec
-**Speech estimate:** 25 words; 10.3 sec at 145 WPM
+**Target:** 15 sec
+**Speech estimate:** 29 words; 12.0 sec at 145 WPM
 **Visual focus:** PDF form and local screenshot import panel.
 **Motion:** Gentle 2% push toward the import forms.
 
+**V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
+
 **Narration**
 
-> PDF and Image Import handles structured question banks and terminology. It uses selectable text first, with local character recognition available for supported scans and screenshots.
+> For PDFs, DLMS extracts selectable text from question banks and glossaries. Review the extracted material, then build quizzes from saved banks. Reviewed terminology can become matching or multiple-choice practice.
 
 **Production / transition note:** Say PDF as letters. No general textbook-to-quiz claim and no implication that analysis has run.
 
@@ -203,14 +215,16 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [008-ocr-source.png](captures/008-ocr-source.png)
 **Status:** Essential — KEEP
-**Target:** 12 sec
-**Speech estimate:** 24 words; 10.4 sec at 138 WPM
-**Visual focus:** Selected study-skills.png, local processing note, and draft-answer warning.
-**Motion:** Static hold on upper screenshot-import panel.
+**Target:** 18 sec
+**Speech estimate:** 36 words; 15.7 sec at 138 WPM
+**Visual focus:** Both local OCR panels: question screenshots and terminology images or scanned PDF.
+**Motion:** Static hold across both panels; retain the current-import-scope note.
+
+**V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
 
 **Narration**
 
-> Here, an original image is selected for local O C R. Extraction creates drafts to check. A highlighted answer is never proof of correctness.
+> When text is trapped in a scan or screenshot, local OCR can recover candidate questions or terminology pairs. Supported paths include selected scanned question-bank pages and scanned glossaries. The result is a draft, ready for checking.
 
 **Production / transition note:** Selected file only; source image pixels and extraction results are not displayed. No simulated click or processing animation.
 
@@ -218,14 +232,16 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [009-review-repair.png](captures/009-review-repair.png)
 **Status:** Essential — KEEP
-**Target:** 11 sec
-**Speech estimate:** 23 words; 9.5 sec at 145 WPM
+**Target:** 13 sec
+**Speech estimate:** 26 words; 10.8 sec at 145 WPM
 **Visual focus:** Two-question summary and complete first question with editable explanation.
 **Motion:** Slow 2% push toward the first question.
 
+**V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
+
 **Narration**
 
-> This separate prepared example shows Review and Repair. One question is complete; another needs attention. Check the text, choices, and explanation before saving.
+> This separate prepared example shows Review and Repair. Check extracted wording, choices, answers, and explanations before saving. Recovery helps preserve useful material while keeping uncertainty visible.
 
 **Production / transition note:** A 0.3-second dissolve marks a separate example after 008. Keep “separate prepared example” in the recording; this is not the output of the selected image.
 
@@ -279,13 +295,15 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Image:** [013-question-tools.png](captures/013-question-tools.png)
 **Status:** Essential — KEEP
 **Target:** 14 sec
-**Speech estimate:** 29 words; 12.6 sec at 138 WPM
+**Speech estimate:** 28 words; 12.2 sec at 138 WPM
 **Visual focus:** Green answer, explanation, then the three Question Tools.
 **Motion:** Static hold; optional very slow 2% downward emphasis without clipping the answer.
 
+**V2 change:** Written acronym normalized; pronunciation belongs only in synthesis input.
+
 **Narration**
 
-> The correct answer reveals the explanation. Question Tools can mark questions for Anki or copy a prompt. Review with A I also opens your configured provider for manual pasting.
+> The correct answer reveals the explanation. Question Tools can mark questions for Anki or copy a prompt. Review with AI also opens your configured provider for manual pasting.
 
 **Production / transition note:** Longer hold for two linked ideas. No provider visit or clipboard result is shown. Mark for Anki is a session selection, not an exported deck.
 
@@ -293,14 +311,16 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [014-learning-intelligence.png](captures/014-learning-intelligence.png)
 **Status:** Essential — KEEP
-**Target:** 11 sec
-**Speech estimate:** 23 words; 10.0 sec at 138 WPM
+**Target:** 10 sec
+**Speech estimate:** 18 words; 7.8 sec at 138 WPM
 **Visual focus:** Concept table, response counts, Study/Exam evidence and mastery columns.
 **Motion:** Static hold across the whole table.
 
+**V2 change:** Tightened to fund the stronger content workflow.
+
 **Narration**
 
-> Saved Study answers contribute to Learning Intelligence alongside Exam results. Across tagged concepts, accuracy, evidence, and mastery give individual scores a broader context.
+> Saved Study answers and Exam results feed Learning Intelligence. Concept-level evidence helps you look beyond a single score.
 
 **Production / transition note:** 0.3-second chapter dissolve. Introduce evidence here; leave interpretation and model details to 015 and 016.
 
@@ -308,29 +328,33 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [015-concept-trends.png](captures/015-concept-trends.png)
 **Status:** Essential — KEEP
-**Target:** 12 sec
-**Speech estimate:** 24 words; 10.4 sec at 138 WPM
+**Target:** 8 sec
+**Speech estimate:** 15 words; 6.5 sec at 138 WPM
 **Visual focus:** Four concept rows, especially Trend, overall Accuracy and Not enough data.
 **Motion:** Static hold; do not pan between rows while viewers compare them.
 
+**V2 change:** Tightened to fund the stronger content workflow.
+
 **Narration**
 
-> Networking is declining. Access Control is improving, but its overall accuracy still marks it as weak. Data Safety is strong. Cloud needs more evidence.
+> Access Control is improving but still weak overall. Cloud needs more evidence before drawing conclusions.
 
-**Production / transition note:** Allow a short pause after Cloud. The practice controls below remain visible but are explained when the saved session appears in 021.
+**Production / transition note:** Allow a short pause after the Cloud comparison. The practice controls below remain visible but are explained when the saved session appears in 021.
 
 ## Scene 016 — Understand mastery
 
 **Image:** [016-mastery-model.png](captures/016-mastery-model.png)
 **Status:** Essential — KEEP
-**Target:** 12 sec
-**Speech estimate:** 24 words; 10.4 sec at 138 WPM
+**Target:** 9 sec
+**Speech estimate:** 16 words; 7.0 sec at 138 WPM
 **Visual focus:** Mastery dialog introduction and four weighted factors.
 **Motion:** Static hold; avoid cropping the dialog.
 
+**V2 change:** Tightened to fund the stronger content workflow.
+
 **Narration**
 
-> Mastery combines overall results, recent performance, evidence, and recency. The explanation makes that model inspectable. It guides practice without claiming to predict certification results.
+> The mastery explanation shows how overall results, recent performance, evidence, and recency contribute to the estimate.
 
 **Production / transition note:** Do not read the formula or percentages aloud. Cut directly to 018 in the main version.
 
@@ -368,14 +392,16 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [019-due-queue.png](captures/019-due-queue.png)
 **Status:** Essential — KEEP
-**Target:** 11 sec
-**Speech estimate:** 23 words; 10.0 sec at 138 WPM
+**Target:** 10 sec
+**Speech estimate:** 19 words; 8.3 sec at 138 WPM
 **Visual focus:** Three overdue rows and interval-model cards beneath them.
 **Motion:** Static hold with queue and interval explanation visible.
 
+**V2 change:** Tightened to fund the stronger content workflow.
+
 **Narration**
 
-> The Overdue filter shows what needs another visit and why. Correct streaks extend the interval. An incorrect answer resets it to one day.
+> Correct streaks extend review intervals. An incorrect answer resets the interval to one day. Overdue questions stay visible here.
 
 **Production / transition note:** Due now and Overdue are separate table filters. Do not imply table filters change the generated review batch. Cut to 021 in the main version.
 
@@ -443,14 +469,16 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [024-review-finished.png](captures/024-review-finished.png)
 **Status:** Essential — KEEP
-**Target:** 9 sec
-**Speech estimate:** 17 words; 7.0 sec at 145 WPM
+**Target:** 8 sec
+**Speech estimate:** 13 words; 5.4 sec at 145 WPM
 **Visual focus:** “Review completed” status under the answer explanation.
 **Motion:** Static hold; keep status line readable.
 
+**V2 change:** Tightened to fund the stronger content workflow.
+
 **Narration**
 
-> DLMS confirms the answers are saved before closing the session. The completion message makes that result clear.
+> The completion message confirms that the answers were saved and the session closed.
 
 **Production / transition note:** Straight cut from 023; no fake pointer. A brief silent hold lets viewers find the small success message.
 
@@ -488,31 +516,35 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [027-analytics.png](captures/027-analytics.png)
 **Status:** Essential — KEEP
-**Target:** 11 sec
-**Speech estimate:** 25 words; 10.3 sec at 145 WPM
+**Target:** 9 sec
+**Speech estimate:** 16 words; 6.6 sec at 145 WPM
 **Visual focus:** Quiz Performance rows and average/best/latest columns.
 **Motion:** Slow 2% push toward the quiz table.
 
+**V2 change:** Tightened to fund the stronger content workflow.
+
 **Narration**
 
-> Analytics summarizes saved results by quiz across your history. Learning Scope, meanwhile, controls what influences current study recommendations. Those are different views of your progress.
+> Analytics compares saved results by quiz across your history, showing average, best, and latest performance together.
 
 **Production / transition note:** Do not equate Analytics “Steady” with concept-level trend. These are different calculations; avoid narrating that column.
 
-## Scene 028 — Move selected content
+## Scene 028 — Portable quizzes and reusable Study Packs
 
 **Image:** [028-bundles.png](captures/028-bundles.png)
 **Status:** Essential — KEEP
-**Target:** 12 sec
-**Speech estimate:** 25 words; 10.9 sec at 138 WPM
-**Visual focus:** Source candidate list and import validation panel.
+**Target:** 21 sec
+**Speech estimate:** 38 words; 16.5 sec at 138 WPM
+**Visual focus:** Bundle import/export columns, Not a Study Pack callout, Study Packs and Content Packs navigation.
 **Motion:** Static hold across export and import columns.
+
+**V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
 
 **Narration**
 
-> Portable quiz bundles move selected source quizzes and supported images between installations. Scores, learning history, and schedules stay out, separating content transfer from workspace migration.
+> Portable bundles move source quizzes and supported images without learning history. Content Packs manages reusable packages of terminology, image activities, or prepared questions. Study Packs turns that installed material into quizzes, keeping the source available for future sessions.
 
-**Production / transition note:** 0.3-second chapter dissolve. No bundle is selected, downloaded or imported in this frame; describe capability, not a completed transfer.
+**Production / transition note:** 0.3-second chapter fade. The Not a Study Pack callout explicitly distinguishes authored datasets from ordinary quiz bundles; both workspace links are visible. Explain their purpose, without pretending the pack catalog or a generated pack quiz is pictured. Keep the full frame static. No download or installation is shown. A catalog walkthrough belongs in a focused follow-up video.
 
 ## Scene 029 — Find source overlap
 
@@ -563,29 +595,33 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Image:** [032-anki-selection.png](captures/032-anki-selection.png)
 **Status:** Essential — KEEP
-**Target:** 11 sec
-**Speech estimate:** 24 words; 9.7 sec at 148 WPM
+**Target:** 15 sec
+**Speech estimate:** 29 words; 11.8 sec at 148 WPM
 **Visual focus:** One checked Everyday Data Safety question and unselected missed-question list.
 **Motion:** Static hold; retain the selection count and list headings.
 
+**V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
+
 **Narration**
 
-> Custom decks let you choose individual questions. One source question is selected here, with recorded misses available below to help build a focused set.
+> Choose individual questions or recorded misses for a focused set. Those same selected cards can also become printable physical flash cards, through a browser layout for three-by-five index cards.
 
-**Production / transition note:** No deck preview or export controls are visible here. Do not claim a deck was downloaded or that missed items have been selected.
+**Production / transition note:** The Custom Deck & Printable Cards navigation label and card selection establish the shared workflow. The Avery 5388 layout and print controls are below this viewport, not pictured. Mention availability only; do not imply printing, downloading, or selecting missed items has happened. Keep the sidebar visible. No additional capture is needed for this brief overview mention.
 
 ## Scene 033 — Optional external AI content
 
 **Image:** [033-external-ai.png](captures/033-external-ai.png)
 **Status:** Optional — KEEP in main cut
 **Target:** 15 sec
-**Speech estimate:** 32 words; 13.9 sec at 138 WPM
+**Speech estimate:** 29 words; 12.6 sec at 138 WPM
 **Visual focus:** Six workflow steps and provider-neutral configuration description.
 **Motion:** Static hold on the workflow strip and form.
 
+**V2 change:** Written acronym normalized; pronunciation belongs only in synthesis input.
+
 **Narration**
 
-> External A I uses a manual handoff. Take a prompt to your chosen provider, then paste its structured response back for validation and repair. No direct provider A P I is required.
+> External AI uses a manual handoff. Take a prompt to your chosen provider, then paste its structured response back for validation and repair. No direct provider API is required.
 
 **Production / transition note:** KEEP, despite optional capture status. 0.3-second dissolve separates this content-input workflow from Anki output. Do not imply background transmission or automatic retrieval.
 
@@ -662,17 +698,17 @@ Every spoken factual claim, including alternate passages, was checked against th
 - **015–016:** The table and model dialog contain more detail than can be read aloud. Narration selects the visible pattern and factors rather than reading percentages or the whole formula. Static holds preserve comparisons.
 - **021:** A saved Adaptive session proves the resulting Library item, not the selection algorithm running. Explain the documented behavior without pretending it resulted from the preceding Due Questions action.
 - **022:** Source names are small. A later gentle push can emphasize the disclosure; the narration does not require reading each name.
-- **024:** The success line is small but readable in the canonical image. Allow the dedicated nine-second hold; a future modest crop toward the message is optional, provided the answer and Finish Review remain visible.
+- **024:** The success line is small but readable in the canonical image. Allow the dedicated eight-second hold; a future modest crop toward the message is optional, provided the answer and Finish Review remain visible.
 - **028, 031–034:** These show available workflows and selection, not completed transfers. Do not add download confirmations. Native packaging/account requirements in 034 are documented product context; the screenshot itself is a backup screen.
 - **035:** The settings overview does not visibly demonstrate a theme change. Its alternate line describes categories only.
 
-No capture defect prevented narration, and no further screenshots are required for this first pass. The previously reported correct-answer hover issue remains documented in [VALIDATION.md](VALIDATION.md#existing-product-issue-observed-not-changed); it is not present in the final narrated feedback image and was not modified here.
+No capture defect prevented narration, and no further screenshots are required for this V2 overview. The previously reported correct-answer hover issue remains documented in [VALIDATION.md](VALIDATION.md#existing-product-issue-observed-not-changed); it is not present in the final narrated feedback image and was not modified here.
 
-This phase produces text only. No audio, video, subtitle timestamps, application changes, version/release edits, commits, or pushes are part of this handoff.
+This phase produces revised text and isolated tooling changes. No real audio, video, subtitle timestamps, application changes, version/release edits, commits, or pushes are part of this handoff. Implementation evidence for the V2 additions is in [EDITORIAL_V2.md](EDITORIAL_V2.md).
 
 ### Handoff checks
 
 - Existing capture tests: **12 passed** across `tests/test_demo_video_capture.py` and `tests/test_manual_screenshot_capture.py`.
-- Text consistency: 36 scene entries; 33 main-cut passages in original order; plain-text passages exactly match their narration blocks; 797 main-cut words; 375 seconds of main-cut targets.
+- Text consistency: 36 scene entries; 33 main-cut passages in original order; plain-text passages exactly match their narration blocks; 790 main-cut words; 390 seconds of main-cut targets.
 - All linked local files resolve. All 36 canonical image hashes match the unchanged capture manifest.
-- `git diff --check` passed. Final scope is two new narration files and handoff updates to README and STORYBOARD only. No broader application tests were needed for this documentation-only phase.
+- Focused narration/video/capture tests and `git diff --check` are the V2 handoff gates. No application code changed; no broader application suite or full render is needed for this editorial/tooling pass.

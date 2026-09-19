@@ -16,23 +16,23 @@ Learning Scope chooses which folders inform current recommendations and intellig
 
 === SCENE 005 ===
 
-That older quiz can still be opened. Scope controls what informs your study plan. Hiding a folder is a separate browsing choice.
+Excluded quizzes remain available. Hiding a folder is a separate browsing choice.
 
 === SCENE 006 ===
 
-Start with material you choose. Upload structured text, paste questions, or create a short quiz manually, depending on what you already have.
+You do not have to enter every question by hand. Bring in a formatted text file, paste questions for cleanup and preview, or turn a CSV terminology list into matching practice.
 
 === SCENE 007 ===
 
-PDF and Image Import handles structured question banks and terminology. It uses selectable text first, with local character recognition available for supported scans and screenshots.
+For PDFs, DLMS extracts selectable text from question banks and glossaries. Review the extracted material, then build quizzes from saved banks. Reviewed terminology can become matching or multiple-choice practice.
 
 === SCENE 008 ===
 
-Here, an original image is selected for local O C R. Extraction creates drafts to check. A highlighted answer is never proof of correctness.
+When text is trapped in a scan or screenshot, local OCR can recover candidate questions or terminology pairs. Supported paths include selected scanned question-bank pages and scanned glossaries. The result is a draft, ready for checking.
 
 === SCENE 009 ===
 
-This separate prepared example shows Review and Repair. One question is complete; another needs attention. Check the text, choices, and explanation before saving.
+This separate prepared example shows Review and Repair. Check extracted wording, choices, answers, and explanations before saving. Recovery helps preserve useful material while keeping uncertainty visible.
 
 === SCENE 010 ===
 
@@ -48,19 +48,19 @@ An incorrect choice gets immediate feedback and an invitation to try again. You 
 
 === SCENE 013 ===
 
-The correct answer reveals the explanation. Question Tools can mark questions for Anki or copy a prompt. Review with A I also opens your configured provider for manual pasting.
+The correct answer reveals the explanation. Question Tools can mark questions for Anki or copy a prompt. Review with AI also opens your configured provider for manual pasting.
 
 === SCENE 014 ===
 
-Saved Study answers contribute to Learning Intelligence alongside Exam results. Across tagged concepts, accuracy, evidence, and mastery give individual scores a broader context.
+Saved Study answers and Exam results feed Learning Intelligence. Concept-level evidence helps you look beyond a single score.
 
 === SCENE 015 ===
 
-Networking is declining. Access Control is improving, but its overall accuracy still marks it as weak. Data Safety is strong. Cloud needs more evidence.
+Access Control is improving but still weak overall. Cloud needs more evidence before drawing conclusions.
 
 === SCENE 016 ===
 
-Mastery combines overall results, recent performance, evidence, and recency. The explanation makes that model inspectable. It guides practice without claiming to predict certification results.
+The mastery explanation shows how overall results, recent performance, evidence, and recency contribute to the estimate.
 
 === SCENE 018 ===
 
@@ -68,7 +68,7 @@ Due Questions adds spaced review. Each source question gets a schedule from reco
 
 === SCENE 019 ===
 
-The Overdue filter shows what needs another visit and why. Correct streaks extend the interval. An incorrect answer resets it to one day.
+Correct streaks extend review intervals. An incorrect answer resets the interval to one day. Overdue questions stay visible here.
 
 === SCENE 021 ===
 
@@ -84,7 +84,7 @@ Finish Review explicitly closes a generated Study session. Answering the final q
 
 === SCENE 024 ===
 
-DLMS confirms the answers are saved before closing the session. The completion message makes that result clear.
+The completion message confirms that the answers were saved and the session closed.
 
 === SCENE 025 ===
 
@@ -96,11 +96,11 @@ History keeps completed Exam attempts available for review. Study answers feed l
 
 === SCENE 027 ===
 
-Analytics summarizes saved results by quiz across your history. Learning Scope, meanwhile, controls what influences current study recommendations. Those are different views of your progress.
+Analytics compares saved results by quiz across your history, showing average, best, and latest performance together.
 
 === SCENE 028 ===
 
-Portable quiz bundles move selected source quizzes and supported images between installations. Scores, learning history, and schedules stay out, separating content transfer from workspace migration.
+Portable bundles move source quizzes and supported images without learning history. Content Packs manages reusable packages of terminology, image activities, or prepared questions. Study Packs turns that installed material into quizzes, keeping the source available for future sessions.
 
 === SCENE 029 ===
 
@@ -116,11 +116,11 @@ Anki Tools exports quiz questions or recorded misses as flashcards. Import the d
 
 === SCENE 032 ===
 
-Custom decks let you choose individual questions. One source question is selected here, with recorded misses available below to help build a focused set.
+Choose individual questions or recorded misses for a focused set. Those same selected cards can also become printable physical flash cards, through a browser layout for three-by-five index cards.
 
 === SCENE 033 ===
 
-External A I uses a manual handoff. Take a prompt to your chosen provider, then paste its structured response back for validation and repair. No direct provider A P I is required.
+External AI uses a manual handoff. Take a prompt to your chosen provider, then paste its structured response back for validation and repair. No direct provider API is required.
 
 === SCENE 034 ===
 

@@ -19,6 +19,21 @@ import build_demo_video as video
 
 DEFAULT_BASE_URL = 'http://127.0.0.1:7860'
 DEFAULT_VOICE = 'af_sarah'
+# Misaki's English phoneme overrides are understood by Kokoro's text pipeline.
+# These are synthesis input only, never narration/subtitle/product spelling.
+# https://github.com/hexgrad/misaki#english-usage
+PRONUNCIATIONS = {
+    'DLMS': 'dˈi ˈɛl ˈɛm ˈɛs',
+    'AI': 'ˈA ˈI',
+    'OCR': 'ˈO sˈi ˈɑɹ',
+    'API': 'ˈA pˈi ˈI',
+    'Anki': 'ˈɑnki',
+}
+PRONUNCIATION_TEST = (
+    'DLMS is a local-first study workspace. Review with AI uses a manual handoff. '
+    'OCR creates drafts to check. No direct provider API is required. '
+    'Anki Tools exports selected questions as flashcards.'
+)
 
 
 def american_voice_ids(data):
@@ -102,10 +117,21 @@ class KokoroClient:
 
 
 def synthesis_text(text):
-    """Minimal pronunciation-only substitutions; Anki remains unchanged for audition."""
-    for term, spoken in [('DLMS', 'D L M S'), ('AI', 'A I'), ('OCR', 'O C R'), ('API', 'A P I')]:
-        text = re.sub(r'\b' + term + r'\b', spoken, text)
-    return text
+    """Force letter names / AHN-kee, including legacy spaced acronym input.
+
+    Spaces alone let the English G2P read A as an article. Phoneme overrides
+    remove that ambiguity. Preserve existing overrides to remain idempotent.
+    """
+    parts = re.split(r'(\[[^\]\n]+\]\(/[^/\n]+/\))', text)
+    for index in range(0, len(parts), 2):
+        for term, phones in PRONUNCIATIONS.items():
+            pattern = r'[ \t]*'.join(term) if term.isupper() else term
+            parts[index] = re.sub(
+                r'(?<!\w)(?:' + pattern + r')(?!\w)',
+                lambda match, term=term, phones=phones: f'[{term}](/{phones}/)',
+                parts[index],
+            )
+    return ''.join(parts)
 
 
 def narration_scenes(audition, cut):
@@ -174,6 +200,8 @@ def main(argv=None):
     mode.add_argument('--audition', action='store_true')
     mode.add_argument('--cut', choices=('main', 'long'))
     mode.add_argument('--list-voices', action='store_true')
+    mode.add_argument('--pronunciation-test', action='store_true', help='One isolated short test clip; no scene narration is generated.')
+    parser.add_argument('--dry-run', action='store_true', help='With --pronunciation-test, print the synthesis payload without contacting Kokoro.')
     parser.add_argument('--base-url', default=DEFAULT_BASE_URL)
     parser.add_argument('--voice', default=DEFAULT_VOICE)
     parser.add_argument('--speed', type=float, default=1.0, help='Synthesis speed, 0.8–1.2; no post-synthesis stretching.')
@@ -189,7 +217,19 @@ def main(argv=None):
             raise video.BuildError('--timeout must be positive and finite.')
         if args.output_set and (not args.audition or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', args.output_set)):
             raise video.BuildError('--output-set requires --audition and a simple name containing letters, digits, underscores or hyphens.')
+        if args.dry_run and not args.pronunciation_test:
+            raise video.BuildError('--dry-run requires --pronunciation-test.')
         client = KokoroClient(args.base_url, args.timeout)
+        if args.pronunciation_test:
+            if args.dry_run:
+                print(json.dumps({'text': synthesis_text(PRONUNCIATION_TEST),
+                                  'voice': args.voice, 'speed': args.speed}, ensure_ascii=False, indent=2))
+            else:
+                scenes = [{'id': 0, 'image': None, 'narration': PRONUNCIATION_TEST,
+                           'audio_filename': 'pronunciation.wav'}]
+                generate_scenes(client, scenes, video.ROOT / 'build/demo-video/pronunciation-test',
+                                args.voice, args.speed, args.force)
+            return 0
         if args.list_voices:
             for voice in client.voices():
                 print(voice + (' (American female)' if voice.startswith('af_') else ' (American male)'))

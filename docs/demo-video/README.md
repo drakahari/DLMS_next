@@ -2,12 +2,13 @@
 
 Screenshot capture is complete on **develop/3.2.0** after visual stabilization.
 The canonical set contains **36 final screenshots** in [captures/](captures/).
-The first-pass [narration and editorial plan](NARRATION.md) and
-[recording script](NARRATION_PLAIN.txt) are complete: 33 scenes with an original
-6:15 editorial target. The first complete narrated review build uses approved
-local Kokoro voice **af_heart** and runs **6:37.200**. Human listening review is
-required before publishing. See [review build](#first-complete-narrated-review-build)
-and [production workflow](#video-production-workflow).
+The revised [V2 narration/editorial plan](NARRATION.md) and
+[recording script](NARRATION_PLAIN.txt) contain **33 scenes, 790 words**, with a
+6:30 minimum editorial timeline and an estimated **6:44** narrated runtime.
+The preserved V1 review build uses **af_heart** and runs **6:37.200**.
+V2 strengthens imports, Study Packs and printable cards after that viewing;
+no V2 narration or video has been generated. See the [V2 audit](EDITORIAL_V2.md),
+[review build](#first-complete-narrated-review-build) and [production workflow](#video-production-workflow).
 This is not a release announcement.
 
 Editing handoff: [video-manifest.json](video-manifest.json), [storyboard](STORYBOARD.md),
@@ -348,7 +349,7 @@ a recording requires regenerating both. Missing narration is an error for
 
 ### Timing, motion and transitions
 
-Silent previews use the editorial targets: **375 seconds main**, **388 seconds
+Silent previews use the V2 editorial targets: **390 seconds main**, **403 seconds
 long**, at 30 fps. Narrated slots use the greater of the editorial viewing
 minimum and **actual ffprobe audio duration + incoming visual lead + tail**,
 rounded up to a whole video frame. The tail defaults to **0.6 seconds** and
@@ -433,12 +434,12 @@ The fixed audition samples **001 → 013 → 014**, preserving main-cut order:
 | Scene | Purpose | Words | Editorial target |
 | --- | --- | ---: | ---: |
 | 001 — Dashboard | Opening, product positioning, DLMS pronunciation | 25 | 11 sec |
-| 013 — Question Tools | Conversational Study workflow, Anki and A I pronunciation | 29 | 14 sec |
-| 014 — Learning Intelligence | Technical explanation, evidence and mastery, list cadence | 23 | 11 sec |
+| 013 — Question Tools | Conversational Study workflow, Anki and AI pronunciation | 28 | 14 sec |
+| 014 — Learning Intelligence | Technical explanation connecting Study and Exam evidence | 18 | 10 sec |
 
 These screenshots have been inspected against their narration. The selection
 includes short and longer sentences, an opening acronym, and a transition from
-Study answers to learning evidence. Total: **77 words, 36 seconds of editorial
+Study answers to learning evidence. V2 total: **71 words, 35 seconds of editorial
 target time**. Actual WAV lengths may extend the audition; pacing is not forced.
 
 From the repository root:
@@ -456,7 +457,7 @@ containing only exact spoken text from `NARRATION.md`. The derived `manifest.jso
 records scene order, screenshots, text, word counts, targets, future audio names,
 and the usual production motion/transition metadata. `README.txt` provides
 provider-neutral recording instructions; `PRONUNCIATION_NOTES.md` documents
-letter-by-letter DLMS and A I, Anki, and technical phrasing. Neither file is
+letter-by-letter DLMS and AI, Anki, and technical phrasing. Neither file is
 spoken narration. Re-export is deterministic and does not overwrite audio.
 
 Supply **lossless mono/stereo PCM WAV** files with these exact paths:
@@ -568,13 +569,26 @@ The adapter uses `POST /tts/generate`, omitting `output_format` for WAV. Its
 speed, not post-generation stretching. No pitch, music, effects, or normalization
 is requested from Kokoro. Normalization remains the video builder's job.
 
-Only synthesis input changes: standalone `DLMS` becomes `D L M S`, and unspaced
-`AI`, `OCR`, and `API` become individual letters. Already spaced letters remain
-unchanged. **Anki stays spelled Anki** for the first listening test, with the
-intended “AHN-kee” pronunciation documented in the audition notes. No spelling
-change is justified until a real audition demonstrates a problem. Authoritative
-narration and speech-only exports remain unchanged. Verify acronym cadence and
-Anki by ear; structural audio validation cannot establish pronunciation quality.
+Only synthesis input changes: standalone `DLMS`, `AI`, `OCR` and `API`, including
+legacy space-separated forms, receive explicit Kokoro/Misaki letter-name
+phonemes. `Anki` receives the phonemes for **AHN-kee**. Written narration,
+scene-text exports and subtitles retain normal product spelling. The adapter
+does not transform substrings inside unrelated words. See the [V2 pronunciation
+table and upstream references](EDITORIAL_V2.md#pronunciation-correction).
+These corrections follow the user's V1 listening feedback; their sound still
+needs confirmation with the deployed local server before a full V2 generation.
+
+Prepare a tiny test without contacting Kokoro, then run it later when available:
+
+```sh
+python tools/generate_demo_narration.py --pronunciation-test --voice af_heart --dry-run
+python tools/generate_demo_narration.py --pronunciation-test --voice af_heart
+```
+
+The second command writes only `build/demo-video/pronunciation-test/pronunciation.wav`
+and its metadata. Existing files require `--force`. It touches neither production
+clips nor audition sets. This pass only prepared the dry-run payload; the local
+service was unavailable. No new voice audio was generated.
 
 WAVs are checked for nonempty, complete PCM data and mono/stereo channels.
 When available, ffprobe additionally checks codec and duration. No invalid
@@ -615,6 +629,14 @@ installed nor started automatically.
 
 ### First complete narrated review build
 
+**Historical V1 result.** The files below remain intact, but their narration and
+subtitles are not the revised V2 script. Do not assemble V2 with these old WAVs:
+audio-format validation does not prove text or pronunciation-version alignment.
+When V2 recording is authorized, archive the V1 audio/metadata and output files
+before any explicit replacement, then generate fresh exports from NARRATION.md.
+The preserved Sarah/Nicole/Heart audition recordings likewise use V1 text;
+future audition exports will reflect V2. Do not overwrite the reference sets.
+
 The main review build now uses the approved local Kokoro voice **`af_heart`** at
 speed 1.0 for all **33 scenes**. It is ready for human listening review, not yet
 approved for publication. The commands in the production section above generated
@@ -642,4 +664,13 @@ original generated levels; the existing builder normalizes temporary copies.
 Listen to the whole video before publishing, especially DLMS in 001, PDF in 007,
 OCR in 008, Anki/AI in 013, and API in 033. Check natural cadence, scene joins,
 and caption density as well. Successful encoding cannot confirm speech quality.
-The approved narration and screenshots and all three audition sets remain intact.
+The V1 media, screenshots and all three audition sets remain intact; only the
+authoritative script has advanced to V2.
+
+### Future focused videos
+
+Good follow-ups are importing PDFs/scans/images/CSV; OCR and Review & Repair;
+Learning Intelligence; Generated Practice; Study Packs and Content Packs; Anki
+and printable physical flash cards; building/importing quizzes; and Learning
+Scope. [The V2 audit](EDITORIAL_V2.md#future-focused-videos) gives a short scope
+for each. This is planning only; none of those videos is being created now.

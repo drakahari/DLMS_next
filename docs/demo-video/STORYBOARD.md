@@ -1,6 +1,6 @@
 # Captured demo-video storyboard
 
-All 36 frames are captured in `captures/`. This table preserves the original capture objectives and timing. The completed first-pass [narration/editorial plan](NARRATION.md) supersedes these timings for assembly: 33 narrated scenes, 797 words, target 6:15. Cut 017 and 035, reserve 020 for the long version, and keep 033. All assets remain intact. Use restrained cuts or 0.3-second dissolves between chapters. Within a workflow, use straight cuts; avoid animated mouse simulation or transitions implying an unperformed action. Hold details long enough to explain one idea, not read every label.
+All 36 frames are captured in `captures/`. This table preserves the original capture objectives and timing. The revised V2 [narration/editorial plan](NARRATION.md) supersedes them for assembly: **33 narrated scenes, 790 words, 6:30 minimum targets, approximately 6:44 with Heart delivery**. Cut 017 and 035, reserve 020 for the long version, and keep 033. V2 strengthens 006–009, adds pack context to 028 and printable-card coverage to 032, and tightens repeated explanations. No captures or scene order changed. See the [V2 audit](EDITORIAL_V2.md). The existing builder uses short chapter fades and straight cuts within workflows; the historical dissolve suggestions below do not require new rendering work. Avoid animated mouse simulation or transitions implying an unperformed action.
 
 | Frame | Viewer should notice / narration objective | Duration | Transition | Image | Suggested focus |
 |---|---|---:|---|---|---|

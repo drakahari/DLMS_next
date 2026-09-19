@@ -39,12 +39,43 @@ def test_scene_sources_and_contract(scenes, tmp_path):
     for scene in scenes:
         assert (export / scene['text_filename']).read_text() == scene['narration'] + '\n'
         assert scene['audio_filename'] == f"{scene['id']:03}.wav"
-    assert sum(s['narration_words'] for s in main) == 797
+    assert sum(s['narration_words'] for s in main) == 790
 
 
 def test_transforms():
-    assert tts.synthesis_text('DLMS AI Anki OCR API A I RAID') == 'D L M S A I Anki O C R A P I A I RAID'
-    assert tts.synthesis_text('XDLMS Anki') == 'XDLMS Anki'
+    assert tts.synthesis_text('DLMS AI Anki OCR API') == (
+        '[DLMS](/dˈi ˈɛl ˈɛm ˈɛs/) [AI](/ˈA ˈI/) [Anki](/ˈɑnki/) '
+        '[OCR](/ˈO sˈi ˈɑɹ/) [API](/ˈA pˈi ˈI/)')
+    assert tts.synthesis_text('D L M S A I O C R A P I') == tts.synthesis_text('DLMS AI OCR API')
+    unchanged = 'XDLMS DLMS2 RAID RAPID OCRed APIs Anking _AI_ naïAIve PDF CSV'
+    assert tts.synthesis_text(unchanged) == unchanged
+    assert tts.synthesis_text('(AI), Anki’s AI-ready workflow.') == (
+        '([AI](/ˈA ˈI/)), [Anki](/ˈɑnki/)’s [AI](/ˈA ˈI/)-ready workflow.')
+    transformed = tts.synthesis_text('DLMS and Anki use AI. A I is spelled out.')
+    assert tts.synthesis_text(transformed) == transformed
+
+
+def test_pronunciation_dry_run_has_no_network_or_scene_export(monkeypatch, capsys):
+    monkeypatch.setattr(tts.KokoroClient, 'request', Mock(side_effect=AssertionError('network')))
+    monkeypatch.setattr(tts, 'narration_scenes', Mock(side_effect=AssertionError('scene export')))
+    assert tts.main(['--pronunciation-test', '--dry-run', '--voice', 'af_heart']) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {'text': tts.synthesis_text(tts.PRONUNCIATION_TEST), 'voice': 'af_heart', 'speed': 1.0}
+    assert tts.main(['--cut', 'main', '--dry-run']) == 2
+    assert '--dry-run requires --pronunciation-test' in capsys.readouterr().err
+
+
+def test_pronunciation_clip_is_isolated(monkeypatch, tmp_path, wav_bytes):
+    monkeypatch.setattr(tts.video, 'ROOT', tmp_path)
+    monkeypatch.setattr(tts, 'narration_scenes', Mock(side_effect=AssertionError('production selection')))
+    monkeypatch.setattr(tts.KokoroClient, 'voices', Mock(return_value=['af_heart']))
+    generate = Mock(return_value=wav_bytes)
+    monkeypatch.setattr(tts.KokoroClient, 'generate', generate)
+    assert tts.main(['--pronunciation-test', '--voice', 'af_heart']) == 0
+    assert list(tmp_path.rglob('*.wav')) == [tmp_path / 'build/demo-video/pronunciation-test/pronunciation.wav']
+    generate.assert_called_once_with(tts.synthesis_text(tts.PRONUNCIATION_TEST), 'af_heart', 1.0)
+    assert tts.main(['--pronunciation-test', '--voice', 'af_heart']) == 2
+    assert generate.call_count == 1  # overwrite protection remains in force
 
 
 def test_request_contract(wav_bytes):
