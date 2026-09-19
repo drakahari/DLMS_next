@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-FIXTURE_VERSION = 'dlms-demo-video-v2'
+FIXTURE_VERSION = 'dlms-demo-video-v3'
 IDENTITY = 'DLMS Demo Training & Practice Center'
 # Correct choice is always A; event selections below match their recorded result.
 SOURCES = (
@@ -38,6 +38,146 @@ def questions(source):
                  concepts=[source[2]]) for i, row in enumerate(source[4], 1)]
 
 
+def _write_demo_study_pack(dlms):
+    """Install one original pack that exercises the real catalog and manager."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    root = Path(dlms.CONTENT_PACK_FOLDER) / 'DLMS_Study_practical_systems_lab'
+    data = root / 'data'
+    images = root / 'images'
+    data.mkdir(parents=True, exist_ok=True)
+    images.mkdir(parents=True, exist_ok=True)
+
+    source = {
+        'organization': 'DLMS Demo Fixture',
+        'license': 'CC0-1.0',
+        'attribution': 'Original synthetic illustration created for the DLMS demo.',
+    }
+    manifest = {
+        'schema_version': 1,
+        'id': 'practical_systems_lab',
+        'name': 'Practical Systems Lab',
+        'version': '1.0.0',
+        'content_domain': 'general',
+        'description': 'Reusable practice for resilient services, recovery checks, and clear operational decisions.',
+        'datasets': [{
+            'id': 'recovery_terms', 'title': 'Recovery & Reliability Terms',
+            'type': 'matching', 'path': 'data/recovery-terms.json',
+            'description': 'Match everyday reliability terms with concise operational meanings.',
+        }],
+        'image_datasets': [{
+            'id': 'service_map', 'title': 'Resilient Service Map',
+            'type': 'hotspot', 'path': 'data/service-map.json',
+            'description': 'Locate recovery and monitoring components in an original system map.',
+        }],
+        'quiz_datasets': [{
+            'id': 'readiness_checks', 'title': 'Change Readiness Checks',
+            'type': 'quiz', 'path': 'data/readiness-checks.json',
+            'description': 'Short prepared questions about safe, reversible changes.',
+        }],
+    }
+    matching = {
+        'schema_version': 1, 'id': 'recovery_terms',
+        'title': 'Recovery & Reliability Terms',
+        'category': 'Operational Foundations', 'source': source,
+        'question_text': 'Match each reliability term with its practical meaning.',
+        'concepts': ['service-reliability', 'safe-change'],
+        'terms': [
+            {'id': 'baseline', 'term': 'Baseline', 'definition': 'A recorded state used for comparison.', 'concepts': ['safe-change']},
+            {'id': 'recovery-copy', 'term': 'Recovery copy', 'definition': 'A separate copy tested for restoration.', 'concepts': ['recovery-readiness']},
+            {'id': 'health-check', 'term': 'Health check', 'definition': 'A repeatable test that confirms service status.', 'concepts': ['service-reliability']},
+        ],
+    }
+
+    image_path = images / 'resilient-service-map.png'
+    image = Image.new('RGB', (1200, 675), '#f5f1ff')
+    draw = ImageDraw.Draw(image)
+    font_path = Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
+    bold_path = Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+    font = ImageFont.truetype(str(font_path), 25) if font_path.exists() else ImageFont.load_default(size=25)
+    bold = ImageFont.truetype(str(bold_path), 32) if bold_path.exists() else ImageFont.load_default(size=32)
+    small = ImageFont.truetype(str(font_path), 20) if font_path.exists() else ImageFont.load_default(size=20)
+    draw.rounded_rectangle((35, 30, 1165, 645), radius=30, fill='#ffffff', outline='#7042b8', width=5)
+    draw.text((75, 62), 'Resilient Service Map', fill='#2c1748', font=bold)
+    draw.text((75, 108), 'Original synthetic diagram · select the requested component', fill='#675978', font=small)
+    boxes = [
+        ((85, 215, 340, 365), '#e7dcff', '#5a2e9c', 'Gateway', 'Receives requests'),
+        ((470, 215, 730, 365), '#fff0c2', '#8b6200', 'Application', 'Processes work'),
+        ((855, 215, 1110, 365), '#dff2ff', '#17628f', 'Primary data', 'Stores current state'),
+        ((855, 445, 1110, 585), '#dcf8e8', '#176a42', 'Recovery copy', 'Verified restore point'),
+        ((470, 445, 730, 585), '#f3e7ff', '#7042b8', 'Health monitor', 'Checks service status'),
+    ]
+    for coords, fill, outline, title, subtitle in boxes:
+        draw.rounded_rectangle(coords, radius=20, fill=fill, outline=outline, width=4)
+        draw.text((coords[0] + 24, coords[1] + 30), title, fill=outline, font=bold)
+        draw.text((coords[0] + 24, coords[1] + 83), subtitle, fill='#41394a', font=font)
+    for start, end in [((340, 290), (470, 290)), ((730, 290), (855, 290)), ((980, 365), (980, 445)), ((855, 515), (730, 515))]:
+        draw.line((start, end), fill='#7042b8', width=8)
+        x, y = end
+        tip = x - 18 if x >= start[0] else x + 18
+        draw.polygon([(x, y), (tip, y-12), (tip, y+12)], fill='#7042b8')
+    image.save(image_path)
+
+    image_dataset = {
+        'schema_version': 1, 'id': 'service_map', 'title': 'Resilient Service Map',
+        'category': 'System Diagrams', 'source': source,
+        'concepts': ['service-reliability', 'recovery-readiness'],
+        'images': [{
+            'id': 'resilient-map', 'file': 'images/resilient-service-map.png',
+            'alt_text': 'Diagram connecting a gateway, application, primary data, recovery copy, and health monitor.',
+            'license': 'CC0-1.0', 'source': source,
+            'concepts': ['service-reliability'],
+            'hotspots': [
+                {
+                    'id': 'recovery-copy', 'label': 'Recovery copy',
+                    'prompt': 'Select the verified recovery copy.',
+                    'shape': {'type': 'polygon', 'points': [[.712, .659], [.925, .659], [.925, .867], [.712, .867]]},
+                    'explanation': 'A separate, verified copy provides a practical recovery path.',
+                    'verification': {'status': 'source-checked', 'reference_basis': 'Original DLMS demo diagram'},
+                    'concepts': ['recovery-readiness'],
+                },
+                {
+                    'id': 'health-monitor', 'label': 'Health monitor',
+                    'prompt': 'Select the component that checks service status.',
+                    'shape': {'type': 'polygon', 'points': [[.392, .659], [.608, .659], [.608, .867], [.392, .867]]},
+                    'concepts': ['service-reliability'],
+                },
+            ],
+        }],
+    }
+    prepared = {
+        'schema_version': 1, 'id': 'readiness_checks',
+        'title': 'Change Readiness Checks', 'source': source,
+        'concepts': ['safe-change'], 'images': [],
+        'questions': [
+            {'type': 'choice', 'question': 'What makes a change easier to reverse?', 'concepts': ['safe-change'], 'choices': [
+                {'text': 'A tested recovery step', 'is_correct': True},
+                {'text': 'An undocumented assumption', 'is_correct': False},
+                {'text': 'Removing the baseline', 'is_correct': False},
+            ]},
+            {'type': 'choice', 'question': 'What should a health check report?', 'concepts': ['service-reliability'], 'choices': [
+                {'text': 'An unrelated file name', 'is_correct': False},
+                {'text': 'A repeatable service signal', 'is_correct': True},
+                {'text': 'A hidden configuration change', 'is_correct': False},
+            ]},
+            {'type': 'choice', 'question': 'Where should a recovery copy be kept?', 'concepts': ['recovery-readiness'], 'choices': [
+                {'text': 'Only beside the original', 'is_correct': False},
+                {'text': 'Only in temporary memory', 'is_correct': False},
+                {'text': 'Separate from the original system', 'is_correct': True},
+            ]},
+        ],
+    }
+    (root / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+    (data / 'recovery-terms.json').write_text(json.dumps(matching, indent=2), encoding='utf-8')
+    (data / 'service-map.json').write_text(json.dumps(image_dataset, indent=2), encoding='utf-8')
+    (data / 'readiness-checks.json').write_text(json.dumps(prepared, indent=2), encoding='utf-8')
+    (root / 'PACK_VALIDATION.json').write_text(json.dumps({
+        'schema_version': 1, 'pack_id': 'practical_systems_lab',
+        'overall_status': 'PASS', 'checks': [],
+    }, indent=2), encoding='utf-8')
+    return matching, image_dataset
+
+
 def seed(dlms):
     # Relative evidence stays representative on later capture dates. The UTC
     # anchor is recorded, not concealed as bit-for-bit date determinism.
@@ -45,6 +185,7 @@ def seed(dlms):
     portal = dlms.load_portal_config()
     portal.update(title=IDENTITY, theme='purple-gold', excluded_learning_folders=['Past Projects'])
     dlms._write_settings_portal_config(portal)
+    matching_data, image_data = _write_demo_study_pack(dlms)
     published = {}
     folders = {}
     for source in SOURCES:
@@ -56,6 +197,46 @@ def seed(dlms):
     folders[published['duplicate'][0]] = 'Core Skills'
     published['past'] = dlms._publish_quiz('Past Project — File Organization', [questions(SOURCES[0])[0]], filename_prefix='video_past')
     folders[published['past'][0]] = 'Past Projects'
+    matching_question = {
+        'number': 1, 'type': 'matching',
+        'question': matching_data['question_text'],
+        'pairs': [
+            {'left': item['term'], 'right': item['definition']}
+            for item in matching_data['terms']
+        ],
+        'round_size': 3, 'direction': 'term_to_definition',
+        'concepts': matching_data['concepts'],
+        'source': matching_data['source'],
+    }
+    published['matching'] = dlms._publish_quiz(
+        'Recovery & Reliability — Matching Practice', [matching_question],
+        filename_prefix='video_matching', source_pack_id='practical_systems_lab',
+        source_dataset_id='recovery_terms',
+    )
+    folders[published['matching'][0]] = 'Core Skills'
+    demo_image = image_data['images'][0]
+    demo_hotspot = demo_image['hotspots'][0]
+    hotspot_runtime = [{
+        'number': 1, 'type': 'hotspot', 'question': demo_hotspot['prompt'],
+        'image_url': '/content-packs/practical_systems_lab/assets/' + demo_image['file'],
+        'image_alt': demo_image['alt_text'], 'image_edits': [],
+        'target': demo_hotspot['shape'], 'target_label': demo_hotspot['label'],
+        'explanation': demo_hotspot['explanation'],
+        'verification': demo_hotspot['verification'], 'concepts': demo_hotspot['concepts'],
+        'image_source': demo_image['source'],
+    }]
+    hotspot_db = [{
+        'number': 1, 'type': 'choice',
+        'question': demo_hotspot['prompt'] + ' [Image hotspot]',
+        'choices': [{'label': 'A', 'text': demo_hotspot['label'], 'is_correct': True}],
+        'concepts': demo_hotspot['concepts'], 'source': image_data['source'],
+    }]
+    published['hotspot'] = dlms._publish_quiz(
+        'Resilient Service Map — Image Practice', hotspot_runtime, hotspot_db,
+        filename_prefix='video_hotspot', source_pack_id='practical_systems_lab',
+        source_dataset_id='service_map',
+    )
+    folders[published['hotspot'][0]] = 'Core Skills'
     conn = dlms.get_db()
     payloads = []
     for source in SOURCES:
@@ -106,6 +287,7 @@ def seed(dlms):
     Path(dlms.PDF_IMPORT_DRAFT_FOLDER,'video_review.json').write_text(json.dumps(draft),encoding='utf-8')
     metadata = dict(fixture_version=FIXTURE_VERSION, evidence_anchor=now.isoformat(),
                     critical_html=published['network'][1], adaptive_html=published['adaptive'][1],
+                    matching_html=published['matching'][1], hotspot_html=published['hotspot'][1],
                     source_ids=[published[s[0]][0] for s in SOURCES])
     Path(dlms.APP_DATA_DIR,'browser_fixture.json').write_text(json.dumps(metadata),encoding='utf-8')
     return metadata

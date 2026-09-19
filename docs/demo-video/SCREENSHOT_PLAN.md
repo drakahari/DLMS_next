@@ -1,8 +1,10 @@
 # Demo-video screenshot plan — captured sequence
 
-All 36 ordered frames are captured in [captures/](captures/), separate from proof and manual images. Purple & Gold · 1920 × 1080 · scale 1. Six labeled contact sheets and [video-manifest.json](video-manifest.json) are the editing handoff.
+All 36 V2 frames remain captured in [captures/](captures/), separate from proof and manual images. Purple & Gold · 1920 × 1080 · scale 1. Four additive V3 proposal frames use alphanumeric IDs so none of the V2 assets need renumbering. The six V2 contact sheets and [video-manifest.json](video-manifest.json) remain stable; the V3 handoff is [v3-additions-manifest.json](v3-additions-manifest.json) and [v3-additions-contact-sheet.png](v3-additions-contact-sheet.png).
 
 **36 frames · 402 seconds (6:42)** before transitions. Frames 017, 020, 033, 035 are optional and retained. See [STORYBOARD.md](STORYBOARD.md) for narration objectives and focus suggestions.
+
+The four proposed V3 additions total **44 seconds**. Against the current approximately 6:43 assembled overview, they estimate an approximately **7:27** V3. Narration, audio, and video have not been regenerated.
 
 Framing uses real page scrolling and existing collapse/filter controls. Only the target teaching area needs to fit; adjoining long-page content may continue beyond the viewport. No UI text, layout, or data values were painted over. Pointer moved off controls for the final Study detail captures.
 
@@ -135,6 +137,30 @@ Framing uses real page scrolling and existing collapse/filter controls. Only the
 - **Exact state / expansion / filters:** Correct answer selected after feedback; explanation and Question Tools visible; no provider opened.
 - **Framing:** Teaching detail; anchor `.quiz-toolbar`, 8px top margin where scroll limits permit.
 - **Duration / priority:** ~14 seconds; essential.
+
+## 013A — Match concepts through direct interaction
+
+- **File:** [013A-matching-question.png](captures/013A-matching-question.png)
+- **Proposed placement:** Immediately after 013 and before the Learning Intelligence chapter at 014.
+- **Route:** `@matching_quiz`
+- **Purpose:** Show matching as a distinct interaction, with all three relationships placed and confirmed.
+- **Narration objective:** Explain that matching practice uses shuffled answers and immediate Study Mode feedback without spending time on an interaction tutorial.
+- **Required fixture:** Original Recovery & Reliability activity from the synthetic Practical Systems Lab pack.
+- **Exact state / expansion / filters:** Study Mode; all three matching answers placed correctly; answer pool empty; correctness feedback visible.
+- **Framing:** Teaching detail; anchor `#qHeader` so every pair and feedback row remains visible.
+- **Duration / priority:** ~11 seconds; essential V3 addition.
+
+## 013B — Answer by selecting a region
+
+- **File:** [013B-hotspot-question.png](captures/013B-hotspot-question.png)
+- **Proposed placement:** Immediately after 013A and before 014.
+- **Route:** `@hotspot_quiz`
+- **Purpose:** Show that a hotspot answer is a location on an image rather than a conventional answer button.
+- **Narration objective:** Let the correct marker, named structure, and brief feedback carry most of the explanation.
+- **Required fixture:** Original resilient-service diagram from the synthetic Practical Systems Lab pack.
+- **Exact state / expansion / filters:** Study Mode; Recovery copy region selected correctly; marker and explanation visible.
+- **Framing:** Teaching detail; the prompt, complete image, selected marker, attribution, and feedback all fit at 1920×1080.
+- **Duration / priority:** ~11 seconds; essential V3 addition.
 
 ## 014 — See the learning pattern
 
@@ -286,6 +312,30 @@ Framing uses real page scrolling and existing collapse/filter controls. Only the
 - **Framing:** Teaching detail; anchor `.portable-bundle-workflows`, 24px top margin where scroll limits permit.
 - **Duration / priority:** ~12 seconds; essential.
 
+## 028A — Manage reusable content packages
+
+- **File:** [028A-content-packs.png](captures/028A-content-packs.png)
+- **Proposed placement:** Immediately after 028.
+- **Route:** `/content-packs/details/DLMS_Study_practical_systems_lab`
+- **Purpose:** Show Content Packs as the package-management and validation side of reusable study material.
+- **Narration objective:** Distinguish an installed source package from generated quizzes, using the validation report and tracked-quiz count as visible evidence.
+- **Required fixture:** Installed Practical Systems Lab pack with matching, image, and prepared-question datasets; original content only.
+- **Exact state / expansion / filters:** Pack details; valid status; three datasets; two generated quizzes; zero warnings and blocking errors; validation checks visible.
+- **Framing:** Overview at page top; no temporary data-root path appears.
+- **Duration / priority:** ~10 seconds; essential V3 addition.
+
+## 028B — Launch practice from installed datasets
+
+- **File:** [028B-study-packs.png](captures/028B-study-packs.png)
+- **Proposed placement:** Immediately after 028A and before duplicate review at 029.
+- **Route:** `/study-packs`
+- **Purpose:** Show Study Packs as the learner-facing catalog that turns reusable datasets into quizzes.
+- **Narration objective:** Make matching, image/hotspot, and prepared-question sources understandable through their rows and Create Quiz actions.
+- **Required fixture:** The same installed Practical Systems Lab pack.
+- **Exact state / expansion / filters:** Practical Systems Lab expanded; matching, image/hotspot, and prepared-question rows visible; no quiz generated during capture.
+- **Framing:** Overview at page top; heading, creation tools, installed-pack controls, and the complete dataset table fit at 1920×1080.
+- **Duration / priority:** ~12 seconds; essential V3 addition.
+
 ## 029 — Find duplicate source questions
 
 - **File:** [029-duplicates.png](captures/029-duplicates.png)
@@ -325,6 +375,8 @@ Framing uses real page scrolling and existing collapse/filter controls. Only the
 - **Exact state / expansion / filters:** Filter Everyday Data Safety; expand source and select its first question; no download.
 - **Framing:** Teaching detail; anchor `.anki-custom-quiz-filter`, 24px top margin where scroll limits permit.
 - **Duration / priority:** ~10 seconds; essential.
+
+**V3 print-layout decision:** Keep the physical-card mention on 032 without adding a new frame. The actual `/anki/printable` HTML is deterministic, but its paper-first white layout is intentionally independent of the selected DLMS theme. A complete Letter sheet plus the on-screen duplex guidance also exceeds the fixed 1080-pixel viewport. A capture would therefore violate the Purple & Gold standard or clip the physical layout it is meant to prove. Reserve front/back sheet visuals for a print-focused tutorial.
 
 ## 033 — An optional external workflow
 

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -42,11 +43,22 @@ class Frame:
 def frame(number, slug, title, route, ready="document.querySelector('main')", state='Default controls; no search; no open dialogs.', fixture='Base synthetic library.', **kwargs):
     return Frame(f'{number:03}', f'{number:03}-{slug}.png', title, route, ready, state, fixture, **kwargs)
 
+
+def addition(identifier, slug, title, route, ready="document.querySelector('main')", state='Default controls; no search; no open dialogs.', fixture='Base synthetic library.', **kwargs):
+    identifier = str(identifier).strip().upper()
+    return Frame(identifier, f'{identifier}-{slug}.png', title, route, ready, state, fixture, **kwargs)
+
+
+def normalized_frame_id(value):
+    raw = str(value).strip().upper()
+    match = re.fullmatch(r'(\d+)([A-Z]*)', raw)
+    return match[1].zfill(3) + match[2] if match else raw
+
 DASH_READY = "document.getElementById('dailyReviewCount') && !['Loading…',''].includes(document.getElementById('dailyReviewCount').textContent.trim())"
 LI_READY = "document.querySelector('#liRows tr') && !document.getElementById('liScopeSummary').textContent.includes('Loading')"
 QUIZ_READY = "typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady === true"
 SCHEDULE_READY = "document.getElementById('nrsDue')?.textContent !== '—' && document.querySelector('#nrsRows tr')"
-FRAMES = (
+V2_FRAMES = (
     frame(1,'dashboard','A personal learning workspace','/',DASH_READY,fixture='Evidence, due questions, no browser Resume.'),
     frame(2,'todays-review','Choose a useful next step','/',DASH_READY,focus='.daily-review-panel',fixture='Real server-derived recommendations; no fabricated ranking.',seconds=12),
     frame(3,'quiz-library','Organize original study content','/library',focus='#quizList',action='library-overview',state='Visible; no Smart View/search; Core Skills expanded; all other groups collapsed.'),
@@ -83,6 +95,31 @@ FRAMES = (
     frame(34,'backup','Preserve your local workspace','/settings/backup',state='Backup/restore overview; no restore/reset initiated.',seconds=12),
     frame(35,'settings','Your workspace, your choices','/settings',state='Purple & Gold; isolated demo identity; no destructive action.',essential=False),
     frame(36,'closing-dashboard','Return to the next useful step','/',DASH_READY,fixture='No unwanted Resume; server recommendations may remain after a review.',seconds=10),
+)
+
+V3_ADDITIONS = (
+    addition('013A','matching-question','Match concepts through direct interaction','@matching_quiz',QUIZ_READY,
+             action='matching-complete',focus='#qHeader',
+             state='Study Mode; all three matching answers placed correctly; answer pool empty; correctness feedback visible.',
+             fixture='Original Recovery & Reliability matching activity from the synthetic Practical Systems Lab pack.',seconds=11),
+    addition('013B','hotspot-question','Answer by selecting a region','@hotspot_quiz',QUIZ_READY,
+             action='hotspot-correct',focus='.active-quiz-logo-banner',scroll_margin=8,
+             state='Study Mode; Recovery copy region selected correctly; marker and explanation visible.',
+             fixture='Original resilient-service diagram from the synthetic Practical Systems Lab pack.',seconds=11),
+    addition('028A','content-packs','Manage reusable content packages','/content-packs/details/DLMS_Study_practical_systems_lab',
+             state='Pack details; independently validated synthetic pack with matching, image, and mixed datasets; two generated quizzes tracked.',
+             fixture='Installed Practical Systems Lab pack; original data and illustration only.',seconds=10),
+    addition('028B','study-packs','Launch practice from installed datasets','/study-packs',
+             action='pack-catalog',
+             state='Installed catalog; Practical Systems Lab expanded; matching, image/hotspot, and prepared-question rows visible.',
+             fixture='Same installed Practical Systems Lab pack; no quiz generated during capture.',seconds=12),
+)
+
+_ADDITIONS_BY_ID = {item.id: item for item in V3_ADDITIONS}
+FRAMES = (
+    *V2_FRAMES[:13], _ADDITIONS_BY_ID['013A'], _ADDITIONS_BY_ID['013B'],
+    *V2_FRAMES[13:28], _ADDITIONS_BY_ID['028A'], _ADDITIONS_BY_ID['028B'],
+    *V2_FRAMES[28:],
 )
 
 
@@ -156,6 +193,18 @@ def prepare(browser, item, metadata, data_root):
     elif action == 'ocr':
         browser.set_files("form[action='/pdf-import/screenshots'] input[type=file]", [str(data_root/'study-skills.png')])
         browser.click("form[action='/pdf-import/screenshots'] input[name='rights_ok']")
+    elif action == 'matching-complete':
+        browser.click('.study-mode-btn')
+        browser.wait_for("document.querySelectorAll('.matching-drag-row').length === 3")
+        browser.evaluate("commitMatchingAnswer(0,0);commitMatchingAnswer(1,1);commitMatchingAnswer(2,2);true")
+        browser.wait_for("document.querySelectorAll('.matching-drag-row.matching-correct').length === 3 && document.querySelector('.matching-pool-empty')")
+    elif action == 'hotspot-correct':
+        browser.click('.study-mode-btn')
+        browser.wait_for("document.querySelector('.hotspot-image-wrap')")
+        browser.evaluate("(() => {const el=document.querySelector('.hotspot-image-wrap');const img=el.querySelector('img');const rect=img.getBoundingClientRect();el.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:rect.left+rect.width*.82,clientY:rect.top+rect.height*.76}));return true;})()")
+        browser.wait_for("document.querySelector('.hotspot-click-marker.correct') && document.querySelector('.matching-study-feedback.is-correct')")
+    elif action == 'pack-catalog':
+        browser.evaluate("(() => {document.querySelectorAll('.study-pack-collapsible').forEach((item,index)=>item.open=index===0);return true;})()")
 
 
 def capture(items, output, theme, *, check_only=False, replay_prefix=False):
@@ -177,7 +226,11 @@ def capture(items, output, theme, *, check_only=False, replay_prefix=False):
             if status != 200:
                 raise RuntimeError(f'Theme selection failed: {status}')
             selected_ids = {item.id for item in items}
-            steps = [item for item in FRAMES if item.id <= max(selected_ids)] if replay_prefix else items
+            if replay_prefix:
+                final_index = max(index for index, item in enumerate(FRAMES) if item.id in selected_ids)
+                steps = FRAMES[:final_index + 1]
+            else:
+                steps = items
             for item in steps:
                 # Every frame is independently reproducible. No stale Resume
                 # cards; this clears only the disposable automation profile.
@@ -187,6 +240,8 @@ def capture(items, output, theme, *, check_only=False, replay_prefix=False):
                 route = item.route
                 if route == '@critical_quiz': route = '/quizzes/'+metadata['critical_html']
                 if route == '@adaptive_quiz': route = '/quizzes/'+metadata['adaptive_html']
+                if route == '@matching_quiz': route = '/quizzes/'+metadata['matching_html']
+                if route == '@hotspot_quiz': route = '/quizzes/'+metadata['hotspot_html']
                 browser.navigate(url+route)
                 browser.wait_for(item.ready,timeout=20)
                 if browser.evaluate("document.title.includes('404') || document.body.innerText.includes('Internal Server Error')"):
@@ -242,7 +297,7 @@ def main(argv=None):
     if args.serve:
         serve()
         return 0
-    requested = {s.strip().zfill(3) for s in args.only.split(',')} if args.only else {s.id for s in FRAMES}
+    requested = {normalized_frame_id(s) for s in args.only.split(',')} if args.only else {s.id for s in FRAMES}
     if requested - {s.id for s in FRAMES}:
         parser.error('Unknown frame ID')
     items = [s for s in FRAMES if s.id in requested]

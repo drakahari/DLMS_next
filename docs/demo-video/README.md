@@ -7,6 +7,9 @@ The revised [V2 narration/editorial plan](NARRATION.md) and
 6:30 minimum editorial timeline. The complete V2 review build uses **af_heart**
 at speed 1.0 and runs **6:43.600**, following actual regenerated audio durations.
 V2 strengthens imports, Study Packs and printable cards after the first viewing.
+
+The targeted V3 visual expansion adds four proposal captures without changing the V2 production assets: completed matching and hotspot interactions after 013, then Content Pack validation and the Study Packs catalog after 028. Review them in [v3-additions-contact-sheet.png](v3-additions-contact-sheet.png) and [v3-additions-manifest.json](v3-additions-manifest.json). Their 44-second target would take the current approximately 6:43 overview to approximately 7:27. Narration, audio, and the assembled video remain V2 until a later production pass.
+
 The V1 build (6:37.200) is archived. See the [V2 review build](#complete-v2-narrated-review-build),
 [editorial audit](EDITORIAL_V2.md) and [production workflow](#video-production-workflow).
 This is not a release announcement.

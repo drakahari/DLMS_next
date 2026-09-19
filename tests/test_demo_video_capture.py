@@ -19,9 +19,11 @@ def load_tool(monkeypatch):
 
 def test_manifest_story_contract(monkeypatch):
     tool = load_tool(monkeypatch)
-    assert [f.id for f in tool.FRAMES] == [f'{i:03}' for i in range(1,37)]
-    assert len({f.filename for f in tool.FRAMES}) == 36
-    assert 300 <= sum(f.seconds for f in tool.FRAMES) <= 420
+    assert [f.id for f in tool.V2_FRAMES] == [f'{i:03}' for i in range(1,37)]
+    assert [f.id for f in tool.V3_ADDITIONS] == ['013A', '013B', '028A', '028B']
+    assert len({f.filename for f in tool.FRAMES}) == 40
+    assert 300 <= sum(f.seconds for f in tool.V2_FRAMES) <= 420
+    assert sum(f.seconds for f in tool.V3_ADDITIONS) == 44
     assert all(f.filename.startswith(f.id+'-') and f.filename.endswith('.png') for f in tool.FRAMES)
     assert all(f.fixture and f.state and f.ready for f in tool.FRAMES)
     assert (tool.WIDTH, tool.HEIGHT) == (1920,1080)
@@ -33,8 +35,8 @@ def test_manifest_story_contract(monkeypatch):
 def test_list_is_side_effect_free_and_focused(monkeypatch,capsys):
     tool = load_tool(monkeypatch)
     monkeypatch.setattr(tool,'capture',lambda *a,**kw: (_ for _ in ()).throw(AssertionError('capture started')))
-    assert tool.main(['--list','--only','1,003,014','--theme','Purple & Gold']) == 0
-    assert [f['id'] for f in json.loads(capsys.readouterr().out)] == ['001','003','014']
+    assert tool.main(['--list','--only','1,003,13a,014,028b','--theme','Purple & Gold']) == 0
+    assert [f['id'] for f in json.loads(capsys.readouterr().out)] == ['001','003','013A','014','028B']
 
 
 def test_reject_invalid_id_and_manual_output(monkeypatch):
@@ -117,10 +119,10 @@ def test_final_video_manifest_matches_canonical_images(monkeypatch):
     project = ROOT/'docs/demo-video'
     manifest = json.loads((project/'video-manifest.json').read_text())
     assert [r['id'] for r in manifest] == list(range(1,37))
-    assert len(list((project/'captures').glob('*.png'))) == 36
+    assert len(list((project/'captures').glob('*.png'))) == 40
     assert [r['id'] for r in manifest if r['optional']] == [17,20,33,35]
     assert sum(r['duration_estimate'] for r in manifest) == 402
-    for frame, record in zip(tool.FRAMES,manifest):
+    for frame, record in zip(tool.V2_FRAMES,manifest):
         path = project/record['image']
         assert path.name == frame.filename
         assert record['state'] == frame.state
@@ -145,3 +147,28 @@ def test_final_contact_sheets_cover_complete_sequence():
     for path in sheets:
         with Image.open(path) as image:
             assert image.size == (1968,1824)
+
+
+def test_v3_additions_handoff(monkeypatch):
+    import hashlib
+    from PIL import Image
+    tool = load_tool(monkeypatch)
+    project = ROOT/'docs/demo-video'
+    payload = json.loads((project/'v3-additions-manifest.json').read_text())
+    assert payload['v2_runtime_seconds'] == 403
+    assert payload['added_runtime_seconds'] == 44
+    assert payload['estimated_v3_runtime_seconds'] == 447
+    assert [row['id'] for row in payload['scenes']] == [f.id for f in tool.V3_ADDITIONS]
+    for frame, row in zip(tool.V3_ADDITIONS, payload['scenes']):
+        path = project/row['image']
+        assert path.name == frame.filename
+        assert row['sha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
+        assert row['theme'] == 'purple-gold'
+        assert row['essential'] is True
+        assert row['narration_objective'] and row['proposed_after']
+        with Image.open(path) as image:
+            assert image.size == (1920,1080)
+            red, green, blue = image.convert('RGB').getpixel((0,540))
+            assert blue > red > green
+    with Image.open(project/'v3-additions-contact-sheet.png') as image:
+        assert image.size == (1968,1224)

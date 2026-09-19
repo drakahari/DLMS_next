@@ -96,3 +96,17 @@ potential UI fix, not an excuse to alter screenshot pixels.
 - Manual Light defaults, 1440 × 1000 dimensions and existing images unchanged.
 - No production code, APP_VERSION, release metadata, or packaging changes.
 - No commit or push. No unrelated broad application suites run.
+
+## Targeted V3 visual expansion — 2026-09-19
+
+Four additive proposal frames were captured with fixture v3 and alphanumeric IDs; the 36 V2 PNGs, six V2 contact sheets, canonical `video-manifest.json`, narration, audio, and assembled video were not regenerated.
+
+- **013A:** all three matching answers are placed correctly; the empty answer pool, pair relationships, and three feedback rows are readable without clipping.
+- **013B:** the original synthetic service map is fully visible; the selection marker is inside the Recovery copy region and correct feedback is visible.
+- **028A:** the actual Content Pack report shows valid status, three dataset types, two tracked generated quizzes, zero warnings, and independent checks. The pack-detail route avoids displaying the disposable randomized data-root path.
+- **028B:** the actual Study Packs catalog shows the expanded Practical Systems Lab pack, matching/image/mixed badges, dataset counts, options, and Create Quiz actions.
+- The physical print layout was audited but not captured. Its paper-first white template is theme-independent, and the complete Letter sheet plus on-screen guidance exceeds 1080 pixels; forcing it into this set would break the Purple & Gold or no-clipping standard.
+- All four final PNGs are 1920 × 1080, device scale 1, Purple & Gold, and backed by one coherent capture sidecar. Full-resolution visual inspection found no obscuring cursor, focus outline, private information, commercial content, or clipped teaching subject.
+- The V3-only 1968 × 1224 contact sheet and hash-bearing sequencing manifest validate all four additions. Their 44-second target estimates a 7:27 V3 from the current 6:43.600 V2 render.
+- Focused results: 11 demo-capture tests passed; 55 demo-build tests passed; 55 pack/catalog tests plus 39 subtests passed; 29 matching/OCR/image workflow tests passed. Python compilation and `git diff --check` passed.
+- All 36 hashes in the canonical V2 manifest still match their PNGs. Capture cleanup left no Firefox, geckodriver, or demo server process.
