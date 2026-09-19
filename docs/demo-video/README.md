@@ -4,11 +4,11 @@ Screenshot capture is complete on **develop/3.2.0** after visual stabilization.
 The canonical set contains **36 final screenshots** in [captures/](captures/).
 The revised [V2 narration/editorial plan](NARRATION.md) and
 [recording script](NARRATION_PLAIN.txt) contain **33 scenes, 790 words**, with a
-6:30 minimum editorial timeline and an estimated **6:44** narrated runtime.
-The preserved V1 review build uses **af_heart** and runs **6:37.200**.
-V2 strengthens imports, Study Packs and printable cards after that viewing;
-no V2 narration or video has been generated. See the [V2 audit](EDITORIAL_V2.md),
-[review build](#first-complete-narrated-review-build) and [production workflow](#video-production-workflow).
+6:30 minimum editorial timeline. The complete V2 review build uses **af_heart**
+at speed 1.0 and runs **6:43.600**, following actual regenerated audio durations.
+V2 strengthens imports, Study Packs and printable cards after the first viewing.
+The V1 build (6:37.200) is archived. See the [V2 review build](#complete-v2-narrated-review-build),
+[editorial audit](EDITORIAL_V2.md) and [production workflow](#video-production-workflow).
 This is not a release announcement.
 
 Editing handoff: [video-manifest.json](video-manifest.json), [storyboard](STORYBOARD.md),
@@ -575,8 +575,9 @@ phonemes. `Anki` receives the phonemes for **AHN-kee**. Written narration,
 scene-text exports and subtitles retain normal product spelling. The adapter
 does not transform substrings inside unrelated words. See the [V2 pronunciation
 table and upstream references](EDITORIAL_V2.md#pronunciation-correction).
-These corrections follow the user's V1 listening feedback; their sound still
-needs confirmation with the deployed local server before a full V2 generation.
+These corrections follow the user's V1 listening feedback. The user listened to
+and approved the isolated Heart pronunciation test before authorizing the full
+V2 generation. The completed V2 recording still needs whole-video listening review.
 
 Prepare a tiny test without contacting Kokoro, then run it later when available:
 
@@ -587,8 +588,9 @@ python tools/generate_demo_narration.py --pronunciation-test --voice af_heart
 
 The second command writes only `build/demo-video/pronunciation-test/pronunciation.wav`
 and its metadata. Existing files require `--force`. It touches neither production
-clips nor audition sets. This pass only prepared the dry-run payload; the local
-service was unavailable. No new voice audio was generated.
+clips nor audition sets. The earlier editorial pass prepared the dry-run payload;
+the user subsequently ran and approved the pronunciation test. Do not redesign
+the approved transforms or regenerate clips solely on speculative pronunciation concerns.
 
 WAVs are checked for nonempty, complete PCM data and mono/stereo channels.
 When available, ffprobe additionally checks codec and duration. No invalid
@@ -627,31 +629,81 @@ speech is used. At implementation time, no server was listening on the default
 local port, so no live narration was generated or auditioned. Docker was neither
 installed nor started automatically.
 
+### Complete V2 narrated review build
+
+The user approved the 790-word V2 script and the isolated Heart pronunciation
+test. All **33 main-cut clips** were then regenerated locally with **`af_heart`,
+speed 1.0**, from the current narration and approved synthesis-only transforms.
+No V1 clips were reused. Generation completed with no failures or retries.
+
+Commands used after archiving V1:
+
+```sh
+python tools/generate_demo_narration.py --cut main --voice af_heart --speed 1.0 --force
+python tools/build_demo_video.py build --cut main --mux-subtitles --overwrite
+```
+
+- Review MP4: `build/demo-video/DLMS-3.2-demo.mp4` — **6:43.600**, 12,108 frames;
+  **6.400 seconds longer** than V1. 1920×1080, 30 fps, H.264/yuv420p,
+  AAC 48 kHz mono. This is a review build, not a published release.
+- Source WAVs: `build/demo-video/audio/NNN.wav` — exactly 33 mono 24 kHz signed
+  16-bit PCM files. Total **5:59.250**; mean **10.886 sec**; shortest **024,
+  5.275 sec**; longest **028, 19.075 sec**. Source WAV levels are untouched.
+- SRT: `build/demo-video/DLMS-3.2-demo.srt` — 33 scene-level cues using actual
+  audio timing; also muxed as selectable English subtitles, never burned in.
+- Listening checklist: `build/demo-video/v2-review/LISTENING_REVIEW.md`.
+  Prioritize imports at **0:56–2:10**, Anki/AI at **2:33**, packs at **4:49**,
+  digital Anki at **5:32**, physical cards at **5:44**, and AI/API at **5:59**.
+- Evidence: `build/demo-video/v2-review/REVIEW_BUILD.md`,
+  `production-audio-summary.csv` / `.json`, `validation.json`, generation/build
+  logs and representative encoded frames. The editorial audit's no-recording
+  statements describe the earlier planning phase, not this completed build.
+
+Validation checked every WAV with ffprobe and PCM data validation, exact V2
+source/synthesis text and audio hashes, Heart/speed metadata and new generation
+timestamps. All 33 encoded narration intervals contain non-silent audio and fit
+their scene slots with the established tails. The video passed full decoding;
+the extracted selectable subtitles exactly match the sidecar. All 36 screenshot
+hashes and all audition assets remain unchanged; no temporary render directories
+remain. **98 focused tests passed**, with the separate render smoke test omitted
+because this complete production render was validated instead. `git diff --check`
+passed. No long cut was generated.
+
+Encoded frames inspected: 001, 003, 007–009, 011, 014, 028, 031–032 and 036,
+plus the 005→006 chapter fade. Narrated subjects remain readable, with no new
+focus cropping or visible transition artifacts in these samples. The approved
+visual limits remain: 007 shows import setup rather than bank generation; 028
+uses the pack callout/navigation rather than the catalog; 032 shows shared card
+selection rather than the Avery print layout. These frames provide overview
+context without pretending the unpictured steps happened. The approved spoken
+script says “three-by-five index cards”; it does not read the Avery model number.
+Complete human listening/viewing review is still required before publishing.
+
 ### First complete narrated review build
 
-**Historical V1 result.** The files below remain intact, but their narration and
-subtitles are not the revised V2 script. Do not assemble V2 with these old WAVs:
-audio-format validation does not prove text or pronunciation-version alignment.
-When V2 recording is authorized, archive the V1 audio/metadata and output files
-before any explicit replacement, then generate fresh exports from NARRATION.md.
+**Historical V1 result.** Before the authorized V2 regeneration, these files were
+copied into `build/demo-video/archive-v1-before-v2/`, including audio/metadata,
+MP4, SRT, timeline, narration export, production manifest and review reports.
+Their narration and subtitles are not the revised V2 script. Do not assemble V2
+with these archived WAVs: audio-format validation alone does not prove text or
+pronunciation-version alignment.
 The preserved Sarah/Nicole/Heart audition recordings likewise use V1 text;
 future audition exports will reflect V2. Do not overwrite the reference sets.
 
-The main review build now uses the approved local Kokoro voice **`af_heart`** at
-speed 1.0 for all **33 scenes**. It is ready for human listening review, not yet
-approved for publication. The commands in the production section above generated
-the audio and built the video with selectable subtitles. No long cut was generated.
+The first main review build used local Kokoro voice **`af_heart`** at speed 1.0
+for all **33 scenes**. It was reviewed by the user and led to the V2 revisions.
+No long cut was generated.
 
-- Review video: `build/demo-video/DLMS-3.2-demo.mp4` — **6:37.200**, 1920×1080,
+- Archived review video: `build/demo-video/archive-v1-before-v2/DLMS-3.2-demo.mp4` — **6:37.200**, 1920×1080,
   30 fps, H.264/yuv420p, AAC 48 kHz mono.
-- Subtitles: `build/demo-video/DLMS-3.2-demo.srt` — 33 scene-level cues based on
+- Archived subtitles: `build/demo-video/archive-v1-before-v2/DLMS-3.2-demo.srt` — 33 scene-level cues based on
   actual audio timing; also included as a selectable English track, not burned in.
-- Source narration: `build/demo-video/audio/NNN.wav` — 33 mono 24 kHz PCM WAVs,
+- Archived source narration: `build/demo-video/archive-v1-before-v2/audio/NNN.wav` — 33 mono 24 kHz PCM WAVs,
   **5:58.575** total, mean **10.866 seconds**, with generation metadata for each.
-- Audio summary: `build/demo-video/main-review/production-audio-summary.csv`
+- Archived audio summary: `build/demo-video/archive-v1-before-v2/main-review/production-audio-summary.csv`
   and `.json`; shortest 011 (8.225 sec), longest 034 (14.000 sec).
-- Review evidence: `build/demo-video/main-review/REVIEW_BUILD.md` and
-  `build/demo-video/main-review/LISTENING_REVIEW.md`, including pronunciation
+- Archived review evidence: `build/demo-video/archive-v1-before-v2/main-review/REVIEW_BUILD.md` and
+  `build/demo-video/archive-v1-before-v2/main-review/LISTENING_REVIEW.md`, including pronunciation
   checkpoints with timestamps and representative encoded frames.
 
 The runtime is 22.2 seconds above the original 6:15 target because actual delivery
@@ -664,8 +716,7 @@ original generated levels; the existing builder normalizes temporary copies.
 Listen to the whole video before publishing, especially DLMS in 001, PDF in 007,
 OCR in 008, Anki/AI in 013, and API in 033. Check natural cadence, scene joins,
 and caption density as well. Successful encoding cannot confirm speech quality.
-The V1 media, screenshots and all three audition sets remain intact; only the
-authoritative script has advanced to V2.
+The archived V1 media, screenshots and all three audition sets remain intact.
 
 ### Future focused videos
 
