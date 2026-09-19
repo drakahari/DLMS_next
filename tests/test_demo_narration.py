@@ -32,14 +32,17 @@ def scenes():
 def test_scene_sources_and_contract(scenes, tmp_path):
     manifest, main = tts.narration_scenes(False, 'main')
     _, long = tts.narration_scenes(False, 'long')
-    assert len(main) == 33 and len(long) == 34
+    assert len(main) == 37 and len(long) == 38
     assert [s['id'] for s in scenes] == [1, 13, 14]
     assert {s['id'] for s in long} - {s['id'] for s in main} == {20}
     export = tts.video.export_audition(manifest, tmp_path)
     for scene in scenes:
         assert (export / scene['text_filename']).read_text() == scene['narration'] + '\n'
-        assert scene['audio_filename'] == f"{scene['id']:03}.wav"
-    assert sum(s['narration_words'] for s in main) == 790
+        assert scene['audio_filename'] == f"{tts.video.scene_label(scene['id'])}.wav"
+    assert sum(s['narration_words'] for s in main) == 859
+    assert [s['audio_filename'] for s in main if isinstance(s['id'], str)] == [
+        '013A.wav', '013B.wav', '028A.wav', '028B.wav'
+    ]
 
 
 def test_transforms():
@@ -166,7 +169,7 @@ def test_unknown_voice_no_generation(tmp_path, scenes):
 @pytest.mark.parametrize('args,suffix,count', [
     (['--audition'], 'voice-audition/audio', 3),
     (['--audition', '--output-set', 'sarah'], 'voice-audition/candidates/sarah', 3),
-    (['--cut', 'main'], 'audio', 33), (['--cut', 'long'], 'audio', 34),
+    (['--cut', 'main'], 'audio', 37), (['--cut', 'long'], 'audio', 38),
 ])
 def test_cli_destinations(tmp_path, monkeypatch, args, suffix, count):
     monkeypatch.setattr(tts.video, 'ROOT', tmp_path)

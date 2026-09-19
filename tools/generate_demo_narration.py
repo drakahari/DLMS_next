@@ -174,7 +174,7 @@ def generate_scenes(client, scenes, destination, voice, speed, force=False):
     destination.mkdir(parents=True, exist_ok=True)
     for scene, path in zip(scenes, paths):
         spoken = synthesis_text(scene['narration'])
-        print(f"Generating {scene['id']:03} with {voice}...", flush=True)
+        print(f"Generating {video.scene_label(scene['id'])} with {voice}...", flush=True)
         audio = client.generate(spoken, voice, speed)
         # Validate before publication; failed requests never replace a good take.
         with tempfile.TemporaryDirectory(prefix='.tts-', dir=destination) as temporary:

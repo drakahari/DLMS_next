@@ -25,7 +25,8 @@ def manifest():
 def copied_project(tmp_path):
     project = tmp_path / 'project with spaces'
     project.mkdir()
-    for name in ('NARRATION.md', 'NARRATION_PLAIN.txt', 'video-manifest.json'):
+    for name in ('NARRATION.md', 'NARRATION_PLAIN.txt', 'video-manifest.json',
+                 'v3-additions-manifest.json'):
         shutil.copyfile(video.PROJECT / name, project / name)
     (project / 'captures').symlink_to(video.PROJECT / 'captures', target_is_directory=True)
     return project
@@ -34,13 +35,19 @@ def copied_project(tmp_path):
 def test_cuts_and_editorial_durations(manifest):
     main = video.select_scenes(manifest, 'main')
     long = video.select_scenes(manifest, 'long')
-    assert len(manifest['scenes']) == 36
-    assert [s['id'] for s in main] == [i for i in range(1, 37) if i not in {17, 20, 35}]
-    assert [s['id'] for s in long] == [i for i in range(1, 37) if i not in {17, 35}]
-    assert sum(s['target_seconds'] for s in main) == 390
-    assert sum(s['target_seconds'] for s in long) == 403
-    assert sum(s['narration_words'] for s in main) == 790
-    assert sum(s['narration_words'] for s in long) == 819
+    ordered = [int(label) if label.isdigit() else label
+               for label in video.PRODUCTION_SCENE_LABELS]
+    assert len(manifest['scenes']) == 40
+    assert [s['id'] for s in manifest['scenes']] == ordered
+    assert [s['id'] for s in main] == [scene_id for scene_id in ordered
+                                       if scene_id not in {17, 20, 35}]
+    assert [s['id'] for s in long] == [scene_id for scene_id in ordered
+                                       if scene_id not in {17, 35}]
+    assert sum(s['target_seconds'] for s in main) == 425
+    assert sum(s['target_seconds'] for s in long) == 438
+    assert sum(s['narration_words'] for s in main) == 859
+    assert sum(s['narration_words'] for s in long) == 888
+    assert all(s['motion'] == 'static' for s in manifest['scenes'])
     assert manifest == video.production_manifest()  # no timestamps/unstable iteration
 
 
@@ -55,7 +62,7 @@ def test_editorial_html_line_breaks(copied_project, manifest, line_break):
 @pytest.mark.parametrize('filename,old,new,error', [
     ('NARRATION.md', '**Target:** 11 sec', '**Target:** soon', 'target'),
     ('NARRATION.md', 'Essential — KEEP', 'Essential — MAYBE', 'status'),
-    ('NARRATION.md', 'Slow 2% push', 'Dramatic spin', 'motion'),
+    ('NARRATION.md', 'Static hold; retain the full Dashboard context.', 'Dramatic spin', 'motion'),
     ('NARRATION.md', '> DLMS is', '> Changed DLMS is', 'word count'),
     ('NARRATION_PLAIN.txt', 'DLMS is', 'Altered DLMS is', 'differs'),
 ])
@@ -75,8 +82,17 @@ def test_capture_hash_drift_rejected(copied_project):
         video.production_manifest(copied_project)
 
 
+def test_v3_capture_hash_drift_rejected(copied_project):
+    path = copied_project / 'v3-additions-manifest.json'
+    data = json.loads(path.read_text())
+    data['scenes'][0]['sha256'] = '0' * 64
+    video.write_json(path, data)
+    with pytest.raises(video.BuildError, match='changed screenshot'):
+        video.production_manifest(copied_project)
+
+
 def test_exports_are_exact_and_repeatable(tmp_path, manifest):
-    for cut, count in [('main', 33), ('long', 34)]:
+    for cut, count in [('main', 37), ('long', 38)]:
         destination = video.export_pack(manifest, cut, tmp_path)
         index = json.loads((destination / 'index.json').read_text())
         assert len(list(destination.glob('*.txt'))) == count
@@ -84,7 +100,7 @@ def test_exports_are_exact_and_repeatable(tmp_path, manifest):
         before = {p.name: p.read_bytes() for p in destination.iterdir()}
         for scene in video.select_scenes(manifest, cut):
             assert (destination / scene['text_filename']).read_text() == scene['narration'] + '\n'
-            assert scene['audio_filename'] == f"{scene['id']:03}.wav"
+            assert scene['audio_filename'] == f"{video.scene_label(scene['id'])}.wav"
         video.export_pack(manifest, cut, tmp_path)
         assert before == {p.name: p.read_bytes() for p in destination.iterdir()}
     assert json.loads((tmp_path / 'production-manifest.json').read_text()) == manifest
@@ -131,8 +147,9 @@ def test_audio_probe_mapping_excludes_unused(tmp_path, manifest, monkeypatch):
     monkeypatch.setattr(video, 'probe', fake_probe)
     monkeypatch.setattr(video, 'run', lambda *a, **kw: subprocess.CompletedProcess([], 0, '', ''))
     clips = video.audio_inputs(scenes, tmp_path, {'ffmpeg': 'ffmpeg'})
-    assert len(clips) == 33
+    assert len(clips) == 37
     assert '020.wav' not in calls
+    assert '013A.wav' in calls and '028B.wav' in calls
     assert clips[1]['seconds'] == 1.123
     assert Path(clips[1]['path']).name == '001.wav'
 
@@ -178,14 +195,13 @@ def test_srt_uses_audio_boundaries_not_target_estimates(manifest):
         video.subtitles(video.timeline(scenes))
 
 
-def test_motion_and_frame_fades(manifest):
+def test_static_plan_and_frame_fades(manifest):
     rows = video.timeline([manifest['scenes'][0], manifest['scenes'][5]])
-    assert 'zoompan' in video.video_filter(rows[0], motion='planned')
-    assert '0.02' in video.video_filter(rows[0], motion='planned')
+    assert 'zoompan' not in video.video_filter(rows[0], motion='planned')
     assert 'zoompan' not in video.video_filter(rows[1])
     assert 'fade=t=in:s=0:n=5' in video.video_filter(rows[1])
     closing = video.timeline([manifest['scenes'][-1]])[0]
-    assert '1.02-0.02' in video.video_filter(closing, motion='planned')
+    assert 'zoompan' not in video.video_filter(closing, motion='planned')
 
 
 def test_static_default_keeps_timing_and_fades_without_resampling(manifest):
@@ -199,14 +215,14 @@ def test_static_default_keeps_timing_and_fades_without_resampling(manifest):
         assert 'fps=30' in filters and 'format=yuv420p' in filters
         assert ('fade=t=in' in filters) == bool(row['fade_in_frames'])
         assert ('fade=t=out' in filters) == bool(row['fade_out_frames'])
-    assert json.dumps(rows, sort_keys=True) == before  # historical motion remains metadata
+    assert json.dumps(rows, sort_keys=True) == before
     with pytest.raises(video.BuildError, match='Motion'):
         video.video_filter(rows[0], motion='unknown')
 
 
 def test_chapter_boundaries_match_editorial_notes(manifest):
-    documented = {s['id'] for s in manifest['scenes'] if '0.3-second' in s['production_note']}
-    assert documented == video.CHAPTER_STARTS
+    planned = {s['id'] for s in manifest['scenes'] if s['transition_in'] == 'fade'}
+    assert planned == video.CHAPTER_STARTS
 
 
 def test_subprocess_paths_with_spaces(monkeypatch):
@@ -295,14 +311,15 @@ def test_audition_export_exact_repeatable(tmp_path, manifest):
     destination = video.export_audition(manifest, tmp_path / 'work with spaces')
     index = json.loads((destination / 'manifest.json').read_text())
     assert index['scene_order'] == [1, 13, 14]
-    assert index['total_words'] == 71
+    assert index['total_words'] == 69
     assert index['target_seconds'] == 35
     assert sorted(p.name for p in destination.glob('[0-9]*.txt')) == ['001.txt', '013.txt', '014.txt']
+    authoritative_by_id = {scene['id']: scene for scene in manifest['scenes']}
     for scene in index['scenes']:
-        authoritative = manifest['scenes'][scene['id'] - 1]
+        authoritative = authoritative_by_id[scene['id']]
         assert scene == authoritative
         assert (destination / scene['text_filename']).read_text() == authoritative['narration'] + '\n'
-        assert scene['audio_filename'] == f"{scene['id']:03}.wav"
+        assert scene['audio_filename'] == f"{video.scene_label(scene['id'])}.wav"
     before = {p.name: p.read_bytes() for p in destination.iterdir() if p.is_file()}
     video.export_audition(manifest, tmp_path / 'work with spaces')
     assert before == {p.name: p.read_bytes() for p in destination.iterdir() if p.is_file()}
@@ -334,7 +351,7 @@ def test_audition_missing_audio(monkeypatch, tmp_path, manifest, capsys, directo
     assert not list(work.glob('*.mp4'))
 
 
-@pytest.mark.parametrize('audition,cut,count', [(True, 'main', 3), (False, 'main', 33), (False, 'long', 34)])
+@pytest.mark.parametrize('audition,cut,count', [(True, 'main', 3), (False, 'main', 37), (False, 'long', 38)])
 @pytest.mark.parametrize('motion', [None, 'none', 'planned'])
 def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest, audition, cut, count, motion):
     monkeypatch.setattr(video, 'ROOT', tmp_path)
@@ -349,7 +366,7 @@ def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest
         assert len(scenes) == count
         if audition:
             assert [s['id'] for s in scenes] == [1, 13, 14]
-        assert all(s['audio_filename'] == f"{s['id']:03}.wav" for s in scenes)
+        assert all(s['audio_filename'] == f"{video.scene_label(s['id'])}.wav" for s in scenes)
         return {s['id']: {'path': str(directory / s['audio_filename']), 'seconds': 12.5} for s in scenes}
 
     def render(rows, output, media, **kwargs):
@@ -360,7 +377,7 @@ def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest
         assert all(r['audio'] is not None for r in rows)
         if audition:
             assert output == work / 'DLMS-3.2-voice-audition.mp4'
-            assert [r['motion'] for r in rows] == ['push', 'static', 'static']
+            assert [r['motion'] for r in rows] == ['static', 'static', 'static']
             assert rows[2]['fade_in_frames'] == video.FADE_FRAMES
         return {'duration_seconds': sum(r['duration_seconds'] for r in rows)}
 

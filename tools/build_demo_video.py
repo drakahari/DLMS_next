@@ -21,6 +21,13 @@ SAMPLE_RATE = 48000
 CHAPTER_STARTS = {6, 9, 11, 14, 18, 21, 26, 28, 31, 33, 34, 36}
 FADE_FRAMES = 5  # 1/6 second on each side, 1/3 second through black total.
 AUDITION_SCENE_IDS = (1, 13, 14)
+BASE_SCENE_LABELS = tuple(f'{scene_id:03}' for scene_id in range(1, 37))
+ADDITION_SCENE_LABELS = ('013A', '013B', '028A', '028B')
+PRODUCTION_SCENE_LABELS = (
+    BASE_SCENE_LABELS[:13] + ADDITION_SCENE_LABELS[:2]
+    + BASE_SCENE_LABELS[13:28] + ADDITION_SCENE_LABELS[2:]
+    + BASE_SCENE_LABELS[28:]
+)
 
 
 class BuildError(ValueError):
@@ -35,24 +42,41 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + '\n', encoding='utf-8')
 
 
+def scene_label(scene_id):
+    """Return the stable filename/heading label for numeric and additive scenes."""
+    label = f'{scene_id:03}' if isinstance(scene_id, int) else str(scene_id)
+    if not re.fullmatch(r'\d{3}[A-Z]?', label):
+        raise BuildError(f'Invalid scene ID: {scene_id!r}')
+    return label
+
+
 def production_manifest(project=PROJECT):
     """Derive all sequence/text/timing from narration; fail closed on format drift."""
     source = project / 'NARRATION.md'
     text = source.read_text(encoding='utf-8')
-    captures = json.loads((project / 'video-manifest.json').read_text(encoding='utf-8'))
+    capture_manifest = project / 'video-manifest.json'
+    additions_manifest = project / 'v3-additions-manifest.json'
+    captures = json.loads(capture_manifest.read_text(encoding='utf-8'))
+    additions = json.loads(additions_manifest.read_text(encoding='utf-8'))['scenes']
     if [r['id'] for r in captures] != list(range(1, 37)):
         raise BuildError('Capture manifest must contain ordered scenes 001–036.')
-    blocks = list(re.finditer(r'^## Scene (\d{3}) — ([^\n]+)\n(.*?)(?=^## |\Z)', text, re.M | re.S))
-    if [int(m[1]) for m in blocks] != list(range(1, 37)):
-        raise BuildError('NARRATION.md must contain exactly the ordered scenes 001–036.')
+    if [r['id'] for r in additions] != list(ADDITION_SCENE_LABELS):
+        raise BuildError('V3 additions manifest must contain ordered scenes 013A, 013B, 028A, 028B.')
+    captures_by_label = {scene_label(row['id']): row for row in captures}
+    captures_by_label.update({row['id']: row for row in additions})
+    blocks = list(re.finditer(r'^## Scene (\d{3}[A-Z]?) — ([^\n]+)\n(.*?)(?=^## |\Z)', text, re.M | re.S))
+    if [m[1] for m in blocks] != list(PRODUCTION_SCENE_LABELS):
+        raise BuildError('NARRATION.md must contain the ordered V3 production sequence.')
     scenes = []
-    for match, capture in zip(blocks, captures):
-        scene_id, title, body = int(match[1]), match[2], match[3]
+    for match in blocks:
+        label, title, body = match[1], match[2], match[3]
+        scene_id = int(label) if label.isdigit() else label
+        capture = captures_by_label[label]
 
         def field(name):
             found = re.findall(r'^\*\*' + re.escape(name) + r':\*\* (.+)$', body, re.M)
             if len(found) != 1:
-                raise BuildError(f'Scene {scene_id:03}: expected one {name} field.')
+                raise BuildError(f'Scene {label}: expected one {name} field.')
             # Markdown layout breaks are presentation, not field values.
             return re.sub(r'<br\s*/?>\s*$', '', found[0]).strip()
 
@@ -64,29 +88,29 @@ def production_manifest(project=PROJECT):
             'Optional — CUT': [],
         }
         if status not in statuses:
-            raise BuildError(f'Scene {scene_id:03}: unknown editorial status: {status}')
+            raise BuildError(f'Scene {label}: unknown editorial status: {status}')
         image_match = re.fullmatch(r'\[([^]]+)\]\((captures/[^)]+\.png)\)', field('Image'))
         if not image_match or image_match[2] != capture['image']:
-            raise BuildError(f'Scene {scene_id:03}: image differs from capture manifest.')
+            raise BuildError(f'Scene {label}: image differs from capture manifest.')
         image_path = project / capture['image']
         if image_path.resolve().parent != (project / 'captures').resolve():
-            raise BuildError(f'Scene {scene_id:03}: image outside canonical captures.')
+            raise BuildError(f'Scene {label}: image outside canonical captures.')
         if not image_path.is_file() or sha256(image_path) != capture['sha256']:
-            raise BuildError(f'Scene {scene_id:03}: missing or changed screenshot: {image_path}')
+            raise BuildError(f'Scene {label}: missing or changed screenshot: {image_path}')
         png = image_path.read_bytes()[:24]
         if png[:8] != b'\x89PNG\r\n\x1a\n' or struct.unpack('>II', png[16:24]) != (WIDTH, HEIGHT):
-            raise BuildError(f'Scene {scene_id:03}: expected a 1920x1080 PNG.')
+            raise BuildError(f'Scene {label}: expected a 1920x1080 PNG.')
         targets = re.fullmatch(r'(\d+) sec(?: in main cut; (\d+) sec if restored)?', field('Target'))
         if not targets:
-            raise BuildError(f'Scene {scene_id:03}: unrecognized target duration.')
+            raise BuildError(f'Scene {label}: unrecognized target duration.')
         target = int(targets[2] or targets[1])
         spoken = re.findall(r'^> (.+)$', body, re.M)
         if len(spoken) != 1 or not spoken[0].strip() or target <= 0:
-            raise BuildError(f'Scene {scene_id:03}: expected one nonempty narration paragraph and positive target.')
+            raise BuildError(f'Scene {label}: expected one nonempty narration paragraph and positive target.')
         words = len(spoken[0].split())
         estimate = re.fullmatch(r'(\d+) words; ([\d.]+) sec at (\d+) WPM', field('Speech estimate'))
         if not estimate or int(estimate[1]) != words:
-            raise BuildError(f'Scene {scene_id:03}: narration word count is stale.')
+            raise BuildError(f'Scene {label}: narration word count is stale.')
         motion_note = field('Motion')
         if motion_note.startswith('Static hold'):
             motion = 'static'
@@ -95,25 +119,29 @@ def production_manifest(project=PROJECT):
         elif '2% pull back' in motion_note:
             motion = 'pull'
         else:
-            raise BuildError(f'Scene {scene_id:03}: unsupported motion suggestion: {motion_note}')
+            raise BuildError(f'Scene {label}: unsupported motion suggestion: {motion_note}')
         scenes.append({
             'id': scene_id, 'title': title, 'image': capture['image'],
             'image_sha256': capture['sha256'], 'editorial_status': status,
             'included_cuts': statuses[status], 'narration': spoken[0],
             'narration_words': words, 'target_seconds': target,
-            'audio_filename': f'{scene_id:03}.wav', 'text_filename': f'{scene_id:03}.txt',
+            'audio_filename': f'{label}.wav', 'text_filename': f'{label}.txt',
             'visual_focus': field('Visual focus'), 'motion': motion,
             'motion_instruction': motion_note,
             'transition_in': 'fade' if scene_id in CHAPTER_STARTS else 'cut',
             'production_note': field('Production / transition note'),
         })
-    expected_plain = '\n\n'.join(f"=== SCENE {s['id']:03} ===\n\n{s['narration']}" for s in scenes if 'main' in s['included_cuts']) + '\n'
+    expected_plain = '\n\n'.join(
+        f"=== SCENE {scene_label(s['id'])} ===\n\n{s['narration']}"
+        for s in scenes if 'main' in s['included_cuts']
+    ) + '\n'
     if (project / 'NARRATION_PLAIN.txt').read_text(encoding='utf-8') != expected_plain:
         raise BuildError('NARRATION_PLAIN.txt differs from the authoritative main-cut narration.')
     return {
         'schema_version': 1, 'authority': 'docs/demo-video/NARRATION.md',
         'narration_sha256': sha256(source),
-        'capture_manifest_sha256': sha256(project / 'video-manifest.json'),
+        'capture_manifest_sha256': sha256(capture_manifest),
+        'v3_additions_manifest_sha256': sha256(additions_manifest),
         'image_base': 'docs/demo-video', 'fps': FPS, 'width': WIDTH, 'height': HEIGHT,
         'transition': 'chapter fade-through-black, 5 frames per side; no overlap',
         'scenes': scenes,
@@ -219,18 +247,18 @@ def probe(path, media):
 
 
 def audio_inputs(scenes, audio_dir, media):
-    """Only exact NNN.wav names and PCM WAV; excluded known scenes are ignored."""
+    """Only exact scene-label WAV names and PCM WAV; excluded known scenes are ignored."""
     if not audio_dir.is_dir():
         raise BuildError(f'Audio directory does not exist: {audio_dir}. Supply one PCM WAV per included scene (001.wav, etc.).')
     errors, clips = [], {}
     for path in sorted(audio_dir.iterdir()):
         if path.is_file() and path.suffix.lower() in {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.aac'}:
-            if not re.fullmatch(r'\d{3}\.wav', path.name) or not 1 <= int(path.stem) <= 36:
-                errors.append(f'Unsupported or unmapped audio: {path.name}; use exact 001.wav–036.wav PCM WAV names.')
+            if path.stem not in PRODUCTION_SCENE_LABELS or path.suffix != '.wav':
+                errors.append(f'Unsupported or unmapped audio: {path.name}; use exact production scene labels such as 001.wav or 013A.wav.')
     for scene in scenes:
         path = audio_dir / scene['audio_filename']
         if not path.is_file():
-            errors.append(f"Scene {scene['id']:03}: missing {path.name}")
+            errors.append(f"Scene {scene_label(scene['id'])}: missing {path.name}")
             continue
         try:
             data = probe(path, media)
@@ -247,7 +275,7 @@ def audio_inputs(scenes, audio_dir, media):
             run([media['ffmpeg'], '-v', 'error', '-xerror', '-i', path, '-map', '0:a:0', '-f', 'null', '-'], timeout=120)
             clips[scene['id']] = {'path': str(path.resolve()), 'seconds': duration, 'sha256': sha256(path)}
         except (BuildError, ValueError) as exc:
-            errors.append(f"Scene {scene['id']:03}: malformed {path.name}: {exc}")
+            errors.append(f"Scene {scene_label(scene['id'])}: malformed {path.name}: {exc}")
     if errors:
         raise BuildError('Audio validation failed:\n' + '\n'.join(errors))
     return clips
@@ -264,7 +292,7 @@ def timeline(scenes, clips=None, tail=0.6):
         lead_frames = FADE_FRAMES if fade_in else 0
         clip = clips[scene['id']] if clips is not None else None
         if clip is not None and (not math.isfinite(clip['seconds']) or clip['seconds'] <= 0):
-            raise BuildError(f"Scene {scene['id']:03}: invalid audio duration.")
+            raise BuildError(f"Scene {scene_label(scene['id'])}: invalid audio duration.")
         seconds = scene['target_seconds']
         if clip:
             seconds = max(seconds, lead_frames / FPS + clip['seconds'] + tail)
@@ -407,7 +435,7 @@ def render(rows, output, media, project=PROJECT, normalization='ebu', mux_subtit
         temp = Path(temporary)
         video_names, audio_names = [], []
         for number, row in enumerate(rows):
-            print(f"Rendering scene {row['id']:03} ({number+1}/{len(rows)}), {row['duration_seconds']:.3f}s", flush=True)
+            print(f"Rendering scene {scene_label(row['id'])} ({number+1}/{len(rows)}), {row['duration_seconds']:.3f}s", flush=True)
             name = f'video-{number:03}.mp4'
             run(ffmpeg(media) + ['-loop', '1', '-framerate', str(FPS), '-i', project / row['image'],
                                 '-vf', filters[str(row['id'])], '-frames:v', str(row['frames']), '-an',

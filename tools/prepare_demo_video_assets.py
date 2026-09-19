@@ -63,9 +63,14 @@ def prepare_v3_additions():
         })
     sheet.save(PROJECT / 'v3-additions-contact-sheet.png')
     payload = {
-        'status': 'proposed-v3-sequencing; narration, audio, and video not regenerated',
-        'v2_runtime_seconds': 403, 'added_runtime_seconds': sum(item.seconds for item in V3_ADDITIONS),
-        'estimated_v3_runtime_seconds': 403 + sum(item.seconds for item in V3_ADDITIONS),
+        'status': 'approved-v3-sequencing; narration integrated; audio, subtitles, and video not regenerated',
+        'v2_runtime_seconds': 403.6,
+        'v2_editorial_target_seconds': 390,
+        'v3_editorial_target_seconds': 425,
+        'new_scene_target_seconds': sum(item.seconds for item in V3_ADDITIONS),
+        'redistributed_existing_target_seconds': -9,
+        'net_editorial_target_change_seconds': 35,
+        'estimated_v3_runtime_seconds': 438.6,
         'scenes': manifest,
     }
     (PROJECT / 'v3-additions-manifest.json').write_text(

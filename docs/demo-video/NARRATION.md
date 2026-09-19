@@ -1,39 +1,39 @@
-# DLMS demo video — V2 narration and editorial plan
+# DLMS demo video — V3 narration and editorial plan
 
-Authoritative narration and editorial timing for `develop/3.2.0`, reviewed against the current repository and all 36 final captures on 2026-09-19. This is a product overview for independent and certification learners, technical users, privacy-oriented users, and prospective GitHub users. All examples use the prepared synthetic learner data.
+Authoritative narration and editorial timing for `develop/3.2.0`, reviewed against the current repository, all 36 V2 captures, and the four approved V3 additions on 2026-09-19. This is a product overview for independent and certification learners, technical users, privacy-oriented users, and prospective GitHub users. All examples use the prepared synthetic learner data.
 
 ## Recording cut and timing
 
-- **33 narrated scenes:** 32 essential frames plus optional frame **033 kept**.
-- **790 narration words**, excluding separators, production notes, and alternate lines for omitted frames. V1 had 797; V2 adds coverage while removing repetition.
-- **Estimated speech: 5:32**, using scene-specific reference rates of 138–148 words per minute. At 135–150 WPM, the written-word envelope is **5:16–5:51**. Acronym letter names and natural pauses can take longer than this count suggests.
-- **Editorial scene targets total 6:30 (390 seconds)**. Calibrating each scene against V1 Heart delivery, with acronym letter counts treated consistently, gives approximately **5:58 spoken audio and 6:44 complete video** under the existing builder's minimum holds, 0.6-second tails and chapter fades. Plan for **6:30–7:00** pending new recordings and listening review. These are estimates, not subtitle timestamps; no V2 audio has been generated.
-- **Long version: 34 scenes, 819 words**, adding only frame 020 and its 13-second target; not being produced in this pass.
+- **37 narrated scenes:** 36 essential frames plus optional frame **033 kept**.
+- **859 narration words**, excluding separators, production notes, and alternate lines for omitted frames. V3 redistributes the existing Study and Packs explanation across four new visual scenes.
+- **Estimated speech: 6:02**, using scene-specific reference rates of 138–148 words per minute. At 135–150 WPM, the written-word envelope is **5:44–6:22**. Calibrating against the approved V2 Heart delivery gives approximately **6:30 of spoken audio**. Acronym letter names and natural pauses can take longer than the written estimate suggests.
+- **Editorial scene targets total 7:05 (425 seconds)**. Applying the V2 difference between minimum targets and the completed static build gives an estimated complete runtime of approximately **7:19**. Plan for **7:15–7:35** pending new recordings and listening review. These are estimates, not subtitle timestamps; no V3 audio has been generated.
+- **Long version: 38 scenes, 888 words**, adding only frame 020 and its 13-second target; not being produced in this pass.
 - **CUT:** 017 and 035. **KEEP FOR LONG VERSION:** 020. **KEEP:** 033. No assets deleted, renamed, reordered, altered, or recaptured.
 
-The scene numbers below retain the capture IDs. Gaps in the recording cut are intentional. [NARRATION_PLAIN.txt](NARRATION_PLAIN.txt) contains only the 33 main-cut passages with `=== SCENE NNN ===` separators; separators are not spoken. Alternate narration is retained here for every omitted frame, excluded from main totals and plain text.
+The scene numbers below retain the capture IDs, including additive alphanumeric IDs that avoid renumbering V2. Gaps in the recording cut are intentional. [NARRATION_PLAIN.txt](NARRATION_PLAIN.txt) contains only the 37 main-cut passages with `=== SCENE NNN ===` or `=== SCENE NNNA ===` separators; separators are not spoken. Alternate narration is retained here for every omitted frame, excluded from main totals and plain text.
 
 Word counts use whitespace-separated written tokens: contractions and hyphenated words count once. Written acronyms retain normal spelling, including AI, OCR and API; their individual letter names add spoken syllables. Pronounce DLMS as “dee el em ess,” AI as “ay eye,” OCR/API/PDF/CSV as letters, and Anki as “AHN-kee.” Allow the opening acronym to breathe. Do not read production notes. Use a calm conversational delivery, with modest emphasis on the practical consequence of each feature.
 
-## V2 editorial changes
+## V3 editorial integration
 
-Substantially rewritten: **006–009** (source material → extraction → OCR → review), **028** (portable quizzes versus reusable Study Packs / Content Packs), and **032** (selected cards can also be printed). Tightened: **005, 014–016, 019, 024, 027**. **013 and 033** retain their message with normal written acronym spelling; pronunciation changes live only in the synthesis adapter. Individual scene notes mark these changes.
+Added: **013A** (Matching), **013B** (Hotspot), **028A** (Content Packs), and **028B** (Study Packs). Tightened: **013** keeps Question Tools separate from richer question types, while **028** now introduces portable bundles and the distinct packaged-dataset path. The approved V2 wording remains elsewhere, including the concise printable physical-card mention in **032**. Pronunciation changes still live only in the synthesis adapter. Individual scene notes mark V3 changes.
 
-No scenes added, removed, replaced or reordered in V2. All 36 captures were inspected through the six contact sheets, with full-size inspection of the import, pack callout and card-selection frames. Existing 028 and 032 establish availability without pretending to show the pack catalog or print layout. Their production notes state those visual limits. Dedicated walkthrough captures would help a focused tutorial, but are not needed for these brief overview explanations. See [V2 audit and pronunciation review](EDITORIAL_V2.md) for implementation evidence, timing method and future-video ideas.
+V3 inserts the four approved captures without renumbering or altering the V2 set: **013 → 013A → 013B → 014** and **028 → 028A → 028B → 029**. The print layout remains outside the overview; 032 mentions printable cards without pretending the layout is visible. See the [V3 additions manifest](v3-additions-manifest.json), [V3 contact sheet](v3-additions-contact-sheet.png), and [V2 audit and pronunciation review](EDITORIAL_V2.md).
 
 ## Assembly notes
 
 Use the canonical 1920 × 1080 Purple & Gold PNGs. Targets are minimum complete scene slots. The existing builder uses straight cuts within workflows and five-frame fades on either side of chapter boundaries, about one third of a second through black in total, with no narration overlap. Earlier scene notes saying “0.3-second dissolve” mean this implemented chapter fade; no new transition implementation is requested. Actual narration duration plus the builder's tail/incoming fade allowance can extend a slot. Leave a brief pause where the picture needs more time than the voice. Never stretch speech to fill a slot.
 
-Start motion at 100% scale and cap a push at 102%; the closing pull may run from 102% to 100%. Keep the narrated text and controls inside the frame. Static holds are preferable on dense comparisons. Motion suggestions are optional editorial treatment for later assembly, not changes to the canonical assets. No fake cursor, typing, click, download, or processing animation. A screenshot of a control establishes an available workflow, not that the action has run.
+Use static screenshots throughout. Do not add zoom, pan, Ken Burns movement, fake cursor, typing, click, download, or processing animation. A screenshot of a control establishes an available workflow, not that the action has run.
 
 The story stays in capture order: priorities → sources and Scope → import and repair → Study feedback → evidence and interpretation → scheduling → generated practice and completion → history → portability and source maintenance → Anki → optional external AI → backup → Dashboard. Scope chooses eligible material; intelligence interprets evidence; generated practice assembles questions. These explanations have separate jobs.
 
-[video-manifest.json](video-manifest.json) remains an unchanged capture/provenance contract. Its `duration_estimate` values still total the historical 402 seconds and must **not** drive this narrated cut. The asset builder rewrites that manifest, and capture tests validate its original durations and optional flags. This document owns editorial inclusion, final spoken text, and revised scene durations; duplicating them into generated JSON would create a second authority. Do not regenerate capture assets for narration changes.
+[video-manifest.json](video-manifest.json) remains the unchanged V2 capture/provenance contract. [v3-additions-manifest.json](v3-additions-manifest.json) supplies the four additive capture records. Their capture-phase `duration_estimate` values do **not** drive the narrated cut. This document owns editorial inclusion, final spoken text, and revised scene durations; the production tool derives its sequence from both capture manifests plus this narration. Do not regenerate capture assets for narration changes.
 
 ## Redundancy decisions
 
-All 36 frames were assessed, including the essential frames; the original optional flags did not determine the outcome alone.
+All 40 production frames were assessed, including the essential frames; the original optional flags did not determine the outcome alone.
 
 | Frames | Decision and reason |
 | --- | --- |
@@ -41,7 +41,7 @@ All 36 frames were assessed, including the essential frames; the original option
 | 003–005 | Keep organization, active scope, and proof that excluded content remains usable. Each answers a different question. |
 | 006–008 | Keep creation choices, supported import paths, and local OCR limits. Do not narrate both import forms field by field. |
 | 009–010 | Keep overview plus one unresolved answer. This makes human review concrete. |
-| 011–013 | Keep unanswered, incorrect, and corrected states. Question Tools belongs with the visible explanation. |
+| 011–013B | Keep unanswered, incorrect, and corrected choice states, then briefly show Matching and Hotspot as richer Study interactions. Question Tools stays with the visible explanation in 013. |
 | 014–016 | Keep evidence, interpretation, and inspectable model. Avoid repeating mastery mechanics in each scene. |
 | 017 | **CUT.** The profile is useful in the app but repeats the recommendation and intelligence story here. |
 | 018–019 | Keep schedule overview and one readable overdue queue with timing reasons. |
@@ -49,7 +49,7 @@ All 36 frames were assessed, including the essential frames; the original option
 | 021–022 | Keep the saved Adaptive session and its expanded provenance. Do not repeat the Library tour. |
 | 023–025 | Keep explicit finish, successful acknowledgment, and retained playable session. Shorten the acknowledgment hold rather than remove this evidence. |
 | 026–027 | Keep individual Exam attempts and aggregate results, with one clear distinction from Study evidence. |
-| 028 | Keep content portability separate from backup; use the visible Study Pack callout to explain reusable packages and their two workspaces. |
+| 028–028B | Keep portable bundles distinct from reusable packaged datasets. Content Packs shows package management; Study Packs shows learner-facing quiz creation. |
 | 029–030 | Keep scan context and one exact comparison. These prove manual source maintenance without promising automatic cleanup. |
 | 031–032 | Keep digital export and shared card selection; mention browser-printable physical cards without pretending the offscreen print layout is displayed. |
 | 033 | **KEEP.** Makes optional, provider-neutral content creation and manual return explicit; 013 covers a different question-explanation handoff. |
@@ -75,7 +75,9 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 | 010 | Essential | 22 | 145 | 9.1s | 10s |
 | 011 | Essential | 24 | 148 | 9.7s | 11s |
 | 012 | Essential | 26 | 148 | 10.5s | 12s |
-| 013 | Essential | 28 | 138 | 12.2s | 14s |
+| 013 | Essential | 26 | 138 | 11.3s | 14s |
+| 013A | Essential | 19 | 138 | 8.3s | 11s |
+| 013B | Essential | 24 | 138 | 10.4s | 11s |
 | 014 | Essential | 18 | 138 | 7.8s | 10s |
 | 015 | Essential | 15 | 138 | 6.5s | 8s |
 | 016 | Essential | 16 | 138 | 7.0s | 9s |
@@ -90,7 +92,9 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 | 025 | Essential | 20 | 148 | 8.1s | 9s |
 | 026 | Essential | 24 | 145 | 9.9s | 11s |
 | 027 | Essential | 16 | 145 | 6.6s | 9s |
-| 028 | Essential | 38 | 138 | 16.5s | 21s |
+| 028 | Essential | 23 | 138 | 10.0s | 12s |
+| 028A | Essential | 20 | 138 | 8.7s | 10s |
+| 028B | Essential | 23 | 138 | 10.0s | 12s |
 | 029 | Essential | 21 | 148 | 8.5s | 10s |
 | 030 | Essential | 22 | 148 | 8.9s | 10s |
 | 031 | Essential | 25 | 148 | 10.1s | 11s |
@@ -107,7 +111,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 11 sec
 **Speech estimate:** 25 words; 10.3 sec at 145 WPM
 **Visual focus:** Dashboard title and Today’s Review panel.
-**Motion:** Slow 2% push toward the central Dashboard.
+**Motion:** Static hold; retain the full Dashboard context.
 
 **Narration**
 
@@ -137,7 +141,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 12 sec
 **Speech estimate:** 27 words; 10.9 sec at 148 WPM
 **Visual focus:** Expanded Core Skills folder and its four quiz cards.
-**Motion:** Slow 2% push toward Core Skills.
+**Motion:** Static hold; keep Core Skills and surrounding Library context visible.
 
 **Narration**
 
@@ -167,7 +171,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 7 sec
 **Speech estimate:** 12 words; 4.9 sec at 148 WPM
 **Visual focus:** Past Projects exclusion badge, Open Quiz and Hide controls.
-**Motion:** Slow 2% push toward the expanded Past Projects card.
+**Motion:** Static hold; keep the expanded Past Projects card visible.
 
 **V2 change:** Tightened to fund the stronger content workflow.
 
@@ -201,7 +205,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 15 sec
 **Speech estimate:** 29 words; 12.0 sec at 145 WPM
 **Visual focus:** PDF form and local screenshot import panel.
-**Motion:** Gentle 2% push toward the import forms.
+**Motion:** Static hold across the import forms.
 
 **V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
 
@@ -235,7 +239,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 13 sec
 **Speech estimate:** 26 words; 10.8 sec at 145 WPM
 **Visual focus:** Two-question summary and complete first question with editable explanation.
-**Motion:** Slow 2% push toward the first question.
+**Motion:** Static hold; keep the first question readable.
 
 **V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
 
@@ -295,17 +299,51 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Image:** [013-question-tools.png](captures/013-question-tools.png)
 **Status:** Essential — KEEP
 **Target:** 14 sec
-**Speech estimate:** 28 words; 12.2 sec at 138 WPM
+**Speech estimate:** 26 words; 11.3 sec at 138 WPM
 **Visual focus:** Green answer, explanation, then the three Question Tools.
-**Motion:** Static hold; optional very slow 2% downward emphasis without clipping the answer.
+**Motion:** Static hold; keep the answer, explanation, and Question Tools visible.
 
-**V2 change:** Written acronym normalized; pronunciation belongs only in synthesis input.
+**V3 change:** Tightened so the following frames can establish richer question interactions without repeating the feedback story. Written acronym pronunciation belongs only in synthesis input.
 
 **Narration**
 
-> The correct answer reveals the explanation. Question Tools can mark questions for Anki or copy a prompt. Review with AI also opens your configured provider for manual pasting.
+> The correct answer reveals the explanation. Question Tools can mark it for Anki, copy a prompt, or open your configured AI provider for a manual handoff.
 
-**Production / transition note:** Longer hold for two linked ideas. No provider visit or clipboard result is shown. Mark for Anki is a session selection, not an exported deck.
+**Production / transition note:** No provider visit or clipboard result is shown. Mark for Anki is a session selection, not an exported deck. Straight cut to the first richer question type.
+
+## Scene 013A — Match related concepts
+
+**Image:** [013A-matching-question.png](captures/013A-matching-question.png)
+**Status:** Essential — KEEP
+**Target:** 11 sec
+**Speech estimate:** 19 words; 8.3 sec at 138 WPM
+**Visual focus:** Three completed pairs, the empty answer pool, and the correct-result feedback.
+**Motion:** Static hold; keep all pairs and feedback visible.
+
+**V3 addition:** Briefly establishes Matching as a direct question interaction inside Study Mode.
+
+**Narration**
+
+> Matching questions let you pair related concepts directly. Completed pairs receive immediate correctness feedback within the normal Study workflow.
+
+**Production / transition note:** Straight cut from 013. The completed state communicates placement and result without an interaction tutorial.
+
+## Scene 013B — Answer on an image
+
+**Image:** [013B-hotspot-question.png](captures/013B-hotspot-question.png)
+**Status:** Essential — KEEP
+**Target:** 11 sec
+**Speech estimate:** 24 words; 10.4 sec at 138 WPM
+**Visual focus:** Original service diagram, selected Recovery copy region, marker, and correct-result feedback.
+**Motion:** Static hold; keep the diagram, selected region, and feedback visible.
+
+**V3 addition:** Establishes Hotspot as a spatial question interaction using original synthetic artwork.
+
+**Narration**
+
+> Hotspot questions make answers spatial. Select the relevant region on an image, then review the result and explanation through the same Study feedback workflow.
+
+**Production / transition note:** Straight cut from 013A, then use the existing chapter fade into 014. The screenshot shows a completed correct selection; do not simulate a click.
 
 ## Scene 014 — Read learning evidence
 
@@ -380,7 +418,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 12 sec
 **Speech estimate:** 24 words; 10.4 sec at 138 WPM
 **Visual focus:** Question-level schedule summary and Review Due Questions action.
-**Motion:** Slow 2% push toward the schedule summary.
+**Motion:** Static hold; retain the schedule summary and surrounding context.
 
 **Narration**
 
@@ -427,7 +465,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 11 sec
 **Speech estimate:** 25 words; 10.3 sec at 145 WPM
 **Visual focus:** Active Generated Practice group and Adaptive Study card.
-**Motion:** Slow 2% push toward the Adaptive Study card.
+**Motion:** Static hold; retain the Adaptive Study card and Library context.
 
 **Narration**
 
@@ -442,7 +480,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 12 sec
 **Speech estimate:** 25 words; 10.9 sec at 138 WPM
 **Visual focus:** Expanded three-source disclosure under Adaptive Study.
-**Motion:** Gentle 2% push toward source names, retaining the card title.
+**Motion:** Static hold; retain the source names and card title.
 
 **Narration**
 
@@ -489,7 +527,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 9 sec
 **Speech estimate:** 20 words; 8.1 sec at 148 WPM
 **Visual focus:** Completed group, Adaptive completion badge, source disclosure and Open Quiz.
-**Motion:** Slow 2% push toward the completed Adaptive card.
+**Motion:** Static hold; retain the completed Adaptive card and its actions.
 
 **Narration**
 
@@ -519,7 +557,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 9 sec
 **Speech estimate:** 16 words; 6.6 sec at 145 WPM
 **Visual focus:** Quiz Performance rows and average/best/latest columns.
-**Motion:** Slow 2% push toward the quiz table.
+**Motion:** Static hold; retain the full quiz table.
 
 **V2 change:** Tightened to fund the stronger content workflow.
 
@@ -529,22 +567,56 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 **Production / transition note:** Do not equate Analytics “Steady” with concept-level trend. These are different calculations; avoid narrating that column.
 
-## Scene 028 — Portable quizzes and reusable Study Packs
+## Scene 028 — Portable quizzes and packaged datasets
 
 **Image:** [028-bundles.png](captures/028-bundles.png)
 **Status:** Essential — KEEP
-**Target:** 21 sec
-**Speech estimate:** 38 words; 16.5 sec at 138 WPM
+**Target:** 12 sec
+**Speech estimate:** 23 words; 10.0 sec at 138 WPM
 **Visual focus:** Bundle import/export columns, Not a Study Pack callout, Study Packs and Content Packs navigation.
 **Motion:** Static hold across export and import columns.
 
-**V2 change:** Substantially rewritten for import / reusable-content / printable-card coverage.
+**V3 change:** Tightened to introduce two distinct content paths before the dedicated Content Packs and Study Packs frames.
 
 **Narration**
 
-> Portable bundles move source quizzes and supported images without learning history. Content Packs manages reusable packages of terminology, image activities, or prepared questions. Study Packs turns that installed material into quizzes, keeping the source available for future sessions.
+> Portable bundles move source quizzes and supported images without learning history. Reusable packaged datasets provide a separate way to bring material into DLMS.
 
-**Production / transition note:** 0.3-second chapter fade. The Not a Study Pack callout explicitly distinguishes authored datasets from ordinary quiz bundles; both workspace links are visible. Explain their purpose, without pretending the pack catalog or a generated pack quiz is pictured. Keep the full frame static. No download or installation is shown. A catalog walkthrough belongs in a focused follow-up video.
+**Production / transition note:** Use the existing chapter fade into 028. No export, file write, or import occurs. Portable bundles are distinct from Content Pack installation and ordinary PDF, OCR, or CSV import.
+
+## Scene 028A — Manage Content Packs
+
+**Image:** [028A-content-packs.png](captures/028A-content-packs.png)
+**Status:** Essential — KEEP
+**Target:** 10 sec
+**Speech estimate:** 20 words; 8.7 sec at 138 WPM
+**Visual focus:** Pack metadata, independent validation, three dataset types, and the two tracked generated quizzes.
+**Motion:** Static hold; retain metadata, validation, datasets, and generated-quiz tracking.
+
+**V3 addition:** Shows Content Packs as the package and dataset management workspace.
+
+**Narration**
+
+> Content Packs is the management side: it validates installed packages, reports their datasets, and tracks the quizzes created from them.
+
+**Production / transition note:** Straight cut from 028. Let the visible metadata and dataset rows carry the detail; do not read them item by item.
+
+## Scene 028B — Create from Study Packs
+
+**Image:** [028B-study-packs.png](captures/028B-study-packs.png)
+**Status:** Essential — KEEP
+**Target:** 12 sec
+**Speech estimate:** 23 words; 10.0 sec at 138 WPM
+**Visual focus:** Expanded Study Pack catalog with matching, image or hotspot, and prepared-question datasets plus Create Quiz actions.
+**Motion:** Static hold; retain all three dataset rows and their Create Quiz actions.
+
+**V3 addition:** Shows Study Packs as the learner-facing catalog for creating quizzes from installed reusable datasets.
+
+**Narration**
+
+> Study Packs is the learner-facing catalog. Choose a matching, image, or prepared-question dataset and create a quiz while keeping the reusable source installed.
+
+**Production / transition note:** Straight cut from 028A, then straight cut to 029. No quiz is generated during capture; the visible actions establish the available workflow.
 
 ## Scene 029 — Find source overlap
 
@@ -568,7 +640,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 10 sec
 **Speech estimate:** 22 words; 8.9 sec at 148 WPM
 **Visual focus:** Exact risky-change pair, correct answers and Edit source quiz links.
-**Motion:** Slow 2% push toward the two compared records.
+**Motion:** Static hold; retain both compared records.
 
 **Narration**
 
@@ -632,7 +704,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 13 sec
 **Speech estimate:** 28 words; 12.2 sec at 138 WPM
 **Visual focus:** Portable Backup scope and Create & Download Backup.
-**Motion:** Slow 2% push toward Portable Backup, retaining page context.
+**Motion:** Static hold; retain Portable Backup and page context.
 
 **Narration**
 
@@ -662,7 +734,7 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 **Target:** 15 sec
 **Speech estimate:** 28 words; 11.6 sec at 145 WPM
 **Visual focus:** Dashboard title, Today’s Review and entry points for content/study.
-**Motion:** Slow 2% pull back, then settle for the final hold.
+**Motion:** Static hold for the closing Dashboard.
 
 **Narration**
 
@@ -672,20 +744,20 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Factual and visual QA
 
-Every spoken factual claim, including alternate passages, was checked against the current product documentation, rendered final captures, and relevant implementation where behavior needed disambiguation. All 36 canonical PNGs and all six contact sheets were inspected. The continuous main script received a second editorial pass for repetition, transitions, cadence, and timing. No product-behavior questions remain unresolved for this script.
+Every spoken factual claim, including alternate passages, was checked against the current product documentation, rendered final captures, and relevant implementation where behavior needed disambiguation. All 36 V2 PNGs and the four full-resolution V3 additions were inspected. The continuous main script received an editorial pass for repetition, transitions, cadence, and timing. No product-behavior questions remain unresolved for this script.
 
 | Scenes | Verification sources and limits |
 | --- | --- |
 | 001–002, 036 | [Introduction](../user-manual/01-introduction.md), [Today’s Review](../user-manual/07-study-and-review.md#start-with-todays-review), [daily-review service](../../dlms/services/daily_review.py). A short plan combines existing signals. The opening has four due questions; the closing has three and still recommends Access Control. No claim that all needs disappear. |
 | 003–005 | [Library](../user-manual/05-quiz-library-and-organization.md), [Learning Scope](../user-manual/08-learning-intelligence.md#choose-your-learning-scope), [scope service](../../dlms/services/learning_scope.py), [scope template](../../templates/learning/scope.html). Exclusion preserves evidence and elapsed schedule time; Hide is separate. |
 | 006–010 | [Creation/import](../user-manual/04-creating-and-importing-content.md), [PDF and OCR](../user-manual/10-pdf-smart-pdf-and-ocr.md), [capture setup](README.md#import-and-portability-setup), [fixture](../../tools/demo_video_fixture.py). Local supported extraction, editable draft, and missing answer are accurate. Frame 009 is a separate seeded PDF draft, not measured output from frame 008. |
-| 011–013 | [Quiz behavior](../user-manual/06-taking-quizzes.md), [external explanation](../user-manual/12-external-ai-workflows.md#ask-for-an-external-explanation), [Study script](../../static/script.js). Incorrect feedback precedes the corrected answer and visible explanation. Copy Question copies an AI-ready prompt locally; Review with AI copies and opens the configured provider, requiring manual pasting. Mark for Anki collects session choices. |
+| 011–013B | [Quiz behavior](../user-manual/06-taking-quizzes.md), [Study Packs help](../../static/help-study-packs.html), [external explanation](../user-manual/12-external-ai-workflows.md#ask-for-an-external-explanation), [Study script](../../static/script.js). Incorrect feedback precedes the corrected answer and visible explanation. Matching pairs and hotspot selections use the normal Study response and feedback path in the captured states. Copy Question copies an AI-ready prompt locally; Review with AI copies and opens the configured provider, requiring manual pasting. Mark for Anki collects session choices. |
 | 014–017 | [Learning Intelligence](../user-manual/08-learning-intelligence.md), [rendered model/table](../../static/learning-intelligence.html), [fixture validation](VALIDATION.md#fixture-sanity). Access Control is improving but still weak by overall accuracy. Cloud has one response and provisional mastery, not a reliable strength/weakness classification. Mastery is a study signal. |
 | 018–020 | [Study and Review](../user-manual/07-study-and-review.md), [schedule UI](../../static/review-schedule.html), [question review service](../../dlms/services/question_review.py). Correct streaks extend intervals; incorrect responses reset to one day. Question and topic schedules differ. Overdue and Due now are distinct table filters. |
 | 021–022 | [Adaptive Study and Generated Practice](../user-manual/07-study-and-review.md), [Library provenance](../user-manual/05-quiz-library-and-organization.md#recognize-generated-practice), [mastery explanation](../../static/learning-intelligence.html). Existing source questions form Adaptive practice; known lineage credits originals. This fixture has three resolved sources. No claim of AI authorship or newly generated wording. |
 | 023–025 | [Generated Practice lifecycle](../../dlms/services/generated_practice_lifecycle.py), [Study script](../../static/script.js), [Library template](../../templates/quiz/library.html), [review documentation](../user-manual/07-study-and-review.md#understand-generated-practice). Finish waits for saved responses and server verification; successful completion retains a playable quiz and evidence. Automatic groups are not physical folders. |
 | 026–027 | [History and Analytics](../user-manual/09-history-results-and-progress.md), [Learning Scope](../user-manual/08-learning-intelligence.md#choose-your-learning-scope). Study evidence is not a scored Exam attempt. All-history analytics is separate from current scope; its trend is not the concept trend. |
-| 028 | [Portability](../user-manual/15-import-export-and-portability.md), [bundle service](../../dlms/services/portable_quiz_bundles.py), [bundle UI](../../templates/quiz/bundles.html). Eligible ordinary source content and supported media transfer; personal scores, history, schedules, and generated review containers are excluded. No import success is shown. |
+| 028–028B | [Portability](../user-manual/15-import-export-and-portability.md), [Study Packs help](../../static/help-study-packs.html), [Content management help](../../static/help-content-management.html), [bundle service](../../dlms/services/portable_quiz_bundles.py), and [Content Pack service](../../dlms/services/content_packs.py). Eligible ordinary source content and supported media transfer without personal learning history. Content Packs manages validated installed package sources; Study Packs launches learner-facing activities from their datasets. No bundle transfer, pack installation, or quiz creation is shown. |
 | 029–030 | [Duplicate Review](../user-manual/05-quiz-library-and-organization.md#review-possible-duplicates), [duplicate template](../../templates/quiz/duplicates.html), [report view](../../dlms/services/quiz_duplicate_view.py). Source scan includes excluded/hidden sources, omits generated copies, and offers manual source editing. No automatic merge/deletion. |
 | 031–032 | [Anki workflows](../user-manual/14-anki-decks-and-printable-cards.md), [Anki overview](../../templates/anki/index.html), [custom selection](../../templates/anki/custom.html). Text front/back deck output and selected/missed questions; no Anki synchronization or automatic import. One source question is checked; no missed items are checked. |
 | 033 | [External AI](../user-manual/12-external-ai-workflows.md), [privacy boundary](../user-manual/appendix-privacy-and-data-handling.md#external-ai-is-a-manual-optional-boundary), frame 033 workflow strip. Provider-neutral manual prompt/response exchange; no direct provider API or background transmission. Validation does not establish factual correctness. |
@@ -694,21 +766,20 @@ Every spoken factual claim, including alternate passages, was checked against th
 ### Visual limits resolved in the script
 
 - **008 → 009 → 011:** These are workflow illustrations, not one uninterrupted import. Narration explicitly introduces a separate prepared repair example, then a published networking quiz. A chapter dissolve preserves that distinction. No recapture is needed.
-- **013:** Three optional tools plus feedback make a dense scene. Keep the explanation and tools visible together. Do not show or narrate a fabricated clipboard success or provider response.
+- **013 → 013A → 013B:** 013 keeps the explanation and optional tools visible together. The two additions show completed interaction states rather than simulated clicks. Do not narrate every pair, region label, or control.
 - **015–016:** The table and model dialog contain more detail than can be read aloud. Narration selects the visible pattern and factors rather than reading percentages or the whole formula. Static holds preserve comparisons.
 - **021:** A saved Adaptive session proves the resulting Library item, not the selection algorithm running. Explain the documented behavior without pretending it resulted from the preceding Due Questions action.
-- **022:** Source names are small. A later gentle push can emphasize the disclosure; the narration does not require reading each name.
-- **024:** The success line is small but readable in the canonical image. Allow the dedicated eight-second hold; a future modest crop toward the message is optional, provided the answer and Finish Review remain visible.
-- **028, 031–034:** These show available workflows and selection, not completed transfers. Do not add download confirmations. Native packaging/account requirements in 034 are documented product context; the screenshot itself is a backup screen.
+- **022:** Source names are small, so the narration explains provenance without requiring viewers to read each name.
+- **024:** The success line is small but readable in the canonical image. Allow the dedicated eight-second static hold.
+- **028 → 028A → 028B, 031–034:** These show available workflows and selection, not completed transfers. Do not add download confirmations. Native packaging/account requirements in 034 are documented product context; the screenshot itself is a backup screen.
 - **035:** The settings overview does not visibly demonstrate a theme change. Its alternate line describes categories only.
 
-No capture defect prevented narration, and no further screenshots are required for this V2 overview. The previously reported correct-answer hover issue remains documented in [VALIDATION.md](VALIDATION.md#existing-product-issue-observed-not-changed); it is not present in the final narrated feedback image and was not modified here.
+No capture defect prevented narration, and no further screenshots are required for this V3 overview. The previously reported correct-answer hover issue remains documented in [VALIDATION.md](VALIDATION.md#existing-product-issue-observed-not-changed); it is not present in the final narrated feedback images and was not modified here.
 
-This phase produces revised text and isolated tooling changes. No real audio, video, subtitle timestamps, application changes, version/release edits, commits, or pushes are part of this handoff. Implementation evidence for the V2 additions is in [EDITORIAL_V2.md](EDITORIAL_V2.md).
+This phase produces revised text and isolated production-tooling changes. No real audio, video, subtitle timestamps, application changes, version/release edits, commits, or pushes are part of this handoff. Earlier implementation evidence remains in [EDITORIAL_V2.md](EDITORIAL_V2.md).
 
 ### Handoff checks
 
-- Existing capture tests: **12 passed** across `tests/test_demo_video_capture.py` and `tests/test_manual_screenshot_capture.py`.
-- Text consistency: 36 scene entries; 33 main-cut passages in original order; plain-text passages exactly match their narration blocks; 790 main-cut words; 390 seconds of main-cut targets.
-- All linked local files resolve. All 36 canonical image hashes match the unchanged capture manifest.
-- Focused narration/video/capture tests and `git diff --check` are the V2 handoff gates. No application code changed; no broader application suite or full render is needed for this editorial/tooling pass.
+- Text consistency: 40 scene entries; 37 main-cut passages in deterministic V3 order; plain-text passages exactly match their narration blocks; 859 main-cut words; 425 seconds of main-cut targets.
+- All linked local files resolve. All 36 V2 image hashes match the unchanged capture manifest, and all four additions match their V3 manifest records.
+- Focused narration/video/capture tests and `git diff --check` are the V3 handoff gates. No application code changed; no full render is needed for this editorial/tooling pass.

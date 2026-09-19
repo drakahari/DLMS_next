@@ -48,7 +48,15 @@ An incorrect choice gets immediate feedback and an invitation to try again. You 
 
 === SCENE 013 ===
 
-The correct answer reveals the explanation. Question Tools can mark questions for Anki or copy a prompt. Review with AI also opens your configured provider for manual pasting.
+The correct answer reveals the explanation. Question Tools can mark it for Anki, copy a prompt, or open your configured AI provider for a manual handoff.
+
+=== SCENE 013A ===
+
+Matching questions let you pair related concepts directly. Completed pairs receive immediate correctness feedback within the normal Study workflow.
+
+=== SCENE 013B ===
+
+Hotspot questions make answers spatial. Select the relevant region on an image, then review the result and explanation through the same Study feedback workflow.
 
 === SCENE 014 ===
 
@@ -100,7 +108,15 @@ Analytics compares saved results by quiz across your history, showing average, b
 
 === SCENE 028 ===
 
-Portable bundles move source quizzes and supported images without learning history. Content Packs manages reusable packages of terminology, image activities, or prepared questions. Study Packs turns that installed material into quizzes, keeping the source available for future sessions.
+Portable bundles move source quizzes and supported images without learning history. Reusable packaged datasets provide a separate way to bring material into DLMS.
+
+=== SCENE 028A ===
+
+Content Packs is the management side: it validates installed packages, reports their datasets, and tracks the quizzes created from them.
+
+=== SCENE 028B ===
+
+Study Packs is the learner-facing catalog. Choose a matching, image, or prepared-question dataset and create a quiz while keeping the reusable source installed.
 
 === SCENE 029 ===
 

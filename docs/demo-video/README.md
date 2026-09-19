@@ -1,14 +1,21 @@
 # DLMS demo-video project
 
 Screenshot capture is complete on **develop/3.2.0** after visual stabilization.
-The canonical set contains **36 final screenshots** in [captures/](captures/).
-The revised [V2 narration/editorial plan](NARRATION.md) and
-[recording script](NARRATION_PLAIN.txt) contain **33 scenes, 790 words**, with a
-6:30 minimum editorial timeline. The complete V2 review build uses **af_heart**
-at speed 1.0 and runs **6:43.600**, following actual regenerated audio durations.
-V2 strengthens imports, Study Packs and printable cards after the first viewing.
+The production sequence uses the **36 unchanged V2 screenshots** plus four
+approved V3 additions in [captures/](captures/). The revised
+[V3 narration/editorial plan](NARRATION.md) and
+[recording script](NARRATION_PLAIN.txt) contain **37 scenes, 859 words**, with a
+7:05 minimum editorial timeline and an estimated complete runtime of about
+**7:19** after narration. The existing V2 review build still uses **af_heart** at
+speed 1.0 and runs **6:43.600**; no V3 narration audio, subtitles, or video have
+been generated.
 
-The targeted V3 visual expansion adds four proposal captures without changing the V2 production assets: completed matching and hotspot interactions after 013, then Content Pack validation and the Study Packs catalog after 028. Review them in [v3-additions-contact-sheet.png](v3-additions-contact-sheet.png) and [v3-additions-manifest.json](v3-additions-manifest.json). Their 44-second target would take the current approximately 6:43 overview to approximately 7:27. Narration, audio, and the assembled video remain V2 until a later production pass.
+The targeted V3 expansion shows completed Matching and Hotspot interactions
+after 013, then Content Pack management and the Study Packs catalog after 028.
+Review the additions in [v3-additions-contact-sheet.png](v3-additions-contact-sheet.png)
+and [v3-additions-manifest.json](v3-additions-manifest.json). Their visual holds
+total 44 seconds, while tightening existing Scene 028 makes the complete main
+editorial target 35 seconds longer than V2.
 
 The V1 build (6:37.200) is archived. See the [V2 review build](#complete-v2-narrated-review-build),
 [editorial audit](EDITORIAL_V2.md) and [production workflow](#video-production-workflow).
@@ -263,32 +270,34 @@ removing the abandoned `.render-*` directory.
 ### Sources and generated production manifest
 
 **NARRATION.md remains the sole editorial authority** for scene order,
-inclusion, spoken text, target duration, focus, and motion suggestions.
+inclusion, spoken text, target duration, focus, and static presentation.
 `NARRATION_PLAIN.txt` must agree exactly with its main cut. The builder fails
 on unrecognized scene fields instead of silently dropping narration. The
-capture manifest supplies image paths and hashes; its original 402-second
-timing estimate is not used for assembly. Neither document is rewritten.
+V2 and V3 additions capture manifests supply image paths and hashes; their
+capture-phase timing estimates are not used for assembly. Neither document is
+rewritten.
 
 The tool derives `build/demo-video/production-manifest.json` on export or
-assembly. This generated manifest contains all 36 records, included cuts,
+assembly. This generated manifest contains all 40 records, included cuts,
 narration, target seconds, image/hash, future audio name, text name, visual
-focus, executable motion/transition instructions, and source-document hashes.
+focus, static-presentation/transition instructions, and source-document hashes.
 It is a reproducible output, **not a second file to edit**. No tracked production
 JSON is needed. The builder always derives a fresh manifest from the sources.
 
-Main includes **33 scenes**: all except 017, 020, 035. Long includes **34**:
+Main includes **37 scenes**: all except 017, 020, 035. Long includes **38**:
 all except 017 and 035. Scene 033 is retained in both. No source image is deleted.
-The long cut adds 020 at its existing sequence position.
+The long cut adds 020 at its existing sequence position. Additive IDs retain
+their deterministic positions after 013 and 028.
 
 Generated files stay in the already ignored `build/demo-video/` directory:
 
 | Path beneath `build/demo-video/` | Purpose |
 | --- | --- |
-| `production-manifest.json` | Derived metadata for all 36 source scenes |
-| `narration-text/main/001.txt`, etc. | 33 main-cut files, spoken text only |
-| `narration-text/long/001.txt`, etc. | 34 long-cut files, including 020 |
+| `production-manifest.json` | Derived metadata for all 40 source scenes |
+| `narration-text/main/001.txt`, `013A.txt`, etc. | 37 main-cut files, spoken text only |
+| `narration-text/long/001.txt`, `013A.txt`, etc. | 38 long-cut files, including 020 |
 | `narration-text/main/index.json` and `long/index.json` | Scene, image, target seconds, text filename and future audio filename |
-| `audio/001.wav`, etc. | Future narration inputs supplied by the user |
+| `audio/001.wav`, `013A.wav`, etc. | Future narration inputs supplied by the user |
 | `DLMS-3.2-demo-silent-preview.mp4` | Main preview, no audio or subtitle streams |
 | `DLMS-3.2-demo-long-silent-preview.mp4` | Long preview when requested |
 | `DLMS-3.2-demo.mp4` and `.srt` | Future main narrated output and sidecar captions |
@@ -305,10 +314,11 @@ Absolute or relative `--audio-dir` paths, including spaces, are supported.
 ### Narration audio contract
 
 Place future recordings in **`build/demo-video/audio/`**, using exactly
-**`001.wav`, `002.wav`, …** with original scene IDs. Keep one take per included
-scene; filenames do not change when a scene is cut. Main needs 33 files;
-long also needs `020.wav`. Known excluded scene files are ignored, and never
-required. Files are read only.
+**`001.wav`, `002.wav`, …** with stable scene IDs; the additions use
+**`013A.wav`, `013B.wav`, `028A.wav`, and `028B.wav`**. Keep one take per
+included scene; filenames do not change when a scene is cut. Main needs 37
+files; long also needs `020.wav`. Known excluded scene files are ignored, and
+never required. Files are read only.
 
 Use **lossless PCM WAV, mono or stereo**, preferably 48 kHz. Other PCM sample
 rates are resampled non-destructively during assembly. Compressed files such as
@@ -350,9 +360,9 @@ audio inputs for standalone subtitles and the corresponding video. Changing
 a recording requires regenerating both. Missing narration is an error for
 `build` and `subtitles`; only the explicit `preview` action is silent.
 
-### Timing, motion and transitions
+### Timing and transitions
 
-Silent previews use the V2 editorial targets: **390 seconds main**, **403 seconds
+Silent previews use the V3 editorial targets: **425 seconds main**, **438 seconds
 long**, at 30 fps. Narrated slots use the greater of the editorial viewing
 minimum and **actual ffprobe audio duration + incoming visual lead + tail**,
 rounded up to a whole video frame. The tail defaults to **0.6 seconds** and
@@ -365,11 +375,10 @@ target is retained, including the completion message and closing hold.
 long and audition rendering. Native 1920×1080 images are held without scaling,
 zoom, pan or frame interpolation, keeping small UI text and borders stable.
 Only the existing chapter fades intentionally vary image pixels over time; lossy
-encoding can still produce small decoded-pixel differences. Historical motion
-suggestions remain in the source metadata but are ignored by default.
-`--motion planned` explicitly restores the former centered 100–102% pushes and
-closing pull for historical comparisons. Do not use it for the approved V2
-overview. The generated timeline records the selected mode and exact filters.
+encoding can still produce small decoded-pixel differences. Every V3 production
+scene is marked static. The legacy `--motion planned` compatibility option is
+still accepted, but it adds no movement when all scene metadata is static. The
+generated timeline records the selected mode and exact filters.
 
 Within workflows, transitions are clean cuts. At chapter/example boundaries
 006, 009, 011, 014, 018, 021, 026, 028, 031, 033, 034 and 036, this implementation
@@ -487,7 +496,7 @@ visual tails, static screenshots by default, clean cut to
 013, short fade through black into 014, and default two-pass normalization.
 `--mux-subtitles` and `subtitles --audition` also work. Missing WAVs fail with their
 exact names; no placeholder speech or silent audition is substituted. Audition
-cannot be combined with `preview` or `--cut long`. Main/long cuts remain 33/34
+cannot be combined with `preview` or `--cut long`. Main/long cuts contain 37/38
 scenes, with their existing exclusions unchanged.
 
 No audio or audition MP4 is created by export/validation. To run deterministic
@@ -617,8 +626,9 @@ python tools/generate_demo_narration.py --cut long --voice af_heart
 python tools/build_demo_video.py build --cut long
 ```
 
-Main/long select 33/34 scenes using the existing authoritative manifest parser.
-WAVs go to `build/demo-video/audio/NNN.wav`; excluded scenes are not requested.
+Main/long select 37/38 scenes using the existing authoritative manifest parser.
+WAVs go to `build/demo-video/audio/SCENE_ID.wav`, including the additive
+`013A.wav`, `013B.wav`, `028A.wav`, and `028B.wav`; excluded scenes are not requested.
 Main and long share filenames, so a subsequent full long generation requires
 `--force` if main WAVs already exist. That regenerates all included long clips;
 it is not an incremental missing-only mode. Full production generation must be
@@ -752,7 +762,8 @@ The archived V1 media, screenshots and all three audition sets remain intact.
 ### Future focused videos
 
 Good follow-ups are importing PDFs/scans/images/CSV; OCR and Review & Repair;
-Learning Intelligence; Generated Practice; Study Packs and Content Packs; Anki
-and printable physical flash cards; building/importing quizzes; and Learning
-Scope. [The V2 audit](EDITORIAL_V2.md#future-focused-videos) gives a short scope
-for each. This is planning only; none of those videos is being created now.
+Learning Intelligence; Generated Practice; Study Packs and Content Packs;
+question types including Matching and Hotspot; Anki and printable physical flash
+cards; building/importing quizzes; and Learning Scope. [The V2 audit](EDITORIAL_V2.md#future-focused-videos)
+gives a short scope for the existing recommendations. This is planning only;
+none of those videos is being created now.

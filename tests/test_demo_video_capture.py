@@ -155,9 +155,13 @@ def test_v3_additions_handoff(monkeypatch):
     tool = load_tool(monkeypatch)
     project = ROOT/'docs/demo-video'
     payload = json.loads((project/'v3-additions-manifest.json').read_text())
-    assert payload['v2_runtime_seconds'] == 403
-    assert payload['added_runtime_seconds'] == 44
-    assert payload['estimated_v3_runtime_seconds'] == 447
+    assert payload['v2_runtime_seconds'] == 403.6
+    assert payload['v2_editorial_target_seconds'] == 390
+    assert payload['v3_editorial_target_seconds'] == 425
+    assert payload['new_scene_target_seconds'] == 44
+    assert payload['redistributed_existing_target_seconds'] == -9
+    assert payload['net_editorial_target_change_seconds'] == 35
+    assert payload['estimated_v3_runtime_seconds'] == 438.6
     assert [row['id'] for row in payload['scenes']] == [f.id for f in tool.V3_ADDITIONS]
     for frame, row in zip(tool.V3_ADDITIONS, payload['scenes']):
         path = project/row['image']

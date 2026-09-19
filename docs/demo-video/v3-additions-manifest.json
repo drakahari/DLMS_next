@@ -1,8 +1,12 @@
 {
-  "status": "proposed-v3-sequencing; narration, audio, and video not regenerated",
-  "v2_runtime_seconds": 403,
-  "added_runtime_seconds": 44,
-  "estimated_v3_runtime_seconds": 447,
+  "status": "approved-v3-sequencing; narration integrated; audio, subtitles, and video not regenerated",
+  "v2_runtime_seconds": 403.6,
+  "v2_editorial_target_seconds": 390,
+  "v3_editorial_target_seconds": 425,
+  "new_scene_target_seconds": 44,
+  "redistributed_existing_target_seconds": -9,
+  "net_editorial_target_change_seconds": 35,
+  "estimated_v3_runtime_seconds": 438.6,
   "scenes": [
     {
       "id": "013A",
