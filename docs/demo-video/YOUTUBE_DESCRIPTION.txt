@@ -1,0 +1,28 @@
+DLMS is a local-first study and quiz workspace that connects your learning material with practical review and Learning Intelligence.
+This DLMS 3.2 overview follows the workflow from importing content to studying, taking timed assessments, and deciding what to revisit.
+
+DLMS is privacy-oriented, single-user native desktop software: its packages run the application locally and open its interface in your browser. No cloud account or direct AI-provider API is required. Optional external AI uses a manual prompt-and-paste workflow; what you share with a provider stays your choice.
+
+Organize quizzes into folders and choose your Learning Scope. Bring in text, CSV terminology lists, PDFs, and supported scanned documents through local OCR, then check uncertain material in Review & Repair before saving it.
+
+Practice with Study Mode feedback, Matching pairs, and image-based Hotspot questions, or set an Exam Mode time limit for assessment. Pause freezes the countdown and obscures the exam. Learning Intelligence and due-question review scheduling help identify what needs attention; Generated Practice assembles focused sessions from existing questions.
+
+Content Packs handles package validation and management; Study Packs lets you create quizzes from installed reusable datasets. Portable quiz bundles move source content without learning history. Anki export and printable three-by-five physical flash cards offer ways to study away from DLMS, while backups preserve your workspace and learning history.
+
+GitHub repository: [GITHUB_REPOSITORY_URL — replace with the approved public URL before publishing]
+
+Chapters
+00:00 Introduction & Dashboard
+00:23 Quiz Library & Learning Scope
+00:56 Importing text, CSV & PDFs
+01:27 Local OCR & Review and Repair
+02:10 Study vs. Exam: timing & Pause
+02:47 Study feedback, Matching & Hotspot
+03:36 Learning Intelligence & spaced review
+04:25 Generated Practice, History & Analytics
+05:37 Portable bundles, Content Packs & Study Packs
+06:12 Finding duplicate questions
+06:34 Anki, physical flash cards & optional AI
+07:16 Backups, local ownership & closing
+
+Shown with original synthetic demo content in the Purple & Gold theme. Narration is AI-generated using local Kokoro text-to-speech (af_heart). English captions are available.

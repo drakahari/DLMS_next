@@ -1,0 +1,12 @@
+00:00 Introduction & Dashboard
+00:23 Quiz Library & Learning Scope
+00:56 Importing text, CSV & PDFs
+01:27 Local OCR & Review and Repair
+02:10 Study vs. Exam: timing & Pause
+02:47 Study feedback, Matching & Hotspot
+03:36 Learning Intelligence & spaced review
+04:25 Generated Practice, History & Analytics
+05:37 Portable bundles, Content Packs & Study Packs
+06:12 Finding duplicate questions
+06:34 Anki, physical flash cards & optional AI
+07:16 Backups, local ownership & closing
