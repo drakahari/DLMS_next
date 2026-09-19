@@ -358,12 +358,15 @@ never sped up or truncated to fit the old estimate; a longer take extends the
 scene and every subsequent timestamp. Extra viewing time in the editorial
 target is retained, including the completion message and closing hold.
 
-Most frames stay static. Explicit 2% push suggestions become slow centered
-100–102% zooms; the closing shot pulls from 102% to 100% and settles for its
-last two seconds. Supersampling reduces crop stepping. Optional motion in a
-“Static hold” note remains static. Directional focus pans and custom crop
-coordinates are deferred; the source focus notes remain in the manifest for
-later refinement. This keeps comparisons and controls readable.
+**Static screenshots are the production default** (`--motion none`) across main,
+long and audition rendering. Native 1920×1080 images are held without scaling,
+zoom, pan or frame interpolation, keeping small UI text and borders stable.
+Only the existing chapter fades intentionally vary image pixels over time; lossy
+encoding can still produce small decoded-pixel differences. Historical motion
+suggestions remain in the source metadata but are ignored by default.
+`--motion planned` explicitly restores the former centered 100–102% pushes and
+closing pull for historical comparisons. Do not use it for the approved V2
+overview. The generated timeline records the selected mode and exact filters.
 
 Within workflows, transitions are clean cuts. At chapter/example boundaries
 006, 009, 011, 014, 018, 021, 026, 028, 031, 033, 034 and 036, this implementation
@@ -477,7 +480,7 @@ using its default audio location). Production audio remains
 
 The build writes `build/demo-video/DLMS-3.2-voice-audition.mp4`, its timeline JSON,
 and scene-level SRT through the **same production renderer**: actual audio timing,
-visual tails, 2% opening push, static workflow/intelligence frames, clean cut to
+visual tails, static screenshots by default, clean cut to
 013, short fade through black into 014, and default two-pass normalization.
 `--mux-subtitles` and `subtitles --audition` also work. Missing WAVs fail with their
 exact names; no placeholder speech or silent audition is substituted. Audition
@@ -630,6 +633,31 @@ local port, so no live narration was generated or auditioned. Docker was neither
 installed nor started automatically.
 
 ### Complete V2 narrated review build
+
+**Current presentation: static screenshots throughout.** Following the user's
+shimmer report, the canonical MP4 was rebuilt with the existing V2 WAVs and
+`--motion none`. Runtime remains **6:43.600**; all scene timings, the SRT and
+even the encoded AAC stream are unchanged. The previous motion-enabled MP4,
+SRT and timeline are preserved under `build/demo-video/archive-v2-motion/`.
+
+```sh
+python tools/build_demo_video.py build --cut main --motion none --mux-subtitles --overwrite
+```
+
+The changing 100–102% zoom and its 3840×2160 supersampling/zoompan path are now
+bypassed. Native screenshots stay at 1920×1080; existing fades/cuts and encoding
+quality settings remain. No Kokoro request or narration regeneration was made.
+Static rebuild evidence is in `build/demo-video/static-review/REVIEW_BUILD.md`.
+All 33 scene timings and protected asset hashes pass; full decoding and subtitle
+roundtrip pass; **105 focused tests pass** (one separate render smoke test omitted
+in favor of this complete render validation).
+
+Opening, PDF/import, OCR, Study, Learning Intelligence, packs, printable cards
+and closing frames remain sharp with fixed geometry in inspected samples.
+Before encoding, repeated hold frames in those eight scenes are pixel-identical.
+Decoded H.264 frames retain small compression differences, so the MP4 is not
+claimed to be pixel-identical throughout each hold. There is no remaining
+zoom/pan/resampling motion; no new encoding-quality adjustment was made.
 
 The user approved the 790-word V2 script and the isolated Heart pronunciation
 test. All **33 main-cut clips** were then regenerated locally with **`af_heart`,

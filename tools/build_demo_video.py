@@ -311,10 +311,12 @@ def export_pack(manifest, cut, work):
     return directory
 
 
-def video_filter(row):
+def video_filter(row, motion='none'):
+    if motion not in {'none', 'planned'}:
+        raise BuildError('Motion must be none or planned.')
     frames = row['frames']
     filters = ['setsar=1']
-    if row['motion'] == 'static':
+    if motion == 'none' or row['motion'] == 'static':
         filters.append(f'fps={FPS}')
     else:
         # Supersampling limits integer crop jitter. Fixed center; no speculative focus pan.
@@ -386,7 +388,8 @@ def verify_output(path, rows, media, narrated=False, mux_subtitles=False):
 
 
 def render(rows, output, media, project=PROJECT, normalization='ebu', mux_subtitles=False,
-           overwrite=False, preset='veryfast'):
+           overwrite=False, preset='veryfast', motion='none'):
+    filters = {str(row['id']): video_filter(row, motion) for row in rows}
     narrated = all(row['audio'] is not None for row in rows)
     if not rows or (not narrated and any(row['audio'] is not None for row in rows)):
         raise BuildError('Render needs a nonempty, entirely silent or entirely narrated timeline.')
@@ -407,7 +410,7 @@ def render(rows, output, media, project=PROJECT, normalization='ebu', mux_subtit
             print(f"Rendering scene {row['id']:03} ({number+1}/{len(rows)}), {row['duration_seconds']:.3f}s", flush=True)
             name = f'video-{number:03}.mp4'
             run(ffmpeg(media) + ['-loop', '1', '-framerate', str(FPS), '-i', project / row['image'],
-                                '-vf', video_filter(row), '-frames:v', str(row['frames']), '-an',
+                                '-vf', filters[str(row['id'])], '-frames:v', str(row['frames']), '-an',
                                 '-c:v', 'libx264', '-preset', preset, '-crf', '18', '-threads', '2',
                                 '-pix_fmt', 'yuv420p', '-video_track_timescale', '15360', temp / name])
             video_names.append(name)
@@ -447,6 +450,7 @@ def render(rows, output, media, project=PROJECT, normalization='ebu', mux_subtit
         run(command)
         checked = verify_output(temp / 'result.mp4', rows, media, narrated, mux_subtitles)
         report = {'fps': FPS, 'duration_seconds': sum(r['frames'] for r in rows) / FPS,
+                  'motion_mode': motion, 'video_filters': filters,
                   'normalization': normalization if narrated else 'none', 'loudness_measurement': loudness,
                   'ffmpeg_version': run([media['ffmpeg'], '-version']).stdout.splitlines()[0],
                   'ffprobe_version': run([media['ffprobe'], '-version']).stdout.splitlines()[0],
@@ -472,6 +476,8 @@ def main(argv=None):
     parser.add_argument('--tail', type=float, default=0.6, help='Minimum post-audio visual tail in seconds.')
     parser.add_argument('--mux-subtitles', action='store_true')
     parser.add_argument('--normalization', choices=('ebu', 'none'), default='ebu')
+    parser.add_argument('--motion', choices=('none', 'planned'), default='none',
+                        help='Default none: static screenshots, retaining chapter fades. planned restores historical scene motion.')
     parser.add_argument('--overwrite', action='store_true', help='Replace existing video/SRT outputs.')
     args = parser.parse_args(argv)
     try:
@@ -525,7 +531,7 @@ def main(argv=None):
         else:
             output = work / (base + ('-silent-preview' if args.action == 'preview' else '') + '.mp4')
             report = render(rows, output, media, normalization=args.normalization,
-                            mux_subtitles=args.mux_subtitles, overwrite=args.overwrite)
+                            mux_subtitles=args.mux_subtitles, overwrite=args.overwrite, motion=args.motion)
             print(f"Validated output: {output} ({report['duration_seconds']:.3f}s)")
         return 0
     except (BuildError, OSError, KeyError, json.JSONDecodeError) as exc:

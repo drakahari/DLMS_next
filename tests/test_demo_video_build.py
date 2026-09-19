@@ -180,12 +180,28 @@ def test_srt_uses_audio_boundaries_not_target_estimates(manifest):
 
 def test_motion_and_frame_fades(manifest):
     rows = video.timeline([manifest['scenes'][0], manifest['scenes'][5]])
-    assert 'zoompan' in video.video_filter(rows[0])
-    assert '0.02' in video.video_filter(rows[0])
+    assert 'zoompan' in video.video_filter(rows[0], motion='planned')
+    assert '0.02' in video.video_filter(rows[0], motion='planned')
     assert 'zoompan' not in video.video_filter(rows[1])
     assert 'fade=t=in:s=0:n=5' in video.video_filter(rows[1])
     closing = video.timeline([manifest['scenes'][-1]])[0]
-    assert '1.02-0.02' in video.video_filter(closing)
+    assert '1.02-0.02' in video.video_filter(closing, motion='planned')
+
+
+def test_static_default_keeps_timing_and_fades_without_resampling(manifest):
+    rows = video.timeline(video.select_scenes(manifest, 'main'))
+    before = json.dumps(rows, sort_keys=True)
+    for row in rows:
+        filters = video.video_filter(row)
+        assert filters == video.video_filter(row, motion='none')
+        assert not any(term in filters for term in ('scale=', 'zoompan', 'crop=', 'minterpolate'))
+        assert f"trim=end_frame={row['frames']}" in filters
+        assert 'fps=30' in filters and 'format=yuv420p' in filters
+        assert ('fade=t=in' in filters) == bool(row['fade_in_frames'])
+        assert ('fade=t=out' in filters) == bool(row['fade_out_frames'])
+    assert json.dumps(rows, sort_keys=True) == before  # historical motion remains metadata
+    with pytest.raises(video.BuildError, match='Motion'):
+        video.video_filter(rows[0], motion='unknown')
 
 
 def test_chapter_boundaries_match_editorial_notes(manifest):
@@ -319,7 +335,8 @@ def test_audition_missing_audio(monkeypatch, tmp_path, manifest, capsys, directo
 
 
 @pytest.mark.parametrize('audition,cut,count', [(True, 'main', 3), (False, 'main', 33), (False, 'long', 34)])
-def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest, audition, cut, count):
+@pytest.mark.parametrize('motion', [None, 'none', 'planned'])
+def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest, audition, cut, count, motion):
     monkeypatch.setattr(video, 'ROOT', tmp_path)
     monkeypatch.setattr(video, 'production_manifest', lambda: manifest)
     monkeypatch.setattr(video, 'prerequisites', lambda: {})
@@ -337,6 +354,7 @@ def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest
 
     def render(rows, output, media, **kwargs):
         assert len(rows) == count
+        assert kwargs['motion'] == (motion or 'none')
         assert kwargs['normalization'] == 'ebu'
         assert all(r['duration_seconds'] >= 13.1 for r in rows)
         assert all(r['audio'] is not None for r in rows)
@@ -349,6 +367,8 @@ def test_build_dispatch_preserves_audio_contract(monkeypatch, tmp_path, manifest
     monkeypatch.setattr(video, 'audio_inputs', inputs)
     monkeypatch.setattr(video, 'render', render)
     args = ['build', '--cut', cut, '--work-dir', str(work)]
+    if motion is not None:
+        args += ['--motion', motion]
     assert video.main(args + (['--audition'] if audition else [])) == 0
 
 
