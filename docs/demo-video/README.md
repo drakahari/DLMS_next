@@ -1,10 +1,12 @@
-# DLMS demo-video screenshot project
+# DLMS demo-video project
 
 Screenshot capture is complete on **develop/3.2.0** after visual stabilization.
 The canonical set contains **36 final screenshots** in [captures/](captures/).
 The first-pass [narration and editorial plan](NARRATION.md) and
 [recording script](NARRATION_PLAIN.txt) are complete: 33 scenes, approximately
-6:15 including pauses and transitions. No audio or final video has been produced.
+6:15 including pauses and transitions. The provider-neutral assembly tool and
+full silent preview are complete. No narration audio or final narrated video
+has been produced. See [production workflow](#video-production-workflow).
 This is not a release announcement.
 
 Editing handoff: [video-manifest.json](video-manifest.json), [storyboard](STORYBOARD.md),
@@ -217,4 +219,208 @@ six 960 × 540 labeled thumbnails each. Original screenshots stay untouched.
 
 The narration/editorial phase is complete. [NARRATION.md](NARRATION.md) owns the
 revised cut and timing; the capture manifest retains its original estimates and
-provenance. Audio recording and video assembly are future phases and have not run.
+provenance. The assembly infrastructure and silent preview are now available;
+narration recording and final narrated assembly remain future work.
+
+## Video production workflow
+
+[`tools/build_demo_video.py`](../../tools/build_demo_video.py) uses Python's
+standard library plus **FFmpeg/ffprobe on PATH**. It never imports or starts
+DLMS, calls a voice provider, or installs packages. FFmpeg must provide
+`libx264`, AAC, PCM WAV, `mov_text`, and the standard motion/audio filters.
+Missing executables or capabilities produce an explicit error.
+
+Run these commands from the repository root. No application virtual environment
+is needed for assembly; use the repository venv for pytest.
+
+```sh
+# Validate narration/capture contracts, image hashes/dimensions and media tools.
+python tools/build_demo_video.py validate --cut main
+python tools/build_demo_video.py validate --cut long
+
+# Export individual spoken passages and their scene/audio mapping.
+# Export alone works even without FFmpeg/ffprobe.
+python tools/build_demo_video.py export --cut main
+python tools/build_demo_video.py export --cut long
+
+# Silent editorial preview: no audio inputs or subtitle estimates required.
+python tools/build_demo_video.py preview --cut main
+python tools/build_demo_video.py preview --cut long
+```
+
+Add `--overwrite` to replace an existing MP4 or SRT. The full main preview has
+already been generated, so reproducing it requires that flag. Failed rendering
+does not replace a previous completed video. All temporary segment media lives
+in a disposable `.render-*` directory and is removed on success, error, or
+normal interruption. An uncatchable process termination may require manually
+removing the abandoned `.render-*` directory.
+
+### Sources and generated production manifest
+
+**NARRATION.md remains the sole editorial authority** for scene order,
+inclusion, spoken text, target duration, focus, and motion suggestions.
+`NARRATION_PLAIN.txt` must agree exactly with its main cut. The builder fails
+on unrecognized scene fields instead of silently dropping narration. The
+capture manifest supplies image paths and hashes; its original 402-second
+timing estimate is not used for assembly. Neither document is rewritten.
+
+The tool derives `build/demo-video/production-manifest.json` on export or
+assembly. This generated manifest contains all 36 records, included cuts,
+narration, target seconds, image/hash, future audio name, text name, visual
+focus, executable motion/transition instructions, and source-document hashes.
+It is a reproducible output, **not a second file to edit**. No tracked production
+JSON is needed. The builder always derives a fresh manifest from the sources.
+
+Main includes **33 scenes**: all except 017, 020, 035. Long includes **34**:
+all except 017 and 035. Scene 033 is retained in both. No source image is deleted.
+The long cut adds 020 at its existing sequence position.
+
+Generated files stay in the already ignored `build/demo-video/` directory:
+
+| Path beneath `build/demo-video/` | Purpose |
+| --- | --- |
+| `production-manifest.json` | Derived metadata for all 36 source scenes |
+| `narration-text/main/001.txt`, etc. | 33 main-cut files, spoken text only |
+| `narration-text/long/001.txt`, etc. | 34 long-cut files, including 020 |
+| `narration-text/main/index.json` and `long/index.json` | Scene, image, target seconds, text filename and future audio filename |
+| `audio/001.wav`, etc. | Future narration inputs supplied by the user |
+| `DLMS-3.2-demo-silent-preview.mp4` | Main preview, no audio or subtitle streams |
+| `DLMS-3.2-demo-long-silent-preview.mp4` | Long preview when requested |
+| `DLMS-3.2-demo.mp4` and `.srt` | Future main narrated output and sidecar captions |
+| `DLMS-3.2-demo-long.mp4` and `.srt` | Future long narrated output and sidecar captions |
+| `*.timeline.json` | Actual frame/audio timeline, input hashes, media versions and encoded stream validation |
+
+Paths in the production manifest are relative to the repository/image base
+stated in the JSON. Each text-export index resolves text filenames in its own
+directory and audio filenames under its `audio_base`. Use a different
+`--work-dir "build/demo-video alternate"` for another assembly workspace;
+the command requires an output subdirectory of the repository's `build/` tree.
+Absolute or relative `--audio-dir` paths, including spaces, are supported.
+
+### Narration audio contract
+
+Place future recordings in **`build/demo-video/audio/`**, using exactly
+**`001.wav`, `002.wav`, …** with original scene IDs. Keep one take per included
+scene; filenames do not change when a scene is cut. Main needs 33 files;
+long also needs `020.wav`. Known excluded scene files are ignored, and never
+required. Files are read only.
+
+Use **lossless PCM WAV, mono or stereo**, preferably 48 kHz. Other PCM sample
+rates are resampled non-destructively during assembly. Compressed files such as
+MP3/M4A are deliberately unsupported in this first version; convert them to
+separate WAV copies before assembly. Do not merely rename their extension.
+Unmapped audio names, missing clips, malformed media, unsupported streams,
+non-finite/empty durations, or decode errors fail validation with scene IDs.
+
+Record only the exported passage. Avoid large leading/trailing silence: the
+whole supplied clip is treated as the scene's narration span. The builder can
+validate filenames and media, but cannot verify that a narrator spoke the
+correct passage. Review each recording against its text export before assembly.
+The voice may be human or generated externally; the tool has no provider,
+account, API-key, network, or cloud-service dependency.
+
+Once real audio exists, these commands become usable:
+
+```sh
+# Check every required clip before rendering.
+python tools/build_demo_video.py validate --cut main --require-audio
+
+# Build main MP4, sidecar SRT and actual timeline.
+python tools/build_demo_video.py build --cut main
+
+# Also include English captions as an optional selectable MP4 subtitle track.
+python tools/build_demo_video.py build --cut main --mux-subtitles --overwrite
+
+# Long cut requires 020.wav in addition to the main recordings.
+python tools/build_demo_video.py build --cut long --mux-subtitles
+
+# Generate just the SRT from the same actual-audio timeline, without video.
+python tools/build_demo_video.py subtitles --cut main
+python tools/build_demo_video.py subtitles --cut long
+```
+
+The `subtitles` action also writes a `.subtitle-timeline.json` audit file. Add
+`--overwrite` if the SRT already exists. Use identical `--cut`, `--tail`, and
+audio inputs for standalone subtitles and the corresponding video. Changing
+a recording requires regenerating both. Missing narration is an error for
+`build` and `subtitles`; only the explicit `preview` action is silent.
+
+### Timing, motion and transitions
+
+Silent previews use the editorial targets: **375 seconds main**, **388 seconds
+long**, at 30 fps. Narrated slots use the greater of the editorial viewing
+minimum and **actual ffprobe audio duration + incoming visual lead + tail**,
+rounded up to a whole video frame. The tail defaults to **0.6 seconds** and
+can be adjusted with `--tail 0.8`. It must cover the outgoing fade. Narration is
+never sped up or truncated to fit the old estimate; a longer take extends the
+scene and every subsequent timestamp. Extra viewing time in the editorial
+target is retained, including the completion message and closing hold.
+
+Most frames stay static. Explicit 2% push suggestions become slow centered
+100–102% zooms; the closing shot pulls from 102% to 100% and settles for its
+last two seconds. Supersampling reduces crop stepping. Optional motion in a
+“Static hold” note remains static. Directional focus pans and custom crop
+coordinates are deferred; the source focus notes remain in the manifest for
+later refinement. This keeps comparisons and controls readable.
+
+Within workflows, transitions are clean cuts. At chapter/example boundaries
+006, 009, 011, 014, 018, 021, 026, 028, 031, 033, 034 and 036, this implementation
+uses a **short fade through black**, an intentional simple alternative to the
+suggested cross-dissolve. Five frames on each side make approximately one third
+of a second total, entirely inside existing scene slots. The final scene also
+fades out. No scenes or narration overlap. After an incoming fade, narration
+starts five frames into the new scene; the outgoing fade fits in its tail.
+
+Output is MP4 with **H.264, 1920 × 1080, 30 fps, yuv420p**, CRF 18, and fast-start
+metadata for web playback. Narrated output uses **48 kHz mono AAC at 192 kb/s**.
+Processing is sequential with bounded FFmpeg calls, avoiding a large graph
+holding every 1080p scene in memory. The timeline and settings are deterministic;
+byte-identical encoding across different FFmpeg builds/platforms is not promised.
+
+### Normalization and subtitles
+
+The default is **two-pass FFmpeg `loudnorm` for each scene**, targeting
+**−18 LUFS integrated, −2 dBTP true peak, LRA 11**. Scene-wise measurement helps
+match separately recorded takes. Linear correction is requested; FFmpeg may
+use dynamic correction when required by the peak/range constraints. Only
+temporary copies are processed. Short clips receive temporary measurement
+padding, then return to the exact frame-aligned slot length. The builder does
+not fade speech, overlap narration, or destructively alter source files.
+Completely silent/unmeasurable input fails normalization rather than being
+treated as narration. Use `--normalization none` for already mastered input.
+Final listening review with the chosen voice remains necessary.
+
+Subtitles use **one block per scene**, from its actual audio start to its
+actual audio end, excluding the visual tail. This is scene-level timing, not
+word alignment or sentence-level speech recognition. Internal silence remains
+inside that span. No approximate SRT is emitted for a silent preview. The
+sidecar is always available for narrated output; `--mux-subtitles` optionally
+adds a selectable English `mov_text` track. Captions are never burned into the UI.
+
+### Production validation
+
+The first main silent preview was generated with FFmpeg/ffprobe **8.1.2**:
+`build/demo-video/DLMS-3.2-demo-silent-preview.mp4`, **375.000 seconds**, **11,250
+frames**, H.264/yuv420p, 1920 × 1080, 30 fps, no audio/subtitle streams, about
+40 MiB. Full decoding completed without errors. Encoded frames 001, 013, 015,
+022, 024, 032 and 036 were visually inspected; narrated subjects and controls
+remain readable. A sampled 005→006 boundary verified the fade through black.
+No `.render-*` intermediates remained.
+
+Run the focused suite with:
+
+```sh
+.venv/bin/python -m pytest -q tests/test_demo_video_build.py tests/test_demo_video_capture.py tests/test_manual_screenshot_capture.py
+```
+
+Tests cover both cuts, source drift/hashes, exact deterministic text exports,
+prerequisite detection, audio names/missing files/invalid duration, frame-rounded
+timing and tails, actual-audio SRT boundaries, motion filters, paths with spaces,
+output protection, and failure cleanup. A small real-media smoke test runs when
+FFmpeg is installed, using disposable **test tones, not narration**, to exercise
+PCM decoding, differently leveled takes, normalization, AAC, selectable subtitles,
+and encoded timing. It skips explicitly when the media tools are absent.
+
+No voice provider was chosen and no narration audio, final narrated demo, or
+production SRT was generated during this phase. Production application behavior,
+APP_VERSION, release metadata, canonical screenshots and narration are unchanged.
