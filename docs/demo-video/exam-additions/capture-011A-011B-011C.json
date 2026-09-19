@@ -1,0 +1,82 @@
+{
+  "version": "3.2.0",
+  "revision": "426b41f978d517f5b405cf64515974909cf9f56b",
+  "dirty": true,
+  "captured_at": "2026-09-19T22:54:01.287861+00:00",
+  "theme": "purple-gold",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale": 1
+  },
+  "fixture_version": "dlms-demo-video-v3",
+  "replay_prefix": false,
+  "captures": [
+    {
+      "id": "011A",
+      "filename": "011A-quiz-timing.png",
+      "title": "Set a quiz-specific exam duration",
+      "route": "@critical_edit",
+      "ready": "document.querySelector('main')",
+      "state": "Quiz editor; Exam Mode Timer set to 20 minutes; unsaved demonstration.",
+      "fixture": "Original Network Troubleshooting quiz; no source data changed.",
+      "focus": ".build-section",
+      "action": "exam-timing",
+      "seconds": 10,
+      "essential": false,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-19T12:00:00+00:00"
+    },
+    {
+      "id": "011B",
+      "filename": "011B-exam-mode.png",
+      "title": "Answer in timed Exam Mode",
+      "route": "@critical_quiz",
+      "ready": "typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady === true",
+      "state": "Exam Mode; first answer selected without immediate Study feedback; timer and Pause visible.",
+      "fixture": "Original Network Troubleshooting quiz; capture-only clock stopped at initial duration.",
+      "focus": ".active-quiz-logo-banner",
+      "action": "exam",
+      "seconds": 10,
+      "essential": false,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-19T12:00:00+00:00"
+    },
+    {
+      "id": "011C",
+      "filename": "011C-exam-paused.png",
+      "title": "Pause and cover the exam",
+      "route": "@critical_quiz",
+      "ready": "typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady === true",
+      "state": "Exam Paused overlay; frosted underlying quiz; Resume action visible.",
+      "fixture": "Original Network Troubleshooting quiz; real Pause control.",
+      "focus": "",
+      "action": "exam-paused",
+      "seconds": 10,
+      "essential": false,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-19T12:00:00+00:00"
+    }
+  ]
+}

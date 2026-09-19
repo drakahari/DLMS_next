@@ -56,3 +56,15 @@ Preserve all files. Frames **017, 020, 033, 035** remain optional. 017 overlaps 
 The canonical [video manifest](video-manifest.json) carries exact filenames, timing, objectives, focus suggestions, optional flags, hashes and capture provenance. See [validation](VALIDATION.md) for visual-review limits and the existing hover-contrast finding.
 
 The physical flash-card print layout is not a V3 capture. Its deterministic HTML view is deliberately print-neutral and a full Letter sheet is taller than the fixed 1080-pixel viewport once the browser toolbar and duplex guidance are present. Capturing it would either clip the sheet or depart from the Purple & Gold capture standard. Scene 032 therefore continues to carry the overview mention; a print-focused tutorial can show front and back sheets with framing designed for paper output.
+
+## Exam workflow supplemental captures
+
+These optional proof captures are separate from the 37-scene main and 38-scene long production plans. A focused Exam tutorial can use them together after introducing the Study/Exam distinction. They are not inserted under unrelated approved narration. All are 1920×1080, device scale 1, Purple & Gold, synthetic content, captured with the existing isolated tool.
+
+| ID | Screenshot | Purpose / state | Proposed placement | Status |
+|---|---|---|---|---|
+| 011A | `exam-additions/011A-quiz-timing.png` | Editor: Exam Mode Timer changed to 20 minutes, unsaved | Before starting an exam in a focused tutorial | Optional; not narrated |
+| 011B | `exam-additions/011B-exam-mode.png` | Exam answer selected, timer and Pause visible; no Study feedback | After timer setup explanation | Optional; not narrated |
+| 011C | `exam-additions/011C-exam-paused.png` | Real Pause overlay, covered/frosted quiz and Resume | Immediately after 011B | Optional; not narrated |
+
+The editor value is an unsaved demonstration; the independent Exam captures retain the source quiz's 90-minute default. The capture harness stops only its disposable timer for deterministic stills. No production timer behavior changes. Scene 028A is refreshed to reflect the corrected stacked Content Pack metrics. Static overview rendering now uses lossless H.264 and cuts while preserving every approved audio slot.

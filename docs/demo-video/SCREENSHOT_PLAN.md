@@ -419,3 +419,15 @@ Framing uses real page scrolling and existing collapse/filter controls. Only the
 - **Duration / priority:** ~10 seconds; essential.
 
 `@critical_quiz` resolves to the fixture Network Troubleshooting source quiz; `@adaptive_quiz` resolves to the fixture Adaptive Study generated review. Full-run state includes real Study saves from earlier frames. Focused recaptures use `--replay-prefix` to reproduce them.
+
+## Exam workflow supplemental captures
+
+These optional proof captures are separate from the 37-scene main and 38-scene long production plans. A focused Exam tutorial can use them together after introducing the Study/Exam distinction. They are not inserted under unrelated approved narration. All are 1920×1080, device scale 1, Purple & Gold, synthetic content, captured with the existing isolated tool.
+
+| ID | Screenshot | Purpose / state | Proposed placement | Status |
+|---|---|---|---|---|
+| 011A | `exam-additions/011A-quiz-timing.png` | Editor: Exam Mode Timer changed to 20 minutes, unsaved | Before starting an exam in a focused tutorial | Optional; not narrated |
+| 011B | `exam-additions/011B-exam-mode.png` | Exam answer selected, timer and Pause visible; no Study feedback | After timer setup explanation | Optional; not narrated |
+| 011C | `exam-additions/011C-exam-paused.png` | Real Pause overlay, covered/frosted quiz and Resume | Immediately after 011B | Optional; not narrated |
+
+The editor value is an unsaved demonstration; the independent Exam captures retain the source quiz's 90-minute default. The capture harness stops only its disposable timer for deterministic stills. No production timer behavior changes. Scene 028A is refreshed to reflect the corrected stacked Content Pack metrics. Static overview rendering now uses lossless H.264 and cuts while preserving every approved audio slot.

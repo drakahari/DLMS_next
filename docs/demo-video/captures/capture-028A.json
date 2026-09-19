@@ -1,0 +1,38 @@
+{
+  "version": "3.2.0",
+  "revision": "426b41f978d517f5b405cf64515974909cf9f56b",
+  "dirty": true,
+  "captured_at": "2026-09-19T22:54:56.782272+00:00",
+  "theme": "purple-gold",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale": 1
+  },
+  "fixture_version": "dlms-demo-video-v3",
+  "replay_prefix": false,
+  "captures": [
+    {
+      "id": "028A",
+      "filename": "028A-content-packs.png",
+      "title": "Manage reusable content packages",
+      "route": "/content-packs/details/DLMS_Study_practical_systems_lab",
+      "ready": "document.querySelector('main')",
+      "state": "Pack details; independently validated synthetic pack with matching, image, and mixed datasets; two generated quizzes tracked.",
+      "fixture": "Installed Practical Systems Lab pack; original data and illustration only.",
+      "focus": "",
+      "action": "",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-19T12:00:00+00:00"
+    }
+  ]
+}

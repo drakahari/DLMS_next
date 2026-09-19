@@ -23,7 +23,7 @@ V3 inserts the four approved captures without renumbering or altering the V2 set
 
 ## Assembly notes
 
-Use the canonical 1920 × 1080 Purple & Gold PNGs. Targets are minimum complete scene slots. The existing builder uses straight cuts within workflows and five-frame fades on either side of chapter boundaries, about one third of a second through black in total, with no narration overlap. Earlier scene notes saying “0.3-second dissolve” mean this implemented chapter fade; no new transition implementation is requested. Actual narration duration plus the builder's tail/incoming fade allowance can extend a slot. Leave a brief pause where the picture needs more time than the voice. Never stretch speech to fill a slot.
+Use the canonical 1920 × 1080 Purple & Gold PNGs. Targets are minimum complete scene slots. The default static builder now uses straight cuts throughout, with no narration overlap or fade-to-black frames. Earlier scene notes saying “0.3-second dissolve” or chapter fade are historical editorial markers; the static render holds the screenshot through those intervals. The existing five-frame incoming audio allowances remain unchanged to preserve the approved timeline and subtitle timestamps. Actual narration duration plus the builder's tail/incoming fade allowance can extend a slot. Leave a brief pause where the picture needs more time than the voice. Never stretch speech to fill a slot.
 
 Use static screenshots throughout. Do not add zoom, pan, Ken Burns movement, fake cursor, typing, click, download, or processing animation. A screenshot of a control establishes an available workflow, not that the action has run.
 

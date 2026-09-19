@@ -14804,6 +14804,12 @@ body:not([class]) > .container > .hero-title {
 }
 
 .content-packs-page .pack-detail-stat-grid > .dashboard-stat-card {
+    /* These are text metrics, not the dashboard's icon + text cards. */
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    align-items: start;
+    align-content: start;
+    gap: 6px;
     min-width: 0;
     overflow: hidden;
     color: var(--theme-page-text, #eaf2ff);
@@ -14813,6 +14819,8 @@ body:not([class]) > .container > .hero-title {
 }
 
 .content-packs-page .pack-detail-stat-grid :is(span, strong, small) {
+    display: block;
+    line-height: 1.35;
     min-width: 0;
     max-width: 100%;
     overflow-wrap: anywhere;

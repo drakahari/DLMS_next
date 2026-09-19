@@ -199,12 +199,13 @@ def test_static_plan_and_frame_fades(manifest):
     rows = video.timeline([manifest['scenes'][0], manifest['scenes'][5]])
     assert 'zoompan' not in video.video_filter(rows[0], motion='planned')
     assert 'zoompan' not in video.video_filter(rows[1])
-    assert 'fade=t=in:s=0:n=5' in video.video_filter(rows[1])
+    assert 'fade=' not in video.video_filter(rows[1])
+    assert 'fade=t=in:s=0:n=5' in video.video_filter(rows[1], motion='planned')
     closing = video.timeline([manifest['scenes'][-1]])[0]
     assert 'zoompan' not in video.video_filter(closing, motion='planned')
 
 
-def test_static_default_keeps_timing_and_fades_without_resampling(manifest):
+def test_static_default_keeps_timing_without_blank_fades_or_resampling(manifest):
     rows = video.timeline(video.select_scenes(manifest, 'main'))
     before = json.dumps(rows, sort_keys=True)
     for row in rows:
@@ -213,8 +214,7 @@ def test_static_default_keeps_timing_and_fades_without_resampling(manifest):
         assert not any(term in filters for term in ('scale=', 'zoompan', 'crop=', 'minterpolate'))
         assert f"trim=end_frame={row['frames']}" in filters
         assert 'fps=30' in filters and 'format=yuv420p' in filters
-        assert ('fade=t=in' in filters) == bool(row['fade_in_frames'])
-        assert ('fade=t=out' in filters) == bool(row['fade_out_frames'])
+        assert 'fade=' not in filters
     assert json.dumps(rows, sort_keys=True) == before
     with pytest.raises(video.BuildError, match='Motion'):
         video.video_filter(rows[0], motion='unknown')
@@ -286,6 +286,15 @@ def test_real_media_smoke(tmp_path, manifest):
     assert len(data['streams']) == 3
     assert output.with_suffix('.srt').read_text() == video.subtitles(rows)
     assert not list(output.parent.glob('.render-*'))
+    # Every decoded frame in a static slot must be identical, including the
+    # former fade boundaries. Lossy I/P/B quantization used to shimmer here.
+    hashes = video.run(video.ffmpeg(media) + ['-i', output, '-map', '0:v:0',
+                                            '-f', 'framemd5', '-']).stdout
+    hashes = [line.rsplit(',', 1)[1].strip() for line in hashes.splitlines()
+              if line and not line.startswith('#')]
+    assert len(hashes) == sum(row['frames'] for row in rows)
+    for row in rows:
+        assert len(set(hashes[row['start_frame']:row['start_frame'] + row['frames']])) == 1
     assert all(video.sha256(Path(clip['path'])) == clip['sha256'] for clip in clips.values())
     decoded = tmp_path / 'decoded.wav'
     video.run(video.ffmpeg(media) + ['-i', output, '-map', '0:a:0', '-c:a', 'pcm_s16le', decoded])

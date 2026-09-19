@@ -4608,6 +4608,23 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
 
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
         set_theme(theme)
+        # Pack metrics have three text children, unlike icon+copy dashboard
+        # cards. Check real layout across the four/two/one-column breakpoints.
+        for width in (1920, 1024, 768, 420):
+            browser.set_viewport(width, 1080)
+            browser.navigate(f"{base_url}/content-packs/details/{encoded_folder}")
+            browser.wait_for("document.querySelectorAll('.pack-detail-stat-grid > article').length === 4")
+            assert browser.evaluate("""(() => {
+                const cards=[...document.querySelectorAll('.pack-detail-stat-grid > article')];
+                return cards.every(card => {
+                    const [label,value,description]=[...card.children];
+                    const [a,b,c]=[label,value,description].map(el=>el.getBoundingClientRect());
+                    return Math.abs(a.left-b.left)<1 && Math.abs(b.left-c.left)<1
+                        && a.bottom<=b.top && b.bottom<=c.top
+                        && [card,label,value,description].every(el=>el.scrollWidth<=el.clientWidth+1)
+                        && getComputedStyle(card).gridTemplateColumns.split(' ').length===1;
+                });
+            })()""") is True
         browser.set_viewport(420, 900)
         browser.navigate(f"{base_url}/content-packs/details/{encoded_folder}")
         browser.wait_for("document.querySelector('.pack-detail-meta span') !== null")

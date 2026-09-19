@@ -143,7 +143,7 @@ def production_manifest(project=PROJECT):
         'capture_manifest_sha256': sha256(capture_manifest),
         'v3_additions_manifest_sha256': sha256(additions_manifest),
         'image_base': 'docs/demo-video', 'fps': FPS, 'width': WIDTH, 'height': HEIGHT,
-        'transition': 'chapter fade-through-black, 5 frames per side; no overlap',
+        'transition': 'static mode uses cuts; historical fade allowances retained for audio timing',
         'scenes': scenes,
     }
 
@@ -354,9 +354,11 @@ def video_filter(row, motion='none'):
         filters += ['scale=3840:2160:flags=lanczos',
                     f"zoompan=z='{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={WIDTH}x{HEIGHT}:fps={FPS}"]
     filters += [f'trim=end_frame={frames}', f'setpts=N/({FPS}*TB)', 'format=yuv420p']
-    if row['fade_in_frames']:
+    # Preserve the approved audio lead/tail and scene slots, but never blank
+    # the screenshot in the default static overview.
+    if motion == 'planned' and row['fade_in_frames']:
         filters.append(f"fade=t=in:s=0:n={row['fade_in_frames']}")
-    if row['fade_out_frames']:
+    if motion == 'planned' and row['fade_out_frames']:
         count = row['fade_out_frames']
         filters.append(f'fade=t=out:s={frames-count}:n={count-1}')
     return ','.join(filters)
@@ -439,7 +441,10 @@ def render(rows, output, media, project=PROJECT, normalization='ebu', mux_subtit
             name = f'video-{number:03}.mp4'
             run(ffmpeg(media) + ['-loop', '1', '-framerate', str(FPS), '-i', project / row['image'],
                                 '-vf', filters[str(row['id'])], '-frames:v', str(row['frames']), '-an',
-                                '-c:v', 'libx264', '-preset', preset, '-crf', '18', '-threads', '2',
+                                '-c:v', 'libx264', '-preset', preset,
+                                # Lossless avoids alternating I/P/B-frame quantization
+                                # of fine UI text on an otherwise identical image.
+                                '-crf', '0' if motion == 'none' else '18', '-threads', '2',
                                 '-pix_fmt', 'yuv420p', '-video_track_timescale', '15360', temp / name])
             video_names.append(name)
             if narrated:
@@ -479,6 +484,8 @@ def render(rows, output, media, project=PROJECT, normalization='ebu', mux_subtit
         checked = verify_output(temp / 'result.mp4', rows, media, narrated, mux_subtitles)
         report = {'fps': FPS, 'duration_seconds': sum(r['frames'] for r in rows) / FPS,
                   'motion_mode': motion, 'video_filters': filters,
+                  'visual_transition': 'cuts' if motion == 'none' else 'chapter fades',
+                  'video_encoding': 'lossless yuv420p' if motion == 'none' else 'CRF 18',
                   'normalization': normalization if narrated else 'none', 'loudness_measurement': loudness,
                   'ffmpeg_version': run([media['ffmpeg'], '-version']).stdout.splitlines()[0],
                   'ffprobe_version': run([media['ffprobe'], '-version']).stdout.splitlines()[0],
@@ -505,7 +512,7 @@ def main(argv=None):
     parser.add_argument('--mux-subtitles', action='store_true')
     parser.add_argument('--normalization', choices=('ebu', 'none'), default='ebu')
     parser.add_argument('--motion', choices=('none', 'planned'), default='none',
-                        help='Default none: static screenshots, retaining chapter fades. planned restores historical scene motion.')
+                        help='Default none: lossless static screenshots and cuts, preserving audio timing. planned restores historical fades/motion.')
     parser.add_argument('--overwrite', action='store_true', help='Replace existing video/SRT outputs.')
     args = parser.parse_args(argv)
     try:

@@ -366,7 +366,7 @@ Silent previews use the V3 editorial targets: **425 seconds main**, **438 second
 long**, at 30 fps. Narrated slots use the greater of the editorial viewing
 minimum and **actual ffprobe audio duration + incoming visual lead + tail**,
 rounded up to a whole video frame. The tail defaults to **0.6 seconds** and
-can be adjusted with `--tail 0.8`. It must cover the outgoing fade. Narration is
+can be adjusted with `--tail 0.8`. The historical minimum fade allowance is retained for compatibility. Narration is
 never sped up or truncated to fit the old estimate; a longer take extends the
 scene and every subsequent timestamp. Extra viewing time in the editorial
 target is retained, including the completion message and closing hold.
@@ -374,22 +374,22 @@ target is retained, including the completion message and closing hold.
 **Static screenshots are the production default** (`--motion none`) across main,
 long and audition rendering. Native 1920×1080 images are held without scaling,
 zoom, pan or frame interpolation, keeping small UI text and borders stable.
-Only the existing chapter fades intentionally vary image pixels over time; lossy
-encoding can still produce small decoded-pixel differences. Every V3 production
-scene is marked static. The legacy `--motion planned` compatibility option is
-still accepted, but it adds no movement when all scene metadata is static. The
-generated timeline records the selected mode and exact filters.
+The default now uses cuts and lossless H.264 encoding so every decoded frame
+within each scene is identical. Every V3 production scene is marked static.
+The legacy `--motion planned` option retains the historical fades and CRF 18
+encoding; it is not used for this overview. Generated timelines record the mode,
+visual transition, encoding, and exact filters.
 
-Within workflows, transitions are clean cuts. At chapter/example boundaries
-006, 009, 011, 014, 018, 021, 026, 028, 031, 033, 034 and 036, this implementation
-uses a **short fade through black**, an intentional simple alternative to the
-suggested cross-dissolve. Five frames on each side make approximately one third
-of a second total, entirely inside existing scene slots. The final scene also
-fades out. No scenes or narration overlap. After an incoming fade, narration
-starts five frames into the new scene; the outgoing fade fits in its tail.
+Chapter markers retain their original five-frame narration lead allowances and
+all scene tails. The screenshot remains visible throughout those intervals and
+through the final frame. Nothing overlaps and no narration/subtitle timing changes.
 
-Output is MP4 with **H.264, 1920 × 1080, 30 fps, yuv420p**, CRF 18, and fast-start
-metadata for web playback. Narrated output uses **48 kHz mono AAC at 192 kb/s**.
+Output is MP4 with **H.264, 1920 × 1080, 30 fps, yuv420p**, CRF 0 for the static
+review master, and fast-start metadata. Lossless H.264 uses the High 4:4:4 Predictive
+profile even with yuv420p pixels; software players support it, but some hardware
+or browser decoders may require a future delivery encode. The review master is
+larger than CRF 18, in exchange for exact frame stability. Narrated output uses
+**48 kHz mono AAC at 192 kb/s**.
 Processing is sequential with bounded FFmpeg calls, avoiding a large graph
 holding every 1080p scene in memory. The timeline and settings are deterministic;
 byte-identical encoding across different FFmpeg builds/platforms is not promised.
@@ -655,7 +655,7 @@ synthesis-text, voice, speed, filename, sidecar-hash, and archived-byte checks.
 - Review MP4: `build/demo-video/DLMS-3.2-demo.mp4` — **7:19.667**, 13,190 frames; H.264, 1920×1080, 30 fps, yuv420p; AAC 48 kHz mono.
 - Source audio: 37 mono PCM WAVs totaling **6:30.300**; shortest 024 at 5.275 seconds, longest 008 at 16.625 seconds, mean 10.549 seconds.
 - SRT: `build/demo-video/DLMS-3.2-demo.srt` — 37 actual-timeline cues, also muxed as selectable English `mov_text` and never burned in.
-- Presentation: `--motion none`; native static screenshots, established cuts and chapter fades, no zoom, pan, crop, resampling, or interpolation.
+- Presentation: `--motion none`; native static screenshots, cuts and lossless encoding, no zoom, pan, crop, resampling, interpolation, or blank chapter frames.
 - Listening checklist: `build/demo-video/v3-review/LISTENING_REVIEW.md`.
 - Evidence: `build/demo-video/v3-review/REVIEW_BUILD.md` and representative full-resolution frames under `build/demo-video/v3-review/frames/`.
 - V2 archive: `build/demo-video/archive-v2-before-v3/`, including the 6:43.600 MP4 and complete 33-clip audio set.
@@ -667,7 +667,7 @@ required before publication. No long cut was generated.
 
 ### Complete V2 narrated review build
 
-**Current presentation: static screenshots throughout.** Following the user's
+**Historical V2 presentation: static screenshots throughout.** Following the user's
 shimmer report, the canonical MP4 was rebuilt with the existing V2 WAVs and
 `--motion none`. Runtime remains **6:43.600**; all scene timings, the SRT and
 even the encoded AAC stream are unchanged. The previous motion-enabled MP4,
@@ -787,3 +787,19 @@ question types including Matching and Hotspot; Anki and printable physical flash
 cards; building/importing quizzes; and Learning Scope. [The V2 audit](EDITORIAL_V2.md#future-focused-videos)
 gives a short scope for the existing recommendations. This is planning only;
 none of those videos is being created now.
+
+### V3 stability and Content Pack layout follow-up
+
+The previous V3 review build is preserved under `build/demo-video/followup-before/`.
+The canonical 37-scene review is rebuilt with unchanged narration WAVs, timing,
+normalization, and subtitles; only transition/encoding behavior and the corrected
+028A Content Pack image change. See [follow-up validation](FOLLOWUP_VALIDATION.md).
+
+Three new optional Exam workflow stills are in `exam-additions/`: timer setup,
+active Exam Mode, and the real Pause frosted/covered-screen state. They remain
+outside the main/long production manifests because inserting them would require
+additional narration to explain the switch from Study Mode. Capture them with:
+
+```sh
+python tools/capture_demo_video_screenshots.py --only 011A,011B,011C --output docs/demo-video/exam-additions
+```

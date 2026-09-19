@@ -286,6 +286,7 @@ def seed(dlms):
     Path(dlms.PDF_IMPORT_DRAFT_FOLDER).mkdir(parents=True, exist_ok=True)
     Path(dlms.PDF_IMPORT_DRAFT_FOLDER,'video_review.json').write_text(json.dumps(draft),encoding='utf-8')
     metadata = dict(fixture_version=FIXTURE_VERSION, evidence_anchor=now.isoformat(),
+                    critical_id=published['network'][0],
                     critical_html=published['network'][1], adaptive_html=published['adaptive'][1],
                     matching_html=published['matching'][1], hotspot_html=published['hotspot'][1],
                     source_ids=[published[s[0]][0] for s in SOURCES])

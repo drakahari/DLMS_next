@@ -116,10 +116,24 @@ V3_ADDITIONS = (
 )
 
 _ADDITIONS_BY_ID = {item.id: item for item in V3_ADDITIONS}
+EXAM_ADDITIONS = (
+    addition('011A','quiz-timing','Set a quiz-specific exam duration','@critical_edit',
+             action='exam-timing',focus='.build-section',essential=False,
+             state='Quiz editor; Exam Mode Timer set to 20 minutes; unsaved demonstration.',
+             fixture='Original Network Troubleshooting quiz; no source data changed.'),
+    addition('011B','exam-mode','Answer in timed Exam Mode','@critical_quiz',QUIZ_READY,
+             action='exam',focus='.active-quiz-logo-banner',essential=False,
+             state='Exam Mode; first answer selected without immediate Study feedback; timer and Pause visible.',
+             fixture='Original Network Troubleshooting quiz; capture-only clock stopped at initial duration.'),
+    addition('011C','exam-paused','Pause and cover the exam','@critical_quiz',QUIZ_READY,
+             action='exam-paused',essential=False,
+             state='Exam Paused overlay; frosted underlying quiz; Resume action visible.',
+             fixture='Original Network Troubleshooting quiz; real Pause control.'),
+)
 FRAMES = (
     *V2_FRAMES[:13], _ADDITIONS_BY_ID['013A'], _ADDITIONS_BY_ID['013B'],
     *V2_FRAMES[13:28], _ADDITIONS_BY_ID['028A'], _ADDITIONS_BY_ID['028B'],
-    *V2_FRAMES[28:],
+    *V2_FRAMES[28:], *EXAM_ADDITIONS,
 )
 
 
@@ -145,7 +159,19 @@ def serve():
 
 def prepare(browser, item, metadata, data_root):
     action = item.action
-    if action in {'study','feedback','feedback-complete','finish-ready','finish'}:
+    if action == 'exam-timing':
+        browser.evaluate("document.querySelector('[name=exam_minutes]').value='20';true")
+    elif action in {'exam','exam-paused'}:
+        browser.click('.exam-mode-btn')
+        browser.wait_for("document.querySelector('#choices .choice') && examMode")
+        # Freeze only the disposable capture clock; render the real configured
+        # duration through the product timer rather than replacing screen text.
+        browser.evaluate('stopExamTimer(); timeRemaining=examDurationMinutes*60; startExamTimer(); stopExamTimer(); true')
+        browser.click('#choices .choice[data-index="0"]')
+        if action == 'exam-paused':
+            browser.click('#pauseBtn')
+            browser.wait_for("document.querySelector('#pauseOverlay.show') && document.body.classList.contains('blurred')")
+    elif action in {'study','feedback','feedback-complete','finish-ready','finish'}:
         browser.click('.study-mode-btn')
         browser.wait_for("document.querySelector('#choices .choice')")
         if action in {'feedback','feedback-complete'}:
@@ -239,6 +265,7 @@ def capture(items, output, theme, *, check_only=False, replay_prefix=False):
                 browser.evaluate('localStorage.clear(); sessionStorage.clear(); true')
                 route = item.route
                 if route == '@critical_quiz': route = '/quizzes/'+metadata['critical_html']
+                if route == '@critical_edit': route = '/edit_quiz/'+str(metadata['critical_id'])
                 if route == '@adaptive_quiz': route = '/quizzes/'+metadata['adaptive_html']
                 if route == '@matching_quiz': route = '/quizzes/'+metadata['matching_html']
                 if route == '@hotspot_quiz': route = '/quizzes/'+metadata['hotspot_html']

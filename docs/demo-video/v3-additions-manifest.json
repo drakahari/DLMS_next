@@ -64,8 +64,8 @@
       "width": 1920,
       "height": 1080,
       "device_scale": 1,
-      "sha256": "cce580343f0d134e83b94e2acb798a705b67a82ab1d1d5b577a9137c4a28ec8a",
-      "capture_metadata": "captures/capture-013A-013B-028A-028B.json",
+      "sha256": "235373f722ff15c310359d309610b1a1e9ba68fd0c022a3ad8a6e39cc1d4f0c8",
+      "capture_metadata": "captures/capture-028A.json",
       "evidence_anchor": "2026-09-19T12:00:00+00:00",
       "fixture_version": "dlms-demo-video-v3"
     },
