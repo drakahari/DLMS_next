@@ -12,7 +12,8 @@ are reused unchanged. No screenshots are recaptured in this pass.
 
 Content is frozen except actual defects found in final review. Future feature
 detail belongs in focused videos, as listed in [NARRATION.md](NARRATION.md).
-Do not make a delivery encode until the user approves this content. The previous
+The separate public delivery encode is now prepared; nothing has been published.
+The previous
 7:19.667 lossless master is archived in `build/demo-video/archive-before-final-exam/`.
 Current evidence and listening timestamps are in
 [FINAL_CANDIDATE.md](FINAL_CANDIDATE.md). Sections below retain prior production
@@ -33,6 +34,72 @@ Editing handoff: [video-manifest.json](video-manifest.json), [storyboard](STORYB
 and contact sheets [1](contact-sheet-01.png), [2](contact-sheet-02.png),
 [3](contact-sheet-03.png), [4](contact-sheet-04.png), [5](contact-sheet-05.png),
 [6](contact-sheet-06.png).
+
+## Public delivery artifact and publishing model
+
+The content-complete overview has two distinct local artifacts:
+
+- **Archival/lossless master:** `build/demo-video/DLMS-3.2-demo.mp4`.
+  Preserve this file unchanged; it is the source for future encodes.
+- **YouTube/web upload:** `build/demo-video/DLMS-3.2-demo-delivery.mp4`.
+  This is the broadly compatible public delivery artifact, not a new content cut.
+- **Separate English captions:** `build/demo-video/DLMS-3.2-demo.srt`.
+  Preserve this authoritative SRT and use it for the hosted video's caption upload.
+  The delivery MP4 also retains the selectable English subtitle track; captions
+  are not burned in.
+
+The delivery remains **40 scenes, 7:45.700, 1920×1080, native 30 fps**. It uses
+libx264 **High Profile / Level 4.0, preset slow, tune stillimage, CRF 18**, progressive
+yuv420p, square pixels, closed GOPs of at most 60 frames, two B-frames, explicit
+scene-boundary keyframes, and Fast Start. The existing **AAC-LC, 48 kHz mono,
+162.5 kb/s** narration is copied without re-encoding, preserving normalization.
+These stream properties follow the format guidance in
+[YouTube's upload recommendations](https://support.google.com/youtube/answer/1722171?hl=en).
+
+The source master has unspecified color metadata. A comparison against the source
+PNG confirmed its RGB-to-YUV conversion used the BT.601 matrix. Delivery performs
+one matrix-only conversion to limited-range BT.709 and writes explicit BT.709 SDR
+tags; simply relabeling the existing samples would shift colors. This does not
+resize, reposition, interpolate, or animate the screenshots.
+
+Two complete encodes were compared at identical settings apart from CRF:
+
+| Candidate | File size | Mean RGB PSNR across 14 representative frames |
+|---|---:|---:|
+| CRF 16 | 48,552,516 bytes | 53.64 dB |
+| **CRF 18 — selected** | **44,858,773 bytes** | **51.99 dB** |
+
+PSNR uses the matrix-converted master as reference to isolate compression error.
+The selected file averages **770,603 bit/s overall** (about 0.771 Mb/s), including
+audio and subtitles. Native-pixel comparisons covered opening/closing Dashboard,
+quiz timing, Exam, frosted Pause, PDF/import, OCR, Study, Matching, Hotspot, Learning
+Intelligence, Content Packs, Study Packs, and the physical-card narration point.
+Small text, thin borders, icons, and Purple & Gold backgrounds remained acceptably
+close to the master; CRF 16 did not provide a compelling visible improvement.
+
+Validation decoded the complete delivery file, matched all **13,971** frame
+timestamps, and compared every frame against the converted master (mean SSIM
+**0.999463**, minimum **0.998831**). No blank replacements or geometric changes
+were found. Temporal samples across intra refreshes showed small compression
+variation, not the previous geometric jitter; no objectionable shimmer was found
+in the inspected samples. Lossy delivery is not claimed to be pixel-identical.
+AAC payload and decoded PCM hashes match the master, all 40 narration intervals
+contain audio, and extracted subtitles match the separate SRT exactly. Source
+master, narration files, timeline, SRT, and all 43 screenshots retain their hashes.
+
+Master SHA-256 before and after delivery encoding:
+`7a247ac5fc64adf216bcd9fcf3c3d4434aa63694972473191b58826255283209`.
+Local evidence, exact FFmpeg argument lists, comparison images, and validation
+results are retained under ignored `build/demo-video/delivery-review/`. Redundant
+candidate MP4s are removed after selection. No application/build-tool behavior,
+content, narration, scene timing, or source screenshots changed for delivery.
+
+For GitHub, normally **link the repository README to the hosted YouTube video**
+rather than committing an MP4 into Git history. After publication, a still
+thumbnail can link to the real YouTube URL. No placeholder URL is supplied, and
+the repository's main README is unchanged. An optional downloadable video through
+a release asset is a separate future distribution choice. No upload, release,
+or publication has been performed; YouTube's own transcode remains unreviewed.
 
 ## Capture standard
 
@@ -395,7 +462,7 @@ through the final frame. Nothing overlaps and no narration/subtitle timing chang
 Output is MP4 with **H.264, 1920 × 1080, 30 fps, yuv420p**, CRF 0 for the static
 review master, and fast-start metadata. Lossless H.264 uses the High 4:4:4 Predictive
 profile even with yuv420p pixels; software players support it, but some hardware
-or browser decoders may require a future delivery encode. The review master is
+or browser decoders should use the separate delivery encode described above. The review master is
 larger than CRF 18, in exchange for exact frame stability. Narrated output uses
 **48 kHz mono AAC at 192 kb/s**.
 Processing is sequential with bounded FFmpeg calls, avoiding a large graph
