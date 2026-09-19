@@ -3,10 +3,11 @@
 Screenshot capture is complete on **develop/3.2.0** after visual stabilization.
 The canonical set contains **36 final screenshots** in [captures/](captures/).
 The first-pass [narration and editorial plan](NARRATION.md) and
-[recording script](NARRATION_PLAIN.txt) are complete: 33 scenes, approximately
-6:15 including pauses and transitions. The provider-neutral assembly tool and
-full silent preview are complete. No narration audio or final narrated video
-has been produced. See [production workflow](#video-production-workflow).
+[recording script](NARRATION_PLAIN.txt) are complete: 33 scenes with an original
+6:15 editorial target. The first complete narrated review build uses approved
+local Kokoro voice **af_heart** and runs **6:37.200**. Human listening review is
+required before publishing. See [review build](#first-complete-narrated-review-build)
+and [production workflow](#video-production-workflow).
 This is not a release announcement.
 
 Editing handoff: [video-manifest.json](video-manifest.json), [storyboard](STORYBOARD.md),
@@ -580,14 +581,17 @@ When available, ffprobe additionally checks codec and duration. No invalid
 HTML/JSON payload is accepted as WAV. Without ffprobe, the WAV parser still
 validates data and records duration; final video assembly requires FFmpeg/ffprobe.
 
-**After audition approval**, generate production narration and assemble it:
+**Selected production voice: `af_heart`**, approved after the Sarah, Nicole and
+Heart auditions. Use natural synthesis speed 1.0. The earlier `af_sarah` CLI
+default remains an audition convenience; explicitly select Heart for production.
+Generate main narration and assemble the first narrated review build with:
 
 ```sh
-python tools/generate_demo_narration.py --cut main --voice af_sarah
+python tools/generate_demo_narration.py --cut main --voice af_heart
 python tools/build_demo_video.py validate --cut main --require-audio
 python tools/build_demo_video.py build --cut main --mux-subtitles
 # Optional long version, using the same production audio directory:
-python tools/generate_demo_narration.py --cut long --voice af_sarah
+python tools/generate_demo_narration.py --cut long --voice af_heart
 python tools/build_demo_video.py build --cut long
 ```
 
@@ -608,3 +612,34 @@ HTTP is mocked. Tiny PCM test fixtures validate file handling; no model or real
 speech is used. At implementation time, no server was listening on the default
 local port, so no live narration was generated or auditioned. Docker was neither
 installed nor started automatically.
+
+### First complete narrated review build
+
+The main review build now uses the approved local Kokoro voice **`af_heart`** at
+speed 1.0 for all **33 scenes**. It is ready for human listening review, not yet
+approved for publication. The commands in the production section above generated
+the audio and built the video with selectable subtitles. No long cut was generated.
+
+- Review video: `build/demo-video/DLMS-3.2-demo.mp4` — **6:37.200**, 1920×1080,
+  30 fps, H.264/yuv420p, AAC 48 kHz mono.
+- Subtitles: `build/demo-video/DLMS-3.2-demo.srt` — 33 scene-level cues based on
+  actual audio timing; also included as a selectable English track, not burned in.
+- Source narration: `build/demo-video/audio/NNN.wav` — 33 mono 24 kHz PCM WAVs,
+  **5:58.575** total, mean **10.866 seconds**, with generation metadata for each.
+- Audio summary: `build/demo-video/main-review/production-audio-summary.csv`
+  and `.json`; shortest 011 (8.225 sec), longest 034 (14.000 sec).
+- Review evidence: `build/demo-video/main-review/REVIEW_BUILD.md` and
+  `build/demo-video/main-review/LISTENING_REVIEW.md`, including pronunciation
+  checkpoints with timestamps and representative encoded frames.
+
+The runtime is 22.2 seconds above the original 6:15 target because actual delivery
+and existing minimum viewing times are preserved. Generation completed without
+failures/retries; no new pronunciation transforms were needed. Full decoding,
+all audio/scene mappings, subtitle timing, screenshot hashes, representative visual
+checks and audition preservation checks passed. The source WAVs retain their
+original generated levels; the existing builder normalizes temporary copies.
+
+Listen to the whole video before publishing, especially DLMS in 001, PDF in 007,
+OCR in 008, Anki/AI in 013, and API in 033. Check natural cadence, scene joins,
+and caption density as well. Successful encoding cannot confirm speech quality.
+The approved narration and screenshots and all three audition sets remain intact.
