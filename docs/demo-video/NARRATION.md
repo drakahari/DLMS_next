@@ -96,11 +96,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 001 — A useful next study session
 
-**Image:** [001-dashboard.png](captures/001-dashboard.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 25 words; 10.3 sec at 145 WPM  
-**Visual focus:** Dashboard title and Today’s Review panel.  
+**Image:** [001-dashboard.png](captures/001-dashboard.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 25 words; 10.3 sec at 145 WPM<br>
+**Visual focus:** Dashboard title and Today’s Review panel.<br>
 **Motion:** Slow 2% push toward the central Dashboard.
 
 **Narration**
@@ -111,11 +111,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 002 — Today’s Review
 
-**Image:** [002-todays-review.png](captures/002-todays-review.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 24 words; 9.9 sec at 145 WPM  
-**Visual focus:** The two recommendation rows: due questions and Access Control.  
+**Image:** [002-todays-review.png](captures/002-todays-review.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 24 words; 9.9 sec at 145 WPM<br>
+**Visual focus:** The two recommendation rows: due questions and Access Control.<br>
 **Motion:** Static hold; retain both action buttons.
 
 **Narration**
@@ -126,11 +126,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 003 — Organize the material
 
-**Image:** [003-quiz-library.png](captures/003-quiz-library.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 27 words; 10.9 sec at 148 WPM  
-**Visual focus:** Expanded Core Skills folder and its four quiz cards.  
+**Image:** [003-quiz-library.png](captures/003-quiz-library.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 27 words; 10.9 sec at 148 WPM<br>
+**Visual focus:** Expanded Core Skills folder and its four quiz cards.<br>
 **Motion:** Slow 2% push toward Core Skills.
 
 **Narration**
@@ -141,11 +141,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 004 — Choose Learning Scope
 
-**Image:** [004-learning-scope.png](captures/004-learning-scope.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 25 words; 10.9 sec at 138 WPM  
-**Visual focus:** Scope summary and excluded Past Projects row.  
+**Image:** [004-learning-scope.png](captures/004-learning-scope.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 25 words; 10.9 sec at 138 WPM<br>
+**Visual focus:** Scope summary and excluded Past Projects row.<br>
 **Motion:** Static hold; both summary and exclusion must remain visible.
 
 **Narration**
@@ -156,11 +156,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 005 — Keep access to past work
 
-**Image:** [005-scope-library.png](captures/005-scope-library.png)  
-**Status:** Essential — KEEP  
-**Target:** 10 sec  
-**Speech estimate:** 22 words; 8.9 sec at 148 WPM  
-**Visual focus:** Past Projects exclusion badge, Open Quiz and Hide controls.  
+**Image:** [005-scope-library.png](captures/005-scope-library.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 10 sec<br>
+**Speech estimate:** 22 words; 8.9 sec at 148 WPM<br>
+**Visual focus:** Past Projects exclusion badge, Open Quiz and Hide controls.<br>
 **Motion:** Slow 2% push toward the expanded Past Projects card.
 
 **Narration**
@@ -171,11 +171,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 006 — Bring your own content
 
-**Image:** [006-build-quiz.png](captures/006-build-quiz.png)  
-**Status:** Essential — KEEP  
-**Target:** 10 sec  
-**Speech estimate:** 22 words; 8.9 sec at 148 WPM  
-**Visual focus:** Text upload plus Paste questions and Create a short quiz cards.  
+**Image:** [006-build-quiz.png](captures/006-build-quiz.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 10 sec<br>
+**Speech estimate:** 22 words; 8.9 sec at 148 WPM<br>
+**Visual focus:** Text upload plus Paste questions and Create a short quiz cards.<br>
 **Motion:** Static hold across the two columns.
 
 **Narration**
@@ -186,11 +186,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 007 — PDF and image import
 
-**Image:** [007-pdf-import.png](captures/007-pdf-import.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 25 words; 10.3 sec at 145 WPM  
-**Visual focus:** PDF form and local screenshot import panel.  
+**Image:** [007-pdf-import.png](captures/007-pdf-import.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 25 words; 10.3 sec at 145 WPM<br>
+**Visual focus:** PDF form and local screenshot import panel.<br>
 **Motion:** Gentle 2% push toward the import forms.
 
 **Narration**
@@ -201,11 +201,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 008 — Local OCR, reviewed output
 
-**Image:** [008-ocr-source.png](captures/008-ocr-source.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 24 words; 10.4 sec at 138 WPM  
-**Visual focus:** Selected study-skills.png, local processing note, and draft-answer warning.  
+**Image:** [008-ocr-source.png](captures/008-ocr-source.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 24 words; 10.4 sec at 138 WPM<br>
+**Visual focus:** Selected study-skills.png, local processing note, and draft-answer warning.<br>
 **Motion:** Static hold on upper screenshot-import panel.
 
 **Narration**
@@ -216,11 +216,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 009 — Review before saving
 
-**Image:** [009-review-repair.png](captures/009-review-repair.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 23 words; 9.5 sec at 145 WPM  
-**Visual focus:** Two-question summary and complete first question with editable explanation.  
+**Image:** [009-review-repair.png](captures/009-review-repair.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 23 words; 9.5 sec at 145 WPM<br>
+**Visual focus:** Two-question summary and complete first question with editable explanation.<br>
 **Motion:** Slow 2% push toward the first question.
 
 **Narration**
@@ -231,11 +231,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 010 — Resolve uncertainty
 
-**Image:** [010-repair-detail.png](captures/010-repair-detail.png)  
-**Status:** Essential — KEEP  
-**Target:** 10 sec  
-**Speech estimate:** 22 words; 9.1 sec at 145 WPM  
-**Visual focus:** Incomplete filter, missing-answer warning, unselected correctness controls.  
+**Image:** [010-repair-detail.png](captures/010-repair-detail.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 10 sec<br>
+**Speech estimate:** 22 words; 9.1 sec at 145 WPM<br>
+**Visual focus:** Incomplete filter, missing-answer warning, unselected correctness controls.<br>
 **Motion:** Static hold.
 
 **Narration**
@@ -246,11 +246,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 011 — Study at your own pace
 
-**Image:** [011-study-start.png](captures/011-study-start.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 24 words; 9.7 sec at 148 WPM  
-**Visual focus:** Network Troubleshooting title, untimed Study banner, first unanswered question.  
+**Image:** [011-study-start.png](captures/011-study-start.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 24 words; 9.7 sec at 148 WPM<br>
+**Visual focus:** Network Troubleshooting title, untimed Study banner, first unanswered question.<br>
 **Motion:** Static hold; preserve full question and choices.
 
 **Narration**
@@ -261,11 +261,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 012 — Use feedback
 
-**Image:** [012-study-feedback.png](captures/012-study-feedback.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 26 words; 10.5 sec at 148 WPM  
-**Visual focus:** Red choice B and “Not quite” feedback.  
+**Image:** [012-study-feedback.png](captures/012-study-feedback.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 26 words; 10.5 sec at 148 WPM<br>
+**Visual focus:** Red choice B and “Not quite” feedback.<br>
 **Motion:** Static hold matched to 013 as closely as existing framing permits.
 
 **Narration**
@@ -276,11 +276,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 013 — Question Tools
 
-**Image:** [013-question-tools.png](captures/013-question-tools.png)  
-**Status:** Essential — KEEP  
-**Target:** 14 sec  
-**Speech estimate:** 29 words; 12.6 sec at 138 WPM  
-**Visual focus:** Green answer, explanation, then the three Question Tools.  
+**Image:** [013-question-tools.png](captures/013-question-tools.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 14 sec<br>
+**Speech estimate:** 29 words; 12.6 sec at 138 WPM<br>
+**Visual focus:** Green answer, explanation, then the three Question Tools.<br>
 **Motion:** Static hold; optional very slow 2% downward emphasis without clipping the answer.
 
 **Narration**
@@ -291,11 +291,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 014 — Read learning evidence
 
-**Image:** [014-learning-intelligence.png](captures/014-learning-intelligence.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 23 words; 10.0 sec at 138 WPM  
-**Visual focus:** Concept table, response counts, Study/Exam evidence and mastery columns.  
+**Image:** [014-learning-intelligence.png](captures/014-learning-intelligence.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 23 words; 10.0 sec at 138 WPM<br>
+**Visual focus:** Concept table, response counts, Study/Exam evidence and mastery columns.<br>
 **Motion:** Static hold across the whole table.
 
 **Narration**
@@ -306,11 +306,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 015 — Compare direction and confidence
 
-**Image:** [015-concept-trends.png](captures/015-concept-trends.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 24 words; 10.4 sec at 138 WPM  
-**Visual focus:** Four concept rows, especially Trend, overall Accuracy and Not enough data.  
+**Image:** [015-concept-trends.png](captures/015-concept-trends.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 24 words; 10.4 sec at 138 WPM<br>
+**Visual focus:** Four concept rows, especially Trend, overall Accuracy and Not enough data.<br>
 **Motion:** Static hold; do not pan between rows while viewers compare them.
 
 **Narration**
@@ -321,11 +321,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 016 — Understand mastery
 
-**Image:** [016-mastery-model.png](captures/016-mastery-model.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 24 words; 10.4 sec at 138 WPM  
-**Visual focus:** Mastery dialog introduction and four weighted factors.  
+**Image:** [016-mastery-model.png](captures/016-mastery-model.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 24 words; 10.4 sec at 138 WPM<br>
+**Visual focus:** Mastery dialog introduction and four weighted factors.<br>
 **Motion:** Static hold; avoid cropping the dialog.
 
 **Narration**
@@ -336,11 +336,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 017 — Learning Profile
 
-**Image:** [017-learning-profile.png](captures/017-learning-profile.png)  
-**Status:** Optional — CUT  
-**Target:** 0 sec in main cut; 10 sec if restored  
-**Speech estimate:** 21 words; 8.7 sec at 145 WPM  
-**Visual focus:** Next Best Action and strength/weakness panels.  
+**Image:** [017-learning-profile.png](captures/017-learning-profile.png)<br>
+**Status:** Optional — CUT<br>
+**Target:** 0 sec in main cut; 10 sec if restored<br>
+**Speech estimate:** 21 words; 8.7 sec at 145 WPM<br>
+**Visual focus:** Next Best Action and strength/weakness panels.<br>
 **Motion:** Static hold if reused.
 
 **Alternate narration — not in main cut**
@@ -351,11 +351,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 018 — Space the review
 
-**Image:** [018-review-schedule.png](captures/018-review-schedule.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 24 words; 10.4 sec at 138 WPM  
-**Visual focus:** Question-level schedule summary and Review Due Questions action.  
+**Image:** [018-review-schedule.png](captures/018-review-schedule.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 24 words; 10.4 sec at 138 WPM<br>
+**Visual focus:** Question-level schedule summary and Review Due Questions action.<br>
 **Motion:** Slow 2% push toward the schedule summary.
 
 **Narration**
@@ -366,11 +366,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 019 — Inspect what is overdue
 
-**Image:** [019-due-queue.png](captures/019-due-queue.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 23 words; 10.0 sec at 138 WPM  
-**Visual focus:** Three overdue rows and interval-model cards beneath them.  
+**Image:** [019-due-queue.png](captures/019-due-queue.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 23 words; 10.0 sec at 138 WPM<br>
+**Visual focus:** Three overdue rows and interval-model cards beneath them.<br>
 **Motion:** Static hold with queue and interval explanation visible.
 
 **Narration**
@@ -381,11 +381,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 020 — Topic retention
 
-**Image:** [020-topic-retention.png](captures/020-topic-retention.png)  
-**Status:** Optional — KEEP FOR LONG VERSION  
-**Target:** 0 sec in main cut; 13 sec if restored  
-**Speech estimate:** 29 words; 12.0 sec at 145 WPM  
-**Visual focus:** Topic retention table and base-mastery versus retention columns.  
+**Image:** [020-topic-retention.png](captures/020-topic-retention.png)<br>
+**Status:** Optional — KEEP FOR LONG VERSION<br>
+**Target:** 0 sec in main cut; 13 sec if restored<br>
+**Speech estimate:** 29 words; 12.0 sec at 145 WPM<br>
+**Visual focus:** Topic retention table and base-mastery versus retention columns.<br>
 **Motion:** Static hold if included in the longer cut.
 
 **Alternate narration — not in main cut**
@@ -396,11 +396,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 021 — Generate focused practice
 
-**Image:** [021-generated-practice.png](captures/021-generated-practice.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 25 words; 10.3 sec at 145 WPM  
-**Visual focus:** Active Generated Practice group and Adaptive Study card.  
+**Image:** [021-generated-practice.png](captures/021-generated-practice.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 25 words; 10.3 sec at 145 WPM<br>
+**Visual focus:** Active Generated Practice group and Adaptive Study card.<br>
 **Motion:** Slow 2% push toward the Adaptive Study card.
 
 **Narration**
@@ -411,11 +411,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 022 — Keep source provenance
 
-**Image:** [022-source-provenance.png](captures/022-source-provenance.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 25 words; 10.9 sec at 138 WPM  
-**Visual focus:** Expanded three-source disclosure under Adaptive Study.  
+**Image:** [022-source-provenance.png](captures/022-source-provenance.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 25 words; 10.9 sec at 138 WPM<br>
+**Visual focus:** Expanded three-source disclosure under Adaptive Study.<br>
 **Motion:** Gentle 2% push toward source names, retaining the card title.
 
 **Narration**
@@ -426,11 +426,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 023 — Finish explicitly
 
-**Image:** [023-finish-review.png](captures/023-finish-review.png)  
-**Status:** Essential — KEEP  
-**Target:** 10 sec  
-**Speech estimate:** 20 words; 8.7 sec at 138 WPM  
-**Visual focus:** Final question, full progress bar and enabled Finish Review button.  
+**Image:** [023-finish-review.png](captures/023-finish-review.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 10 sec<br>
+**Speech estimate:** 20 words; 8.7 sec at 138 WPM<br>
+**Visual focus:** Final question, full progress bar and enabled Finish Review button.<br>
 **Motion:** Static hold.
 
 **Narration**
@@ -441,11 +441,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 024 — Confirm completion
 
-**Image:** [024-review-finished.png](captures/024-review-finished.png)  
-**Status:** Essential — KEEP  
-**Target:** 9 sec  
-**Speech estimate:** 17 words; 7.0 sec at 145 WPM  
-**Visual focus:** “Review completed” status under the answer explanation.  
+**Image:** [024-review-finished.png](captures/024-review-finished.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 9 sec<br>
+**Speech estimate:** 17 words; 7.0 sec at 145 WPM<br>
+**Visual focus:** “Review completed” status under the answer explanation.<br>
 **Motion:** Static hold; keep status line readable.
 
 **Narration**
@@ -456,11 +456,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 025 — Retain completed practice
 
-**Image:** [025-completed-practice.png](captures/025-completed-practice.png)  
-**Status:** Essential — KEEP  
-**Target:** 9 sec  
-**Speech estimate:** 20 words; 8.1 sec at 148 WPM  
-**Visual focus:** Completed group, Adaptive completion badge, source disclosure and Open Quiz.  
+**Image:** [025-completed-practice.png](captures/025-completed-practice.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 9 sec<br>
+**Speech estimate:** 20 words; 8.1 sec at 148 WPM<br>
+**Visual focus:** Completed group, Adaptive completion badge, source disclosure and Open Quiz.<br>
 **Motion:** Slow 2% push toward the completed Adaptive card.
 
 **Narration**
@@ -471,11 +471,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 026 — Revisit scored attempts
 
-**Image:** [026-history.png](captures/026-history.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 24 words; 9.9 sec at 145 WPM  
-**Visual focus:** History attempt rows, Exam mode labels and Review actions.  
+**Image:** [026-history.png](captures/026-history.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 24 words; 9.9 sec at 145 WPM<br>
+**Visual focus:** History attempt rows, Exam mode labels and Review actions.<br>
 **Motion:** Static hold.
 
 **Narration**
@@ -486,11 +486,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 027 — Compare results over time
 
-**Image:** [027-analytics.png](captures/027-analytics.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 25 words; 10.3 sec at 145 WPM  
-**Visual focus:** Quiz Performance rows and average/best/latest columns.  
+**Image:** [027-analytics.png](captures/027-analytics.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 25 words; 10.3 sec at 145 WPM<br>
+**Visual focus:** Quiz Performance rows and average/best/latest columns.<br>
 **Motion:** Slow 2% push toward the quiz table.
 
 **Narration**
@@ -501,11 +501,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 028 — Move selected content
 
-**Image:** [028-bundles.png](captures/028-bundles.png)  
-**Status:** Essential — KEEP  
-**Target:** 12 sec  
-**Speech estimate:** 25 words; 10.9 sec at 138 WPM  
-**Visual focus:** Source candidate list and import validation panel.  
+**Image:** [028-bundles.png](captures/028-bundles.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 12 sec<br>
+**Speech estimate:** 25 words; 10.9 sec at 138 WPM<br>
+**Visual focus:** Source candidate list and import validation panel.<br>
 **Motion:** Static hold across export and import columns.
 
 **Narration**
@@ -516,11 +516,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 029 — Find source overlap
 
-**Image:** [029-duplicates.png](captures/029-duplicates.png)  
-**Status:** Essential — KEEP  
-**Target:** 10 sec  
-**Speech estimate:** 21 words; 8.5 sec at 148 WPM  
-**Visual focus:** Two exact groups and source-scan summary, including Past Projects.  
+**Image:** [029-duplicates.png](captures/029-duplicates.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 10 sec<br>
+**Speech estimate:** 21 words; 8.5 sec at 148 WPM<br>
+**Visual focus:** Two exact groups and source-scan summary, including Past Projects.<br>
 **Motion:** Static hold.
 
 **Narration**
@@ -531,11 +531,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 030 — Compare before changing
 
-**Image:** [030-duplicate-detail.png](captures/030-duplicate-detail.png)  
-**Status:** Essential — KEEP  
-**Target:** 10 sec  
-**Speech estimate:** 22 words; 8.9 sec at 148 WPM  
-**Visual focus:** Exact risky-change pair, correct answers and Edit source quiz links.  
+**Image:** [030-duplicate-detail.png](captures/030-duplicate-detail.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 10 sec<br>
+**Speech estimate:** 22 words; 8.9 sec at 148 WPM<br>
+**Visual focus:** Exact risky-change pair, correct answers and Edit source quiz links.<br>
 **Motion:** Slow 2% push toward the two compared records.
 
 **Narration**
@@ -546,11 +546,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 031 — Use Anki alongside DLMS
 
-**Image:** [031-anki-tools.png](captures/031-anki-tools.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 25 words; 10.1 sec at 148 WPM  
-**Visual focus:** Quiz to Anki and Missed Questions to Anki panels.  
+**Image:** [031-anki-tools.png](captures/031-anki-tools.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 25 words; 10.1 sec at 148 WPM<br>
+**Visual focus:** Quiz to Anki and Missed Questions to Anki panels.<br>
 **Motion:** Static hold across both panels.
 
 **Narration**
@@ -561,11 +561,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 032 — Select a smaller deck
 
-**Image:** [032-anki-selection.png](captures/032-anki-selection.png)  
-**Status:** Essential — KEEP  
-**Target:** 11 sec  
-**Speech estimate:** 24 words; 9.7 sec at 148 WPM  
-**Visual focus:** One checked Everyday Data Safety question and unselected missed-question list.  
+**Image:** [032-anki-selection.png](captures/032-anki-selection.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 11 sec<br>
+**Speech estimate:** 24 words; 9.7 sec at 148 WPM<br>
+**Visual focus:** One checked Everyday Data Safety question and unselected missed-question list.<br>
 **Motion:** Static hold; retain the selection count and list headings.
 
 **Narration**
@@ -576,11 +576,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 033 — Optional external AI content
 
-**Image:** [033-external-ai.png](captures/033-external-ai.png)  
-**Status:** Optional — KEEP in main cut  
-**Target:** 15 sec  
-**Speech estimate:** 32 words; 13.9 sec at 138 WPM  
-**Visual focus:** Six workflow steps and provider-neutral configuration description.  
+**Image:** [033-external-ai.png](captures/033-external-ai.png)<br>
+**Status:** Optional — KEEP in main cut<br>
+**Target:** 15 sec<br>
+**Speech estimate:** 32 words; 13.9 sec at 138 WPM<br>
+**Visual focus:** Six workflow steps and provider-neutral configuration description.<br>
 **Motion:** Static hold on the workflow strip and form.
 
 **Narration**
@@ -591,11 +591,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 034 — Preserve the workspace
 
-**Image:** [034-backup.png](captures/034-backup.png)  
-**Status:** Essential — KEEP  
-**Target:** 13 sec  
-**Speech estimate:** 28 words; 12.2 sec at 138 WPM  
-**Visual focus:** Portable Backup scope and Create & Download Backup.  
+**Image:** [034-backup.png](captures/034-backup.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 13 sec<br>
+**Speech estimate:** 28 words; 12.2 sec at 138 WPM<br>
+**Visual focus:** Portable Backup scope and Create & Download Backup.<br>
 **Motion:** Slow 2% push toward Portable Backup, retaining page context.
 
 **Narration**
@@ -606,11 +606,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 035 — Settings overview
 
-**Image:** [035-settings.png](captures/035-settings.png)  
-**Status:** Optional — CUT  
-**Target:** 0 sec in main cut; 10 sec if restored  
-**Speech estimate:** 22 words; 9.1 sec at 145 WPM  
-**Visual focus:** Appearance, Navigation and AI Integration cards.  
+**Image:** [035-settings.png](captures/035-settings.png)<br>
+**Status:** Optional — CUT<br>
+**Target:** 0 sec in main cut; 10 sec if restored<br>
+**Speech estimate:** 22 words; 9.1 sec at 145 WPM<br>
+**Visual focus:** Appearance, Navigation and AI Integration cards.<br>
 **Motion:** Static hold if reused.
 
 **Alternate narration — not in main cut**
@@ -621,11 +621,11 @@ The speech estimate is word count divided by the scene's reference rate, rounded
 
 ## Scene 036 — Return to the next useful step
 
-**Image:** [036-closing-dashboard.png](captures/036-closing-dashboard.png)  
-**Status:** Essential — KEEP  
-**Target:** 15 sec  
-**Speech estimate:** 28 words; 11.6 sec at 145 WPM  
-**Visual focus:** Dashboard title, Today’s Review and entry points for content/study.  
+**Image:** [036-closing-dashboard.png](captures/036-closing-dashboard.png)<br>
+**Status:** Essential — KEEP<br>
+**Target:** 15 sec<br>
+**Speech estimate:** 28 words; 11.6 sec at 145 WPM<br>
+**Visual focus:** Dashboard title, Today’s Review and entry points for content/study.<br>
 **Motion:** Slow 2% pull back, then settle for the final hold.
 
 **Narration**
