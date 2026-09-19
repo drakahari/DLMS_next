@@ -488,3 +488,120 @@ regressions without the existing media smoke test that generates test tones:
 ```sh
 .venv/bin/python -m pytest -q tests/test_demo_video_build.py tests/test_demo_video_capture.py tests/test_manual_screenshot_capture.py -k 'not real_media_smoke'
 ```
+
+### Local narration with Kokoro TTS
+
+This is an **optional demo-video tool**, isolated from DLMS runtime. It uses
+Python's standard library to call a separately running local Kokoro HTTP server;
+no SDK, model, API key, subscription, or application dependency is added. The
+video builder remains voice-provider-neutral and accepts the same PCM WAVs from
+human recording or other generators.
+
+The [upstream quick start](https://github.com/hangry-labs/kokoroTTS#quick-start)
+currently documents `hangrylabs/kokorotts:v0.2`. Start its full image on CPU,
+binding only to this computer (Docker/image download is a separate prerequisite):
+
+```sh
+docker run --rm -p 127.0.0.1:7860:7860 hangrylabs/kokorotts:v0.2
+```
+
+Wait for startup, open `http://127.0.0.1:7860` for the browser UI, or check:
+
+```sh
+curl --fail http://127.0.0.1:7860/tts/status
+python tools/generate_demo_narration.py --list-voices
+```
+
+The generator queries the documented `GET /tts/speakers?language=a` endpoint
+before synthesis, both to check connectivity and to validate the selected voice.
+Discovery lists the running server's American English voices; no fallback IDs
+are silently assumed. Initial candidates are `af_heart`, `af_nicole`, `af_sarah`,
+`af_bella`, and `af_sky`, if advertised. Upstream also lists `af_aoede`, `af_kore`,
+`af_nova`, `af_alloy`, `af_jessica`, and `af_river`; use discovery to establish
+availability in your image. See [upstream voice examples](https://github.com/hangry-labs/kokoroTTS#voice-examples).
+
+**Default: `af_sarah`, speed 1.0**, as an audition convenience, not an approved
+voice or a claim of matching Ainsley. Listen for calm, polished, clear,
+professional delivery without advertising emphasis. Test one three-scene set:
+
+```sh
+python tools/generate_demo_narration.py --audition --voice af_sarah
+python tools/build_demo_video.py validate --audition --require-audio
+python tools/build_demo_video.py build --audition
+```
+
+This re-exports the authoritative audition text and generates only **001, 013,
+014**, into `build/demo-video/voice-audition/audio/NNN.wav`. Existing WAVs cause
+an error before synthesis; replacing them requires explicit `--force`. Failed
+responses are validated in disposable temporary files before publication, so
+an invalid response cannot replace an existing good take. A failed batch retains
+completed clips; retry into a new candidate set or explicitly regenerate with
+`--force`. Each WAV has a `.generation.json` sidecar recording source and synthesis
+text, voice, speed, duration, endpoint, and audio hash.
+
+Compare candidates without overwriting one another:
+
+```sh
+python tools/generate_demo_narration.py --audition --voice af_sarah --output-set sarah
+python tools/generate_demo_narration.py --audition --voice af_nicole --output-set nicole
+python tools/build_demo_video.py build --audition --audio-dir build/demo-video/voice-audition/candidates/sarah --work-dir build/demo-video-sarah
+python tools/build_demo_video.py build --audition --audio-dir build/demo-video/voice-audition/candidates/nicole --work-dir build/demo-video-nicole
+```
+
+Candidate WAVs live directly in `voice-audition/candidates/SET/`. To promote a
+chosen set, copy its `001.wav`, `013.wav`, and `014.wav` into
+`voice-audition/audio/` using your file manager, confirming any replacements.
+Alternatively, keep using `--audio-dir`; no promotion is required to render.
+Only requested voices are generated. No multi-voice batch runs automatically.
+
+The configurable base URL defaults to `http://127.0.0.1:7860`; append
+`--base-url http://127.0.0.1:OTHER_PORT` as needed. Localhost, loopback, and private
+IP addresses are accepted; public service URLs, proxies, and redirects are not
+used. `--timeout 300` is the default synthesis timeout; increase it for slow CPU
+runs. Ordinary failures have concise diagnostics; `--verbose` enables tracebacks.
+The adapter uses `POST /tts/generate`, omitting `output_format` for WAV. Its
+`--speed` range is conservatively limited to 0.8–1.2 and controls Kokoro synthesis
+speed, not post-generation stretching. No pitch, music, effects, or normalization
+is requested from Kokoro. Normalization remains the video builder's job.
+
+Only synthesis input changes: standalone `DLMS` becomes `D L M S`, and unspaced
+`AI`, `OCR`, and `API` become individual letters. Already spaced letters remain
+unchanged. **Anki stays spelled Anki** for the first listening test, with the
+intended “AHN-kee” pronunciation documented in the audition notes. No spelling
+change is justified until a real audition demonstrates a problem. Authoritative
+narration and speech-only exports remain unchanged. Verify acronym cadence and
+Anki by ear; structural audio validation cannot establish pronunciation quality.
+
+WAVs are checked for nonempty, complete PCM data and mono/stereo channels.
+When available, ffprobe additionally checks codec and duration. No invalid
+HTML/JSON payload is accepted as WAV. Without ffprobe, the WAV parser still
+validates data and records duration; final video assembly requires FFmpeg/ffprobe.
+
+**After audition approval**, generate production narration and assemble it:
+
+```sh
+python tools/generate_demo_narration.py --cut main --voice af_sarah
+python tools/build_demo_video.py validate --cut main --require-audio
+python tools/build_demo_video.py build --cut main --mux-subtitles
+# Optional long version, using the same production audio directory:
+python tools/generate_demo_narration.py --cut long --voice af_sarah
+python tools/build_demo_video.py build --cut long
+```
+
+Main/long select 33/34 scenes using the existing authoritative manifest parser.
+WAVs go to `build/demo-video/audio/NNN.wav`; excluded scenes are not requested.
+Main and long share filenames, so a subsequent full long generation requires
+`--force` if main WAVs already exist. That regenerates all included long clips;
+it is not an incremental missing-only mode. Full production generation must be
+explicitly invoked; the audition command never generates production audio.
+
+Validation without a live service:
+
+```sh
+.venv/bin/python -m pytest -q tests/test_demo_narration.py tests/test_demo_video_build.py tests/test_demo_video_capture.py tests/test_manual_screenshot_capture.py -k 'not real_media_smoke'
+```
+
+HTTP is mocked. Tiny PCM test fixtures validate file handling; no model or real
+speech is used. At implementation time, no server was listening on the default
+local port, so no live narration was generated or auditioned. Docker was neither
+installed nor started automatically.
