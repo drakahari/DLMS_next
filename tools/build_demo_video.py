@@ -464,6 +464,7 @@ def main(argv=None):
     parser.add_argument('action', choices=('validate', 'export', 'preview', 'build', 'subtitles'))
     parser.add_argument('--cut', choices=('main', 'long'), default='main')
     parser.add_argument('--audition', action='store_true', help='Use scenes 001, 013, 014 and separate audition audio/output.')
+    parser.add_argument('--audio-set', help='Audition candidate under voice-audition/candidates/; also names the output.')
     parser.add_argument('--work-dir', type=Path, default=ROOT / 'build/demo-video')
     parser.add_argument('--audio-dir', type=Path, help='Default: WORK_DIR/audio, or WORK_DIR/voice-audition/audio with --audition. Exact PCM WAV names: 001.wav, etc.')
     parser.add_argument('--require-audio', action='store_true', help='Also validate audio with the validate action.')
@@ -476,6 +477,9 @@ def main(argv=None):
         work = args.work_dir.resolve()
         if not work.is_relative_to((ROOT / 'build').resolve()) or work == (ROOT / 'build').resolve():
             raise BuildError('--work-dir must be a subdirectory of the repository build/ directory.')
+        if args.audio_set and (not args.audition or args.audio_dir
+                               or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', args.audio_set)):
+            raise BuildError('--audio-set requires --audition, cannot be combined with --audio-dir, and must be a simple name.')
         manifest = production_manifest()
         if args.audition and (args.cut != 'main' or args.action == 'preview'):
             raise BuildError('--audition uses main-cut scenes and requires real audio to build; do not combine with --cut long or preview.')
@@ -487,7 +491,10 @@ def main(argv=None):
         media = prerequisites()
         clips = None
         if args.action in {'build', 'subtitles'} or args.require_audio:
-            audio_dir = args.audio_dir or (work / 'voice-audition/audio' if args.audition else work / 'audio')
+            if args.audio_set:
+                audio_dir = work / 'voice-audition/candidates' / args.audio_set
+            else:
+                audio_dir = args.audio_dir or (work / 'voice-audition/audio' if args.audition else work / 'audio')
             if args.audition and not audio_dir.is_dir():
                 raise BuildError(f'Missing audition audio directory: {audio_dir}; required WAVs: ' + ', '.join(s['audio_filename'] for s in scenes))
             clips = audio_inputs(scenes, audio_dir, media)
@@ -502,7 +509,11 @@ def main(argv=None):
             export_audition(manifest, work)
         else:
             export_pack(manifest, args.cut, work)
-        base = 'DLMS-3.2-voice-audition' if args.audition else 'DLMS-3.2-demo' + ('-long' if args.cut == 'long' else '')
+        if args.audition:
+            label = re.sub(r'^a[fm]_', '', args.audio_set) if args.audio_set else None
+            base = 'DLMS-3.2-voice-audition' + (f'-{label}' if label else '')
+        else:
+            base = 'DLMS-3.2-demo' + ('-long' if args.cut == 'long' else '')
         if args.action == 'subtitles':
             path = work / (base + '.srt')
             if path.exists() and not args.overwrite:

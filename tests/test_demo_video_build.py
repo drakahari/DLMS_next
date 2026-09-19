@@ -349,3 +349,42 @@ def test_incompatible_audition_options(manifest, monkeypatch, capsys, args):
     monkeypatch.setattr(video, 'production_manifest', lambda: manifest)
     assert video.main(args) == 2
     assert '--audition uses main-cut scenes' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('audio_set,output_name', [
+    ('af_nicole', 'DLMS-3.2-voice-audition-nicole.mp4'),
+    ('af_heart', 'DLMS-3.2-voice-audition-heart.mp4'),
+    ('candidate_a', 'DLMS-3.2-voice-audition-candidate_a.mp4'),
+])
+def test_audition_audio_set_dispatch(monkeypatch, tmp_path, manifest, audio_set, output_name):
+    monkeypatch.setattr(video, 'ROOT', tmp_path)
+    monkeypatch.setattr(video, 'production_manifest', lambda: manifest)
+    monkeypatch.setattr(video, 'prerequisites', lambda: {})
+    work = tmp_path / 'build/demo-video'
+    expected_audio = work / 'voice-audition/candidates' / audio_set
+    expected_audio.mkdir(parents=True)
+
+    def inputs(scenes, directory, media):
+        assert directory == expected_audio
+        return {s['id']: {'path': str(directory / s['audio_filename']), 'seconds': 10.0}
+                for s in scenes}
+
+    def render(rows, output, media, **kwargs):
+        assert output == work / output_name
+        assert [r['id'] for r in rows] == [1, 13, 14]
+        return {'duration_seconds': sum(r['duration_seconds'] for r in rows)}
+
+    monkeypatch.setattr(video, 'audio_inputs', inputs)
+    monkeypatch.setattr(video, 'render', render)
+    assert video.main(['build', '--audition', '--audio-set', audio_set,
+                       '--work-dir', str(work)]) == 0
+
+
+@pytest.mark.parametrize('args', [
+    ['build', '--audio-set', 'af_nicole'],
+    ['build', '--audition', '--audio-set', '../nicole'],
+    ['build', '--audition', '--audio-set', 'af_nicole', '--audio-dir', 'clips'],
+])
+def test_invalid_audio_set_options(args, capsys):
+    assert video.main(args) == 2
+    assert '--audio-set requires --audition' in capsys.readouterr().err

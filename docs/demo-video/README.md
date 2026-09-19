@@ -544,8 +544,8 @@ Compare candidates without overwriting one another:
 ```sh
 python tools/generate_demo_narration.py --audition --voice af_sarah --output-set sarah
 python tools/generate_demo_narration.py --audition --voice af_nicole --output-set nicole
-python tools/build_demo_video.py build --audition --audio-dir build/demo-video/voice-audition/candidates/sarah --work-dir build/demo-video-sarah
-python tools/build_demo_video.py build --audition --audio-dir build/demo-video/voice-audition/candidates/nicole --work-dir build/demo-video-nicole
+python tools/build_demo_video.py build --audition --audio-set sarah
+python tools/build_demo_video.py build --audition --audio-set nicole
 ```
 
 Candidate WAVs live directly in `voice-audition/candidates/SET/`. To promote a
@@ -553,6 +553,9 @@ chosen set, copy its `001.wav`, `013.wav`, and `014.wav` into
 `voice-audition/audio/` using your file manager, confirming any replacements.
 Alternatively, keep using `--audio-dir`; no promotion is required to render.
 Only requested voices are generated. No multi-voice batch runs automatically.
+`--audio-set NAME` is shorthand for the matching candidate directory and writes
+`DLMS-3.2-voice-audition-NAME.mp4` in the normal demo-video build directory.
+For Kokoro-style names, the `af_` or `am_` prefix is omitted from the MP4 name.
 
 The configurable base URL defaults to `http://127.0.0.1:7860`; append
 `--base-url http://127.0.0.1:OTHER_PORT` as needed. Localhost, loopback, and private
