@@ -9,6 +9,13 @@
     "daily-review/video.json",
     "organize-your-library/video.json",
     "reusable-study-packs/video.json",
-    "portability-and-backup/video.json"
+    "portability-and-backup/video.json",
+    "specialized-study/video.json",
+    "law-case-review/video.json",
+    "reset-and-maintenance/video.json",
+    "ai-settings-and-handoff/video.json",
+    "ai-to-study-pack/video.json",
+    "anki-and-physical-cards/video.json",
+    "image-and-hotspot-authoring/video.json"
   ]
 }

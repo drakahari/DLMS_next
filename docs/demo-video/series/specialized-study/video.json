@@ -1,0 +1,69 @@
+{
+  "id": "specialized-study",
+  "title": "Choose IT, Medical or Other Studies",
+  "purpose": "Choose the right installed-content entry point without implying different scoring engines or bundled commercial curricula.",
+  "target_seconds": [
+    120,
+    260
+  ],
+  "manual_refs": [
+    "docs/user-manual/13-study-packs-and-content-packs.md",
+    "docs/user-manual/11-matching-terminology-and-image-based-content.md"
+  ],
+  "implementation_refs": [
+    "dlms/routes/it.py",
+    "dlms/routes/medical.py",
+    "dlms/routes/study_packs.py"
+  ],
+  "youtube_title": "DLMS: Choose IT, Medical or Other Studies",
+  "description": "Choose the right installed-content entry point without implying different scoring engines or bundled commercial curricula. Original demonstration data; candidate pending editorial review.",
+  "thumbnail_text": "CHOOSE YOUR STUDY PATH",
+  "thumbnail_capture": "series:201",
+  "scenes": [
+    {
+      "id": "001",
+      "capture": "series:201",
+      "title": "Start with installed subject content",
+      "chapter": "Subject paths and installed sources",
+      "visual_focus": "Start with installed subject content; real application state, static frame.",
+      "narration": "IT Study brings together installed IT and cybersecurity datasets. It is a subject-focused entrance to DLMS, not a separate account or learning engine. This demonstration uses an original recovery lab. Your catalog depends on the packs you have installed; the application does not promise a particular certification curriculum."
+    },
+    {
+      "id": "002",
+      "capture": "series:202",
+      "title": "Choose terminology practice",
+      "visual_focus": "Choose terminology practice; real application state, static frame.",
+      "narration": "Open Concepts and Matching to practice relationships such as a term and its meaning. Choose the dataset, number of pairs, and direction before creating a quiz. The installed source remains reusable. Read the source and concepts before practicing: a familiar title alone does not tell you whether the material matches your learning goal."
+    },
+    {
+      "id": "003",
+      "capture": "series:235",
+      "title": "Choose spatial practice",
+      "visual_focus": "Choose spatial practice; real application state, static frame.",
+      "narration": "Diagrams and Images provides another route through the same IT content. An image dataset supplies targets and prompts for visual identification. Here the original service map supports recovery practice. Prepared question sets are available through Study Packs. These choices change the activity you generate, rather than creating an isolated IT learning history."
+    },
+    {
+      "id": "004",
+      "capture": "series:203",
+      "title": "Find Medical Study",
+      "chapter": "Medical terminology and available images",
+      "visual_focus": "Find Medical Study; real application state, static frame.",
+      "narration": "Medical Study collects installed medical-domain packs. Our small original example contains anatomical direction vocabulary. Terminology and anatomy are different entry points: an anatomy image activity needs an installed image dataset. This fixture has terminology only, so it does not imply that every medical pack contains diagrams or a complete medical course."
+    },
+    {
+      "id": "005",
+      "capture": "series:204",
+      "title": "Practice medical relationships",
+      "visual_focus": "Practice medical relationships; real application state, static frame.",
+      "narration": "Choose a terminology dataset and make a manageable matching round. Verify definitions against your course sources before relying on them. The interface can organize medical learning, but structural validation is not a clinical accuracy check. AI-generated medical material needs the same careful source review; the medical prompt guidance does not make it authoritative."
+    },
+    {
+      "id": "006",
+      "capture": "series:205",
+      "title": "Use Other Studies",
+      "chapter": "Other subjects and the shared library",
+      "visual_focus": "Use Other Studies; real application state, static frame.",
+      "narration": "Other Studies filters the catalog to subjects outside the specialized groups. Use it for language, history, general skills, or other installed material. You can also import ordinary quizzes without creating any pack. These paths lead back to the shared Library and study workflow. Law is the exception: its dedicated case-review workspace is covered in the next video."
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "id": "image-and-hotspot-authoring",
+  "title": "Create and refine an image hotspot quiz",
+  "purpose": "Demonstrate actual image upload, question authoring, region placement, publication, study and installed-dataset editing.",
+  "target_seconds": [
+    120,
+    260
+  ],
+  "manual_refs": [
+    "docs/user-manual/11-matching-terminology-and-image-based-content.md",
+    "docs/user-manual/13-study-packs-and-content-packs.md"
+  ],
+  "implementation_refs": [
+    "dlms/routes/study_packs.py",
+    "dlms/routes/admin_images.py",
+    "dlms/services/content_pack_mutations.py",
+    "templates/study_packs/image-builder.html"
+  ],
+  "youtube_title": "DLMS: Create and refine an image hotspot quiz",
+  "description": "Demonstrate actual image upload, question authoring, region placement, publication, study and installed-dataset editing. Original demonstration data; candidate pending editorial review.",
+  "thumbnail_text": "BUILD A HOTSPOT QUESTION",
+  "thumbnail_capture": "series:229",
+  "scenes": [
+    {
+      "id": "001",
+      "capture": "series:229",
+      "title": "Start with an image you can use",
+      "chapter": "Upload and describe an original image",
+      "visual_focus": "Start with an image you can use; real application state, static frame.",
+      "narration": "Choose Build from Images and upload a clear image that you have permission to use. DLMS accepts common raster formats and lets you build questions without editing the picture first. This example uses our original service diagram. Add a useful title, source credit, accessible description, and assessment time limit before publishing the material."
+    },
+    {
+      "id": "002",
+      "capture": "series:230",
+      "title": "Write the question and explanation",
+      "visual_focus": "Write the question and explanation; real application state, static frame.",
+      "narration": "Add a question, select its image, and choose Clickable Hotspot. Write a prompt that tells the learner what to locate, then provide an explanation for Study Mode. The image builder also supports choice and matching questions, so an image does not have to become a hotspot. Here the learner must identify the recovery copy."
+    },
+    {
+      "id": "003",
+      "capture": "series:231",
+      "title": "Define the answer region",
+      "chapter": "Place the target and publish",
+      "visual_focus": "Define the answer region; real application state, static frame.",
+      "narration": "Name the target and define a circle or polygon. A circle needs a center and radius; a polygon needs at least three points. Use the pointer or the keyboard controls described beside the image. Clear Region removes the current geometry so you can try again. Check that the region covers the intended answer rather than nearby labels."
+    },
+    {
+      "id": "004",
+      "capture": "series:232",
+      "title": "Try the saved activity",
+      "visual_focus": "Try the saved activity; real application state, static frame.",
+      "narration": "Confirm your permission to use the image and choose Create Study Pack and Quiz. DLMS validates and saves the reusable source, then opens the playable quiz. This frame shows that newly saved question in Study Mode with a correct selection. Test the actual result before relying on it: a well-written prompt can still have a poorly positioned target."
+    },
+    {
+      "id": "005",
+      "capture": "series:233",
+      "title": "Refine an installed image dataset",
+      "chapter": "Refine regions and image preparation",
+      "visual_focus": "Refine an installed image dataset; real application state, static frame.",
+      "narration": "Image Study Editor works with installed image datasets and image-backed question sets. Choose the source and target, load the existing region, and use Test Shape to check it. Undo Point and Clear Shape help revise the current edit. Save Region persists a confirmed change to the source. Recreate practice when you need a fresh activity from revised source content."
+    },
+    {
+      "id": "006",
+      "capture": "series:234",
+      "title": "Prepare without altering the original",
+      "visual_focus": "Prepare without altering the original; real application state, static frame.",
+      "narration": "Image Prep can cover unwanted text or add simple labels using non-destructive overlays. This preview shows a mask over an answer label. Undo or clear the edits if they obscure too much, and Save Image Prep when ready. The original image file is preserved. Keep the accessible description and source credits useful, and test the finished learning activity again."
+    }
+  ]
+}

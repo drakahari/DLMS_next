@@ -1,12 +1,12 @@
 # DLMS focused documentation videos
 
 DLMS-138 extends the existing overview workflow into an ordered instructional
-series. **These are editorial candidates, not published tutorials.** The six
-scripts, capture mappings and batch pipeline are implemented. Narrated lossless
-candidates and separate delivery encodes are available locally. Human listening
-and editorial approval remain required before publication. The local Kokoro image
-was already cached; a temporary localhost-only instance generated the 39 new clips
-and was stopped afterward.
+series. **The six phase-one delivery videos are approved by the repository
+owner.** DLMS-139 adds seven **candidates pending listening and editorial
+review**, covering specialized studies, resets, external AI, pack creation,
+card exports and image authoring. See [Phase 2](PHASE2.md) for the required-topic
+assessment and [editorial status](editorial-status.json) for the approval boundary.
+No tutorial is automatically published by this tooling.
 
 The [published overview](https://www.youtube.com/watch?v=nrUz3umt8vk) remains the
 short orientation. The [Markdown manual](../../user-manual/README.md) remains
@@ -27,6 +27,14 @@ accidentally update a separate transcript but leave subtitles behind.
 | 4 | [Organize your library](organize-your-library/video.json) | Separate placement, visibility, filters and learning scope; compare duplicate records | [Library organization](../../user-manual/05-quiz-library-and-organization.md) | 2:13.900 |
 | 5 | [Reusable Study Packs](reusable-study-packs/video.json) | Management versus learner catalog, matching options, generated activities and retained sources | [Packs](../../user-manual/13-study-packs-and-content-packs.md) | 2:10.967 |
 | 6 | [Portability and backup](portability-and-backup/video.json) | Choose a transfer format, inspect a real title-collision preview, distinguish backups and study exports | [Portability](../../user-manual/15-import-export-and-portability.md), [Backup](../../user-manual/17-maintenance-backup-and-data-management.md) | 2:27.300 |
+
+| 7 | [Specialized studies](specialized-study/video.json) | IT, Medical and Other catalogs; installed sources versus shared quiz behavior | [Packs](../../user-manual/13-study-packs-and-content-packs.md), [Rich questions](../../user-manual/11-matching-terminology-and-image-based-content.md) | 2:23.367 |
+| 8 | [Law case review](law-case-review/video.json) | Prepared packet → saved case → IRAC and Socratic responses → notes | [External workflows](../../user-manual/12-external-ai-workflows.md), [Packs and Law](../../user-manual/13-study-packs-and-content-packs.md) | 2:14.733 |
+| 9 | [Reset and maintenance](reset-and-maintenance/video.json) | Choose the correct scope; distinguish history, evidence, sources and browser checkpoints | [Maintenance](../../user-manual/17-maintenance-backup-and-data-management.md), [Reset audit](RESET_SCOPE.md) | 4:01.033 |
+| 10 | [AI settings and handoff](ai-settings-and-handoff/video.json) | Optional settings → deliberate external handoff → local validation and repair | [External AI](../../user-manual/12-external-ai-workflows.md), [Settings](../../user-manual/16-settings-and-runtime.md) | 2:35.800 |
+| 11 | [AI to Study Pack](ai-to-study-pack/video.json) | Request → returned ZIP → independent validation → install → dataset practice | [External AI](../../user-manual/12-external-ai-workflows.md), [Packs](../../user-manual/13-study-packs-and-content-packs.md) | 2:26.900 |
+| 12 | [Anki and physical cards](anki-and-physical-cards/video.json) | Select and preview → APKG handoff → actual printable fronts and backs | [Anki and cards](../../user-manual/14-anki-decks-and-printable-cards.md) | 2:19.567 |
+| 13 | [Image and hotspot authoring](image-and-hotspot-authoring/video.json) | Original upload → target geometry → saved playable quiz → installed-source editing | [Image content](../../user-manual/11-matching-terminology-and-image-based-content.md), [Packs](../../user-manual/13-study-packs-and-content-packs.md) | 2:16.000 |
 
 Silent previews use a declared **135 WPM estimate plus scene tails**, not synthesized
 speech. The table above uses actual narration, which also determines SRT cues and chapter markers.
@@ -121,7 +129,8 @@ Inspect small text and gradients before approving each delivery artifact.
 
 Existing captures are referenced, not copied or renumbered. `overview:013A`, for
 example, resolves against the frozen overview capture manifests. The series-only
-registry [captures.json](captures.json) holds hashes for four original captures:
+registry [captures.json](captures.json) holds hashes for four phase-one captures
+and 38 phase-two captures. The original recipes are:
 
 | Recipe | Teaching state | Origin and limits |
 |---|---|---|
@@ -188,7 +197,7 @@ the sidebar; never crop away a state that changes the meaning. Do not rely on
 tiny UI text being readable at thumbnail size. Use the same font and spacing
 for the whole series, with the playlist number in a small gold badge.
 
-This is a specification, not six prematurely generated binary thumbnails.
+This is a specification; thumbnail images are finalized after editorial review.
 Finalize crops after content review. Do not generate generic AI imagery or fake UI.
 Export the finished thumbnail as an optimized PNG/JPEG outside build/ only when
 it is approved for repository use.
@@ -206,6 +215,10 @@ MP4s, WAVs, TTS caches and generated publishing exports do not belong in normal
 Git history. The archival master and web delivery file remain distinct.
 
 ## Deliberately omitted from this first series
+
+This list records the original DLMS-138 scope. DLMS-139 now supplies the missing
+AI, card-printing and image-authoring captures and tutorials; those deferrals
+do not apply to the current phase-two lineup. See [PHASE2.md](PHASE2.md).
 
 - **Another getting-started tour:** duplicates the published overview and setup
   chapters. Platform security prompts are better kept as current written guidance.
@@ -227,3 +240,5 @@ Git history. The archival master and web delivery file remain distinct.
 
 See [AUDIT.md](AUDIT.md) for source boundaries and [VALIDATION.md](VALIDATION.md)
 for this implementation's evidence and remaining production work.
+
+See [Phase 2 validation](PHASE2_VALIDATION.md) for the seven new candidate builds.

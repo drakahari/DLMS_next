@@ -1,0 +1,68 @@
+{
+  "id": "anki-and-physical-cards",
+  "title": "Export an Anki deck or print physical flash cards",
+  "purpose": "Show selection, preview, actual APKG export and browser HTML duplex print layout without pretending to operate Anki or a printer.",
+  "target_seconds": [
+    120,
+    260
+  ],
+  "manual_refs": [
+    "docs/user-manual/14-anki-decks-and-printable-cards.md"
+  ],
+  "implementation_refs": [
+    "dlms/routes/anki.py",
+    "templates/anki/custom.html",
+    "templates/anki/printable.html"
+  ],
+  "youtube_title": "DLMS: Export an Anki deck or print physical flash cards",
+  "description": "Show selection, preview, actual APKG export and browser HTML duplex print layout without pretending to operate Anki or a printer. Original demonstration data; candidate pending editorial review.",
+  "thumbnail_text": "TAKE YOUR CARDS WITH YOU",
+  "thumbnail_capture": "series:225",
+  "scenes": [
+    {
+      "id": "001",
+      "capture": "series:225",
+      "title": "Select a deliberate deck",
+      "chapter": "Select the material to take with you",
+      "visual_focus": "Select a deliberate deck; real application state, static frame.",
+      "narration": "Open Anki Tools, then Custom Deck and Printable Cards. Give the deck a meaningful name and select the questions you want to take with you. The groups also offer missed or weak material and recognized Law rule cards when available. This example selects three original recovery questions. Clear Selected Cards changes only this selection; it deletes no source content."
+    },
+    {
+      "id": "002",
+      "capture": "series:226",
+      "title": "Preview before export",
+      "visual_focus": "Preview before export; real application state, static frame.",
+      "narration": "Preview Deck shows the resulting fronts and backs before export. Check the prompt and correct answer, not just the deck title. The preview displays up to twenty cards, while the export includes the full deduplicated selection. Identical fronts and backs are combined. A Law source contributes recognized rule flashcards, rather than every paragraph of a case review."
+    },
+    {
+      "id": "003",
+      "capture": "series:238",
+      "title": "Export to Anki",
+      "chapter": "Anki is a separate study destination",
+      "visual_focus": "Export to Anki; real application state, static frame.",
+      "narration": "Choose Export dot A P K G to download an Anki package. Open that file in your Anki application using its import command, then check the resulting deck. The download dialog and Anki itself are outside this demonstration. DLMS supplies the card content; Anki controls its own scheduling and synchronization. This is a handoff, not a live link between the two applications."
+    },
+    {
+      "id": "004",
+      "capture": "series:227",
+      "title": "Open printable fronts",
+      "chapter": "Print physical fronts and backs",
+      "visual_focus": "Open printable fronts; real application state, static frame.",
+      "narration": "The same selection can become physical cards. Open the print layout to see three three-by-five cards on each Letter sheet. This is the actual browser-rendered layout, not a mockup or native print dialog. The front sheet carries the prompts, and a matching back sheet carries the answers. Review the text for clipping before printing."
+    },
+    {
+      "id": "005",
+      "capture": "series:228",
+      "title": "Choose duplex order",
+      "visual_focus": "Choose duplex order; real application state, static frame.",
+      "narration": "Select the duplex flip that matches your printer. Long edge keeps the same card order on the backs; short edge reverses the back order. Print one test sheet before committing to a larger run, and check that each answer lines up with its question. Paper settings, margins, and printer behavior still need your attention outside DLMS."
+    },
+    {
+      "id": "006",
+      "capture": "series:225",
+      "title": "Keep normal study available",
+      "visual_focus": "Keep normal study available; real application state, static frame.",
+      "narration": "Exporting or printing does not remove your quizzes or transfer DLMS attempt history into the cards. Return to DLMS when you want its Study feedback, assessment workflow, and learning evidence. Use Anki for an external deck, or paper for offline recall away from a screen. Re-export when you want a new snapshot of revised source material."
+    }
+  ]
+}

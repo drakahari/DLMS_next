@@ -1,0 +1,69 @@
+{
+  "id": "ai-settings-and-handoff",
+  "title": "Configure optional AI and review returned content",
+  "purpose": "Demonstrate local prompt preparation, explicit provider-neutral handoff and validated return without pretending to integrate an AI API.",
+  "target_seconds": [
+    120,
+    260
+  ],
+  "manual_refs": [
+    "docs/user-manual/12-external-ai-workflows.md",
+    "docs/user-manual/16-settings-and-runtime.md"
+  ],
+  "implementation_refs": [
+    "dlms/routes/external_ai.py",
+    "templates/settings/ai.html",
+    "templates/external_ai/builder.html"
+  ],
+  "youtube_title": "DLMS: Configure optional AI and review returned content",
+  "description": "Demonstrate local prompt preparation, explicit provider-neutral handoff and validated return without pretending to integrate an AI API. Original demonstration data; candidate pending editorial review.",
+  "thumbnail_text": "AI ON YOUR TERMS",
+  "thumbnail_capture": "series:218",
+  "scenes": [
+    {
+      "id": "001",
+      "capture": "series:218",
+      "title": "AI is optional",
+      "chapter": "Optional settings, no required provider",
+      "visual_focus": "AI is optional; real application state, static frame.",
+      "narration": "DLMS works without an AI provider or API key. AI Integration settings control optional handoff conveniences, not a background model connection. You can leave these features unused and still import content, study, take exams, and use local learning features. Choose a provider destination only if you want help from an external conversational system."
+    },
+    {
+      "id": "002",
+      "capture": "series:218",
+      "title": "Understand the switches",
+      "visual_focus": "Understand the switches; real application state, static frame.",
+      "narration": "The helper setting controls AI explanation buttons for missed-question review. Auto-copy prepares the explanation prompt before opening the chosen destination. A Local or Custom URL selects another destination; it does not install or run a model. Disabling a helper button is not a global privacy firewall for every builder. You still decide whether to copy and send anything."
+    },
+    {
+      "id": "003",
+      "capture": "series:219",
+      "title": "Review prompt templates",
+      "chapter": "Control what leaves the workspace",
+      "visual_focus": "Review prompt templates; real application state, static frame.",
+      "narration": "Prompt templates govern missed-question explanations, Study Pack requests, medical guidance, and Law workflows. Preserve their placeholders when editing. Reset buttons restore form text, and Save AI Settings persists your changes. Before handing off a prompt, read it and remove anything you should not share. Once pasted into another system, that system's handling of the material applies."
+    },
+    {
+      "id": "004",
+      "capture": "series:220",
+      "title": "Generate a local structured prompt",
+      "visual_focus": "Generate a local structured prompt; real application state, static frame.",
+      "narration": "Build with External AI prepares a provider-neutral request for choice questions or matching terminology. Set the topic, audience, difficulty, item count, and source expectations, then generate and copy the prompt. Generating this text happens locally. DLMS does not send it through a provider API or automatically retrieve the response. You choose where to paste it."
+    },
+    {
+      "id": "005",
+      "capture": "series:237",
+      "title": "Validate returned material",
+      "chapter": "Return, repair and publish deliberately",
+      "visual_focus": "Validate returned material; real application state, static frame.",
+      "narration": "Bring back the requested structured response and validate it before publication. This demonstration uses original author-written material to show that return path; no external service generated it. Review and Repair exposes the proposed question, choices, answer, and explanation. Structural validity does not establish factual accuracy. Correct the material against reliable sources before publishing it as a quiz."
+    },
+    {
+      "id": "006",
+      "capture": "series:237",
+      "title": "Keep the workflow boundaries clear",
+      "visual_focus": "Keep the workflow boundaries clear; real application state, static frame.",
+      "narration": "Publishing makes the reviewed material available for normal DLMS study. Returned explanations do not automatically rewrite existing correct answers, and merely opening an external service does not save a response. A Study Pack request follows a different return path: a validated package rather than this question response. The next tutorial follows that reusable-content lifecycle from prompt to installed dataset."
+    }
+  ]
+}

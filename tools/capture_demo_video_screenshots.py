@@ -154,6 +154,10 @@ DOCUMENTATION_FRAMES = (
           state='Study Mode; three empty targets and original answer pool; no feedback yet.'),
 )
 
+# Phase 2 uses this same browser/server lifecycle, with opt-in original fixtures.
+from documentation_video_phase2 import frames as phase2_frames
+DOCUMENTATION_FRAMES += phase2_frames(frame)
+
 
 def serve():
     # Parent creates this root. Refuse direct --serve use against an existing
@@ -164,6 +168,9 @@ def serve():
     import app as dlms
     from werkzeug.serving import make_server
     seed(dlms)
+    if (root.parent / 'video-phase2-owned').is_file():
+        from documentation_video_phase2 import seed as seed_phase2
+        seed_phase2(dlms)
     from PIL import Image, ImageDraw
     image = Image.new('RGB', (1200, 675), 'white')
     draw = ImageDraw.Draw(image)
@@ -177,7 +184,10 @@ def serve():
 
 def prepare(browser, item, metadata, data_root):
     action = item.action
-    if action == 'series-save-bank':
+    if action.startswith('phase2'):
+        from documentation_video_phase2 import prepare as prepare_phase2
+        prepare_phase2(browser, item, metadata, data_root)
+    elif action == 'series-save-bank':
         browser.click('input[name="correct_1"][value="A"]')
         browser.click('button.build-primary-button[form="pdfReviewForm"]')
         browser.wait_for("document.querySelector('.pdf-bank-generator-form')", timeout=20)
@@ -278,6 +288,8 @@ def capture(items, output, theme, *, check_only=False, replay_prefix=False):
     with tempfile.TemporaryDirectory(prefix='dlms-video-capture-') as directory:
         work = Path(directory)
         (work/'video-capture-owned').touch()
+        if any(item.action.startswith('phase2') for item in items):
+            (work/'video-phase2-owned').touch()
         data_root = work/'data'
         server = firefox = browser = None
         try:

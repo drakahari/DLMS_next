@@ -1,0 +1,32 @@
+{
+  "phase1_status": "APPROVED \u2014 user reviewed all six delivery videos",
+  "phase2_status": "CANDIDATE \u2014 pending user listening and editorial review",
+  "phase2_candidates": [
+    "specialized-study",
+    "law-case-review",
+    "reset-and-maintenance",
+    "ai-settings-and-handoff",
+    "ai-to-study-pack",
+    "anki-and-physical-cards",
+    "image-and-hotspot-authoring"
+  ],
+  "required_topic_coverage": {
+    "1": "specialized-study",
+    "2": "law-case-review",
+    "3": "specialized-study",
+    "4": "specialized-study",
+    "5": "reset-and-maintenance",
+    "6": "ai-settings-and-handoff",
+    "7": "ai-to-study-pack",
+    "8": "anki-and-physical-cards",
+    "9": "image-and-hotspot-authoring"
+  },
+  "approved_definition_sha256": {
+    "docs/demo-video/series/imports-and-repair/video.json": "38515ca1685b7c59f1d0e165bb91626a25bd3cc1fea12ea4866050b332ba7820",
+    "docs/demo-video/series/study-and-exam/video.json": "07dbe874efce338881d936762df58d3097985c4003b475c826ee36e10d9f3662",
+    "docs/demo-video/series/daily-review/video.json": "932f9dba83bf3bda31ffe7670fd49ccbd57f7edc183d9b790f3061829167d569",
+    "docs/demo-video/series/organize-your-library/video.json": "a2a4f674e7ae5b47f4a36027989fbf51c8183f607c4791260e97dbf4c2e5d00a",
+    "docs/demo-video/series/reusable-study-packs/video.json": "bb7ef50ac04f51891a201637c830ade3b4f149953fbd80a8d6af63640a7ed4a5",
+    "docs/demo-video/series/portability-and-backup/video.json": "9c05ef94e05544873c6fed8e1842de3097714de5fbe39147d929c8a07456a17c"
+  }
+}

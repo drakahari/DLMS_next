@@ -1,0 +1,70 @@
+{
+  "id": "law-case-review",
+  "title": "Work through a Law Case Review",
+  "purpose": "Show the separate case packet, IRAC, Socratic response and export workflow using fictional original material.",
+  "target_seconds": [
+    120,
+    260
+  ],
+  "manual_refs": [
+    "docs/user-manual/13-study-packs-and-content-packs.md",
+    "docs/user-manual/12-external-ai-workflows.md",
+    "docs/user-manual/14-anki-decks-and-printable-cards.md"
+  ],
+  "implementation_refs": [
+    "dlms/routes/law.py",
+    "dlms/services/law.py",
+    "templates/law/case-detail.html"
+  ],
+  "youtube_title": "DLMS: Work through a Law Case Review",
+  "description": "Show the separate case packet, IRAC, Socratic response and export workflow using fictional original material. Original demonstration data; candidate pending editorial review.",
+  "thumbnail_text": "LAW CASE REVIEW",
+  "thumbnail_capture": "series:206",
+  "scenes": [
+    {
+      "id": "001",
+      "capture": "series:206",
+      "title": "Start a case workflow",
+      "chapter": "Create and import a case packet",
+      "visual_focus": "Start a case workflow; real application state, static frame.",
+      "narration": "Law Study has a dedicated case-review workspace. Start with Create Case Review to identify the case and course and prepare a prompt if you want outside assistance. DLMS does not retrieve legal sources or contact an AI provider for you. The example throughout this video is an original fictional exercise, not a reported decision."
+    },
+    {
+      "id": "002",
+      "capture": "series:207",
+      "title": "Bring back structured text",
+      "visual_focus": "Bring back structured text; real application state, static frame.",
+      "narration": "Paste a structured packet into Import Case Packet. Check the pasted text or save it for preview, then create a Case Review from recognized sections. Keep the complete import block when using the generated prompt. This screen illustrates the input step; the following screens show our prepared fictional review. Always verify real citations and holdings against the original source."
+    },
+    {
+      "id": "003",
+      "capture": "series:208",
+      "title": "Read the case brief",
+      "chapter": "Read first, then write your analysis",
+      "visual_focus": "Read the case brief; real application state, static frame.",
+      "narration": "A saved review keeps the case brief alongside your own work. Check the title and course, then read the facts and stated rule. The raw saved import and the Case Review are separate records: deleting one does not automatically delete the other. This is different from choosing a dataset in the Study Pack catalog."
+    },
+    {
+      "id": "004",
+      "capture": "series:209",
+      "title": "Save an IRAC response",
+      "visual_focus": "Save an IRAC response; real application state, static frame.",
+      "narration": "Write your own issue, rule, analysis, and conclusion before revealing the imported guidance. Save the response to keep it with this review. The example has been saved through the real form. The point is to connect the rule to decisive facts, not merely copy a supplied answer. You can return later and revise your reasoning."
+    },
+    {
+      "id": "005",
+      "capture": "series:210",
+      "title": "Answer Socratic questions",
+      "chapter": "Socratic practice and retained notes",
+      "visual_focus": "Answer Socratic questions; real application state, static frame.",
+      "narration": "Socratic Practice asks you to answer before revealing the answer key. Save your responses with the case, then compare your reasoning with the imported guide. The guide is study material, not an automated legal grader. These embedded activities work today; the Future Study Modes cards on the Law landing page are not separate interactive tools."
+    },
+    {
+      "id": "006",
+      "capture": "series:211",
+      "title": "Keep notes and take material with you",
+      "visual_focus": "Keep notes and take material with you; real application state, static frame.",
+      "narration": "Student Notes gives you space for unresolved questions and comparisons. Export the review as text when you need a portable copy. Recognized rule flashcards can also feed Law Study Anki or a custom deck; not every paragraph becomes a card. Use the written manual for the packet format, and keep source verification separate from the convenience of this workspace."
+    }
+  ]
+}

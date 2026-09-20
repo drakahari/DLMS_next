@@ -1,0 +1,95 @@
+{
+  "id": "reset-and-maintenance",
+  "title": "Choose the right reset and maintenance action",
+  "purpose": "Distinguish browser resume state, attempt history, learning evidence, source material, settings and destructive data removal.",
+  "target_seconds": [
+    180,
+    330
+  ],
+  "manual_refs": [
+    "docs/user-manual/17-maintenance-backup-and-data-management.md",
+    "docs/user-manual/07-study-and-review.md",
+    "docs/user-manual/16-settings-and-runtime.md"
+  ],
+  "implementation_refs": [
+    "dlms/routes/maintenance.py",
+    "dlms/services/restore.py",
+    "dlms/routes/history.py",
+    "static/quiz-recovery.js",
+    "templates/settings/reset-remove.html"
+  ],
+  "youtube_title": "DLMS: Choose the right reset and maintenance action",
+  "description": "Distinguish browser resume state, attempt history, learning evidence, source material, settings and destructive data removal. Original demonstration data; candidate pending editorial review.",
+  "thumbnail_text": "RESET WITHOUT SURPRISES",
+  "thumbnail_capture": "series:212",
+  "scenes": [
+    {
+      "id": "001",
+      "capture": "series:212",
+      "title": "Choose the narrowest action",
+      "chapter": "Back up and distinguish history from evidence",
+      "visual_focus": "Choose the narrowest action; real application state, static frame.",
+      "narration": "Before resetting anything, create a backup and keep a copy outside DLMS. Choose the narrowest action that solves your problem. Clear Saved Results removes completed attempts, saved answers, and missed-question history after confirmation. Quizzes, settings, and learning-event evidence remain. This action does not create an automatic backup, so Learning Intelligence may still reflect earlier activity afterward."
+    },
+    {
+      "id": "002",
+      "capture": "series:213",
+      "title": "Reset learning evidence",
+      "visual_focus": "Reset learning evidence; real application state, static frame.",
+      "narration": "Reset Learning Intelligence clears the evidence behind mastery, recommendations, diagnostics, and review scheduling. It creates a safety backup and asks for confirmation. Quizzes, concepts, settings, packs, saved attempts, and missed-question history remain. Existing Generated Practice quizzes also remain: resetting the evidence does not retroactively delete practice that was already created from it."
+    },
+    {
+      "id": "003",
+      "capture": "series:236",
+      "title": "Clear only an unfinished resume point",
+      "chapter": "Browser checkpoints and generated practice",
+      "visual_focus": "Clear only an unfinished resume point; real application state, static frame.",
+      "narration": "Remove from Today's Review opens this confirmation. Clear Saved Resume Point discards this browser's unfinished checkpoint, including answers saved only there. It keeps the quiz, completed history, scores, and activity already saved to DLMS. A quiz's Start Over control also abandons recovery state. Finish Review instead records completion of generated study; it is not a delete command."
+    },
+    {
+      "id": "004",
+      "capture": "series:214",
+      "title": "Reset quizzes or source material",
+      "chapter": "Separate the library from reusable sources",
+      "visual_focus": "Reset quizzes or source material; real application state, static frame.",
+      "narration": "Reset Quiz Library and Results removes quiz records, Generated Practice quizzes, generated pages, assets, attempts, and learning evidence. Packs, import banks, Law content, settings, and backups remain. Clear Imported or Source Content works in the other direction: it removes unprotected packs, source banks, drafts, and staging material while keeping published quizzes. Required pack assets are preserved for those quizzes. Both require confirmation and a safety backup."
+    },
+    {
+      "id": "005",
+      "capture": "series:215",
+      "title": "Restore default settings",
+      "visual_focus": "Restore default settings; real application state, static frame.",
+      "narration": "Reset Application Settings returns appearance, parsing, AI preferences, navigation, lifecycle, and folder preferences to defaults. It also includes every folder in Learning Scope again. Populated folder assignments remain, but empty custom folders and hidden-folder state reset. Quizzes, attempts, learning evidence, generated practice, source content, and backups remain. This reset requires confirmation and creates a safety backup."
+    },
+    {
+      "id": "006",
+      "capture": "series:216",
+      "title": "Understand the broadest operations",
+      "chapter": "Fresh state versus permanent removal",
+      "visual_focus": "Understand the broadest operations; real application state, static frame.",
+      "narration": "Reset DLMS to Fresh State clears active content, history, learning data, packs, Law records, and settings, then recreates an empty workspace. Existing backup archives, including the safety backup, survive. Permanent data removal is different: type the exact confirmation phrase and confirm again. It deletes the entire data directory including backups and shuts down DLMS. It does not uninstall the application, and creates no safety backup."
+    },
+    {
+      "id": "007",
+      "capture": "series:217",
+      "title": "Rebuild pages without resetting data",
+      "chapter": "Maintenance and small clear controls",
+      "visual_focus": "Rebuild pages without resetting data; real application state, static frame.",
+      "narration": "Use Rebuild All Quiz Pages when generated pages need refreshing from their canonical records. Confirm the operation and inspect its report; this is not a quiz or history reset. Failed individual rebuilds retain their old files. It does not make the same safety backup as a scoped reset, so create one first if you need a recovery point."
+    },
+    {
+      "id": "008",
+      "capture": "series:219",
+      "title": "Recognize form-level resets",
+      "visual_focus": "Recognize form-level resets; real application state, static frame.",
+      "narration": "Reset to Default Prompt replaces text in an AI settings form; Save AI Settings is still needed to persist it. Clear filters and Clear Selected Cards only reset the current view or selection. Authoring controls such as Clear Region or Clear Image Edits affect the current edit. Save determines whether editable pack changes persist; they do not clear your learning history."
+    },
+    {
+      "id": "009",
+      "capture": "series:212",
+      "title": "Keep cleanup proportional",
+      "visual_focus": "Keep cleanup proportional; real application state, static frame.",
+      "narration": "Canceling a staged import removes that temporary workflow, not the published library. Law's Cancel Workflow keeps saved imports and case reviews. Deleting an individual quiz, bank, pack, or case is a separate content-management action, not a global reset. There is no need to erase the library merely to finish or hide a generated review. Consult the manual's preservation table before any destructive operation."
+    }
+  ]
+}

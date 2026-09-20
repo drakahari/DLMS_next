@@ -37,10 +37,14 @@ def edit_json(path, mutate):
 def test_canonical_series_is_valid_and_ordered(tool):
     index, videos, captures = tool.load_series()
     assert index['voice'] == 'af_heart'
-    assert len(videos) == 6
-    assert len({d['id'] for d in videos}) == 6
-    assert len(captures) == 47
-    assert sum(len(d['scenes']) for d in videos) == 39
+    assert len(videos) == 13
+    assert len({d['id'] for d in videos}) == 13
+    assert len(captures) == 85
+    assert [d['id'] for d in videos[:6]] == [
+        'imports-and-repair', 'study-and-exam', 'daily-review',
+        'organize-your-library', 'reusable-study-packs', 'portability-and-backup']
+    assert sum(len(d['scenes']) for d in videos[:6]) == 39
+    assert sum(len(d['scenes']) for d in videos[6:]) == 45
     assert all(s['motion'] == 'static' and s['transition_in'] == 'cut' for d in videos for s in d['scenes'])
     assert tool.load_series() == (index, videos, captures)
 

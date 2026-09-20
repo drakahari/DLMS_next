@@ -22,5 +22,233 @@
     "recipe": "series:104",
     "image": "docs/demo-video/series/captures/104-matching-start.png",
     "sha256": "af31543c194cc027b14276b01a348b67b603eb6f61666b5b30754f9e587e1870"
+  },
+  {
+    "key": "series:201",
+    "recipe": "series:201",
+    "image": "docs/demo-video/series/captures/201-it-study.png",
+    "sha256": "2e034b3f1d145afe28657698be0f938ade90b4351add52c54404971de72d49a4"
+  },
+  {
+    "key": "series:202",
+    "recipe": "series:202",
+    "image": "docs/demo-video/series/captures/202-it-matching.png",
+    "sha256": "23114e62ea41ea3cbde430152951f84f339005cc93eaf0f9cfdfc5be8bc8889b"
+  },
+  {
+    "key": "series:203",
+    "recipe": "series:203",
+    "image": "docs/demo-video/series/captures/203-medical-study.png",
+    "sha256": "836019d94c648ef0d9bd7194462c2120a6a1a3bdcb92031638d4df0065651b16"
+  },
+  {
+    "key": "series:204",
+    "recipe": "series:204",
+    "image": "docs/demo-video/series/captures/204-medical-terms.png",
+    "sha256": "aa5795b306ff5d2e9ea4ea46081dfde19d466ec724569b977bac760385c3147c"
+  },
+  {
+    "key": "series:205",
+    "recipe": "series:205",
+    "image": "docs/demo-video/series/captures/205-other-studies.png",
+    "sha256": "c16b82d1faf03c4ceca86b95c3f1b0475a34992983f5e4f144b0051d4ff684bc"
+  },
+  {
+    "key": "series:206",
+    "recipe": "series:206",
+    "image": "docs/demo-video/series/captures/206-law-start.png",
+    "sha256": "d721a201162f69b546a8a8ee0a6267e7352a0960205e8edda0bc53e50f4c8667"
+  },
+  {
+    "key": "series:207",
+    "recipe": "series:207",
+    "image": "docs/demo-video/series/captures/207-law-import.png",
+    "sha256": "51021a3a9a97230582657d373b4efe31a4928588f02a617f938ced457c12e1a3"
+  },
+  {
+    "key": "series:208",
+    "recipe": "series:208",
+    "image": "docs/demo-video/series/captures/208-law-brief.png",
+    "sha256": "a2bb6a87d6f4d7f4709756c183207b45a70f7908f67f8e10cbdfe3a55a44efe7"
+  },
+  {
+    "key": "series:209",
+    "recipe": "series:209",
+    "image": "docs/demo-video/series/captures/209-law-irac.png",
+    "sha256": "0845f3d7f53d8322d666857f63251b225d589e92c8320861cfd3bde2df402a15"
+  },
+  {
+    "key": "series:210",
+    "recipe": "series:210",
+    "image": "docs/demo-video/series/captures/210-law-socratic.png",
+    "sha256": "6c9168e1849e8e23e7c0d291cc79266ba8d4e79c4210b4267e00eba67823222d"
+  },
+  {
+    "key": "series:211",
+    "recipe": "series:211",
+    "image": "docs/demo-video/series/captures/211-law-notes.png",
+    "sha256": "ea863d09100e80137e971731c47d042085ecce0b8de6ae6bb0ce1c23824ee4ef"
+  },
+  {
+    "key": "series:212",
+    "recipe": "series:212",
+    "image": "docs/demo-video/series/captures/212-reset-results.png",
+    "sha256": "ff69cdb3681276355fd190d65c4551977cb7c6cf6f906b034666158e5305a57e"
+  },
+  {
+    "key": "series:213",
+    "recipe": "series:213",
+    "image": "docs/demo-video/series/captures/213-reset-learning.png",
+    "sha256": "4185762b4a9a848ad84d266a92a80ccaddf5a0179c3b1902be826e9e54a6b24c"
+  },
+  {
+    "key": "series:214",
+    "recipe": "series:214",
+    "image": "docs/demo-video/series/captures/214-reset-library.png",
+    "sha256": "c04f02699b1a90e3746d5e2b4ece2027faf2c729fa3fff3a64c8c96d239a2a20"
+  },
+  {
+    "key": "series:215",
+    "recipe": "series:215",
+    "image": "docs/demo-video/series/captures/215-reset-settings.png",
+    "sha256": "1fdad1e633c42a34a15c6925faffdf69365928ff4d96dd96747389d8dc8a255f"
+  },
+  {
+    "key": "series:216",
+    "recipe": "series:216",
+    "image": "docs/demo-video/series/captures/216-reset-fresh.png",
+    "sha256": "8328478970ba36c7c030e5d7cd7ece8db5a4c2bf4fe856c40ebadb4a36144cec"
+  },
+  {
+    "key": "series:217",
+    "recipe": "series:217",
+    "image": "docs/demo-video/series/captures/217-maintenance.png",
+    "sha256": "547406e6123e82be70686438c2abb15c14e5f4f81a4c7fb10d43758ffe48611a"
+  },
+  {
+    "key": "series:218",
+    "recipe": "series:218",
+    "image": "docs/demo-video/series/captures/218-ai-settings.png",
+    "sha256": "17588d01fc46a3cc295565209dd6fa2b1e3a641b3ddf5e03ea5485f7346bd453"
+  },
+  {
+    "key": "series:219",
+    "recipe": "series:219",
+    "image": "docs/demo-video/series/captures/219-ai-prompts.png",
+    "sha256": "1e317e096e93d08e23176fa797d1b94b7fd0661a53e67805ac9d34029304b433"
+  },
+  {
+    "key": "series:220",
+    "recipe": "series:220",
+    "image": "docs/demo-video/series/captures/220-external-ai.png",
+    "sha256": "60a8af974bc51637f281dddf74a740e50af75b52cf2e25a02a822981324d108e"
+  },
+  {
+    "key": "series:221",
+    "recipe": "series:221",
+    "image": "docs/demo-video/series/captures/221-pack-prompt.png",
+    "sha256": "45c40d5eeba9fff875735fab9561a0a2f80f74f95b7325383959b6ccb4db18f1"
+  },
+  {
+    "key": "series:222",
+    "recipe": "series:222",
+    "image": "docs/demo-video/series/captures/222-pack-return.png",
+    "sha256": "eacfe5ffb8cb58b0b3c1f4a9e9e3c91fdbcd93487e6f3601bb47a53825955ca1"
+  },
+  {
+    "key": "series:223",
+    "recipe": "series:223",
+    "image": "docs/demo-video/series/captures/223-pack-validate.png",
+    "sha256": "8c05206b9111dee6f7ad816c214db1dc4138ab6dbc1d35b8efd290909e783782"
+  },
+  {
+    "key": "series:224",
+    "recipe": "series:224",
+    "image": "docs/demo-video/series/captures/224-pack-installed.png",
+    "sha256": "e0f51b0809961aab6bcc13ce73d0a983cccf23a38a819b277f93b844618bdc9f"
+  },
+  {
+    "key": "series:225",
+    "recipe": "series:225",
+    "image": "docs/demo-video/series/captures/225-anki-selection.png",
+    "sha256": "0e1db5afd548440f1a06e021920b61048761f83a54c2f07ebf1c8d00183430c2"
+  },
+  {
+    "key": "series:226",
+    "recipe": "series:226",
+    "image": "docs/demo-video/series/captures/226-anki-preview.png",
+    "sha256": "ca0fd5c1cc7f287341da1e58154dd7c584cdadf1abe08fea37cdd901226b5480"
+  },
+  {
+    "key": "series:227",
+    "recipe": "series:227",
+    "image": "docs/demo-video/series/captures/227-print-front.png",
+    "sha256": "4be6bed28dfc66dfc53b12f60aac3ab4e301c7c8cf5ef876fb7dd1a2c9e82ee1"
+  },
+  {
+    "key": "series:228",
+    "recipe": "series:228",
+    "image": "docs/demo-video/series/captures/228-print-back.png",
+    "sha256": "bce75761f76775b80f20a3ac9d83cdbebdaec2a1e73b038708c14cc4a2ff169b"
+  },
+  {
+    "key": "series:229",
+    "recipe": "series:229",
+    "image": "docs/demo-video/series/captures/229-image-upload.png",
+    "sha256": "b5e3d8a6cd486ab71c89bb8b839f1b1d7b90c3a3d45349c5ee50fae61e760061"
+  },
+  {
+    "key": "series:230",
+    "recipe": "series:230",
+    "image": "docs/demo-video/series/captures/230-image-question.png",
+    "sha256": "5dba36aafa399c5f8d2933de11d1fb0a80ef5637e8265cb2397b8354ac8be625"
+  },
+  {
+    "key": "series:231",
+    "recipe": "series:231",
+    "image": "docs/demo-video/series/captures/231-image-region.png",
+    "sha256": "df8953df244fdf12cc157de6076049ae3ee2dfc825ca708d024abcca071e818d"
+  },
+  {
+    "key": "series:232",
+    "recipe": "series:232",
+    "image": "docs/demo-video/series/captures/232-image-saved.png",
+    "sha256": "d2288b4913494f311ac173a860a33fa5ecd9bbfe25ec2b2f38e1682c9f1f4fe9"
+  },
+  {
+    "key": "series:233",
+    "recipe": "series:233",
+    "image": "docs/demo-video/series/captures/233-image-editor.png",
+    "sha256": "9c41a8645af0e7894efcf4c801bf6716d6202d41beb74c7fa87feb640bff6b3c"
+  },
+  {
+    "key": "series:234",
+    "recipe": "series:234",
+    "image": "docs/demo-video/series/captures/234-image-prep.png",
+    "sha256": "bd1ef93e98dbad5030d50e27ec6b0fca2123d849d4d32fb7d757dd23dc9fc3cd"
+  },
+  {
+    "key": "series:235",
+    "recipe": "series:235",
+    "image": "docs/demo-video/series/captures/235-it-images.png",
+    "sha256": "6a439cbcd9223f226495954f467260c95628a952108714b7088f5962adbd5ee5"
+  },
+  {
+    "key": "series:236",
+    "recipe": "series:236",
+    "image": "docs/demo-video/series/captures/236-clear-resume.png",
+    "sha256": "c5532309259ef3eb74a9ee88b673e730c11147d60e12a32c14222cae03172d96"
+  },
+  {
+    "key": "series:237",
+    "recipe": "series:237",
+    "image": "docs/demo-video/series/captures/237-ai-review.png",
+    "sha256": "1b113d1e74d23a732f4b34fa061af47bf255a39690fa5e6cfa5821f0d75e5e60"
+  },
+  {
+    "key": "series:238",
+    "recipe": "series:238",
+    "image": "docs/demo-video/series/captures/238-anki-export.png",
+    "sha256": "1e03b6c71f4fe0323429d786617c0b59ec26d4dfffeb4080994c2deb93d94d1f"
   }
 ]

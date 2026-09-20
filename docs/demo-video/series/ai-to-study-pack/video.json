@@ -1,0 +1,69 @@
+{
+  "id": "ai-to-study-pack",
+  "title": "From an AI pack request to reusable local practice",
+  "purpose": "Demonstrate prompt configuration, a truthful original returned ZIP, independent validation, explicit install and source-aware practice.",
+  "target_seconds": [
+    120,
+    260
+  ],
+  "manual_refs": [
+    "docs/user-manual/12-external-ai-workflows.md",
+    "docs/user-manual/13-study-packs-and-content-packs.md"
+  ],
+  "implementation_refs": [
+    "dlms/routes/study_packs.py",
+    "dlms/routes/content_packs.py",
+    "dlms/services/content_packs.py"
+  ],
+  "youtube_title": "DLMS: From an AI pack request to reusable local practice",
+  "description": "Demonstrate prompt configuration, a truthful original returned ZIP, independent validation, explicit install and source-aware practice. Original demonstration data; candidate pending editorial review.",
+  "thumbnail_text": "PROMPT TO STUDY PACK",
+  "thumbnail_capture": "series:221",
+  "scenes": [
+    {
+      "id": "001",
+      "capture": "series:221",
+      "title": "Request reusable material",
+      "chapter": "Configure the pack request",
+      "visual_focus": "Request reusable material; real application state, static frame.",
+      "narration": "The AI Study Pack Builder prepares a request for a reusable package. Choose the topic, domain, difficulty, size, and content types. Image options describe what you want the outside system to supply. These are instructions in a locally generated prompt; changing them does not generate an image, contact a provider, or modify an installed dataset."
+    },
+    {
+      "id": "002",
+      "capture": "series:222",
+      "title": "Return the requested package",
+      "visual_focus": "Return the requested package; real application state, static frame.",
+      "narration": "Copy the prompt to your chosen external system only after checking what you are sharing. Bring back the completed Study Pack ZIP with its manifest, dataset files, and required assets. Plain text alone is not an installable package. Our demonstration ZIP is original author-written content, used to show the return workflow without suggesting that an AI produced it."
+    },
+    {
+      "id": "003",
+      "capture": "series:223",
+      "title": "Read independent validation",
+      "chapter": "Validate before installing",
+      "visual_focus": "Read independent validation; real application state, static frame.",
+      "narration": "DLMS independently validates the package before installation. Read the report, including warnings, source metadata, and image licensing. Passing these checks means the package meets structural requirements; it does not prove every answer or citation. Medical requests add stricter source and safety guidance, but you still need to verify the learning material against appropriate references."
+    },
+    {
+      "id": "004",
+      "capture": "series:224",
+      "title": "Install explicitly",
+      "visual_focus": "Install explicitly; real application state, static frame.",
+      "narration": "Confirm installation only after reviewing the report. The success screen means the source package is installed locally; it has not automatically created a quiz. Content Packs manages the package, its validation, and tracked generated quizzes. Study Packs is the learner-facing catalog for choosing an installed dataset and turning it into an activity."
+    },
+    {
+      "id": "005",
+      "capture": "overview:028B",
+      "title": "Choose how to practice",
+      "chapter": "Datasets, quizzes and provenance",
+      "visual_focus": "Choose how to practice; real application state, static frame.",
+      "narration": "In the catalog, matching controls choose pair count and direction; image datasets provide visual targets; prepared-question datasets supply authored questions. These controls affect the activity you create while keeping the source installed. Inspect the pack name and dataset before creating practice so you know what you are studying, rather than treating all generated material as interchangeable."
+    },
+    {
+      "id": "006",
+      "capture": "overview:028A",
+      "title": "Keep the different containers distinct",
+      "visual_focus": "Keep the different containers distinct; real application state, static frame.",
+      "narration": "A normal quiz is the playable activity. A pack is reusable source content. A Portable Quiz Bundle transfers existing quizzes, while Generated Practice selects questions from your local learning workflow; it is not an AI request. Export or back up sources you want to keep. Source management and quiz management remain separate decisions after installation."
+    }
+  ]
+}
