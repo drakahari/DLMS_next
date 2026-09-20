@@ -522,20 +522,73 @@ create or upload `DLMS-3.2.0-source.zip` or another manual source archive.
 
 ## Post-upload byte verification and normal-user UAT
 
-Download each published platform asset and the published `SHA256SUMS.txt` once
-into a clean directory. Recompute each download's SHA-256 and compare it with
-the corresponding pre-upload value. This establishes that GitHub is serving the
-exact final archive that passed structural, clean-extraction, and native smoke
-validation. If the bytes match, do not repeat the full native smoke solely
-because the file was downloaded from GitHub.
+DLMS-137 makes this the final acceptance gate for each uploaded package, on a
+draft release or after publication. With GitHub CLI (`gh`) installed and access
+to the release (authenticate for private/draft releases), run:
 
-On Windows, additionally use Explorer to extract the published ZIP, confirm the
-versioned package folder and exact stable-named executable, and exercise the
-documented SmartScreen or Smart App Control first-run path. On macOS, use Finder
-to extract the published ZIP, confirm `DLMS.app` appears directly at the
-extraction root, drag or move it to `/Applications`, and exercise the documented
-Gatekeeper first-launch path. These are normal-user UAT checks separate from the
-automated structural and server smoke tests.
+```text
+python tools/accept_downloaded_release.py --repo drakahari/DLMS_next --tag v3.2.0 --asset DLMS-3.2.0-macos-arm64.zip
+python tools/accept_downloaded_release.py --repo drakahari/DLMS_next --tag v3.2.0 --asset DLMS-3.2.0-windows11-x86_64.zip
+```
+
+Repeat for all six final package names. The tool downloads the exact named asset
+and `SHA256SUMS.txt` from the same explicit GitHub release, checks the published
+checksum, and calls the existing package verifier. It never uploads or changes
+a release. The trusted local release tag must already exist; `--source-root`
+can select another local repository containing it. Only `app.py` and the two
+support documents are read from that tag into temporary verifier inputs, without
+switching branches. This avoids comparing older packages with newer support
+documents. The tag's APP_VERSION must match the requested version.
+
+Downloads and `acceptance.json` are retained under a unique ignored
+`build/downloaded-release/<tag>/<asset>/<run>/` directory. `--output-dir PATH`
+selects an explicit **new** directory; existing directories/records are refused.
+Temporary source inputs are cleaned. Failures produce a nonzero exit and failed
+JSON evidence; invalid arguments or an unwritable/existing output directory fail
+before evidence can be created. Failed downloads may leave partial files in
+that failed run directory; never use them for manual acceptance.
+
+Evidence includes repository/tag, local tag commit, asset and manifest hashes,
+UTC timestamps, checksum/package/native-smoke results, and automated
+`PASSED`/`FAILED` status. Manual platform acceptance always remains `REQUIRED`.
+An automated pass without `--smoke` proves checksum and package structure only.
+Compare the downloaded hash with the native build's acceptance record as well:
+agreement with a manifest hosted alongside the package alone is not independent
+proof of build provenance. The local tag is a trusted prerequisite, not a remote
+tag-authenticity check.
+
+`--smoke` additionally delegates to the existing clean-extraction/native-smoke
+verifier on the matching native host, including runtime version verification.
+Wrong-host and smoke failures fail acceptance; they are never silently skipped.
+No OS security settings are changed. Older releases such as the original 3.2.0
+may lack the runtime-version header required by the current smoke gate. Their
+checksum/structure acceptance still works; use their recorded native UAT and
+the manual checks below rather than weakening the current smoke gate. Identical
+bytes with existing native qualification need not be smoked again solely
+because they were downloaded.
+
+**Manual macOS acceptance:** use the actual browser-downloaded release ZIP
+(verify its hash against the accepted asset), extract with Finder, and confirm
+root-level `DLMS.app`, `README.txt` and `sample_quiz.txt`. Move the app to
+`/Applications`, attempt first launch, and record the unsigned/unnotarized
+Gatekeeper behavior. Verify the release README's Control-click/Open or
+Privacy & Security → Open Anyway workflow where the OS offers it. Confirm DLMS
+runs afterward, opens its UI, shuts down and restarts normally. Record OS version,
+warnings and outcome separately alongside the JSON evidence.
+
+**Manual Windows acceptance:** use the actual browser-downloaded ZIP (verify
+its hash), extract with Explorer, and launch the executable in the versioned
+folder. Record any unsigned-app SmartScreen or Smart App Control warning. Verify
+the README's user-approval path where offered, then confirm normal DLMS operation,
+shutdown and restart. If policy blocks launch without an approval path, record
+that result; do not disable protection to obtain a pass.
+
+CLI downloads/native smoke do not establish browser download-origin marking or
+first-launch warning behavior. A CLI download that launches without a warning
+does not complete either manual check. Do not remove quarantine attributes,
+unblock files programmatically, or bypass Gatekeeper, SmartScreen or Smart App
+Control. No tool result claims the manual checks passed. If draft assets change,
+rerun acceptance against the final published bytes.
 
 For the target platform's expected normal data location without starting DLMS:
 
