@@ -33,7 +33,9 @@ SaaS product, cloud service, or enterprise multi-user platform.
   application and open its browser UI; ordinary use does not require managing a
   separate database or web server.
 
-## Watch DLMS in Action
+## Learn DLMS
+
+### Watch DLMS in Action
 
 See how DLMS 3.2 brings local-first importing, quiz practice, timed assessments,
 richer question types, and learning-guided review into one desktop workspace.
@@ -41,6 +43,13 @@ richer question types, and learning-guided review into one desktop workspace.
 [![Watch the DLMS 3.2 overview](docs/demo-video/images/dlms-3.2-youtube-thumbnail.jpg)](https://www.youtube.com/watch?v=nrUz3umt8vk)
 
 [Watch the 7:45 DLMS 3.2 overview on YouTube](https://www.youtube.com/watch?v=nrUz3umt8vk)
+
+### Read the User Manual
+
+Follow step-by-step guidance for setup, importing content, Study and Exam modes,
+Learning Intelligence, Packs, Anki, backups, and everyday workflows.
+
+[Read the DLMS User Manual](docs/user-manual/README.md)
 
 ## Highlights
 
@@ -145,7 +154,12 @@ For normal use, download the package for your operating system from the
 [Releases page](../../releases). Every final package contains the native
 application, `README.txt`, and `sample_quiz.txt`.
 
-| Platform | DLMS 3.2.0 package |
+The following are the planned final 3.2.0 package names. Availability is determined
+by the assets on the Releases page; earlier 3.2.0 builds are not final artifacts.
+All final packages must be rebuilt and validated from the frozen release commit.
+See the [3.2.0 release notes](docs/releases/3.2.0.md) for highlights and upgrade guidance.
+
+| Platform | Final DLMS 3.2.0 package name |
 | --- | --- |
 | Fedora 44 x86-64 | `DLMS-3.2.0-fedora44-x86_64.tar.gz` |
 | Ubuntu 24.04 x86-64 | `DLMS-3.2.0-ubuntu24.04-x86_64.tar.gz` |
@@ -180,7 +194,7 @@ this targeted fallback:
 xattr -dr com.apple.quarantine /Applications/DLMS.app
 ```
 
-The published macOS package is for Apple Silicon, not Intel.
+The supported macOS release target is Apple Silicon, not Intel.
 
 ## Getting started
 
@@ -237,7 +251,10 @@ Headless/SSH detection affects automatic browser launch, not the network bind.
 
 ## Documentation
 
-- The in-application **Help Center** is the primary user guide.
+- [DLMS User Manual](docs/user-manual/README.md) provides the canonical Markdown
+  guide; the in-application **Help Center** offers guidance while using DLMS.
+- [3.2.0 release checklist](docs/releases/3.2.0-RELEASE-CHECKLIST.md) records the
+  source-freeze and native-package gates for maintainers.
 - [OCR setup and frozen packaging](docs/OCR_PACKAGING.md) explains source-mode
   Tesseract setup and the strict native OCR bundle contract.
 - [Native release verification](docs/RELEASE_VERIFICATION.md) documents build,

@@ -9,7 +9,7 @@ build/
 .ocr-bundle/
 
 # Local release artifacts (never commit)
-releases/
+/releases/
 
 # ----------------------------
 # Python / venv / caches

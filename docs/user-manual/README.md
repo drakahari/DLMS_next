@@ -1,30 +1,16 @@
-# DLMS User Manual source
+# DLMS User Manual
 
-This directory is the canonical source for the DLMS end-user manual. It
-contains the Phase 1 product audit and manual architecture for **DLMS 3.2.0**,
-plus the substantive Phase 2 chapter draft and its first integrated editorial
-pass. The reproducible screenshot set has also been integrated into the
-chapters. Final human review and release preparation remain.
+The canonical user guide for **DLMS 3.2.0** covers installation, importing your
+material, studying, timed assessments, learning-guided review, and keeping your
+data portable. Start with [Introduction](01-introduction.md), then
+[Installation and First Launch](02-installation-and-first-launch.md), or choose
+a workflow below. For a quick tour, [watch the DLMS 3.2 overview](https://www.youtube.com/watch?v=nrUz3umt8vk).
 
 Markdown is the editable source of truth. A PDF may later be generated as an
 optional distribution artifact; it is not required to maintain or use the
 canonical manual and must not replace these files.
 
-## Phase 1 files
-
-- [Feature inventory](FEATURE_INVENTORY.md) — code-verified screens, features,
-  workflows, limits, dependencies, and documentation risks.
-- [Terminology](TERMINOLOGY.md) — preferred user-facing vocabulary and terms
-  that need careful distinction.
-- [Screenshot plan](SCREENSHOT_PLAN.md) — a prioritized, privacy-safe capture
-  plan; it does not contain or request a screenshot for every page.
-- [Screenshot manifest](SCREENSHOT_MANIFEST.md) — capture status, automation
-  classification, filenames, and regeneration details for the 27-shot set.
-
-These audit artifacts should remain available after the narrative chapters are
-written. They provide the traceability needed to keep later editions accurate.
-
-## Drafted manual chapters
+## Manual chapters
 
 - [1. Introduction](01-introduction.md)
 - [2. Installation and First Launch](02-installation-and-first-launch.md)
@@ -50,6 +36,17 @@ written. They provide the traceability needed to keep later editions accurate.
 - [Appendix: Keyboard and Accessibility](appendix-keyboard-and-accessibility.md)
 - [Appendix: Glossary](appendix-glossary.md)
 
+## Maintainer reference
+
+The following records support documentation maintenance; the chapters above are
+the reader's entry point.
+
+- [Feature inventory](FEATURE_INVENTORY.md) — code-verified workflows, limits,
+  dependencies, and historical audit findings.
+- [Terminology](TERMINOLOGY.md) — user-facing vocabulary and distinctions.
+- [Screenshot plan](SCREENSHOT_PLAN.md) and [screenshot manifest](SCREENSHOT_MANIFEST.md)
+  — synthetic capture recipes, status, and regeneration details.
+
 ## Intended audience and boundary
 
 The manual is for an ordinary person installing and using DLMS as a local,
@@ -73,8 +70,8 @@ local-versus-LAN behavior still belong in the manual because they affect use.
 
 ## Manual chapter architecture
 
-The substantive Phase 2 draft follows this modular chapter order. Each linked
-file contains review-ready prose; no empty chapter placeholders are used.
+The manual follows this modular chapter order. Each linked file contains
+instructions and supporting screenshots where useful.
 
 1. **[Introduction](01-introduction.md)** — product purpose, local-first model, privacy boundary,
    supported question and study material types, and how to use the manual.
@@ -235,11 +232,9 @@ Pin tool versions (or a reproducible container) only after that evaluation.
 The repository should decide separately whether released PDFs are attached to
 GitHub releases or retained in a versioned documentation archive.
 
-## Phase boundaries
+## Release boundary
 
-Phase 1 inventories and designs. The substantive Phase 2 draft now covers all
-planned chapters and appendices, and the first integrated editorial pass is
-complete. The first reproducible screenshot set is integrated into the
-chapters. Final human review, an optional renderer prototype and PDF, and
-publication are later approved phases. They must not be inferred from the
-presence of this directory.
+This manual documents the final 3.2.0 source behavior. Native package publication
+is governed by the [release checklist](../releases/3.2.0-RELEASE-CHECKLIST.md),
+not by the presence of documentation. A PDF remains optional and is not a
+release gate. Historical audit records above retain their original context.

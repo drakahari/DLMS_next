@@ -6,6 +6,14 @@ and stage the release. It is deliberately small: it verifies the exact archives
 being published and requires real native UAT where desktop behavior cannot be
 established from another operating system.
 
+For 3.2.0, follow the [final release checklist](releases/3.2.0-RELEASE-CHECKLIST.md).
+Every public native package must be rebuilt from the exact final frozen release
+commit after the final source/documentation changes are committed. Earlier
+3.2.0 builds and their hashes are not final release artifacts, including builds
+that predate the Content Packs metric-card CSS fix. Create each final user-facing
+package on its named native host; the assembly host only verifies and collects
+the unchanged finished archives.
+
 `tools/verify_release_artifact.py` never imports `app.py`. Structural and
 checksum checks are therefore safe to run from a development checkout without
 creating or selecting normal DLMS user data. Its optional native smoke test sets
@@ -237,8 +245,8 @@ inputs have already been collected in one staging directory:
 
 ```bash
 python tools/package_release.py \
-  /home/drak/DLMS_builds/DLMS-3.2.0 \
-  /home/drak/DLMS_builds/DLMS-3.2.0-packages
+  releases \
+  build/release-packages/3.2.0
 ```
 
 This mode validates all six native inputs before writing anything. It refuses
@@ -400,7 +408,7 @@ validates each file again, and hashes those same bytes; it does not need the
 intermediate native artifacts:
 
 ```bash
-PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.2.0-packages
+PACKAGE_DIR="$PWD/build/release-packages/3.2.0"
 python tools/generate_sha256sums.py --output "$PACKAGE_DIR/SHA256SUMS.txt" \
   "$PACKAGE_DIR/DLMS-3.2.0-fedora44-x86_64.tar.gz" \
   "$PACKAGE_DIR/DLMS-3.2.0-ubuntu24.04-x86_64.tar.gz" \
@@ -417,7 +425,7 @@ archives, or `SHA256SUMS.txt` itself. Verify package contents, the exact six-fil
 set, and every checksum:
 
 ```bash
-PACKAGE_DIR=/home/drak/DLMS_builds/DLMS-3.2.0-packages
+PACKAGE_DIR="$PWD/build/release-packages/3.2.0"
 python tools/verify_release_package.py --complete-set \
   --checksums "$PACKAGE_DIR/SHA256SUMS.txt" \
   "$PACKAGE_DIR/DLMS-3.2.0-fedora44-x86_64.tar.gz" \

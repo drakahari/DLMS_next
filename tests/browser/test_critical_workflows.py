@@ -10939,9 +10939,17 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         browser.click(".study-mode-btn")
         recovery_key = browser.evaluate("quizRecoveryController.storageKey")
         browser.click("#choices .choice[data-index='0']")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        # Generated Study sessions remain resumable until Finish Review succeeds.
+        # Saving the last answer alone must not clear this browser's checkpoint.
+        assert browser.evaluate("generatedPracticeStatus.completed") is False
+        assert browser.evaluate(
+            f"localStorage.getItem({json.dumps(recovery_key)}) !== null"
+        ) is True
+        browser.click("#finishReviewBtn")
         browser.wait_for(
             f"localStorage.getItem({json.dumps(recovery_key)}) === null && "
-            "studyLearningEventSaves.size === 0"
+            "studyLearningEventSaves.size === 0 && generatedPracticeStatus.completed === true"
         )
         return recovery_key
 
