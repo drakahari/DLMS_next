@@ -6591,8 +6591,8 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     )
     assert empty_editor == {
         "error": (
-            "The selected image dataset could not be loaded. Check the local DLMS "
-            "log for details."
+            "The selected image dataset could not be loaded. Restart DLMS and retry. "
+            "If it persists, report this action and your DLMS version."
         ),
         "pack": "pack",
         "kind": "hotspot",
