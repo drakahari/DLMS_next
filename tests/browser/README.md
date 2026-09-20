@@ -10,10 +10,12 @@ DLMS_RUN_BROWSER_TESTS=1 .venv/bin/python -m pytest -q -m browser tests/browser
 
 The suite uses Firefox's built-in WebDriver BiDi endpoint and the Python
 standard library; Selenium, Playwright, geckodriver, network access, and external
-services are not required. Each run creates a fresh DLMS data root, generated
-quiz fixtures, and loopback server. Each workflow gets a fresh Firefox profile,
-process, BiDi connection, and browsing context, so transport or browser state
-cannot leak into the next workflow. Navigation uses BiDi's non-blocking
+services are not required. Each workflow creates a fresh DLMS data root,
+generated quiz fixtures, loopback server, Firefox profile, process, BiDi
+connection, and browsing context, so persisted application state, transport
+state, and browser state cannot leak into the next workflow. Tests that restart
+Firefox deliberately retain their own server and data root for the duration of
+that single workflow. Navigation uses BiDi's non-blocking
 acknowledgement, then polls the replacement document to full readiness through
 ordinary script commands instead of depending on Firefox's unstable navigation
 completion response. Existing page-specific DOM, status, persistence, and

@@ -122,39 +122,16 @@ def edit_quiz(dependencies, quiz_id):
     return render_template("quiz/edit.html", quiz=quiz, questions=question_list, exam_minutes=exam_minutes, app_version=APP_VERSION)
 
 def rebuild_all_quiz_html(dependencies):
-    load_registry = dependencies.load_registry
-    rebuild_quiz_html_from_registry = dependencies.rebuild_quiz_html_from_registry
+    confirmation = request.get_json(silent=True) or {}
+    if confirmation.get("confirmation") != "rebuild-all-quiz-pages":
+        return jsonify({
+            "status": "error",
+            "error": "Confirmation is required before rebuilding quiz pages.",
+        }), 400
 
-    registry = load_registry()
-
-    rebuilt = 0
-    failed = []
-
-    for entry in registry:
-        quiz_id = entry.get("id")
-
-        if quiz_id is None:
-            continue
-
-        try:
-            quiz_id = int(quiz_id)
-
-            if rebuild_quiz_html_from_registry(quiz_id):
-                rebuilt += 1
-            else:
-                failed.append(quiz_id)
-
-        except Exception as e:
-            print(
-                f"[REBUILD ALL] Failed quiz_id={quiz_id}: {e}"
-            )
-            failed.append(quiz_id)
-
-    return jsonify({
-        "status": "complete",
-        "rebuilt": rebuilt,
-        "failed": failed
-    })
+    result = dependencies.rebuild_registered_quiz_artifacts()
+    result["status"] = "complete" if not result["failed"] else "partial"
+    return jsonify(result)
 
 def save_edited_quiz(dependencies, quiz_id):
     get_db = dependencies.get_db
@@ -166,6 +143,11 @@ def save_edited_quiz(dependencies, quiz_id):
 
     conn = get_db()
     cur = conn.cursor()
+
+    quiz_row = cur.execute(
+        "SELECT generation_kind FROM quizzes WHERE id = ?", (quiz_id,)
+    ).fetchone()
+    generation_kind = quiz_row[0] if quiz_row else None
 
     action = request.form.get("action", "")
 
@@ -284,12 +266,24 @@ def save_edited_quiz(dependencies, quiz_id):
 
         next_qnum = (row[0] or 0) + 1
 
+        lineage = dependencies.question_lineage_for_insert(
+            cur, {}, generation_kind=generation_kind
+        )
+
         cur.execute(
             """
-            INSERT INTO questions (quiz_id, question_number, question_text)
-            VALUES (?, ?, ?)
+            INSERT INTO questions (
+                quiz_id, question_number, question_text,
+                question_uid, canonical_question_uid, source_question_uid,
+                is_generated_copy
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (quiz_id, next_qnum, "New question")
+            (
+                quiz_id, next_qnum, "New question",
+                lineage["question_uid"], lineage["canonical_question_uid"],
+                lineage["source_question_uid"], lineage["is_generated_copy"],
+            )
         )
 
         question_id = cur.lastrowid

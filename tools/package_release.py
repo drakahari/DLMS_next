@@ -1,8 +1,10 @@
-"""Package already-built DLMS artifacts into the six final download archives.
+"""Package already-built DLMS artifacts into final download archives.
 
-The input staging directory is read-only. Outputs are assembled in a temporary
-directory, validated, and moved into a distinct output directory only after all
-six packages pass validation. This tool never builds or modifies native files.
+Single-target mode packages and optionally native-smokes one artifact on its
+build host. Coordinated mode retains the six-artifact workflow. Inputs remain
+read-only; outputs are assembled in a temporary directory, validated, and moved
+into a distinct output directory only after the required gates pass. This tool
+never builds or modifies native files.
 """
 
 from __future__ import annotations
@@ -17,7 +19,11 @@ import zipfile
 from pathlib import Path
 
 from verify_release_artifact import release_version, sha256_file, verify_artifact
-from verify_release_package import expected_packages, verify_release_package
+from verify_release_package import (
+    clean_extract_and_smoke,
+    expected_packages,
+    verify_release_package,
+)
 
 
 LINUX_PLATFORMS = (
@@ -25,6 +31,10 @@ LINUX_PLATFORMS = (
     "ubuntu24.04-x86_64",
     "ubuntu26.04-x86_64",
     "omarchy-quattro-x86_64",
+)
+RELEASE_TARGETS = LINUX_PLATFORMS + (
+    "windows11-x86_64",
+    "macos-arm64",
 )
 
 
@@ -107,13 +117,121 @@ def _input_artifacts(staging_dir: Path, version: str) -> list[tuple[str, Path, s
     return artifacts
 
 
-def package_release(staging_dir: Path, output_dir: Path, source_root: Path) -> list[Path]:
-    source_root = source_root.resolve()
-    version = release_version(source_root)
+def _single_target_contract(target: str, version: str) -> tuple[str, str, str]:
+    """Return verifier target, native artifact name, and final package name."""
+    if target in LINUX_PLATFORMS:
+        artifact_name = f"DLMS-{version}-{target}"
+        return "linux-x86_64", artifact_name, artifact_name + ".tar.gz"
+    if target == "windows11-x86_64":
+        base = f"DLMS-{version}-{target}"
+        return "windows-x86_64", base + ".exe", base + ".zip"
+    if target == "macos-arm64":
+        name = f"DLMS-{version}-{target}.zip"
+        return "macos-arm64", name, name
+    raise ValueError(f"unsupported release target: {target}")
+
+
+def _release_assets(source_root: Path) -> Path:
     assets_dir = source_root / "release_assets"
     for name in ("README.txt", "sample_quiz.txt"):
         if not (assets_dir / name).is_file():
             raise ValueError(f"missing authoritative release asset: {assets_dir / name}")
+    return assets_dir
+
+
+def _assemble_package(
+    source: Path,
+    destination: Path,
+    target: str,
+    output_name: str,
+    assets_dir: Path,
+    version: str,
+) -> None:
+    spec = expected_packages(version)[output_name]
+    if target == "linux-x86_64":
+        assert spec.wrapper is not None
+        _package_linux(source, destination, spec.wrapper, assets_dir)
+    elif target == "windows-x86_64":
+        assert spec.wrapper is not None
+        _package_windows(source, destination, spec.wrapper, assets_dir)
+    elif target == "macos-arm64":
+        _package_macos(source, destination, assets_dir)
+    else:
+        raise ValueError(f"unsupported package assembly target: {target}")
+
+
+def package_single_target(
+    target: str,
+    artifact: Path,
+    output_dir: Path,
+    source_root: Path,
+    *,
+    smoke: bool = False,
+) -> Path:
+    """Create, verify, and optionally native-smoke one final release package."""
+    source_root = source_root.resolve()
+    version = release_version(source_root)
+    assets_dir = _release_assets(source_root)
+    verifier_target, artifact_name, output_name = _single_target_contract(
+        target, version
+    )
+    artifact = artifact.resolve()
+    if artifact.name != artifact_name:
+        raise ValueError(
+            f"{target} requires canonical native artifact name "
+            f"{artifact_name}; got {artifact.name}"
+        )
+    artifact_errors = verify_artifact(artifact, verifier_target, version)
+    if artifact_errors:
+        raise ValueError(
+            f"invalid native artifact {artifact.name}: {'; '.join(artifact_errors)}"
+        )
+
+    output_dir = output_dir.resolve()
+    if output_dir == artifact.parent:
+        raise ValueError(
+            "output directory must differ from the native artifact directory"
+        )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    final_path = output_dir / output_name
+    if final_path.exists():
+        raise FileExistsError(
+            f"refusing to overwrite existing final package: {final_path.name}"
+        )
+
+    with tempfile.TemporaryDirectory(
+        prefix=".dlms-package-", dir=output_dir
+    ) as temporary:
+        temporary_path = Path(temporary) / output_name
+        _assemble_package(
+            artifact,
+            temporary_path,
+            verifier_target,
+            output_name,
+            assets_dir,
+            version,
+        )
+        package_errors = verify_release_package(temporary_path, source_root)
+        if package_errors:
+            raise ValueError(
+                f"invalid generated package {output_name}: "
+                + "; ".join(package_errors)
+            )
+        if smoke:
+            smoke_errors = clean_extract_and_smoke(temporary_path, source_root)
+            if smoke_errors:
+                raise ValueError(
+                    f"final-package native smoke failed for {output_name}: "
+                    + "; ".join(smoke_errors)
+                )
+        os.replace(temporary_path, final_path)
+    return final_path
+
+
+def package_release(staging_dir: Path, output_dir: Path, source_root: Path) -> list[Path]:
+    source_root = source_root.resolve()
+    version = release_version(source_root)
+    assets_dir = _release_assets(source_root)
 
     staging_dir = staging_dir.resolve()
     output_dir = output_dir.resolve()
@@ -143,13 +261,9 @@ def package_release(staging_dir: Path, output_dir: Path, source_root: Path) -> l
         completed: list[Path] = []
         for target, source, output_name in artifacts:
             destination = temporary_dir / output_name
-            spec = expected_packages(version)[output_name]
-            if target == "linux-x86_64":
-                _package_linux(source, destination, spec.wrapper, assets_dir)
-            elif target == "windows-x86_64":
-                _package_windows(source, destination, spec.wrapper, assets_dir)
-            else:
-                _package_macos(source, destination, assets_dir)
+            _assemble_package(
+                source, destination, target, output_name, assets_dir, version
+            )
             errors = verify_release_package(destination, source_root)
             if errors:
                 raise ValueError(f"invalid generated package {output_name}: {'; '.join(errors)}")
@@ -165,13 +279,43 @@ def package_release(staging_dir: Path, output_dir: Path, source_root: Path) -> l
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Package six already-built DLMS native artifacts."
+        description=(
+            "Package one native DLMS artifact on its build host, or package "
+            "the coordinated six-artifact release set."
+        )
     )
     parser.add_argument(
-        "staging_dir", type=Path, help="read-only native artifact directory"
+        "staging_dir",
+        nargs="?",
+        type=Path,
+        help="all-six mode: read-only native artifact directory",
     )
     parser.add_argument(
-        "output_dir", type=Path, help="distinct destination for final archives"
+        "output_dir",
+        nargs="?",
+        type=Path,
+        help="all-six mode: distinct destination for final archives",
+    )
+    parser.add_argument(
+        "--target",
+        choices=RELEASE_TARGETS,
+        help="single-target mode: exact native release target",
+    )
+    parser.add_argument(
+        "--artifact",
+        type=Path,
+        help="single-target mode: canonical already-built native artifact",
+    )
+    parser.add_argument(
+        "--output-dir",
+        dest="single_output_dir",
+        type=Path,
+        help="single-target mode: distinct final-package directory",
+    )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="single-target mode: clean-extract and native-smoke the final archive",
     )
     parser.add_argument(
         "--source-root",
@@ -181,7 +325,39 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        packages = package_release(args.staging_dir, args.output_dir, args.source_root)
+        if args.target is not None:
+            if args.staging_dir is not None or args.output_dir is not None:
+                parser.error(
+                    "single-target mode uses --artifact and --output-dir, not positional paths"
+                )
+            if args.artifact is None or args.single_output_dir is None:
+                parser.error(
+                    "--target requires both --artifact and --output-dir"
+                )
+            package = package_single_target(
+                args.target,
+                args.artifact,
+                args.single_output_dir,
+                args.source_root,
+                smoke=args.smoke,
+            )
+            print(f"Created and verified final package: {package}")
+            if args.smoke:
+                print(f"Clean extraction and native smoke passed: {package.name}")
+            print(f"SHA-256: {sha256_file(package)}  {package.name}")
+            return 0
+
+        if args.artifact is not None or args.single_output_dir is not None:
+            parser.error("--artifact and --output-dir require --target")
+        if args.smoke:
+            parser.error("--smoke is available only with --target")
+        if args.staging_dir is None or args.output_dir is None:
+            parser.error(
+                "all-six mode requires staging_dir and output_dir, or use --target"
+            )
+        packages = package_release(
+            args.staging_dir, args.output_dir, args.source_root
+        )
     except (OSError, ValueError, zipfile.BadZipFile, tarfile.TarError) as exc:
         parser.exit(1, f"ERROR: {exc}\n")
     for package in packages:

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manage Learning Scope — DLMS</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home learning-scope-page">
+<div class="dashboard-shell">
+  <aside class="dashboard-sidebar" id="dashboardSidebar">
+    <div class="dashboard-brand"><div class="dashboard-brand-mark">◈</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+    <nav class="dashboard-nav" aria-label="Primary navigation">
+      <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+      <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+      <a class="dashboard-nav-item active" href="/learning-intelligence"><span class="dashboard-nav-icon">◈</span><span>Learning Intelligence</span></a>
+    </nav>
+    <div class="dashboard-sidebar-version">Learning Scope</div>
+  </aside>
+  <main class="dashboard-main">
+    <header class="dashboard-header">
+      <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+      <div><div class="build-eyebrow">LEARNING INTELLIGENCE</div><h1>Manage Learning Scope</h1><p>Choose the folders you are actively studying now.</p></div>
+    </header>
+    <section class="learning-scope-intro dashboard-panel" aria-labelledby="scopeIntroTitle">
+      <h2 id="scopeIntroTitle">Learning Scope</h2>
+      <p><strong>{{ scope.included_source_quizzes }} source quiz{{ 'zes' if scope.included_source_quizzes != 1 else '' }} included · {{ scope.excluded_folders }} folder{{ 's' if scope.excluded_folders != 1 else '' }} excluded</strong></p>
+      <p>Quizzes and history stay saved. Excluded material is left out of current Learning Intelligence, Due Questions, and automatic study recommendations. You can still open and answer those quizzes. Existing schedules resume from saved evidence when you include a folder again, so questions may already be due or overdue.</p>
+      <p>Hiding a folder in Quiz Library is separate from Learning Scope.</p>
+      <a class="build-secondary-link" href="/learning-intelligence">← Topic Intelligence</a>
+    </section>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}<div class="learning-scope-messages" role="status" aria-live="polite">{% for category, message in messages %}<p class="flash {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}
+    {% endwith %}
+    <section aria-labelledby="scopeFoldersTitle">
+      <h2 id="scopeFoldersTitle">Folders</h2>
+      <ul class="learning-scope-folders">
+      {% for folder in scope.folders %}
+        <li class="dashboard-panel learning-scope-folder">
+          <div class="learning-scope-folder-copy">
+            <h3>{{ folder.name }}</h3>
+            <p>{{ folder.source_quizzes }} source quiz{% if folder.source_quizzes != 1 %}zes{% endif %}{% if folder.hidden %} · Hidden in Quiz Library{% endif %}</p>
+            <strong>{{ 'Excluded from Learning Scope' if folder.excluded else 'Included in Learning Scope' }}</strong>
+          </div>
+          <form method="post" action="/learning-scope">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="folder" value="{{ folder.name }}">
+            <input type="hidden" name="included" value="{{ '1' if folder.excluded else '0' }}">
+            <button type="submit" class="learning-scope-button" aria-label="{{ 'Include' if folder.excluded else 'Exclude' }} {{ folder.name }} {{ 'in' if folder.excluded else 'from' }} Learning Scope">{{ 'Include this folder' if folder.excluded else 'Exclude this folder' }}</button>
+          </form>
+        </li>
+      {% endfor %}
+      </ul>
+    </section>
+  </main>
+</div>
+<script src="/static/nav-normalize.js"></script>
+<script>document.getElementById('menuButton')?.addEventListener('click', function(){const sidebar=document.getElementById('dashboardSidebar');const open=sidebar?.classList.toggle('open');this.setAttribute('aria-expanded',open?'true':'false')});</script>
+</body>
+</html>

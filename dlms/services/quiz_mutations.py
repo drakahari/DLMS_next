@@ -3,10 +3,13 @@
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
+import json
 import os
 import shutil
 import tempfile
 from types import MappingProxyType
+
+from .generated_practice_lifecycle import COMPLETION_KEY
 
 
 UNCATEGORIZED_FOLDER = "Uncategorized"
@@ -122,13 +125,20 @@ def _restore_quiz_folder_metadata(
     save_quiz_folder_state,
     get_quiz_folders,
     get_hidden_quiz_folders,
+    excluded_folders=None,
+    get_excluded_learning_folders=None,
 ):
     """Restore and validate only portal fields owned by the Quiz Library."""
-    save_quiz_folder_state(folders, hidden_folders)
+    if get_excluded_learning_folders is None:
+        save_quiz_folder_state(folders, hidden_folders)
+    else:
+        save_quiz_folder_state(folders, hidden_folders, excluded_folders)
     restored_folders = get_quiz_folders()
     restored_hidden = get_hidden_quiz_folders(restored_folders)
     if restored_folders != folders or restored_hidden != hidden_folders:
         raise RuntimeError("Restored Quiz Library folder metadata did not validate")
+    if get_excluded_learning_folders is not None and get_excluded_learning_folders() != excluded_folders:
+        raise RuntimeError("Restored Learning Scope folder metadata did not validate")
 
 
 def _persist_quiz_folder_metadata(
@@ -144,10 +154,16 @@ def _persist_quiz_folder_metadata(
     get_quiz_folders,
     get_hidden_quiz_folders,
     save_quiz_folder_state,
+    original_excluded_folders=None,
+    target_excluded_folders=None,
+    get_excluded_learning_folders=None,
     print_message=print,
 ):
     """Publish portal then registry state, compensating only a known-safe failure."""
-    save_quiz_folder_state(target_folders, target_hidden_folders)
+    if get_excluded_learning_folders is None:
+        save_quiz_folder_state(target_folders, target_hidden_folders)
+    else:
+        save_quiz_folder_state(target_folders, target_hidden_folders, target_excluded_folders)
     try:
         save_registry(target_registry)
     except Exception as registry_error:
@@ -176,6 +192,8 @@ def _persist_quiz_folder_metadata(
                     save_quiz_folder_state=save_quiz_folder_state,
                     get_quiz_folders=get_quiz_folders,
                     get_hidden_quiz_folders=get_hidden_quiz_folders,
+                    excluded_folders=original_excluded_folders,
+                    get_excluded_learning_folders=get_excluded_learning_folders,
                 )
             except Exception as rollback_error:
                 print_message(
@@ -215,6 +233,7 @@ def rename_quiz_folder_metadata(
     get_quiz_folders,
     get_hidden_quiz_folders,
     save_quiz_folder_state,
+    get_excluded_learning_folders=None,
     print_message=print,
 ):
     """Coordinate a case-insensitive folder rename across both JSON stores."""
@@ -229,6 +248,10 @@ def rename_quiz_folder_metadata(
         original_folders = list(get_quiz_folders())
         original_hidden_folders = list(
             get_hidden_quiz_folders(original_folders)
+        )
+        original_excluded_folders = (
+            list(get_excluded_learning_folders())
+            if get_excluded_learning_folders is not None else None
         )
         identity = build_quiz_folder_identity(
             original_folders, original_registry
@@ -252,6 +275,11 @@ def rename_quiz_folder_metadata(
             else folder
             for folder in original_hidden_folders
         ]
+        target_excluded_folders = (
+            [new_display if quiz_folder_identity_key(name) == old_key else name
+             for name in original_excluded_folders]
+            if original_excluded_folders is not None else None
+        )
         target_registry = deepcopy(original_registry)
         for quiz in target_registry:
             if quiz_folder_identity_key(quiz.get("folder")) == old_key:
@@ -260,6 +288,7 @@ def rename_quiz_folder_metadata(
         if (
             target_folders == original_folders
             and target_hidden_folders == original_hidden_folders
+            and target_excluded_folders == original_excluded_folders
             and target_registry == original_registry
         ):
             return False
@@ -269,6 +298,9 @@ def rename_quiz_folder_metadata(
             original_hidden_folders=original_hidden_folders,
             target_folders=target_folders,
             target_hidden_folders=target_hidden_folders,
+            original_excluded_folders=original_excluded_folders,
+            target_excluded_folders=target_excluded_folders,
+            get_excluded_learning_folders=get_excluded_learning_folders,
             original_registry=original_registry,
             target_registry=target_registry,
             load_registry=load_registry,
@@ -290,6 +322,7 @@ def delete_quiz_folder_metadata(
     get_quiz_folders,
     get_hidden_quiz_folders,
     save_quiz_folder_state,
+    get_excluded_learning_folders=None,
     print_message=print,
 ):
     """Coordinate a folder deletion and quiz reassignment across both stores."""
@@ -302,6 +335,10 @@ def delete_quiz_folder_metadata(
         original_folders = list(get_quiz_folders())
         original_hidden_folders = list(
             get_hidden_quiz_folders(original_folders)
+        )
+        original_excluded_folders = (
+            list(get_excluded_learning_folders())
+            if get_excluded_learning_folders is not None else None
         )
         identity = build_quiz_folder_identity(
             original_folders, original_registry
@@ -320,6 +357,11 @@ def delete_quiz_folder_metadata(
             for hidden_folder in original_hidden_folders
             if quiz_folder_identity_key(hidden_folder) != folder_key
         ]
+        target_excluded_folders = (
+            [name for name in original_excluded_folders
+             if quiz_folder_identity_key(name) != folder_key]
+            if original_excluded_folders is not None else None
+        )
         target_registry = deepcopy(original_registry)
         for quiz in target_registry:
             if quiz_folder_identity_key(quiz.get("folder")) == folder_key:
@@ -330,6 +372,9 @@ def delete_quiz_folder_metadata(
             original_hidden_folders=original_hidden_folders,
             target_folders=target_folders,
             target_hidden_folders=target_hidden_folders,
+            original_excluded_folders=original_excluded_folders,
+            target_excluded_folders=target_excluded_folders,
+            get_excluded_learning_folders=get_excluded_learning_folders,
             original_registry=original_registry,
             target_registry=target_registry,
             load_registry=load_registry,
@@ -345,6 +390,84 @@ def delete_quiz_folder_metadata(
 def commit_quiz_mutation(conn):
     """Commit boundary kept separate for deterministic mutation fault tests."""
     conn.commit()
+
+
+def rebuild_registered_quiz_artifacts(
+    *,
+    registry_lock,
+    load_registry,
+    get_db,
+    stage_artifacts,
+    promote_artifacts,
+    remove_tree=shutil.rmtree,
+    print_message=print,
+):
+    """Rebuild each registered quiz's derived JSON/HTML pair from canonical data.
+
+    The registry and SQLite rows are deliberately read-only. Artifact staging and
+    promotion reuse the same per-quiz rollback boundary as an existing-quiz edit,
+    so a failed promotion leaves that quiz's previous live pair in place.
+    """
+    rebuilt = 0
+    failed = []
+
+    with registry_lock:
+        registry = load_registry()
+        for entry in registry:
+            raw_quiz_id = entry.get("id")
+            if raw_quiz_id is None:
+                print_message("[REBUILD ALL] Failed registry entry with no quiz ID")
+                failed.append("missing-id")
+                continue
+
+            conn = None
+            staged = None
+            report_id = raw_quiz_id
+            try:
+                if isinstance(raw_quiz_id, bool):
+                    raise ValueError("Quiz ID must be an integer")
+                quiz_id = int(raw_quiz_id)
+                report_id = quiz_id
+                conn = get_db()
+                conn.execute("BEGIN")
+                quiz_row = conn.execute(
+                    "SELECT id FROM quizzes WHERE id = ?", (quiz_id,)
+                ).fetchone()
+                question_count = conn.execute(
+                    "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
+                ).fetchone()[0]
+                if quiz_row is None or question_count < 1:
+                    raise ValueError(
+                        "Registered quiz has no canonical persisted questions"
+                    )
+
+                staged = stage_artifacts(conn, quiz_id, entry)
+                promote_artifacts(staged)
+                rebuilt += 1
+            except Exception as exc:
+                print_message(
+                    f"[REBUILD ALL] Failed quiz_id={report_id}: {exc}"
+                )
+                failed.append(report_id)
+            finally:
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception as exc:
+                        print_message(
+                            f"[REBUILD ALL] Could not end read transaction for "
+                            f"quiz_id={report_id}: {exc}"
+                        )
+                    finally:
+                        conn.close()
+                if staged:
+                    remove_tree(staged["staging_dir"], ignore_errors=True)
+
+    return {
+        "total": len(registry),
+        "rebuilt": rebuilt,
+        "failed": failed,
+    }
 
 
 def stage_quiz_mutation_artifacts(
@@ -494,6 +617,19 @@ def finish_quiz_mutation(
                 quiz_entry.update(registry_updates)
 
             staged = stage_artifacts(conn, quiz_id, quiz_entry)
+            if COMPLETION_KEY in quiz_entry:
+                staged_json, current_json = staged["files"][0]
+                try:
+                    with open(staged_json, encoding="utf-8") as staged_file:
+                        new_questions = json.load(staged_file)
+                    with open(current_json, encoding="utf-8") as current_file:
+                        old_questions = json.load(current_file)
+                except (OSError, ValueError):
+                    # An unreadable prior artifact cannot prove the edited
+                    # question set is the one that was completed.
+                    old_questions, new_questions = None, object()
+                if new_questions != old_questions:
+                    quiz_entry.pop(COMPLETION_KEY, None)
             promoted = promote_artifacts(staged)
             registry_attempted = True
             save_registry(updated_registry)

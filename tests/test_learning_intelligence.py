@@ -73,6 +73,15 @@ class LearningIntelligenceTests(unittest.TestCase):
         self.assertIn("summary", payload)
         self.assertIn("model", payload)
         self.assertIn("weak_areas", payload["summary"])
+        model = payload["model"]
+        self.assertIn("55% overall accuracy", model["mastery_formula"])
+        self.assertIn("Full evidence credit at 8", model["evidence_credit"])
+        self.assertIn("within 7 days", model["recency_credit"])
+        self.assertIn("cannot exceed 59", model["minimum_evidence"])
+        self.assertIn("cannot exceed 74", model["minimum_evidence"])
+        self.assertIn("At least 3 responses", model["weak_area_rule"])
+        self.assertIn("At least 6 responses", model["trend"])
+        self.assertIn("explicit question lineage", model["generated_practice"])
 
 
 if __name__ == "__main__":

@@ -45,17 +45,20 @@ class MaintenanceTemplateTests(unittest.TestCase):
         self.assertIn('id="dashboardSidebar"', page)
         self.assertIn("SETTINGS / SYSTEM TOOLS", page)
         self.assertIn("Rebuild All Quiz Pages", page)
+        self.assertIn("You normally do not need to run this after updating DLMS.", page)
+        self.assertIn("when DLMS specifically instructs you", page)
+        self.assertIn("look stale or inconsistent with the current quiz interface", page)
         self.assertIn(
-            "It does not recreate quiz JSON, change questions or answers, change quiz IDs or registry entries, or rewrite attempt history.",
+            "It does not change questions, answers, correctness, quiz or question IDs, concepts, lineage, folders, source or provenance details, scores, attempt history, learning events, or other learning history.",
             page,
         )
         self.assertIn('href="/admin/image-editor"', page)
         self.assertIn("Open Image Study Editor", page)
         self.assertIn(
-            'id="rebuildAllBtn" class="build-primary-button" type="button"', page
+            'id="rebuildAllBtn" class="build-primary-button" type="button" aria-describedby="rebuildDescription"', page
         )
         self.assertIn(
-            'id="rebuildStatus" class="system-tools-status" aria-live="polite"',
+            'id="rebuildStatus" class="system-tools-status" role="status" aria-live="polite" aria-atomic="true"',
             page,
         )
         self.assertNotIn("<form", page)
@@ -68,10 +71,10 @@ class MaintenanceTemplateTests(unittest.TestCase):
         page = self._page()
 
         self.assertIn(
-            "Rebuild all quiz pages using the current DLMS template?\\n\\n", page
+            "Rebuild all registered quiz pages from saved quiz data?\\n\\n", page
         )
         self.assertIn(
-            "Quiz questions, answers, IDs, and history will not be changed.", page
+            "Only derived page files will be replaced. Questions, answers, IDs, lineage, folders, and learning history will not be changed.", page
         )
         self.assertIn("if (!ok) return;", page)
         self.assertIn("rebuildBtn.disabled = true;", page)
@@ -79,13 +82,15 @@ class MaintenanceTemplateTests(unittest.TestCase):
             'rebuildStatus.textContent = "Rebuilding quiz pages...";', page
         )
         self.assertIn(
-            'fetch("/admin/rebuild_all_quiz_html", {method: "POST"})', page
+            'body: JSON.stringify({confirmation: "rebuild-all-quiz-pages"})', page
         )
         self.assertIn('throw new Error("Rebuild request failed")', page)
         self.assertIn(
-            "`Complete: ${data.rebuilt} rebuilt, ${data.failed.length} failed.`",
+            "`Complete: ${data.rebuilt} rebuilt, 0 failed.`",
             page,
         )
+        self.assertIn("Finished with issues:", page)
+        self.assertIn("Failed quizzes kept their previous page files.", page)
         self.assertIn(
             'rebuildStatus.textContent = "Rebuild failed. Check the server log.";',
             page,
@@ -101,39 +106,39 @@ class MaintenanceTemplateTests(unittest.TestCase):
         self.assertIn("rebuildStatus.textContent =", inline_script)
         self.assertNotIn("rebuildStatus.innerHTML", inline_script)
 
-    def test_rebuild_endpoint_preserves_id_coercion_skip_and_failure_reporting(self):
-        registry = [
-            {"id": None},
-            {"id": "7"},
-            {"id": 8},
-            {"id": "not-an-id"},
-            {"id": 9},
-        ]
-
-        def rebuild(quiz_id):
-            if quiz_id == 7:
-                return True
-            if quiz_id == 8:
-                return False
-            raise RuntimeError("characterized rebuild failure")
-
-        with mock.patch.object(dlms, "load_registry", return_value=registry), \
-             mock.patch.object(
-                 dlms, "rebuild_quiz_html_from_registry", side_effect=rebuild
-             ) as rebuild_call:
+    def test_rebuild_endpoint_requires_confirmation_and_reports_batch_result(self):
+        result = {
+            "total": 3,
+            "rebuilt": 2,
+            "failed": [9],
+        }
+        with mock.patch.object(
+            dlms, "_rebuild_registered_quiz_artifacts", return_value=result
+        ) as rebuild_call:
+            unconfirmed = self.client.post(
+                "/admin/rebuild_all_quiz_html",
+                json={},
+                headers=csrf_headers(self.client, "/admin/maintenance"),
+            )
             response = self.client.post(
                 "/admin/rebuild_all_quiz_html",
+                json={"confirmation": "rebuild-all-quiz-pages"},
                 headers=csrf_headers(self.client, "/admin/maintenance"),
             )
 
+        self.assertEqual(400, unconfirmed.status_code)
+        self.assertIn("Confirmation is required", unconfirmed.get_json()["error"])
         self.assertEqual(200, response.status_code)
         self.assertEqual(
-            {"status": "complete", "rebuilt": 1, "failed": [8, "not-an-id", 9]},
+            {
+                "status": "partial",
+                "total": 3,
+                "rebuilt": 2,
+                "failed": [9],
+            },
             response.get_json(),
         )
-        self.assertEqual(
-            [mock.call(7), mock.call(8), mock.call(9)], rebuild_call.call_args_list
-        )
+        rebuild_call.assert_called_once_with()
 
     def test_rebuild_is_post_only_and_csrf_protected_before_registry_access(self):
         with mock.patch.object(dlms, "load_registry") as load_registry:

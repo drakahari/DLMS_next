@@ -93,13 +93,13 @@
                 </div>
                 <span class="history-table-count" id="historyAttemptCount">Loading…</span>
             </div>
-            <div class="history-origin-filters" aria-label="Filter history by origin">
-                <button type="button" class="history-origin-filter active" data-origin-filter="all">All</button>
-                <button type="button" class="history-origin-filter" data-origin-filter="quiz">Quiz</button>
-                <button type="button" class="history-origin-filter" data-origin-filter="it">IT</button>
-                <button type="button" class="history-origin-filter" data-origin-filter="medical">Medical</button>
-                <button type="button" class="history-origin-filter" data-origin-filter="study-pack">Study Pack</button>
-                <button type="button" class="history-origin-filter" data-origin-filter="law">Law</button>
+            <div class="history-origin-filters" role="group" aria-label="Filter history by origin">
+                <button type="button" class="history-origin-filter active" data-origin-filter="all" aria-pressed="true">All</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="quiz" aria-pressed="false">Quiz</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="it" aria-pressed="false">IT</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="medical" aria-pressed="false">Medical</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="study-pack" aria-pressed="false">Study Pack</button>
+                <button type="button" class="history-origin-filter" data-origin-filter="law" aria-pressed="false">Law</button>
             </div>
 
             <div id="dbHistoryBox" class="history-table-wrap" aria-live="polite">
@@ -107,7 +107,7 @@
             </div>
             <div class="history-pagination" id="historyPagination" hidden>
                 <button type="button" class="history-pagination-button" id="historyPrevious">Previous</button>
-                <span class="history-pagination-status" id="historyPaginationStatus"></span>
+                <span class="history-pagination-status" id="historyPaginationStatus" role="status" aria-live="polite"></span>
                 <button type="button" class="history-pagination-button" id="historyNext">Next</button>
             </div>
         </section>
@@ -337,7 +337,11 @@ document.querySelectorAll(".history-origin-filter").forEach(button => {
     button.addEventListener("click", () => {
         historyOriginFilter = button.dataset.originFilter || "all";
         historyPage = 1;
-        document.querySelectorAll(".history-origin-filter").forEach(b => b.classList.toggle("active", b === button));
+        document.querySelectorAll(".history-origin-filter").forEach(b => {
+            const selected = b === button;
+            b.classList.toggle("active", selected);
+            b.setAttribute("aria-pressed", String(selected));
+        });
         loadDbHistory();
     });
 });

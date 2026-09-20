@@ -1,0 +1,104 @@
+{
+  "version": "3.2.0",
+  "revision": "567177ccb8c99fedc081eb24dc079d27cfbba275",
+  "dirty": true,
+  "captured_at": "2026-09-19T21:36:36.788867+00:00",
+  "theme": "purple-gold",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale": 1
+  },
+  "fixture_version": "dlms-demo-video-v3",
+  "replay_prefix": false,
+  "captures": [
+    {
+      "id": "013A",
+      "filename": "013A-matching-question.png",
+      "title": "Match concepts through direct interaction",
+      "route": "@matching_quiz",
+      "ready": "typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady === true",
+      "state": "Study Mode; all three matching answers placed correctly; answer pool empty; correctness feedback visible.",
+      "fixture": "Original Recovery & Reliability matching activity from the synthetic Practical Systems Lab pack.",
+      "focus": "#qHeader",
+      "action": "matching-complete",
+      "seconds": 11,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-19T12:00:00+00:00"
+    },
+    {
+      "id": "013B",
+      "filename": "013B-hotspot-question.png",
+      "title": "Answer by selecting a region",
+      "route": "@hotspot_quiz",
+      "ready": "typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady === true",
+      "state": "Study Mode; Recovery copy region selected correctly; marker and explanation visible.",
+      "fixture": "Original resilient-service diagram from the synthetic Practical Systems Lab pack.",
+      "focus": ".active-quiz-logo-banner",
+      "action": "hotspot-correct",
+      "seconds": 11,
+      "essential": true,
+      "scroll_margin": 8,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-19T12:00:00+00:00"
+    },
+    {
+      "id": "028A",
+      "filename": "028A-content-packs.png",
+      "title": "Manage reusable content packages",
+      "route": "/content-packs/details/DLMS_Study_practical_systems_lab",
+      "ready": "document.querySelector('main')",
+      "state": "Pack details; independently validated synthetic pack with matching, image, and mixed datasets; two generated quizzes tracked.",
+      "fixture": "Installed Practical Systems Lab pack; original data and illustration only.",
+      "focus": "",
+      "action": "",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-19T12:00:00+00:00"
+    },
+    {
+      "id": "028B",
+      "filename": "028B-study-packs.png",
+      "title": "Launch practice from installed datasets",
+      "route": "/study-packs",
+      "ready": "document.querySelector('main')",
+      "state": "Installed catalog; Practical Systems Lab expanded; matching, image/hotspot, and prepared-question rows visible.",
+      "fixture": "Same installed Practical Systems Lab pack; no quiz generated during capture.",
+      "focus": "",
+      "action": "pack-catalog",
+      "seconds": 12,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-19T12:00:00+00:00"
+    }
+  ]
+}

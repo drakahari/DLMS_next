@@ -14,6 +14,358 @@ from tests.csrf_test_utils import csrf_headers
 
 
 class QuizLibraryTests(unittest.TestCase):
+    def test_completed_generated_practice_has_secondary_group_and_custom_folder_stays_put(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-completed-review-") as directory:
+            config_dir = os.path.join(directory, "config")
+            os.makedirs(config_dir, exist_ok=True)
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "Course"]}, handle)
+            registry = [
+                {"id": 1, "title": "Active Review", "html": "active.html", "folder": "Uncategorized"},
+                {"id": 2, "title": "Finished Review", "html": "finished.html", "folder": "Uncategorized"},
+                {"id": 3, "title": "Course Review", "html": "course.html", "folder": "Course"},
+                {"id": 4, "title": "Ordinary Source", "html": "source.html", "folder": "Uncategorized"},
+                {"id": 5, "title": "Mixed Quiz", "html": "mixed.html", "folder": "Uncategorized"},
+                {"id": 6, "title": "Hidden Finished Review", "html": "hidden-finished.html", "folder": "Uncategorized", "hidden": True},
+            ]
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump(registry, handle)
+            marker = {"completed_at": "2026-01-02T03:04:05+00:00", "mode": "Study", "reference": "run"}
+            data = {
+                "views": [{"key": "generated-practice", "label": "Generated Practice", "description": "Saved.", "client_derived": False}],
+                "matches": {"generated-practice": {quiz_id: {"reason": "Saved review"} for quiz_id in (1, 2, 3, 6)}},
+                "generation": {
+                    quiz_id: {"kind": "adaptive_study", "label": "Adaptive Study practice", "category": "practice"}
+                    for quiz_id in (1, 2, 3, 6)
+                } | {5: {"kind": "mixed_quiz", "label": "Mixed Quiz", "category": "mixed"}},
+                "completion": {2: marker, 3: marker, 6: marker},
+                "provenance": {2: {"sources": [{"display_title": "Ordinary Source", "title": "Ordinary Source", "quiz_id": 4}], "unavailable_count": 0, "search_text": "Ordinary Source"}},
+            }
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}), \
+                    mock.patch.object(dlms._quiz_smart_view_service, "build_quiz_smart_views", return_value=data):
+                client = dlms.app.test_client()
+                normal = client.get("/library?view=visible").get_data(as_text=True)
+                hidden = client.get("/library?view=hidden").get_data(as_text=True)
+                all_quizzes = client.get("/library?view=all").get_data(as_text=True)
+                smart = client.get("/library?view=visible&smart=generated-practice").get_data(as_text=True)
+
+            self.assertIn("<h2>Generated Practice", normal)
+            self.assertIn("<h2>Completed Generated Practice", normal)
+            self.assertLess(normal.index("Active Review"), normal.index("Finished Review"))
+            self.assertIn('data-default-collapsed="true"', normal)
+            self.assertIn('aria-label="Expand Completed Generated Practice" aria-expanded="false"', normal)
+            self.assertIn("Completed <time datetime=", normal)
+            self.assertIn("Source: <strong>Ordinary Source</strong>", normal)
+            self.assertIn("<h2>Course</h2>", normal)
+            self.assertIn("Course Review", normal)
+            self.assertIn("<h2>Uncategorized</h2>", normal)
+            self.assertIn("Mixed Quiz", normal)
+            self.assertNotIn("Hidden Finished Review", normal)
+            self.assertIn("Hidden Finished Review", hidden)
+            self.assertNotIn('data-title="finished review"', hidden)
+            self.assertIn("Hidden Finished Review", all_quizzes)
+            self.assertIn("Finished Review", all_quizzes)
+            self.assertIn("Finished Review", smart)
+            self.assertIn("Course Review", smart)
+            self.assertIn("Completed <time datetime=", smart)
+            self.assertNotIn("Ordinary Source</h3>", smart)
+            self.assertIn('setLibraryFolderCollapsed(folder, false)', normal)
+
+    def test_smart_views_filter_without_mutating_folders_and_reset_cleanly(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-smart-views-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "Alpha", "Beta"]}, handle)
+            registry = [
+                {"id": 1, "title": "Alpha Quiz", "html": "alpha.html", "folder": "Alpha"},
+                {"id": 2, "title": "Beta Quiz", "html": "beta.html", "folder": "Beta"},
+            ]
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump(registry, handle)
+
+            definitions = [
+                {"key": "needs-review", "label": "Needs Review", "description": "Due.", "client_derived": False},
+                {"key": "recently-added", "label": "Recently Added", "description": "Recent.", "client_derived": False},
+                {"key": "low-score", "label": "Low Score", "description": "Low.", "client_derived": False},
+                {"key": "unfinished", "label": "Unfinished", "description": "Local.", "client_derived": True},
+                {"key": "ocr-imported", "label": "OCR Imported", "description": "OCR.", "client_derived": False},
+                {"key": "generated-practice", "label": "Generated Practice", "description": "Saved practice.", "client_derived": False},
+            ]
+            smart_data = {
+                "views": definitions,
+                "matches": {
+                    "needs-review": {
+                        2: {"badge": "Due now", "reason": "2 source questions due"},
+                        1: {"badge": "Due now", "reason": "1 source question due"},
+                    },
+                    "recently-added": {1: {"badge": "New", "reason": "Added today"}},
+                    "low-score": {2: {"badge": "Below 75%", "reason": "Latest completed score: 60%"}},
+                    "unfinished": {},
+                    "ocr-imported": {},
+                    "generated-practice": {
+                        2: {"reason": "Saved practice built from source questions"},
+                    },
+                },
+                "generation": {
+                    1: {"kind": "mixed_quiz", "label": "Mixed Quiz", "category": "mixed"},
+                    2: {"kind": "adaptive_study", "label": "Adaptive Study practice", "category": "practice"},
+                },
+                "provenance": {
+                    2: {
+                        "sources": [{
+                            "quiz_id": 1,
+                            "title": "Alpha Quiz",
+                            "display_title": "Alpha Quiz",
+                        }],
+                        "unavailable_count": 0,
+                        "search_text": "Alpha Quiz",
+                    },
+                },
+            }
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}), \
+                    mock.patch.object(
+                        dlms._quiz_smart_view_service,
+                        "build_quiz_smart_views",
+                        return_value=smart_data,
+                    ):
+                client = dlms.app.test_client()
+                low = client.get("/library?view=visible&smart=low-score")
+                needs = client.get("/library?view=visible&smart=needs-review")
+                reset = client.get("/library?view=visible")
+                unknown = client.get("/library?view=visible&smart=not-a-view")
+                unfinished = client.get("/library?view=visible&smart=unfinished")
+                generated = client.get(
+                    "/library?view=visible&smart=generated-practice"
+                )
+                mutation = client.post(
+                    "/toggle_hidden",
+                    data={"id": "2", "view": "visible", "smart": "low-score"},
+                    headers=csrf_headers(client, "/library?smart=low-score"),
+                )
+
+            low_html = low.get_data(as_text=True)
+            self.assertEqual(low.status_code, 200)
+            self.assertIn('aria-current="page"', low_html)
+            self.assertIn("Latest completed score: 60%", low_html)
+            self.assertIn("Beta Quiz", low_html)
+            self.assertNotIn('data-title="alpha quiz"', low_html)
+            self.assertIn("<h2>Beta</h2>", low_html)
+            self.assertNotIn("<h2>Alpha</h2>", low_html)
+            self.assertNotIn('class="library-reorder-controls"', low_html)
+            self.assertIn("does not move quizzes or change folder order", low_html)
+            self.assertIn('name="smart" value="low-score"', low_html)
+
+            needs_html = needs.get_data(as_text=True)
+            self.assertLess(needs_html.index("Alpha Quiz"), needs_html.index("Beta Quiz"))
+
+            for page in (reset.get_data(as_text=True), unknown.get_data(as_text=True)):
+                self.assertIn("Alpha Quiz", page)
+                self.assertIn("Beta Quiz", page)
+                self.assertNotIn("library-smart-view-active", page)
+
+            unfinished_html = unfinished.get_data(as_text=True)
+            self.assertIn("Alpha Quiz", unfinished_html)
+            self.assertIn("Beta Quiz", unfinished_html)
+            self.assertIn("applyUnfinishedLibraryView", unfinished_html)
+            self.assertIn('id="librarySmartEmptyState"', unfinished_html)
+            self.assertIn('id="librarySmartEligibleQuizData"', unfinished_html)
+            generated_html = generated.get_data(as_text=True)
+            self.assertIn("Generated Practice", generated_html)
+            self.assertIn("Adaptive Study practice", generated_html)
+            self.assertIn("Saved practice built from source questions", generated_html)
+            self.assertIn("Beta Quiz", generated_html)
+            self.assertNotIn('data-title="alpha quiz"', generated_html)
+            self.assertNotIn("Mixed Quiz", generated_html)
+            self.assertIn("Source: <strong>Alpha Quiz</strong>", generated_html)
+
+            reset_html = reset.get_data(as_text=True)
+            self.assertIn("Adaptive Study practice", reset_html)
+            self.assertIn("Mixed Quiz", reset_html)
+            self.assertIn('data-generation-kind="adaptive_study"', reset_html)
+            self.assertIn('data-generation-category="mixed"', reset_html)
+            self.assertIn("revisit, hide, or ignore for now", reset_html)
+            self.assertIn(
+                "Use Quiz Bundles to preserve matching, images, and hotspots.",
+                reset_html,
+            )
+            self.assertEqual(
+                mutation.headers["Location"],
+                "/library?view=visible&smart=low-score",
+            )
+
+    def test_uncategorized_generated_practice_uses_virtual_group_without_mutation(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-generated-group-") as directory:
+            config_dir = os.path.join(directory, "config")
+            portal_config = os.path.join(config_dir, "portal.json")
+            quiz_registry = os.path.join(config_dir, "quizzes.json")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(portal_config, "w", encoding="utf-8") as handle:
+                json.dump({"quiz_folders": ["Uncategorized", "Course"]}, handle)
+            registry = [
+                {"id": 1, "title": "Due Practice", "html": "due.html", "folder": "Uncategorized"},
+                {"id": 2, "title": "Ordinary Source", "html": "source.html", "folder": "Uncategorized"},
+                {"id": 3, "title": "Custom Practice", "html": "custom.html", "folder": "Course"},
+                {"id": 4, "title": "Curated Mix", "html": "mixed.html", "folder": "Uncategorized"},
+                {"id": 5, "title": "Hidden Practice", "html": "hidden.html", "folder": "Uncategorized", "hidden": True},
+            ]
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump(registry, handle)
+
+            definitions = [
+                {"key": "unfinished", "label": "Unfinished", "description": "Local.", "client_derived": True},
+                {"key": "generated-practice", "label": "Generated Practice", "description": "Saved practice.", "client_derived": False},
+            ]
+            generation = {
+                1: {"kind": "native_spaced_review", "label": "Due Questions practice", "category": "practice"},
+                3: {"kind": "adaptive_study", "label": "Adaptive Study practice", "category": "practice"},
+                4: {"kind": "mixed_quiz", "label": "Mixed Quiz", "category": "mixed"},
+                5: {"kind": "concept_review", "label": "Concept Review practice", "category": "practice"},
+            }
+            smart_data = {
+                "views": definitions,
+                "matches": {
+                    "unfinished": {},
+                    "generated-practice": {
+                        quiz_id: {"reason": "Saved practice"}
+                        for quiz_id in (1, 3, 5)
+                    },
+                },
+                "generation": generation,
+                "provenance": {
+                    1: {
+                        "sources": [
+                            {
+                                "quiz_id": 2,
+                                "title": "Ordinary Source",
+                                "display_title": "Ordinary Source",
+                            },
+                            {
+                                "quiz_id": 6,
+                                "title": "Shared Name",
+                                "display_title": "Shared Name (Quiz #6)",
+                            },
+                            {
+                                "quiz_id": 7,
+                                "title": "Shared Name",
+                                "display_title": "Shared Name (Quiz #7)",
+                            },
+                        ],
+                        "unavailable_count": 1,
+                        "search_text": "Ordinary Source Shared Name Quiz #6 Quiz #7",
+                    },
+                    3: {"sources": [], "unavailable_count": 1, "search_text": ""},
+                    5: {"sources": [], "unavailable_count": 1, "search_text": ""},
+                },
+            }
+
+            with mock.patch.object(dlms, "PORTAL_CONFIG", portal_config), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}), \
+                    mock.patch.object(
+                        dlms._quiz_smart_view_service,
+                        "build_quiz_smart_views",
+                        return_value=smart_data,
+                    ):
+                client = dlms.app.test_client()
+                visible_html = client.get("/library?view=visible").get_data(as_text=True)
+                hidden_html = client.get("/library?view=hidden").get_data(as_text=True)
+                all_html = client.get("/library?view=all").get_data(as_text=True)
+                generated_html = client.get(
+                    "/library?view=all&smart=generated-practice"
+                ).get_data(as_text=True)
+                with open(quiz_registry, encoding="utf-8") as handle:
+                    registry_after_reads = json.load(handle)
+                move_response = client.post(
+                    "/move_quiz_folder",
+                    data={"id": "1", "folder": "Course", "view": "visible"},
+                    headers=csrf_headers(client, "/library?view=visible"),
+                )
+                moved_html = client.get("/library?view=visible").get_data(as_text=True)
+
+            self.assertEqual(visible_html.count('data-generated-practice-group="true"'), 1)
+            self.assertIn("Automatic group", visible_html)
+            self.assertLess(visible_html.index("Due Practice"), visible_html.index("Ordinary Source"))
+            self.assertIn("Custom Practice", visible_html)
+            self.assertIn("Curated Mix", visible_html)
+            self.assertIn("Sources: 3 quizzes", visible_html)
+            self.assertIn("1 source unavailable", visible_html)
+            self.assertIn("Shared Name (Quiz #6)", visible_html)
+            self.assertIn("Shared Name (Quiz #7)", visible_html)
+            self.assertIn(
+                'aria-label="Show 3 source quizzes for Due Practice; 1 source unavailable"',
+                visible_html,
+            )
+            self.assertIn("Ordinary Source", visible_html)
+            self.assertIn("library-folder-system", visible_html)
+            self.assertNotIn("Hidden Practice", visible_html)
+            self.assertNotIn("Hide Generated Practice folder", visible_html)
+            self.assertNotIn('option value="__dlms_generated_practice__"', visible_html)
+            self.assertIn("Source details unavailable", visible_html)
+
+            self.assertEqual(hidden_html.count('data-generated-practice-group="true"'), 1)
+            self.assertIn("Hidden Practice", hidden_html)
+            self.assertNotIn("Due Practice", hidden_html)
+
+            self.assertEqual(all_html.count('data-generated-practice-group="true"'), 1)
+            self.assertIn("Due Practice", all_html)
+            self.assertIn("Hidden Practice", all_html)
+
+            self.assertNotIn('data-generated-practice-group="true"', generated_html)
+            for title in ("Due Practice", "Custom Practice", "Hidden Practice"):
+                self.assertIn(title, generated_html)
+            self.assertNotIn("Curated Mix", generated_html)
+            self.assertIn("<h2>Uncategorized</h2>", generated_html)
+            self.assertIn("<h2>Course</h2>", generated_html)
+
+            self.assertEqual(registry_after_reads, registry)
+            self.assertEqual(move_response.status_code, 302)
+            self.assertNotIn('data-generated-practice-group="true"', moved_html)
+            self.assertLess(moved_html.index("<h2>Course</h2>"), moved_html.index("Due Practice"))
+            with open(quiz_registry, encoding="utf-8") as handle:
+                moved_registry = json.load(handle)
+            self.assertEqual(
+                next(item for item in moved_registry if item["id"] == 1)["folder"],
+                "Course",
+            )
+            with open(portal_config, encoding="utf-8") as handle:
+                self.assertEqual(
+                    json.load(handle)["quiz_folders"],
+                    ["Uncategorized", "Course"],
+                )
+
+    def test_server_derived_smart_view_has_a_useful_empty_state(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-smart-empty-") as directory:
+            quiz_registry = os.path.join(directory, "quizzes.json")
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([{
+                    "id": 1,
+                    "title": "Ordinary Quiz",
+                    "html": "ordinary.html",
+                    "folder": "Uncategorized",
+                }], handle)
+            with mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry), \
+                    mock.patch.object(dlms, "discover_content_packs", return_value={}):
+                response = dlms.app.test_client().get(
+                    "/library?view=visible&smart=ocr-imported"
+                )
+
+            html = response.get_data(as_text=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("No OCR Imported quizzes", html)
+            self.assertIn("Nothing in the Visible library currently matches", html)
+            self.assertIn('href="/library?view=visible">Show full library</a>', html)
+            self.assertNotIn("Ordinary Quiz", html)
+
     def test_library_uses_vendored_sortable_with_existing_order_initialization(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-sortable-") as directory:
             config_dir = os.path.join(directory, "config")
@@ -35,7 +387,7 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertNotIn("cdnjs.cloudflare.com/ajax/libs/Sortable", html)
             self.assertIn("Sortable.create(folderList", html)
             self.assertIn(
-                'draggable: ".library-folder:not(.library-view-search-only)"',
+                'draggable: ".library-folder:not(.library-view-search-only):not(.library-folder-system)"',
                 html,
             )
             self.assertIn('handle: ".library-folder-header"', html)
@@ -70,10 +422,60 @@ class QuizLibraryTests(unittest.TestCase):
             self.assertIn('href="/export/all_quizzes.txt"', html)
             self.assertIn("human-readable TXT reference", html)
             self.assertIn("not a restorable or importable library package", html)
-            self.assertIn("import-friendly classic MCQ text file", html)
+            self.assertIn("classic choice-question text representation", html)
+            self.assertIn(
+                "does not preserve matching, image, or hotspot interaction", html
+            )
+            self.assertIn('href="/quiz-bundles">Quiz Bundles</a>', html)
             self.assertIn('href="/settings/backup"', html)
-            self.assertIn("portable backup for migration or full restore", html)
+            self.assertIn("for migration or full restore", html)
             self.assertNotIn("⇩ Export All Quizzes", html)
+
+    def test_single_quiz_text_export_states_classic_choice_compatibility_boundary(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-library-single-export-") as directory:
+            db_path = os.path.join(directory, "results.db")
+            quiz_registry = os.path.join(directory, "quizzes.json")
+            database = bootstrap_current_schema_database(
+                db_path,
+                bootstrap_database=dlms.bootstrap_database,
+            )
+            database.seed_quiz(
+                "Choice Export",
+                "choice-export.html",
+                [{
+                    "id": 11,
+                    "number": 1,
+                    "question": "Which option is correct?",
+                    "choices": [
+                        {"label": "A", "text": "Correct", "is_correct": True},
+                        {"label": "B", "text": "Incorrect", "is_correct": False},
+                    ],
+                }],
+                quiz_id=7,
+            )
+            with open(quiz_registry, "w", encoding="utf-8") as handle:
+                json.dump([{
+                    "id": 7,
+                    "title": "Choice Export",
+                    "html": "choice-export.html",
+                    "folder": "Uncategorized",
+                }], handle)
+
+            with mock.patch.object(dlms, "DB_PATH", db_path), \
+                    mock.patch.object(dlms, "QUIZ_REGISTRY", quiz_registry):
+                response = dlms.app.test_client().get("/export/quiz/7.txt")
+
+            self.assertEqual(200, response.status_code)
+            export = response.get_data(as_text=True)
+            self.assertIn(
+                "# Import compatibility: Classic choice-question text only", export
+            )
+            self.assertIn(
+                "# Use a Portable Quiz Bundle to preserve matching, images, and hotspots",
+                export,
+            )
+            self.assertNotIn("# Import compatible: Yes", export)
+            self.assertIn("Correct Answer: A", export)
 
     def test_quiz_library_reference_keeps_existing_text_export_contract(self):
         with tempfile.TemporaryDirectory(prefix="dlms-library-reference-") as directory:

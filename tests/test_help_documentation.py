@@ -66,7 +66,7 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn('href="/help/external-ai"', build_quiz)
         self.assertIn("External AI Quiz Builder", build_quiz)
         self.assertIn("Import PDF &amp; image study content", build_quiz)
-        self.assertIn("PDF question banks, glossaries, scans, or screenshots", build_quiz)
+        self.assertIn("PDF question banks, terminology lists, scans, or screenshots", build_quiz)
 
         paste_template = Path(dlms.TEMPLATE_ROOT, "quiz", "paste.html").read_text(
             encoding="utf-8"
@@ -169,6 +169,15 @@ class HelpDocumentationTests(unittest.TestCase):
 
         maintenance = self._static("help-maintenance.html")
         self.assertIn("System Tools", maintenance)
+        self.assertIn("not a routine update step", maintenance)
+        self.assertIn("normally do not need to run it after updating DLMS", maintenance)
+        self.assertIn("when DLMS specifically instructs you", maintenance)
+        self.assertIn("look stale or inconsistent with the current quiz interface", maintenance)
+        self.assertIn("generated HTML or playable JSON", maintenance)
+        self.assertIn("derived HTML and playable JSON", maintenance)
+        self.assertIn("concepts, Question Identity lineage, folders", maintenance)
+        self.assertIn("source or provenance details", maintenance)
+        self.assertIn("learning events", maintenance)
         self.assertIn("portable backup", maintenance)
 
     def test_pdf_and_image_import_is_the_user_facing_help_name(self):
@@ -207,6 +216,10 @@ class HelpDocumentationTests(unittest.TestCase):
             "Clear Imported / Source Content",
             "Packs marked as protected are preserved",
             "Reset Application Settings",
+            "application lifecycle, and Quiz Library folder preferences",
+            "Quizzes keep their existing folder assignments",
+            "empty configured folders are removed",
+            "hidden-folder state is cleared",
             "Reset DLMS to Fresh State",
             "backup ZIPs in the DLMS backup folder are deliberately preserved",
             "Remove DLMS Data from This Computer",
@@ -228,7 +241,9 @@ class HelpDocumentationTests(unittest.TestCase):
             "Download Quiz Library Reference (TXT)",
             "human-readable reference",
             "not a restorable or importable library package",
-            "import-friendly classic MCQ text file",
+            "classic choice-question text representation",
+            "does not preserve matching, image, or hotspot interaction",
+            "Quiz Bundles</strong> for rich quiz transfer",
             "migration to another DLMS installation or a full restore",
         ):
             with self.subTest(wording=wording):
@@ -271,8 +286,12 @@ class HelpDocumentationTests(unittest.TestCase):
 
         self.assertIn('id="lifecycle"', getting_started)
         for wording in (
-            "Closing the browser tab or window does not shut down DLMS",
-            "continues running locally",
+            "normal local desktop mode",
+            "immediate and recommended way to stop the application",
+            "closing the final DLMS browser window may trigger automatic shutdown",
+            "in-app browser/API shutdown and automatic browser-presence shutdown are unavailable",
+            "Closing client browser windows does not stop the server",
+            "Stop the DLMS process or service from the host computer",
             "http://127.0.0.1:9001/",
             "instead of starting another server copy",
             "<strong>Shutdown DLMS</strong>",
@@ -283,14 +302,147 @@ class HelpDocumentationTests(unittest.TestCase):
 
         self.assertIn('id="browser-closed"', troubleshooting)
         for wording in (
-            "Closing a browser only closes the interface",
+            "normal local desktop mode",
+            "immediate, recommended way to stop the application",
+            "closing the final DLMS browser window may stop the process automatically",
+            "in-app browser/API shutdown and automatic browser-presence shutdown are unavailable",
+            "Closing client browser windows does not stop the server",
+            "Stop the DLMS process or service from the host computer",
             "already-running DLMS process",
-            "do not start another server copy",
             "<strong>Shutdown DLMS</strong>",
-            "If the local address no longer responds",
+            "If the address no longer responds",
         ):
             with self.subTest(page="troubleshooting", wording=wording):
                 self.assertIn(wording, troubleshooting)
+
+    def test_help_makes_todays_review_the_default_and_distinguishes_review_options(self):
+        getting_started = self._static("help-getting-started.html")
+        learning = self._static("help-learning-intelligence.html")
+
+        self.assertIn("What should I study right now?", getting_started)
+        self.assertIn("Start with <strong>Today’s Review</strong>", getting_started)
+        self.assertIn('id="which-review"', learning)
+        for wording in (
+            "Recommended starting point:",
+            "Today’s Review",
+            "Adaptive Study",
+            "Smart Review",
+            "Concept Review",
+            "Due Questions",
+            "Topic Retention Schedule",
+            "Missed-question review",
+        ):
+            with self.subTest(wording=wording):
+                self.assertIn(wording, learning)
+        self.assertNotIn("available confidence", learning)
+        for wording in (
+            "weak or developing concepts",
+            "recent misses",
+            "low recent accuracy",
+            "review timing",
+            "material not studied recently",
+            "repeated exposure",
+        ):
+            with self.subTest(adaptive_signal=wording):
+                self.assertIn(wording, learning)
+        for wording in (
+            "total number currently due",
+            "includes up to 20 questions",
+            "10, 20, 30, or 50 questions",
+            "recalculates the remaining due count",
+        ):
+            with self.subTest(due_batch_wording=wording):
+                self.assertIn(wording, learning)
+
+    def test_help_explains_cross_quiz_evidence_trends_and_identity_in_plain_language(self):
+        learning = self._static("help-learning-intelligence.html")
+        for wording in (
+            "how many source questions and quizzes cover each concept",
+            "overall accuracy",
+            "Recent accuracy",
+            "up to the five latest deduplicated answers",
+            "at least six answers",
+            "Not enough data",
+            "durable link to its original source question",
+            "Independently authored questions with identical wording remain separate",
+            "conservative compatibility fallback",
+        ):
+            with self.subTest(wording=wording):
+                self.assertIn(wording, learning)
+
+    def test_help_documents_current_library_tools_and_dynamic_views(self):
+        quizzes = self._static("help-quizzes.html")
+        self.assertIn('id="library-views"', quizzes)
+        self.assertIn('id="library-tools"', quizzes)
+        for wording in (
+            "Needs Review",
+            "Recently Added",
+            "Low Score",
+            "Unfinished",
+            "OCR Imported",
+            "Mix Questions",
+            "Find Duplicates",
+            "Quiz Bundles",
+            "advisory only",
+            "Learning history and review schedules are excluded",
+        ):
+            with self.subTest(wording=wording):
+                self.assertIn(wording, quizzes)
+
+    def test_help_documents_external_ai_and_local_ocr_matching(self):
+        external_ai = self._static("help-external-ai.html")
+        pdf_image = self._static("help-smart-pdf.html")
+        for wording in (
+            "Choice questions",
+            "Matching / terminology",
+            "2–100 complete, distinct term/definition pairs",
+            "confirm every final pairing",
+            "downloadable DLMS Study Pack ZIP",
+        ):
+            with self.subTest(surface="external-ai", wording=wording):
+                self.assertIn(wording, external_ai)
+        for wording in (
+            "Terminology and matching OCR",
+            "up to 25 ordered",
+            "Term — Definition",
+            "Term: Definition",
+            "two-column lists",
+            "unassigned material",
+            "Once extraction becomes a matching Review &amp; Repair draft",
+            "removes the temporary uploaded images or rendered PDF pages",
+            "source names, diagnostics, and unassigned text",
+            "Keep your original source files available while reviewing",
+        ):
+            with self.subTest(surface="ocr", wording=wording):
+                self.assertIn(wording, pdf_image)
+        self.assertNotIn(
+            "Scanned-page OCR currently applies to question-bank imports, not glossary extraction",
+            pdf_image,
+        )
+        self.assertNotIn(
+            "temporary sources are removed after publication, cancellation, or expiration",
+            pdf_image,
+        )
+
+    def test_help_distinguishes_study_packs_from_content_pack_management(self):
+        study = self._static("help-study-packs.html")
+        content = self._static("help-content-management.html")
+        self.assertIn("Study Packs</strong> is the learner-facing catalog", study)
+        self.assertIn("Content Packs</strong> is the management workspace", study)
+        self.assertIn("Two views of the same installed material", content)
+
+    def test_user_facing_learning_surfaces_do_not_show_internal_roadmap_ids(self):
+        surfaces = (
+            Path(dlms.TEMPLATE_ROOT, "dashboard", "index.html"),
+            Path(dlms.STATIC_ROOT, "learning-intelligence.html"),
+            Path(dlms.STATIC_ROOT, "learning-profile.html"),
+            Path(dlms.STATIC_ROOT, "learning-diagnostics.html"),
+            Path(dlms.STATIC_ROOT, "review-schedule.html"),
+        )
+        roadmap_id = re.compile(r"DLMS-\d{3}(?:/\d{3})?")
+        for path in surfaces:
+            with self.subTest(filename=path.name):
+                self.assertNotRegex(path.read_text(encoding="utf-8"), roadmap_id)
 
     def test_help_asset_references_exist(self):
         asset_reference = re.compile(r'''(?:src|href)=["'](/static/help_assets/[^"']+)["']''')

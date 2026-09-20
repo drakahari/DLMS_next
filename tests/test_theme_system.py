@@ -918,7 +918,7 @@ class ThemeSystemTests(unittest.TestCase):
             / "pdf_import"
             / "index.html"
         ).read_text(encoding="utf-8")
-        self.assertEqual(index.count("pdf-ocr-availability"), 2)
+        self.assertEqual(index.count("pdf-ocr-availability"), 4)
         self.assertIn("OCR available · Tesseract", index)
         self.assertIn("OCR unavailable", index)
 
@@ -1022,6 +1022,14 @@ class ThemeSystemTests(unittest.TestCase):
         )
         self.assertIsNotNone(library_spacing)
         self.assertIn("margin-top: var(--dlms-space-lg)", library_spacing.group(1))
+
+        library_footer_spacing = self._rule_blocks(
+            css, ".library-page .library-footer-actions"
+        )
+        self.assertTrue(any(
+            "margin-top: var(--dlms-space-lg)" in block
+            for block in library_footer_spacing
+        ))
 
         detail_expectations = {
             ".content-packs-page .pack-detail-hero p": (
@@ -1685,6 +1693,16 @@ class ThemeSystemTests(unittest.TestCase):
             ".review-schedule-table th": (
                 "--theme-muted-text", "--theme-surface-2", "--theme-border-soft",
             ),
+            ".native-review-queue-toggle": (
+                "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            ".native-review-status-filters button": (
+                "--theme-page-text", "--theme-surface-2", "--theme-border-soft",
+            ),
+            '.native-review-status-filters button[aria-pressed="true"]': (
+                "--theme-page-text", "--theme-accent", "--theme-surface-2",
+                "--theme-border-soft",
+            ),
             ".learning-intelligence-model-dialog": (
                 "--theme-panel-1", "--theme-border-soft", "--theme-shadow",
             ),
@@ -1748,6 +1766,100 @@ class ThemeSystemTests(unittest.TestCase):
                 surface = self._composite(variables["theme-surface"], panel)
                 ratio = self._contrast(variables["theme-muted-text"], surface)
                 self.assertGreaterEqual(ratio, 4.5, f"{theme} muted text is only {ratio:.2f}:1")
+
+    def test_post_310_shared_controls_use_semantic_theme_tokens(self):
+        css = self._style_css()
+        expected = {
+            ".build-field": ("--theme-page-text",),
+            ".build-field small": ("--theme-muted-text",),
+            ".build-secondary-link": ("--theme-link",),
+            ".build-secondary-link:hover": ("--theme-link-hover",),
+            "button.build-secondary-link": (
+                "--semantic-secondary-control-text",
+                "--semantic-secondary-control-surface",
+                "--semantic-secondary-control-border",
+            ),
+            "button.build-secondary-link:not(:disabled):hover": (
+                "--theme-heading", "--semantic-secondary-control-hover",
+                "--theme-accent",
+            ),
+            "button.build-secondary-link:not(:disabled):active": (
+                "--theme-heading", "--theme-accent",
+                "--semantic-secondary-control-surface",
+            ),
+            "button.build-secondary-link:disabled": (
+                "--theme-muted-text", "--theme-surface", "--theme-border-soft",
+                "opacity: 1", "cursor: not-allowed",
+            ),
+            ".portable-bundle-selection-actions button": (
+                "--semantic-secondary-control-text",
+                "--semantic-secondary-control-surface",
+                "--semantic-secondary-control-border",
+            ),
+            ".portable-bundle-page .library-primary-action": (
+                "--semantic-primary-control-text", "--theme-accent-2",
+                "--theme-accent",
+            ),
+            ".portable-bundle-page .library-secondary-action": (
+                "--semantic-secondary-control-text",
+                "--semantic-secondary-control-surface",
+            ),
+            ".daily-review-action": (
+                "--semantic-primary-control-text", "--theme-accent-2",
+            ),
+            ".mixed-quiz-builder-page .library-primary-action": (
+                "--semantic-primary-control-text", "--theme-accent-2",
+                "--theme-accent",
+            ),
+            ".duplicate-question-badge.exact": (
+                "--semantic-success-text", "--semantic-success-surface",
+                "--semantic-success-border",
+            ),
+            ".duplicate-question-badge.possible": (
+                "--semantic-warning-text", "--semantic-warning-surface",
+                "--semantic-warning-border",
+            ),
+        }
+        for selector, tokens in expected.items():
+            with self.subTest(selector=selector):
+                blocks = self._rule_blocks(css, selector)
+                self.assertTrue(blocks, f"Missing shared theme rule for {selector}")
+                self.assertTrue(
+                    any(all(token in block for token in tokens) for block in blocks),
+                    f"{selector} must resolve through semantic theme tokens {tokens}",
+                )
+
+        external_disabled = self._rule_blocks(
+            css, ".external-ai-copy-row .build-secondary-link:disabled",
+        )
+        self.assertTrue(any("opacity: 1" in block for block in external_disabled))
+        pdf_disabled = self._rule_blocks(
+            css, ".pdf-import-page .pdf-review-bulk-bar button:disabled",
+        )
+        self.assertTrue(any("opacity:1" in block for block in pdf_disabled))
+        self.assertNotIn("--theme-text", "".join(
+            self._rule_blocks(css, ".portable-bundle-selection-actions button")
+        ))
+
+    def test_primary_action_foreground_contrast_across_all_four_palettes(self):
+        client = dlms.app.test_client()
+        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+            with self.subTest(theme=theme):
+                with mock.patch.object(dlms, "load_portal_config", return_value={
+                    "title": "DLMS", "theme": theme, "background_image": None,
+                }):
+                    css = client.get("/dynamic.css").get_data(as_text=True).lower()
+                variables = self._css_variables(css)
+                self.assertIn("theme-on-accent", variables)
+                for role in ("theme-accent", "theme-accent-2"):
+                    ratio = self._contrast(
+                        variables["theme-on-accent"],
+                        self._rgba(variables[role])[:3],
+                    )
+                    self.assertGreaterEqual(
+                        ratio, 4.5,
+                        f"{theme} on-accent text against {role} is only {ratio:.2f}:1",
+                    )
 
     def test_pack_validation_review_uses_spaced_semantic_action_layout(self):
         css = self._style_css()

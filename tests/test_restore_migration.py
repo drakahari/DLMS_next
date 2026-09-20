@@ -203,9 +203,12 @@ class RestoreMigrationTests(unittest.TestCase):
             response = self._confirm(token)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(events, [("apply", 2), ("reconcile", 2)])
+        self.assertEqual(events, [
+            ("apply", dlms.DLMS_SCHEMA_VERSION),
+            ("reconcile", dlms.DLMS_SCHEMA_VERSION),
+        ])
         self.assertEqual(list(Path(dlms._restore_operation_root()).glob("restore_*.json")), [])
-        self.assertEqual(self._schema_version(self.db_path), 2)
+        self.assertEqual(self._schema_version(self.db_path), dlms.DLMS_SCHEMA_VERSION)
         self.assertEqual(self._quiz_title(self.db_path), "Restored Legacy")
         conn = sqlite3.connect(self.db_path)
         try:
@@ -230,13 +233,29 @@ class RestoreMigrationTests(unittest.TestCase):
             result = dlms._prepare_staged_restore_database(str(staged))
 
         self.assertEqual(result["bootstrap"]["status"], "current")
-        self.assertEqual(result["validation"]["version"], 2)
+        self.assertEqual(result["validation"]["version"], dlms.DLMS_SCHEMA_VERSION)
         self.assertEqual(database.stat().st_mtime_ns, before)
         migration.assert_not_called()
 
     def test_current_backup_restores_normally_without_migration(self):
         current = self.root / "current-restore.db"
         self._current_database(current, "Restored Current")
+        identity = "a" * 32
+        conn = sqlite3.connect(current)
+        try:
+            quiz_id = conn.execute("SELECT id FROM quizzes LIMIT 1").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text,
+                    question_uid, canonical_question_uid, is_generated_copy
+                ) VALUES (?, 1, 'Restored identity?', ?, ?, 0)
+                """,
+                (quiz_id, identity, identity),
+            )
+            conn.commit()
+        finally:
+            conn.close()
         token, _stage = self._stage_archive(current, "9")
         safety = self._safety_archive()
         migration = mock.Mock(side_effect=AssertionError("migration must not run"))
@@ -249,7 +268,21 @@ class RestoreMigrationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self._quiz_title(self.db_path), "Restored Current")
-        self.assertEqual(self._schema_version(self.db_path), 2)
+        self.assertEqual(self._schema_version(self.db_path), dlms.DLMS_SCHEMA_VERSION)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                (identity, identity, None, 0),
+                conn.execute(
+                    """
+                    SELECT question_uid, canonical_question_uid,
+                           source_question_uid, is_generated_copy
+                    FROM questions
+                    """
+                ).fetchone(),
+            )
+        finally:
+            conn.close()
         self.assertEqual(list(Path(dlms._restore_operation_root()).glob("restore_*.json")), [])
         migration.assert_not_called()
 
@@ -330,7 +363,7 @@ class RestoreMigrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertEqual(seen_titles, ["Failed Restore", "Original Live"])
         self.assertEqual(self._quiz_title(self.db_path), "Original Live")
-        self.assertEqual(self._schema_version(self.db_path), 2)
+        self.assertEqual(self._schema_version(self.db_path), dlms.DLMS_SCHEMA_VERSION)
         self.assertNotIn(b"post-apply failure", response.data)
 
     def test_rollback_failure_is_logged_and_not_reported_as_success(self):

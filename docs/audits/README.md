@@ -18,6 +18,8 @@ software.
   Assessment](2026-09-08-product-quality-assessment.md)
 * [September 10, 2026 Product Quality
   Assessment](2026-09-10-product-quality-assessment.md)
+* [September 13, 2026 DLMS 3.2.0 Pre-Release Product Quality
+  Assessment](2026-09-13-product-quality-assessment.md)
 
 ## Product-quality history
 
@@ -29,6 +31,10 @@ software.
   rounding), with readiness classified as **READY WITH NON-BLOCKING DEBT**.
 * September 10, 2026: weighted score **9.58/10** (`9.584/10` before
   rounding), with readiness classified as **READY WITH NON-BLOCKING DEBT**.
+* September 13, 2026: historical-rubric score **9.75/10** (`9.747/10`
+  before rounding) and separate mature-product score **9.45/10**, with the
+  pre-release source state classified as **READY FOR RELEASE-CANDIDATE
+  VALIDATION**.
 * The September 3 and September 5 assessments rated Overall Product Quality at
   **9.1/10**. The post-modularization September 8 assessment rated it at
   **9.4/10**; the September 10 DLMS 3.1.0 assessment rated it at **9.6/10**.

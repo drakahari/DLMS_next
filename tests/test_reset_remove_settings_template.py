@@ -61,6 +61,14 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
         self.assertIn(
             "Neither action removes the executable/source installation.", page
         )
+        for wording in (
+            "Return appearance, parsing, AI Integration, navigation, lifecycle, and Quiz Library folder preferences to DLMS defaults.",
+            "Quizzes keep their existing folder assignments.",
+            "Empty custom folders are removed, and hidden-folder state is cleared.",
+            "Quizzes and their populated folder assignments, history, Study/Content Packs",
+        ):
+            with self.subTest(reset_application_settings=wording):
+                self.assertIn(wording, page)
         self.assertIn('id="clearDBBtn" class="settings-danger-button" type="button"', page)
         self.assertIn(
             'id="removeAllDlmsDataBtn" class="settings-critical-button" type="button" disabled',
@@ -95,6 +103,10 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
 
         self.assertIn(
             'data-confirm-text="Reset Learning Intelligence?&#10;&#10;This clears the answer evidence used for mastery, recommendations, diagnostics, and scheduled review. Your quizzes, concepts/tags, Study Packs, settings, saved attempts, and missed-question history will remain.&#10;&#10;DLMS will create a safety backup first. Continue?"',
+            page,
+        )
+        self.assertIn(
+            'data-confirm-text="Reset Application Settings?&#10;&#10;This returns appearance, parsing, AI Integration, navigation, lifecycle, and Quiz Library folder preferences to defaults. Quizzes and their populated folder assignments remain; empty custom folders and hidden-folder state reset. All folders become included in Learning Scope. Learning evidence and history remain saved.&#10;&#10;DLMS will create a safety backup first. Continue?"',
             page,
         )
         self.assertIn(

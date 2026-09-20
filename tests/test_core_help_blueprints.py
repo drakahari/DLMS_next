@@ -58,6 +58,7 @@ class CoreHelpBlueprintTests(unittest.TestCase):
         "quiz_asset_folder",
         "browser_presence_update",
         "browser_presence_setting_loaded",
+        "browser_presence_runtime_eligible",
     }
     OLD_ENDPOINTS = {
         "home",

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duplicate Question Review - {{ portal_title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home duplicate-question-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand">
+            <div class="dashboard-brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
+        </div>
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item active" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
+            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
+        </nav>
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button>
+        <div class="dashboard-sidebar-version">DLMS v{{ app_version }}</div>
+    </aside>
+
+    <main class="dashboard-main duplicate-question-main">
+        <header class="dashboard-header">
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <div><h1>Duplicate Question Review</h1><p>Quiz Library <span>•</span> Compare <span>•</span> Review</p></div>
+        </header>
+
+        <section class="dashboard-panel duplicate-question-intro">
+            <div>
+                <span class="library-eyebrow">ADVISORY LIBRARY SCAN</span>
+                <h2>Find repeated questions without changing your quizzes.</h2>
+                <p>DLMS compares ordinary source questions only. Exact matches and strong possible matches are shown for your review; nothing is merged, deleted, or rewritten.</p>
+            </div>
+            <a class="build-secondary-link" href="/library">Back to Quiz Library</a>
+        </section>
+
+        <section class="library-summary-grid duplicate-question-summary" aria-label="Duplicate scan summary">
+            <div class="library-stat-card"><span>Scanned</span><strong>{{ report.scanned_question_count }}</strong><small>source questions</small></div>
+            <div class="library-stat-card"><span>Quizzes</span><strong>{{ report.scanned_quiz_count }}</strong><small>source quizzes</small></div>
+            <div class="library-stat-card"><span>Exact</span><strong>{{ report.exact_group_count }}</strong><small>duplicate groups</small></div>
+            <div class="library-stat-card"><span>Possible</span><strong>{{ report.near_group_count }}</strong><small>near-duplicate pairs</small></div>
+        </section>
+
+        {% if report.excluded_generated_count %}
+        <p class="duplicate-question-generated-note">{{ report.excluded_generated_count }} generated review/composition question{% if report.excluded_generated_count != 1 %}s were{% else %} was{% endif %} excluded from this source-library scan.</p>
+        {% endif %}
+
+        <section class="dashboard-panel duplicate-question-tools" aria-label="Filter duplicate results">
+            <form method="GET" action="/library/duplicates" class="duplicate-question-filters">
+                <label class="build-field"><span>Source quiz in results</span><select name="quiz" id="duplicateQuizFilter"><option value="">All source quizzes</option>{% for id, title in duplicate_view.quizzes %}<option value="{{ id }}"{% if duplicate_view.quiz == id|string %} selected{% endif %}>{{ title }} · Quiz #{{ id }}</option>{% endfor %}</select></label>
+                <label class="build-field"><span>Folder in results</span><select name="folder" id="duplicateFolderFilter"><option value="">All folders</option>{% for folder in duplicate_view.folders %}<option value="{{ folder }}"{% if duplicate_view.folder == folder %} selected{% endif %}>{{ folder }}</option>{% endfor %}</select></label>
+                <label class="build-field"><span>Result type</span><select name="result_type" id="duplicateResultTypeFilter"><option value="all"{% if duplicate_view.result_type == 'all' %} selected{% endif %}>All results</option><option value="exact"{% if duplicate_view.result_type == 'exact' %} selected{% endif %}>Exact duplicates</option><option value="possible"{% if duplicate_view.result_type == 'possible' %} selected{% endif %}>Possible matches</option></select></label>
+                <label class="build-field"><span>Question or quiz title</span><input type="search" name="search" id="duplicateSearch" value="{{ duplicate_view.search }}" placeholder="Search duplicate results"></label>
+                <div class="duplicate-question-filter-actions"><button class="library-primary-action" type="submit">Apply filters</button><a class="library-secondary-action" href="/library/duplicates">Clear filters</a></div>
+            </form>
+            <p class="duplicate-question-generated-note">A group matches a quiz or folder when at least one source record belongs to it, including hidden quizzes. Filters only change this view, not the scan or your content.</p>
+            <div class="duplicate-question-navigation">
+                <p role="status">Showing {{ duplicate_view.start }}–{{ duplicate_view.end }} of {{ duplicate_view.matched_count }} {{ duplicate_view.result_label }} · {{ duplicate_view.total_count }} group{% if duplicate_view.total_count != 1 %}s{% endif %} in the full scan.</p>
+                {% if duplicate_view.matched_count %}<button class="library-secondary-action compact" type="button" id="expandDuplicateGroups">Expand all on page</button><button class="library-secondary-action compact" type="button" id="collapseDuplicateGroups">Collapse all on page</button>{% endif %}
+            </div>
+        </section>
+
+        {% if not duplicate_view.matched_count %}
+        <section class="dashboard-panel duplicate-question-empty">
+            {% if duplicate_view.total_count %}<h2>No matching groups</h2><p>Try another quiz, folder, or search, or clear the filters to see the complete results.</p>{% else %}<h2>No duplicates found</h2><p>No exact or high-confidence possible duplicates were found among the current source questions.</p>{% endif %}
+        </section>
+        {% endif %}
+
+        {% if report.exact_groups %}
+        <section class="duplicate-question-section" aria-labelledby="exactDuplicateHeading">
+            <div class="duplicate-question-section-heading">
+                <div><span class="duplicate-question-badge exact">EXACT</span><h2 id="exactDuplicateHeading">Exact duplicates</h2></div>
+                <p>The question type, normalized wording, and complete answer structure match.</p>
+            </div>
+            <div class="duplicate-question-results">
+                {% for group in report.exact_groups %}
+                <details class="dashboard-panel duplicate-question-group"{% if duplicate_view.expanded %} open{% endif %}>
+                    <summary class="duplicate-question-group-title"><strong>{{ group.questions[0].question_text|truncate(110) }}</strong><span>{{ group.questions|length }} matching source records · {{ group.question_type|capitalize }}</span></summary>
+                    <div class="duplicate-question-locations exact-locations">
+                        {% for question in group.questions %}
+                        <section class="duplicate-question-location">
+                            <div class="duplicate-question-source"><strong>{{ question.quiz_title }}</strong><span>{{ question.folder }}{% if question.question_number is not none %} · Question {{ question.question_number }}{% endif %}</span></div>
+                            <h3>{{ question.question_text }}</h3>
+                            {% if question.choices %}
+                            <ul class="duplicate-question-answers">{% for choice in question.choices %}<li><strong>{{ choice.label }}.</strong> {{ choice.text }}{% if choice.is_correct %} <span class="duplicate-question-correct">Correct</span>{% endif %}</li>{% endfor %}</ul>
+                            {% elif question.pairs %}
+                            <ul class="duplicate-question-answers">{% for pair in question.pairs %}<li>{{ pair.left }} <span aria-hidden="true">↔</span> {{ pair.right }}</li>{% endfor %}</ul>
+                            {% endif %}
+                            <a class="library-secondary-action compact" href="{{ question.edit_url }}">Edit source quiz</a>
+                        </section>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if report.near_groups %}
+        <section class="duplicate-question-section" aria-labelledby="nearDuplicateHeading">
+            <div class="duplicate-question-section-heading">
+                <div><span class="duplicate-question-badge possible">POSSIBLE</span><h2 id="nearDuplicateHeading">Possible duplicates for review</h2></div>
+                <p>These pairs have very similar wording and the same answer structure. Review them before deciding whether any manual action is appropriate.</p>
+            </div>
+            <div class="duplicate-question-results">
+                {% for group in report.near_groups %}
+                <details class="dashboard-panel duplicate-question-group"{% if duplicate_view.expanded %} open{% endif %}>
+                    <summary class="duplicate-question-group-title"><strong>{{ group.left.questions[0].question_text|truncate(110) }}</strong><span>{{ group.reason }} · Advisory only</span></summary>
+                    <div class="duplicate-question-locations possible-locations">
+                        {% for side in (group.left, group.right) %}
+                        <div class="duplicate-question-side">
+                        {% for question in side.questions %}
+                        <section class="duplicate-question-location">
+                            <div class="duplicate-question-source"><strong>{{ question.quiz_title }}</strong><span>{{ question.folder }}{% if question.question_number is not none %} · Question {{ question.question_number }}{% endif %}</span></div>
+                            <h3>{{ question.question_text }}</h3>
+                            {% if question.choices %}
+                            <ul class="duplicate-question-answers">{% for choice in question.choices %}<li><strong>{{ choice.label }}.</strong> {{ choice.text }}{% if choice.is_correct %} <span class="duplicate-question-correct">Correct</span>{% endif %}</li>{% endfor %}</ul>
+                            {% elif question.pairs %}
+                            <ul class="duplicate-question-answers">{% for pair in question.pairs %}<li>{{ pair.left }} <span aria-hidden="true">↔</span> {{ pair.right }}</li>{% endfor %}</ul>
+                            {% endif %}
+                            <a class="library-secondary-action compact" href="{{ question.edit_url }}">Edit source quiz</a>
+                        </section>
+                        {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <nav class="duplicate-question-navigation" aria-label="Duplicate result pages">
+            {% if duplicate_view.previous_url %}<a class="library-secondary-action" rel="prev" href="{{ duplicate_view.previous_url }}">Previous page</a>{% endif %}
+            <span>Page {{ duplicate_view.page }} of {{ duplicate_view.pages }}</span>
+            {% if duplicate_view.next_url %}<a class="library-secondary-action" rel="next" href="{{ duplicate_view.next_url }}">Next page</a>{% endif %}
+        </nav>
+        <section class="dashboard-panel duplicate-question-safety-note">
+            <strong>Resolve manually when needed.</strong>
+            <p>This report never changes question IDs, source quizzes, concepts, history, or provenance. Use each source quiz’s existing editor if you decide to make a change.</p>
+        </section>
+    </main>
+</div>
+<script src="/static/nav-normalize.js"></script>
+<script src="/static/quiz-duplicate-review.js"></script>
+</body>
+</html>

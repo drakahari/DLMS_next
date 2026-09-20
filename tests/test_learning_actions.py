@@ -125,6 +125,7 @@ class LearningActionsTests(unittest.TestCase):
             "Smart Review — Contracts",
             [{**question, "number": 1}],
             filename_prefix="smart_review",
+            generation_kind="smart_review",
             exam_minutes=90,
             snapshot_existing_assets=True,
         )

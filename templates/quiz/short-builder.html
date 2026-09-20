@@ -154,9 +154,9 @@
                             {% for label in q.choices %}
                                 <li>
                                     <b class="choice-label">{{ label }}.</b>
-                                    <input type="text" class="choice-text" name="choice_{{ q.number }}_{{ label }}" placeholder="Option {{ label }}">
-                                    <label class="build-correct-toggle"><input type="checkbox" class="choice-correct" name="correct_{{ q.number }}_{{ label }}"><span>Correct</span></label>
-                                    <button type="button" class="build-choice-delete btn-delete" onclick="deleteChoice(this)" title="Delete choice" aria-label="Delete choice">×</button>
+                                    <input type="text" class="choice-text" name="choice_{{ q.number }}_{{ label }}" placeholder="Option {{ label }}" aria-label="Question {{ q.number }} answer {{ label }} text">
+                                    <label class="build-correct-toggle"><input type="checkbox" class="choice-correct" name="correct_{{ q.number }}_{{ label }}" aria-label="Mark question {{ q.number }} answer {{ label }} correct"><span>Correct</span></label>
+                                    <button type="button" class="build-choice-delete btn-delete" onclick="deleteChoice(this)" title="Delete choice" aria-label="Delete question {{ q.number }} answer {{ label }}">×</button>
                                 </li>
                             {% endfor %}
                             </ul>
@@ -169,10 +169,10 @@
                                 <label class="build-field"><span>Direction</span><select class="matching-direction"><option value="term_to_definition">Term → Definition</option><option value="definition_to_term">Definition → Term</option><option value="random">Random Each Attempt</option></select></label>
                             </div>
                             <div class="matching-pairs-list">
-                                <div class="build-match-pair"><span class="match-number">1</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
-                                <div class="build-match-pair"><span class="match-number">2</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
-                                <div class="build-match-pair"><span class="match-number">3</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
-                                <div class="build-match-pair"><span class="match-number">4</span><input type="text" class="match-left" placeholder="Term / prompt"><span class="match-arrow">↔</span><input type="text" class="match-right" placeholder="Definition / match"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete pair">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">1</span><input type="text" class="match-left" placeholder="Term / prompt" aria-label="Question {{ q.number }} matching term 1"><span class="match-arrow" aria-hidden="true">↔</span><input type="text" class="match-right" placeholder="Definition / match" aria-label="Question {{ q.number }} matching definition 1"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete question {{ q.number }} matching pair 1">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">2</span><input type="text" class="match-left" placeholder="Term / prompt" aria-label="Question {{ q.number }} matching term 2"><span class="match-arrow" aria-hidden="true">↔</span><input type="text" class="match-right" placeholder="Definition / match" aria-label="Question {{ q.number }} matching definition 2"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete question {{ q.number }} matching pair 2">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">3</span><input type="text" class="match-left" placeholder="Term / prompt" aria-label="Question {{ q.number }} matching term 3"><span class="match-arrow" aria-hidden="true">↔</span><input type="text" class="match-right" placeholder="Definition / match" aria-label="Question {{ q.number }} matching definition 3"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete question {{ q.number }} matching pair 3">×</button></div>
+                                <div class="build-match-pair"><span class="match-number">4</span><input type="text" class="match-left" placeholder="Term / prompt" aria-label="Question {{ q.number }} matching term 4"><span class="match-arrow" aria-hidden="true">↔</span><input type="text" class="match-right" placeholder="Definition / match" aria-label="Question {{ q.number }} matching definition 4"><button type="button" class="build-choice-delete btn-delete" onclick="deleteMatchPair(this)" aria-label="Delete question {{ q.number }} matching pair 4">×</button></div>
                             </div>
                             <button class="build-add-choice" type="button" onclick="addMatchPair(this)">＋ Add Pair</button>
                         </div>
@@ -207,6 +207,11 @@ function renumberMatchPairs(question, qNumber) {
         const right = pair.querySelector(".match-right");
         left.name = `match_left_${qNumber}_${pIndex + 1}`;
         right.name = `match_right_${qNumber}_${pIndex + 1}`;
+        left.setAttribute("aria-label", `Question ${qNumber} matching term ${pIndex + 1}`);
+        right.setAttribute("aria-label", `Question ${qNumber} matching definition ${pIndex + 1}`);
+        pair.querySelector(".btn-delete")?.setAttribute(
+            "aria-label", `Delete question ${qNumber} matching pair ${pIndex + 1}`
+        );
     });
 }
 
@@ -272,12 +277,17 @@ function renumberQuestions() {
             const savedChoiceText = choiceText.value;
             choiceText.name = `choice_${qNumber}_${label}`;
             choiceText.placeholder = `Option ${label}`;
+            choiceText.setAttribute("aria-label", `Question ${qNumber} answer ${label} text`);
             choiceText.value = savedChoiceText;
 
             const correctBox = choice.querySelector(".choice-correct");
             const savedChecked = correctBox.checked;
             correctBox.name = `correct_${qNumber}_${label}`;
+            correctBox.setAttribute("aria-label", `Mark question ${qNumber} answer ${label} correct`);
             correctBox.checked = savedChecked;
+            choice.querySelector(".btn-delete")?.setAttribute(
+                "aria-label", `Delete question ${qNumber} answer ${label}`
+            );
         });
     });
 }

@@ -41,11 +41,11 @@ class BlueprintClosureTests(unittest.TestCase):
         "history": 13,
         "it": 3,
         "law": 16,
-        "learning": 15,
+        "learning": 23,
         "maintenance": 20,
         "medical": 6,
-        "pdf_import": 25,
-        "quiz": 31,
+        "pdf_import": 29,
+        "quiz": 40,
         "settings": 15,
         "study_packs": 9,
     }
@@ -71,23 +71,24 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.admin_images.AdminImageRouteDependencies": 6,
         "dlms.routes.anki.AnkiRouteDependencies": 22,
         "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
-        "dlms.routes.core.CoreRouteDependencies": 16,
+        "dlms.routes.core.CoreRouteDependencies": 17,
         "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
         "dlms.routes.history.HistoryRouteDependencies": 9,
         "dlms.routes.it.ITStudyDependencies": 5,
         "dlms.routes.law.LawRouteDependencies": 30,
-        "dlms.routes.learning.LearningRouteDependencies": 17,
+        "dlms.routes.learning.LearningRouteDependencies": 24,
         "dlms.routes.maintenance.MaintenanceRouteDependencies": 26,
         "dlms.routes.medical.MedicalRouteDependencies": 9,
-        "dlms.routes.pdf_import.PDFImportRouteDependencies": 53,
+        "dlms.routes.pdf_import.PDFImportRouteDependencies": 56,
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 20,
-        "dlms.routes.quiz.dependencies.QuizEditorDependencies": 18,
-        "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 18,
+        "dlms.routes.quiz.dependencies.QuizBundleDependencies": 15,
+        "dlms.routes.quiz.dependencies.QuizEditorDependencies": 19,
+        "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 24,
         "dlms.routes.settings.SettingsRouteDependencies": 11,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "5eed803ddc929347c81c7b8f4d1c8e89d042f80dad000582a099c7d8bb14e465"
+        "1a37e413d6df5c5c261c6a4b56c8a23c67c30cf1217824757a8820db67df2ea2"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -138,13 +139,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_200_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_221_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(200, len(rules))
+        self.assertEqual(221, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(199, len(blueprint_rules))
+        self.assertEqual(220, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -230,7 +231,7 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_route_modules_have_frozen_family_dependencies_and_no_app_import(self):
         route_paths = sorted(ROUTE_ROOT.rglob("*.py"))
-        self.assertEqual(21, len(route_paths))
+        self.assertEqual(22, len(route_paths))
         for path in route_paths:
             with self.subTest(route_module=path.relative_to(ROOT)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))

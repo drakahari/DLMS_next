@@ -1,0 +1,159 @@
+=== SCENE 001 ===
+
+DLMS is a local-first study workspace that connects quiz practice with learning intelligence. It remembers your practice and helps you decide what deserves attention next.
+
+=== SCENE 002 ===
+
+Today’s Review turns that history into a short plan. Here, it suggests overdue questions and a weak concept, with a reason for each recommendation.
+
+=== SCENE 003 ===
+
+The Quiz Library organizes source material in folders, so related quizzes stay together. You can return to a subject or edit its questions as your studies grow.
+
+=== SCENE 004 ===
+
+Learning Scope chooses which folders inform current recommendations and intelligence. Excluding Past Projects leaves its quizzes, history, and schedules saved, while keeping current priorities focused.
+
+=== SCENE 005 ===
+
+Excluded quizzes remain available. Hiding a folder is a separate browsing choice.
+
+=== SCENE 006 ===
+
+You do not have to enter every question by hand. Bring in a formatted text file, paste questions for cleanup and preview, or turn a CSV terminology list into matching practice.
+
+=== SCENE 007 ===
+
+For PDFs, DLMS extracts selectable text from question banks and glossaries. Review the extracted material, then build quizzes from saved banks. Reviewed terminology can become matching or multiple-choice practice.
+
+=== SCENE 008 ===
+
+When text is trapped in a scan or screenshot, local OCR can recover candidate questions or terminology pairs. Supported paths include selected scanned question-bank pages and scanned glossaries. The result is a draft, ready for checking.
+
+=== SCENE 009 ===
+
+This separate prepared example shows Review and Repair. Check extracted wording, choices, answers, and explanations before saving. Recovery helps preserve useful material while keeping uncertainty visible.
+
+=== SCENE 010 ===
+
+The incomplete question has no detected correct answer. Repair it or exclude it, so uncertain material does not quietly become trusted practice.
+
+=== SCENE 011 ===
+
+With a published quiz, Study Mode gives you time to think. This networking example is untimed, so you can work at your own pace.
+
+=== SCENE 011A ===
+
+For assessment, each quiz has a configurable Exam Mode time limit, while Study Mode stays untimed.
+
+=== SCENE 011B ===
+
+In this separate Exam example, answers stay selected, but correctness and explanations wait until you finish.
+
+=== SCENE 011C ===
+
+Pause freezes the countdown and obscures the exam behind this overlay. Resume continues the same attempt.
+
+=== SCENE 012 ===
+
+Back in Study Mode, an incorrect choice gets immediate feedback and an invitation to try again. You can reconsider your reasoning while the question is still in front of you.
+
+=== SCENE 013 ===
+
+The correct answer reveals the explanation. Question Tools can mark it for Anki, copy a prompt, or open your configured AI provider for a manual handoff.
+
+=== SCENE 013A ===
+
+Matching questions let you pair related concepts directly. Completed pairs receive immediate correctness feedback within the normal Study workflow.
+
+=== SCENE 013B ===
+
+Hotspot questions make answers spatial. Select the relevant region on an image, then review the result and explanation through the same Study feedback workflow.
+
+=== SCENE 014 ===
+
+Saved Study answers and Exam results feed Learning Intelligence. Concept-level evidence helps you look beyond a single score.
+
+=== SCENE 015 ===
+
+Access Control is improving but still weak overall. Cloud needs more evidence before drawing conclusions.
+
+=== SCENE 016 ===
+
+The mastery explanation shows how overall results, recent performance, evidence, and recency contribute to the estimate.
+
+=== SCENE 018 ===
+
+Due Questions adds spaced review. Each source question gets a schedule from recorded answers, helping you revisit material without choosing every review date yourself.
+
+=== SCENE 019 ===
+
+Correct streaks extend review intervals. An incorrect answer resets the interval to one day. Overdue questions stay visible here.
+
+=== SCENE 021 ===
+
+Adaptive Study assembles existing questions around weak areas, recent misses, and review timing. The Library keeps the saved session under Generated Practice, ready to open.
+
+=== SCENE 022 ===
+
+The source list shows where those questions came from. Practice answers feed the original questions’ learning records, adding evidence without creating an independent source pool.
+
+=== SCENE 023 ===
+
+Finish Review explicitly closes a generated Study session. Answering the final question alone does not mark the saved review complete.
+
+=== SCENE 024 ===
+
+The completion message confirms that the answers were saved and the session closed.
+
+=== SCENE 025 ===
+
+Completed Generated Practice retains the session. It stays playable, with its source links and learning evidence preserved for later use.
+
+=== SCENE 026 ===
+
+History keeps completed Exam attempts available for review. Study answers feed learning evidence separately, so our practice does not add a scored attempt here.
+
+=== SCENE 027 ===
+
+Analytics compares saved results by quiz across your history, showing average, best, and latest performance together.
+
+=== SCENE 028 ===
+
+Portable bundles move source quizzes and supported images without learning history. Reusable packaged datasets provide a separate way to bring material into DLMS.
+
+=== SCENE 028A ===
+
+Content Packs is the management side: it validates installed packages, reports their datasets, and tracks the quizzes created from them.
+
+=== SCENE 028B ===
+
+Study Packs is the learner-facing catalog. Choose a matching, image, or prepared-question dataset and create a quiz while keeping the reusable source installed.
+
+=== SCENE 029 ===
+
+Duplicate Review locates overlapping source questions as your library grows. Generated practice copies are excluded, keeping comparisons focused on original material.
+
+=== SCENE 030 ===
+
+Here, one question appears in two quizzes. Compare the answers and open either source for editing. The report itself makes no changes.
+
+=== SCENE 031 ===
+
+Anki Tools exports quiz questions or recorded misses as flashcards. Import the deck into Anki for its study workflow while keeping your material in DLMS.
+
+=== SCENE 032 ===
+
+Choose individual questions or recorded misses for a focused set. Those same selected cards can also become printable physical flash cards, through a browser layout for three-by-five index cards.
+
+=== SCENE 033 ===
+
+External AI uses a manual handoff. Take a prompt to your chosen provider, then paste its structured response back for validation and repair. No direct provider API is required.
+
+=== SCENE 034 ===
+
+Backups preserve quizzes, settings, and learning history. DLMS is a single-user application with native desktop packages and no required cloud account. Your study data stays under your control.
+
+=== SCENE 036 ===
+
+Back on the Dashboard, each study decision builds on earlier work. Bring in useful material, review it, and practice. Your content and learning history remain yours to reuse.

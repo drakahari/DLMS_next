@@ -1,4 +1,4 @@
-"""Bounded parsing for pasted External AI quiz JSON.
+"""Bounded parsing for pasted External AI structured-content JSON.
 
 This module intentionally owns syntax extraction and source-neutral
 normalization only.  It does not publish quizzes or infer missing content.
@@ -11,13 +11,17 @@ import re
 import unicodedata
 from urllib.parse import urlsplit
 
-from dlms.services.content_packs import _content_pack_choice_question_errors
+from dlms.services.content_packs import (
+    _content_pack_choice_question_errors,
+    _matching_record_validation_errors,
+)
 
 
 EXTERNAL_AI_MAX_INPUT_BYTES = 1024 * 1024
 EXTERNAL_AI_MAX_NESTING = 14
 EXTERNAL_AI_MAX_QUESTIONS = 100
 EXTERNAL_AI_MAX_CHOICES = 26
+EXTERNAL_AI_MAX_MATCHING_PAIRS = 100
 EXTERNAL_AI_MAX_CONCEPTS = 50
 EXTERNAL_AI_MAX_OBJECT_MEMBERS = 100
 EXTERNAL_AI_MAX_ARRAY_ITEMS = 100
@@ -41,6 +45,15 @@ _QUESTION_FIELDS = frozenset({
     "question", "answer_mode", "choices", "explanation", "concepts",
 })
 _CHOICE_FIELDS = frozenset({"text", "is_correct"})
+_MATCHING_QUESTION_FIELDS = frozenset({
+    "question", "direction", "round_size", "pairs", "explanation", "concepts",
+})
+_MATCHING_PAIR_FIELDS = frozenset({
+    "left", "right", "category", "explanation",
+})
+_MATCHING_DIRECTIONS = frozenset({
+    "term_to_definition", "definition_to_term", "random",
+})
 _FENCED_BLOCK_RE = re.compile(
     r"```(?P<language>[A-Za-z0-9_-]*)[ \t]*\r?\n(?P<body>.*?)```",
     re.DOTALL,
@@ -318,6 +331,18 @@ def _add_unknown_field_diagnostics(value, allowed, *, path, diagnostics, issues=
             issues.append(item.copy())
 
 
+def _reject_unknown_fields(value, allowed, *, path):
+    if not isinstance(value, dict):
+        return
+    unknown = sorted(set(value) - set(allowed))
+    if unknown:
+        location = f"{path} " if path else "The response "
+        raise ExternalAIStructuredError(
+            f"{location}contains unsupported field {unknown[0]!r}.",
+            code="unexpected_field",
+        )
+
+
 def _normalize_source(source, diagnostics):
     normalized = {name: "" for name in _SOURCE_FIELDS}
     if not isinstance(source, dict):
@@ -535,6 +560,188 @@ def _normalize_question(raw_question, index, diagnostics):
     }
 
 
+def _normalize_matching_question(raw_question, index, diagnostics):
+    path = f"questions[{index}]"
+    issues = []
+
+    def add_issue(severity, code, suffix, message):
+        item = _diagnostic(
+            severity, code, f"{path}.{suffix}" if suffix else path, message
+        )
+        issues.append(item)
+        diagnostics.append(item.copy())
+
+    if not isinstance(raw_question, dict):
+        add_issue(
+            "error", "invalid_matching_question", "",
+            "Each matching question must be a JSON object.",
+        )
+        return {
+            "source_index": index,
+            "question": "",
+            "direction": "term_to_definition",
+            "round_size": 2,
+            "pairs": [],
+            "explanation": "",
+            "concepts": [],
+            "validation_issues": issues,
+            "review_confirmation_required": True,
+            "review_confirmed": False,
+        }
+
+    _reject_unknown_fields(raw_question, _MATCHING_QUESTION_FIELDS, path=path)
+
+    question_value = raw_question.get("question")
+    if not isinstance(question_value, str) or not question_value.strip():
+        add_issue(
+            "error", "invalid_question_text", "question",
+            "question must be a non-empty string.",
+        )
+    question_text = _bounded_text(
+        question_value,
+        path=f"{path}.question",
+        limit=EXTERNAL_AI_MAX_QUESTION_CHARS,
+    )
+
+    direction = _bounded_text(
+        raw_question.get("direction"),
+        path=f"{path}.direction",
+        limit=32,
+    ).casefold()
+    if direction not in _MATCHING_DIRECTIONS:
+        add_issue(
+            "error", "invalid_matching_direction", "direction",
+            "direction must be 'term_to_definition', 'definition_to_term', or 'random'.",
+        )
+        direction = "term_to_definition"
+
+    raw_pairs = raw_question.get("pairs")
+    if not isinstance(raw_pairs, list):
+        add_issue(
+            "error", "invalid_matching_pairs", "pairs",
+            "pairs must be a non-empty array of term/definition objects.",
+        )
+        raw_pairs = []
+    if len(raw_pairs) > EXTERNAL_AI_MAX_MATCHING_PAIRS:
+        raise ExternalAIStructuredLimitError(
+            f"{path}.pairs exceeds the "
+            f"{EXTERNAL_AI_MAX_MATCHING_PAIRS}-pair limit.",
+            code="too_many_matching_pairs",
+        )
+
+    pairs = []
+    for pair_index, raw_pair in enumerate(raw_pairs):
+        pair_path = f"{path}.pairs[{pair_index}]"
+        if not isinstance(raw_pair, dict):
+            add_issue(
+                "error", "invalid_matching_pair", f"pairs[{pair_index}]",
+                "Each matching pair must be a JSON object.",
+            )
+            pairs.append({
+                "left": "", "right": "", "category": "", "explanation": "",
+            })
+            continue
+        _reject_unknown_fields(raw_pair, _MATCHING_PAIR_FIELDS, path=pair_path)
+        normalized_pair = {}
+        for field, limit in (
+            ("left", EXTERNAL_AI_MAX_CHOICE_CHARS),
+            ("right", EXTERNAL_AI_MAX_CHOICE_CHARS),
+            ("category", EXTERNAL_AI_MAX_CONCEPT_CHARS),
+            ("explanation", EXTERNAL_AI_MAX_EXPLANATION_CHARS),
+        ):
+            value = raw_pair.get(field, "")
+            if not isinstance(value, str):
+                add_issue(
+                    "error", "invalid_matching_pair_field",
+                    f"pairs[{pair_index}].{field}",
+                    f"{field} must be a string.",
+                )
+            normalized_pair[field] = _bounded_text(
+                value, path=f"{pair_path}.{field}", limit=limit
+            )
+        pairs.append(normalized_pair)
+
+    for message in _matching_record_validation_errors(
+        pairs,
+        context=path,
+        left_key="left",
+        right_key="right",
+        record_name="pair",
+    ):
+        add_issue(
+            "error", "invalid_matching_pairs", "pairs",
+            message.removeprefix(f"{path}: "),
+        )
+
+    round_size_value = raw_question.get("round_size")
+    if type(round_size_value) is not int:
+        add_issue(
+            "error", "invalid_matching_round_size", "round_size",
+            "round_size must be a JSON integer.",
+        )
+        round_size = min(10, max(2, len(pairs)))
+    else:
+        round_size = round_size_value
+        if not 2 <= round_size <= len(pairs):
+            add_issue(
+                "error", "invalid_matching_round_size", "round_size",
+                "round_size must be between 2 and the number of pairs.",
+            )
+
+    explanation_value = raw_question.get("explanation", "")
+    if not isinstance(explanation_value, str):
+        add_issue(
+            "error", "invalid_explanation", "explanation",
+            "explanation must be a string.",
+        )
+    explanation = _bounded_text(
+        explanation_value,
+        path=f"{path}.explanation",
+        limit=EXTERNAL_AI_MAX_EXPLANATION_CHARS,
+    )
+
+    raw_concepts = raw_question.get("concepts")
+    concepts = []
+    if not isinstance(raw_concepts, list):
+        add_issue(
+            "error", "invalid_concepts", "concepts",
+            "concepts must be an array of non-empty strings.",
+        )
+    else:
+        if len(raw_concepts) > EXTERNAL_AI_MAX_CONCEPTS:
+            raise ExternalAIStructuredLimitError(
+                f"{path}.concepts exceeds the {EXTERNAL_AI_MAX_CONCEPTS}-item limit.",
+                code="too_many_concepts",
+            )
+        for concept_index, value in enumerate(raw_concepts):
+            concept_path = f"{path}.concepts[{concept_index}]"
+            if not isinstance(value, str) or not value.strip():
+                add_issue(
+                    "error", "invalid_concept", f"concepts[{concept_index}]",
+                    "Each concept must be a non-empty string.",
+                )
+                concepts.append("")
+                continue
+            concepts.append(_bounded_text(
+                value,
+                path=concept_path,
+                limit=EXTERNAL_AI_MAX_CONCEPT_CHARS,
+            ))
+
+    return {
+        "source_index": index,
+        "question": question_text,
+        "direction": direction,
+        "round_size": round_size,
+        "pairs": pairs,
+        "explanation": explanation,
+        "concepts": concepts,
+        "validation_issues": issues,
+        "review_confirmation_required": True,
+        "review_confirmed": False,
+    }
+
+
 def parse_external_ai_quiz_response(response_text, *, choice_shuffler=None):
     """Parse one bounded quiz envelope into a source-neutral review draft.
 
@@ -650,4 +857,102 @@ def parse_external_ai_quiz_response(response_text, *, choice_shuffler=None):
         "validation_state": "needs_repair" if has_errors else "ready_for_review",
         "reviewable": bool(questions),
         "correctness_confirmation_required": True,
+    }
+
+
+def parse_external_ai_matching_response(response_text):
+    """Parse one bounded matching envelope into canonical review records."""
+    payload = _load_unique_json(_extract_json_text(response_text))
+    if not isinstance(payload, dict):
+        raise ExternalAIStructuredError(
+            "The External AI response must contain one JSON object.",
+            code="envelope_not_object",
+        )
+
+    diagnostics = []
+    _reject_unknown_fields(payload, _TOP_LEVEL_FIELDS, path="")
+    if type(payload.get("schema_version")) is not int or payload.get("schema_version") != 1:
+        raise ExternalAIStructuredError(
+            "schema_version must be the JSON number 1.",
+            code="unsupported_schema_version",
+        )
+    if payload.get("content_type") != "matching":
+        raise ExternalAIStructuredError(
+            "content_type must be exactly 'matching'.",
+            code="unsupported_content_type",
+        )
+
+    _reject_unknown_fields(payload.get("source"), _SOURCE_FIELDS, path="source")
+
+    title_value = payload.get("title")
+    if not isinstance(title_value, str) or not title_value.strip():
+        diagnostics.append(_diagnostic(
+            "error", "invalid_title", "title",
+            "title must be a non-empty string.",
+        ))
+    title = _bounded_text(
+        title_value, path="title", limit=EXTERNAL_AI_MAX_TITLE_CHARS
+    )
+    source = _normalize_source(payload.get("source"), diagnostics)
+
+    raw_questions = payload.get("questions")
+    if not isinstance(raw_questions, list) or not raw_questions:
+        diagnostics.append(_diagnostic(
+            "error", "invalid_questions", "questions",
+            "questions must be a non-empty array.",
+        ))
+        raw_questions = []
+    if len(raw_questions) > EXTERNAL_AI_MAX_QUESTIONS:
+        raise ExternalAIStructuredLimitError(
+            f"questions exceeds the {EXTERNAL_AI_MAX_QUESTIONS}-question limit.",
+            code="too_many_questions",
+        )
+
+    questions = [
+        _normalize_matching_question(raw_question, index, diagnostics)
+        for index, raw_question in enumerate(raw_questions)
+    ]
+
+    seen_questions = {}
+    for question_index, question in enumerate(questions):
+        normalized = _normalized_comparison_text(question["question"])
+        if not normalized:
+            continue
+        prior_index = seen_questions.get(normalized)
+        if prior_index is None:
+            seen_questions[normalized] = question_index
+            continue
+        for duplicate_index, other_index in (
+            (question_index, prior_index), (prior_index, question_index),
+        ):
+            item = _diagnostic(
+                "error",
+                "duplicate_question",
+                f"questions[{duplicate_index}].question",
+                f"This duplicates normalized question {other_index + 1}; both records were retained.",
+            )
+            questions[duplicate_index]["validation_issues"].append(item.copy())
+            diagnostics.append(item)
+
+    for question in questions:
+        question["validation_state"] = (
+            "needs_repair"
+            if any(
+                item["severity"] == "error"
+                for item in question["validation_issues"]
+            )
+            else "ready_for_review"
+        )
+
+    has_errors = any(item["severity"] == "error" for item in diagnostics)
+    return {
+        "schema_version": 1,
+        "content_type": "matching",
+        "title": title,
+        "source": source,
+        "questions": questions,
+        "diagnostics": diagnostics,
+        "validation_state": "needs_repair" if has_errors else "ready_for_review",
+        "reviewable": bool(questions),
+        "review_confirmation_required": True,
     }

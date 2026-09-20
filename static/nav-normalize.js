@@ -83,6 +83,28 @@
   const sidebar = document.querySelector('.dashboard-sidebar');
   if (!sidebar) return;
 
+  const applyShutdownAvailability = (config) => {
+    if (config?.manual_shutdown_available !== false) return;
+    const shutdownButton = sidebar.querySelector('.dashboard-shutdown');
+    if (!shutdownButton) return;
+    const explanationId = 'dashboardShutdownUnavailable';
+    shutdownButton.disabled = true;
+    shutdownButton.setAttribute('aria-disabled', 'true');
+    shutdownButton.setAttribute('aria-describedby', explanationId);
+    const label = shutdownButton.querySelector('span:last-child');
+    if (label) label.textContent = 'Shutdown unavailable';
+    let explanation = document.getElementById(explanationId);
+    if (!explanation) {
+      explanation = document.createElement('p');
+      explanation.id = explanationId;
+      explanation.className = 'dashboard-shutdown-unavailable';
+      explanation.setAttribute('role', 'status');
+      explanation.textContent = 'DLMS is running in LAN/server mode. Stop the DLMS process or service from the host computer.';
+      shutdownButton.after(explanation);
+    }
+  };
+  portalConfigPromise.then(applyShutdownAvailability);
+
   const path = window.location.pathname || '/';
   const params = new URLSearchParams(window.location.search || '');
   const medicalBuilder = path === '/study-packs/ai-builder' && params.get('from') === 'medical';
@@ -92,7 +114,7 @@
 
   const isActive = (key) => {
     if (key === 'dashboard') return path === '/';
-    if (key === 'library') return path === '/library' || path.startsWith('/edit_quiz') || path.startsWith('/quiz/');
+    if (key === 'library') return path === '/library' || path.startsWith('/edit_quiz') || path.startsWith('/quiz/') || path.startsWith('/quiz-composer');
     if (key === 'build') return path === '/upload' || path === '/paste' || path === '/create_short_quiz' || path === '/matching_bank_import' || path.startsWith('/pdf-import');
     if (key === 'study') return path.startsWith('/study-packs') && !medicalBuilder && !itBuilder && !otherBuilder && !otherStudies;
     if (key === 'it') return path === '/it' || path.startsWith('/it/') || itBuilder;

@@ -104,6 +104,14 @@ class QuizMutationAtomicityTests(unittest.TestCase):
                     "SELECT question_text, explanation FROM questions WHERE id = ?",
                     (self.question_id,),
                 ).fetchone()),
+                "identity": tuple(conn.execute(
+                    """
+                    SELECT question_uid, canonical_question_uid,
+                           source_question_uid, is_generated_copy
+                    FROM questions WHERE id = ?
+                    """,
+                    (self.question_id,),
+                ).fetchone()),
                 "choices": [tuple(row) for row in conn.execute(
                     "SELECT label, text, is_correct FROM choices WHERE question_id = ? ORDER BY label",
                     (self.question_id,),
@@ -126,6 +134,34 @@ class QuizMutationAtomicityTests(unittest.TestCase):
         root = Path(dlms._quiz_publication_staging_root())
         leftovers = list(root.glob("mutation_*")) if root.exists() else []
         self.assertEqual([], leftovers)
+
+    def _canonical_snapshot(self):
+        tables = (
+            "quizzes", "questions", "choices", "matching_pairs", "concepts",
+            "question_concepts", "attempts", "attempt_answers",
+            "missed_questions", "learning_events",
+        )
+        conn = dlms.get_db()
+        try:
+            database = {
+                table: [tuple(row) for row in conn.execute(
+                    f'SELECT * FROM "{table}" ORDER BY rowid'
+                ).fetchall()]
+                for table in tables
+            }
+        finally:
+            conn.close()
+        return {
+            "database": database,
+            "registry": Path(dlms.QUIZ_REGISTRY).read_bytes(),
+        }
+
+    def _post_rebuild_all(self):
+        return self.client.post(
+            "/admin/rebuild_all_quiz_html",
+            json={"confirmation": "rebuild-all-quiz-pages"},
+            headers=csrf_headers(self.client, "/admin/maintenance"),
+        )
 
     def test_rejected_edit_leaves_db_registry_and_artifacts_unchanged(self):
         before = self._snapshot()
@@ -358,6 +394,7 @@ class QuizMutationAtomicityTests(unittest.TestCase):
             conn.close()
 
     def test_successful_edit_updates_all_stores_and_keeps_valid_json(self):
+        before_identity = self._snapshot()["db"]["identity"]
         response = self.client.post(
             f"/edit_quiz/{self.quiz_id}",
             data=self._edit_form(),
@@ -366,6 +403,7 @@ class QuizMutationAtomicityTests(unittest.TestCase):
         self.assertEqual(302, response.status_code)
         snapshot = self._snapshot()
         self.assertEqual((self.quiz_id, "Changed quiz"), snapshot["db"]["quiz"])
+        self.assertEqual(before_identity, snapshot["db"]["identity"])
         registry = json.loads(snapshot["registry"])
         self.assertEqual("Changed quiz", registry[0]["title"])
         self.assertEqual(45, registry[0]["exam_minutes"])
@@ -373,6 +411,209 @@ class QuizMutationAtomicityTests(unittest.TestCase):
         self.assertEqual("Changed question", payload[0]["question"])
         self.assertIn(b"Changed quiz", snapshot["html"])
         self._assert_no_mutation_staging()
+
+    def test_rebuild_all_regenerates_choice_matching_and_generated_quiz_pages_only(self):
+        matching_id, matching_html = dlms._publish_quiz(
+            "Matching quiz",
+            [{
+                "number": 1,
+                "type": "matching",
+                "question": "Match each neutral term.",
+                "concepts": ["matching-concept"],
+                "source": {
+                    "organization": "Neutral Learning Group",
+                    "dataset": "Synthetic Terms",
+                    "version": "1",
+                    "url": "https://example.invalid/terms",
+                    "license": "Synthetic test content",
+                },
+                "pairs": [
+                    {"left": "Term one", "right": "Definition one"},
+                    {"left": "Term two", "right": "Definition two"},
+                ],
+                "round_size": 2,
+                "direction": "term_to_definition",
+            }],
+            filename_prefix="rebuild_matching",
+        )
+        generated_id, generated_html = dlms._publish_quiz(
+            "Renamed generated practice",
+            [{
+                "number": 1,
+                "type": "choice",
+                "question": "Generated practice question",
+                "choices": [
+                    {"label": "A", "text": "First", "is_correct": True},
+                    {"label": "B", "text": "Second", "is_correct": True},
+                    {"label": "C", "text": "Third", "is_correct": False},
+                ],
+            }],
+            filename_prefix="rebuild_generated",
+            generation_kind="adaptive_study",
+        )
+
+        conn = dlms.get_db()
+        try:
+            conn.execute(
+                """
+                INSERT INTO attempts
+                    (id, quiz_id, started_at, completed_at, score, total, percent, mode)
+                VALUES ('rebuild-attempt', ?, '2026-09-14T10:00:00Z',
+                        '2026-09-14T10:01:00Z', 1, 1, 100, 'Study')
+                """,
+                (self.quiz_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO attempt_answers
+                    (attempt_id, question_id, selected_labels, was_correct)
+                VALUES ('rebuild-attempt', ?, 'A', 1)
+                """,
+                (self.question_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO learning_events
+                    (event_type, quiz_id, question_id, attempt_id, mode,
+                     was_correct, response_json)
+                VALUES ('study_answer', ?, ?, 'rebuild-attempt', 'Study', 1,
+                        '{"selected":["A"]}')
+                """,
+                (self.quiz_id, self.question_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        html_names = [self.html_name, matching_html, generated_html]
+        for html_name in html_names:
+            (Path(dlms.QUIZ_FOLDER) / html_name).write_text(
+                "stale html", encoding="utf-8"
+            )
+            (Path(dlms.DATA_FOLDER) / html_name.replace(".html", ".json")).write_text(
+                '[{"stale": true}]', encoding="utf-8"
+            )
+
+        before = self._canonical_snapshot()
+        response = self._post_rebuild_all()
+
+        self.assertEqual(200, response.status_code, response.get_data(as_text=True))
+        self.assertEqual(
+            {
+                "status": "complete",
+                "total": 3,
+                "rebuilt": 3,
+                "failed": [],
+            },
+            response.get_json(),
+        )
+        self.assertEqual(before, self._canonical_snapshot())
+
+        choice_payload = json.loads(
+            (Path(dlms.DATA_FOLDER) / self.html_name.replace(".html", ".json"))
+            .read_text(encoding="utf-8")
+        )
+        matching_payload = json.loads(
+            (Path(dlms.DATA_FOLDER) / matching_html.replace(".html", ".json"))
+            .read_text(encoding="utf-8")
+        )
+        generated_payload = json.loads(
+            (Path(dlms.DATA_FOLDER) / generated_html.replace(".html", ".json"))
+            .read_text(encoding="utf-8")
+        )
+        self.assertEqual("choice", choice_payload[0]["type"])
+        self.assertEqual(["A"], choice_payload[0]["correct"])
+        self.assertEqual("matching", matching_payload[0]["type"])
+        self.assertEqual(2, len(matching_payload[0]["pairs"]))
+        self.assertEqual(
+            "Neutral Learning Group",
+            matching_payload[0]["source"]["organization"],
+        )
+        self.assertEqual("Generated practice question", generated_payload[0]["question"])
+        self.assertEqual(["A", "B"], generated_payload[0]["correct"])
+        for quiz_id, html_name in (
+            (self.quiz_id, self.html_name),
+            (matching_id, matching_html),
+            (generated_id, generated_html),
+        ):
+            rendered = (Path(dlms.QUIZ_FOLDER) / html_name).read_text(encoding="utf-8")
+            self.assertIn(f"window.QUIZ_ID = {quiz_id};", rendered)
+        self._assert_no_mutation_staging()
+
+    def test_rebuild_failure_restores_old_pair_and_continues_other_quizzes(self):
+        other_id, other_html = dlms._publish_quiz(
+            "Other quiz",
+            [{
+                "number": 1,
+                "type": "choice",
+                "question": "Other question",
+                "choices": [
+                    {"label": "A", "text": "Yes", "is_correct": True},
+                    {"label": "B", "text": "No", "is_correct": False},
+                ],
+            }],
+            filename_prefix="rebuild_other",
+        )
+        failed_html = Path(dlms.QUIZ_FOLDER) / self.html_name
+        failed_json = Path(dlms.DATA_FOLDER) / self.html_name.replace(".html", ".json")
+        failed_html.write_bytes(b"previous html")
+        failed_json.write_bytes(b'[{"previous": true}]')
+        before = self._canonical_snapshot()
+        original_replace = dlms.os.replace
+
+        def fail_first_html_promotion(source, target):
+            if (
+                "mutation_" in str(source)
+                and os.path.abspath(target) == os.path.abspath(failed_html)
+            ):
+                raise RuntimeError("simulated rebuild promotion failure")
+            return original_replace(source, target)
+
+        with mock.patch.object(
+            dlms.os, "replace", side_effect=fail_first_html_promotion
+        ):
+            response = self._post_rebuild_all()
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("partial", response.get_json()["status"])
+        self.assertEqual(1, response.get_json()["rebuilt"])
+        self.assertEqual([self.quiz_id], response.get_json()["failed"])
+        self.assertEqual(b"previous html", failed_html.read_bytes())
+        self.assertEqual(b'[{"previous": true}]', failed_json.read_bytes())
+        self.assertIn(
+            f"window.QUIZ_ID = {other_id};",
+            (Path(dlms.QUIZ_FOLDER) / other_html).read_text(encoding="utf-8"),
+        )
+        self.assertEqual(before, self._canonical_snapshot())
+        self._assert_no_mutation_staging()
+
+    def test_editor_adds_a_new_source_question_with_durable_identity(self):
+        form = self._edit_form()
+        form["action"] = "add_question"
+        response = self.client.post(
+            f"/edit_quiz/{self.quiz_id}",
+            data=form,
+            headers=csrf_headers(self.client),
+        )
+        self.assertEqual(302, response.status_code)
+        conn = dlms.get_db()
+        try:
+            added = conn.execute(
+                """
+                SELECT question_uid, canonical_question_uid,
+                       source_question_uid, is_generated_copy
+                FROM questions
+                WHERE quiz_id = ? AND question_number = 2
+                """,
+                (self.quiz_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(added)
+        self.assertRegex(added["question_uid"], r"^[0-9a-f]{32}$")
+        self.assertEqual(added["question_uid"], added["canonical_question_uid"])
+        self.assertIsNone(added["source_question_uid"])
+        self.assertEqual(0, added["is_generated_copy"])
 
 
 if __name__ == "__main__":

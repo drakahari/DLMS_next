@@ -172,15 +172,29 @@ class FirefoxBidi:
         )
 
     def click(self, selector: str) -> None:
+        # A workflow condition can become visible while the new document is
+        # still loading its styles.  Wait for the load boundary before asking
+        # Firefox to resolve the element's live pointer origin so late layout
+        # changes cannot move an unrelated control under the pointer.
+        self.wait_for_page_ready()
         encoded = json.dumps(selector)
-        coordinates = json.loads(self.evaluate(
-            f"(() => {{ const element = document.querySelector({encoded}); "
-            "if (!element) throw new Error('Element not found'); "
-            "element.scrollIntoView({block: 'center', inline: 'center'}); "
-            "const rect = element.getBoundingClientRect(); "
-            "return JSON.stringify({x: rect.left + rect.width / 2, "
-            "y: rect.top + rect.height / 2}); })()"
-        ))
+        result = self.command(
+            "script.evaluate",
+            {
+                "expression": (
+                    f"(() => {{ const element = document.querySelector({encoded}); "
+                    "if (!element) throw new Error('Element not found'); "
+                    "element.scrollIntoView({block: 'center', inline: 'center'}); "
+                    "return element; })()"
+                ),
+                "target": {"context": self.context},
+                "awaitPromise": False,
+                "userActivation": True,
+            },
+        ).get("result") or {}
+        shared_id = result.get("sharedId")
+        if result.get("type") != "node" or not shared_id:
+            raise BidiError(f"Element not found or unavailable for click: {selector}")
         self.command(
             "input.performActions",
             {
@@ -192,10 +206,13 @@ class FirefoxBidi:
                     "actions": [
                         {
                             "type": "pointerMove",
-                            "x": round(coordinates["x"]),
-                            "y": round(coordinates["y"]),
+                            "x": 0,
+                            "y": 0,
                             "duration": 0,
-                            "origin": "viewport",
+                            "origin": {
+                                "type": "element",
+                                "element": {"sharedId": shared_id},
+                            },
                         },
                         {"type": "pointerDown", "button": 0},
                         {"type": "pointerUp", "button": 0},
@@ -203,6 +220,7 @@ class FirefoxBidi:
                 }],
             },
         )
+        self.command("input.releaseActions", {"context": self.context})
 
     def set_files(self, selector: str, paths: list[str]) -> None:
         encoded = json.dumps(selector)

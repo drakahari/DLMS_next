@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portable Quiz Bundles - {{ portal_title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home portable-bundle-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand"><div class="dashboard-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+        <nav class="dashboard-nav" aria-label="Primary navigation">
+            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+            <a class="dashboard-nav-item active" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        </nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a></nav>
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button>
+        <div class="dashboard-sidebar-version">DLMS v{{ app_version }}</div>
+    </aside>
+
+    <main class="dashboard-main portable-bundle-main">
+        <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><h1>Portable Quiz Bundles</h1><p>Quiz Library <span>•</span> Export <span>•</span> Validate <span>•</span> Import</p></div></header>
+
+        <section class="dashboard-panel portable-bundle-intro">
+            <div><span class="library-eyebrow">CURATED QUIZ PORTABILITY</span><h2>Move ordinary quizzes between DLMS installations.</h2><p>A portable quiz bundle contains selected quiz content and required images—not scores, attempts, learning history, or review schedules. Study Packs remain a separate, richer format.</p></div>
+            <a class="build-secondary-link" href="/library">Back to Quiz Library</a>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="portable-bundle-messages" aria-live="polite">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
+        {% if error %}<div class="portable-bundle-error" role="alert">{{ error }}</div>{% endif %}
+
+        <div class="portable-bundle-workflows">
+            <section class="dashboard-panel portable-bundle-panel" aria-labelledby="bundleExportHeading">
+                <div class="portable-bundle-panel-heading"><div><span class="portable-bundle-step">1</span><h2 id="bundleExportHeading">Export quizzes</h2></div><p>Select one or more normal source quizzes. Export does not modify them.</p></div>
+                <p class="portable-bundle-helper" id="bundleCandidateSummary"><strong>{{ catalog.candidate_count }} source quiz{% if catalog.candidate_count != 1 %}zes{% endif %} available</strong> from {{ catalog.library_count }} Library entries. Hidden quizzes included: {{ catalog.hidden_included }}. Folder visibility does not limit export.</p>
+                <p class="portable-bundle-helper">Choice and matching questions, including supported images, are supported. Selected content and media are validated when you download.</p>
+                {% if catalog.quizzes %}
+                <form method="POST" action="/quiz-bundles/export" id="portableBundleExportForm">
+                    <div class="portable-bundle-selection-actions"><button type="button" id="selectAllBundleQuizzes">Select all</button><button type="button" id="clearBundleQuizzes">Clear</button><strong id="bundleQuizCount" aria-live="polite">0 selected</strong></div>
+                    <p class="portable-bundle-helper" id="bundleScrollHelp">Scroll within the list to see all {{ catalog.candidate_count }} candidates. Select all includes the entire list, not just the quizzes currently in view. Export up to {{ catalog.max_quizzes }} quizzes per bundle.</p>
+                    <div class="portable-bundle-quiz-list" tabindex="0" role="group" aria-label="All export candidates" aria-describedby="bundleScrollHelp">
+                        {% for quiz in catalog.quizzes %}
+                        <label class="portable-bundle-quiz"><input type="checkbox" name="quiz_ids" value="{{ quiz.quiz_id }}"><span><strong>{{ quiz.title }}</strong><small>{{ quiz.folder }} · {{ quiz.question_count }} question{% if quiz.question_count != 1 %}s{% endif %}{% if quiz.matching_count %} · {{ quiz.matching_count }} matching{% endif %}</small></span></label>
+                        {% endfor %}
+                    </div>
+                    <button class="library-primary-action" type="submit">Download Portable Bundle</button>
+                </form>
+                {% else %}
+                <div class="portable-bundle-empty"><strong>No exportable source quizzes</strong><p>Create or import a normal quiz first.</p></div>
+                {% endif %}
+                {% if catalog.excluded_generated_count %}<p class="portable-bundle-helper">{{ catalog.excluded_generated_count }} generated review/composition quiz{% if catalog.excluded_generated_count != 1 %}zes are{% else %} is{% endif %} intentionally excluded.</p>{% endif %}
+                {% if catalog.unavailable %}<p class="portable-bundle-helper">Excluded unavailable or unusable Library entries: {{ catalog.unavailable }}. Their saved quiz data is unavailable or their entry cannot be used safely.</p>{% endif %}
+                {% if catalog.empty %}<p class="portable-bundle-helper">Quizzes excluded with no saved questions: {{ catalog.empty }}.</p>{% endif %}
+                {% if catalog.unsupported %}<p class="portable-bundle-helper">Quizzes excluded with unsupported question types: {{ catalog.unsupported }}. Hotspots are not supported by this bundle format. Use a full backup to preserve your complete DLMS data.</p>{% endif %}
+            </section>
+
+            <section class="dashboard-panel portable-bundle-panel" aria-labelledby="bundleImportHeading">
+                <div class="portable-bundle-panel-heading"><div><span class="portable-bundle-step">2</span><h2 id="bundleImportHeading">Import a bundle</h2></div><p>DLMS validates the entire archive before showing a publication preview.</p></div>
+                <form method="POST" action="/quiz-bundles/import" enctype="multipart/form-data" class="portable-bundle-upload-form">
+                    <label class="build-field"><span>Portable quiz bundle ZIP</span><input type="file" name="bundle_zip" accept=".zip,application/zip" required><small>Maximum upload: {{ upload_max_mb }} MB. Only DLMS portable quiz bundles are accepted.</small></label>
+                    <button class="library-primary-action" type="submit">Validate and Preview</button>
+                </form>
+                <div class="portable-bundle-boundary"><strong>Not a Study Pack?</strong><p>Portable bundles move ordinary quizzes. Install authored datasets, catalogs, and domain packages through <a href="/content-packs">Content Packs</a>.</p></div>
+            </section>
+        </div>
+    </main>
+</div>
+<script>
+(() => {
+    const boxes = [...document.querySelectorAll("input[name='quiz_ids']")];
+    const count = document.getElementById('bundleQuizCount');
+    const update = () => { if (count) count.textContent = `${boxes.filter(box => box.checked).length} selected`; };
+    boxes.forEach(box => box.addEventListener('change', update));
+    document.getElementById('selectAllBundleQuizzes')?.addEventListener('click', () => { boxes.forEach(box => { box.checked = true; }); update(); });
+    document.getElementById('clearBundleQuizzes')?.addEventListener('click', () => { boxes.forEach(box => { box.checked = false; }); update(); });
+    update();
+})();
+</script>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

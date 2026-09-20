@@ -14,9 +14,12 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -54,6 +57,58 @@ class BrowserServer:
     work_root: Path
     env: dict
     process_options: dict
+
+
+def _set_theme(browser, theme):
+    browser.wait_for(
+        "typeof window.dlmsCsrfToken === 'string' && "
+        "window.dlmsCsrfToken.length > 0"
+    )
+    status = browser.evaluate(
+        f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
+        f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
+    )
+    assert status == 200
+
+
+def _theme_contrast_snapshot(browser, selectors):
+    """Measure rendered text contrast against each element's effective background."""
+    return browser.evaluate(
+        "(() => {"
+        "const selectors=" + json.dumps(selectors) + ";"
+        "const parseColor=value=>{"
+        "const rgb=value.match(/^rgba?\\(([^)]+)\\)$/);"
+        "if(rgb){const parts=rgb[1].split(/[, ]+/).filter(Boolean).map(Number);"
+        "return [parts[0]/255,parts[1]/255,parts[2]/255,parts.length>3?parts[3]:1];}"
+        "const srgb=value.match(/^color\\(srgb ([^/ )]+) ([^/ )]+) ([^/ )]+)(?: \\/ ([^)]+))?\\)$/);"
+        "if(srgb)return [+srgb[1],+srgb[2],+srgb[3],srgb[4]===undefined?1:+srgb[4]];"
+        "throw new Error('Unsupported computed color: '+value);};"
+        "const resolveColor=value=>{const sample=document.createElement('span');"
+        "sample.style.color=value;document.body.appendChild(sample);"
+        "const result=getComputedStyle(sample).color;sample.remove();return parseColor(result);};"
+        "const composite=(foreground,background)=>foreground.slice(0,3).map((value,index)=>"
+        "value*foreground[3]+background[index]*(1-foreground[3]));"
+        "const luminance=rgb=>rgb.map(value=>value<=.04045?value/12.92:"
+        "Math.pow((value+.055)/1.055,2.4)).reduce((sum,value,index)=>"
+        "sum+value*[.2126,.7152,.0722][index],0);"
+        "const contrast=(foreground,background)=>{const a=luminance(foreground),b=luminance(background);"
+        "return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};"
+        "const root=getComputedStyle(document.documentElement);"
+        "const base=resolveColor(root.getPropertyValue('--theme-body-base')).slice(0,3);"
+        "const effectiveBackground=node=>{const layers=[];"
+        "for(let item=node;item;item=item.parentElement){layers.push(parseColor(getComputedStyle(item).backgroundColor));}"
+        "return layers.reverse().reduce((background,layer)=>composite(layer,background),base);};"
+        "const measure=(name,selector)=>{const node=document.querySelector(selector);"
+        "if(!node)throw new Error('Missing contrast target '+name+': '+selector);"
+        "const style=getComputedStyle(node),background=effectiveBackground(node);"
+        "const color=parseColor(style.color),foreground=composite(color,background);"
+        "return [name,{contrast:contrast(foreground,background),color:style.color,"
+        "background:style.backgroundColor,borderColor:style.borderColor,"
+        "borderStyle:style.borderStyle,outlineStyle:style.outlineStyle,"
+        "opacity:style.opacity,cursor:style.cursor,text:node.textContent.trim()}];};"
+        "return Object.fromEntries(Object.entries(selectors).map(([name,selector])=>measure(name,selector)));"
+        "})()"
+    )
 
 
 def _free_loopback_port():
@@ -130,7 +185,7 @@ def _terminate_process_tree(process):
     process.wait(timeout=5)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def browser_server(tmp_path_factory):
     firefox = shutil.which("firefox") or shutil.which("firefox-esr")
     if not firefox:
@@ -280,6 +335,23 @@ def _database_value(path, query, parameters=()):
     with sqlite3.connect(path, timeout=0.5) as connection:
         row = connection.execute(query, parameters).fetchone()
     return row[0] if row else None
+
+
+def _close_context_after_pagehide(browser, closing_context, observer_context):
+    """Close one tab only after its synchronous pagehide handlers have run."""
+    marker_key = f"dlms.browser-test.pagehide:{time.monotonic_ns()}"
+    encoded_key = json.dumps(marker_key)
+    browser.context = closing_context
+    browser.evaluate(
+        "window.addEventListener('pagehide', () => "
+        f"localStorage.setItem({encoded_key}, 'complete'), {{once:true}}); true"
+    )
+    try:
+        browser.command("browsingContext.close", {"context": closing_context})
+    finally:
+        browser.context = observer_context
+    browser.wait_for(f"localStorage.getItem({encoded_key}) === 'complete'")
+    browser.evaluate(f"localStorage.removeItem({encoded_key}); true")
 
 
 def test_fresh_profile_defaults_to_purple_gold_and_theme_selection_persists(browser_stack, tmp_path):
@@ -547,6 +619,280 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
 
     browser.navigate(f"{browser_stack.base_url}/library")
     assert browser.wait_for(f"{order_expression} === {json.dumps(expected_order)}") is True
+
+
+def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
+    browser_stack,
+):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    critical_id = str(browser_stack.metadata["critical_id"])
+    companion_id = str(browser_stack.metadata["companion_id"])
+    critical_html = browser_stack.metadata["critical_html"]
+    database_path = browser_stack.data_root / "results.db"
+    generated_rows = (
+        (
+            "Renamed browser practice",
+            "renamed-browser-practice.html",
+            "adaptive_study",
+        ),
+        (
+            "Browser curated collection",
+            "browser-curated-collection.html",
+            "mixed_quiz",
+        ),
+    )
+    generated_ids = []
+    with sqlite3.connect(database_path) as connection:
+        sources = connection.execute(
+            """
+            SELECT q.question_uid, q.canonical_question_uid
+            FROM questions q JOIN quizzes z ON z.id = q.quiz_id
+            WHERE z.id IN (?, ?) ORDER BY z.id, q.question_number
+            """,
+            (int(critical_id), int(companion_id)),
+        ).fetchall()
+        for title, source_file, generation_kind in generated_rows:
+            cursor = connection.execute(
+                """
+                INSERT INTO quizzes (title, source_file, generation_kind)
+                VALUES (?, ?, ?)
+                """,
+                (title, source_file, generation_kind),
+            )
+            generated_ids.append(cursor.lastrowid)
+        connection.executemany(
+            """
+            INSERT INTO questions (
+                quiz_id, question_number, question_text, question_type,
+                question_uid, canonical_question_uid, source_question_uid,
+                is_generated_copy
+            ) VALUES (?, ?, ?, 'choice', ?, ?, ?, 1)
+            """,
+            [
+                (
+                    generated_ids[0],
+                    number,
+                    f"Which source supports generated-practice item {number}?",
+                    "f" * 31 + str(number),
+                    source[1],
+                    source[0],
+                )
+                for number, source in enumerate(sources, start=1)
+            ],
+        )
+
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    for quiz_id, (title, source_file, _generation_kind) in zip(
+        generated_ids, generated_rows
+    ):
+        registry.append({
+            "id": quiz_id,
+            "title": title,
+            "html": source_file,
+            "folder": (
+                "Uncategorized"
+                if _generation_kind == "adaptive_study"
+                else "Generated Sessions"
+            ),
+            "exam_minutes": 90,
+        })
+    registry_path.write_text(json.dumps(registry, indent=4), encoding="utf-8")
+
+    browser.navigate(f"{base_url}/quizzes/{critical_html}")
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+
+    browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")
+    browser.wait_for(
+        "document.body.classList.contains('library-smart-view-ready') && "
+        "document.getElementById('librarySmartViewCount').textContent === '1'"
+    )
+    state = browser.evaluate(
+        "(() => {const cards=[...document.querySelectorAll('.library-quiz-card')];"
+        "const visible=cards.filter(card=>getComputedStyle(card).display!=='none');"
+        "const active=document.querySelector('.library-smart-view-link.active');"
+        "return {visibleIds:visible.map(card=>card.dataset.quizId),"
+        "active:active?.textContent.trim(),current:active?.getAttribute('aria-current'),"
+        "badge:visible[0]?.querySelector('.library-smart-match-badge')?.textContent.trim(),"
+        "reason:visible[0]?.querySelector('.library-smart-match-reason')?.textContent.trim(),"
+        "reorder:document.querySelectorAll('.library-reorder-controls').length};})()"
+    )
+    assert state == {
+        "visibleIds": [critical_id],
+        "active": "Unfinished\n                    1",
+        "current": "page",
+        "badge": "In progress",
+        "reason": "Study session saved in this browser · ready to resume",
+        "reorder": 0,
+    }
+
+    browser.evaluate(
+        "(() => {const input=document.getElementById('librarySearch');"
+        "input.value='no such quiz';input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "return true;})()"
+    )
+    browser.wait_for(
+        "[...document.querySelectorAll('.library-folder')]"
+        ".every(folder=>getComputedStyle(folder).display==='none')"
+    )
+    browser.evaluate(
+        "(() => {const input=document.getElementById('librarySearch');"
+        "input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()"
+    )
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")
+        browser.wait_for(
+            "document.body.classList.contains('library-smart-view-ready') && "
+            "document.getElementById('librarySmartViewCount').textContent === '1'"
+        )
+        snapshot = _theme_contrast_snapshot(browser, {
+            "smart heading": ".library-smart-views h2",
+            "smart helper": ".library-smart-views-heading p",
+            "inactive view": ".library-smart-view-link:not(.active)",
+            "active view": ".library-smart-view-link.active",
+            "active detail": ".library-smart-active > div span",
+            "match badge": ".library-smart-match-badge",
+            "match reason": ".library-smart-match-reason",
+            "reset action": ".library-smart-reset",
+        })
+        for role, values in snapshot.items():
+            assert values["contrast"] >= 4.5, (theme, role, values)
+
+        browser.navigate(
+            f"{base_url}/library?view=visible&smart=generated-practice"
+        )
+        browser.wait_for(
+            "document.getElementById('librarySmartViewCount').textContent === '1'"
+        )
+        generated_state = browser.evaluate(
+            "(() => {const cards=[...document.querySelectorAll('.library-quiz-card')];"
+            "return {ids:cards.map(card=>card.dataset.quizId),"
+            "kinds:cards.map(card=>card.dataset.generationKind),"
+            "badge:cards[0]?.querySelector('.library-generation-badge')?.textContent.trim(),"
+            "sourceSummary:cards[0]?.querySelector('.library-source-provenance summary')?.textContent.trim(),"
+            "sourceTitles:[...cards[0]?.querySelectorAll('.library-source-provenance li')||[]]"
+            ".map(item=>item.textContent.trim()),"
+            "reason:cards[0]?.querySelector('.library-smart-match-reason')?.textContent.trim(),"
+            "mixed:Boolean(document.querySelector('[data-generation-category=\"mixed\"]'))};})()"
+        )
+        assert generated_state == {
+            "ids": [str(generated_ids[0])],
+            "kinds": ["adaptive_study"],
+            "badge": "Adaptive Study practice",
+            "sourceSummary": "Sources: 2 quizzes",
+            "sourceTitles": ["Browser Critical Workflow", "Browser Companion"],
+            "reason": "Saved practice built from source questions · safe to revisit or hide",
+            "mixed": False,
+        }
+        generated_contrast = _theme_contrast_snapshot(browser, {
+            "generated practice badge": ".library-generation-badge",
+            "generated practice source": ".library-source-provenance summary",
+            "generated practice reason": ".library-smart-match-reason",
+        })
+        for role, values in generated_contrast.items():
+            assert values["contrast"] >= 4.5, (theme, role, values)
+
+        browser.navigate(f"{base_url}/library?view=visible")
+        browser.wait_for(
+            "document.querySelector('.library-generation-badge-mixed')"
+        )
+        normal_contrast = _theme_contrast_snapshot(browser, {
+            "mixed quiz badge": ".library-generation-badge-mixed",
+            "automatic group badge": ".library-system-group-badge",
+            "source disclosure": ".library-source-provenance summary",
+        })
+        for role, values in normal_contrast.items():
+            assert values["contrast"] >= 4.5, (theme, role, values)
+
+    assert browser.evaluate(
+        "(() => {const summary=document.querySelector('.library-source-provenance summary');"
+        "return summary?.tagName==='SUMMARY' && summary.tabIndex===0 && "
+        "summary.closest('details')?.open===false;})()"
+    ) is True
+    browser.click(".library-source-provenance summary")
+    browser.wait_for(
+        "document.querySelector('.library-source-provenance details').open === true"
+    )
+
+    for width, expected_columns in ((1280, 6), (700, 2), (420, 1)):
+        browser.set_viewport(width, 900)
+        layout = browser.evaluate(
+            "(() => {const links=[...document.querySelectorAll('.library-smart-view-link')];"
+            "const tops=new Set(links.map(link=>Math.round(link.getBoundingClientRect().top)));"
+            "const panel=document.querySelector('.library-smart-views').getBoundingClientRect();"
+            "const main=document.querySelector('.dashboard-main').getBoundingClientRect();"
+            "const folders=[...document.querySelectorAll('.library-folder')]"
+            ".filter(folder=>getComputedStyle(folder).display!=='none');"
+            "const footer=document.querySelector('.library-footer-actions').getBoundingClientRect();"
+            "return {columns:Math.round(links.length/tops.size),"
+            "overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,"
+            "inside:panel.left>=main.left-1&&panel.right<=main.right+1,"
+            "footerGap:Math.round(footer.top-folders.at(-1).getBoundingClientRect().bottom),"
+            "minWidth:Math.min(...links.map(link=>link.getBoundingClientRect().width))};})()"
+        )
+        assert layout["columns"] == expected_columns, (width, layout)
+        assert layout["overflow"] <= 1, (width, layout)
+        assert layout["inside"] is True, (width, layout)
+        assert layout["footerGap"] == 18, (width, layout)
+        assert layout["minWidth"] >= (250 if expected_columns == 1 else 120), (
+            width, layout
+        )
+
+    browser.navigate(f"{base_url}/library?view=visible")
+    browser.wait_for("document.querySelectorAll('.library-quiz-card').length === 4")
+    assert browser.evaluate("document.body.dataset.librarySmartView") == ""
+    presentation = browser.evaluate(
+        "(() => {const practice=document.querySelector('[data-generation-kind=\"adaptive_study\"]');"
+        "const group=practice.closest('.library-folder');return {"
+        "practice:practice.querySelector('.library-generation-badge').textContent.trim(),"
+        "virtual:group.dataset.generatedPracticeGroup,"
+        "groupLabel:group.dataset.folderLabel,"
+        "reorder:group.querySelectorAll('.library-reorder-controls').length,"
+        "mixed:document.querySelector('[data-generation-kind=\"mixed_quiz\"]')"
+        ".querySelector('.library-generation-badge').textContent.trim()};})()"
+    )
+    assert presentation == {
+        "practice": "Adaptive Study practice",
+        "virtual": "true",
+        "groupLabel": "Generated Practice",
+        "reorder": 0,
+        "mixed": "Mixed Quiz",
+    }
+    browser.click("[data-generated-practice-group='true'] .library-folder-toggle-button")
+    browser.wait_for(
+        "document.querySelector('[data-generated-practice-group=\"true\"]')"
+        ".classList.contains('collapsed')"
+    )
+    browser.evaluate(
+        "(() => {const input=document.getElementById('librarySearch');"
+        "input.value='renamed browser practice';"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()"
+    )
+    browser.wait_for(
+        "[...document.querySelectorAll('.library-quiz-card')]"
+        ".filter(card=>getComputedStyle(card).display!=='none').length === 1"
+    )
+    assert browser.evaluate(
+        "!document.querySelector('[data-generated-practice-group=\"true\"]')"
+        ".classList.contains('collapsed')"
+    ) is True
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.library-quiz-card')]"
+        ".find(card=>getComputedStyle(card).display!=='none').dataset.generationKind"
+    ) == "adaptive_study"
+
+    browser.evaluate(f"localStorage.removeItem({json.dumps(recovery_key)});true")
+    browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")
+    browser.wait_for(
+        "document.body.classList.contains('library-smart-view-ready') && "
+        "document.getElementById('librarySmartEmptyState').hidden === false"
+    )
 
 
 def test_library_empty_folder_lifecycle_persists_in_real_browser(browser_stack):
@@ -1448,6 +1794,7 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser.navigate(quiz_url)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     browser.click(".exam-mode-btn")
+    exam_recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
     browser.click("#choices .choice[data-index='0']")
     browser.click("#nextBtn")
@@ -1456,6 +1803,9 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser.evaluate("window.confirm = () => true; true")
     browser.click("#submitBtn")
     browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
+    browser.wait_for(
+        f"localStorage.getItem({json.dumps(exam_recovery_key)}) === null"
+    )
     assert "Score: 2 / 2 (100%)" in browser.evaluate("document.getElementById('result').textContent")
     _wait_for_database_value(
         browser_stack.data_root / "results.db",
@@ -1614,6 +1964,443 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retr
     )
 
 
+def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    assert browser.evaluate("document.getElementById('finishReviewBtn') === null") is True
+    assert browser.evaluate(
+        f"localStorage.getItem({json.dumps(recovery_key)}) !== null"
+    ) is True
+
+    before = _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'",
+        (quiz_id,),
+    )
+    browser.click("#choices .choice[data-index='1']")
+    _wait_for_database_value(
+        browser_stack.data_root / "results.db",
+        f"SELECT COUNT(*) FROM learning_events WHERE quiz_id = {int(quiz_id)} AND event_type = 'study_answer'",
+        before + 1,
+    )
+    browser.wait_for(
+        f"localStorage.getItem({json.dumps(recovery_key)}) === null && "
+        "quizRecoveryController.ownsState === false"
+    )
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.daily-review-unfinished')]"
+        ".every(item => !item.textContent.includes('Browser Critical Workflow'))"
+    ) is True
+
+
+def test_adaptive_study_completion_survives_late_partial_multiselect_save(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    entry = next(item for item in registry if item["id"] == quiz_id)
+    entry["folder"] = "Uncategorized"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    json_path = browser_stack.data_root / "data" / Path(entry["html"]).with_suffix(".json").name
+    questions = json.loads(json_path.read_text(encoding="utf-8"))
+    questions[1]["choices"][0]["is_correct"] = True
+    questions[1]["correct"] = ["A", "B"]
+    json_path.write_text(json.dumps(questions), encoding="utf-8")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'adaptive_study' WHERE id = ?", (quiz_id,),
+        )
+        connection.execute(
+            "UPDATE choices SET is_correct = 1 WHERE question_id = "
+            "(SELECT id FROM questions WHERE quiz_id = ? AND question_number = 2) AND label = 'A'",
+            (quiz_id,),
+        )
+
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        "document.querySelector('.study-learning-save-message')?.textContent.includes('Question 2 needs a complete answer')"
+    )
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.evaluate(
+        "(() => { const original = window.fetch.bind(window);"
+        "window.fetch = (...args) => {"
+        "if (String(args[0]).includes('/api/learning-events/study-response')"
+        " && JSON.parse(args[1].body).questionOrdinal === 2"
+        " && JSON.parse(args[1].body).selected.length === 0) {"
+        "return new Promise(resolve => { window.releasePartialStudySave = () => resolve(original(...args)); });"
+        "} return original(...args); }; return true; })()"
+    )
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("typeof window.releasePartialStudySave === 'function'")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for(
+        "studyLearningEventSaves.size === 1 && "
+        "[...studyLearningEventSaves.values()][0].payload.selected.length === 0"
+    )
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    browser.evaluate("window.releasePartialStudySave(); true")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector('[data-generated-practice-group=true]') !== null")
+    assert "Browser Critical Workflow" in browser.evaluate(
+        "document.querySelector('[data-generated-practice-group=true]').textContent"
+    )
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for(
+        "document.querySelector('.daily-review-unfinished')?.textContent.includes('Browser Critical Workflow')"
+    )
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("index === 1 && document.getElementById('finishReviewBtn')?.style.display !== 'none'")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.click("#finishReviewBtn")
+    browser.wait_for(f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null")
+    assert browser.evaluate(
+        "document.querySelector('.study-learning-save-message').textContent.includes('Review completed')"
+    ) is True
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.daily-review-unfinished')]"
+        ".every(item => !item.textContent.includes('Browser Critical Workflow'))"
+    ) is True
+
+
+def test_generated_finish_review_waits_for_save_and_requires_earlier_answers(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'adaptive_study' WHERE id = ?", (quiz_id,),
+        )
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1 && document.getElementById('finishReviewBtn') !== null")
+    browser.set_viewport(420, 900)
+    assert browser.evaluate(
+        "(() => { const button=document.getElementById('finishReviewBtn');"
+        "button.focus(); return document.activeElement===button && button.tagName==='BUTTON'"
+        "&& button.type==='button' && document.documentElement.scrollWidth<=innerWidth; })()"
+    ) is True
+    browser.evaluate(
+        "(() => { const original = window.fetch.bind(window);"
+        "window.fetch = (...args) => {"
+        "if (String(args[0]).includes('/api/learning-events/study-response')) {"
+        "window.fetch = original;"
+        "return new Promise(resolve => { window.releaseFinalStudySave = () => resolve(original(...args)); });"
+        "} return original(...args); }; return true; })()"
+    )
+    browser.click("#choices .choice[data-index='1']")
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        "studyCompletionInProgress === true && "
+        "document.querySelector('.study-learning-save-message')?.textContent.includes('Waiting for learning progress')"
+    )
+    assert browser.evaluate(
+        f"document.getElementById('finishReviewBtn').disabled && localStorage.getItem({json.dumps(recovery_key)}) !== null"
+    ) is True
+    browser.evaluate("window.releaseFinalStudySave(); true")
+    browser.wait_for(
+        "studyCompletionInProgress === false && "
+        "document.querySelector('.study-learning-save-message')?.textContent.includes('Question 1 needs a complete answer')"
+    )
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.click("#prevBtn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"
+    )
+
+
+def test_generated_finish_review_retries_failed_browser_checkpoint_clear(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'smart_review' WHERE id = ?", (quiz_id,),
+        )
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.evaluate(
+        "(() => {const original=Storage.prototype.removeItem;let fail=true;"
+        f"const recoveryKey={json.dumps(recovery_key)};"
+        "Storage.prototype.removeItem=function(key){"
+        "if(fail&&key===recoveryKey){fail=false;throw new Error('blocked storage');}"
+        "return original.call(this,key);};return true;})()"
+    )
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        "studyCompletionFailed === true && "
+        "document.querySelector('.study-learning-save-message')?.textContent.includes('could not clear its resume point')"
+    )
+    assert browser.evaluate(
+        f"quizRecoveryController.ownsState && localStorage.getItem({json.dumps(recovery_key)}) !== null"
+    ) is True
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        f"studyCompletionFailed === false && localStorage.getItem({json.dumps(recovery_key)}) === null"
+    )
+
+
+def test_generated_practice_study_completion_retry_library_and_retake(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'native_spaced_review' WHERE id = ?",
+            (quiz_id,),
+        )
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    next(item for item in registry if item["id"] == quiz_id)["folder"] = "Uncategorized"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector('[data-generated-practice-group=true]') !== null")
+    assert "Browser Critical Workflow" in browser.evaluate(
+        "document.querySelector('[data-generated-practice-group=true]').textContent"
+    )
+
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    assert browser.evaluate(
+        "(() => { const original = window.fetch.bind(window); let failCompletion = true, failStudy = true;"
+        "window.fetch = (...args) => { const target = String(args[0]);"
+        "if (failStudy && target.includes('/api/learning-events/study-response')"
+        " && JSON.parse(args[1].body).questionOrdinal === 2) {"
+        "failStudy = false; return Promise.resolve(new Response(JSON.stringify({error:'forced Study save failure'}),"
+        "{status:503,headers:{'Content-Type':'application/json'}})); }"
+        "if (failCompletion && target.includes('/api/generated-practice/complete')) {"
+        "failCompletion = false; return Promise.resolve(new Response(JSON.stringify({error:'forced completion failure'}),"
+        "{status:503,headers:{'Content-Type':'application/json'}})); } return original(...args); }; return true; })()"
+    ) is True
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent === 'Learning progress was not saved.'")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Retry the failed Study save')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    with registry_path.open(encoding="utf-8") as handle:
+        assert "generated_practice_completion" not in next(item for item in json.load(handle) if item["id"] == quiz_id)
+    browser.click(".study-learning-save-retry")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate("generatedPracticeStatus.completed") is False
+    browser.click("#finishReviewBtn")
+    browser.wait_for("studyCompletionFailed === true")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    assert browser.evaluate("document.querySelector('.study-learning-save-message').textContent") == (
+        "forced completion failure"
+    )
+    browser.click("#finishReviewBtn")
+    browser.wait_for(
+        f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"
+    )
+    with (browser_stack.data_root / "config" / "quizzes.json").open(encoding="utf-8") as handle:
+        registry = json.load(handle)
+    assert next(item for item in registry if item["id"] == quiz_id)["generated_practice_completion"]["mode"] == "Study"
+
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector('.library-folder-completed-practice') !== null")
+    assert browser.evaluate(
+        "document.querySelector('[data-generated-practice-group=true]') === null && "
+        "document.querySelector('.library-folder-completed-practice .library-quiz-card') !== null"
+    ) is True
+    browser.evaluate(
+        "(() => { const input=document.getElementById('librarySearch');"
+        "input.value='Browser Critical Workflow'; input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()"
+    )
+    browser.wait_for(
+        "document.querySelector('.library-folder-completed-practice .library-folder-toggle-button').getAttribute('aria-expanded') === 'true'"
+    )
+    browser.evaluate(
+        "(() => { const input=document.getElementById('librarySearch');"
+        "input.value=''; input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()"
+    )
+    browser.wait_for(
+        "document.querySelector('.library-folder-completed-practice .library-folder-toggle-button').getAttribute('aria-expanded') === 'false'"
+    )
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(f"{browser_stack.base_url}/library")
+        browser.wait_for("document.querySelector('.library-folder-completed-practice') !== null")
+        contrast = _theme_contrast_snapshot(browser, {
+            "completed status": ".library-completed-badge",
+            "completed section": ".library-folder-completed-practice h2",
+        })
+        assert all(item["contrast"] >= 4.5 for item in contrast.values()), (theme, contrast)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 1000)
+            assert browser.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth + 1 && "
+                "document.querySelector('.library-folder-completed-practice button').getAttribute('aria-expanded') === 'false'"
+            ) is True, (theme, width)
+    assert browser.evaluate(
+        "(() => { const button=document.querySelector('.library-folder-completed-practice .library-folder-toggle-button');"
+        "button.focus(); return document.activeElement===button && button.tagName==='BUTTON' && button.type==='button'; })()"
+    ) is True
+    browser.click(".library-folder-completed-practice .library-folder-toggle-button")
+    assert browser.evaluate(
+        "document.querySelector('.library-folder-completed-practice .library-folder-toggle-button').getAttribute('aria-expanded')"
+    ) == "true"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate("quizRecoveryController.ownsState") is True
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate("quizRecoveryController.ownsState") is True
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    browser.wait_for(
+        "document.querySelector('.daily-review-unfinished')?.textContent.includes('Browser Critical Workflow')"
+    )
+    assert "This browser" in browser.evaluate(
+        "document.querySelector('.daily-review-unfinished').textContent"
+    )
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("index === 1 && generatedPracticeStatus.completed === true")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
+    browser.click("#finishReviewBtn")
+    browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
+
+
+def test_generated_practice_exam_completion_requires_saved_attempt(browser_stack):
+    browser = browser_stack.browser
+    quiz_id = browser_stack.metadata["critical_id"]
+    attempts_before = _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM attempts WHERE quiz_id = ? AND mode = 'Exam'",
+        (quiz_id,),
+    )
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        connection.execute(
+            "UPDATE quizzes SET generation_kind = 'smart_review' WHERE id = ?",
+            (quiz_id,),
+        )
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".exam-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    assert browser.evaluate("document.getElementById('finishReviewBtn') === null") is True
+    browser.evaluate(
+        "(() => { const original=window.fetch.bind(window); let fail=true;"
+        "window.fetch=(...args)=>{if(fail&&String(args[0]).includes('/record_attempt')){"
+        "fail=false;return Promise.resolve(new Response(JSON.stringify({error:'forced attempt failure'}),"
+        "{status:503,headers:{'Content-Type':'application/json'}}));}return original(...args);};"
+        "window.confirm=()=>true;return true;})()"
+    )
+    browser.click("#submitBtn")
+    browser.wait_for("document.getElementById('result').textContent.includes('was not saved')")
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    with registry_path.open(encoding="utf-8") as handle:
+        assert "generated_practice_completion" not in next(item for item in json.load(handle) if item["id"] == quiz_id)
+    browser.click("#result button[onclick='retryExamAttemptSave()']")
+    browser.wait_for("generatedPracticeStatus.completed === true")
+    with registry_path.open(encoding="utf-8") as handle:
+        marker = next(item for item in json.load(handle) if item["id"] == quiz_id)["generated_practice_completion"]
+    assert marker["mode"] == "Exam"
+    assert _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM attempts WHERE quiz_id = ? AND mode = 'Exam'",
+        (quiz_id,),
+    ) == attempts_before + 1
+
+
+def test_final_study_answer_save_failure_keeps_recovery(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
+    browser.click(".study-mode-btn")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    assert browser.evaluate(
+        "window.__recoveryFetch = window.fetch.bind(window);"
+        "window.fetch = (...args) => String(args[0]).includes('/api/learning-events/study-response')"
+        " ? Promise.reject(new Error('simulated final-answer failure')) : window.__recoveryFetch(...args); true"
+    ) is True
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
+    saved = browser.evaluate(
+        f"JSON.parse(localStorage.getItem({json.dumps(recovery_key)}))"
+    )
+    assert saved["view"]["questionIndex"] == 1
+    assert len(saved["unacknowledgedStudyEvents"]) == 1
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for(
+        "document.querySelector('.daily-review-unfinished')?.textContent.includes('Browser Critical Workflow')"
+    )
+    recovery_copy = browser.evaluate(
+        "document.querySelector('.daily-review-unfinished').textContent"
+    )
+    assert "This browser" in recovery_copy
+
+
 def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement(browser_stack):
     browser = browser_stack.browser
     quiz_id = browser_stack.metadata["critical_id"]
@@ -1706,9 +2493,7 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
         browser.wait_for("quizRecoveryController.ownsState === false")
         assert "another tab" in browser.evaluate("document.getElementById('quizRecoveryNotice').textContent")
     finally:
-        browser.context = second_context
-        browser.command("browsingContext.close", {"context": second_context})
-        browser.context = first_context
+        _close_context_after_pagehide(browser, second_context, first_context)
 
     assert browser.evaluate(
         f"(() => {{ const saved=JSON.parse(localStorage.getItem({json.dumps(storage_key)}));"
@@ -2139,6 +2924,451 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
             assert shell["titleColor"] == shell["shellText"]
 
 
+def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and_widths(browser_stack):
+    browser = browser_stack.browser
+    quiz_folder = browser_stack.data_root / "quizzes"
+    logo_folder = browser_stack.data_root / "static" / "logos"
+    logo_folder.mkdir(parents=True, exist_ok=True)
+    (logo_folder / "header-test.png").write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    ))
+    title = "Smart Review — " + "LongUnbrokenTopicName" * 6 + " practice"
+    html_name = "browser_header_branded.html"
+    build_quiz_html(
+        html_name, browser_stack.metadata["recovery_json"], str(quiz_folder / html_name),
+        "Mike's Training & Practice Center", title, "header-test.png",
+        browser_stack.metadata["critical_id"], 5,
+        normalize_exam_minutes=lambda value: int(value),
+    )
+    quiz_url = f"{browser_stack.base_url}/quizzes/{html_name}"
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings")
+        _set_theme(browser, theme)
+        for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
+            browser.set_viewport(1440, 1000)
+            browser.navigate(quiz_url)
+            browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+            browser.click(mode_selector)
+            browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+            for width in (1440, 1024, 760, 420):
+                browser.set_viewport(width, 1000)
+                layout = browser.evaluate(
+                    "(() => {const hero=document.querySelector('.hero-title');"
+                    "const banner=document.querySelector('.active-quiz-logo-banner');"
+                    "const title=document.querySelector('.active-quiz-title');"
+                    "const logos=[...banner.querySelectorAll('.active-logo-slot img')];"
+                    "const bounds=node=>{const r=node.getBoundingClientRect();"
+                    "return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};};"
+                    "return {hero:hero.textContent.trim(),heroChildren:hero.children.length,"
+                    "heroBounds:bounds(hero),bannerBounds:bounds(banner),"
+                    "title:title.textContent.trim(),titleTag:title.tagName,titleBounds:bounds(title),"
+                    "logos:logos.map(img=>({loaded:img.complete&&img.naturalWidth>0,bounds:bounds(img)})),"
+                    "progress:!!document.querySelector('.quiz-progress-card'),"
+                    "studyBadge:getComputedStyle(document.getElementById('studyModeBadge')||document.body).display,"
+                    "timer:getComputedStyle(document.getElementById('timer')).display,"
+                    "question:document.getElementById('qText').textContent.trim(),"
+                    "overflow:document.documentElement.scrollWidth>innerWidth};})()"
+                )
+                assert layout["hero"] == "Mike's Training & Practice Center"
+                assert layout["heroChildren"] == 0
+                if width == 1440:
+                    assert layout["heroBounds"]["bottom"] - layout["heroBounds"]["top"] < 100
+                assert layout["title"] == title
+                assert layout["titleTag"] == "H2"
+                assert len(layout["logos"]) == 2
+                assert all(logo["loaded"] for logo in layout["logos"])
+                assert layout["bannerBounds"]["top"] >= layout["heroBounds"]["bottom"]
+                assert layout["titleBounds"]["left"] >= layout["bannerBounds"]["left"]
+                assert layout["titleBounds"]["right"] <= layout["bannerBounds"]["right"]
+                assert layout["titleBounds"]["bottom"] <= layout["bannerBounds"]["bottom"]
+                if width > 600:
+                    assert layout["logos"][0]["bounds"]["right"] <= layout["titleBounds"]["left"]
+                    assert layout["titleBounds"]["right"] <= layout["logos"][1]["bounds"]["left"]
+                else:
+                    assert layout["logos"][0]["bounds"]["bottom"] <= layout["titleBounds"]["top"]
+                    assert layout["titleBounds"]["bottom"] <= layout["logos"][1]["bounds"]["top"]
+                assert all(logo["bounds"]["right"] <= layout["bannerBounds"]["right"]
+                           for logo in layout["logos"])
+                assert layout["progress"] and layout["question"]
+                assert not layout["overflow"]
+                if mode_selector == ".study-mode-btn":
+                    assert layout["studyBadge"] != "none"
+                    assert layout["timer"] == "none"
+                else:
+                    assert layout["timer"] != "none"
+
+    no_logo_name = "browser_header_generated_no_logo.html"
+    no_logo_title = "Spaced Review — Due Questions"
+    build_quiz_html(
+        no_logo_name, browser_stack.metadata["recovery_json"],
+        str(quiz_folder / no_logo_name), "DLMS", no_logo_title, None,
+        browser_stack.metadata["critical_id"], 5,
+        normalize_exam_minutes=lambda value: int(value),
+    )
+    for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
+        browser.set_viewport(420, 1000)
+        browser.navigate(f"{browser_stack.base_url}/quizzes/{no_logo_name}")
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+        browser.click(mode_selector)
+        browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+        assert browser.evaluate(
+            "(() => {const banner=document.querySelector('.active-quiz-logo-banner');"
+            "return document.querySelector('.hero-title').textContent.trim()==='DLMS'"
+            "&& banner.querySelector('.active-quiz-title').textContent.trim()==="
+            + json.dumps(no_logo_title) + ";})()"
+        )
+        assert browser.evaluate(
+            "document.querySelectorAll('.active-quiz-logo-banner img').length"
+        ) == 0
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+    # Previously published HTML is served from disk; its old subtitle is removed on load.
+    legacy_name = "browser_header_legacy.html"
+    legacy = (quiz_folder / html_name).read_text(encoding="utf-8")
+    legacy = legacy.replace(
+        '<h1 class="hero-title">Mike\'s Training &amp; Practice Center</h1>',
+        '<h1 class="hero-title">Mike\'s Training &amp; Practice Center<br>'
+        f'<span style="font-size:20px;opacity:.85">{title}</span></h1>',
+    )
+    (quiz_folder / legacy_name).write_text(legacy, encoding="utf-8")
+    browser.navigate(f"{browser_stack.base_url}/quizzes/{legacy_name}")
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    assert browser.evaluate("document.querySelector('.hero-title').textContent.trim()") == (
+        "Mike's Training & Practice Center"
+    )
+    assert browser.evaluate("document.querySelector('.hero-title').children.length") == 0
+
+
+def test_study_session_panel_is_study_only_and_contained_across_themes(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    quiz_url = f"{base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(base_url + "/settings")
+        _set_theme(browser, theme)
+        browser.navigate(quiz_url)
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+        if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
+            browser.click(".quiz-recovery-start-over")
+        browser.click(".study-mode-btn")
+        browser.wait_for("document.getElementById('studySessionIntro') !== null")
+
+        contrast = _theme_contrast_snapshot(browser, {
+            "eyebrow": ".study-session-eyebrow",
+            "heading": ".study-session-intro h3",
+            "detail": ".study-session-intro p",
+            "badge": ".study-mode-badge",
+        })
+        assert all(item["contrast"] >= 4.5 for item in contrast.values()), (theme, contrast)
+
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            layout = browser.evaluate(
+                "(() => {const bar=document.querySelector('.top-bar');"
+                "const intro=document.getElementById('studySessionIntro');"
+                "const badge=document.getElementById('studyModeBadge');"
+                "const progress=document.querySelector('.quiz-progress-card');"
+                "const a=intro.getBoundingClientRect(),b=badge.getBoundingClientRect(),t=bar.getBoundingClientRect();"
+                "return {visible:!intro.hidden&&!badge.hidden,"
+                "wording:intro.textContent.includes('Untimed practice with feedback as you answer.'),"
+                "singleTagline:bar.textContent.split('Learn at your own pace').length===2,"
+                "studyControlsHidden:['submitBtn','timer','pauseBtn'].every(id=>getComputedStyle(document.getElementById(id)).display==='none'),"
+                "progressAfter:progress.previousElementSibling===bar&&progress.getBoundingClientRect().top>=t.bottom,"
+                "contained:a.left>=t.left&&a.right<=t.right&&b.left>=t.left&&b.right<=t.right,"
+                "badgeCompact:b.width<t.width*.7,"
+                "separate:a.right<=b.left+1||a.bottom<=b.top+1,"
+                "overflow:document.documentElement.scrollWidth>innerWidth};})()"
+            )
+            assert layout == {
+                "visible": True, "wording": True, "singleTagline": True,
+                "studyControlsHidden": True,
+                "progressAfter": True, "contained": True, "badgeCompact": True,
+                "separate": True,
+                "overflow": False,
+            }, (theme, width, layout)
+
+        if theme == "light":
+            for expected in ("choice", "matching", "hotspot"):
+                browser.evaluate("next(); true")
+                assert browser.evaluate("quiz[index].type") == expected
+                assert browser.evaluate(
+                    "!document.getElementById('studySessionIntro').hidden && "
+                    "!document.getElementById('studyModeBadge').hidden"
+                ) is True
+
+    # The same published quiz renderer is used by Adaptive and Concept Review.
+    quiz_folder = browser_stack.data_root / "quizzes"
+    for filename, title in (
+        ("study_panel_adaptive.html", "Adaptive Study — What I Need Most"),
+        ("study_panel_concept.html", "Concept Review — " + "VeryLongSharedTopic" * 6),
+    ):
+        build_quiz_html(
+            filename, browser_stack.metadata["recovery_json"],
+            str(quiz_folder / filename), "DLMS", title, None,
+            browser_stack.metadata["critical_id"], 5,
+            normalize_exam_minutes=lambda value: int(value),
+        )
+        browser.set_viewport(420, 900)
+        browser.navigate(f"{base_url}/quizzes/{filename}")
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+        if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
+            browser.click(".quiz-recovery-start-over")
+        browser.click(".study-mode-btn")
+        assert browser.evaluate(
+            "document.querySelector('.active-quiz-title').textContent.trim()==="
+            + json.dumps(title) + "&& !document.getElementById('studySessionIntro').hidden"
+            "&& document.documentElement.scrollWidth<=innerWidth"
+        ) is True
+
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
+        browser.click(".quiz-recovery-start-over")
+    browser.click(".study-mode-btn")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.wait_for(
+        f"JSON.parse(localStorage.getItem({json.dumps(recovery_key)})).view.questionIndex === 1"
+    )
+    browser.navigate(quiz_url)
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for(
+        "index===1 && !document.getElementById('studySessionIntro').hidden && "
+        "!document.getElementById('studyModeBadge').hidden"
+    )
+
+    browser.evaluate("startQuiz(true); true")
+    exam = browser.evaluate(
+        "(() => {const bar=document.querySelector('.top-bar');"
+        "const intro=document.getElementById('studySessionIntro');"
+        "const badge=document.getElementById('studyModeBadge');"
+        "const visible=id=>getComputedStyle(document.getElementById(id)).display!=='none';"
+        "return {introHidden:intro.hidden,badgeHidden:badge.hidden,"
+        "submit:visible('submitBtn'),timer:visible('timer'),pause:visible('pauseBtn'),"
+        "progressAfter:document.querySelector('.quiz-progress-card').previousElementSibling===bar};})()"
+    )
+    assert exam == {
+        "introHidden": True, "badgeHidden": True, "submit": True,
+        "timer": True, "pause": True, "progressAfter": True,
+    }
+
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
+        browser.click(".quiz-recovery-start-over")
+    browser.click(".exam-mode-btn")
+    fresh_exam = browser.evaluate(
+        "(() => {const bar=document.querySelector('.top-bar');"
+        "return {introAbsent:!document.getElementById('studySessionIntro'),"
+        "badgeAbsent:!document.getElementById('studyModeBadge'),"
+        "submitInLeft:bar.querySelector('.top-left > #submitBtn') !== null,"
+        "timerInRight:bar.querySelector(':scope > #timer.top-right') !== null,"
+        "timerVisible:getComputedStyle(document.getElementById('timer')).display !== 'none',"
+        "progressAfter:document.querySelector('.quiz-progress-card').previousElementSibling===bar};})()"
+    )
+    assert fresh_exam == {
+        "introAbsent": True, "badgeAbsent": True, "submitInLeft": True,
+        "timerInRight": True, "timerVisible": True, "progressAfter": True,
+    }, fresh_exam
+
+
+def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_stack):
+    browser = browser_stack.browser
+    browser.set_viewport(1440, 1000)
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
+    browser.click(".study-mode-btn")
+    browser.wait_for("document.getElementById('studyCopyBtn').offsetParent !== null")
+    browser.evaluate(
+        "studyAIConfig={ai_helper_enabled:true,ai_provider:'chatgpt'};"
+        "window.__toolCalls={opens:[],copies:[],requests:[]};"
+        "window.__syncCopies=0;"
+        "window.open=(...args)=>{window.__toolCalls.opens.push(args);return null};"
+        "window.__reviewExecCommand=command=>{if(command==='copy'){window.__syncCopies++;window.__toolCalls.copies.push(document.activeElement.value);return true}return false};"
+        "document.execCommand=window.__reviewExecCommand;"
+        "Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__toolCalls.copies.push(text)}}});"
+        "window.__toolFetch=window.fetch;window.fetch=(...args)=>{window.__toolCalls.requests.push(String(args[0]));return window.__toolFetch(...args)};true"
+    )
+    browser.click("#studyAnkiBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("[...studyLearningEventSaves.values()].every(record => record.state === 'failed')")
+    browser.evaluate("window.__toolCalls.requests=[];true")
+    before = browser.evaluate(
+        "({answers:JSON.stringify(userAnswers),anki:[...studyAnkiSelections],"
+        "recovery:localStorage.getItem(quizRecoveryController.storageKey),index})"
+    )
+    browser.click("#studyAiBtn")
+    review = browser.evaluate("({prompt:window.__toolCalls.copies.at(-1),opens:window.__toolCalls.opens})")
+    assert review["opens"] == [["https://chatgpt.com/", "_blank", "noopener,noreferrer"]]
+    assert "Recovery single-choice question?" in review["prompt"]
+    assert "Answer Choices:" in review["prompt"]
+    assert "My Answer:" in review["prompt"]
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    success = browser.evaluate(
+        "({prompt:window.__toolCalls.copies.at(-1),opens:window.__toolCalls.opens.length,"
+        "requests:window.__toolCalls.requests,answers:JSON.stringify(userAnswers),"
+        "anki:[...studyAnkiSelections],recovery:localStorage.getItem(quizRecoveryController.storageKey),index})"
+    )
+    assert success["prompt"] == review["prompt"]
+    assert success["opens"] == 1
+    assert success["requests"] == []
+    assert browser.evaluate("window.__syncCopies") == 1
+    assert {key: success[key] for key in before} == before
+    browser.evaluate("document.getElementById('studyCopyBtn').focus();true")
+    assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
+    browser.evaluate(
+        "navigator.clipboard.writeText=async()=>{throw new Error('denied')};"
+        "document.execCommand=()=>false;true"
+    )
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    assert browser.evaluate("window.__toolCalls.opens.length") == 1
+    assert browser.evaluate("JSON.stringify(userAnswers)") == before["answers"]
+    browser.evaluate("document.execCommand=window.__reviewExecCommand;true")
+
+    browser.click("#nextBtn")
+    browser.wait_for("document.getElementById('qText').textContent.includes('multi-answer')")
+    assert browser.evaluate("document.getElementById('studyCopyBtn').offsetParent !== null")
+    browser.evaluate(
+        "quiz[1].image_url='/static/favicon.ico';renderQuestion();"
+        "navigator.clipboard.writeText=async text=>{window.__toolCalls.copies.push(text)};true"
+    )
+    browser.wait_for("document.querySelector('#choices .question-media-image')?.complete === true")
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#choices .choice[data-index='2']")
+    browser.click("#studyAiBtn")
+    multi_prompt = browser.evaluate("window.__toolCalls.copies.at(-1)")
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    assert browser.evaluate("window.__toolCalls.copies.at(-1)") == multi_prompt
+    assert "First" in multi_prompt and "Third" in multi_prompt
+    browser.click("#nextBtn")
+    browser.wait_for("document.getElementById('qText').textContent.includes('matching')")
+    assert browser.evaluate("getComputedStyle(document.getElementById('studyCopyBtn')).display") == "none"
+    browser.click("#nextBtn")
+    browser.wait_for("document.getElementById('qText').textContent.includes('hotspot')")
+    assert browser.evaluate("getComputedStyle(document.getElementById('studyCopyBtn')).display") == "none"
+
+    browser.navigate(f"{quiz_url}?exam=1")
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".exam-mode-btn")
+    assert browser.evaluate("getComputedStyle(document.getElementById('questionTools')).display") == "none"
+    assert browser.evaluate("(() => {try {buildCurrentQuestionAIPrompt();return false}catch(error){return true}})()") is True
+
+
+def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unavailable(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.evaluate(
+        "Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined});"
+        "window.__fallbackAttempts=0;window.__copiedSelection=null;window.__opens=0;"
+        "window.open=()=>{window.__opens++};"
+        "window.__nativeExec=document.execCommand.bind(document);"
+        "document.execCommand=command=>{window.__fallbackAttempts++;return window.__nativeExec(command)};"
+        "document.addEventListener('copy',()=>{const field=document.activeElement;"
+        "window.__copiedSelection=field.value.slice(field.selectionStart,field.selectionEnd)});"
+        "studyAIConfig={ai_helper_enabled:true,ai_provider:'chatgpt'};"
+        "const button=document.getElementById('studyCopyBtn');"
+        "button.scrollIntoView({block:'center'});button.focus();true"
+    )
+    browser.click("#studyAiBtn")
+    review_prompt = browser.evaluate("window.__copiedSelection")
+    assert browser.evaluate("window.__opens") == 1
+    browser.evaluate("window.__opens=0;window.__fallbackAttempts=0;window.__copiedSelection=null;"
+                     "document.getElementById('studyCopyBtn').scrollIntoView({block:'center'});"
+                     "document.getElementById('studyCopyBtn').focus();true")
+    before = browser.evaluate(
+        "({prompt:buildCurrentQuestionAIPrompt(),focus:document.activeElement.id,scrollY,"
+        "answers:JSON.stringify(userAnswers),anki:[...studyAnkiSelections],"
+        "recovery:localStorage.getItem(quizRecoveryController.storageKey),index,"
+        "textareas:document.querySelectorAll('textarea').length})"
+    )
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    copied = browser.evaluate(
+        "({selection:window.__copiedSelection,attempts:window.__fallbackAttempts,"
+        "focus:document.activeElement.id,scrollY,answers:JSON.stringify(userAnswers),"
+        "anki:[...studyAnkiSelections],recovery:localStorage.getItem(quizRecoveryController.storageKey),"
+        "index,textareas:document.querySelectorAll('textarea').length,opens:window.__opens})"
+    )
+    assert copied["selection"] == review_prompt == before["prompt"]
+    assert copied["attempts"] == 1
+    assert copied["opens"] == 0
+    assert {key: copied[key] for key in before if key != "prompt"} == {
+        key: before[key] for key in before if key != "prompt"
+    }
+
+    browser.evaluate(
+        "Object.defineProperty(navigator,'clipboard',{configurable:true,"
+        "value:{writeText:async()=>{window.__modernAttempts=(window.__modernAttempts||0)+1;throw new Error('denied')}}});true"
+    )
+    browser.click("#studyCopyBtn")
+    browser.wait_for("window.__fallbackAttempts === 2 && document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    assert browser.evaluate("window.__modernAttempts") == 1
+    assert browser.evaluate("window.__copiedSelection") == before["prompt"]
+    assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
+
+    browser.evaluate("document.execCommand=()=>false;true")
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
+    assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
+    assert browser.evaluate("window.__opens") == 0
+    assert browser.evaluate("JSON.stringify(userAnswers)") == before["answers"]
+
+    browser.evaluate("document.execCommand=()=>{throw new Error('blocked')};true")
+    browser.click("#studyCopyBtn")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
+    assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
+
+
+def test_quiz_question_tools_wrap_across_themes_and_widths(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings")
+        _set_theme(browser, theme)
+        browser.navigate(quiz_url)
+        browser.wait_for("quizRecoveryReady === true")
+        browser.click(".study-mode-btn")
+        browser.evaluate("quiz[0].question='Long question '+ 'W'.repeat(180);renderQuestion();true")
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            layout = browser.evaluate(
+                "(() => {const ids=['prevBtn','nextBtn','studyAiBtn','studyAnkiBtn','studyCopyBtn'];"
+                "const buttons=ids.map(id=>document.getElementById(id));"
+                "const bounds=buttons.map(button=>button.getBoundingClientRect());"
+                "return {overflow:document.documentElement.scrollWidth>innerWidth,"
+                "order:buttons.map(button=>button.id),"
+                "contained:bounds.every(rect=>rect.left>=0&&rect.right<=innerWidth),"
+                "navAboveTools:bounds[1].bottom<bounds[2].top,"
+                "toolRows:new Set(bounds.slice(2).map(rect=>Math.round(rect.top))).size,"
+                "types:buttons.map(button=>button.tagName),"
+                "statusRole:document.getElementById('questionCopyStatus').getAttribute('role')};})()"
+            )
+            assert layout["overflow"] is False, (theme, width, layout)
+            assert layout["contained"] is True, (theme, width, layout)
+            assert layout["navAboveTools"] is True, (theme, width, layout)
+            assert layout["order"] == ["prevBtn", "nextBtn", "studyAiBtn", "studyAnkiBtn", "studyCopyBtn"]
+            assert layout["types"] == ["BUTTON"] * 5
+            assert layout["statusRole"] == "status"
+            if width == 420:
+                assert layout["toolRows"] == 3
+            contrast = _theme_contrast_snapshot(browser, {"tool": "#studyCopyBtn", "heading": ".quiz-question-tools h2"})
+            assert contrast["tool"]["contrast"] >= 4.5, (theme, width, contrast)
+            assert contrast["heading"]["contrast"] >= 4.5, (theme, width, contrast)
+
+
 def test_anki_summary_cards_across_themes_and_widths(browser_stack):
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/anki/custom")
@@ -2265,6 +3495,7 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
     browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.evaluate("localStorage.setItem('unrelated.restore-segment118','preserve'); true")
 
@@ -2276,6 +3507,10 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
         "return true; })()"
     )
     browser.click("#edit-quiz-form .build-primary-button")
+    browser.wait_for_page_ready(
+        f"location.pathname === '/edit_quiz/{quiz_id}' && "
+        f"document.querySelector('[name=quiz_title]').value === {json.dumps(changed_title)}"
+    )
     _wait_for_database_value(
         database,
         "SELECT title FROM quizzes WHERE id = %d" % quiz_id,
@@ -2291,7 +3526,9 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("document.getElementById('backupFile') !== null")
     browser.set_files("#backupFile", [browser_stack.metadata["restore_path"]])
     browser.click("form[action='/settings/backup/restore/stage'] button[type='submit']")
-    browser.wait_for("document.querySelector('h1')?.textContent.includes('Review backup before restore')")
+    browser.wait_for_page_ready(
+        "document.querySelector('h1')?.textContent.includes('Review backup before restore')"
+    )
     assert _database_value(
         database,
         "SELECT title FROM quizzes WHERE id = ?",
@@ -2309,7 +3546,10 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
 
     browser.click("form[action*='/restore/confirm/'] button[type='submit']")
-    browser.wait_for("document.querySelector('h1')?.textContent.includes('Restore complete')", timeout=12.0)
+    browser.wait_for_page_ready(
+        "document.querySelector('h1')?.textContent.includes('Restore complete')",
+        timeout=12.0,
+    )
     browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
     assert browser.evaluate("localStorage.getItem('unrelated.restore-segment118')") == "preserve"
     _wait_for_database_value(
@@ -2978,7 +4218,11 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "menuControls:document.querySelector('[data-settings-menu]').getAttribute('aria-controls'),"
         "menuExpanded:document.querySelector('[data-settings-menu]').getAttribute('aria-expanded'),"
         "buttonType:document.getElementById('rebuildAllBtn').type,"
+        "buttonDescription:document.getElementById('rebuildAllBtn').getAttribute('aria-describedby'),"
         "statusLive:document.getElementById('rebuildStatus').getAttribute('aria-live'),"
+        "statusRole:document.getElementById('rebuildStatus').getAttribute('role'),"
+        "statusAtomic:document.getElementById('rebuildStatus').getAttribute('aria-atomic'),"
+        "guidance:document.querySelector('.system-tools-action p').textContent,"
         "imageEditorHref:document.querySelector('.system-tools-secondary-action').getAttribute('href')"
         "}))()"
     )
@@ -2987,19 +4231,61 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "menuControls": "dashboardSidebar",
         "menuExpanded": "false",
         "buttonType": "button",
+        "buttonDescription": "rebuildDescription",
         "statusLive": "polite",
+        "statusRole": "status",
+        "statusAtomic": "true",
+        "guidance": "Occasional maintenance: You normally do not need to run this after updating DLMS. Use it when DLMS specifically instructs you to refresh generated quiz pages, when existing quiz pages look stale or inconsistent with the current quiz interface, or when their generated page files need repair.",
         "imageEditorHref": "/admin/image-editor",
     }
 
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        for width in (1280, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(f"{browser_stack.base_url}/admin/maintenance")
+            browser.wait_for("document.getElementById('rebuildAllBtn')")
+            layout = browser.evaluate(
+                "(() => {const panel=document.querySelector('.system-tools-panel');"
+                "const button=document.getElementById('rebuildAllBtn');"
+                "const p=panel.getBoundingClientRect(),b=button.getBoundingClientRect();"
+                "return {overflow:document.documentElement.scrollWidth<=window.innerWidth+1,"
+                "panelContained:p.left>=0&&p.right<=window.innerWidth+1,"
+                "buttonContained:b.left>=p.left&&b.right<=p.right,"
+                "buttonHeight:Math.round(b.height),descriptionLines:Math.round("
+                "document.getElementById('rebuildDescription').getBoundingClientRect().height/"
+                "parseFloat(getComputedStyle(document.getElementById('rebuildDescription')).lineHeight))};})()"
+            )
+            assert layout["overflow"] is True, (theme, width, layout)
+            assert layout["panelContained"] is True, (theme, width, layout)
+            assert layout["buttonContained"] is True, (theme, width, layout)
+            assert layout["buttonHeight"] >= 40, (theme, width, layout)
+            assert layout["descriptionLines"] <= (6 if width == 420 else 3), (
+                theme, width, layout,
+            )
+            contrast = _theme_contrast_snapshot(
+                browser,
+                {
+                    "rebuild description": "#rebuildDescription",
+                },
+            )
+            for role, state in contrast.items():
+                assert state["contrast"] >= 4.5, (theme, width, role, state)
+
+    browser.set_viewport(1280, 900)
+    browser.navigate(f"{browser_stack.base_url}/admin/maintenance")
+    browser.wait_for("window.dlmsCsrfToken && document.getElementById('rebuildAllBtn')")
+
     confirmation = (
-        "Rebuild all quiz pages using the current DLMS template?\n\n"
-        "Quiz questions, answers, IDs, and history will not be changed."
+        "Rebuild all registered quiz pages from saved quiz data?\n\n"
+        "Only derived page files will be replaced. Questions, answers, IDs, "
+        "lineage, folders, and learning history will not be changed."
     )
     cancelled = browser.evaluate(
         "(() => {window.__maintenanceCalls=[];window.__maintenanceConfirms=[];"
         "window.confirm=message=>{window.__maintenanceConfirms.push(message);return false};"
         "const originalFetch=window.fetch.bind(window);"
-        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method,body:init.body});"
         "return originalFetch(input,init)};document.getElementById('rebuildAllBtn').click();"
         "return {calls:window.__maintenanceCalls,confirms:window.__maintenanceConfirms,"
         "disabled:document.getElementById('rebuildAllBtn').disabled,"
@@ -3015,7 +4301,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
     assert browser.evaluate(
         "(() => {window.__maintenanceCalls=[];window.__maintenanceConfirms=[];"
         "window.confirm=message=>{window.__maintenanceConfirms.push(message);return true};"
-        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "window.fetch=(input,init={})=>{window.__maintenanceCalls.push({url:String(input),method:init.method,body:init.body});"
         "return new Promise(resolve=>{window.__resolveMaintenanceFetch=resolve})};return true;})()"
     ) is True
     browser.click("#rebuildAllBtn")
@@ -3030,7 +4316,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
     )
     browser.wait_for(
         "!document.getElementById('rebuildAllBtn').disabled && "
-        "document.getElementById('rebuildStatus').textContent.startsWith('Complete:')"
+        "document.getElementById('rebuildStatus').textContent.startsWith('Finished with issues:')"
     )
     safe_status = browser.evaluate(
         "(() => {const status=document.getElementById('rebuildStatus');return {"
@@ -3039,10 +4325,14 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "calls:window.__maintenanceCalls,confirms:window.__maintenanceConfirms};})()"
     )
     assert safe_status == {
-        "text": "Complete: <img id=maintenanceInjected> rebuilt, 1 failed.",
-        "html": "Complete: &lt;img id=maintenanceInjected&gt; rebuilt, 1 failed.",
+        "text": "Finished with issues: <img id=maintenanceInjected> rebuilt, 1 failed. Failed quizzes kept their previous page files. Check the server log.",
+        "html": "Finished with issues: &lt;img id=maintenanceInjected&gt; rebuilt, 1 failed. Failed quizzes kept their previous page files. Check the server log.",
         "injected": False,
-        "calls": [{"url": "/admin/rebuild_all_quiz_html", "method": "POST"}],
+        "calls": [{
+            "url": "/admin/rebuild_all_quiz_html",
+            "method": "POST",
+            "body": '{"confirmation":"rebuild-all-quiz-pages"}',
+        }],
         "confirms": [confirmation],
     }
 
@@ -3067,18 +4357,23 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
 
     browser.navigate(f"{browser_stack.base_url}/admin/maintenance?live=1")
     browser.wait_for("window.dlmsCsrfToken && document.getElementById('rebuildAllBtn')")
-    expected_rebuilt = sum(
-        entry.get("id") is not None
-        for entry in json.loads(
-            (browser_stack.data_root / "config" / "quizzes.json").read_text(
-                encoding="utf-8"
-            )
+    registered_quizzes = json.loads(
+        (browser_stack.data_root / "config" / "quizzes.json").read_text(
+            encoding="utf-8"
         )
     )
+    expected_rebuilt = sum(entry.get("id") is not None for entry in registered_quizzes)
+    live_entry = next(entry for entry in registered_quizzes if entry.get("id") is not None)
+    live_html = browser_stack.data_root / "quizzes" / live_entry["html"]
+    live_json = (
+        browser_stack.data_root / "data" / live_entry["html"].replace(".html", ".json")
+    )
+    live_html.write_text("browser stale html", encoding="utf-8")
+    live_json.write_text('[{"browser_stale":true}]', encoding="utf-8")
     assert browser.evaluate(
         "(() => {const protectedFetch=window.fetch.bind(window);window.__maintenanceCalls=[];"
         "window.confirm=()=>true;window.fetch=(input,init={})=>{"
-        "window.__maintenanceCalls.push({url:String(input),method:init.method});"
+        "window.__maintenanceCalls.push({url:String(input),method:init.method,body:init.body});"
         "return protectedFetch(input,init)};return true;})()"
     ) is True
     browser.click("#rebuildAllBtn")
@@ -3091,8 +4386,15 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         f"Complete: {expected_rebuilt} rebuilt, 0 failed."
     )
     assert browser.evaluate("window.__maintenanceCalls") == [
-        {"url": "/admin/rebuild_all_quiz_html", "method": "POST"}
+        {
+            "url": "/admin/rebuild_all_quiz_html",
+            "method": "POST",
+            "body": '{"confirmation":"rebuild-all-quiz-pages"}',
+        }
     ]
+    assert "browser stale html" not in live_html.read_text(encoding="utf-8")
+    rebuilt_payload = json.loads(live_json.read_text(encoding="utf-8"))
+    assert rebuilt_payload and "browser_stale" not in rebuilt_payload[0]
 
 
 def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stack):
@@ -3306,6 +4608,23 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
 
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
         set_theme(theme)
+        # Pack metrics have three text children, unlike icon+copy dashboard
+        # cards. Check real layout across the four/two/one-column breakpoints.
+        for width in (1920, 1024, 768, 420):
+            browser.set_viewport(width, 1080)
+            browser.navigate(f"{base_url}/content-packs/details/{encoded_folder}")
+            browser.wait_for("document.querySelectorAll('.pack-detail-stat-grid > article').length === 4")
+            assert browser.evaluate("""(() => {
+                const cards=[...document.querySelectorAll('.pack-detail-stat-grid > article')];
+                return cards.every(card => {
+                    const [label,value,description]=[...card.children];
+                    const [a,b,c]=[label,value,description].map(el=>el.getBoundingClientRect());
+                    return Math.abs(a.left-b.left)<1 && Math.abs(b.left-c.left)<1
+                        && a.bottom<=b.top && b.bottom<=c.top
+                        && [card,label,value,description].every(el=>el.scrollWidth<=el.clientWidth+1)
+                        && getComputedStyle(card).gridTemplateColumns.split(' ').length===1;
+                });
+            })()""") is True
         browser.set_viewport(420, 900)
         browser.navigate(f"{base_url}/content-packs/details/{encoded_folder}")
         browser.wait_for("document.querySelector('.pack-detail-meta span') !== null")
@@ -3398,9 +4717,11 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "const value=getComputedStyle(probe).color;probe.remove();return value};"
             "const hero=document.querySelector('.library-hero');"
             "const stats=document.querySelector('.library-summary-grid');"
+            "const smart=document.querySelector('.library-smart-views');"
             "const toolbar=document.querySelector('.library-toolbar');"
             "const tip=document.querySelector('.library-tip');"
             "const folder=document.querySelector('.library-folder');"
+            "const footer=document.querySelector('.library-footer-actions');"
             "const header=folder.querySelector('.library-folder-header');"
             "const body=folder.querySelector('.library-folder-body');"
             "const title=folder.querySelector('h2');"
@@ -3419,8 +4740,10 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             "bodyColor:getComputedStyle(body).backgroundColor,"
             "titleColor:getComputedStyle(title).color,titleWrap:getComputedStyle(title).overflowWrap,"
             "selectedBorder:getComputedStyle(selected).borderTopColor,"
-            "heroStatsGap:blockGap(hero,stats),statsToolbarGap:blockGap(stats,toolbar),"
+            "heroStatsGap:blockGap(hero,stats),statsSmartGap:blockGap(stats,smart),"
+            "smartToolbarGap:blockGap(smart,toolbar),"
             "toolbarTipGap:blockGap(toolbar,tip),tipFolderGap:blockGap(tip,folder),"
+            "folderFooterGap:blockGap(document.querySelector('.library-folder:last-child'),footer),"
             "focusVisibleSupported:CSS.supports('selector(:focus-visible)'),"
             "documentContained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,"
             "folderContained:folder.scrollWidth<=folder.clientWidth+1}"
@@ -3434,9 +4757,11 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         assert library["titleWrap"] == "anywhere"
         assert library["selectedBorder"] == library["accent"]
         assert library["heroStatsGap"] == 18
-        assert library["statsToolbarGap"] == 18
+        assert library["statsSmartGap"] == 18
+        assert library["smartToolbarGap"] == 18
         assert 8 <= library["toolbarTipGap"] <= 12
         assert 8 <= library["tipFolderGap"] <= 12
+        assert library["folderFooterGap"] == 18
         assert library["focusVisibleSupported"] is True
         assert library["documentContained"] is True
         assert library["folderContained"] is True
@@ -3447,15 +4772,22 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         desktop_gaps = browser.evaluate(
             "(() => {const hero=document.querySelector('.library-hero');"
             "const stats=document.querySelector('.library-summary-grid');"
+            "const smart=document.querySelector('.library-smart-views');"
             "const toolbar=document.querySelector('.library-toolbar');"
+            "const folders=[...document.querySelectorAll('.library-folder')];"
+            "const footer=document.querySelector('.library-footer-actions');"
             "const gap=(before,after)=>Math.round(after.getBoundingClientRect().top-"
             "before.getBoundingClientRect().bottom);"
-            "return {heroStats:gap(hero,stats),statsToolbar:gap(stats,toolbar),"
+            "return {heroStats:gap(hero,stats),statsSmart:gap(stats,smart),"
+            "smartToolbar:gap(smart,toolbar),"
+            "folderFooter:gap(folders.at(-1),footer),"
             "contained:document.documentElement.scrollWidth<=document.documentElement.clientWidth+1};})()"
         )
         assert desktop_gaps == {
             "heroStats": 18,
-            "statsToolbar": 18,
+            "statsSmart": 18,
+            "smartToolbar": 18,
+            "folderFooter": 18,
             "contained": True,
         }
 
@@ -5377,7 +6709,12 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "(() => {const form=document.getElementById('builderForm');"
         "return {action:form.getAttribute('action'),method:form.method,images:DRAFT.images.length,"
         "payload:!!document.getElementById('builderPayload'),rights:form.rights_ok.required,"
-        "csrf:form.querySelector('[name=csrf_token]').value.length>0,questions:document.querySelectorAll('.image-builder-question-card').length};})()"
+        "csrf:form.querySelector('[name=csrf_token]').value.length>0,questions:document.querySelectorAll('.image-builder-question-card').length,"
+        "imageDescription:document.querySelector('.image-alt-input').getAttribute('aria-label'),"
+        "choiceText:document.querySelector('.choice-text').getAttribute('aria-label'),"
+        "correctChoice:document.querySelector('.choice-correct').getAttribute('aria-label'),"
+        "hotspotStageRole:document.querySelector('.image-builder-hotspot-stage').getAttribute('role'),"
+        "hotspotStageTabIndex:document.querySelector('.image-builder-hotspot-stage').tabIndex};})()"
     )
     assert image_builder_state == {
         "action": "/study-packs/image-builder/save",
@@ -5387,6 +6724,26 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "rights": True,
         "csrf": True,
         "questions": 1,
+        "imageDescription": "Accessible description for segment19-browser.png",
+        "choiceText": "Answer choice text",
+        "correctChoice": "Mark this answer correct",
+        "hotspotStageRole": "group",
+        "hotspotStageTabIndex": 0,
+    }
+    image_builder_keyboard = browser.evaluate(
+        "(() => {const card=document.querySelector('.image-builder-question-card');"
+        "const type=card.querySelector('.q-type');type.value='hotspot';"
+        "type.dispatchEvent(new Event('change',{bubbles:true}));"
+        "const stage=card.querySelector('.image-builder-hotspot-stage');stage.focus();"
+        "stage.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));"
+        "stage.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));"
+        "return {center:card._shape.center,status:card.querySelector('.hotspot-status').textContent,"
+        "cursorHidden:card.querySelector('.hotspot-keyboard-cursor').hidden};})()"
+    )
+    assert image_builder_keyboard == {
+        "center": [0.52, 0.5],
+        "status": "Circle center placed with keyboard.",
+        "cursorHidden": False,
     }
 
     pack_root = data_root / "content_packs" / "DLMS_Study_segment19_browser_editor"
@@ -5433,6 +6790,12 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
     editor_state = browser.evaluate(
         "(() => ({pack:EDITOR_DATA.pack_id,dataset:EDITOR_DATA.dataset_id,kind:EDITOR_DATA.dataset_kind,"
         "status:document.getElementById('editorStatus').textContent,"
+        "statusRole:document.getElementById('editorStatus').getAttribute('role'),"
+        "statusLive:document.getElementById('editorStatus').getAttribute('aria-live'),"
+        "activeMode:document.getElementById('hotspotModeBtn').getAttribute('aria-pressed'),"
+        "inactiveMode:document.getElementById('prepModeBtn').getAttribute('aria-pressed'),"
+        "stageRole:document.getElementById('editorStage').getAttribute('role'),"
+        "stageTabIndex:document.getElementById('editorStage').tabIndex,"
         "menuLabel:document.getElementById('menuButton').getAttribute('aria-label')}))()"
     )
     assert editor_state == {
@@ -5440,8 +6803,26 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "dataset": "visuals",
         "kind": "hotspot",
         "status": "Clickable-region mode.",
+        "statusRole": "status",
+        "statusLive": "polite",
+        "activeMode": "true",
+        "inactiveMode": "false",
+        "stageRole": "group",
+        "stageTabIndex": 0,
         "menuLabel": "Toggle navigation",
     }
+    editor_keyboard = browser.evaluate(
+        "(() => {const stage=document.getElementById('editorStage');stage.focus();"
+        "stage.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));"
+        "stage.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));"
+        "return {shape:currentShape(),cursorHidden:document.getElementById('editorKeyboardCursor').hidden};})()"
+    )
+    assert editor_keyboard["cursorHidden"] is False
+    assert editor_keyboard["shape"]["type"] == "circle"
+    assert editor_keyboard["shape"]["x"] == pytest.approx(0.52, abs=0.002)
+    assert editor_keyboard["shape"]["y"] == pytest.approx(0.5, abs=0.002)
+    assert editor_keyboard["shape"]["radius"] == 0.1
+    browser.click("#loadExistingBtn")
     browser.evaluate(
         "window.confirm=()=>true;document.getElementById('saveBtn').click();true"
     )
@@ -5452,6 +6833,10 @@ def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_s
         "document.getElementById('saveEditsBtn').click();true"
     )
     browser.wait_for("document.getElementById('editorStatus').textContent.includes('Image prep saved')")
+    assert browser.evaluate(
+        "document.getElementById('prepModeBtn').getAttribute('aria-pressed')==='true' && "
+        "document.getElementById('hotspotModeBtn').getAttribute('aria-pressed')==='false'"
+    ) is True
     saved_editor_data = json.loads(editor_data_path.read_text(encoding="utf-8"))
     assert saved_editor_data["images"][0]["hotspots"][0]["shape"] == {
         "type": "circle", "x": .5, "y": .5, "radius": .1
@@ -5864,6 +7249,156 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     assert browser.evaluate(
         "document.getElementById('qText').textContent.includes('neutral browser option')"
     ) is True
+
+
+def test_external_ai_matching_review_and_publication(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    browser.navigate(f"{base_url}/external-ai/quiz-builder")
+    browser.wait_for("document.getElementById('externalAiContentType')")
+    raw_response = json.dumps({
+        "schema_version": 1,
+        "content_type": "matching",
+        "title": "Browser External Matching",
+        "source": {
+            "organization": "Neutral Browser Source",
+            "dataset": "Neutral terminology",
+            "version": "1",
+            "url": "https://example.test/terms",
+            "license": "Test-only neutral content",
+        },
+        "questions": [{
+            "question": "Match each neutral marker to its description.",
+            "direction": "term_to_definition",
+            "round_size": 2,
+            "pairs": [
+                {"left": "Marker one", "right": "First neutral description",
+                 "category": "markers", "explanation": "First pairing."},
+                {"left": "Marker two", "right": "Second neutral description",
+                 "category": "markers", "explanation": "Second pairing."},
+            ],
+            "explanation": "Use the neutral terminology source.",
+            "concepts": ["browser-matching"],
+        }],
+    })
+    browser.evaluate(
+        "document.getElementById('externalAiContentType').value='matching';"
+        "document.getElementById('externalAiContentType').dispatchEvent(new Event('change'));"
+        "document.querySelector('[name=topic]').value='Neutral terminology';"
+        "document.querySelector('[name=question_count]').value='2';"
+        f"document.getElementById('externalAiResponse').value={json.dumps(raw_response)};true"
+    )
+    assert browser.evaluate(
+        "document.getElementById('externalAiCountLabel').textContent"
+    ) == "Pair count"
+    browser.click("#externalAiBuilderForm .build-primary-button")
+    browser.wait_for_page_ready(
+        "location.pathname.startsWith('/external-ai/review/') && "
+        "document.querySelector('[data-matching-role=pair-row]')"
+    )
+    initial = browser.evaluate(
+        "(() => {const card=document.querySelector('.pdf-import-question-card');"
+        "return {pairs:card.querySelectorAll('[data-matching-role=pair-row]').length,"
+        "confirmed:card.querySelector('[data-matching-role=review-confirmed]').checked,"
+        "choiceMode:!!card.querySelector('[data-pdf-role=answer-mode]'),"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert initial == {
+        "pairs": 2, "confirmed": False, "choiceMode": False, "overflow": True,
+    }
+    review_url = browser.evaluate("location.href")
+    matching_selectors = {
+        "matching field label": ".external-ai-matching-pair .build-field > span",
+        "matching optional label": ".external-ai-matching-pair .build-field em",
+        "matching confirmation": ".pdf-correctness-confirmation span",
+        "matching bulk status": ".pdf-review-bulk-status",
+        "matching bulk help": ".pdf-review-bulk-help summary",
+        "matching disabled bulk action": "#questionReviewConfirmSelected",
+    }
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(review_url)
+        browser.wait_for("document.querySelector('[data-matching-role=pair-row]')")
+        matching_theme = _theme_contrast_snapshot(browser, matching_selectors)
+        for role, state in matching_theme.items():
+            assert state["contrast"] >= 4.5, (theme, role, state)
+        assert matching_theme["matching disabled bulk action"]["opacity"] == "1"
+    browser.set_viewport(840, 900)
+    matching_layout = browser.evaluate(
+        "(() => {const settings=document.querySelector('.external-ai-matching-settings');"
+        "const fields=document.querySelector('.external-ai-matching-pair-fields');"
+        "return {settingsColumns:getComputedStyle(settings).gridTemplateColumns.split(' ').length,"
+        "fieldColumns:getComputedStyle(fields).gridTemplateColumns.split(' ').length,"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert matching_layout == {
+        "settingsColumns": 1, "fieldColumns": 1, "overflow": True,
+    }
+    browser.set_viewport(1280, 1000)
+    browser.evaluate(
+        "(() => {const card=document.querySelector('.pdf-import-question-card');"
+        "const select=card.querySelector('[data-pdf-role=select]');"
+        "select.checked=true;select.dispatchEvent(new Event('change',{bubbles:true}));"
+        "document.getElementById('questionReviewConfirmSelected').click();return true;})()"
+    )
+    assert browser.evaluate(
+        "document.querySelector('[data-matching-role=review-confirmed]').checked"
+    ) is True
+    browser.click("#pdfReviewForm .build-primary-button")
+    browser.wait_for("location.pathname.startsWith('/edit_quiz/')")
+    quiz_id = int(browser.evaluate("location.pathname.split('/').pop()"))
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        question = connection.execute(
+            "SELECT id, question_type FROM questions WHERE quiz_id = ?", (quiz_id,)
+        ).fetchone()
+        pair_count = connection.execute(
+            "SELECT COUNT(*) FROM matching_pairs WHERE question_id = ?", (question[0],)
+        ).fetchone()[0]
+    assert question[1] == "matching"
+    assert pair_count == 2
+
+
+def test_ocr_matching_import_entry_is_clear_and_distinct(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/pdf-import")
+    browser.wait_for(
+        "document.querySelector('form[action=\"/pdf-import/ocr-matching\"]')"
+    )
+    state = browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/ocr-matching\"]');"
+        "return {images:!!form.querySelector('[name=matching_images][multiple]'),"
+        "pdf:!!form.querySelector('[name=matching_pdf]'),"
+        "direction:!!form.querySelector('[name=matching_direction]'),"
+        "rights:!!form.querySelector('[name=rights_ok][required]'),"
+        "copy:form.closest('section').textContent};})()"
+    )
+    assert state["images"] is True
+    assert state["pdf"] is True
+    assert state["direction"] is True
+    assert state["rights"] is True
+    assert "Pairing is deliberately conservative" in state["copy"]
+    assert "No cloud OCR or external AI is used" in state["copy"]
+
+    browser.set_viewport(1024, 900)
+    ocr_layout = browser.evaluate(
+        "(() => {const form=document.querySelector('form[action=\"/pdf-import/ocr-matching\"]');"
+        "const panel=form.closest('.pdf-ocr-import-panel');"
+        "const bounds=panel.getBoundingClientRect();"
+        "const controls=[...form.querySelectorAll('input,select,button')]"
+        ".filter(item=>item.getClientRects().length);"
+        "return {formDirection:getComputedStyle(form).flexDirection,"
+        "headingDirection:getComputedStyle(panel.querySelector('.pdf-bank-panel-heading')).flexDirection,"
+        "contained:controls.every(item=>{const rect=item.getBoundingClientRect();"
+        "return rect.left>=bounds.left&&rect.right<=bounds.right;}),"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert ocr_layout == {
+        "formDirection": "column",
+        "headingDirection": "column",
+        "contained": True,
+        "overflow": True,
+    }
+    browser.set_viewport(1280, 1000)
 
 
 def test_external_ai_help_is_discoverable_and_twenty_five_screenshot_queue_is_rendered(
@@ -7216,7 +8751,6 @@ def test_quiz_deletion_prunes_only_deleted_progress_and_stops_former_owner(brows
         browser.navigate(companion_url)
         browser.wait_for("quizRecoveryReady === true")
         browser.click(".study-mode-btn")
-        browser.click("#choices .choice[data-index='0']")
         companion_key = browser.evaluate("quizRecoveryController.storageKey")
 
         browser.context = first_context
@@ -7322,6 +8856,34 @@ def test_browser_presence_runtime_mode_isolated_server(
         for path in ("/", "/library", "/library"):
             browser.navigate(base_url + path)
             browser.wait_for("window.dlmsBrowserPresence?.enabled === true")
+            browser.wait_for(
+                "document.getElementById('shutdownBtn')?.disabled === "
+                + ("false" if automatic_shutdown_expected else "true")
+            )
+            if automatic_shutdown_expected:
+                assert browser.evaluate(
+                    "document.getElementById('dashboardShutdownUnavailable')"
+                ) is None
+            else:
+                shutdown_state = browser.evaluate(
+                    "(() => {const button=document.getElementById('shutdownBtn');"
+                    "const note=document.getElementById('dashboardShutdownUnavailable');"
+                    "return {disabled:button.disabled,ariaDisabled:button.getAttribute('aria-disabled'),"
+                    "describedBy:button.getAttribute('aria-describedby'),"
+                    "label:button.querySelector('span:last-child').textContent.trim(),"
+                    "note:note?.textContent.trim(),role:note?.getAttribute('role')};})()"
+                )
+                assert shutdown_state == {
+                    "disabled": True,
+                    "ariaDisabled": "true",
+                    "describedBy": "dashboardShutdownUnavailable",
+                    "label": "Shutdown unavailable",
+                    "note": (
+                        "DLMS is running in LAN/server mode. "
+                        "Stop the DLMS process or service from the host computer."
+                    ),
+                    "role": "status",
+                }
             accepted = browser.evaluate(
                 "fetch('/api/browser-presence',{method:'POST',"
                 "headers:{'Content-Type':'application/json'},"
@@ -7376,9 +8938,17 @@ def test_browser_presence_runtime_mode_isolated_server(
                 data=b"",
                 headers={"X-CSRFToken": csrf_cookie},
             )
-            with opener.open(shutdown_request, timeout=3) as response:
-                assert json.load(response) == {"status": "ok"}
-            server_process.wait(timeout=5)
+            with pytest.raises(urllib.error.HTTPError) as rejected:
+                opener.open(shutdown_request, timeout=3)
+            assert rejected.value.code == 403
+            assert json.load(rejected.value) == {
+                "status": "unavailable",
+                "error": (
+                    "Shutdown DLMS is unavailable in LAN/server mode. "
+                    "Stop the DLMS process or service from the host computer."
+                ),
+            }
+            assert server_process.poll() is None
     finally:
         if browser is not None:
             browser.close()
@@ -7535,3 +9105,2114 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
         browser.navigate(base_url + path)
         browser.wait_for(ready)
         assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
+
+
+def test_post_310_workflows_stack_by_available_content_width(browser_stack):
+    """Sidebar-constrained workflows must respond to content, not viewport, width."""
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    cases = (
+        (
+            "/quiz-composer",
+            "document.querySelector('.mixed-builder-intro')",
+            "getComputedStyle(document.querySelector('.mixed-builder-intro')).flexDirection === 'column' && "
+            "getComputedStyle(document.querySelector('.mixed-builder-plan')).flexDirection === 'column'",
+        ),
+        (
+            "/library/duplicates",
+            "document.querySelector('.duplicate-question-intro')",
+            "getComputedStyle(document.querySelector('.duplicate-question-intro')).flexDirection === 'column'",
+        ),
+        (
+            "/learning-intelligence",
+            "document.getElementById('liLoading').hidden",
+            "getComputedStyle(document.querySelector('.learning-intelligence-panel-head')).flexDirection === 'column'",
+        ),
+        (
+            "/review-schedule",
+            "document.querySelector('.review-schedule-actions')",
+            "getComputedStyle(document.querySelector('.review-schedule-actions')).flexDirection === 'column'",
+        ),
+        (
+            "/pdf-import",
+            "document.querySelector('.pdf-ocr-import-panel .pdf-bank-panel-heading')",
+            "getComputedStyle(document.querySelector('.pdf-ocr-import-panel .pdf-bank-panel-heading')).flexDirection === 'column' && "
+            "getComputedStyle(document.querySelector('.pdf-import-upload-form')).flexDirection === 'column'",
+        ),
+    )
+
+    browser.set_viewport(1024, 900)
+    for path, ready, stacked in cases:
+        browser.navigate(base_url + path)
+        browser.wait_for(ready)
+        state = browser.evaluate(
+            "(() => {const main=document.querySelector('.dashboard-main');"
+            "const controls=[...main.querySelectorAll('a,button,input,select,textarea')]"
+            ".filter(item=>item.getClientRects().length);const bounds=main.getBoundingClientRect();"
+            "return {stacked:" + stacked + ","
+            "contained:controls.every(item=>{const rect=item.getBoundingClientRect();"
+            "return rect.left>=bounds.left-1&&rect.right<=bounds.right+1;}),"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert state == {"stacked": True, "contained": True, "overflow": True}, (
+            path, state,
+        )
+
+    # Concept performance is intentionally a horizontally scrollable comparison
+    # table at this width. Its Practice column remains pinned so the primary row
+    # action is reachable before and after the user scrolls the metrics. The
+    # pinned cells use an opaque theme base beneath their themed overlay so
+    # neighboring metric text cannot show through them.
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.set_viewport(1024, 900)
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/learning-intelligence")
+        browser.wait_for("document.getElementById('liLoading').hidden")
+        if browser.evaluate("!document.getElementById('liToggleZeroEvidence').hidden"):
+            browser.click("#liToggleZeroEvidence")
+        browser.wait_for(
+            "!document.getElementById('liTableWrap').hidden && "
+            "document.querySelector('.li-concept-review-form .build-secondary-link')"
+        )
+        table_state = browser.evaluate(
+            "(() => {const wrap=document.getElementById('liTableWrap');"
+            "const action=document.querySelector('.li-concept-review-form .build-secondary-link');"
+            "const cell=action.closest('td');const header=document.querySelector("
+            "'.learning-intelligence-table th:last-child');"
+            "const bounds=wrap.getBoundingClientRect();"
+            "const resolve=value=>{const probe=document.createElement('span');"
+            "probe.style.color=value;document.body.appendChild(probe);"
+            "const result=getComputedStyle(probe).color;probe.remove();return result;};"
+            "const base=resolve(getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--theme-body-base'));"
+            "const occludes=target=>{const rect=target.getBoundingClientRect();"
+            "const top=document.elementFromPoint(rect.left+Math.min(8,rect.width/2),"
+            "rect.top+rect.height/2);return top?.closest('td,th')===target;};"
+            "const contained=()=>{const rect=action.getBoundingClientRect();"
+            "return rect.left>=bounds.left-1&&rect.right<=bounds.right+1;};"
+            "const cellStyle=getComputedStyle(cell),headerStyle=getComputedStyle(header);"
+            "const before=contained(),cellTopBefore=occludes(cell),headerTopBefore=occludes(header);"
+            "wrap.scrollLeft=wrap.scrollWidth;"
+            "return {scrollable:wrap.scrollWidth>wrap.clientWidth,"
+            "practicePosition:getComputedStyle(cell).position,"
+            "actionBeforeScroll:before,actionAfterScroll:contained(),"
+            "cellOpaqueBase:cellStyle.backgroundColor===base,"
+            "headerOpaqueBase:headerStyle.backgroundColor===base,"
+            "cellOverlay:cellStyle.backgroundImage!=='none',"
+            "headerOverlay:headerStyle.backgroundImage!=='none',"
+            "cellTopBefore,headerTopBefore,cellTopAfter:occludes(cell),"
+            "headerTopAfter:occludes(header),"
+            "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert table_state == {
+            "scrollable": True,
+            "practicePosition": "sticky",
+            "actionBeforeScroll": True,
+            "actionAfterScroll": True,
+            "cellOpaqueBase": True,
+            "headerOpaqueBase": True,
+            "cellOverlay": True,
+            "headerOverlay": True,
+            "cellTopBefore": True,
+            "headerTopBefore": True,
+            "cellTopAfter": True,
+            "headerTopAfter": True,
+            "documentFits": True,
+        }, (theme, table_state)
+
+        browser.set_viewport(1600, 1000)
+        wide_state = browser.evaluate(
+            "(() => {const cell=document.querySelector("
+            "'.learning-intelligence-table td:last-child');"
+            "const header=document.querySelector('.learning-intelligence-table th:last-child');"
+            "const resolve=value=>{const probe=document.createElement('span');"
+            "probe.style.color=value;document.body.appendChild(probe);"
+            "const result=getComputedStyle(probe).color;probe.remove();return result;};"
+            "const base=resolve(getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--theme-body-base'));"
+            "return {position:getComputedStyle(cell).position,"
+            "cellOpaque:getComputedStyle(cell).backgroundColor===base,"
+            "headerOpaque:getComputedStyle(header).backgroundColor===base,"
+            "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert wide_state == {
+            "position": "sticky",
+            "cellOpaque": True,
+            "headerOpaque": True,
+            "documentFits": True,
+        }, (theme, wide_state)
+
+    browser.set_viewport(920, 900)
+    browser.navigate(base_url + "/external-ai/quiz-builder")
+    browser.wait_for("document.querySelector('.external-ai-builder-grid')")
+    external_ai = browser.evaluate(
+        "(() => {const grid=document.querySelector('.external-ai-builder-grid');"
+        "const steps=document.querySelector('.external-ai-builder-steps');"
+        "return {gridColumns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,"
+        "stepColumns:new Set([...steps.children].map(item=>"
+        "Math.round(item.getBoundingClientRect().left))).size,"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert external_ai == {"gridColumns": 1, "stepColumns": 1, "overflow": True}
+
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelector('.daily-review-item')")
+    daily = browser.evaluate(
+        "(() => {const item=document.querySelector('.daily-review-item');"
+        "const copy=item.querySelector('.daily-review-copy').getBoundingClientRect();"
+        "const action=item.querySelector('.daily-review-item-action').getBoundingClientRect();"
+        "return {actionBelow:action.top>=copy.bottom,"
+        "actionContained:action.left>=item.getBoundingClientRect().left&&"
+        "action.right<=item.getBoundingClientRect().right,"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert daily == {"actionBelow": True, "actionContained": True, "overflow": True}
+
+    for path, ready, _stacked in cases + (
+        ("/external-ai/quiz-builder", "document.querySelector('.external-ai-builder-grid')", "true"),
+        ("/", "document.querySelector('.daily-review-item')", "true"),
+        ("/quiz-bundles", "document.querySelector('.portable-bundle-workflows')", "true"),
+        ("/help/learning-intelligence", "document.getElementById('which-review')", "true"),
+    ):
+        browser.set_viewport(420, 820)
+        browser.navigate(base_url + path)
+        browser.wait_for(ready)
+        assert browser.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth + 1"
+        ) is True, path
+
+
+def test_learning_scope_management_filters_active_recommendations_across_themes_and_widths(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    portal_path = browser_stack.data_root / "config" / "portal.json"
+    portal = json.loads(portal_path.read_text(encoding="utf-8"))
+    long_folder = "ArchivedCourseWithoutSpaces" * 5
+    portal["quiz_folders"].append(long_folder)
+    portal_path.write_text(json.dumps(portal), encoding="utf-8")
+
+    browser.navigate(base_url + "/learning-scope")
+    browser.wait_for("document.querySelectorAll('.learning-scope-folder').length === 3")
+    assert browser.evaluate(
+        "document.body.textContent.includes('2 source quizzes included')"
+    ) is True
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/learning-scope")
+        browser.wait_for("document.querySelectorAll('.learning-scope-folder').length === 3")
+        contrast = _theme_contrast_snapshot(browser, {
+            "folder name": ".learning-scope-folder h3",
+            "folder detail": ".learning-scope-folder p",
+            "folder status": ".learning-scope-folder strong",
+            "folder action": ".learning-scope-folder button",
+        })
+        assert all(item["contrast"] >= 4.5 for item in contrast.values()), (theme, contrast)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            layout = browser.evaluate(
+                "(() => {const rows=[...document.querySelectorAll('.learning-scope-folder')];"
+                "return {overflow:document.documentElement.scrollWidth>window.innerWidth+1,"
+                "buttons:rows.every(row=>{const button=row.querySelector('button');"
+                "const rect=button.getBoundingClientRect();return rect.width>=100&&rect.right<=window.innerWidth+1}),"
+                "names:rows.every(row=>row.querySelector('h3').scrollWidth<=row.querySelector('h3').clientWidth+1)};})()"
+            )
+            assert layout == {"overflow": False, "buttons": True, "names": True}, (theme, width, layout)
+
+    browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata['critical_html']}")
+    browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    browser.navigate(base_url + "/learning-scope")
+    browser.wait_for("document.querySelectorAll('.learning-scope-folder').length === 3")
+    browser.set_viewport(1024, 900)
+    browser.activate()
+    assert browser.evaluate(
+        "(() => {const form=[...document.querySelectorAll('.learning-scope-folder form')]"
+        ".find(item=>item.querySelector('[name=folder]').value==='Browser Regression');"
+        "form.querySelector('button').focus();return document.activeElement===form.querySelector('button');})()"
+    ) is True
+    browser.click(".learning-scope-folder form:has([name=folder][value='Browser Regression']) button")
+    browser.wait_for("document.body.textContent.includes('Browser Regression is excluded from Learning Scope')")
+    assert browser.evaluate(
+        "fetch('/api/learning-scope').then(r=>r.json()).then(x=>x.excluded_folders===1&&x.included_source_quizzes===0)"
+    ) is True
+    assert browser.evaluate(
+        "fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(x=>x.summary.concepts===0)"
+    ) is True
+    assert browser.evaluate(
+        "fetch('/api/review-schedule').then(r=>r.json()).then(x=>x.question_summary.eligible_questions===0)"
+    ) is True
+    assert browser.evaluate(
+        "fetch('/api/daily-review-plan').then(r=>r.json()).then(x=>x.summary.adaptive_candidates===0)"
+    ) is True
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(base_url + "/learning-intelligence")
+            browser.wait_for(
+                "document.getElementById('liScopeSummary')?.textContent.includes('1 folder excluded')"
+            )
+            assert browser.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth + 1"
+            ) is True, (theme, width, "Learning Intelligence")
+            browser.navigate(base_url + "/library?view=all")
+            browser.wait_for("document.querySelector('.library-learning-scope-badge')")
+            assert browser.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth + 1"
+            ) is True, (theme, width, "Quiz Library")
+    browser.navigate(base_url + "/")
+    browser.wait_for(
+        "document.querySelector('.daily-review-unfinished')?.textContent.includes('Browser Critical Workflow')"
+    )
+    assert browser.evaluate(
+        "document.querySelector('.daily-review-unfinished').textContent.includes('This browser')"
+    ) is True
+
+    browser.navigate(base_url + "/library?view=all")
+    browser.wait_for("document.querySelector('.library-folder')")
+    assert browser.evaluate(
+        "document.body.textContent.includes('Excluded from Learning Scope') && "
+        "document.body.textContent.includes('Browser Critical Workflow')"
+    ) is True
+    browser.navigate(base_url + "/history")
+    browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
+
+
+def test_review_schedule_summary_and_queue_controls_stay_contained(browser_stack):
+    """Review metrics and the Question Queue controls remain contained."""
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    probe = (
+        "(() => {const cards=[...document.querySelectorAll("
+        "'.review-schedule-summary .dashboard-stat-card')];"
+        "const inspect=card=>{const [label,value,support]=card.children;"
+        "const cardRect=card.getBoundingClientRect(),labelRect=label.getBoundingClientRect(),"
+        "valueRect=value.getBoundingClientRect(),supportRect=support.getBoundingClientRect();"
+        "const contained=rect=>rect.left>=cardRect.left-1&&rect.right<=cardRect.right+1&&"
+        "rect.top>=cardRect.top-1&&rect.bottom<=cardRect.bottom+1;"
+        "return {columns:getComputedStyle(card).gridTemplateColumns.split(' ').length,"
+        "labelBeforeValue:labelRect.bottom<=valueRect.top+1,"
+        "valueBeforeSupport:valueRect.bottom<=supportRect.top+1,"
+        "contained:[labelRect,valueRect,supportRect].every(contained),"
+        "fits:card.scrollWidth<=card.clientWidth+1};};"
+        "const panel=document.querySelector('.native-review-list-panel'),"
+        "head=panel.querySelector('.native-review-list-head'),"
+        "eyebrow=head.querySelector('.build-eyebrow'),heading=head.querySelector('h2'),"
+        "count=head.querySelector('#nrsQueueCount'),toggle=head.querySelector('#nrsQueueToggle'),"
+        "body=panel.querySelector('#nrsQueueBody'),copy=body.querySelector('p'),"
+        "toolbar=body.querySelector('.native-review-queue-toolbar'),"
+        "filters=[...body.querySelectorAll('[data-question-status]')],"
+        "search=body.querySelector('#nrsSearch'),table=panel.querySelector('#nrsTableWrap'),"
+        "panelRect=panel.getBoundingClientRect();"
+        "const inside=element=>{const rect=element.getBoundingClientRect();"
+        "return rect.left>=panelRect.left-1&&rect.right<=panelRect.right+1&&"
+        "rect.top>=panelRect.top-1&&rect.bottom<=panelRect.bottom+1;};"
+        "const headStyle=getComputedStyle(head),toolbarStyle=getComputedStyle(toolbar),"
+        "tableRect=table.getBoundingClientRect();"
+        "return {count:cards.length,cards:cards.map(inspect),queue:{"
+        "contained:[eyebrow,heading,count,toggle,copy,search,...filters].every(inside),"
+        "topInset:eyebrow.getBoundingClientRect().top-panelRect.top,"
+        "paddingTop:parseFloat(headStyle.paddingTop),"
+        "stacked:headStyle.gridTemplateColumns.split(' ').length===1,"
+        "toolbarStacked:toolbarStyle.flexDirection==='column',"
+        "expanded:toggle.getAttribute('aria-expanded'),bodyHidden:body.hidden,"
+        "selected:filters.filter(button=>button.getAttribute('aria-pressed')==='true').map(button=>button.dataset.questionStatus),"
+        "tableFullWidth:Math.abs(tableRect.left-panelRect.left)<=1&&"
+        "Math.abs(tableRect.right-panelRect.right)<=1},"
+        "documentFits:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelector('.dashboard-shell')")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(base_url + "/review-schedule")
+            browser.wait_for(
+                "document.getElementById('nrsDue').textContent !== '—' && "
+                "document.getElementById('rsDue').textContent !== '—'"
+            )
+            state = browser.evaluate(probe)
+            case = (theme, width, state)
+            assert state["count"] == 8, case
+            assert state["documentFits"] is True, case
+            expected_padding = 18 if width == 420 else 22
+            assert state["queue"]["paddingTop"] == expected_padding, case
+            assert state["queue"]["topInset"] >= expected_padding - 1, case
+            assert state["queue"]["contained"] is True, case
+            assert state["queue"]["stacked"] is (width <= 1024), case
+            assert state["queue"]["toolbarStacked"] is (width <= 1024), case
+            assert state["queue"]["expanded"] == "true", case
+            assert state["queue"]["bodyHidden"] is False, case
+            assert state["queue"]["selected"] == ["all"], case
+            assert state["queue"]["tableFullWidth"] is True, case
+            assert all(
+                card["columns"] == 1
+                and card["labelBeforeValue"]
+                and card["valueBeforeSupport"]
+                and card["contained"]
+                and card["fits"]
+                for card in state["cards"]
+            ), case
+            if width == 1440:
+                contrast = _theme_contrast_snapshot(browser, {
+                    "queue toggle": "#nrsQueueToggle",
+                    "selected status": "[data-question-status='all']",
+                    "inactive status": "[data-question-status='upcoming']",
+                    "question count": "#nrsQueueCount",
+                })
+                assert all(item["contrast"] >= 4.5 for item in contrast.values()), (
+                    theme, contrast,
+                )
+
+
+def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
+    browser_stack,
+):
+    """Rendered 3.2.0 surfaces must keep semantic text contrast in every palette."""
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    browser.set_viewport(1280, 1000)
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelector('.daily-review-panel')")
+
+    pages = (
+        (
+            "/",
+            "document.querySelector('.daily-review-action')",
+            {
+                "daily intro": ".daily-review-intro",
+                "daily count": ".daily-review-count",
+                "daily explanation": ".daily-review-copy p",
+                "daily action": ".daily-review-action",
+            },
+        ),
+        (
+            "/learning-intelligence",
+            "document.getElementById('liLoading').hidden",
+            {
+                "intelligence description": ".learning-intelligence-panel-head p",
+                "adaptive signal": ".adaptive-study-signals li span",
+                "adaptive helper": ".learning-intelligence-review-form > span",
+                "active intelligence filter": ".learning-intelligence-filters button.active",
+                "mastery help action": "#liModelButton",
+            },
+        ),
+        (
+            "/review-schedule",
+            "document.querySelector('.review-schedule-actions')",
+            {
+                "due review description": ".native-review-actions p",
+                "due review field label": ".native-review-actions label",
+                "due review batch summary": "#nrsBatchSummary",
+                "schedule model description": ".native-review-model p",
+            },
+        ),
+        (
+            "/quiz-composer",
+            "document.querySelector('.mixed-builder-filters')",
+            {
+                "mixed back link": ".mixed-builder-intro .build-secondary-link",
+                "mixed filter label": ".mixed-builder-filter-grid label",
+                "mixed bulk action": ".mixed-builder-bulk-actions button",
+                "mixed question metadata": ".mixed-builder-question-meta span",
+                "mixed create action": ".mixed-builder-plan .library-primary-action",
+            },
+        ),
+        (
+            "/external-ai/quiz-builder",
+            "document.getElementById('externalAiCopyPrompt')",
+            {
+                "external AI card copy": ".external-ai-builder-card .build-section-heading p",
+                "external AI field label": ".external-ai-builder-card .build-field",
+                "external AI field helper": ".external-ai-builder-card .build-field small",
+                "external AI status": "#externalAiCopyStatus",
+                "external AI disabled action": "#externalAiCopyPrompt",
+                "external AI back link": ".external-ai-builder-actions .build-secondary-link",
+            },
+        ),
+        (
+            "/pdf-import",
+            "document.getElementById('ocrMatchingUploadForm')",
+            {
+                "OCR matching label": "#ocrMatchingUploadForm .build-field",
+                "OCR matching helper": "#ocrMatchingUploadForm .build-field small",
+                "OCR matching guidance heading": "#ocrMatchingUploadForm .pdf-ocr-guidance strong",
+                "OCR matching guidance copy": "#ocrMatchingUploadForm .pdf-ocr-guidance span",
+                "OCR local note": "#ocrMatchingUploadForm .pdf-ocr-local-note",
+            },
+        ),
+        (
+            "/library/duplicates",
+            "document.querySelector('.duplicate-question-summary')",
+            {
+                "duplicate back link": ".duplicate-question-intro .build-secondary-link",
+                "duplicate explanation": ".duplicate-question-intro p",
+                "duplicate summary helper": ".duplicate-question-summary .library-stat-card small",
+            },
+        ),
+        (
+            "/quiz-bundles",
+            "document.querySelector('.portable-bundle-selection-actions')",
+            {
+                "bundle back link": ".portable-bundle-intro .build-secondary-link",
+                "bundle select all": "#selectAllBundleQuizzes",
+                "bundle clear": "#clearBundleQuizzes",
+                "bundle file label": ".portable-bundle-upload-form .build-field",
+                "bundle file helper": ".portable-bundle-upload-form .build-field small",
+                "bundle step": ".portable-bundle-step",
+                "bundle boundary copy": ".portable-bundle-boundary p",
+                "bundle validate action": ".portable-bundle-upload-form .library-primary-action",
+            },
+        ),
+        (
+            "/library",
+            "document.querySelector('.library-hero-actions a[href=\"/quiz-bundles\"]')",
+            {
+                "bundle library action": ".library-hero-actions a[href=\"/quiz-bundles\"]",
+                "duplicate library action": ".library-hero-actions a[href=\"/library/duplicates\"]",
+                "mixed library action": ".library-hero-actions a[href=\"/quiz-composer\"]",
+            },
+        ),
+        (
+            "/upload",
+            "document.querySelector('.build-option-card-external-ai')",
+            {
+                "external AI build label": ".build-option-card-external-ai .build-method-label",
+                "external AI build copy": ".build-option-card-external-ai p",
+                "PDF build label": ".build-option-card-pdf .build-method-label",
+                "PDF build copy": ".build-option-card-pdf p",
+            },
+        ),
+        (
+            "/help/learning-intelligence",
+            "document.getElementById('which-review')",
+            {
+                "review guide intro": "#which-review .help-callout",
+                "review guide table": "#which-review .help-table td",
+                "review guide action": ".help-topic-nav a",
+            },
+        ),
+    )
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        for path, ready, selectors in pages:
+            browser.navigate(base_url + path)
+            browser.wait_for(ready)
+            snapshot = _theme_contrast_snapshot(browser, selectors)
+            for role, state in snapshot.items():
+                assert state["contrast"] >= 4.5, (theme, path, role, state)
+
+        browser.navigate(base_url + "/quiz-bundles")
+        browser.wait_for("document.getElementById('selectAllBundleQuizzes')")
+        browser.click("#selectAllBundleQuizzes")
+        assert browser.evaluate(
+            "document.getElementById('selectAllBundleQuizzes').matches(':hover')"
+        ) is True
+        hovered = _theme_contrast_snapshot(
+            browser, {"hovered bundle action": "#selectAllBundleQuizzes"},
+        )["hovered bundle action"]
+        assert hovered["contrast"] >= 4.5, (theme, hovered)
+        browser.evaluate("document.getElementById('selectAllBundleQuizzes').focus();true")
+        browser.press_key("\ue004")
+        assert browser.evaluate("document.activeElement.id") == "clearBundleQuizzes"
+        focused = _theme_contrast_snapshot(
+            browser, {"focused bundle action": "#clearBundleQuizzes"},
+        )["focused bundle action"]
+        assert focused["contrast"] >= 4.5, (theme, focused)
+        assert focused["borderStyle"] != "none", (theme, focused)
+
+        browser.navigate(base_url + "/external-ai/quiz-builder")
+        browser.wait_for("document.getElementById('externalAiCopyPrompt')")
+        disabled = _theme_contrast_snapshot(
+            browser, {"disabled copy action": "#externalAiCopyPrompt"},
+        )["disabled copy action"]
+        assert disabled["opacity"] == "1", (theme, disabled)
+        assert disabled["cursor"] == "not-allowed", (theme, disabled)
+
+
+def test_mastery_explanation_and_recovery_actions_are_accessible_across_themes(
+    browser_stack,
+):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    def move_pointer(selector, *, pressed=False):
+        coordinates = browser.evaluate(
+            "(() => {const rect=document.querySelector("
+            + json.dumps(selector)
+            + ").getBoundingClientRect();return {x:rect.left+rect.width/2,"
+            "y:rect.top+rect.height/2};})()"
+        )
+        actions = [{
+            "type": "pointerMove",
+            "x": round(coordinates["x"]),
+            "y": round(coordinates["y"]),
+            "duration": 0,
+            "origin": "viewport",
+        }]
+        if pressed:
+            actions.append({"type": "pointerDown", "button": 0})
+        browser.command("input.performActions", {
+            "context": browser.context,
+            "actions": [{
+                "type": "pointer",
+                "id": "recovery-action-mouse",
+                "parameters": {"pointerType": "mouse"},
+                "actions": actions,
+            }],
+        })
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.set_viewport(520, 900)
+        browser.navigate(base_url + "/learning-intelligence")
+        browser.wait_for("document.getElementById('liLoading').hidden")
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/learning-intelligence")
+        browser.wait_for("document.getElementById('liLoading').hidden")
+        browser.click("#liModelButton")
+        browser.wait_for("!document.getElementById('liModel').hidden")
+        mastery = browser.evaluate(
+            "(() => {const dialog=document.querySelector('.learning-intelligence-model-dialog');"
+            "const factors=[...document.querySelectorAll('.li-mastery-factors li')];"
+            "return {text:dialog.innerText,factorCount:factors.length,"
+            "oneColumn:factors.length>1 && Math.abs(factors[0].getBoundingClientRect().left-"
+            "factors[1].getBoundingClientRect().left)<1,"
+            "overflow:document.documentElement.scrollWidth-window.innerWidth};})()"
+        )
+        assert mastery["factorCount"] == 4
+        assert mastery["oneColumn"] is True
+        assert mastery["overflow"] <= 1
+        for phrase in (
+            "Your score combines four things",
+            "Not enough data",
+            "Weak area",
+            "Trend is different from Mastery",
+            "Technical details",
+        ):
+            assert phrase in mastery["text"]
+        explanation_contrast = _theme_contrast_snapshot(browser, {
+            "mastery introduction": ".li-mastery-intro",
+            "mastery factor": ".li-mastery-factors li strong",
+            "mastery factor detail": ".li-mastery-factors li p",
+            "technical disclosure": ".li-mastery-technical summary",
+        })
+        for role, state in explanation_contrast.items():
+            assert state["contrast"] >= 4.5, (theme, role, state)
+        browser.wait_for(
+            "document.activeElement.matches('.learning-intelligence-model-close')"
+        )
+        browser.evaluate(
+            "document.querySelector('.li-mastery-technical summary').focus();true"
+        )
+        active_element = browser.evaluate(
+            "(() => ({tag:document.activeElement.tagName,"
+            "className:document.activeElement.className}))()"
+        )
+        assert active_element["tag"] == "SUMMARY", (theme, active_element)
+        browser.click(".li-mastery-technical summary")
+        assert browser.evaluate("document.querySelector('.li-mastery-technical').open") is True
+        browser.press_key("\ue00c")
+        assert browser.evaluate("document.getElementById('liModel').hidden") is True
+        assert browser.evaluate("document.activeElement.id") == "liModelButton"
+
+        browser.set_viewport(760, 800)
+        browser.navigate(base_url + "/")
+        browser.wait_for("document.querySelector('.daily-review-panel')")
+        browser.evaluate(
+            "(() => {const host=document.querySelector('.dashboard-main');"
+            "const panel=document.createElement('section');panel.className='mode-center';"
+            "panel.innerHTML='<div class=\"quiz-recovery-actions\">' +"
+            "'<button class=\"quiz-recovery-resume\">Resume</button>' +"
+            "'<button class=\"quiz-recovery-start-over\">Start Over</button></div>';"
+            "host.prepend(panel);return true;})()"
+        )
+        normal = _theme_contrast_snapshot(browser, {
+            "resume": ".quiz-recovery-resume",
+            "start over": ".quiz-recovery-start-over",
+        })
+        assert normal["start over"]["contrast"] >= 4.5, (theme, normal)
+        assert normal["resume"]["background"] != normal["start over"]["background"]
+
+        move_pointer(".quiz-recovery-start-over")
+        browser.wait_for("document.querySelector('.quiz-recovery-start-over').matches(':hover')")
+        hovered = _theme_contrast_snapshot(
+            browser, {"start over": ".quiz-recovery-start-over"},
+        )["start over"]
+        assert hovered["contrast"] >= 4.5, (theme, hovered)
+
+        move_pointer(".quiz-recovery-start-over", pressed=True)
+        browser.wait_for("document.querySelector('.quiz-recovery-start-over').matches(':active')")
+        active = _theme_contrast_snapshot(
+            browser, {"start over": ".quiz-recovery-start-over"},
+        )["start over"]
+        try:
+            assert active["contrast"] >= 4.5, (theme, active)
+        finally:
+            browser.command("input.releaseActions", {"context": browser.context})
+
+        browser.evaluate(
+            "document.querySelectorAll('.quiz-recovery-actions button')"
+            ".forEach(button=>button.disabled=true);true"
+        )
+        disabled = _theme_contrast_snapshot(
+            browser, {"start over": ".quiz-recovery-start-over"},
+        )
+        for role, state in disabled.items():
+            assert state["contrast"] >= 4.5, (theme, role, state)
+            assert state["opacity"] == "1", (theme, role, state)
+            assert state["cursor"] == "not-allowed", (theme, role, state)
+
+
+def test_mixed_quiz_builder_filters_selects_and_publishes_without_changing_sources(
+    browser_stack,
+):
+    """Exercise the DLMS-128 client filtering and normal publication seam."""
+    database_path = browser_stack.data_root / "results.db"
+    source_rows = (
+        ("Browser Mixed Source A", "browser-mixed-a.html", "Browser mixed prompt A?"),
+        ("Browser Mixed Source B", "browser-mixed-b.html", "Browser mixed prompt B?"),
+    )
+    source_ids = []
+    with sqlite3.connect(database_path) as connection:
+        for title, source_file, prompt in source_rows:
+            cursor = connection.execute(
+                "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+                (title, source_file),
+            )
+            quiz_id = cursor.lastrowid
+            source_ids.append(quiz_id)
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, 1, ?, 'choice', ?, '{}')
+                """,
+                (quiz_id, prompt, f"Explanation for {prompt}"),
+            )
+            question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (question_id, "A", "Expected", 1),
+                    (question_id, "B", "Alternative", 0),
+                ],
+            )
+
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    for quiz_id, (title, source_file, _prompt) in zip(source_ids, source_rows):
+        registry.append({
+            "id": quiz_id,
+            "title": title,
+            "html": source_file,
+            "folder": "Browser Mixed Sources",
+            "exam_minutes": 90,
+        })
+    registry_path.write_text(json.dumps(registry, indent=4), encoding="utf-8")
+
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/quiz-composer")
+    browser.wait_for(
+        "document.querySelectorAll('.mixed-builder-question').length >= 2 && "
+        "document.querySelector('#mixedQuizForm input[name=csrf_token]')"
+    )
+    for quiz_id in source_ids:
+        browser.evaluate(
+            "(() => {const select=document.getElementById('sourceFilter');"
+            f"select.value='{quiz_id}';"
+            "select.dispatchEvent(new Event('input',{bubbles:true}));return true;})()"
+        )
+        browser.wait_for(
+            "document.querySelectorAll('.mixed-builder-question:not([hidden])').length === 1"
+        )
+        browser.click(
+            ".mixed-builder-question:not([hidden]) input[name='question_ids']"
+        )
+    browser.wait_for("document.getElementById('selectedCount').textContent === '2 selected'")
+    browser.evaluate(
+        "document.getElementById('mixedQuizTitle').value='Browser Composed Quiz'"
+    )
+    browser.click("#mixedQuizForm button[type='submit']")
+    browser.wait_for("location.pathname.startsWith('/quizzes/mixed_quiz_')")
+
+    with sqlite3.connect(database_path) as connection:
+        created = connection.execute(
+            "SELECT id, source_file, generation_kind FROM quizzes "
+            "WHERE title = 'Browser Composed Quiz'"
+        ).fetchone()
+        assert created is not None
+        assert created[1].startswith("mixed_quiz_")
+        assert created[2] == "mixed_quiz"
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (created[0],)
+        ).fetchone()[0] == 2
+        copied = connection.execute(
+            """
+            SELECT question_uid, canonical_question_uid,
+                   source_question_uid, is_generated_copy
+            FROM questions WHERE quiz_id = ? ORDER BY question_number
+            """,
+            (created[0],),
+        ).fetchall()
+        sources = [
+            connection.execute(
+                """
+                SELECT question_uid, canonical_question_uid
+                FROM questions WHERE quiz_id = ?
+                """,
+                (quiz_id,),
+            ).fetchone()
+            for quiz_id in source_ids
+        ]
+        assert all(row[3] == 1 for row in copied)
+        assert [row[2] for row in copied] == [row[0] for row in sources]
+        assert [row[1] for row in copied] == [row[1] for row in sources]
+        for quiz_id in source_ids:
+            assert connection.execute(
+                "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
+            ).fetchone()[0] == 1
+
+
+def _assert_library_tool_metrics_contained(browser, selector):
+    geometry = browser.evaluate(
+        "(() => {const rect=n=>n.getBoundingClientRect();"
+        f"const cards=[...document.querySelectorAll('{selector} .library-stat-card')];"
+        "return {count:cards.length,overflow:document.documentElement.scrollWidth>innerWidth+1,"
+        "contained:cards.every(card=>{const b=rect(card),c=[...card.children].map(rect);"
+        "return c.length===3&&c.every(r=>r.left>=b.left+10&&r.right<=b.right-10&&"
+        "r.top>=b.top&&r.bottom<=b.bottom)&&c[0].bottom<=c[1].top&&c[1].bottom<=c[2].top;})};})()"
+    )
+    assert geometry == {'count': 4, 'overflow': False, 'contained': True}, geometry
+
+
+def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
+    browser_stack,
+):
+    """Exercise the DLMS-132 Library entry point and read-only report."""
+    database_path = browser_stack.data_root / "results.db"
+    prompt = "Which neutral protocol provides secure remote access?"
+    quiz_ids = []
+    with sqlite3.connect(database_path) as connection:
+        for index in range(2):
+            cursor = connection.execute(
+                "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+                (f"Browser Duplicate Source {index + 1}", f"browser-duplicate-{index + 1}.html"),
+            )
+            quiz_id = cursor.lastrowid
+            quiz_ids.append(quiz_id)
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, 1, ?, 'choice', '', '{}')
+                """,
+                (quiz_id, prompt),
+            )
+            question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (question_id, "A", "Secure Shell", 1),
+                    (question_id, "B", "File Transfer", 0),
+                ],
+            )
+
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    for index, quiz_id in enumerate(quiz_ids):
+        registry.append({
+            "id": quiz_id,
+            "title": f"Browser Duplicate Source {index + 1}",
+            "html": f"browser-duplicate-{index + 1}.html",
+            "folder": "Browser Duplicate Sources",
+            "exam_minutes": 90,
+        })
+    registry_path.write_text(json.dumps(registry, indent=4), encoding="utf-8")
+
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector(\"a[href='/library/duplicates']\") !== null")
+    browser.click("a[href='/library/duplicates']")
+    browser.wait_for(
+        "location.pathname === '/library/duplicates' && "
+        "document.querySelectorAll('.duplicate-question-group').length >= 1"
+    )
+    state = browser.evaluate(
+        "(() => ({"
+        "heading:document.querySelector('h1')?.textContent.trim(),"
+        "exact:document.getElementById('exactDuplicateHeading')?.textContent.trim(),"
+        "sources:[...document.querySelectorAll('.duplicate-question-source strong')]"
+        ".map(node=>node.textContent.trim()),"
+        "editLinks:[...document.querySelectorAll('.duplicate-question-location a')]"
+        ".map(node=>node.getAttribute('href')),"
+        "hasMutationForm:[...document.querySelectorAll('form')].some(form=>form.method.toLowerCase() !== 'get')"
+        "}))()"
+    )
+    assert state["heading"] == "Duplicate Question Review"
+    assert state["exact"] == "Exact duplicates"
+    assert {f"Browser Duplicate Source {index + 1}" for index in range(2)} <= set(state["sources"])
+    assert {f"/edit_quiz/{quiz_id}" for quiz_id in quiz_ids} <= set(state["editLinks"])
+    assert state["hasMutationForm"] is False
+
+    browser.evaluate("document.querySelector('#duplicateQuizFilter').focus()")
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.id") == 'duplicateFolderFilter'
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.id") == 'duplicateResultTypeFilter'
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.id") == 'duplicateSearch'
+
+    duplicate_url = browser.evaluate("location.href")
+    browser.click('#collapseDuplicateGroups')
+    browser.wait_for("[...document.querySelectorAll('.duplicate-question-group')].every(g=>!g.open&&g.querySelector('summary').getAttribute('aria-expanded')==='false')")
+    # Firefox retains layout rectangles under closed native details; check paint visibility.
+    assert browser.evaluate("[...document.querySelectorAll('.duplicate-question-location')].every(n=>!n.checkVisibility())")
+    browser.click('#expandDuplicateGroups')
+    browser.wait_for("[...document.querySelectorAll('.duplicate-question-group')].every(g=>g.open&&g.querySelector('summary').getAttribute('aria-expanded')==='true')")
+    browser.click('details.duplicate-question-group summary')
+    browser.wait_for("!document.querySelector('details.duplicate-question-group').open")
+    browser.click('details.duplicate-question-group summary')
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(duplicate_url)
+        browser.wait_for("document.querySelector('.duplicate-question-badge.exact')")
+        themed_duplicate = _theme_contrast_snapshot(browser, {
+            "exact badge": ".duplicate-question-badge.exact",
+            "source metadata": ".duplicate-question-source span",
+            "correct badge": ".duplicate-question-correct",
+            "edit action": ".duplicate-question-location .library-secondary-action",
+            "metric label": ".duplicate-question-summary .library-stat-card span",
+            "metric description": ".duplicate-question-summary .library-stat-card small",
+            "filter label": ".duplicate-question-filters .build-field span",
+            "quiz selector": "#duplicateQuizFilter",
+            "result type selector": "#duplicateResultTypeFilter",
+            "search text": "#duplicateSearch",
+            "collapse action": "#collapseDuplicateGroups",
+        })
+        for role, themed_state in themed_duplicate.items():
+            assert themed_state["contrast"] >= 4.5, (theme, role, themed_state)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 1000)
+            _assert_library_tool_metrics_contained(browser, '.duplicate-question-summary')
+            assert browser.evaluate("(() => {const p=document.querySelector('.duplicate-question-tools').getBoundingClientRect();return [...document.querySelectorAll('.duplicate-question-filters input,.duplicate-question-filters select,.duplicate-question-filters button')].every(n=>{const r=n.getBoundingClientRect();return r.left>=p.left&&r.right<=p.right;});})()")
+            browser.evaluate("document.querySelector('.duplicate-question-summary .library-stat-card span').textContent='Source questions scanned across your entire library'")
+            _assert_library_tool_metrics_contained(browser, '.duplicate-question-summary')
+
+    with sqlite3.connect(database_path) as connection:
+        for quiz_id in quiz_ids:
+            assert connection.execute(
+                "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
+            ).fetchone()[0] == 1
+
+
+def test_duplicate_question_large_results_filters_and_pagination(browser_stack):
+    """Exercise a real large scan, bounded DOM, and presentation-only filters."""
+    database = browser_stack.data_root / 'results.db'
+    ids = []
+    with sqlite3.connect(database) as connection:
+        for index in range(2):
+            cursor = connection.execute('INSERT INTO quizzes(title,source_file,generation_kind) VALUES(?,?,?)',
+                                        (f'Large Source {index + 1}', f'large-{index}.html', 'source'))
+            ids.append(cursor.lastrowid)
+            for number in range(1, 45):
+                cursor = connection.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type) VALUES(?,?,?,'choice')",
+                                            (ids[-1], number, f'Compare synthetic item {number}: which option applies?'))
+                connection.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',
+                                       [(cursor.lastrowid, 'A', 'Expected', 1), (cursor.lastrowid, 'B', 'Alternative', 0)])
+            prompt = ('Which command displays the active network configuration?' if index == 0
+                      else 'Which command displays active network configuration?')
+            cursor = connection.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type) VALUES(?,45,?,'choice')", (ids[-1], prompt))
+            connection.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',
+                                   [(cursor.lastrowid, 'A', 'Expected', 1), (cursor.lastrowid, 'B', 'Alternative', 0)])
+        connection.commit()
+        before = list(connection.iterdump())
+    registry_path = browser_stack.data_root / 'config' / 'quizzes.json'
+    registry = json.loads(registry_path.read_text())
+    registry.extend(dict(id=quiz, title=f'Large Source {i + 1}', html=f'large-{i}.html',
+                         folder='Uncategorized' if i == 0 else 'Hidden folder', hidden=i == 1)
+                    for i, quiz in enumerate(ids))
+    # Mechanical fixture serialization, isolated from the user's data.
+    registry_path.write_text(json.dumps(registry))
+    browser = browser_stack.browser
+    url = f'{browser_stack.base_url}/library/duplicates'
+    browser.navigate(url)
+    browser.wait_for("document.querySelector('details.duplicate-question-group')")
+    full_totals = browser.evaluate("[...document.querySelectorAll('.duplicate-question-summary strong')].map(n=>n.textContent)")
+    assert browser.evaluate("document.querySelectorAll('details.duplicate-question-group').length") == 20
+    assert browser.evaluate("[...document.querySelectorAll('details.duplicate-question-group')].every(g=>!g.open)")
+    browser.click('a[rel=next]')
+    browser.wait_for("new URLSearchParams(location.search).get('page')==='2'")
+    assert browser.evaluate("document.querySelectorAll('details.duplicate-question-group').length") <= 20
+    browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value='{ids[1]}';document.querySelector('#duplicateFolderFilter').value='Uncategorized';document.querySelector('#duplicateSearch').value='network configuration';document.querySelector('#duplicateResultTypeFilter').value='possible'")
+    browser.click('.duplicate-question-filters button[type=submit]')
+    browser.wait_for("new URLSearchParams(location.search).get('result_type')==='possible'&&document.querySelector('#nearDuplicateHeading')")
+    assert browser.evaluate("!new URLSearchParams(location.search).has('page')&&document.querySelector('#duplicateResultTypeFilter').value==='possible'")
+    assert browser.evaluate("document.querySelector('#exactDuplicateHeading')===null&&document.querySelectorAll('details.duplicate-question-group').length===1")
+    assert browser.evaluate("document.querySelector('.duplicate-question-navigation [role=status]').textContent.includes('of 1 possible match')")
+    assert browser.evaluate("[...document.querySelectorAll('.duplicate-question-summary strong')].map(n=>n.textContent)") == full_totals
+    browser.click('#expandDuplicateGroups')
+    browser.wait_for("document.querySelector('details.duplicate-question-group').open")
+    browser.click('#collapseDuplicateGroups')
+    browser.wait_for("!document.querySelector('details.duplicate-question-group').open")
+    browser.evaluate("document.querySelector('#duplicateResultTypeFilter').value='exact';document.querySelector('#duplicateSearch').value=''")
+    browser.click('.duplicate-question-filters button[type=submit]')
+    browser.wait_for("new URLSearchParams(location.search).get('result_type')==='exact'&&document.querySelector('#exactDuplicateHeading')")
+    assert browser.evaluate("document.querySelector('#nearDuplicateHeading')===null&&document.querySelector('a[rel=next]').href.includes('result_type=exact')")
+    browser.click('a[rel=next]')
+    browser.wait_for("new URLSearchParams(location.search).get('page')==='2'")
+    assert browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value==='{ids[1]}'&&document.querySelector('#duplicateFolderFilter').value==='Uncategorized'&&document.querySelector('#duplicateResultTypeFilter').value==='exact'")
+    browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value='{ids[1]}';document.querySelector('#duplicateFolderFilter').value='Uncategorized';document.querySelector('#duplicateSearch').value='item 44:'")
+    browser.click('.duplicate-question-filters button[type=submit]')
+    browser.wait_for("new URLSearchParams(location.search).get('search')==='item 44:'")
+    assert browser.evaluate("document.querySelectorAll('details.duplicate-question-group').length") == 1
+    assert browser.evaluate(f"document.querySelector('#duplicateQuizFilter').value==='{ids[1]}'")
+    browser.evaluate("document.querySelector('#duplicateSearch').value='no such source question'")
+    browser.click('.duplicate-question-filters button[type=submit]')
+    browser.wait_for("document.querySelector('.duplicate-question-empty h2')?.textContent==='No matching groups'")
+    browser.click('.duplicate-question-filters a')
+    browser.wait_for("!location.search&&document.querySelectorAll('details.duplicate-question-group').length===20")
+    assert browser.evaluate("document.querySelector('#duplicateResultTypeFilter').value") == 'all'
+    with sqlite3.connect(database) as connection:
+        assert before == list(connection.iterdump())
+
+
+def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
+    """Exercise the DLMS-133 Library entry point and confirmed publication."""
+    database_path = browser_stack.data_root / "results.db"
+    source_title = "Browser Portable Source"
+    with sqlite3.connect(database_path) as connection:
+        cursor = connection.execute(
+            "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+            (source_title, "browser-portable-source.html"),
+        )
+        source_id = cursor.lastrowid
+        cursor = connection.execute(
+            """
+            INSERT INTO questions (
+                quiz_id, question_number, question_text, question_type,
+                explanation, media_json
+            ) VALUES (?, 1, ?, 'choice', '', '{}')
+            """,
+            (source_id, "Which browser source option is expected?"),
+        )
+        question_id = cursor.lastrowid
+        connection.executemany(
+            "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+            [
+                (question_id, "A", "Expected", 1),
+                (question_id, "B", "Alternative", 0),
+            ],
+        )
+
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry.append({
+        "id": source_id,
+        "title": source_title,
+        "html": "browser-portable-source.html",
+        "folder": "Browser Portable Sources",
+        "exam_minutes": 90,
+    })
+    registry_path.write_text(json.dumps(registry, indent=4), encoding="utf-8")
+
+    import_title = "Browser Portable Import"
+    manifest = {
+        "format": "dlms-portable-quiz-bundle",
+        "schema_version": 1,
+        "created_at": "2026-09-13T10:00:00-05:00",
+        # A prior producer version exercises the portable compatibility contract.
+        "created_by": {"application": "DLMS", "version": "3.1.0"},
+        "quizzes": [{
+            "bundle_id": "quiz-001",
+            "title": import_title,
+            "folder": "Browser Imported Folder",
+            "exam_minutes": 30,
+            "logo": None,
+            "assets": [],
+            "questions": [{
+                "number": 1,
+                "type": "choice",
+                "question": "Which imported browser option is expected?",
+                "explanation": "A browser workflow fixture.",
+                "concepts": ["Portable browser concept"],
+                "source": {},
+                "media": {},
+                "choices": [
+                    {"label": "A", "text": "Expected", "is_correct": True},
+                    {"label": "B", "text": "Alternative", "is_correct": False},
+                ],
+            }],
+        }],
+    }
+    bundle_path = browser_stack.data_root.parent / "browser-portable-bundle.zip"
+    with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("dlms-quiz-bundle.json", json.dumps(manifest))
+
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelector(\"a[href='/quiz-bundles']\") !== null")
+    browser.click("a[href='/quiz-bundles']")
+    browser.wait_for(
+        "location.pathname === '/quiz-bundles' && "
+        "document.querySelectorAll(\"input[name='quiz_ids']\").length >= 1"
+    )
+    state = browser.evaluate(
+        "(() => ({"
+        "heading:document.querySelector('h1')?.textContent.trim(),"
+        "sources:[...document.querySelectorAll('.portable-bundle-quiz strong')]"
+        ".map(node=>node.textContent.trim()),"
+        "studyPackBoundary:document.querySelector('.portable-bundle-boundary')?.textContent"
+        "}))()"
+    )
+    assert state["heading"] == "Portable Quiz Bundles"
+    assert source_title in state["sources"]
+    assert "Content Packs" in state["studyPackBoundary"]
+
+    browser.wait_for("window.dlmsCsrfToken && typeof window.fetch === 'function'")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        status = browser.evaluate(
+            f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
+            f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
+        )
+        assert status == 200
+        for width in (1280, 1024, 840, 420):
+            browser.set_viewport(width, 900 if width >= 840 else 820)
+            browser.navigate(f"{browser_stack.base_url}/quiz-bundles")
+            browser.wait_for("document.querySelectorAll('.portable-bundle-panel').length === 2")
+            layout = browser.evaluate(
+                "(() => {const panels=[...document.querySelectorAll('.portable-bundle-panel')];"
+                "const intro=document.querySelector('.portable-bundle-intro');"
+                "const back=intro.querySelector('.build-secondary-link');"
+                "const file=document.querySelector('.portable-bundle-upload-form input[type=file]');"
+                "const rect=node=>node.getBoundingClientRect();"
+                "const headings=panels.map(panel=>panel.querySelector('h2'));"
+                "return {sideBySide:Math.abs(rect(panels[0]).top-rect(panels[1]).top)<=1,"
+                "panelWidths:panels.map(panel=>Math.round(rect(panel).width)),"
+                "panelInsets:panels.map(panel=>Math.round(rect(panel.firstElementChild).left-rect(panel).left)),"
+                "headingHeights:headings.map(heading=>Math.round(rect(heading).height)),"
+                "backWidth:Math.round(rect(back).width),"
+                "backContained:rect(back).left>=rect(intro).left+20&&rect(back).right<=rect(intro).right-20,"
+                "fileContained:rect(file).left>=rect(panels[1]).left+20&&rect(file).right<=rect(panels[1]).right-20,"
+                "cardsContained:[intro,...panels].every(card=>card.scrollWidth<=card.clientWidth+1),"
+                "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+            )
+            assert layout["sideBySide"] == (width == 1280), (theme, width, layout)
+            assert min(layout["panelWidths"]) >= min(388, width - 32), (
+                theme, width, layout,
+            )
+            assert min(layout["panelInsets"]) >= 20, (theme, width, layout)
+            assert max(layout["headingHeights"]) <= 32, (theme, width, layout)
+            assert layout["backWidth"] >= 120, (theme, width, layout)
+            assert layout["backContained"] is True, (theme, width, layout)
+            assert layout["fileContained"] is True, (theme, width, layout)
+            assert layout["cardsContained"] is True, (theme, width, layout)
+            assert layout["overflow"] is True, (theme, width, layout)
+
+    browser.set_viewport(1280, 1000)
+    browser.navigate(f"{browser_stack.base_url}/quiz-bundles")
+    browser.wait_for("document.querySelector('form[action=\"/quiz-bundles/import\"]')")
+
+    browser.set_files("input[name='bundle_zip']", [str(bundle_path)])
+    browser.click("form[action='/quiz-bundles/import'] button[type='submit']")
+    browser.wait_for(
+        "location.pathname.startsWith('/quiz-bundles/import/') && "
+        "document.querySelector(\"input[name='confirm_import']\") !== null"
+    )
+    review = browser.evaluate(
+        "(() => ({"
+        "heading:document.querySelector('h1')?.textContent.trim(),"
+        "quiz:document.querySelector('.portable-bundle-review-quiz h2')?.textContent.trim(),"
+        "folder:document.querySelector('.portable-bundle-review-meta')?.textContent"
+        "}))()"
+    )
+    assert review["heading"] == "Review Portable Bundle"
+    assert review["quiz"] == import_title
+    assert "Browser Imported Folder" in review["folder"]
+    review_url = browser.evaluate("location.href")
+    review_selectors = {
+        "bundle review back link": ".portable-bundle-intro .build-secondary-link",
+        "bundle review summary helper": ".portable-bundle-summary .library-stat-card small",
+        "bundle review metadata": ".portable-bundle-review-meta span",
+        "bundle review preview": ".portable-bundle-review-quiz details summary",
+        "bundle review explanation": ".portable-bundle-confirm-panel p",
+        "bundle review confirmation": ".portable-bundle-confirm-actions label",
+        "bundle review cancel": ".portable-bundle-confirm-actions .library-secondary-action",
+        "bundle review submit": ".portable-bundle-confirm-actions .library-primary-action",
+    }
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(review_url)
+        browser.wait_for("document.querySelector('.portable-bundle-confirm-panel')")
+        themed_review = _theme_contrast_snapshot(browser, review_selectors)
+        for role, state in themed_review.items():
+            assert state["contrast"] >= 4.5, (theme, role, state)
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 1000)
+            _assert_library_tool_metrics_contained(browser, '.portable-bundle-summary')
+    for width in (1024, 420):
+        browser.set_viewport(width, 900 if width == 1024 else 820)
+        browser.navigate(review_url)
+        browser.wait_for("document.querySelector('.portable-bundle-confirm-panel')")
+        review_layout = browser.evaluate(
+            "(() => {const panel=document.querySelector('.portable-bundle-confirm-panel');"
+            "const bounds=panel.getBoundingClientRect();"
+            "const controls=[...panel.querySelectorAll('button,input')].filter(item=>"
+            "item.getClientRects().length);return {"
+            "direction:getComputedStyle(panel).flexDirection,"
+            "contained:controls.every(item=>{const rect=item.getBoundingClientRect();"
+            "return rect.left>=bounds.left+20&&rect.right<=bounds.right-20;}),"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert review_layout == {
+            "direction": "column", "contained": True, "overflow": True,
+        }, (width, review_layout)
+    browser.set_viewport(1280, 1000)
+    browser.navigate(review_url)
+    browser.wait_for("document.querySelector(\"input[name='confirm_import']\")")
+    browser.click("input[name='confirm_import']")
+    browser.click("form[action$='/confirm'] button[type='submit']")
+    browser.wait_for(
+        "location.pathname === '/quiz-bundles' && "
+        "document.body.textContent.includes('Imported 1 quiz.')"
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        imported = connection.execute(
+            "SELECT id, source_file FROM quizzes WHERE title = ?", (import_title,)
+        ).fetchone()
+        assert imported is not None
+        assert imported[1].startswith("portable_quiz_")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (imported[0],)
+        ).fetchone()[0] == 1
+
+
+def test_native_spaced_review_displays_due_reason_and_creates_session(browser_stack):
+    """Exercise the DLMS-129 schedule UI and normal quiz-publication seam."""
+    database_path = browser_stack.data_root / "results.db"
+    prompt = "Browser native spaced-review prompt?"
+    with sqlite3.connect(database_path) as connection:
+        cursor = connection.execute(
+            "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+            ("Browser Native Schedule Source", "browser-native-schedule.html"),
+        )
+        quiz_id = cursor.lastrowid
+        cursor = connection.execute(
+            """
+            INSERT INTO questions (
+                quiz_id, question_number, question_text, question_type,
+                explanation, media_json
+            ) VALUES (?, 1, ?, 'choice', 'Browser schedule explanation', '{}')
+            """,
+            (quiz_id, prompt),
+        )
+        question_id = cursor.lastrowid
+        connection.executemany(
+            "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+            [
+                (question_id, "A", "Expected", 1),
+                (question_id, "B", "Alternative", 0),
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO learning_events (
+                event_type, quiz_id, question_id, attempt_id, mode,
+                was_correct, response_json, occurred_at
+            ) VALUES ('exam_answer', ?, ?, ?, 'Exam', 0, '{}', ?)
+            """,
+            (quiz_id, question_id, "browser-native-attempt", "2020-01-01T00:00:00+00:00"),
+        )
+        for ordinal in range(2, 12):
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, ?, ?, 'choice', 'Browser schedule explanation', '{}')
+                """,
+                (quiz_id, ordinal, f"Browser batch question {ordinal}?"),
+            )
+            batch_question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (batch_question_id, "A", "Expected", 1),
+                    (batch_question_id, "B", "Alternative", 0),
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO learning_events (
+                    event_type, quiz_id, question_id, attempt_id, mode,
+                    was_correct, response_json, occurred_at
+                ) VALUES ('exam_answer', ?, ?, ?, 'Exam', 0, '{}', ?)
+                """,
+                (
+                    quiz_id,
+                    batch_question_id,
+                    f"browser-native-attempt-{ordinal}",
+                    "2020-01-01T00:00:00+00:00",
+                ),
+            )
+        for ordinal, question_text in (
+            (12, "Browser not-yet-scheduled filter question?"),
+            (13, "Browser upcoming filter question?"),
+        ):
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, ?, ?, 'choice', 'Browser schedule explanation', '{}')
+                """,
+                (quiz_id, ordinal, question_text),
+            )
+            filtered_question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (filtered_question_id, "A", "Expected", 1),
+                    (filtered_question_id, "B", "Alternative", 0),
+                ],
+            )
+            if ordinal == 13:
+                connection.execute(
+                    """
+                    INSERT INTO learning_events (
+                        event_type, quiz_id, question_id, attempt_id, mode,
+                        was_correct, response_json, occurred_at
+                    ) VALUES ('exam_answer', ?, ?, ?, 'Exam', 1, '{}', ?)
+                    """,
+                    (
+                        quiz_id,
+                        filtered_question_id,
+                        "browser-native-attempt-upcoming",
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
+
+        schedule_db_snapshot = (
+            connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0],
+            connection.execute("SELECT COUNT(*) FROM learning_events").fetchone()[0],
+        )
+
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/review-schedule")
+    browser.wait_for(
+        "document.querySelector('#nrsRows')?.textContent.includes(" + json.dumps(prompt) + ") && "
+        "document.querySelector('form[action=\"/native-spaced-review/generate\"] "
+        "input[name=csrf_token]')"
+    )
+    schedule_state = browser.evaluate(
+        "(() => {const row=[...document.querySelectorAll('#nrsRows tr')].find(item=>"
+        "item.textContent.includes(" + json.dumps(prompt) + "));"
+        "return {due:Number(document.getElementById('nrsDue').textContent),"
+        "batch:document.getElementById('nrsBatchSummary').textContent,"
+        "row:row?.textContent||'',status:row?.querySelector('.review-state')?.textContent||''};})()"
+    )
+    assert schedule_state["due"] >= 11
+    assert schedule_state["batch"] == (
+        f"{schedule_state['due']} questions are due · "
+        f"This review includes all {schedule_state['due']}."
+    )
+    assert "latest response was incorrect" in schedule_state["row"]
+    assert schedule_state["status"] == "Overdue"
+
+    search_state = browser.evaluate(
+        "(() => {const input=document.getElementById('nrsSearch');"
+        "const count=()=>document.querySelectorAll('#nrsRows tr').length;"
+        "const original=count();input.value='Browser native spaced-review prompt';"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "const filtered=count(),text=document.getElementById('nrsRows').textContent;"
+        "input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "return {original,filtered,matches:text.includes("
+        + json.dumps(prompt)
+        + "),restored:count()};})()"
+    )
+    assert search_state["original"] >= 11
+    assert search_state["filtered"] == 1
+    assert search_state["matches"] is True
+    assert search_state["restored"] == search_state["original"]
+
+    default_queue = browser.evaluate(
+        "(() => {const toggle=document.getElementById('nrsQueueToggle');"
+        "return {expanded:toggle.getAttribute('aria-expanded'),"
+        "bodyHidden:document.getElementById('nrsQueueBody').hidden,"
+        "pressed:[...document.querySelectorAll('[data-question-status]')]"
+        ".filter(button=>button.getAttribute('aria-pressed')==='true')"
+        ".map(button=>button.dataset.questionStatus),"
+        "count:document.getElementById('nrsQueueCount').textContent};})()"
+    )
+    assert default_queue == {
+        "expanded": "true",
+        "bodyHidden": False,
+        "pressed": ["all"],
+        "count": f"{search_state['original']} questions",
+    }
+
+    browser.activate()
+    assert browser.evaluate(
+        "(() => {const toggle=document.getElementById('nrsQueueToggle');toggle.focus();"
+        "return document.activeElement===toggle&&toggle.tagName==='BUTTON'&&"
+        "toggle.type==='button'&&toggle.tabIndex===0;})()"
+    ) is True
+    browser.click("#nrsQueueToggle")
+    browser.wait_for(
+        "document.getElementById('nrsQueueToggle').getAttribute('aria-expanded')==='false' && "
+        "document.getElementById('nrsQueueBody').hidden"
+    )
+    assert browser.evaluate(
+        "localStorage.getItem('dlms.reviewSchedule.questionQueueCollapsed')"
+    ) == "1"
+    browser.navigate(f"{browser_stack.base_url}/review-schedule")
+    browser.wait_for("document.getElementById('nrsQueueCount').textContent.includes('questions')")
+    assert browser.evaluate(
+        "document.getElementById('nrsQueueToggle').getAttribute('aria-expanded')==='false' && "
+        "document.getElementById('nrsQueueBody').hidden"
+    ) is True
+    assert browser.evaluate(
+        "(() => {const toggle=document.getElementById('nrsQueueToggle');toggle.focus();"
+        "return document.activeElement===toggle&&toggle.tagName==='BUTTON'&&"
+        "toggle.type==='button'&&toggle.tabIndex===0;})()"
+    ) is True
+    browser.click("#nrsQueueToggle")
+    browser.wait_for(
+        "document.getElementById('nrsQueueToggle').getAttribute('aria-expanded')==='true' && "
+        "!document.getElementById('nrsQueueBody').hidden"
+    )
+
+    def question_filter_state():
+        return browser.evaluate(
+            "(() => {const rows=[...document.querySelectorAll('#nrsRows tr')];"
+            "return {count:rows.length,statuses:[...new Set(rows.map(row=>"
+            "row.querySelector('.review-state')?.textContent.trim()))],"
+            "text:document.getElementById('nrsRows').textContent,"
+            "emptyHidden:document.getElementById('nrsEmpty').hidden,"
+            "empty:document.getElementById('nrsEmpty').textContent,"
+            "summary:document.getElementById('nrsQueueCount').textContent,"
+            "pressed:[...document.querySelectorAll('[data-question-status]')]"
+            ".filter(button=>button.getAttribute('aria-pressed')==='true')"
+            ".map(button=>button.dataset.questionStatus)};})()"
+        )
+
+    browser.click("[data-question-status='overdue']")
+    overdue_filter = question_filter_state()
+    assert overdue_filter["count"] >= 11
+    assert overdue_filter["statuses"] == ["Overdue"]
+    assert overdue_filter["pressed"] == ["overdue"]
+
+    browser.click("[data-question-status='upcoming']")
+    upcoming_filter = question_filter_state()
+    assert upcoming_filter["count"] == 1
+    assert upcoming_filter["statuses"] == ["Upcoming"]
+    assert "Browser upcoming filter question?" in upcoming_filter["text"]
+
+    browser.click("[data-question-status='unscheduled']")
+    unscheduled_filter = question_filter_state()
+    assert unscheduled_filter["count"] >= 1
+    assert unscheduled_filter["statuses"] == ["Not yet scheduled"]
+    assert "Browser not-yet-scheduled filter question?" in unscheduled_filter["text"]
+
+    browser.click("[data-question-status='due']")
+    due_filter = question_filter_state()
+    assert due_filter["statuses"] in ([], ["Due now"])
+    assert due_filter["emptyHidden"] is bool(due_filter["count"])
+    if not due_filter["count"]:
+        assert due_filter["empty"] == "No questions match the current search and status filter."
+    assert due_filter["pressed"] == ["due"]
+
+    browser.click("[data-question-status='overdue']")
+    combined_filter = browser.evaluate(
+        "(() => {const input=document.getElementById('nrsSearch');"
+        "input.value='Browser native spaced-review prompt';"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));"
+        "return document.querySelectorAll('#nrsRows tr').length;})()"
+    )
+    assert combined_filter == 1
+    browser.click("#nrsQueueToggle")
+    browser.click("#nrsQueueToggle")
+    assert question_filter_state()["count"] == 1
+
+    browser.evaluate(
+        "document.getElementById('nrsSearch').value='';"
+        "document.getElementById('nrsSearch').dispatchEvent(new Event('input',{bubbles:true}));true"
+    )
+    browser.click("[data-question-status='all']")
+    restored_filter = question_filter_state()
+    assert restored_filter["count"] == search_state["original"]
+    assert restored_filter["pressed"] == ["all"]
+    assert restored_filter["summary"] == f"{search_state['original']} questions"
+
+    with sqlite3.connect(database_path) as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0],
+            connection.execute("SELECT COUNT(*) FROM learning_events").fetchone()[0],
+        ) == schedule_db_snapshot
+
+    selected_batch = browser.evaluate(
+        "(() => {const select=document.getElementById('nrsBatchSize');"
+        "select.value='10';select.dispatchEvent(new Event('change',{bubbles:true}));"
+        "return document.getElementById('nrsBatchSummary').textContent;})()"
+    )
+    assert selected_batch == (
+        f"{schedule_state['due']} questions are due · "
+        "This review includes up to 10 questions."
+    )
+    browser.evaluate(
+        "document.getElementById('nrsBatchSize').value='20';"
+        "document.getElementById('nrsBatchSize').dispatchEvent("
+        "new Event('change',{bubbles:true}));true"
+    )
+
+    browser.click(
+        "form[action='/native-spaced-review/generate'] button[type='submit']"
+    )
+    browser.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_')")
+
+    with sqlite3.connect(database_path) as connection:
+        created = connection.execute(
+            """
+            SELECT id, source_file, generation_kind FROM quizzes
+            WHERE title = 'Spaced Review — Due Questions'
+            ORDER BY id DESC LIMIT 1
+            """
+        ).fetchone()
+        assert created is not None
+        assert created[1].startswith("spaced_review_native_")
+        assert created[2] == "native_spaced_review"
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ? AND question_text = ?",
+            (created[0], prompt),
+        ).fetchone()[0] == 1
+        source_lineage = connection.execute(
+            """
+            SELECT question_uid, canonical_question_uid
+            FROM questions WHERE id = ?
+            """,
+            (question_id,),
+        ).fetchone()
+        copy_lineage = connection.execute(
+            """
+            SELECT canonical_question_uid, source_question_uid,
+                   is_generated_copy
+            FROM questions WHERE quiz_id = ?
+            """,
+            (created[0],),
+        ).fetchone()
+        assert source_lineage[0] is not None
+        assert copy_lineage == (source_lineage[1], source_lineage[0], 1)
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
+        ).fetchone()[0] == 13
+
+
+def test_core_filter_state_and_repeated_builder_fields_are_accessible(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+
+    browser.set_viewport(640, 900)  # 1280px desktop content at a 200% zoom equivalent.
+    browser.navigate(f"{base_url}/create_short_quiz?count=2")
+    browser.wait_for("document.getElementById('create-short-quiz-form')")
+    choice_names = browser.evaluate(
+        "[...document.querySelectorAll('.choice-text')].map(input=>input.getAttribute('aria-label'))"
+    )
+    assert choice_names == [
+        "Question 1 answer A text", "Question 1 answer B text",
+        "Question 1 answer C text", "Question 1 answer D text",
+        "Question 2 answer A text", "Question 2 answer B text",
+        "Question 2 answer C text", "Question 2 answer D text",
+    ]
+    dynamic_names = browser.evaluate(
+        "(() => {const first=document.querySelector('.question-block');"
+        "const type=first.querySelector('.question-type');type.value='matching';"
+        "type.dispatchEvent(new Event('change',{bubbles:true}));"
+        "first.querySelector('.choice-editor .build-add-choice').click();first.querySelector('.matching-editor .build-add-choice').click();"
+        "const pairs=[...first.querySelectorAll('.build-match-pair')];"
+        "return {choice:[...first.querySelectorAll('.choice-text')].at(-1).getAttribute('aria-label'),"
+        "left:pairs.at(-1).querySelector('.match-left').getAttribute('aria-label'),"
+        "right:pairs.at(-1).querySelector('.match-right').getAttribute('aria-label'),"
+        "deletePair:pairs.at(-1).querySelector('.btn-delete').getAttribute('aria-label'),"
+        "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+    )
+    assert dynamic_names == {
+        "choice": "Question 1 answer E text",
+        "left": "Question 1 matching term 5",
+        "right": "Question 1 matching definition 5",
+        "deletePair": "Delete question 1 matching pair 5",
+        "overflow": True,
+    }
+
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(f"{base_url}/learning-intelligence")
+        browser.wait_for("document.getElementById('liLoading').hidden")
+        browser.click('[data-li-filter="weak"]')
+        learning_state = browser.evaluate(
+            "(() => {const buttons=[...document.querySelectorAll('[data-li-filter]')];"
+            "return {pressed:buttons.filter(button=>button.getAttribute('aria-pressed')==='true').map(button=>button.dataset.liFilter),"
+            "active:buttons.filter(button=>button.classList.contains('active')).map(button=>button.dataset.liFilter),"
+            "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
+        )
+        assert learning_state == {"pressed": ["weak"], "active": ["weak"], "overflow": True}
+
+    browser.navigate(f"{base_url}/history")
+    browser.wait_for("document.getElementById('historyAttemptCount').textContent !== 'Loading…'")
+    browser.click('[data-origin-filter="quiz"]')
+    browser.wait_for(
+        "document.querySelector('[data-origin-filter=quiz]').getAttribute('aria-pressed')==='true'"
+    )
+    assert browser.evaluate(
+        "[...document.querySelectorAll('[data-origin-filter]')].filter(button=>button.getAttribute('aria-pressed')==='true').map(button=>button.dataset.originFilter)"
+    ) == ["quiz"]
+
+
+def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack):
+    """The daily plan orders canonical due work before browser-local progress."""
+    database_path = browser_stack.data_root / "results.db"
+    prompt = "Browser daily-review due prompt?"
+    with sqlite3.connect(database_path) as connection:
+        cursor = connection.execute(
+            "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+            ("Browser Daily Review Source", "browser-daily-review-source.html"),
+        )
+        source_quiz_id = cursor.lastrowid
+        cursor = connection.execute(
+            """
+            INSERT INTO questions (
+                quiz_id, question_number, question_text, question_type,
+                explanation, media_json
+            ) VALUES (?, 1, ?, 'choice', 'Daily review explanation', '{}')
+            """,
+            (source_quiz_id, prompt),
+        )
+        source_question_id = cursor.lastrowid
+        connection.executemany(
+            "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+            [
+                (source_question_id, "A", "Expected", 1),
+                (source_question_id, "B", "Alternative", 0),
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO learning_events (
+                event_type, quiz_id, question_id, attempt_id, mode,
+                was_correct, response_json, occurred_at
+            ) VALUES ('exam_answer', ?, ?, ?, 'Exam', 0, '{}', ?)
+            """,
+            (
+                source_quiz_id,
+                source_question_id,
+                "browser-daily-review-attempt",
+                "2020-01-01T00:00:00+00:00",
+            ),
+        )
+
+    browser = browser_stack.browser
+    critical_url = (
+        f"{browser_stack.base_url}/quizzes/"
+        f"{browser_stack.metadata['critical_html']}"
+    )
+    browser.navigate(critical_url)
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for(
+        "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
+        + json.dumps(str(browser_stack.metadata["critical_id"]))
+        + "]}).records.length === 1"
+    )
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for(
+        "document.querySelector('.daily-review-native_due') && "
+        "document.querySelector('.daily-review-unfinished a')"
+    )
+    plan = browser.evaluate(
+        "(() => ({"
+        "kinds:[...document.querySelectorAll('.daily-review-item')].map(item => "
+        "[...item.classList].find(name => name.startsWith('daily-review-') && "
+        "name !== 'daily-review-item').replace('daily-review-', '')) ,"
+        "dueText:document.querySelector('.daily-review-native_due').textContent,"
+        "resumeText:document.querySelector('.daily-review-unfinished').textContent,"
+        "csrf:Boolean(document.querySelector("
+        "'.daily-review-native_due form input[name=csrf_token]'))"
+        "}))()"
+    )
+    assert plan["kinds"][:2] == ["native_due", "unfinished"]
+    assert "due" in plan["dueText"].lower()
+    assert "Browser Critical Workflow" in plan["resumeText"]
+    assert plan["csrf"] is True
+
+    browser.click(".daily-review-unfinished a")
+    browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    assert browser.evaluate("location.pathname") == (
+        f"/quizzes/{browser_stack.metadata['critical_html']}"
+    )
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for("document.querySelector('.daily-review-native_due button')")
+    browser.click(".daily-review-native_due button")
+    browser.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_')")
+    with sqlite3.connect(database_path) as connection:
+        generated = connection.execute(
+            """
+            SELECT q.id, q.quiz_id, z.generation_kind
+            FROM questions q
+            JOIN quizzes z ON z.id = q.quiz_id
+            WHERE z.source_file LIKE 'spaced_review_native_%'
+              AND q.question_text = ?
+            ORDER BY q.id DESC LIMIT 1
+            """,
+            (prompt,),
+        ).fetchone()
+        assert generated is not None
+        assert generated[2] == "native_spaced_review"
+        assert connection.execute(
+            "SELECT COUNT(*) FROM questions WHERE quiz_id = ? AND id = ?",
+            (source_quiz_id, source_question_id),
+        ).fetchone()[0] == 1
+
+    browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
+    browser.click(".study-mode-btn")
+    browser.wait_for(
+        "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
+        + json.dumps(str(generated[1]))
+        + "]}).records.length === 1"
+    )
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE quizzes
+            SET title = 'Renamed due session',
+                source_file = 'renamed-due-session.html'
+            WHERE id = ?
+            """,
+            (generated[1],),
+        )
+
+    browser.navigate(f"{browser_stack.base_url}/")
+    browser.wait_for(
+        "document.getElementById('dailyReviewCount').textContent !== 'Loading…' && "
+        "document.querySelector('.daily-review-unfinished')"
+    )
+    assert browser.evaluate(
+        "document.querySelector('.daily-review-native_due') === null"
+    ) is True
+    assert "Spaced Review — Due Questions" in browser.evaluate(
+        "document.querySelector('.daily-review-unfinished').textContent"
+    )
+
+    # Abandoning generated recovery restores its valid server recommendation,
+    # without deleting the generated quiz, lineage, saved activity or schedule.
+    with sqlite3.connect(database_path) as connection:
+        before_clear = list(connection.iterdump())
+    browser.click(".daily-review-unfinished .daily-review-remove")
+    browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
+    browser.click("#dailyReviewClearDialog button[value='clear']")
+    browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+    assert browser.evaluate("document.querySelector('.daily-review-native_due') !== null") is True
+    assert browser.evaluate(
+        "[...document.querySelectorAll('.daily-review-unfinished')].every(card=>!card.textContent.includes('Spaced Review'))"
+    ) is True
+    with sqlite3.connect(database_path) as connection:
+        assert list(connection.iterdump()) == before_clear
+
+
+def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles(
+    browser_server,
+):
+    """Two browser profiles share scheduling data, never recovery checkpoints."""
+    database_path = browser_server.data_root / "results.db"
+    with sqlite3.connect(database_path) as connection:
+        for ordinal in (1, 2):
+            cursor = connection.execute(
+                "INSERT INTO quizzes (title, source_file) VALUES (?, ?)",
+                (
+                    f"Shared due source {ordinal}",
+                    f"shared-due-source-{ordinal}.html",
+                ),
+            )
+            quiz_id = cursor.lastrowid
+            cursor = connection.execute(
+                """
+                INSERT INTO questions (
+                    quiz_id, question_number, question_text, question_type,
+                    explanation, media_json
+                ) VALUES (?, 1, ?, 'choice', 'Shared due explanation', '{}')
+                """,
+                (quiz_id, f"Shared due question {ordinal}?"),
+            )
+            question_id = cursor.lastrowid
+            connection.executemany(
+                "INSERT INTO choices (question_id, label, text, is_correct) VALUES (?, ?, ?, ?)",
+                [
+                    (question_id, "A", "Expected", 1),
+                    (question_id, "B", "Alternative", 0),
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO learning_events (
+                    event_type, quiz_id, question_id, attempt_id, session_id,
+                    mode, was_correct, response_json, occurred_at
+                ) VALUES ('exam_answer', ?, ?, ?, NULL, 'Exam', 0, '{}', ?)
+                """,
+                (
+                    quiz_id,
+                    question_id,
+                    f"shared-due-history-{ordinal}",
+                    "2020-01-01T00:00:00+00:00",
+                ),
+            )
+
+    launched = []
+
+    def launch(label):
+        port = _free_loopback_port()
+        session_root = browser_server.work_root / f"multi-client-{label}"
+        profile = session_root / "profile"
+        profile.mkdir(parents=True)
+        log_path = session_root / "firefox.log"
+        output = log_path.open("w", encoding="utf-8")
+        process = subprocess.Popen(
+            [
+                browser_server.firefox,
+                "--headless",
+                "--no-remote",
+                "--profile",
+                str(profile),
+                "--remote-debugging-port",
+                str(port),
+                "about:blank",
+            ],
+            cwd=ROOT,
+            env=browser_server.env,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            **browser_server.process_options,
+        )
+        try:
+            browser = _connect_firefox(port, process, log_path)
+        except Exception:
+            _terminate_process_tree(process)
+            output.close()
+            raise
+        launched.append((browser, process, output))
+        return browser
+
+    def dashboard_state(browser, due_count):
+        browser.navigate(f"{browser_server.base_url}/")
+        due_condition = (
+            f"document.querySelector('.daily-review-native_due')?.textContent.includes('{due_count} source question')"
+            if due_count
+            else "document.getElementById('dailyReviewCount').textContent !== 'Loading…' && !document.querySelector('.daily-review-native_due')"
+        )
+        browser.wait_for(due_condition)
+        return browser.evaluate(
+            "(() => ({"
+            "due:document.querySelector('.daily-review-native_due')?.textContent||'',"
+            "unfinished:[...document.querySelectorAll('.daily-review-unfinished')].map(item=>item.textContent)"
+            "}))()"
+        )
+
+    def complete_one_due_question(browser):
+        assert browser.evaluate(
+            "(() => {const input=document.querySelector("
+            "'.daily-review-native_due input[name=question_count]');"
+            "if(!input)return false;input.value='1';return true;})()"
+        ) is True
+        browser.click(".daily-review-native_due button")
+        browser.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_')")
+        browser.wait_for("quizRecoveryReady === true && quiz.length === 1")
+        browser.click(".study-mode-btn")
+        recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+        browser.click("#choices .choice[data-index='0']")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        # Generated Study sessions remain resumable until Finish Review succeeds.
+        # Saving the last answer alone must not clear this browser's checkpoint.
+        assert browser.evaluate("generatedPracticeStatus.completed") is False
+        assert browser.evaluate(
+            f"localStorage.getItem({json.dumps(recovery_key)}) !== null"
+        ) is True
+        browser.click("#finishReviewBtn")
+        browser.wait_for(
+            f"localStorage.getItem({json.dumps(recovery_key)}) === null && "
+            "studyLearningEventSaves.size === 0 && generatedPracticeStatus.completed === true"
+        )
+        return recovery_key
+
+    try:
+        first = launch("first")
+        second = launch("second")
+
+        first.navigate(
+            f"{browser_server.base_url}/quizzes/{browser_server.metadata['critical_html']}"
+        )
+        first.wait_for("quizRecoveryReady === true")
+        first.click(".study-mode-btn")
+        first_recovery_key = first.evaluate("quizRecoveryController.storageKey")
+
+        second.navigate(
+            f"{browser_server.base_url}/quizzes/{browser_server.metadata['companion_html']}"
+        )
+        second.wait_for("quizRecoveryReady === true")
+        second.click(".study-mode-btn")
+        second_recovery_key = second.evaluate("quizRecoveryController.storageKey")
+
+        first_state = dashboard_state(first, 2)
+        second_state = dashboard_state(second, 2)
+        assert "Browser Critical Workflow" in " ".join(first_state["unfinished"])
+        assert "Browser Companion" not in " ".join(first_state["unfinished"])
+        assert "Browser Companion" in " ".join(second_state["unfinished"])
+        assert "Browser Critical Workflow" not in " ".join(second_state["unfinished"])
+        assert "This browser" in " ".join(first_state["unfinished"])
+        assert "This browser" in " ".join(second_state["unfinished"])
+        assert first.evaluate(
+            f"localStorage.getItem({json.dumps(second_recovery_key)}) === null"
+        ) is True
+        assert second.evaluate(
+            f"localStorage.getItem({json.dumps(first_recovery_key)}) === null"
+        ) is True
+
+        # Clear one profile's checkpoint while the other keeps its own intact.
+        second.navigate(f"{browser_server.base_url}/quizzes/{browser_server.metadata['critical_html']}")
+        second.wait_for("quizRecoveryReady === true")
+        second.click(".exam-mode-btn")
+        dashboard_state(second, 2)
+        first.click(".daily-review-unfinished .daily-review-remove")
+        first.click("#dailyReviewClearDialog button[value='clear']")
+        first.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+        assert first.evaluate(f"localStorage.getItem({json.dumps(first_recovery_key)}) === null") is True
+        assert second.evaluate(f"localStorage.getItem({json.dumps(second_recovery_key)}) !== null") is True
+        assert second.evaluate(f"localStorage.getItem({json.dumps(first_recovery_key)}) !== null") is True
+        assert first.evaluate("document.querySelector('.daily-review-unfinished') === null") is True
+        second_state = dashboard_state(second, 2)
+        assert "Browser Companion" in " ".join(second_state["unfinished"])
+
+        first_generated_key = complete_one_due_question(first)
+        first_after = dashboard_state(first, 1)
+        second_after = dashboard_state(second, 1)
+        assert first_after["due"] == second_after["due"]
+        assert all(
+            "Spaced Review — Due Questions" not in text
+            for text in first_after["unfinished"]
+        )
+        assert first.evaluate(
+            f"localStorage.getItem({json.dumps(first_generated_key)}) === null"
+        ) is True
+
+        final_generated_key = complete_one_due_question(first)
+        first_final = dashboard_state(first, 0)
+        second_final = dashboard_state(second, 0)
+        assert not first_final["due"] and not second_final["due"]
+        assert all(
+            "Spaced Review — Due Questions" not in text
+            for text in first_final["unfinished"]
+        )
+        assert first.evaluate(
+            f"localStorage.getItem({json.dumps(final_generated_key)}) === null"
+        ) is True
+        assert not first_final["unfinished"]  # This profile explicitly abandoned its session.
+        assert "Browser Companion" in " ".join(second_final["unfinished"])
+    finally:
+        for browser, process, output in reversed(launched):
+            try:
+                browser.command("browser.close", {}, timeout=3.0)
+            except Exception:
+                browser.close()
+            _terminate_process_tree(process)
+            output.close()
+
+
+def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoints(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    # The mixed-type fixture has playable artifacts but is normally deliberately
+    # absent from the Library registry. Expose it here as the third real quiz.
+    registry_path = browser_stack.data_root / "config" / "quizzes.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry.append({"id": "browser-recovery-mixed", "html": browser_stack.metadata["recovery_html"],
+                     "title": "Browser Recovery Mixed Types",
+                     "folder": "Browser Regression", "hidden": False})
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    keys = []
+    for name, mode in (("critical", "study"), ("companion", "exam"), ("recovery", "study")):
+        browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata[name + '_html']}")
+        browser.wait_for("quizRecoveryReady === true")
+        browser.click(f".{mode}-mode-btn")
+        keys.append(browser.evaluate("quizRecoveryController.storageKey"))
+    # Rename and move after checkpoint creation: recovery still targets quiz ID.
+    registry[-1].update({
+        "title": "Renamed Browser Recovery — a deliberately long quiz title for narrow-window wrapping",
+        "folder": "Uncategorized",
+    })
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+
+    # Exercise real Tab order, modal focus, contrast and geometry across palettes.
+    # This headless host never gains document focus: Enter/Space does not activate
+    # even an independent native button. Keep production native button semantics;
+    # use live-element clicks for activation rather than a test-only UI workaround.
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/")
+        browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
+        for width in (1440, 1024, 760, 420):
+            browser.set_viewport(width, 1000)
+            browser.wait_for_page_ready()
+            browser.activate()
+            browser.evaluate("document.querySelector('.daily-review-unfinished a').focus(); true")
+            browser.press_key("\ue004")
+            assert browser.evaluate("document.activeElement.className") == "daily-review-remove"
+            browser.click("#dailyReviewList .daily-review-remove")
+            browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
+            geometry = browser.evaluate(
+                "(() => {const d=document.getElementById('dailyReviewClearDialog');"
+                "const r=d.getBoundingClientRect();return {overflow:document.documentElement.scrollWidth-innerWidth,"
+                "dialogOverflow:d.scrollWidth-d.clientWidth,left:r.left,right:r.right,"
+                "cancelFocused:document.activeElement.value==='cancel',"
+                "contained:[...d.querySelectorAll('button')].every(n=>{const b=n.getBoundingClientRect();return b.left>=r.left&&b.right<=r.right}),"
+                "cards:[...document.querySelectorAll('.daily-review-item')].every(n=>n.scrollWidth<=n.clientWidth+1)};})()"
+            )
+            assert geometry["overflow"] <= 1 and geometry["dialogOverflow"] <= 1
+            assert geometry["left"] >= 0 and geometry["right"] <= width
+            assert geometry["cancelFocused"] and geometry["contained"] and geometry["cards"]
+            contrast = _theme_contrast_snapshot(browser, {
+                "secondary": ".daily-review-remove", "cancel": "#dailyReviewClearDialog button[value='cancel']",
+                "confirm": "#dailyReviewClearDialog button[value='clear']",
+                "description": "#dailyReviewClearDescription",
+            })
+            assert all(value["contrast"] >= 4.5 for value in contrast.values()), (theme, width, contrast)
+            browser.press_key("\ue004")
+            assert browser.evaluate("document.activeElement.value") == "clear"
+            browser.command("input.performActions", {
+                "context": browser.context,
+                "actions": [{"type": "key", "id": "keyboard", "actions": [
+                    {"type": "keyDown", "value": "\ue008"},
+                    {"type": "keyDown", "value": "\ue004"},
+                    {"type": "keyUp", "value": "\ue004"},
+                    {"type": "keyUp", "value": "\ue008"},
+                ]}],
+            })
+            browser.command("input.releaseActions", {"context": browser.context})
+            assert browser.evaluate("document.activeElement.value") == "cancel"
+            browser.click("#dailyReviewClearDialog button[value='cancel']")
+            browser.wait_for("!document.getElementById('dailyReviewClearDialog').open")
+            assert browser.evaluate("document.activeElement.classList.contains('daily-review-remove')") is True
+    assert browser.evaluate(f"{json.dumps(keys)}.every(key=>localStorage.getItem(key)!==null)") is True
+
+    # Cancel leaves the same record/card intact, including the older third slot.
+    target = ".daily-review-unfinished:has(a[href$='/browser_recovery_mixed.html']) .daily-review-remove"
+    before = browser.evaluate(f"{json.dumps(keys)}.map(key=>localStorage.getItem(key))")
+    browser.click(target)
+    browser.click("#dailyReviewClearDialog button[value='cancel']")
+    assert browser.evaluate(f"{json.dumps(keys)}.map(key=>localStorage.getItem(key))") == before
+
+    # A revision written during confirmation must not be cleared.
+    browser.click(target)
+    changed_key = browser.evaluate(
+        "(() => {const r=DLMSQuizRecovery.listStoredRecords().records.find(r=>r.quizId==='browser-recovery-mixed');"
+        "const key=DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId);"
+        "const record=JSON.parse(localStorage.getItem(key));record.session.revision++;"
+        "localStorage.setItem(key,JSON.stringify(record));return key;})()"
+    )
+    browser.click("#dailyReviewClearDialog button[value='clear']")
+    browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('session changed')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(changed_key)}) !== null") is True
+
+    # Removal failure is visible, preserves all records, and never hides the card.
+    for method in ("removeItem", "getItem"):
+        browser.evaluate(f"window.__storageMethod=Storage.prototype.{method};Storage.prototype.{method}=function(){{throw new Error('storage denied')}}; true")
+        try:
+            browser.click(target)
+            browser.click("#dailyReviewClearDialog button[value='clear']")
+            browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('could not be cleared')")
+            assert browser.evaluate("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+        finally:
+            browser.evaluate(f"Storage.prototype.{method}=window.__storageMethod; true")
+
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        saved_data = list(connection.iterdump())
+    saved_registry = registry_path.read_bytes()
+    browser.click(target)
+    browser.click("#dailyReviewClearDialog button[value='clear']")
+    browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(changed_key)}) === null") is True
+    assert browser.evaluate(f"{json.dumps(keys[:2])}.every(key=>localStorage.getItem(key)!==null)") is True
+    assert "Browser Critical Workflow" in browser.evaluate("document.getElementById('dailyReviewList').textContent")
+    # The remaining ordinary Exam checkpoint can also be abandoned.
+    browser.click(".daily-review-unfinished:has(a[href*='browser_companion']) .daily-review-remove")
+    browser.click("#dailyReviewClearDialog button[value='clear']")
+    browser.wait_for(f"localStorage.getItem({json.dumps(keys[1])}) === null")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
+        assert list(connection.iterdump()) == saved_data
+    assert registry_path.read_bytes() == saved_registry
+
+
+def test_today_review_clear_protects_failed_study_and_submitted_exam_saves(browser_stack):
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    for name, mode, endpoint in (("critical", "study", "/api/learning-events/study-response"), ("companion", "exam", "/record_attempt")):
+        browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata[name + '_html']}")
+        browser.wait_for("quizRecoveryReady === true")
+        browser.evaluate(
+            "window.__originalFetch=window.fetch.bind(window);window.fetch=(...args)=>String(args[0]).includes("
+            + json.dumps(endpoint) + ")?Promise.reject(new Error('simulated save failure')):window.__originalFetch(...args); true"
+        )
+        browser.click(f".{mode}-mode-btn")
+        browser.click("#choices .choice[data-index='0']")
+        if mode == "exam":
+            browser.evaluate("window.confirm=()=>true; true")
+            browser.click("#submitBtn")
+            browser.wait_for("document.getElementById('result').textContent.includes('was not saved')")
+        else:
+            browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])')")
+    browser.navigate(base_url + "/")
+    browser.wait_for("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+    before = browser.evaluate("DLMSQuizRecovery.listStoredRecords().records.map(r=>localStorage.getItem(DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId)))")
+    for name, message in (("companion", "Use Finish Saving"), ("critical", "Study answers waiting")):
+        browser.click(f".daily-review-unfinished:has(a[href*='browser_{name}']) .daily-review-remove")
+        browser.click("#dailyReviewClearDialog button[value='clear']")
+        browser.wait_for(f"document.getElementById('dailyReviewStatus').textContent.includes({json.dumps(message)})")
+        assert browser.evaluate("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+    assert browser.evaluate("DLMSQuizRecovery.listStoredRecords().records.map(r=>localStorage.getItem(DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId)))") == before
+
+
+def test_today_review_clear_does_not_control_or_resurrect_an_active_quiz_tab(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    key = browser.evaluate("quizRecoveryController.storageKey")
+    quiz_context = browser.context
+    dashboard_context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    try:
+        browser.context = dashboard_context
+        browser.navigate(browser_stack.base_url + "/")
+        browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
+        browser.click(".daily-review-remove")
+        browser.click("#dailyReviewClearDialog button[value='clear']")
+        browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+        browser.context = quiz_context
+        browser.wait_for("quizRecoveryController.ownsState === false")
+        assert browser.evaluate("quizRecoveryController.checkpoint()") is False
+        assert browser.evaluate("index === 0 && !examMode && !document.getElementById('quiz').hidden") is True
+        assert "cleared by another DLMS page" in browser.evaluate("document.getElementById('quizRecoveryNotice').textContent")
+        browser.navigate(browser_stack.base_url + "/")  # pagehide must not recreate it.
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(key)}) === null") is True
+    finally:
+        _close_context_after_pagehide(browser, dashboard_context, quiz_context)

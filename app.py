@@ -42,6 +42,7 @@ from dlms.parsing import external_ai_structured as _external_ai_structured_parse
 from dlms.parsing import quiz_text as _quiz_text_parser
 from dlms.parsing import smart_pdf as _smart_pdf_parser
 from dlms.parsing import ocr_questions as _ocr_question_parser
+from dlms.parsing import ocr_matching as _ocr_matching_parser
 from dlms.parsing import pdf_raster_questions as _pdf_raster_question_parser
 from dlms.rendering import quiz_artifacts as _quiz_artifact_renderer
 from dlms.services import anki as _anki_service
@@ -52,12 +53,20 @@ from dlms.services import content_pack_mutations as _content_pack_mutation_servi
 from dlms.services import external_ai_structured as _external_ai_structured_service
 from dlms.services import history as _history_service
 from dlms.services import learning as _learning_service
+from dlms.services import learning_scope as _learning_scope_service
+from dlms.services import generated_practice_lifecycle as _generated_practice_lifecycle
 from dlms.services import quiz_publication as _quiz_publication_service
+from dlms.services import quiz_composition as _quiz_composition_service
+from dlms.services import quiz_duplicates as _quiz_duplicate_service
+from dlms.services import quiz_smart_views as _quiz_smart_view_service
+from dlms.services import portable_quiz_bundles as _portable_quiz_bundle_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
+from dlms.services import question_identity as _question_identity_service
 from dlms.services import restore as _restore_service
 from dlms.services import law as _law_service
 from dlms.services import ocr as _ocr_service
 from dlms.services import ocr_screenshots as _ocr_screenshot_service
+from dlms.services import ocr_matching as _ocr_matching_service
 from dlms.services import pdf_ocr as _pdf_ocr_service
 from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
@@ -90,6 +99,7 @@ from dlms.routes.pdf_import import (
 )
 from dlms.routes.quiz import (
     QuizAuthoringDependencies,
+    QuizBundleDependencies,
     QuizEditorDependencies,
     QuizLibraryDependencies,
     create_quiz_blueprint,
@@ -265,7 +275,7 @@ def get_app_data_dir(app_name: str = "DLMS") -> str:
     return path
 
 APP_NAME = "DLMS"
-APP_VERSION = "3.1.0"
+APP_VERSION = "3.2.0"
 APP_DATA_DIR = get_app_data_dir(APP_NAME)
 
 
@@ -457,7 +467,9 @@ def reject_declared_oversized_workflow_upload():
     route_limits = {
         "/pdf-import/analyze": PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/pdf-import/screenshots": OCR_SCREENSHOT_MAX_BATCH_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        "/pdf-import/ocr-matching": PDF_IMPORT_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/content-packs/import": CONTENT_PACK_UPLOAD_MAX_BYTES + CONTENT_PACK_MULTIPART_OVERHEAD_BYTES,
+        "/quiz-bundles/import": PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/settings/data/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/settings/backup/restore/stage": BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
         "/study-packs/image-builder": IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES,
@@ -580,6 +592,7 @@ EXTERNAL_AI_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "external_ai_drafts")
 PDF_IMPORT_DRAFT_FOLDER = os.path.join(APP_DATA_DIR, "pdf_import_drafts")
 OCR_IMPORT_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_screenshots")
 PDF_OCR_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "ocr_pdfs")
+PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER = os.path.join(UPLOAD_FOLDER, "quiz_bundles")
 PDF_QUESTION_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_question_banks")
 PDF_TERMINOLOGY_BANK_FOLDER = os.path.join(APP_DATA_DIR, "pdf_terminology_banks")
 CONTENT_PACK_STAGING_FOLDER = os.path.join(APP_DATA_DIR, "content_pack_staging")
@@ -600,6 +613,7 @@ for d in [
     PDF_IMPORT_DRAFT_FOLDER,
     OCR_IMPORT_STAGING_FOLDER,
     PDF_OCR_STAGING_FOLDER,
+    PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER,
     PDF_QUESTION_BANK_FOLDER,
     PDF_TERMINOLOGY_BANK_FOLDER,
     CONTENT_PACK_STAGING_FOLDER,
@@ -633,6 +647,9 @@ IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES = 192 * 1024 * 1024
 # Reserve 2 MB beneath the existing 300 MB request ceiling for multipart
 # framing while preserving nearly all of the prior effective restore capacity.
 BACKUP_UPLOAD_MAX_BYTES = 298 * 1024 * 1024
+PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES = (
+    _portable_quiz_bundle_service.PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES
+)
 UPLOAD_MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
 
 # 8K study images are about 33 MP. These limits allow substantially larger
@@ -1295,7 +1312,15 @@ def _publish_quiz(
     source_dataset_id=None,
     snapshot_existing_assets=False,
     rollback_logo_filename=None,
+    generation_kind=None,
 ):
+    generation_kind = _question_identity_service.validate_generation_kind(
+        generation_kind
+    )
+    # NULL remains the legacy/unknown state. Mark newly-published ordinary
+    # quizzes explicitly so user-chosen titles cannot imitate review prefixes.
+    if generation_kind is None:
+        generation_kind = _question_identity_service.SOURCE_QUIZ_KIND
     return _quiz_publication_service.publish_quiz(
         quiz_title,
         runtime_questions,
@@ -1308,6 +1333,7 @@ def _publish_quiz(
         source_dataset_id=source_dataset_id,
         snapshot_existing_assets=snapshot_existing_assets,
         rollback_logo_filename=rollback_logo_filename,
+        generation_kind=generation_kind,
         generated_artifact_names=_generated_quiz_artifact_names,
         staging_root=_quiz_publication_staging_root,
         normalize_ordinals=_normalize_quiz_question_ordinals,
@@ -1761,7 +1787,14 @@ def _migrate_schema_to_v2(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2}
+def _migrate_schema_to_v3(conn):
+    return _database._migrate_schema_to_v3(
+        conn,
+        database_column_info=_database_column_info,
+    )
+
+
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3}
 
 
 def _read_database_schema_version(conn, tables):
@@ -2573,6 +2606,15 @@ def _schedule_automatic_browser_shutdown():
 
 @app.route("/api/shutdown", methods=["POST"])
 def shutdown_app():
+    if not _browser_presence_runtime_eligible():
+        print("[SYSTEM] Shutdown request rejected in LAN/server mode")
+        return jsonify(
+            status="unavailable",
+            error=(
+                "Shutdown DLMS is unavailable in LAN/server mode. "
+                "Stop the DLMS process or service from the host computer."
+            ),
+        ), 403
     print("[SYSTEM] Shutdown requested via UI")
     _schedule_dlms_shutdown()
 
@@ -2813,7 +2855,16 @@ def get_hidden_quiz_folders(configured_folders=None):
     )
 
 
-def save_quiz_folder_state(folders, hidden_folders):
+def get_excluded_learning_folders():
+    return load_portal_config().get("excluded_learning_folders", [])
+
+
+app.jinja_env.globals["learning_scope_excluded_keys"] = lambda: {
+    name.lower() for name in get_excluded_learning_folders()
+}
+
+
+def save_quiz_folder_state(folders, hidden_folders, excluded_learning_folders=None):
     """Persist folder order and hidden state together in portal.json."""
     return _portal_repository.save_quiz_folder_state(
         PORTAL_CONFIG,
@@ -2822,6 +2873,7 @@ def save_quiz_folder_state(folders, hidden_folders):
         load_config=load_portal_config,
         atomic_write_json=_atomic_write_json,
         clean_hidden_quiz_folders=_clean_hidden_quiz_folders,
+        excluded_learning_folders=excluded_learning_folders,
     )
 
 
@@ -2907,6 +2959,39 @@ def save_registry(registry):
         registry_lock=registry_lock,
         atomic_write_json=_atomic_write_json,
     )
+
+
+def _learning_scope_summary():
+    with registry_lock:
+        registry = load_registry()
+        folders = get_quiz_folders()
+        excluded = get_excluded_learning_folders()
+        hidden = get_hidden_quiz_folders(folders)
+    conn = get_db()
+    try:
+        return _learning_scope_service.learning_scope_summary(
+            conn.cursor(), registry, folders, excluded, hidden,
+        )
+    finally:
+        conn.close()
+
+
+def _set_learning_scope(requested, state):
+    if not isinstance(requested, str) or state not in {"0", "1"}:
+        raise ValueError("Invalid Learning Scope request")
+    with registry_lock:
+        registry = load_registry()
+        folders = get_quiz_folders()
+        identity = _quiz_mutation_service.build_quiz_folder_identity(folders, registry)
+        name = identity.resolve(requested)
+        if name is None:
+            raise ValueError("That folder no longer exists")
+        excluded = [item for item in get_excluded_learning_folders()
+                    if identity.key(item) != identity.key(name)]
+        if state == "0":
+            excluded.append(name)
+        save_quiz_folder_state(folders, get_hidden_quiz_folders(folders), excluded)
+    return name
 
 
 def normalize_quiz_folders(registry):
@@ -3025,6 +3110,7 @@ app.register_blueprint(create_core_blueprint(CoreRouteDependencies(
     quiz_asset_folder=lambda: QUIZ_ASSET_FOLDER,
     browser_presence_update=lambda token, closed: _update_browser_presence(token, closed),
     browser_presence_setting_loaded=lambda config: _browser_presence_setting_loaded(config),
+    browser_presence_runtime_eligible=lambda: _browser_presence_runtime_eligible(),
 )))
 app.register_blueprint(create_help_blueprint())
 
@@ -3439,6 +3525,18 @@ def _restore_quiz_mutation_artifacts(promoted):
     )
 
 
+def _rebuild_registered_quiz_artifacts():
+    return _quiz_mutation_service.rebuild_registered_quiz_artifacts(
+        registry_lock=registry_lock,
+        load_registry=load_registry,
+        get_db=get_db,
+        stage_artifacts=_stage_quiz_mutation_artifacts,
+        promote_artifacts=_promote_quiz_mutation_artifacts,
+        remove_tree=shutil.rmtree,
+        print_message=print,
+    )
+
+
 def _remove_new_quiz_logo(filename, original_registry):
     return _quiz_mutation_service.remove_new_quiz_logo(
         filename,
@@ -3482,6 +3580,7 @@ def _rename_quiz_folder_metadata(old_folder, new_folder):
         save_registry=save_registry,
         get_quiz_folders=get_quiz_folders,
         get_hidden_quiz_folders=get_hidden_quiz_folders,
+        get_excluded_learning_folders=get_excluded_learning_folders,
         save_quiz_folder_state=save_quiz_folder_state,
         print_message=print,
     )
@@ -3495,6 +3594,7 @@ def _delete_quiz_folder_metadata(folder):
         save_registry=save_registry,
         get_quiz_folders=get_quiz_folders,
         get_hidden_quiz_folders=get_hidden_quiz_folders,
+        get_excluded_learning_folders=get_excluded_learning_folders,
         save_quiz_folder_state=save_quiz_folder_state,
         print_message=print,
     )
@@ -3772,23 +3872,33 @@ def _schedule_post_removal_shutdown(removed_path):
 # =========================
 # QUIZ DB SAVE HELPER (UPLOAD + PASTE)
 # =========================
-def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=None):
+def _insert_quiz_rows(
+    conn,
+    quiz_title,
+    source_file,
+    quiz_data,
+    logo_filename=None,
+    generation_kind=None,
+):
     """Insert a complete quiz on the caller's current transaction."""
     cur = conn.cursor()
 
     # Insert quiz (now stores registry_id too)
     cur.execute(
         """
-        INSERT INTO quizzes (title, source_file)
-        VALUES (?, ?)
+        INSERT INTO quizzes (title, source_file, generation_kind)
+        VALUES (?, ?, ?)
         """,
-        (quiz_title, source_file),
+        (quiz_title, source_file, generation_kind),
     )
 
     quiz_id = cur.lastrowid  # ✅ CAPTURE DB ID
 
     # Insert questions + question-specific answer data
     for q in quiz_data:
+        lineage = _question_identity_service.lineage_for_insert(
+            cur, q, generation_kind=generation_kind
+        )
         question_number = q.get("number")
         question_text = q.get("question") or q.get("text") or ""
         question_type = (q.get("type") or "choice").strip().lower()
@@ -3802,6 +3912,9 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
         if q.get("source_number") is not None and isinstance(media_payload, dict):
             media_payload = dict(media_payload)
             media_payload["source_number"] = q["source_number"]
+        if q.get("composition_sources") and isinstance(media_payload, dict):
+            media_payload = dict(media_payload)
+            media_payload["composition_sources"] = q["composition_sources"]
 
         cur.execute(
             """
@@ -3818,9 +3931,13 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
                 source_url,
                 source_license,
                 explanation,
-                media_json
+                media_json,
+                question_uid,
+                canonical_question_uid,
+                source_question_uid,
+                is_generated_copy
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 quiz_id, question_number, question_text, question_type,
@@ -3832,6 +3949,10 @@ def _insert_quiz_rows(conn, quiz_title, source_file, quiz_data, logo_filename=No
                 (q.get("source") or {}).get("license"),
                 q.get("explanation") or "",
                 json.dumps(media_payload, ensure_ascii=False),
+                lineage["question_uid"],
+                lineage["canonical_question_uid"],
+                lineage["source_question_uid"],
+                lineage["is_generated_copy"],
             ),
         )
 
@@ -3981,6 +4102,14 @@ def _list_pdf_question_banks():
         print_message=print,
     )
 
+def _ocr_generated_quiz_ids():
+    return _pdf_bank_repository._ocr_generated_quiz_ids(
+        PDF_QUESTION_BANK_FOLDER,
+        os_module=os,
+        json_module=json,
+        print_message=print,
+    )
+
 def _delete_pdf_question_bank(bank_id):
     return _pdf_bank_repository._delete_pdf_question_bank(
         PDF_QUESTION_BANK_FOLDER,
@@ -4066,9 +4195,9 @@ def _parse_external_ai_quiz_response(raw_response):
     )
 
 
-def _stage_external_ai_quiz_response(raw_response):
+def _stage_external_ai_quiz_response(raw_response, *, content_type="quiz"):
     return _external_ai_structured_service.stage_external_ai_quiz_response(
-        EXTERNAL_AI_DRAFT_FOLDER, raw_response
+        EXTERNAL_AI_DRAFT_FOLDER, raw_response, content_type=content_type
     )
 
 
@@ -4093,6 +4222,12 @@ def _delete_external_ai_draft(draft_id):
 def _prune_external_ai_drafts():
     return _external_ai_draft_repository.prune_external_ai_drafts(
         EXTERNAL_AI_DRAFT_FOLDER
+    )
+
+
+def _stage_ocr_matching_review(processing_draft):
+    return _ocr_matching_service.stage_ocr_matching_review(
+        EXTERNAL_AI_DRAFT_FOLDER, processing_draft
     )
 
 
@@ -4296,6 +4431,20 @@ def _recognize_pdf_ocr_source(draft_id, source, cancel_requested):
         ),
         "answer_regions": answer_regions,
     }
+
+
+def _recognize_pdf_ocr_matching_source(draft_id, source, cancel_requested):
+    """Run the shared OCR engine without choice-question visual augmentation."""
+    path = _pdf_ocr_staged_source_path(draft_id, source)
+    return _ocr_service.recognize_image_bytes(
+        path.read_bytes(),
+        source_id=source["id"],
+        source_width=int(source["width"]),
+        source_height=int(source["height"]),
+        page_index=0,
+        cancel_requested=cancel_requested,
+        image_suffix=path.suffix,
+    )
 
 
 def _analyze_pdf_text_usefulness(pages):
@@ -4783,8 +4932,31 @@ def _learning_foundation_summary(cur):
 
 
 
+_MISSING_LEARNING_SCOPE = object()
+
+
+def _current_learning_scope(cur, registry=None):
+    if has_request_context():
+        cached = getattr(g, "learning_scope_snapshot", _MISSING_LEARNING_SCOPE)
+        if cached is not _MISSING_LEARNING_SCOPE:
+            return cached
+    with registry_lock:
+        excluded = load_portal_config().get("excluded_learning_folders", [])
+        if excluded and registry is None:
+            registry = load_registry()
+    scope = (
+        _learning_scope_service.build_learning_scope(cur, registry, excluded)
+        if excluded else None
+    )
+    if has_request_context():
+        g.learning_scope_snapshot = scope
+    return scope
+
+
 def _learning_intelligence_topics(cur, now=None):
-    return _learning_service._learning_intelligence_topics(cur, now=now)
+    return _learning_service._learning_intelligence_topics(
+        cur, now=now, scope=_current_learning_scope(cur)
+    )
 
 
 def _retention_schedule_for_topic(topic, now=None):
@@ -4805,6 +4977,13 @@ def _review_schedule_payload(cur, now=None):
         cur,
         now=now,
         learning_topics_with_retention=_learning_topics_with_retention,
+        native_question_schedule=_native_spaced_repetition_schedule,
+    )
+
+
+def _native_spaced_repetition_schedule(cur, now=None, *, registry=None):
+    return _learning_service._native_spaced_repetition_schedule(
+        cur, now=now, scope=_current_learning_scope(cur, registry=registry)
     )
 
 
@@ -4821,6 +5000,7 @@ def _learning_profile_payload(cur):
         cur,
         learning_intelligence_payload=_learning_intelligence_payload,
         review_schedule_payload=_review_schedule_payload,
+        scope=_current_learning_scope(cur),
     )
 
 
@@ -4829,6 +5009,130 @@ def _question_payload_from_db(cur, question_id):
         cur,
         question_id,
         question_concepts=_question_concepts,
+    )
+
+
+def _portable_quiz_media_source(reference):
+    """Resolve only an existing DLMS-owned passive quiz/content-pack image."""
+    value = str(reference or "")
+    quiz_prefix = "/quiz-assets/"
+    if value.startswith(quiz_prefix):
+        relative = value[len(quiz_prefix):].lstrip("/")
+        parts = relative.split("/", 1)
+        if len(parts) != 2 or not re.fullmatch(r"[A-Za-z0-9_.-]{1,140}", parts[0]):
+            return None
+        try:
+            return _safe_pack_child(os.path.join(QUIZ_ASSET_FOLDER, parts[0]), parts[1])
+        except ValueError:
+            return None
+
+    pack_match = re.fullmatch(
+        r"/content-packs/([A-Za-z0-9_-]+)/assets/(.+)", value
+    )
+    if pack_match:
+        pack = get_content_pack(pack_match.group(1))
+        if not pack:
+            return None
+        try:
+            return _safe_pack_child(pack["_root"], pack_match.group(2))
+        except (KeyError, ValueError):
+            return None
+    return None
+
+
+def _inspect_portable_quiz_bundle(path):
+    return _portable_quiz_bundle_service.inspect_portable_quiz_bundle(
+        path,
+        validate_raster_image=_decode_raster_image,
+        allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
+    )
+
+
+def _build_portable_quiz_bundle(cur, registry, selected_quiz_ids):
+    return _portable_quiz_bundle_service.build_portable_quiz_bundle(
+        cur,
+        registry,
+        selected_quiz_ids,
+        question_payload_from_db=_question_payload_from_db,
+        resolve_media_source=_portable_quiz_media_source,
+        logo_folder=LOGO_FOLDER,
+        validate_raster_image=_decode_raster_image,
+        allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
+        app_version=APP_VERSION,
+        now=datetime.now,
+    )
+
+
+def _stage_portable_quiz_bundle(upload):
+    return _portable_quiz_bundle_service.stage_portable_quiz_bundle(
+        upload,
+        content_length=request.content_length,
+        staging_folder=PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER,
+        bounded_save_upload=_bounded_save_upload,
+        inspect_bundle=_inspect_portable_quiz_bundle,
+        secure_filename=secure_filename,
+        token_hex=secrets.token_hex,
+        now=datetime.now,
+    )
+
+
+def _load_staged_portable_quiz_bundle(token):
+    return _portable_quiz_bundle_service.load_staged_portable_quiz_bundle(
+        token,
+        staging_folder=PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER,
+        inspect_bundle=_inspect_portable_quiz_bundle,
+    )
+
+
+def _cancel_staged_portable_quiz_bundle(token):
+    return _portable_quiz_bundle_service.remove_portable_quiz_bundle_stage(
+        token, staging_folder=PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER
+    )
+
+
+def _portable_quiz_existing_titles():
+    conn = get_db()
+    try:
+        return [row[0] for row in conn.execute("SELECT title FROM quizzes ORDER BY id")]
+    finally:
+        conn.close()
+
+
+def _set_imported_quiz_folders(published):
+    """Apply portable folder labels only to the exact newly published entries."""
+    with registry_lock:
+        registry = load_registry()
+        updated = [dict(entry) for entry in registry]
+        for item in published:
+            entry = next((
+                candidate for candidate in updated
+                if str(candidate.get("id")) == str(item["quiz_id"])
+                and candidate.get("html") == item["html"]
+            ), None)
+            if entry is None:
+                raise RuntimeError("New portable quiz registry entry is missing")
+            entry["folder"] = item["folder"]
+        save_registry(updated)
+
+
+def _rollback_portable_quiz(quiz_id):
+    deleted_entry, remaining = _delete_quiz_transaction(quiz_id)
+    _cleanup_deleted_quiz_artifacts(deleted_entry, remaining)
+
+
+def _install_staged_portable_quiz_bundle(token):
+    return _portable_quiz_bundle_service.install_staged_portable_quiz_bundle(
+        token,
+        load_staged_bundle=_load_staged_portable_quiz_bundle,
+        existing_titles=_portable_quiz_existing_titles,
+        quiz_asset_folder=QUIZ_ASSET_FOLDER,
+        logo_folder=LOGO_FOLDER,
+        validate_raster_image=_decode_raster_image,
+        allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
+        publish_quiz=_publish_quiz,
+        set_imported_folders=_set_imported_quiz_folders,
+        rollback_published_quiz=_rollback_portable_quiz,
+        remove_stage=_cancel_staged_portable_quiz_bundle,
     )
 
 
@@ -4874,7 +5178,9 @@ def _snapshot_existing_quiz_asset_refs(value, bucket, *, destination_root=None, 
 
 
 def _review_candidates_for_topics(cur, topics):
-    return _learning_service._review_candidates_for_topics(cur, topics)
+    return _learning_service._review_candidates_for_topics(
+        cur, topics, scope=_current_learning_scope(cur)
+    )
 
 
 def _smart_review_candidates(cur):
@@ -4897,6 +5203,37 @@ def _review_select_candidates(candidates, topics, requested):
         topics,
         requested,
         smart_review_select_candidates=_smart_review_select_candidates,
+    )
+
+
+def _adaptive_study_candidates(cur, now=None):
+    return _learning_service._adaptive_study_candidates(
+        cur,
+        now=now,
+        learning_topics_with_retention=_learning_topics_with_retention,
+        scope=_current_learning_scope(cur),
+    )
+
+
+def _adaptive_study_select_candidates(candidates, requested):
+    return _learning_service._adaptive_study_select_candidates(
+        candidates, requested
+    )
+
+
+def _daily_review_plan(cur, now=None):
+    with registry_lock:
+        registry = load_registry()
+        scope = _current_learning_scope(cur, registry=registry)
+    return _learning_service._daily_review_plan(
+        cur,
+        registry=registry,
+        installed_content_packs=content_pack_summary(),
+        now=now,
+        review_schedule_payload=_review_schedule_payload,
+        learning_intelligence_payload=_learning_intelligence_payload,
+        adaptive_study_candidates=_adaptive_study_candidates,
+        scope=scope,
     )
 
 
@@ -4923,6 +5260,7 @@ def _question_diagnostics_payload(cur):
         cur,
         question_concepts=_question_concepts,
         response_selected_labels=_response_selected_labels,
+        scope=_current_learning_scope(cur),
     )
 
 
@@ -5734,6 +6072,8 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
     static_folder=lambda: app.static_folder,
     static_root=lambda: STATIC_ROOT,
     get_db=lambda: get_db(),
+    learning_scope_summary=lambda: _learning_scope_summary(),
+    set_learning_scope=lambda folder, state: _set_learning_scope(folder, state),
     learning_payload_error=lambda: LearningPayloadError,
     persist_attempt=lambda conn, cur, data: _attempt_service.persist_attempt(
         conn,
@@ -5756,6 +6096,17 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
         record_learning_event=_record_learning_event,
         json_module=json,
     ),
+    generated_practice_status=lambda cur, quiz_id: _generated_practice_lifecycle.generated_practice_status(
+        cur, quiz_id, load_registry(),
+    ),
+    complete_generated_practice=lambda cur, data: _generated_practice_lifecycle.complete_generated_practice(
+        cur, data,
+        registry_lock=registry_lock,
+        load_registry=load_registry,
+        save_registry=save_registry,
+        data_folder=DATA_FOLDER,
+        quiz_artifact_names=_quiz_artifact_names,
+    ),
     learning_foundation_summary=lambda cur: _learning_foundation_summary(cur),
     smart_review_candidates=lambda cur: _smart_review_candidates(cur),
     smart_review_select_candidates=lambda candidates, weak, requested: _smart_review_select_candidates(
@@ -5767,6 +6118,11 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
     review_select_candidates=lambda candidates, topics, requested: _review_select_candidates(
         candidates, topics, requested
     ),
+    adaptive_study_candidates=lambda cur: _adaptive_study_candidates(cur),
+    adaptive_study_select_candidates=lambda candidates, requested: _adaptive_study_select_candidates(
+        candidates, requested
+    ),
+    daily_review_plan=lambda cur: _daily_review_plan(cur),
     question_payload_from_db=lambda cur, question_id: _question_payload_from_db(
         cur, question_id
     ),
@@ -5951,7 +6307,9 @@ app.register_blueprint(create_external_ai_blueprint(ExternalAIRouteDependencies(
     build_prompt=lambda topic, question_count, **kwargs: _build_external_ai_quiz_prompt(
         topic, question_count, **kwargs
     ),
-    stage_response=lambda raw_response: _stage_external_ai_quiz_response(raw_response),
+    stage_response=lambda raw_response, **kwargs: _stage_external_ai_quiz_response(
+        raw_response, **kwargs
+    ),
     load_draft=lambda draft_id: _load_external_ai_draft(draft_id),
     update_review_draft=lambda draft_id, review_draft: _update_external_ai_review_draft(
         draft_id, review_draft
@@ -6004,9 +6362,16 @@ app.register_blueprint(create_pdf_import_blueprint(PDFImportRouteDependencies(
     recognize_ocr_source=lambda draft_id, source, cancel_requested: _recognize_pdf_ocr_source(
         draft_id, source, cancel_requested
     ),
+    recognize_ocr_matching_source=lambda draft_id, source, cancel_requested: _recognize_pdf_ocr_matching_source(
+        draft_id, source, cancel_requested
+    ),
     infer_ocr_questions=lambda observations, **kwargs: _ocr_question_parser.infer_screenshot_questions(
         observations, **kwargs
     ),
+    extract_ocr_matching_pairs=lambda observations, **kwargs: _ocr_matching_parser.extract_ocr_matching_pairs(
+        observations, **kwargs
+    ),
+    stage_ocr_matching_review=lambda draft: _stage_ocr_matching_review(draft),
     ocr_staged_source_path=lambda draft_id, source: _pdf_ocr_staged_source_path(
         draft_id, source
     ),
@@ -6149,6 +6514,31 @@ app.register_blueprint(create_quiz_blueprint(
         resolve_logo_filename=lambda filename: resolve_logo_filename(filename),
         debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
         get_db=lambda: get_db(),
+        mixed_quiz_catalog=lambda cur, registry: (
+            _quiz_composition_service.build_mixed_quiz_catalog(cur, registry)
+        ),
+        mixed_quiz_filter_options=lambda catalog: (
+            _quiz_composition_service.mixed_quiz_filter_options(catalog)
+        ),
+        quiz_duplicate_report=lambda cur, registry: (
+            _quiz_duplicate_service.build_quiz_duplicate_report(cur, registry)
+        ),
+        quiz_smart_views=lambda cur, registry: (
+            _quiz_smart_view_service.build_quiz_smart_views(
+                cur,
+                registry,
+                native_schedule=lambda schedule_cur, now=None: (
+                    _native_spaced_repetition_schedule(
+                        schedule_cur, now=now, registry=registry,
+                    )
+                ),
+                bank_ocr_quiz_ids=_ocr_generated_quiz_ids(),
+            )
+        ),
+        question_payload_from_db=lambda cur, question_id: (
+            _question_payload_from_db(cur, question_id)
+        ),
+        publish_quiz=lambda *args, **kwargs: _publish_quiz(*args, **kwargs),
     ),
     QuizEditorDependencies(
         app_version=lambda: APP_VERSION,
@@ -6168,7 +6558,10 @@ app.register_blueprint(create_quiz_blueprint(
         publish_quiz_edit_request=lambda *args, **kwargs: _publish_quiz_edit_request(*args, **kwargs),
         delete_quiz_transaction=lambda *args, **kwargs: _delete_quiz_transaction(*args, **kwargs),
         cleanup_deleted_quiz_artifacts=lambda *args, **kwargs: _cleanup_deleted_quiz_artifacts(*args, **kwargs),
-        rebuild_quiz_html_from_registry=lambda *args, **kwargs: rebuild_quiz_html_from_registry(*args, **kwargs),
+        rebuild_registered_quiz_artifacts=lambda: _rebuild_registered_quiz_artifacts(),
+        question_lineage_for_insert=lambda *args, **kwargs: (
+            _question_identity_service.lineage_for_insert(*args, **kwargs)
+        ),
     ),
     QuizAuthoringDependencies(
         data_folder=lambda: DATA_FOLDER,
@@ -6191,6 +6584,31 @@ app.register_blueprint(create_quiz_blueprint(
         analyze_confidence=lambda text: analyze_confidence(text),
         parse_questions=lambda source: parse_questions(source),
         debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
+    ),
+    QuizBundleDependencies(
+        app_version=lambda: APP_VERSION,
+        get_portal_title=lambda: get_portal_title(),
+        get_db=lambda: get_db(),
+        load_registry=lambda: load_registry(),
+        registry_lock=lambda: registry_lock,
+        export_catalog=lambda cur, registry: (
+            _portable_quiz_bundle_service.portable_quiz_export_catalog(cur, registry)
+        ),
+        build_export=lambda cur, registry, selected: (
+            _build_portable_quiz_bundle(cur, registry, selected)
+        ),
+        stage_upload=lambda upload: _stage_portable_quiz_bundle(upload),
+        load_staged=lambda token: _load_staged_portable_quiz_bundle(token),
+        plan_import=lambda manifest, titles: (
+            _portable_quiz_bundle_service.plan_portable_quiz_bundle_import(
+                manifest, titles
+            )
+        ),
+        install_staged=lambda token: _install_staged_portable_quiz_bundle(token),
+        cancel_staged=lambda token: _cancel_staged_portable_quiz_bundle(token),
+        upload_max_bytes=lambda: PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES,
+        multipart_overhead_bytes=lambda: UPLOAD_MULTIPART_OVERHEAD_BYTES,
+        print_message=lambda *args, **kwargs: print(*args, **kwargs),
     ),
 ))
 

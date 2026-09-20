@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review Portable Quiz Bundle - {{ portal_title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home portable-bundle-page">
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" id="dashboardSidebar">
+        <div class="dashboard-brand"><div class="dashboard-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+        <nav class="dashboard-nav" aria-label="Primary navigation"><a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a><a class="dashboard-nav-item active" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a><a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a><a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a><a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a><a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a></nav>
+        <div class="dashboard-nav-section-label"><span>System</span></div><nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a></nav>
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button><div class="dashboard-sidebar-version">DLMS v{{ app_version }}</div>
+    </aside>
+
+    <main class="dashboard-main portable-bundle-main">
+        <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><h1>Review Portable Bundle</h1><p>Validate <span>•</span> Preview <span>•</span> Confirm</p></div></header>
+        <section class="dashboard-panel portable-bundle-intro"><div><span class="library-eyebrow">VALIDATED IMPORT</span><h2>{{ metadata.uploaded_name }}</h2><p>Review exactly what DLMS will create. Existing quizzes are never overwritten or merged.</p></div><a class="build-secondary-link" href="/quiz-bundles">Back to Quiz Bundles</a></section>
+        {% if error %}<div class="portable-bundle-error" role="alert">{{ error }}</div>{% endif %}
+
+        <section class="library-summary-grid portable-bundle-summary" aria-label="Bundle summary">
+            <div class="library-stat-card"><span>Quizzes</span><strong>{{ report.quiz_count }}</strong><small>to import</small></div>
+            <div class="library-stat-card"><span>Questions</span><strong>{{ report.question_count }}</strong><small>choice and matching</small></div>
+            <div class="library-stat-card"><span>Media</span><strong>{{ report.asset_count }}</strong><small>validated images</small></div>
+            <div class="library-stat-card"><span>Format</span><strong>v{{ report.manifest.schema_version }}</strong><small>portable quiz bundle</small></div>
+        </section>
+
+        <section class="portable-bundle-review-list" aria-label="Quizzes to import">
+            {% for plan in plans %}
+            <article class="dashboard-panel portable-bundle-review-quiz">
+                <div class="portable-bundle-review-heading"><div><span>Quiz {{ loop.index }}</span><h2>{{ plan.import_title }}</h2></div>{% if plan.renamed %}<span class="portable-bundle-rename-badge">RENAMED</span>{% endif %}</div>
+                {% if plan.renamed %}<p class="portable-bundle-collision">The source title “{{ plan.source_title }}” already exists. This copy will use “{{ plan.import_title }}”.</p>{% endif %}
+                <div class="portable-bundle-review-meta"><span>Folder: <strong>{{ plan.folder }}</strong></span><span>{{ plan.question_count }} question{% if plan.question_count != 1 %}s{% endif %}</span><span>{{ plan.choice_count }} choice</span><span>{{ plan.matching_count }} matching</span><span>{{ plan.asset_count }} media file{% if plan.asset_count != 1 %}s{% endif %}</span></div>
+                <details><summary>Preview questions</summary><ol>{% for question in plan.quiz.questions %}<li><strong>{{ question.type|capitalize }}:</strong> {{ question.question }}</li>{% endfor %}</ol></details>
+            </article>
+            {% endfor %}
+        </section>
+
+        <section class="dashboard-panel portable-bundle-confirm-panel">
+            <div><strong>Ready to publish</strong><p>DLMS will create new quiz IDs and artifacts through the normal publisher. Learning history, scores, attempts, and scheduling state are not imported.</p></div>
+            <div class="portable-bundle-confirm-actions">
+                <form method="POST" action="/quiz-bundles/import/{{ token }}/cancel"><button class="library-secondary-action" type="submit">Cancel Import</button></form>
+                <form method="POST" action="/quiz-bundles/import/{{ token }}/confirm"><label><input type="checkbox" name="confirm_import" value="yes" required> Create these quizzes</label><button class="library-primary-action" type="submit">Import Portable Bundle</button></form>
+            </div>
+        </section>
+    </main>
+</div>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

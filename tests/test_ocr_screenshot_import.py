@@ -681,7 +681,8 @@ class OCRScreenshotImportTests(unittest.TestCase):
         self.assertIn("2–26 choices and multiple correct answers", html)
         self.assertIn("Selective scanned-page OCR", html)
         self.assertIn("choose up to 25", html)
-        self.assertIn("not glossary extraction", html)
+        self.assertIn("Terminology and matching OCR", html)
+        self.assertIn("scanned terminology PDFs", html)
 
     def test_cancellation_registry_signals_active_owner_without_cross_task_effects(self):
         registry = ocr_screenshots.OCRTaskCancellationRegistry()

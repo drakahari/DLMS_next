@@ -31,6 +31,13 @@ let quizRecoveryController = null;
 let quizRecoveryReady = false;
 let studyLearningEventSequence = 0;
 const studyLearningEventSaves = new Map();
+let quizContentFingerprint = null;
+let generatedPracticeStatus = null;
+let studyCompletionInProgress = false;
+let studyCompletionFailed = false;
+let studyCompletionMessage = "";
+let studyCompletionRevision = 0;
+let pendingGeneratedPracticeCompletion = null;
 
 function loadStudyAIConfig() {
     if (studyAIConfigRequest) return studyAIConfigRequest;
@@ -88,7 +95,11 @@ function ensureStudyLearningEventStatus() {
     retry.className = "study-learning-save-retry";
     retry.textContent = "Retry";
     retry.addEventListener("click", () => {
-        void retryStudyLearningEventSaves();
+        if (Array.from(studyLearningEventSaves.values()).some(record => record.state === "failed")) {
+            void retryStudyLearningEventSaves();
+        } else {
+            void finishGeneratedPracticeReview();
+        }
     });
     status.appendChild(retry);
 
@@ -102,27 +113,42 @@ function updateStudyLearningEventStatus() {
     const retrying = Array.from(studyLearningEventSaves.values())
         .some(record => record.retrying === true);
     const status = document.getElementById("studyLearningEventStatus")
-        || ((failed.length || retrying) ? ensureStudyLearningEventStatus() : null);
+        || ((failed.length || retrying || studyCompletionMessage || studyCompletionInProgress)
+            ? ensureStudyLearningEventStatus() : null);
     if (!status) return;
 
     const message = status.querySelector(".study-learning-save-message");
     const retry = status.querySelector(".study-learning-save-retry");
-    if (!failed.length && !retrying) {
+    if (!failed.length && !retrying && !studyCompletionMessage && !studyCompletionInProgress) {
         status.hidden = true;
         return;
     }
 
     status.hidden = false;
-    status.classList.toggle("is-retrying", retrying && !failed.length);
+    status.classList.toggle("is-retrying", (retrying || studyCompletionInProgress) && !failed.length);
     if (message) {
-        message.textContent = retrying && !failed.length
-            ? "Retrying learning progress save…"
-            : "Learning progress was not saved.";
+        if (failed.length) {
+            message.textContent = studyCompletionMessage || "Learning progress was not saved.";
+        } else if (studyCompletionInProgress) {
+            message.textContent = studyLearningEventSaves.size
+                ? "Waiting for learning progress to save…"
+                : "Saving review completion…";
+        } else if (retrying) {
+            message.textContent = "Retrying learning progress save…";
+        } else {
+            message.textContent = studyCompletionMessage;
+        }
     }
     if (retry) {
-        retry.hidden = failed.length === 0;
-        retry.disabled = retrying;
+        retry.hidden = failed.length === 0 && !studyCompletionFailed;
+        retry.disabled = retrying || studyCompletionInProgress;
     }
+}
+
+function startStudyLearningEventSave(record, retrying = false) {
+    const request = saveStudyLearningEvent(record, retrying);
+    record.savePromise = request;
+    return request;
 }
 
 async function saveStudyLearningEvent(record, retrying = false) {
@@ -158,7 +184,7 @@ async function saveStudyLearningEvent(record, retrying = false) {
         if (latest && latest.eventId === record.eventId) {
             studyLearningEventSaves.delete(record.eventId);
             updateStudyLearningEventStatus();
-            checkpointQuizRecovery();
+            if (!completeStudyRecoveryIfReady()) checkpointQuizRecovery();
         }
         return true;
     } catch (error) {
@@ -183,11 +209,14 @@ async function retryStudyLearningEventSaves() {
         record.retrying = true;
     });
     updateStudyLearningEventStatus();
-    await Promise.all(failed.map(record => saveStudyLearningEvent(record, true)));
+    await Promise.all(failed.map(record => startStudyLearningEventSave(record, true)));
 }
 
 async function recordStudyLearningEvent(q, wasCorrect, selected) {
     if (examMode || !q || !window.QUIZ_ID) return;
+    studyCompletionRevision += 1;
+    studyCompletionFailed = false;
+    studyCompletionMessage = "";
     const eventId = createStudyLearningEventId();
     const payload = {
         quizId: window.QUIZ_ID,
@@ -207,15 +236,24 @@ async function recordStudyLearningEvent(q, wasCorrect, selected) {
     };
     studyLearningEventSaves.set(record.eventId, record);
     checkpointQuizRecovery();
-    await saveStudyLearningEvent(record);
+    await startStudyLearningEventSave(record);
 }
 
 
 
 /* =====================================================
-   SAFELY RELOCATE SUBMIT BUTTON (OLD QUIZZES → NEW UI)
+   LEGACY QUIZ HTML COMPATIBILITY
 ===================================================== */
 document.addEventListener("DOMContentLoaded", () => {
+    // Existing saved quiz pages may still contain the old generated subtitle.
+    // New pages omit it in build_quiz_html; remove only that known legacy markup.
+    const hero = document.querySelector("#quizWrapper > .container > .hero-title");
+    const subtitle = hero?.querySelector(":scope > span");
+    if (subtitle && subtitle.textContent.trim() === String(window.quiz_title || "").trim()) {
+        if (subtitle.previousElementSibling?.tagName === "BR") subtitle.previousElementSibling.remove();
+        subtitle.remove();
+    }
+
     // Find submit button
     const submitBtn = document.getElementById("submitBtn");
     if (!submitBtn) return;   // nothing to do
@@ -288,6 +326,13 @@ async function loadQuiz() {
         rawQuiz = parsed.map(q => ({...q, type: (q.type || "choice").toLowerCase()}));
         quiz = [];
         try {
+            const statusResponse = await fetch(`/api/generated-practice/status/${window.QUIZ_ID}`, {cache: "no-store"});
+            if (!statusResponse.ok) throw new Error("Generated Practice status unavailable");
+            generatedPracticeStatus = await statusResponse.json();
+        } catch (_error) {
+            generatedPracticeStatus = null;
+        }
+        try {
             const recovery = await loadQuizRecoveryRuntime();
             if (!recovery) throw new Error("Quiz recovery module did not initialize");
             const fingerprint = await recovery.quizFingerprint({
@@ -296,6 +341,7 @@ async function loadQuiz() {
                 quizFile: file,
                 examMinutes: examDurationMinutes,
             });
+            quizContentFingerprint = fingerprint;
             quizRecoveryController = recovery.createController({
                 quizId: window.QUIZ_ID,
                 quizFile: file,
@@ -304,6 +350,13 @@ async function loadQuiz() {
                 rawQuiz,
                 capture: captureQuizRecoveryState,
                 restore: restoreQuizRecoveryState,
+                isCompleted: record => (
+                    generatedPracticeStatus?.is_transient === true
+                        ? false
+                        : generatedPracticeStatus === null
+                            ? false
+                            : studyRecoveryRecordIsComplete(record, rawQuiz)
+                ),
                 finishSubmission: recoveredAttempt => { void submitQuiz(true, recoveredAttempt); },
                 startOver: () => {},
                 notify: showQuizRecoveryNotice,
@@ -471,9 +524,13 @@ function renderQuestion() {
     // Matching v1 is intentionally kept out of AI/Anki single-choice helpers.
     // Those workflows assume A-Z choices and can be extended separately later.
     const studyAiBtn = document.getElementById("studyAiBtn");
+    const studyCopyBtn = document.getElementById("studyCopyBtn");
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
     if (studyAiBtn) studyAiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
+    if (studyCopyBtn) studyCopyBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
     if (studyAnkiBtn) studyAnkiBtn.style.display = (!examMode && q.type === "choice") ? "inline-block" : "none";
+    const copyStatus = document.getElementById("questionCopyStatus");
+    if (copyStatus) copyStatus.textContent = "";
 
     if (q.type === "hotspot") {
         renderHotspotQuestion(q, key, selected, choicesEl);
@@ -1054,6 +1111,25 @@ function updateNavButtons() {
         const isLast = (index === quiz.length - 1);
         nextBtn.style.display = isLast ? "none" : "inline-block";
     }
+
+    const showFinish = generatedPracticeStatus?.is_transient === true
+        && !examMode && index === quiz.length - 1;
+    let finishBtn = document.getElementById("finishReviewBtn");
+    if (showFinish && !finishBtn) {
+        const nav = nextBtn?.parentElement || document.querySelector(".quiz-nav-buttons");
+        if (nav) {
+            finishBtn = document.createElement("button");
+            finishBtn.id = "finishReviewBtn";
+            finishBtn.type = "button";
+            finishBtn.textContent = "Finish Review";
+            finishBtn.addEventListener("click", () => { void finishGeneratedPracticeReview(); });
+            nav.appendChild(finishBtn);
+        }
+    }
+    if (finishBtn) {
+        finishBtn.style.display = showFinish ? "inline-block" : "none";
+        finishBtn.disabled = studyCompletionInProgress;
+    }
 }
 
 /* =====================================================
@@ -1111,36 +1187,39 @@ function updateTimerLabelUI() {
 ===================================================== */
 function updateStudyModeBadge() {
     let badge = document.getElementById("studyModeBadge");
+    let sessionIntro = document.getElementById("studySessionIntro");
 
     if (!examMode) {
+        if (!sessionIntro) {
+            const topLeft = document.querySelector(".top-bar .top-left");
+            if (topLeft) {
+                sessionIntro = document.createElement("div");
+                sessionIntro.id = "studySessionIntro";
+                sessionIntro.className = "study-session-intro";
+                sessionIntro.innerHTML = `
+                    <span class="study-session-eyebrow">Study Session</span>
+                    <h3>Learn at your own pace</h3>
+                    <p>Untimed practice with feedback as you answer.</p>
+                `;
+                topLeft.appendChild(sessionIntro);
+            }
+        }
         if (!badge) {
             badge = document.createElement("div");
             badge.id = "studyModeBadge";
-            badge.innerHTML = `
-                <div style="font-size:16px;font-weight:600;letter-spacing:.3px">
-                    📘 Study Mode
-                </div>
-                <div style="font-size:12px;opacity:.9;margin-top:2px">
-                    Learn at your own pace
-                </div>
-            `;
-
-            badge.style.padding = "10px 14px";
-            badge.style.borderRadius = "8px";
-            badge.style.background = "rgba(255,255,255,0.15)";
-            badge.style.border = "1px solid rgba(255,255,255,0.25)";
-            badge.style.textAlign = "center";
-            badge.style.boxShadow = "0 0 10px rgba(0,0,0,.35)";
-
+            badge.className = "study-mode-badge";
+            badge.innerHTML = '<span aria-hidden="true">📘</span><span>Study Mode</span>';
 
             const timer = document.getElementById("timer");
             if (timer && timer.parentNode) {
                 timer.parentNode.insertBefore(badge, timer.nextSibling);
             }
         }
-        badge.style.display = "block";
+        if (sessionIntro) sessionIntro.hidden = false;
+        if (badge) badge.hidden = false;
     } else {
-        if (badge) badge.style.display = "none";
+        if (sessionIntro) sessionIntro.hidden = true;
+        if (badge) badge.hidden = true;
     }
 }
 
@@ -1337,6 +1416,174 @@ function recoverySelectedForQuestion(questionIndex) {
     return Array.isArray(answer) ? answer.slice() : [];
 }
 
+function studyAnswerIsComplete(question, selected, matchingVariant = null) {
+    if (!question) return false;
+    if (question.type === "hotspot") {
+        return Boolean(
+            selected
+            && typeof selected === "object"
+            && !Array.isArray(selected)
+            && Number.isFinite(Number(selected.x))
+            && Number.isFinite(Number(selected.y))
+        );
+    }
+    if (question.type === "matching") {
+        if (!selected || typeof selected !== "object" || Array.isArray(selected)) return false;
+        const expectedCount = Array.isArray(matchingVariant?.sourcePairIndexes)
+            ? matchingVariant.sourcePairIndexes.length
+            : Array.isArray(question.pairs) ? question.pairs.length : 0;
+        return expectedCount >= 2
+            && Array.from({length: expectedCount}, (_, pairIndex) => String(pairIndex))
+                .every(pairIndex => Object.hasOwn(selected, pairIndex));
+    }
+    if (!Array.isArray(selected)) return false;
+    const correctCount = Array.isArray(question.correct) ? question.correct.length : 0;
+    return correctCount > 1 ? selected.length === correctCount : selected.length === 1;
+}
+
+function studyRecoveryRecordIsComplete(record, questions = rawQuiz) {
+    if (
+        record?.session?.mode !== "Study"
+        || record.session.phase !== "active"
+        || record.pendingAttempt !== null
+        || !Array.isArray(record.unacknowledgedStudyEvents)
+        || record.unacknowledgedStudyEvents.length !== 0
+        || !Array.isArray(questions)
+        || questions.length === 0
+    ) return false;
+    return questions.every((question, questionIndex) => {
+        const answer = record.answers?.[String(questionIndex)];
+        return answer && studyAnswerIsComplete(
+            question,
+            answer.selected,
+            record.matchingVariants?.[String(questionIndex)] || null,
+        );
+    });
+}
+
+function generatedPracticeStudyAnswers() {
+    return quiz.map((question, questionIndex) => {
+        let selected = userAnswers[`q${questionIndex}`];
+        if (question.type === "hotspot") {
+            selected = selected ? {x: Number(selected.x), y: Number(selected.y)} : null;
+        } else if (question.type === "matching") {
+            selected = selected && typeof selected === "object" ? {...selected} : {};
+        } else {
+            selected = Array.isArray(selected)
+                ? selected.map(value => String.fromCharCode(65 + value)) : [];
+        }
+        return {ordinal: questionIndex + 1, selected};
+    });
+}
+
+async function requestGeneratedPracticeCompletion(mode, reference) {
+    const response = await fetch("/api/generated-practice/complete", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            quizId: window.QUIZ_ID,
+            mode,
+            reference,
+            questionCount: quiz.length,
+            fingerprint: quizContentFingerprint,
+            answers: mode === "Study" ? generatedPracticeStudyAnswers() : undefined,
+        }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok !== true) {
+        throw new Error(data.error || "Review completion could not be saved.");
+    }
+    generatedPracticeStatus = {is_transient: Boolean(data.applicable), completed: Boolean(data.applicable)};
+    return data;
+}
+
+function completeStudyRecoveryIfReady() {
+    if (
+        examMode
+        || studyLearningEventSaves.size !== 0
+        || !quiz.length
+        || generatedPracticeStatus?.is_transient !== false
+    ) return false;
+    const complete = quiz.every((question, questionIndex) => studyAnswerIsComplete(
+        question,
+        userAnswers[`q${questionIndex}`],
+        question.type === "matching" ? question._matching_variant : null,
+    ));
+    if (!complete) return false;
+    if (quizRecoveryController?.ownsState) quizRecoveryController.complete();
+    return true;
+}
+
+async function finishGeneratedPracticeReview() {
+    if (
+        examMode
+        || generatedPracticeStatus?.is_transient !== true
+        || !quiz.length
+        || index !== quiz.length - 1
+        || studyCompletionInProgress
+    ) return false;
+    studyCompletionFailed = false;
+    studyCompletionMessage = "";
+    studyCompletionInProgress = true;
+    updateNavButtons();
+    updateStudyLearningEventStatus();
+    try {
+        // Study answers can save concurrently. Wait for every request already
+        // started before asking the server to verify the completed session.
+        while (true) {
+            const saving = Array.from(studyLearningEventSaves.values())
+                .filter(record => record.state === "saving");
+            if (!saving.length) break;
+            await Promise.all(saving.map(record => record.savePromise));
+        }
+        if (studyLearningEventSaves.size !== 0) {
+            studyCompletionMessage = "Retry the failed Study save, then select Finish Review.";
+            return false;
+        }
+        const incompleteIndex = quiz.findIndex((question, questionIndex) => !studyAnswerIsComplete(
+            question,
+            userAnswers[`q${questionIndex}`],
+            question.type === "matching" ? question._matching_variant : null,
+        ));
+        if (incompleteIndex !== -1) {
+            studyCompletionMessage = `Question ${incompleteIndex + 1} needs a complete answer before you can finish this review.`;
+            return false;
+        }
+        const revision = studyCompletionRevision;
+        const sessionId = learningSessionId;
+        const completion = await requestGeneratedPracticeCompletion("Study", sessionId);
+        if (completion.applicable !== true) {
+            throw new Error("This quiz is no longer a Generated Practice review. Reload it before continuing.");
+        }
+        if (
+            revision !== studyCompletionRevision
+            || studyLearningEventSaves.size !== 0
+            || sessionId !== learningSessionId
+        ) {
+            studyCompletionMessage = "Answers changed while finishing. Select Finish Review again after they save.";
+            checkpointQuizRecovery();
+            return false;
+        }
+        if (quizRecoveryController?.ownsState && quizRecoveryController.complete() === false) {
+            studyCompletionFailed = true;
+            studyCompletionMessage = "Review saved, but this browser could not clear its resume point. Select Finish Review to retry.";
+            return false;
+        }
+        studyCompletionMessage = "Review completed. You can return to Dashboard or Quiz Library.";
+        return true;
+    } catch (error) {
+        studyCompletionFailed = true;
+        studyCompletionMessage = error.message || "Review completion was not saved. Select Finish Review to retry.";
+        console.warn("Generated Practice completion save failed:", error);
+        checkpointQuizRecovery();
+        return false;
+    } finally {
+        studyCompletionInProgress = false;
+        updateStudyLearningEventStatus();
+        updateNavButtons();
+    }
+}
+
 function captureQuizRecoveryState() {
     const answers = {};
     Object.keys(userAnswers).forEach(key => {
@@ -1385,8 +1632,12 @@ function captureQuizRecoveryState() {
 }
 
 function showActiveQuizUI() {
+    const questionTools = document.getElementById("questionTools");
+    if (questionTools) questionTools.style.display = examMode ? "none" : "block";
     const studyAiBtn = document.getElementById("studyAiBtn");
     if (studyAiBtn) studyAiBtn.style.display = examMode ? "none" : "inline-block";
+    const studyCopyBtn = document.getElementById("studyCopyBtn");
+    if (studyCopyBtn) studyCopyBtn.style.display = examMode ? "none" : "inline-block";
     const studyAnkiBtn = document.getElementById("studyAnkiBtn");
     if (studyAnkiBtn) studyAnkiBtn.style.display = examMode ? "none" : "inline-block";
     const submitBtn = document.querySelector("button[onclick='submitQuiz()']");
@@ -1427,6 +1678,10 @@ function restoreQuizRecoveryState(record) {
     learningSessionId = record.learningSessionId;
     studyLearningEventSequence = 0;
     studyLearningEventSaves.clear();
+    studyCompletionInProgress = false;
+    studyCompletionFailed = false;
+    studyCompletionMessage = "";
+    studyCompletionRevision = 0;
     record.unacknowledgedStudyEvents.forEach(saved => {
         studyLearningEventSaves.set(saved.eventId, {
             eventId: saved.eventId,
@@ -1451,6 +1706,7 @@ function restoreQuizRecoveryState(record) {
     if (overlay) overlay.classList.toggle("show", paused);
     document.body.classList.toggle("blurred", paused);
     renderQuestion();
+    if (!examMode) queueMicrotask(() => completeStudyRecoveryIfReady());
     if (record.session.phase === "submitting") {
         stopExamTimer();
     } else if (examMode) {
@@ -1474,6 +1730,11 @@ function startQuiz(isExam) {
     learningSessionId = createLearningSessionId();
     studyLearningEventSequence = 0;
     studyLearningEventSaves.clear();
+    studyCompletionInProgress = false;
+    studyCompletionFailed = false;
+    studyCompletionMessage = "";
+    studyCompletionRevision = 0;
+    pendingGeneratedPracticeCompletion = null;
     updateStudyLearningEventStatus();
 
     console.log("START QUIZ. examMode =", examMode);
@@ -1602,6 +1863,10 @@ function renderExamResult(pending, state) {
         : saving
             ? `<button disabled aria-disabled="true">Saving Attempt…</button>`
             : `<button onclick="retryExamAttemptSave()">Retry Saving Attempt</button>`;
+    const completionNotice = saved && pendingGeneratedPracticeCompletion
+        ? `<p role="alert">The Exam attempt was saved, but Generated Practice completion was not recorded.</p>
+           <button type="button" onclick="retryGeneratedPracticeCompletion()">Retry Review Completion</button>`
+        : "";
 
     resultDiv.classList.remove("hidden");
     resultDiv.style.display = "block";
@@ -1610,6 +1875,7 @@ function renderExamResult(pending, state) {
         <p><b>Score:</b> ${pending.score} / ${pending.total} (${pending.percent}%)</p>
         ${persistenceStatus}
         ${persistenceAction}
+        ${completionNotice}
 
         <button onclick="location.href='/history'">
             📜 View Full History
@@ -1661,6 +1927,17 @@ async function savePendingExamAttempt() {
         pendingExamAttempt = null;
         quizRecoveryController?.complete();
         renderExamResult(pending, "saved");
+        if (generatedPracticeStatus?.is_transient !== false) {
+            try {
+                await requestGeneratedPracticeCompletion("Exam", pending.attemptId);
+            } catch (completionError) {
+                pendingGeneratedPracticeCompletion = {
+                    mode: "Exam", reference: pending.attemptId, pending,
+                };
+                renderExamResult(pending, "saved");
+                console.warn("Generated Practice completion save failed:", completionError);
+            }
+        }
         console.log("RESULT UI RENDERED. Attempt ID:", pending.attemptId);
     } catch (error) {
         console.error("Attempt persistence failed:", error);
@@ -1668,6 +1945,18 @@ async function savePendingExamAttempt() {
         checkpointQuizRecovery();
     } finally {
         examAttemptSaveInProgress = false;
+    }
+}
+
+async function retryGeneratedPracticeCompletion() {
+    const pending = pendingGeneratedPracticeCompletion;
+    if (!pending) return;
+    try {
+        await requestGeneratedPracticeCompletion(pending.mode, pending.reference);
+        pendingGeneratedPracticeCompletion = null;
+        renderExamResult(pending.pending, "saved");
+    } catch (error) {
+        console.warn("Generated Practice completion retry failed:", error);
     }
 }
 
@@ -2039,94 +2328,101 @@ function resetDatabase() {
 }
 
 /* =====================================================
-   Review Study Question with AI (NEW FEATURE)
+   Study question AI prompt and actions
 ===================================================== */
 function copyStudyAIPromptSynchronously(text) {
+    const previousFocus = document.activeElement;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     const textarea = document.createElement("textarea");
     textarea.value = text;
     textarea.style.position = "fixed";
     textarea.style.left = "-9999px";
     textarea.style.top = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
 
     try {
+        document.body.appendChild(textarea);
+        textarea.focus({preventScroll: true});
+        textarea.select();
         return document.execCommand("copy");
     } finally {
-        document.body.removeChild(textarea);
+        if (textarea.parentNode) textarea.parentNode.removeChild(textarea);
+        if (previousFocus?.isConnected) previousFocus.focus({preventScroll: true});
+        if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+            window.scrollTo(scrollX, scrollY);
+        }
     }
 }
 
-window.reviewCurrentQuestionWithAI = function() {
+async function copyStudyAIPromptWithFallback(text) {
     try {
-        const aiConfig = studyAIConfig;
-
-        if (!aiConfig) {
-            loadStudyAIConfig();
-            alert("AI Helper settings are still loading. Please try again.");
-            return;
+        if (window.isSecureContext && typeof navigator.clipboard?.writeText === "function") {
+            await navigator.clipboard.writeText(text);
+            return true;
         }
+    } catch (error) {
+        console.warn("[AI Study Mode] Modern clipboard copy failed; trying fallback:", error);
+    }
+    return copyStudyAIPromptSynchronously(text) === true;
+}
 
-        if (!aiConfig || !aiConfig.ai_helper_enabled) {
-            alert("AI Helper is disabled in Settings.");
-            return;
+function buildCurrentQuestionAIPrompt() {
+    if (examMode || !quiz[index] || quiz[index].type !== "choice") {
+        throw new Error("AI review is available only for Study Mode choice questions.");
+    }
+
+    // Read the same rendered question context used by the existing AI review action.
+    const questionEl = document.getElementById("qText");
+    if (!questionEl) {
+        throw new Error("Could not find question text on page");
+    }
+
+    const questionText = questionEl.innerText.trim();
+
+    // Get all answer choices
+    const choiceEls = document.querySelectorAll("#choices label, #choices div, #choices button");
+    let choicesText = "";
+
+    choiceEls.forEach(el => {
+        const txt = el.innerText.trim();
+        if (txt) {
+            choicesText += txt + "\n";
         }
+    });
 
-        // =========================
-        // READ CURRENT QUESTION FROM DOM
-        // =========================
-        const questionEl = document.getElementById("qText");
-        if (!questionEl) {
-            throw new Error("Could not find question text on page");
-        }
+    // Try to find correct answer (Study Mode usually shows it)
+    let correctText = "(Correct answer not visible)";
+    const correctEl = document.querySelector(".correct, .correct-answer");
+    if (correctEl) {
+        correctText = correctEl.innerText.trim();
+    }
 
-        const questionText = questionEl.innerText.trim();
+    let userAnswer = "Not answered yet — I am studying this question and want help understanding it.";
 
-        // Get all answer choices
-        const choiceEls = document.querySelectorAll("#choices label, #choices div, #choices button");
-        let choicesText = "";
+    // Study Mode marks the chosen answer visually.
+    // Look for the selected/highlighted answer inside #choices.
+    const selectedChoice = Array.from(document.querySelectorAll("#choices button, #choices div, #choices label"))
+        .find(el => {
+            const cls = (el.className || "").toString().toLowerCase();
+            const style = (el.getAttribute("style") || "").toLowerCase();
 
-        choiceEls.forEach(el => {
-            const txt = el.innerText.trim();
-            if (txt) {
-                choicesText += txt + "\n";
-            }
+            return (
+                cls.includes("selected") ||
+                cls.includes("wrong") ||
+                cls.includes("incorrect") ||
+                cls.includes("correct") ||
+                style.includes("green") ||
+                style.includes("red") ||
+                style.includes("00ff80") ||
+                style.includes("ff4d4d")
+            );
         });
 
-        // Try to find correct answer (Study Mode usually shows it)
-        let correctText = "(Correct answer not visible)";
-        const correctEl = document.querySelector(".correct, .correct-answer");
-        if (correctEl) {
-            correctText = correctEl.innerText.trim();
-        }
+    if (selectedChoice) {
+        userAnswer = selectedChoice.innerText.trim();
+    }
 
-        let userAnswer = "Not answered yet — I am studying this question and want help understanding it.";
-
-        // Study Mode marks the chosen answer visually.
-        // Look for the selected/highlighted answer inside #choices.
-        const selectedChoice = Array.from(document.querySelectorAll("#choices button, #choices div, #choices label"))
-            .find(el => {
-                const cls = (el.className || "").toString().toLowerCase();
-                const style = (el.getAttribute("style") || "").toLowerCase();
-
-                return (
-                    cls.includes("selected") ||
-                    cls.includes("wrong") ||
-                    cls.includes("incorrect") ||
-                    cls.includes("correct") ||
-                    style.includes("green") ||
-                    style.includes("red") ||
-                    style.includes("00ff80") ||
-                    style.includes("ff4d4d")
-                );
-            });
-
-        if (selectedChoice) {
-            userAnswer = selectedChoice.innerText.trim();
-        }
-
-        const questionBlock = `Question
+    const questionBlock = `Question
 ---------------------
 ${questionText}
 
@@ -2142,7 +2438,7 @@ ${userAnswer}`;
 // =========================
 // STUDY MODE AI PROMPT
 // =========================
-const finalPrompt = `I am studying this question and want help understanding it.
+    return `I am studying this question and want help understanding it.
 
 Please:
 1. Explain the core concept being tested in simple terms.
@@ -2154,6 +2450,24 @@ Please:
 ---
 
 ${questionBlock.trim()}`;
+}
+
+window.reviewCurrentQuestionWithAI = function() {
+    try {
+        const aiConfig = studyAIConfig;
+
+        if (!aiConfig) {
+            loadStudyAIConfig();
+            alert("AI Helper settings are still loading. Please try again.");
+            return;
+        }
+
+        if (!aiConfig.ai_helper_enabled) {
+            alert("AI Helper is disabled in Settings.");
+            return;
+        }
+
+        const finalPrompt = buildCurrentQuestionAIPrompt();
 
         // =========================
         // COPY TO CLIPBOARD
@@ -2187,5 +2501,19 @@ ${questionBlock.trim()}`;
     } catch (err) {
         console.error("[AI Study Mode] Failed:", err);
         alert("AI feature failed:\n\n" + err.message);
+    }
+};
+
+window.copyCurrentQuestion = async function() {
+    const status = document.getElementById("questionCopyStatus");
+    if (status) status.textContent = "";
+    try {
+        const prompt = buildCurrentQuestionAIPrompt();
+        const copied = await copyStudyAIPromptWithFallback(prompt);
+        if (!copied) throw new Error("Clipboard copy failed.");
+        if (status) status.textContent = "Copied to clipboard";
+    } catch (error) {
+        console.warn("[AI Study Mode] Clipboard copy failed:", error);
+        if (status) status.textContent = "Could not copy question. Check clipboard permission and try again.";
     }
 };

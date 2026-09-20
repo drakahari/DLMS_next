@@ -4,8 +4,10 @@
 
 <section class="help-panel help-anchor" id="tools">
 <h2>System Tools</h2>
-<p>Open <strong>Settings → System Tools</strong> for advanced content and page-maintenance actions. The primary tool, <strong>Rebuild All Quiz Pages</strong>, refreshes generated HTML quiz wrappers after an upgrade; it does not rewrite questions, answers, quiz IDs, or attempt history.</p>
-<figure class="help-shot"><a href="/static/help_assets/system-tools.webp" target="_blank" rel="noopener"><img src="/static/help_assets/system-tools.webp" alt="System Tools page with Rebuild All Quiz Pages action" class="help-screenshot-052b" width="1976" height="1014" loading="eager"></a><figcaption>Use Rebuild All Quiz Pages when instructed after an upgrade; it is not part of ordinary quiz creation.</figcaption></figure>
+<p>Open <strong>Settings → System Tools</strong> for advanced content and page-maintenance actions. <strong>Rebuild All Quiz Pages</strong> is an occasional maintenance and recovery tool—not a routine update step. You normally do not need to run it after updating DLMS.</p>
+<p>Use it when DLMS specifically instructs you to refresh generated quiz pages, when existing quiz pages look stale or inconsistent with the current quiz interface, or when their generated HTML or playable JSON needs to be refreshed or repaired.</p>
+<p>The tool regenerates only derived HTML and playable JSON page files from canonical saved quiz data. It does not rewrite questions, answers, correctness, quiz or question IDs, concepts, Question Identity lineage, folders, source or provenance details, scores, attempt history, or learning events.</p>
+<figure class="help-shot"><a href="/static/help_assets/system-tools.webp" target="_blank" rel="noopener"><img src="/static/help_assets/system-tools.webp" alt="System Tools page with Rebuild All Quiz Pages action" class="help-screenshot-052b" width="1976" height="1014" loading="eager"></a><figcaption>Use Rebuild All Quiz Pages only when instructed or when existing generated quiz pages need repair or a refresh.</figcaption></figure>
 <p>System Tools also provides a secondary route to Image Study Editor. Ordinary study, quiz creation, and Study Pack use do not require System Tools.</p>
 </section>
 
@@ -16,7 +18,7 @@
 
 <h3>Portable Backup</h3>
 <p><strong>Create &amp; Download Backup</strong> creates a portable ZIP snapshot and downloads it. The snapshot includes persistent quizzes and generated runtime data, the database and attempt history, settings, installed Study/Content Packs, quiz assets and persistent logos, PDF &amp; Image Import source banks, PDF and image-builder drafts, Law Study content, and saved backgrounds.</p>
-<p>The Quiz Library’s <strong>Download Quiz Library Reference (TXT)</strong> action serves a different purpose: it creates a human-readable reference, not a restorable or importable library package. Use <strong>Export</strong> on an individual quiz for an import-friendly classic MCQ text file. Use this portable backup for migration to another DLMS installation or a full restore.</p>
+<p>The Quiz Library’s <strong>Download Quiz Library Reference (TXT)</strong> action serves a different purpose: it creates a human-readable reference, not a restorable or importable library package. <strong>Export</strong> on an individual quiz creates a classic choice-question text representation; it does not preserve matching, image, or hotspot interaction. Use <strong>Quiz Bundles</strong> for rich quiz transfer, or this portable backup for migration to another DLMS installation or a full restore.</p>
 <p>Temporary uploads, Content Pack staging, temporary logo previews, restore-operation files, database sidecars, and older backup ZIPs are excluded. This keeps the portable ZIP focused on persistent DLMS data instead of temporary work or copies of earlier backups.</p>
 
 <h3>Recent safety backups</h3>
@@ -46,7 +48,7 @@
 <p>Before a removable Content Pack is deleted, DLMS snapshots dependencies needed by existing generated quizzes into quiz-owned storage. That protection is intended to keep those quizzes independent of the removed source pack; it does not preserve the reusable pack or source bank itself.</p>
 
 <h3>Reset Application Settings</h3>
-<p>This returns appearance—including custom backgrounds—parsing options, AI integration, navigation visibility, and other portal settings to current DLMS defaults. It does not delete quizzes, result history, Study/Content Packs, PDF &amp; Image Import banks, Law Study content, or backup archives.</p>
+<p>This returns appearance—including custom backgrounds—parsing options, AI Integration, navigation visibility, application lifecycle, and Quiz Library folder preferences to current DLMS defaults. It also resets Learning Scope so all folders become included. Quizzes keep their existing folder assignments; empty configured folders are removed and hidden-folder state is cleared. It does not delete quizzes, learning evidence, result history, Study/Content Packs, PDF &amp; Image Import banks, Law Study content, or backup archives.</p>
 
 <h3>Reset DLMS to Fresh State</h3>
 <p>This broad reset removes essentially all active user/runtime data: quizzes and generated files, questions and database records, history, Study/Content Packs, PDF &amp; Image Import banks, Law Study content, drafts and assets, and application settings. DLMS then recreates the empty/default folders, database, and configuration needed to continue running.</p>
@@ -58,4 +60,4 @@
 </section>
 
 <div class="help-topic-nav"><a href="/settings/backup">Open Backup &amp; Restore</a><a href="/settings/reset-remove">Open Reset &amp; Remove</a><a href="/settings">Open Settings</a></div>
-<div class="help-version">Documentation for DLMS 3.1.0.</div></article></div></main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script><script src="/static/help-navigation.js"></script></body></html>
+<div class="help-version">Documentation for DLMS 3.2.0.</div></article></div></main></div><script>document.getElementById('menuButton')?.addEventListener('click',()=>document.getElementById('dashboardSidebar')?.classList.toggle('open'));</script><script src="/static/nav-normalize.js"></script><script src="/static/help-navigation.js"></script></body></html>

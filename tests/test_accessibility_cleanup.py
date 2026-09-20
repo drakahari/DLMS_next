@@ -71,7 +71,7 @@ def test_search_controls_have_programmatic_names_not_only_placeholders():
 
 def test_library_folder_collapse_and_icon_actions_have_accessible_semantics():
     assert 'class="folder-toggle-icon library-folder-toggle-button"' in LIBRARY_SOURCE
-    assert 'aria-expanded="true"' in LIBRARY_SOURCE
+    assert 'aria-expanded="{{ \'false\' if folder_is_completed_practice else \'true\' }}"' in LIBRARY_SOURCE
     assert 'aria-controls="library-folder-body-{{ loop.index }}"' in LIBRARY_SOURCE
     assert 'icon.setAttribute("aria-expanded", String(!collapsed))' in LIBRARY_SOURCE
     assert 'aria-label="Rename {{ folder_name }}"' in LIBRARY_SOURCE
@@ -220,3 +220,98 @@ def test_post_action_feedback_uses_status_or_alert_without_announcing_static_gui
     assert reset_remove.count('role="status" aria-live="polite"') == 2
     assert 'target.setAttribute("role",isError?"alert":"status")' in reset_remove
     assert 'target.setAttribute("aria-live",isError?"assertive":"polite")' in reset_remove
+
+
+def test_filter_selection_is_exposed_without_relying_on_active_color():
+    learning = _template_source("../static/learning-intelligence.html")
+    diagnostics = _template_source("../static/learning-diagnostics.html")
+    history = _template_source("../static/history.html")
+    external_review = _template_source("external_ai/review.html")
+    pdf_review = _template_source("pdf_import/review-question-bank.html")
+    glossary_review = _template_source("pdf_import/review-glossary.html")
+
+    for source in (
+        learning,
+        diagnostics,
+        history,
+        external_review,
+        pdf_review,
+        glossary_review,
+    ):
+        assert 'role="group"' in source
+        assert 'aria-pressed="true"' in source
+        assert 'aria-pressed="false"' in source
+
+    for source in (
+        learning,
+        diagnostics,
+        history,
+        glossary_review,
+        (ROOT / "static" / "question-review.js").read_text(encoding="utf-8"),
+        (ROOT / "static" / "external-ai-matching-review.js").read_text(encoding="utf-8"),
+    ):
+        assert "aria-pressed" in source
+        assert "String(selected)" in source
+
+
+def test_repeated_authoring_fields_have_stable_programmatic_names():
+    short_builder = _template_source("quiz/short-builder.html")
+    image_builder = _template_source("study_packs/image-builder.html")
+
+    for marker in (
+        "Question {{ q.number }} answer {{ label }} text",
+        "Mark question {{ q.number }} answer {{ label }} correct",
+        "Question ${qNumber} matching term ${pIndex + 1}",
+        "Question ${qNumber} matching definition ${pIndex + 1}",
+        "Question ${qNumber} answer ${label} text",
+    ):
+        assert marker in short_builder
+
+    for marker in (
+        "Accessible description for {{ image.original_name }}",
+        'aria-label="Mark this answer correct"',
+        'aria-label="Answer choice text"',
+        'aria-label="Matching term or left item"',
+        'aria-label="Matching definition or right item"',
+    ):
+        assert marker in image_builder
+
+
+def test_image_authoring_exposes_status_mode_and_pointer_limit_semantics():
+    editor = _template_source("admin/image-editor.html")
+    image_builder = _template_source("study_packs/image-builder.html")
+
+    assert 'role="group" aria-label="Image editing mode"' in editor
+    assert 'id="hotspotModeBtn" class="active" aria-pressed="true"' in editor
+    assert 'id="editorStatus" role="status" aria-live="polite"' in editor
+    assert "setAttribute('aria-pressed',String(mode==='hotspot'))" in editor
+    assert "setAttribute('role',k==='error'?'alert':'status')" in editor
+    assert 'class="flash error" role="alert"' in editor
+    assert 'id="editorStage" tabindex="0" role="group"' in editor
+    assert 'aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Space"' in editor
+    assert "stage.addEventListener('keydown'" in editor
+    assert "move the blue cursor with the arrow keys" in editor
+    assert 'class="hotspot-status" role="status" aria-live="polite"' in image_builder
+    assert 'class="image-builder-hotspot-stage" tabindex="0" role="group"' in image_builder
+    assert "stage.addEventListener('keydown'" in image_builder
+    assert "Quiz takers can also answer finished hotspot questions with a keyboard" in image_builder
+
+    style = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+    assert ".hotspot-keyboard-cursor" in style
+    assert "@media (forced-colors: active)" in style
+
+
+def test_learning_tables_expose_column_header_and_live_status_semantics():
+    intelligence = _template_source("../static/learning-intelligence.html")
+    schedule = _template_source("../static/review-schedule.html")
+    history = _template_source("../static/history.html")
+
+    assert intelligence.count('scope="col"') == 7
+    assert schedule.count('scope="col"') == 9
+    assert schedule.count('role="status" aria-live="polite"') >= 2
+    assert 'aria-expanded="true" aria-controls="nrsQueueBody"' in schedule
+    assert 'role="group" aria-label="Filter Question Queue by status"' in schedule
+    assert schedule.count('data-question-status=') == 5
+    assert schedule.count('aria-pressed="true"') >= 1
+    assert schedule.count('aria-pressed="false"') >= 4
+    assert 'id="historyPaginationStatus" role="status" aria-live="polite"' in history

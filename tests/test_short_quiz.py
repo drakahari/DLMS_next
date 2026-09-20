@@ -1,6 +1,7 @@
 """Regression coverage for the manual Create a Short Quiz workflow."""
 import os
 import shutil
+import string
 import tempfile
 import unittest
 from pathlib import Path
@@ -118,6 +119,129 @@ class ShortQuizWorkflowTests(unittest.TestCase):
         html_name = registry[0]["html"]
         self.assertTrue((Path(dlms.QUIZ_FOLDER) / html_name).is_file())
         self.assertTrue((Path(dlms.DATA_FOLDER) / html_name.replace(".html", ".json")).is_file())
+
+    def test_exactly_26_nonblank_choices_publish_successfully(self):
+        form = {
+            "quiz_title": "Twenty Six Choices",
+            "question_type_1": "choice",
+            "question_1": "Choose the first option.",
+            "correct_1_A": "on",
+        }
+        for index, label in enumerate(string.ascii_uppercase, start=1):
+            form[f"choice_1_{label}"] = f"Option {index}"
+
+        response = self.client.post(
+            "/create_short_quiz",
+            data=form,
+            content_type="multipart/form-data",
+            headers={"X-CSRFToken": csrf_token(self.client, "/create_short_quiz?count=1")},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(302, response.status_code)
+        self.assertRegex(response.headers["Location"], r"^/edit_quiz/\d+$")
+        connection = dlms.get_db()
+        try:
+            choices = connection.execute(
+                "SELECT label, text, is_correct FROM choices ORDER BY label"
+            ).fetchall()
+        finally:
+            connection.close()
+        self.assertEqual(26, len(choices))
+        self.assertEqual(("A", "Option 1", 1), tuple(choices[0]))
+        self.assertEqual(("Z", "Option 26", 0), tuple(choices[-1]))
+
+    def test_more_than_26_nonblank_choices_are_rejected_before_publication(self):
+        form = {
+            "quiz_title": "Too Many Choices",
+            "question_type_1": "choice",
+            "question_1": "This submission exceeds the supported choice set.",
+            "correct_1_A": "on",
+        }
+        for index, label in enumerate((*string.ascii_uppercase, "AA"), start=1):
+            form[f"choice_1_{label}"] = f"Option {index}"
+
+        response = self.client.post(
+            "/create_short_quiz",
+            data=form,
+            content_type="multipart/form-data",
+            headers={"X-CSRFToken": csrf_token(self.client, "/create_short_quiz?count=1")},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(302, response.status_code)
+        self.assertEqual("/create_short_quiz", response.headers["Location"])
+        self.assertEqual([], dlms.load_registry())
+        with self.client.session_transaction() as session:
+            messages = [message for _category, message in session.get("_flashes", [])]
+        self.assertIn(
+            "Question 1 cannot have more than 26 answer choices.", messages
+        )
+
+    def test_nonblank_choice_outside_a_through_z_is_rejected(self):
+        response = self.client.post(
+            "/create_short_quiz",
+            data={
+                "quiz_title": "Unsupported Choice Label",
+                "question_type_1": "choice",
+                "question_1": "Crafted choice labels are rejected.",
+                "choice_1_A": "Supported",
+                "choice_1_AA": "Unsupported",
+                "correct_1_A": "on",
+            },
+            content_type="multipart/form-data",
+            headers={"X-CSRFToken": csrf_token(self.client, "/create_short_quiz?count=1")},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(302, response.status_code)
+        self.assertEqual("/create_short_quiz", response.headers["Location"])
+        self.assertEqual([], dlms.load_registry())
+        with self.client.session_transaction() as session:
+            messages = [message for _category, message in session.get("_flashes", [])]
+        self.assertIn(
+            "Question 1 contains an unsupported answer choice. Use choices A through Z.",
+            messages,
+        )
+
+    def test_four_choice_multiselect_remains_supported_and_blank_rows_are_ignored(self):
+        response = self.client.post(
+            "/create_short_quiz",
+            data={
+                "quiz_title": "Four Choice Multi-select",
+                "question_type_1": "choice",
+                "question_1": "Select the two correct options.",
+                "choice_1_A": "First correct",
+                "choice_1_B": "First distractor",
+                "choice_1_C": "Second correct",
+                "choice_1_D": "Second distractor",
+                "choice_1_E": "",
+                "choice_1_F": "   ",
+                "correct_1_A": "on",
+                "correct_1_C": "on",
+            },
+            content_type="multipart/form-data",
+            headers={"X-CSRFToken": csrf_token(self.client, "/create_short_quiz?count=1")},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(302, response.status_code)
+        connection = dlms.get_db()
+        try:
+            choices = connection.execute(
+                "SELECT label, text, is_correct FROM choices ORDER BY label"
+            ).fetchall()
+        finally:
+            connection.close()
+        self.assertEqual(
+            [
+                ("A", "First correct", 1),
+                ("B", "First distractor", 0),
+                ("C", "Second correct", 1),
+                ("D", "Second distractor", 0),
+            ],
+            [tuple(choice) for choice in choices],
+        )
 
 
 if __name__ == "__main__":

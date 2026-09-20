@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Review External AI Quiz - DLMS</title>
+    <title>Review {{ "OCR Matching" if draft.origin == "ocr_matching" else "External AI Quiz" }} - DLMS</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
@@ -28,7 +28,7 @@
             <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
             <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
         </nav>
-        <div class="dashboard-sidebar-version">External AI Review</div>
+        <div class="dashboard-sidebar-version">{{ "OCR Matching Review" if draft.origin == "ocr_matching" else "External AI Review" }}</div>
     </aside>
 
     <main class="dashboard-main pdf-import-main">
@@ -38,7 +38,7 @@
 
         <header class="dashboard-header">
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
-            <div><div class="build-eyebrow">EXTERNAL AI QUIZ · REVIEW</div><h1>Review &amp; Repair</h1><p>AI-generated correctness is only a proposal. Repair every kept question and explicitly confirm its complete correct-answer set before publication.</p></div>
+            <div><div class="build-eyebrow">{% if draft.origin == "ocr_matching" %}LOCAL OCR MATCHING{% else %}EXTERNAL AI {{ "MATCHING" if draft.content_type == "matching" else "QUIZ" }}{% endif %} · REVIEW</div><h1>Review &amp; Repair</h1><p>{% if draft.origin == "ocr_matching" %}OCR can misread text and uncertain layout is not silently paired. Repair the candidates, use the retained unassigned text when helpful, and explicitly confirm every final term/definition pair.{% elif draft.content_type == "matching" %}AI-generated pairings may be wrong. Repair every kept matching question and explicitly confirm every term/definition pair before publication.{% else %}AI-generated correctness is only a proposal. Repair every kept question and explicitly confirm its complete correct-answer set before publication.{% endif %}</p></div>
         </header>
 
         <section class="pdf-import-summary-grid" aria-label="Review summary">
@@ -50,25 +50,33 @@
 
         <details class="dashboard-panel external-ai-diagnostics" {% if draft.validation_state == "needs_repair" %}open{% endif %}>
             <summary>Parser and validation diagnostics</summary>
-            <p>These describe the pasted response. Blocking question problems can be resolved below; warnings document unsupported or unusual source data.</p>
+            <p>{% if draft.origin == "ocr_matching" %}These describe OCR confidence and layout decisions. Blocking pair problems can be resolved below; uncertain lines remain unassigned rather than being guessed into a pair.{% else %}These describe the pasted response. Blocking question problems can be resolved below; warnings document unsupported or unusual source data.{% endif %}</p>
             {% if draft.diagnostics %}<ul>{% for diagnostic in draft.diagnostics %}<li class="diagnostic-{{ diagnostic.severity|default('warning') }}"><strong>{{ diagnostic.path or "Response" }}</strong>: {{ diagnostic.message }}</li>{% endfor %}</ul>{% else %}<p>No parser diagnostics were reported.</p>{% endif %}
         </details>
 
+        {% if draft.origin == "ocr_matching" and draft.unassigned_text %}
+        <details class="dashboard-panel external-ai-raw-reference" open>
+            <summary>Unassigned OCR text (reference only)</summary>
+            <p>These temporary lines were readable but did not have enough structural evidence for DLMS to infer a pairing. Copy or correct them in the editor if appropriate.</p>
+            <ul>{% for item in draft.unassigned_text %}<li><strong>{{ item.source_name }}{% if item.page_number %} · page {{ item.page_number }}{% endif %}</strong>: {{ item.text }}</li>{% endfor %}</ul>
+        </details>
+        {% elif draft.origin != "ocr_matching" %}
         <details class="dashboard-panel external-ai-raw-reference">
             <summary>Raw AI response (reference only)</summary>
             <p>This temporary text is never published with the quiz.</p>
             <pre>{{ draft.raw_response }}</pre>
         </details>
+        {% endif %}
 
-        <div class="pdf-import-filter-row" aria-label="Filter questions">
-            <button type="button" data-filter="all" class="active">All</button>
-            <button type="button" data-filter="complete">Ready</button>
-            <button type="button" data-filter="review">Warnings</button>
-            <button type="button" data-filter="incomplete">Needs Repair</button>
+        <div class="pdf-import-filter-row" role="group" aria-label="Filter questions">
+            <button type="button" data-filter="all" class="active" aria-pressed="true">All</button>
+            <button type="button" data-filter="complete" aria-pressed="false">Ready</button>
+            <button type="button" data-filter="review" aria-pressed="false">Warnings</button>
+            <button type="button" data-filter="incomplete" aria-pressed="false">Needs Repair</button>
         </div>
         <details class="pdf-review-bulk-help">
             <summary>How filters and bulk actions work</summary>
-            <div class="pdf-review-bulk-help-body"><p>Filters affect visibility only. Select the questions you reviewed, then confirm their current answer mode and complete correct-answer set or mark them for exclusion. Excluded questions are not published.</p></div>
+            <div class="pdf-review-bulk-help-body"><p>Filters affect visibility only. Select the questions you reviewed, then {% if draft.content_type == "matching" %}confirm every current term/definition pair{% else %}confirm their current answer mode and complete correct-answer set{% endif %} or mark them for exclusion. Excluded questions are not published.</p></div>
         </details>
         <div class="dashboard-panel pdf-review-bulk-bar" aria-label="Bulk question actions">
             <div class="pdf-review-bulk-actions">
@@ -113,6 +121,31 @@
                     </div>
                     {% if q.validation_issues %}<div class="pdf-import-issues" role="status">{% for issue in q.validation_issues %}<div>⚠ {{ issue.message if issue is mapping else issue }}</div>{% endfor %}</div>{% endif %}
                     <label class="build-field"><span>Question text</span><textarea rows="4" maxlength="10000" data-pdf-role="question">{{ q.question }}</textarea></label>
+                    {% if draft.content_type == "matching" %}
+                    <div class="external-ai-matching-settings">
+                        <label class="build-field"><span>Direction</span><select data-matching-role="direction"><option value="term_to_definition" {% if q.direction == "term_to_definition" %}selected{% endif %}>Term → definition</option><option value="definition_to_term" {% if q.direction == "definition_to_term" %}selected{% endif %}>Definition → term</option><option value="random" {% if q.direction == "random" %}selected{% endif %}>Random each attempt</option></select></label>
+                        <label class="build-field"><span>Pairs per attempt</span><input type="number" min="2" max="100" value="{{ q.round_size }}" data-matching-role="round-size" inputmode="numeric"></label>
+                    </div>
+                    <div class="external-ai-matching-editor" data-matching-role="pair-editor">
+                        <div data-matching-role="pair-list">
+                            {% for pair in q.pairs %}
+                            <div class="external-ai-matching-pair" data-matching-role="pair-row">
+                                {% if pair.ocr_metadata %}<p class="pdf-ocr-local-note ocr-matching-pair-provenance">OCR source: {{ pair.ocr_metadata.source_name }}{% if pair.ocr_metadata.page_number %} · page {{ pair.ocr_metadata.page_number }}{% endif %} · {{ pair.ocr_metadata.pattern|replace("_", " ") }}{% if pair.ocr_metadata.confidence is not none %} · {{ pair.ocr_metadata.confidence }}% confidence{% endif %}</p>{% endif %}
+                                <div class="external-ai-matching-pair-fields">
+                                    <label class="build-field"><span>Term / left side</span><textarea rows="2" maxlength="4000" data-matching-role="left">{{ pair.left }}</textarea></label>
+                                    <label class="build-field"><span>Definition / right side</span><textarea rows="2" maxlength="4000" data-matching-role="right">{{ pair.right }}</textarea></label>
+                                    <label class="build-field"><span>Category <em>Optional</em></span><input maxlength="240" value="{{ pair.category }}" data-matching-role="category"></label>
+                                    <label class="build-field"><span>Pair explanation <em>Optional</em></span><textarea rows="2" maxlength="20000" data-matching-role="pair-explanation">{{ pair.explanation }}</textarea></label>
+                                </div>
+                                <div class="pdf-choice-order-controls"><button type="button" class="build-secondary-link" data-matching-action="pair-up" aria-label="Move pair up">↑</button><button type="button" class="build-secondary-link" data-matching-action="pair-down" aria-label="Move pair down">↓</button><button type="button" class="build-secondary-link pdf-review-danger-action" data-matching-action="pair-delete">Delete pair</button></div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="pdf-choice-editor-actions"><button type="button" class="build-secondary-link" data-matching-action="pair-add">Add pair</button><span>2–100 complete, unique pairs.</span></div>
+                        <p class="pdf-choice-editor-message" data-matching-role="pair-message" aria-live="polite"></p>
+                    </div>
+                    <label class="pdf-correctness-confirmation"><input type="checkbox" data-matching-role="review-confirmed" {% if q.review_confirmed %}checked{% endif %}><span>I reviewed this matching question and confirm every term/definition pairing.</span></label>
+                    {% else %}
                     <label class="build-field external-ai-answer-mode"><span>Answer mode</span><select data-pdf-role="answer-mode"><option value="single" {% if q.answer_mode == "single" %}selected{% endif %}>Single answer</option><option value="multiple" {% if q.answer_mode == "multiple" %}selected{% endif %}>Multiple answers</option></select></label>
                     <div class="pdf-choice-editor" data-pdf-role="choice-editor">
                         <div class="pdf-import-choice-grid" data-pdf-role="choice-list">
@@ -128,6 +161,7 @@
                         <p class="pdf-choice-editor-message" data-pdf-role="choice-message" aria-live="polite"></p>
                     </div>
                     <label class="pdf-correctness-confirmation"><input type="checkbox" data-pdf-role="correctness-confirmed" {% if q.correctness_confirmed %}checked{% endif %}><span>I reviewed this question and confirm the answer mode and complete set of correct answers.</span></label>
+                    {% endif %}
                     <label class="build-field"><span>Study Mode explanation</span><textarea rows="4" maxlength="20000" data-pdf-role="explanation">{{ q.explanation }}</textarea></label>
                     <label class="build-field"><span>Concepts</span><textarea rows="3" data-pdf-role="concepts" placeholder="One concept per line">{{ q.concepts_text }}</textarea><small>One concept per line, up to 24.</small></label>
                 </article>
@@ -141,6 +175,6 @@
         </form>
     </main>
 </div>
-<script src="/static/question-review.js"></script><script src="/static/nav-normalize.js"></script>
+{% if draft.content_type == "matching" %}<script src="/static/external-ai-matching-review.js"></script>{% else %}<script src="/static/question-review.js"></script>{% endif %}<script src="/static/nav-normalize.js"></script>
 </body>
 </html>

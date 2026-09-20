@@ -401,9 +401,141 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("flex:0 0 auto", action.group(1))
         self.assertIn("max-width:100%", action.group(1))
         self.assertIn("white-space:normal", action.group(1))
-        self.assertEqual(page.count('class="build-secondary-link"'), 3)
+        self.assertEqual(page.count('class="build-secondary-link"'), 5)
+        self.assertIn('href="/learning-scope">Manage Learning Scope</a>', page)
         self.assertIn('class="build-secondary-link" id="liModelButton"', page)
         self.assertIn('class="build-secondary-link" id="liToggleZeroEvidence"', page)
+        self.assertIn("Your score combines four things", page)
+        for contribution in ("55%", "20%", "15%", "10%"):
+            self.assertIn(f"<span>{contribution}</span>", page)
+        self.assertIn("Not enough data", page)
+        self.assertIn("mastery is capped at 59", page)
+        self.assertIn("at 74 with three or four responses", page)
+        self.assertIn("Weak area", page)
+        self.assertIn("Trend is different from Mastery", page)
+        self.assertIn('<summary tabindex="0">Technical details</summary>', page)
+        self.assertIn("state.model.generated_practice", page)
+        self.assertIn("button:not([disabled]), summary, [href]", page)
+
+    def test_review_schedule_summary_uses_full_width_text_rows(self):
+        page = self._static("review-schedule.html")
+        css = self._static("style.css")
+
+        card = re.search(
+            r"\.review-schedule-summary\s+\.dashboard-stat-card\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(card)
+        self.assertIn("grid-template-columns:minmax(0,1fr)", card.group(1))
+        self.assertIn("grid-template-rows:auto auto minmax(0,1fr)", card.group(1))
+        self.assertIn("align-items:start", card.group(1))
+        self.assertIn("min-height:124px", card.group(1))
+
+        text_rows = re.search(
+            r"\.review-schedule-summary\s+\.dashboard-stat-card>span,\s*"
+            r"\.review-schedule-summary\s+\.dashboard-stat-card>strong,\s*"
+            r"\.review-schedule-summary\s+\.dashboard-stat-card>small\s*\{([^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(text_rows)
+        self.assertIn("width:100%", text_rows.group(1))
+        self.assertIn("overflow-wrap:break-word", text_rows.group(1))
+        self.assertIn("word-break:normal", text_rows.group(1))
+
+        for label, value_id in (
+            ("DUE QUESTIONS", "nrsDue"),
+            ("OVERDUE", "nrsOverdue"),
+            ("NEXT 7 DAYS", "nrsUpcoming"),
+            ("NOT SCHEDULED", "nrsUnscheduled"),
+        ):
+            self.assertRegex(
+                page,
+                rf'<article class="dashboard-stat-card"><span>{label}</span>'
+                rf'<strong id="{value_id}">—</strong><small>[^<]+</small></article>',
+            )
+
+        self.assertRegex(
+            css,
+            r"@media\(max-width:900px\)\{\.review-schedule-summary,"
+            r"\.learning-profile-retention-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)",
+        )
+        self.assertRegex(
+            css,
+            r"@media\(max-width:560px\)\{\.review-schedule-summary,"
+            r"\.learning-profile-retention-grid\{grid-template-columns:1fr;\}",
+        )
+
+    def test_review_schedule_question_queue_is_collapsible_and_filterable(self):
+        page = self._static("review-schedule.html")
+        css = self._static("style.css")
+
+        self.assertIn(
+            'class="dashboard-panel native-review-list-panel" id="nrsQueuePanel"',
+            page,
+        )
+        self.assertIn(
+            'id="nrsQueueToggle" class="native-review-queue-toggle" type="button" aria-expanded="true" aria-controls="nrsQueueBody"',
+            page,
+        )
+        self.assertIn('id="nrsQueueBody" class="native-review-queue-body"', page)
+        self.assertIn('id="nrsQueueCount" class="native-review-queue-count" role="status" aria-live="polite"', page)
+        self.assertIn(
+            '<input id="nrsSearch" class="learning-intelligence-search"',
+            page,
+        )
+        self.assertIn('aria-label="Search scheduled questions"', page)
+        self.assertIn(
+            'role="group" aria-label="Filter Question Queue by status"', page
+        )
+        for status, label in (
+            ("all", "All"),
+            ("overdue", "Overdue"),
+            ("due", "Due now"),
+            ("upcoming", "Upcoming"),
+            ("unscheduled", "Not yet scheduled"),
+        ):
+            self.assertRegex(
+                page,
+                rf'data-question-status="{status}"[^>]*aria-pressed="(?:true|false)"'
+                rf'>{label}</button>',
+            )
+        self.assertIn("questionQueueCollapseKey='dlms.reviewSchedule.questionQueueCollapsed'", page)
+        self.assertIn("body.hidden=!expanded", page)
+        self.assertIn("toggle.setAttribute('aria-expanded',String(expanded))", page)
+        self.assertIn("item.schedule_state===status", page)
+        self.assertIn("No questions match the current search and status filter.", page)
+
+        header = re.search(r"\.native-review-list-head\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(header)
+        self.assertIn("grid-template-columns:minmax(0,1fr) auto", header.group(1))
+        self.assertIn("padding:22px", header.group(1))
+        self.assertRegex(
+            css,
+            r"@media\(max-width:560px\)[\s\S]*?\.native-review-list-head"
+            r"\{padding:18px;\}",
+        )
+        self.assertRegex(
+            css,
+            r"@container \(max-width: 760px\)[\s\S]*?"
+            r"\.native-review-queue-toolbar \.learning-intelligence-search\s*"
+            r"\{[\s\S]*?width: 100%;[\s\S]*?max-width: none;\s*\}",
+        )
+
+    def test_learning_intelligence_sticky_practice_cells_have_opaque_theme_base(self):
+        css = self._static("style.css")
+        for selector, overlay in (
+            (r"\.learning-intelligence-table th:last-child", "--theme-surface-2"),
+            (r"\.learning-intelligence-table td:last-child", "--theme-panel-1"),
+        ):
+            with self.subTest(selector=selector):
+                rules = re.findall(selector + r"\s*\{([^}]*)\}", css)
+                self.assertTrue(rules)
+                self.assertTrue(any(
+                    "background-color:var(--theme-body-base" in body
+                    and "background-image:linear-gradient" in body
+                    and body.count(overlay) >= 2
+                    for body in rules
+                ))
 
 
 if __name__ == "__main__":

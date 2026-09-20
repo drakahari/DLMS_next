@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "static" / "script.js").read_text(encoding="utf-8")
 RECOVERY = (ROOT / "static" / "quiz-recovery.js").read_text(encoding="utf-8")
+STYLE = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
 LIBRARY_TEMPLATE = (ROOT / "templates" / "quiz" / "library.html").read_text(encoding="utf-8")
 RESET_TEMPLATE = (ROOT / "templates" / "settings" / "reset-remove.html").read_text(encoding="utf-8")
 RESTORE_COMPLETE_TEMPLATE = (ROOT / "templates" / "settings" / "restore-complete.html").read_text(encoding="utf-8")
@@ -19,6 +20,16 @@ def test_recovery_is_a_dedicated_compatibility_loaded_runtime():
     assert 'fetch(file, {cache: "no-store"})' in SCRIPT
 
 
+def test_recovery_actions_have_distinct_theme_safe_interaction_states():
+    assert ".mode-center button:not(.quiz-recovery-start-over)" in STYLE
+    assert ".quiz-recovery-actions .quiz-recovery-start-over" in STYLE
+    assert "var(--semantic-secondary-control-text" in STYLE
+    assert ".quiz-recovery-start-over:not(:disabled):hover" in STYLE
+    assert ".quiz-recovery-start-over:not(:disabled):focus-visible" in STYLE
+    assert ".quiz-recovery-start-over:not(:disabled):active" in STYLE
+    assert ".quiz-recovery-start-over:disabled" in STYLE
+
+
 def test_recovery_namespace_fingerprint_and_limits_are_versioned_and_bounded():
     assert 'STORAGE_PREFIX = "dlms.quiz-progress.v1:"' in RECOVERY
     assert 'RUNTIME_VERSION = "quiz-recovery-v1"' in RECOVERY
@@ -31,6 +42,7 @@ def test_recovery_namespace_fingerprint_and_limits_are_versioned_and_bounded():
 
 def test_lifecycle_cleanup_is_scoped_and_best_effort():
     assert "function pruneStoredRecords" in RECOVERY
+    assert "function listStoredRecords" in RECOVERY
     assert "function clearAllStoredRecords" in RECOVERY
     assert "function removeStoredQuiz" in RECOVERY
     assert "key.startsWith(STORAGE_PREFIX)" in RECOVERY
@@ -38,7 +50,21 @@ def test_lifecycle_cleanup_is_scoped_and_best_effort():
     assert "validateRecordEnvelope(record, now)" in RECOVERY
     assert "active.has(quizId)" in RECOVERY
     assert "pruneStoredRecords();" in RECOVERY
+    assert "listStoredRecords," in RECOVERY
     assert "!current && savedRecord !== null && !allowTakeover" in RECOVERY
+
+
+def test_dashboard_clear_is_guarded_without_changing_start_over():
+    clear = RECOVERY[RECOVERY.index("function clearUnfinishedQuiz"):RECOVERY.index("function clearAllStoredRecords")]
+    assert "validateRecordEnvelope(record)" in clear
+    for field in ("sessionId", "revision", "ownerToken", "updatedAt"):
+        assert f"expected.{field}" in clear
+    assert 'status: "pending_exam"' in clear
+    assert 'status: "pending_study"' in clear
+    assert "record.unacknowledgedStudyEvents.length !== 0" in clear
+    assert "removeStoredQuiz(quizId)" in clear
+    assert "fetch(" not in clear
+    assert "clearAllStoredRecords(" not in clear
 
 
 def test_fingerprint_tracks_playable_artifact_not_display_title():
@@ -103,6 +129,22 @@ def test_study_and_exam_identities_survive_recovery_without_automatic_retry():
     assert "recoveredAttempt?.completedAt" in SCRIPT
     assert "quizRecoveryController?.complete()" in SCRIPT
     assert "studyLearningEventSaves.set(record.eventId, record)" in SCRIPT
+
+
+def test_ordinary_completed_study_is_pruned_but_generated_review_waits_for_finish():
+    assert "isCompleted: record => (" in SCRIPT
+    assert "generatedPracticeStatus?.is_transient === true" in SCRIPT
+    assert "studyRecoveryRecordIsComplete(record, rawQuiz)" in SCRIPT
+    assert "generatedPracticeStatus?.is_transient !== false" in SCRIPT
+    assert "async function finishGeneratedPracticeReview()" in SCRIPT
+    assert "function studyRecoveryRecordIsComplete" in SCRIPT
+    assert 'record?.session?.mode !== "Study"' in SCRIPT
+    assert "record.unacknowledgedStudyEvents.length !== 0" in SCRIPT
+    assert "questions.every" in SCRIPT
+    assert "savedRecord && options.isCompleted?.(savedRecord)" in RECOVERY
+    assert RECOVERY.index("options.isCompleted?.(savedRecord)") < RECOVERY.index(
+        "if (savedRecord) renderPanel(savedRecord)"
+    )
 
 
 def test_all_playable_question_state_shapes_and_exact_matching_variant_are_covered():

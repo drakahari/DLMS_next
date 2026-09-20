@@ -26,15 +26,41 @@ class _GeneratedQuizTextParser(HTMLParser):
 
 
 class GeneratedQuizSecurityTests(unittest.TestCase):
-    def _build(self, portal_title, quiz_title, jsonfile="quiz.json"):
+    def _build(self, portal_title, quiz_title, jsonfile="quiz.json", logo_filename=None):
         temp_dir = tempfile.TemporaryDirectory(prefix="dlms-generated-xss-")
         self.addCleanup(temp_dir.cleanup)
         output = Path(temp_dir.name) / "quiz.html"
         dlms.build_quiz_html(
             "quiz.html", jsonfile, str(output), portal_title, quiz_title,
-            None, 17, 90,
+            logo_filename, 17, 90,
         )
         return output.read_text(encoding="utf-8")
+
+    def test_quiz_header_keeps_site_identity_separate_from_branded_quiz_title(self):
+        titles = (
+            "Ordinary Source Quiz",
+            "Spaced Review — Due Questions",
+            "Adaptive Study — What I Need Most",
+            "Smart Review — Sample Topic",
+            "Concept Review — Sample Topic",
+            "Spaced Review — Sample Topic",
+            "Mixed Quiz",
+        )
+        for title in titles:
+            for logo in (None, "quiz-logo.png"):
+                with self.subTest(title=title, logo=logo):
+                    generated = self._build("Mike's Training & Practice Center", title, logo_filename=logo)
+                    hero = re.search(r'<h1 class="hero-title">(.*?)</h1>', generated, re.S)
+                    banner = re.search(r'<div class="active-quiz-logo-banner">(.*?)</div>\s*</div>\s*<!-- TOP BAR -->', generated, re.S)
+                    self.assertIsNotNone(hero)
+                    self.assertIsNotNone(banner)
+                    self.assertEqual("Mike's Training &amp; Practice Center", hero.group(1))
+                    self.assertNotIn(title, hero.group(1))
+                    self.assertIn(f'<h2 class="active-quiz-title">\n                    {title}\n                </h2>', banner.group(1))
+                    self.assertEqual(2 if logo else 0, banner.group(1).count('class="mode-badge"'))
+                    self.assertIn('class="mode-btn study-mode-btn"', generated)
+                    self.assertIn('class="mode-btn exam-mode-btn"', generated)
+                    self.assertIn('class="quiz-progress-card"', generated)
 
     def test_titles_are_safe_in_html_and_inline_javascript(self):
         attack = '</script><script>alert(1)</script>'

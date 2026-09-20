@@ -22,6 +22,9 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         "dlms_request_too_large": "errors/request-too-large.html",
         "home": "dashboard/index.html",
         "quiz_library": "quiz/library.html",
+        "quiz_duplicate_report": "quiz/duplicates.html",
+        "portable_quiz_bundles": "quiz/bundles.html",
+        "review_portable_quiz_bundle": "quiz/bundle-review.html",
         "edit_quiz": "quiz/edit.html",
         "upload_page": "quiz/upload.html",
         "paste_page": "quiz/paste.html",
@@ -203,6 +206,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         self.assertIn("Sortable.create", body)
         self.assertIn("JSON.stringify(payload)", body)
         self.assertIn('id="libraryQuizIdentityData"', body)
+        self.assertIn('id="librarySmartEligibleQuizData"', body)
         self.assertIn('src="/static/quiz-recovery.js"', body)
         self.assertIn('/static/nav-normalize.js', body)
 

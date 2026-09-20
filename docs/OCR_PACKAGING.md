@@ -252,6 +252,29 @@ another operating system or architecture. PyInstaller analyzes the staged
 Tesseract executable's native dependencies; libraries supplied alongside the
 executable are also included by the shared bundle collector.
 
+After the application build, stage the native artifact under its canonical
+target name and run the artifact verifier with `--smoke` as documented in
+`docs/RELEASE_VERIFICATION.md`. On that same native host, turn the verified
+artifact into the exact user-facing package with single-target mode. For
+example, a Fedora builder runs:
+
+```bash
+python tools/package_release.py \
+  --target fedora44-x86_64 \
+  --artifact releases/DLMS-3.2.0-fedora44-x86_64 \
+  --output-dir release-packages \
+  --smoke
+```
+
+Use the corresponding Ubuntu, Omarchy, Windows, or macOS target and canonical
+artifact name from the release-verification guide. This final step does not
+rebuild OCR or the application. It validates the already-built native input,
+creates the platform's canonical final layout with `README.txt` and
+`sample_quiz.txt`, verifies and natively smokes that completed archive, and
+prints its final SHA-256 for transfer. Transfer that unchanged package—not the
+intermediate `dist` output or native staging input—to the release assembly
+machine.
+
 `pypdfium2>=5.13.0,<6` is declared in `requirements.txt` and version 5.13.0 is
 locked in `requirements-lock.txt`, which was exercised with Python 3.14.7 on
 the current Fedora validation host. The canonical PyInstaller manifest includes

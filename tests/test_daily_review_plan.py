@@ -1,0 +1,423 @@
+"""DLMS-126 unified daily-review queue regressions."""
+
+import tempfile
+import unittest
+import uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest import mock
+
+from tests._isolation import ensure_test_data_isolation
+
+
+ensure_test_data_isolation()
+import app as dlms
+from tests.current_schema import seed_current_quiz
+
+
+class DailyReviewPlanTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="dlms-126-")
+        self.addCleanup(self.temporary.cleanup)
+        self.data_root = Path(self.temporary.name)
+        self.app_data_patch = mock.patch.object(
+            dlms, "APP_DATA_DIR", str(self.data_root)
+        )
+        self.db_patch = mock.patch.object(
+            dlms, "DB_PATH", str(self.data_root / "results.db")
+        )
+        self.app_data_patch.start()
+        self.db_patch.start()
+        self.addCleanup(self.app_data_patch.stop)
+        self.addCleanup(self.db_patch.stop)
+        self.assertTrue(dlms._initialize_data_root_ownership(str(self.data_root)))
+        dlms.ensure_db_initialized()
+        self.now = datetime(2026, 9, 12, 12, 0, tzinfo=timezone.utc)
+
+    @staticmethod
+    def _schedule(questions=None):
+        return {
+            "questions": questions or [],
+            "topics": [],
+            "summary": {},
+            "question_summary": {},
+        }
+
+    @staticmethod
+    def _topic(concept_id=1, name="Access Control", status="weak"):
+        return {
+            "concept_id": concept_id,
+            "name": name,
+            "status": status,
+            "evidence": 5,
+            "question_count": 3,
+            "accuracy": 40.0,
+        }
+
+    @staticmethod
+    def _adaptive(question_id=10, evidence=4):
+        return [{
+            "question_id": question_id,
+            "source_question_ids": [question_id],
+            "evidence": evidence,
+            "priority_score": 40,
+            "selection_reasons": ["Missed within the last 14 days"],
+        }]
+
+    def _plan(
+        self,
+        *,
+        schedule=None,
+        topics=None,
+        adaptive=None,
+        registry=None,
+        packs=None,
+        cursor=None,
+        due_batch_size=20,
+    ):
+        owned_connection = None
+        if cursor is None:
+            owned_connection = dlms.get_db()
+            cursor = owned_connection.cursor()
+        try:
+            return dlms._learning_service._daily_review_plan(
+                cursor,
+                registry=registry or [],
+                installed_content_packs=packs or [],
+                now=self.now,
+                review_schedule_payload=lambda _cur, now=None: (
+                    schedule or self._schedule()
+                ),
+                learning_intelligence_payload=lambda _cur, now=None: {
+                    "topics": topics or []
+                },
+                adaptive_study_candidates=lambda _cur, now=None: adaptive or [],
+                due_batch_size=due_batch_size,
+            )
+        finally:
+            if owned_connection is not None:
+                owned_connection.close()
+
+    def test_due_and_overdue_questions_are_the_first_action(self):
+        plan = self._plan(schedule=self._schedule([
+            {
+                "question_id": 1,
+                "source_question_ids": [1],
+                "schedule_state": "overdue",
+                "concepts": ["Routing"],
+            },
+            {
+                "question_id": 2,
+                "source_question_ids": [2],
+                "schedule_state": "due",
+                "concepts": [],
+            },
+        ]))
+
+        item = plan["items"][0]
+        self.assertEqual("native_due", item["kind"])
+        self.assertEqual(10, item["priority"])
+        self.assertIn("2 source questions", item["reason"])
+        self.assertIn("1 is overdue", item["reason"])
+        self.assertEqual(
+            "/native-spaced-review/generate", item["action"]["url"]
+        )
+        self.assertEqual("POST", item["action"]["method"])
+        self.assertEqual("Review Due Questions", item["action"]["label"])
+        self.assertEqual(2, plan["summary"]["due_questions"])
+        self.assertEqual(2, plan["summary"]["next_due_batch_questions"])
+        self.assertNotIn("Next review:", item["reason"])
+
+    def test_due_action_distinguishes_total_from_next_batch_only_when_limited(self):
+        def due_questions(count):
+            return [
+                {
+                    "question_id": number,
+                    "source_question_ids": [number],
+                    "schedule_state": "due",
+                    "concepts": [],
+                }
+                for number in range(1, count + 1)
+            ]
+
+        cases = (
+            (34, 20, 20, "Next review: up to 20 questions.", True),
+            (20, 20, 20, "Next review:", False),
+            (8, 20, 8, "Next review:", False),
+            (34, 10, 10, "Next review: up to 10 questions.", True),
+            (34, 50, 34, "Next review:", False),
+        )
+        for total, requested, expected_batch, wording, present in cases:
+            with self.subTest(total=total, requested=requested):
+                plan = self._plan(
+                    schedule=self._schedule(due_questions(total)),
+                    due_batch_size=requested,
+                )
+                item = plan["items"][0]
+                self.assertIn(f"{total} source questions are due now.", item["reason"])
+                self.assertEqual(
+                    str(expected_batch), item["action"]["fields"]["question_count"]
+                )
+                self.assertEqual(
+                    expected_batch,
+                    plan["summary"]["next_due_batch_questions"],
+                )
+                if present:
+                    self.assertIn(wording, item["reason"])
+                    self.assertIn(
+                        "recalculates the remaining total", item["reason"]
+                    )
+                else:
+                    self.assertNotIn(wording, item["reason"])
+
+    def test_weak_concept_follows_unrelated_due_material(self):
+        plan = self._plan(
+            schedule=self._schedule([{
+                "question_id": 1,
+                "source_question_ids": [1],
+                "schedule_state": "due",
+                "concepts": ["Routing"],
+            }]),
+            topics=[self._topic()],
+            adaptive=self._adaptive(),
+        )
+
+        self.assertEqual(
+            ["native_due", "weak_concept"],
+            [item["kind"] for item in plan["items"]],
+        )
+        concept = plan["items"][1]
+        self.assertEqual("Review Access Control", concept["title"])
+        self.assertEqual("/concept-review/generate", concept["action"]["url"])
+        self.assertEqual("1", concept["action"]["fields"]["concept_id"])
+
+    def test_adaptive_recommendation_reuses_existing_ranked_signal(self):
+        plan = self._plan(adaptive=self._adaptive())
+
+        self.assertEqual(1, len(plan["items"]))
+        item = plan["items"][0]
+        self.assertEqual("adaptive", item["kind"])
+        self.assertIn("Missed within the last 14 days", item["reason"])
+        self.assertEqual("/adaptive-study/generate", item["action"]["url"])
+
+    def test_no_history_uses_adaptive_baseline_without_inventing_scores(self):
+        plan = self._plan(adaptive=self._adaptive(evidence=0))
+
+        item = plan["items"][0]
+        self.assertEqual("Build your learning baseline", item["title"])
+        self.assertIn("little recorded history", item["reason"])
+
+    def test_overlapping_due_concept_and_adaptive_cards_are_suppressed(self):
+        plan = self._plan(
+            schedule=self._schedule([{
+                "question_id": 1,
+                "source_question_ids": [1, 99],
+                "schedule_state": "overdue",
+                "concepts": ["Access Control"],
+            }]),
+            topics=[self._topic()],
+            adaptive=self._adaptive(question_id=99),
+        )
+
+        self.assertEqual(["native_due"], [item["kind"] for item in plan["items"]])
+        self.assertIn("Specific due or concept actions", plan["model"]["deduplication"])
+
+    def test_developing_concept_is_actionable_when_no_weak_concept_exists(self):
+        plan = self._plan(
+            topics=[self._topic(status="developing")],
+            adaptive=self._adaptive(),
+        )
+
+        self.assertEqual("weak_concept", plan["items"][0]["kind"])
+        self.assertIn("developing concept", plan["items"][0]["reason"])
+
+    def test_recent_study_pack_activity_uses_installed_pack_and_existing_route(self):
+        quiz_id = seed_current_quiz(
+            dlms.get_db,
+            "Pack Practice",
+            "study_questions_pack_one.html",
+            [{
+                "number": 1,
+                "question": "Pack practice question?",
+                "choices": [
+                    {"label": "A", "text": "Expected", "is_correct": True},
+                    {"label": "B", "text": "Alternative", "is_correct": False},
+                ],
+            }],
+        )
+        conn = dlms.get_db()
+        cur = conn.cursor()
+        question_id = cur.execute(
+            "SELECT id FROM questions WHERE quiz_id = ?", (quiz_id,)
+        ).fetchone()[0]
+        dlms._record_learning_event(
+            cur,
+            event_type="exam_answer",
+            quiz_id=quiz_id,
+            question_id=question_id,
+            attempt_id=f"pack-{uuid.uuid4()}",
+            mode="Exam",
+            was_correct=True,
+        )
+        cur.execute(
+            "UPDATE learning_events SET occurred_at = ? WHERE id = ?",
+            ((self.now - timedelta(days=2)).isoformat(), cur.lastrowid),
+        )
+        conn.commit()
+
+        plan = self._plan(
+            cursor=cur,
+            registry=[{
+                "id": quiz_id,
+                "html": "study_questions_pack_one.html",
+                "title": "Pack Practice",
+                "source_pack_id": "pack_one",
+            }],
+            packs=[{"id": "pack_one", "name": "Pack One"}],
+        )
+        conn.close()
+
+        self.assertEqual(["study_pack"], [item["kind"] for item in plan["items"]])
+        item = plan["items"][0]
+        self.assertEqual("Continue Pack One", item["title"])
+        self.assertIn("2 days ago", item["reason"])
+        self.assertEqual("/study-packs?installed=pack_one", item["action"]["url"])
+
+    def test_empty_state_is_useful_when_no_source_has_a_recommendation(self):
+        plan = self._plan()
+
+        self.assertEqual([], plan["items"])
+        self.assertEqual(
+            "Nothing needs immediate attention", plan["empty_state"]["title"]
+        )
+        self.assertEqual("/library", plan["empty_state"]["action"]["url"])
+
+    def test_quiz_index_prefers_metadata_and_keeps_legacy_fallback(self):
+        generated = seed_current_quiz(
+            dlms.get_db,
+            "Original Adaptive Name",
+            "adaptive_study_original.html",
+            [{"number": 1, "question": "Generated metadata question?"}],
+        )
+        explicit_source = seed_current_quiz(
+            dlms.get_db,
+            "Smart Review — Personal Notes",
+            "smart_review_personal_notes.html",
+            [{"number": 1, "question": "Explicit source question?"}],
+        )
+        legacy = seed_current_quiz(
+            dlms.get_db,
+            "Legacy due review",
+            "spaced_review_native_legacy.html",
+            [{"number": 1, "question": "Legacy generated question?"}],
+        )
+        connection = dlms.get_db()
+        try:
+            connection.execute(
+                """
+                UPDATE quizzes
+                SET title = 'Renamed generated session',
+                    source_file = 'renamed-generated-session.html',
+                    generation_kind = 'adaptive_study'
+                WHERE id = ?
+                """,
+                (generated,),
+            )
+            connection.execute(
+                "UPDATE quizzes SET generation_kind = 'source' WHERE id = ?",
+                (explicit_source,),
+            )
+            connection.commit()
+            registry = [
+                {
+                    "id": generated,
+                    "html": "renamed-generated-session.html",
+                    "title": "Renamed generated session",
+                },
+                {
+                    "id": explicit_source,
+                    "html": "smart_review_personal_notes.html",
+                    "title": "Smart Review — Personal Notes",
+                },
+                {
+                    "id": legacy,
+                    "html": "spaced_review_native_legacy.html",
+                    "title": "Legacy due review",
+                },
+            ]
+            plan = self._plan(cursor=connection.cursor(), registry=registry)
+        finally:
+            connection.close()
+
+        by_id = {item["id"]: item for item in plan["quiz_index"]}
+        self.assertEqual("adaptive_study", by_id[str(generated)]["generation_kind"])
+        self.assertEqual("adaptive", by_id[str(generated)]["generated_kind"])
+        self.assertEqual("source", by_id[str(explicit_source)]["generation_kind"])
+        self.assertIsNone(by_id[str(explicit_source)]["generated_kind"])
+        self.assertIsNone(by_id[str(legacy)]["generation_kind"])
+        self.assertEqual("native_due", by_id[str(legacy)]["generated_kind"])
+
+    def test_api_returns_the_composed_plan_and_closes_connection(self):
+        expected = {
+            "items": [],
+            "summary": {},
+            "quiz_index": [],
+            "empty_state": {},
+            "model": {},
+        }
+        client = dlms.app.test_client()
+        with mock.patch.object(dlms, "_daily_review_plan", return_value=expected):
+            response = client.get("/api/daily-review-plan")
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(expected, response.get_json())
+        self.assertEqual("no-store", response.headers.get("Cache-Control"))
+
+    def test_dashboard_loads_queue_recovery_and_direct_action_runtime(self):
+        response = dlms.app.test_client().get("/")
+        page = response.get_data(as_text=True)
+        script = (Path(dlms.STATIC_ROOT) / "daily-review.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(200, response.status_code)
+        self.assertIn("Today’s Review", page)
+        self.assertIn('id="dailyReviewList"', page)
+        self.assertIn('/static/quiz-recovery.js', page)
+        self.assertIn('/static/daily-review.js', page)
+        self.assertIn('fetch("/api/daily-review-plan"', script)
+        self.assertIn("listStoredRecords", script)
+        self.assertIn("replacedKinds", script)
+        self.assertIn('scope: "This browser"', script)
+        self.assertIn("window.dlmsProtectForm?.(form)", script)
+        for route in (
+            "/native-spaced-review/generate",
+            "/concept-review/generate",
+            "/adaptive-study/generate",
+        ):
+            self.assertIn(route, {
+                rule.rule for rule in dlms.app.url_map.iter_rules()
+            })
+
+
+def test_unfinished_removal_has_accessible_confirmation_and_remerges_server_plan():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "static/daily-review.js").read_text(encoding="utf-8")
+    page = (root / "templates/dashboard/index.html").read_text(encoding="utf-8")
+    assert "Remove from Today’s Review" in script
+    assert "clearUnfinishedQuiz(item.recovery.quizId, item.recovery)" in script
+    assert "renderDailyReview(mergeBrowserSessions(serverPlan))" in script
+    assert 'loadDailyReview({keepCurrent: true})' in script
+    assert 'id="dailyReviewClearDialog"' in page
+    assert 'aria-describedby="dailyReviewClearDescription dailyReviewClearQuiz"' in page
+    assert 'value="cancel" autofocus' in page
+    assert 'value="clear">Clear Saved Resume Point' in page
+    assert 'id="dailyReviewStatus"' in page
+    assert "activity already saved to DLMS are kept" in page
+    style = (root / "static/style.css").read_text(encoding="utf-8")
+    assert ".daily-review-remove:focus-visible" in style
+    assert "outline:2px solid var(--theme-accent)" in style
+
+
+if __name__ == "__main__":
+    unittest.main()

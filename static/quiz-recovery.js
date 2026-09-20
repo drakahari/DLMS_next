@@ -384,6 +384,34 @@
     }
   }
 
+  // Dashboard abandonment must not discard persistence work or a newer session.
+  // This deliberately does not use the quiz controller's broader Start Over path.
+  function clearUnfinishedQuiz(quizId, expected) {
+    const key = `${STORAGE_PREFIX}${encodeURIComponent(String(quizId))}`;
+    try {
+      const raw = localStorage.getItem(key);
+      let record = null;
+      try { record = raw === null ? null : JSON.parse(raw); }
+      catch (_error) { return {status: "changed"}; }
+      if (!validateRecordEnvelope(record) || String(record.quiz.id) !== String(quizId)
+          || !expected || record.session.id !== expected.sessionId
+          || record.session.revision !== expected.revision
+          || record.session.ownerToken !== expected.ownerToken
+          || record.session.updatedAt !== expected.updatedAt) {
+        return {status: "changed"};
+      }
+      if (record.session.phase === "submitting" || record.pendingAttempt !== null) {
+        return {status: "pending_exam"};
+      }
+      if (record.unacknowledgedStudyEvents.length !== 0) {
+        return {status: "pending_study"};
+      }
+      return {status: removeStoredQuiz(quizId) ? "removed" : "storage_error"};
+    } catch (_error) {
+      return {status: "storage_error"};
+    }
+  }
+
   function clearAllStoredRecords() {
     try {
       const keys = recoveryStorageKeys();
@@ -438,6 +466,45 @@
     }
   }
 
+  function listStoredRecords({activeQuizIds = null, now = Date.now()} = {}) {
+    try {
+      const active = activeQuizIds === null
+        ? null
+        : new Set(Array.from(activeQuizIds, value => String(value)));
+      const records = [];
+      recoveryStorageKeys().forEach(key => {
+        try {
+          const quizId = storedQuizId(key);
+          const raw = localStorage.getItem(key);
+          if (quizId === null || raw === null || storageBytes(raw) > MAX_RECORD_BYTES) return;
+          const record = JSON.parse(raw);
+          if (!validateRecordEnvelope(record, now)
+              || String(record.quiz.id) !== quizId
+              || (active !== null && !active.has(quizId))) return;
+          records.push({
+            quizId,
+            sessionId: record.session.id,
+            revision: record.session.revision,
+            ownerToken: record.session.ownerToken,
+            mode: record.session.mode,
+            phase: record.session.phase,
+            questionIndex: record.view.questionIndex,
+            updatedAt: record.session.updatedAt,
+          });
+        } catch (_error) {
+          // Listing is read-only; malformed records are left for normal pruning.
+        }
+      });
+      records.sort((left, right) => (
+        right.updatedAt - left.updatedAt
+        || left.quizId.localeCompare(right.quizId)
+      ));
+      return {available: true, records};
+    } catch (_error) {
+      return {available: false, records: []};
+    }
+  }
+
   function createController(options) {
     const context = {
       quizId: String(options.quizId),
@@ -463,8 +530,8 @@
     };
 
     function removeStored() {
-      try { localStorage.removeItem(storageKey); }
-      catch (_error) { storageWarning(); }
+      try { localStorage.removeItem(storageKey); return true; }
+      catch (_error) { storageWarning(); return false; }
     }
 
     function readStored({discardInvalid = true} = {}) {
@@ -679,6 +746,10 @@
     function initialize() {
       pruneStoredRecords();
       savedRecord = readStored();
+      if (savedRecord && options.isCompleted?.(savedRecord)) {
+        removeStored();
+        savedRecord = null;
+      }
       if (savedRecord) renderPanel(savedRecord);
       window.addEventListener("storage", event => {
         if (event.key !== storageKey || !owned) return;
@@ -697,9 +768,10 @@
     }
 
     function complete() {
-      if (owned) removeStored();
+      if (owned && !removeStored()) return false;
       owned = false;
       savedRecord = null;
+      return true;
     }
 
     return {
@@ -726,7 +798,9 @@
     validateRecord,
     validateRecordEnvelope,
     pruneStoredRecords,
+    listStoredRecords,
     removeStoredQuiz,
+    clearUnfinishedQuiz,
     clearAllStoredRecords,
   };
 })();

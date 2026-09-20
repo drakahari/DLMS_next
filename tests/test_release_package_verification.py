@@ -15,13 +15,14 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+import package_release as RELEASE_PACKAGER
 import verify_release_package as PACKAGE_VERIFIER
 
 
 SCRIPT = ROOT / "tools" / "verify_release_package.py"
 PACKAGER = ROOT / "tools" / "package_release.py"
 CHECKSUMMER = ROOT / "tools" / "generate_sha256sums.py"
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 
 
 def elf_x86_64() -> bytes:
@@ -710,6 +711,256 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         )
         self.assertEqual(second.returncode, 1)
         self.assertIn("refusing to overwrite", second.stderr)
+
+    def test_single_target_packaging_creates_verified_native_final_packages(self):
+        staging = self.make_staged_artifacts()
+        cases = (
+            (
+                "fedora44-x86_64",
+                f"DLMS-{VERSION}-fedora44-x86_64",
+                f"DLMS-{VERSION}-fedora44-x86_64.tar.gz",
+            ),
+            (
+                "windows11-x86_64",
+                f"DLMS-{VERSION}-windows11-x86_64.exe",
+                f"DLMS-{VERSION}-windows11-x86_64.zip",
+            ),
+            (
+                "macos-arm64",
+                f"DLMS-{VERSION}-macos-arm64.zip",
+                f"DLMS-{VERSION}-macos-arm64.zip",
+            ),
+        )
+
+        for target, artifact_name, package_name in cases:
+            with self.subTest(target=target):
+                artifact = staging / artifact_name
+                before = (
+                    hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                    stat.S_IMODE(artifact.stat().st_mode),
+                    artifact.stat().st_mtime_ns,
+                )
+                output = self.root / f"single-{target}"
+
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(PACKAGER),
+                        "--target",
+                        target,
+                        "--artifact",
+                        str(artifact),
+                        "--output-dir",
+                        str(output),
+                        "--source-root",
+                        str(ROOT),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                package = output / package_name
+                self.assertTrue(package.is_file())
+                self.assertEqual(
+                    PACKAGE_VERIFIER.verify_release_package(package, ROOT), []
+                )
+                digest = hashlib.sha256(package.read_bytes()).hexdigest()
+                self.assertIn(f"SHA-256: {digest}  {package.name}", result.stdout)
+                self.assertEqual(
+                    before,
+                    (
+                        hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                        stat.S_IMODE(artifact.stat().st_mode),
+                        artifact.stat().st_mtime_ns,
+                    ),
+                )
+
+        linux = self.root / "single-fedora44-x86_64" / (
+            f"DLMS-{VERSION}-fedora44-x86_64.tar.gz"
+        )
+        with tarfile.open(linux, "r:gz") as archive:
+            executable = archive.getmember(
+                f"DLMS-{VERSION}-fedora44-x86_64/"
+                f"DLMS-{VERSION}-fedora44-x86_64"
+            )
+            self.assertEqual(executable.mode, 0o755)
+
+        macos = self.root / "single-macos-arm64" / (
+            f"DLMS-{VERSION}-macos-arm64.zip"
+        )
+        with zipfile.ZipFile(macos) as archive:
+            top_level = {
+                info.filename.rstrip("/").split("/", 1)[0]
+                for info in archive.infolist()
+            }
+            self.assertEqual(
+                top_level, {"DLMS.app", "README.txt", "sample_quiz.txt"}
+            )
+
+    def test_single_target_outputs_form_the_canonical_combined_checksum_set(self):
+        staging = self.make_staged_artifacts()
+        output = self.root / "single-complete-set"
+        packages = []
+
+        for target in RELEASE_PACKAGER.RELEASE_TARGETS:
+            _, artifact_name, _ = RELEASE_PACKAGER._single_target_contract(
+                target, VERSION
+            )
+            packages.append(
+                RELEASE_PACKAGER.package_single_target(
+                    target, staging / artifact_name, output, ROOT
+                )
+            )
+
+        manifest = output / "SHA256SUMS.txt"
+        generated = subprocess.run(
+            [
+                sys.executable,
+                str(CHECKSUMMER),
+                "--output",
+                str(manifest),
+                *(str(package) for package in packages),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+
+        verified = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                *(str(package) for package in packages),
+                "--complete-set",
+                "--checksums",
+                str(manifest),
+                "--source-root",
+                str(ROOT),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(verified.returncode, 0, verified.stdout + verified.stderr)
+        self.assertIn("Verified checksum manifest:", verified.stdout)
+
+    def test_single_target_packaging_rejects_mismatched_or_invalid_artifacts(self):
+        staging = self.make_staged_artifacts()
+        output = self.root / "single-invalid"
+        windows_artifact = staging / f"DLMS-{VERSION}-windows11-x86_64.exe"
+
+        mismatch = subprocess.run(
+            [
+                sys.executable,
+                str(PACKAGER),
+                "--target",
+                "fedora44-x86_64",
+                "--artifact",
+                str(windows_artifact),
+                "--output-dir",
+                str(output),
+                "--source-root",
+                str(ROOT),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(mismatch.returncode, 1)
+        self.assertIn("requires canonical native artifact name", mismatch.stderr)
+        self.assertFalse(output.exists())
+
+        linux_artifact = staging / f"DLMS-{VERSION}-fedora44-x86_64"
+        linux_artifact.chmod(0o644)
+        invalid = subprocess.run(
+            [
+                sys.executable,
+                str(PACKAGER),
+                "--target",
+                "fedora44-x86_64",
+                "--artifact",
+                str(linux_artifact),
+                "--output-dir",
+                str(output),
+                "--source-root",
+                str(ROOT),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(invalid.returncode, 1)
+        self.assertIn("not marked executable", invalid.stderr)
+        self.assertFalse(output.exists())
+
+    def test_single_target_smokes_temporary_final_package_before_publication(self):
+        staging = self.make_staged_artifacts()
+        artifact = staging / f"DLMS-{VERSION}-fedora44-x86_64"
+        output = self.root / "single-smoke"
+        expected = output / f"DLMS-{VERSION}-fedora44-x86_64.tar.gz"
+
+        def assert_temporary_package(package, source_root):
+            self.assertTrue(package.is_file())
+            self.assertNotEqual(package, expected)
+            self.assertEqual(source_root, ROOT.resolve())
+            self.assertEqual(
+                PACKAGE_VERIFIER.verify_release_package(package, ROOT), []
+            )
+            return []
+
+        with mock.patch.object(
+            RELEASE_PACKAGER,
+            "clean_extract_and_smoke",
+            side_effect=assert_temporary_package,
+        ) as smoke:
+            package = RELEASE_PACKAGER.package_single_target(
+                "fedora44-x86_64", artifact, output, ROOT, smoke=True
+            )
+
+        self.assertEqual(package, expected)
+        self.assertTrue(expected.is_file())
+        smoke.assert_called_once()
+
+    def test_single_target_smoke_failure_does_not_publish_package(self):
+        staging = self.make_staged_artifacts()
+        artifact = staging / f"DLMS-{VERSION}-fedora44-x86_64"
+        output = self.root / "single-smoke-failure"
+        expected = output / f"DLMS-{VERSION}-fedora44-x86_64.tar.gz"
+
+        with mock.patch.object(
+            RELEASE_PACKAGER,
+            "clean_extract_and_smoke",
+            return_value=["simulated smoke failure"],
+        ):
+            with self.assertRaisesRegex(ValueError, "simulated smoke failure"):
+                RELEASE_PACKAGER.package_single_target(
+                    "fedora44-x86_64", artifact, output, ROOT, smoke=True
+                )
+
+        self.assertFalse(expected.exists())
+
+    def test_single_target_requires_distinct_output_and_release_assets(self):
+        staging = self.make_staged_artifacts()
+        artifact = staging / f"DLMS-{VERSION}-macos-arm64.zip"
+
+        with self.assertRaisesRegex(ValueError, "must differ"):
+            RELEASE_PACKAGER.package_single_target(
+                "macos-arm64", artifact, staging, ROOT
+            )
+
+        source_root = self.make_source_root(
+            "missing-asset-source", readme=self.readme, sample=self.sample
+        )
+        (source_root / "release_assets" / "sample_quiz.txt").unlink()
+        with self.assertRaisesRegex(ValueError, "missing authoritative release asset"):
+            RELEASE_PACKAGER.package_single_target(
+                "macos-arm64", artifact, self.root / "missing-asset-output", source_root
+            )
 
     def test_linux_final_package_is_clean_extracted_before_smoke(self):
         package = self.make_linux("fedora44-x86_64")

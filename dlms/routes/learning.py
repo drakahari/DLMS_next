@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any
 
-from flask import Blueprint, flash, jsonify, redirect, request, send_from_directory
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory
+
+from dlms.services.daily_review import (
+    DEFAULT_DUE_QUESTION_BATCH_SIZE,
+    MAX_DUE_QUESTION_BATCH_SIZE,
+)
 
 
 Dependency = Callable[..., Any]
@@ -18,14 +23,21 @@ class LearningRouteDependencies:
     static_folder: Dependency
     static_root: Dependency
     get_db: Dependency
+    learning_scope_summary: Dependency
+    set_learning_scope: Dependency
     learning_payload_error: Dependency
     persist_attempt: Dependency
     persist_study_learning_event: Dependency
+    generated_practice_status: Dependency
+    complete_generated_practice: Dependency
     learning_foundation_summary: Dependency
     smart_review_candidates: Dependency
     smart_review_select_candidates: Dependency
     review_candidates_for_topics: Dependency
     review_select_candidates: Dependency
+    adaptive_study_candidates: Dependency
+    adaptive_study_select_candidates: Dependency
+    daily_review_plan: Dependency
     question_payload_from_db: Dependency
     publish_quiz: Dependency
     review_schedule_payload: Dependency
@@ -83,6 +95,30 @@ def record_study_learning_event(dependencies):
         conn.close()
 
 
+def generated_practice_status_api(dependencies, quiz_id):
+    conn = dependencies.get_db()
+    try:
+        return jsonify(dependencies.generated_practice_status(conn.cursor(), quiz_id))
+    finally:
+        conn.close()
+
+
+def complete_generated_practice_api(dependencies):
+    conn = dependencies.get_db()
+    try:
+        result = dependencies.complete_generated_practice(
+            conn.cursor(), request.get_json(silent=True)
+        )
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        print(f"[GENERATED PRACTICE COMPLETION ERROR] {type(exc).__name__}: {exc}")
+        return jsonify({"error": "Review completion could not be saved. Retry without leaving this quiz."}), 500
+    finally:
+        conn.close()
+
+
 def learning_foundation_summary(dependencies):
     """Diagnostics for DLMS-006/007; dashboards build on this data."""
     conn = dependencies.get_db()
@@ -90,6 +126,16 @@ def learning_foundation_summary(dependencies):
     out = dependencies.learning_foundation_summary(cur)
     conn.close()
     return jsonify(out)
+
+
+def daily_review_plan_api(dependencies):
+    """Return the derived DLMS-126 action plan for the Dashboard."""
+    conn = dependencies.get_db()
+    cur = conn.cursor()
+    try:
+        return jsonify(dependencies.daily_review_plan(cur))
+    finally:
+        conn.close()
 
 
 def smart_review_preview_api(dependencies):
@@ -176,6 +222,130 @@ def smart_review_generate(dependencies):
         quiz_title,
         quiz_data,
         filename_prefix="smart_review",
+        generation_kind="smart_review",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
+    return redirect(f"/quizzes/{html_name}")
+
+
+def adaptive_study_generate(dependencies):
+    """Build a deterministic mixed study session from existing learner evidence."""
+    try:
+        requested = int(request.form.get("question_count", "20"))
+    except (TypeError, ValueError):
+        requested = 20
+    requested = max(1, min(requested, 50))
+
+    quiz_data = []
+    conn = dependencies.get_db()
+    cur = conn.cursor()
+    try:
+        candidates = dependencies.adaptive_study_candidates(cur)
+        if not candidates:
+            flash(
+                "Add at least one quiz question before starting an adaptive study session.",
+                "info",
+            )
+            return redirect("/learning-intelligence")
+        selected = dependencies.adaptive_study_select_candidates(
+            candidates, requested
+        )
+        for number, candidate in enumerate(selected, start=1):
+            item = dependencies.question_payload_from_db(
+                cur, candidate["question_id"]
+            )
+            if not item:
+                continue
+            item["number"] = number
+            quiz_data.append(item)
+    finally:
+        conn.close()
+
+    if not quiz_data:
+        flash(
+            "No usable source questions were available for adaptive study.",
+            "error",
+        )
+        return redirect("/learning-intelligence")
+
+    _quiz_id, html_name = dependencies.publish_quiz(
+        "Adaptive Study — What I Need Most",
+        quiz_data,
+        filename_prefix="adaptive_study",
+        generation_kind="adaptive_study",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
+    return redirect(f"/quizzes/{html_name}")
+
+
+def concept_review_generate(dependencies):
+    """Build focused practice from one canonical concept and its source quizzes."""
+    try:
+        concept_id = int(request.form.get("concept_id", ""))
+    except (TypeError, ValueError):
+        concept_id = 0
+    try:
+        requested = int(request.form.get("question_count", "20"))
+    except (TypeError, ValueError):
+        requested = 20
+    requested = max(1, min(requested, 50))
+
+    if concept_id < 1:
+        flash("Choose a valid concept for focused review.", "error")
+        return redirect("/learning-intelligence")
+
+    conn = dependencies.get_db()
+    cur = conn.cursor()
+    try:
+        payload = dependencies.learning_intelligence_payload(cur)
+        topic = next(
+            (
+                candidate
+                for candidate in payload.get("topics") or []
+                if candidate.get("concept_id") == concept_id
+            ),
+            None,
+        )
+        if topic is None:
+            flash("That concept is no longer available.", "error")
+            return redirect("/learning-intelligence")
+
+        candidates = dependencies.review_candidates_for_topics(cur, [topic])
+        if not candidates:
+            flash(
+                "No tagged source questions are available for that concept.",
+                "info",
+            )
+            return redirect("/learning-intelligence")
+
+        selected = dependencies.review_select_candidates(
+            candidates, [topic], requested
+        )
+        quiz_data = []
+        for number, candidate in enumerate(selected, start=1):
+            item = dependencies.question_payload_from_db(
+                cur, candidate["question_id"]
+            )
+            if not item:
+                continue
+            item["number"] = number
+            quiz_data.append(item)
+        topic_name = topic["name"]
+    finally:
+        conn.close()
+
+    if not quiz_data:
+        flash("No usable source questions were available for Concept Review.", "error")
+        return redirect("/learning-intelligence")
+
+    quiz_title = f"Concept Review — {topic_name}"
+    _quiz_id, html_name = dependencies.publish_quiz(
+        quiz_title,
+        quiz_data,
+        filename_prefix="concept_review",
+        generation_kind="concept_review",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )
@@ -300,6 +470,56 @@ def spaced_review_generate(dependencies):
         quiz_title,
         quiz_data,
         filename_prefix="spaced_review",
+        generation_kind="spaced_review",
+        exam_minutes=90,
+        snapshot_existing_assets=True,
+    )
+    return redirect(f"/quizzes/{html_name}")
+
+
+def native_spaced_review_generate(dependencies):
+    """Publish a normal quiz from canonical questions due under DLMS-129."""
+    try:
+        requested = int(
+            request.form.get(
+                "question_count", str(DEFAULT_DUE_QUESTION_BATCH_SIZE)
+            )
+        )
+    except (TypeError, ValueError):
+        requested = DEFAULT_DUE_QUESTION_BATCH_SIZE
+    requested = max(1, min(requested, MAX_DUE_QUESTION_BATCH_SIZE))
+
+    conn = dependencies.get_db()
+    cur = conn.cursor()
+    try:
+        schedule = dependencies.review_schedule_payload(cur)
+        due = [
+            item
+            for item in schedule.get("questions") or []
+            if item.get("schedule_state") in {"due", "overdue"}
+        ]
+        selected = due[:requested]
+        quiz_data = []
+        for number, candidate in enumerate(selected, start=1):
+            item = dependencies.question_payload_from_db(
+                cur, candidate["question_id"]
+            )
+            if not item:
+                continue
+            item["number"] = number
+            quiz_data.append(item)
+    finally:
+        conn.close()
+
+    if not quiz_data:
+        flash("No source questions are due for native spaced review yet.", "info")
+        return redirect("/review-schedule")
+
+    _quiz_id, html_name = dependencies.publish_quiz(
+        "Spaced Review — Due Questions",
+        quiz_data,
+        filename_prefix="spaced_review_native",
+        generation_kind="native_spaced_review",
         exam_minutes=90,
         snapshot_existing_assets=True,
     )
@@ -349,10 +569,34 @@ def learning_intelligence_topics_api(dependencies):
         conn.close()
 
 
+def learning_scope_summary_api(dependencies):
+    return jsonify(dependencies.learning_scope_summary())
+
+
+def manage_learning_scope(dependencies):
+    if request.method == "POST":
+        state = request.form.get("included")
+        try:
+            name = dependencies.set_learning_scope(request.form.get("folder"), state)
+        except ValueError:
+            flash("Learning Scope could not be changed. Refresh and try again.", "error")
+            return redirect("/learning-scope")
+        flash(
+            f"{name} is {'included in' if state == '1' else 'excluded from'} Learning Scope.",
+            "success",
+        )
+        return redirect("/learning-scope")
+    return render_template("learning/scope.html", scope=dependencies.learning_scope_summary())
+
+
 def create_learning_blueprint(dependencies):
     blueprint = Blueprint("learning", __name__)
     rules = (
+        ("/api/learning-scope", "learning_scope_summary_api", learning_scope_summary_api, ["GET"]),
+        ("/learning-scope", "manage_learning_scope", manage_learning_scope, ["GET", "POST"]),
         ("/record_attempt", "record_attempt", record_attempt, ["POST"]),
+        ("/api/generated-practice/status/<int:quiz_id>", "generated_practice_status_api", generated_practice_status_api, ["GET"]),
+        ("/api/generated-practice/complete", "complete_generated_practice_api", complete_generated_practice_api, ["POST"]),
         (
             "/api/learning-events/study-response",
             "record_study_learning_event",
@@ -366,6 +610,12 @@ def create_learning_blueprint(dependencies):
             ["GET"],
         ),
         (
+            "/api/daily-review-plan",
+            "daily_review_plan_api",
+            daily_review_plan_api,
+            ["GET"],
+        ),
+        (
             "/api/smart-review/preview",
             "smart_review_preview_api",
             smart_review_preview_api,
@@ -375,6 +625,18 @@ def create_learning_blueprint(dependencies):
             "/smart-review/generate",
             "smart_review_generate",
             smart_review_generate,
+            ["POST"],
+        ),
+        (
+            "/adaptive-study/generate",
+            "adaptive_study_generate",
+            adaptive_study_generate,
+            ["POST"],
+        ),
+        (
+            "/concept-review/generate",
+            "concept_review_generate",
+            concept_review_generate,
             ["POST"],
         ),
         (
@@ -399,6 +661,12 @@ def create_learning_blueprint(dependencies):
             "/spaced-review/generate",
             "spaced_review_generate",
             spaced_review_generate,
+            ["POST"],
+        ),
+        (
+            "/native-spaced-review/generate",
+            "native_spaced_review_generate",
+            native_spaced_review_generate,
             ["POST"],
         ),
         (

@@ -27,6 +27,8 @@ HISTORY_ROUTE_PATH = ROOT / "dlms" / "routes" / "history.py"
 
 class LearningHistoryBlueprintTests(unittest.TestCase):
     EXPECTED_RULES = {
+        ("learning.learning_scope_summary_api", "/api/learning-scope", frozenset({"GET"})),
+        ("learning.manage_learning_scope", "/learning-scope", frozenset({"GET", "POST"})),
         ("learning.record_attempt", "/record_attempt", frozenset({"POST"})),
         (
             "learning.record_study_learning_event",
@@ -39,6 +41,11 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
             frozenset({"GET"}),
         ),
         (
+            "learning.daily_review_plan_api",
+            "/api/daily-review-plan",
+            frozenset({"GET"}),
+        ),
+        (
             "learning.smart_review_preview_api",
             "/api/smart-review/preview",
             frozenset({"GET"}),
@@ -46,6 +53,16 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
         (
             "learning.smart_review_generate",
             "/smart-review/generate",
+            frozenset({"POST"}),
+        ),
+        (
+            "learning.adaptive_study_generate",
+            "/adaptive-study/generate",
+            frozenset({"POST"}),
+        ),
+        (
+            "learning.concept_review_generate",
+            "/concept-review/generate",
             frozenset({"POST"}),
         ),
         (
@@ -66,6 +83,11 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
         (
             "learning.spaced_review_generate",
             "/spaced-review/generate",
+            frozenset({"POST"}),
+        ),
+        (
+            "learning.native_spaced_review_generate",
+            "/native-spaced-review/generate",
             frozenset({"POST"}),
         ),
         (
@@ -140,14 +162,21 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
         "static_folder",
         "static_root",
         "get_db",
+        "learning_scope_summary",
+        "set_learning_scope",
         "learning_payload_error",
         "persist_attempt",
         "persist_study_learning_event",
+        "generated_practice_status",
+        "complete_generated_practice",
         "learning_foundation_summary",
         "smart_review_candidates",
         "smart_review_select_candidates",
         "review_candidates_for_topics",
         "review_select_candidates",
+        "adaptive_study_candidates",
+        "adaptive_study_select_candidates",
+        "daily_review_plan",
         "question_payload_from_db",
         "publish_quiz",
         "review_schedule_payload",
@@ -204,7 +233,7 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
             for rule in rules
         }
         self.assertEqual(self.EXPECTED_RULES, actual)
-        self.assertEqual(28, len(rules))
+        self.assertEqual(34, len(rules))
         for rule in rules:
             with self.subTest(endpoint=rule.endpoint, rule=rule.rule):
                 self.assertTrue(rule.strict_slashes)

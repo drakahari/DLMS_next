@@ -8,7 +8,9 @@ import unicodedata
 
 from dlms.parsing.external_ai_structured import (
     EXTERNAL_AI_MAX_CHOICE_CHARS,
+    EXTERNAL_AI_MAX_CONCEPT_CHARS,
     EXTERNAL_AI_MAX_EXPLANATION_CHARS,
+    EXTERNAL_AI_MAX_MATCHING_PAIRS,
     EXTERNAL_AI_MAX_QUESTION_CHARS,
     EXTERNAL_AI_MAX_SOURCE_CHARS,
     EXTERNAL_AI_MAX_TITLE_CHARS,
@@ -18,6 +20,7 @@ from dlms.parsing.external_ai_structured import (
 from dlms.services.content_packs import (
     _content_pack_choice_question_errors,
     _matching_comparison_key,
+    _matching_record_validation_errors,
 )
 
 
@@ -569,6 +572,238 @@ def validate_quiz_review_submission(draft, submitted_items, *, title, source):
         "questions": reviewed_questions,
         "validation_state": "needs_repair" if errors else "ready_for_publication",
         "correctness_confirmation_required": True,
+    })
+    return {
+        "review_draft": updated_draft,
+        "publish_questions": publish_questions if not errors else [],
+        "errors": errors,
+        "warnings": [
+            diagnostic
+            for diagnostic in (draft.get("diagnostics") or [])
+            if isinstance(diagnostic, dict)
+            and diagnostic.get("severity") == "warning"
+        ],
+    }
+
+
+def validate_matching_review_submission(draft, submitted_items, *, title, source):
+    """Revalidate reviewed matching records and build canonical publish data."""
+    original_questions = draft.get("questions") if isinstance(draft, dict) else None
+    if not isinstance(original_questions, list) or not original_questions:
+        raise QuestionReviewPayloadError("The review draft has no matching questions.")
+    if len(original_questions) > QUESTION_REVIEW_MAX_QUESTIONS:
+        raise QuestionReviewPayloadError("The review draft has too many questions.")
+
+    title, title_error = _bounded_review_text(
+        title,
+        label="Quiz title",
+        limit=EXTERNAL_AI_MAX_TITLE_CHARS,
+        required=True,
+    )
+    normalized_source, source_errors = _review_source(source)
+    errors = ([title_error] if title_error else []) + source_errors
+    for diagnostic in draft.get("diagnostics") or []:
+        if (
+            isinstance(diagnostic, dict)
+            and diagnostic.get("severity") == "error"
+            and diagnostic.get("code") in _UNREPAIRABLE_ENVELOPE_DIAGNOSTIC_CODES
+        ):
+            errors.append(
+                "Response envelope: "
+                + str(diagnostic.get("message") or "unsupported structured response")
+                + " Start Over with a schema_version 1 matching response."
+            )
+
+    if not isinstance(submitted_items, list):
+        raise QuestionReviewPayloadError("Review data must be a list.")
+    indexes = []
+    for item in submitted_items:
+        if not isinstance(item, dict) or type(item.get("index")) is not int:
+            raise QuestionReviewPayloadError(
+                "Every reviewed matching question must have an integer index."
+            )
+        indexes.append(item["index"])
+    if sorted(indexes) != list(range(len(original_questions))):
+        raise QuestionReviewPayloadError(
+            "Review data must contain every draft question exactly once."
+        )
+
+    reviewed_questions = []
+    publish_questions = []
+    included_by_text = {}
+    included_count = 0
+    for index, original in enumerate(original_questions):
+        submitted = submitted_question_at_index(submitted_items, index)
+        if submitted is None:
+            raise QuestionReviewPayloadError(
+                "Review data contains an ambiguous question index."
+            )
+        number = index + 1
+        excluded = submitted.get("delete") is True
+        question, question_error = _bounded_review_text(
+            submitted.get("question"),
+            label=f"Question {number} text",
+            limit=EXTERNAL_AI_MAX_QUESTION_CHARS,
+            required=not excluded,
+        )
+        explanation, explanation_error = _bounded_review_text(
+            submitted.get("explanation"),
+            label=f"Question {number} explanation",
+            limit=EXTERNAL_AI_MAX_EXPLANATION_CHARS,
+        )
+        direction = str(submitted.get("direction") or "").strip().lower()
+        raw_pairs = submitted.get("pairs")
+        if not isinstance(raw_pairs, list):
+            raise QuestionReviewPayloadError(
+                f"Question {number} pairs must be a list."
+            )
+        if len(raw_pairs) > EXTERNAL_AI_MAX_MATCHING_PAIRS:
+            raise QuestionReviewPayloadError(
+                f"Question {number} may contain at most "
+                f"{EXTERNAL_AI_MAX_MATCHING_PAIRS} pairs."
+            )
+
+        pair_errors = []
+        pairs = []
+        for pair_index, raw_pair in enumerate(raw_pairs, 1):
+            if not isinstance(raw_pair, dict):
+                pair_errors.append(
+                    f"Question {number} pair {pair_index} must be an object."
+                )
+                raw_pair = {}
+            normalized_pair = {}
+            for field, label, limit, required in (
+                ("left", "term", EXTERNAL_AI_MAX_CHOICE_CHARS, not excluded),
+                ("right", "definition", EXTERNAL_AI_MAX_CHOICE_CHARS, not excluded),
+                ("category", "category", EXTERNAL_AI_MAX_CONCEPT_CHARS, False),
+                ("explanation", "explanation", EXTERNAL_AI_MAX_EXPLANATION_CHARS, False),
+            ):
+                value, field_error = _bounded_review_text(
+                    raw_pair.get(field),
+                    label=f"Question {number} pair {pair_index} {label}",
+                    limit=limit,
+                    required=required,
+                )
+                normalized_pair[field] = value
+                if field_error:
+                    pair_errors.append(field_error)
+            pairs.append(normalized_pair)
+
+        concepts, concept_errors = _review_concepts(
+            submitted.get("concepts", []), question_number=number
+        )
+        raw_round_size = submitted.get("round_size")
+        round_size = raw_round_size if type(raw_round_size) is int else None
+        confirmed = not excluded and submitted.get("review_confirmed") is True
+        validation_issues = []
+        if not excluded:
+            included_count += 1
+            if question_error:
+                validation_issues.append(question_error)
+            if explanation_error:
+                validation_issues.append(explanation_error)
+            validation_issues.extend(pair_errors)
+            validation_issues.extend(concept_errors)
+            if direction not in {
+                "term_to_definition", "definition_to_term", "random",
+            }:
+                validation_issues.append(
+                    f"Question {number} direction is unsupported."
+                )
+            if not 2 <= len(pairs) <= EXTERNAL_AI_MAX_MATCHING_PAIRS:
+                validation_issues.append(
+                    f"Question {number} needs 2-{EXTERNAL_AI_MAX_MATCHING_PAIRS} pairs."
+                )
+            if round_size is None or not 2 <= round_size <= len(pairs):
+                validation_issues.append(
+                    f"Question {number} round size must be between 2 and its pair count."
+                )
+            validation_issues.extend(_matching_record_validation_errors(
+                pairs,
+                context=f"Question {number}",
+                left_key="left",
+                right_key="right",
+                record_name="pair",
+                matching_comparison_key=_matching_comparison_key,
+            ))
+            if not confirmed:
+                validation_issues.append(
+                    f"Question {number} needs explicit confirmation of every matching pair."
+                )
+
+        reviewed = copy.deepcopy(original) if isinstance(original, dict) else {}
+        reviewed.update({
+            "source_index": index,
+            "number": number,
+            "question": question,
+            "direction": direction,
+            "round_size": round_size,
+            "pairs": pairs,
+            "explanation": explanation,
+            "concepts": concepts,
+            "validation_issues": [
+                {
+                    "severity": "error",
+                    "code": "review_validation",
+                    "path": f"questions[{index}]",
+                    "message": message,
+                }
+                for message in validation_issues
+            ],
+            "review_confirmation_required": True,
+            "review_confirmed": confirmed,
+            "excluded": excluded,
+            "validation_state": (
+                "excluded" if excluded else
+                "needs_repair" if validation_issues else
+                "ready_for_review"
+            ),
+        })
+        reviewed_questions.append(reviewed)
+        errors.extend(validation_issues)
+
+        if not excluded and not validation_issues:
+            comparison_key = _matching_comparison_key(question)
+            prior = included_by_text.get(comparison_key)
+            if prior is not None:
+                duplicate_message = (
+                    f"Questions {prior + 1} and {number} have duplicate question text; "
+                    "edit or exclude one."
+                )
+                errors.append(duplicate_message)
+                for duplicate_index in (prior, index):
+                    reviewed_questions[duplicate_index]["validation_issues"].append({
+                        "severity": "error",
+                        "code": "duplicate_question",
+                        "path": f"questions[{duplicate_index}].question",
+                        "message": duplicate_message,
+                    })
+                    reviewed_questions[duplicate_index]["validation_state"] = "needs_repair"
+            else:
+                included_by_text[comparison_key] = index
+
+            publish_questions.append({
+                "number": len(publish_questions) + 1,
+                "type": "matching",
+                "question": question,
+                "pairs": pairs,
+                "round_size": round_size,
+                "direction": direction,
+                "explanation": explanation,
+                "concepts": concepts,
+                "source": normalized_source,
+            })
+
+    if included_count == 0:
+        errors.append("Keep at least one valid matching question before publishing.")
+
+    updated_draft = copy.deepcopy(draft)
+    updated_draft.update({
+        "title": title,
+        "source": normalized_source,
+        "questions": reviewed_questions,
+        "validation_state": "needs_repair" if errors else "ready_for_publication",
+        "review_confirmation_required": True,
     })
     return {
         "review_draft": updated_draft,
