@@ -1745,6 +1745,9 @@ def inject_content_pack_state():
 
 
 PORTAL_CONFIG = os.path.join(CONFIG_FOLDER, "portal.json")
+# Shared by portal settings and quiz/folder metadata transactions. Define before
+# portal initialization, which can itself create or preserve a JSON document.
+registry_lock = threading.RLock()
 DEFAULT_THEME = "purple-gold"
 QUIZ_REGISTRY = os.path.join(CONFIG_FOLDER, "quizzes.json")
 DB_PATH = os.path.join(APP_DATA_DIR, "results.db")
@@ -2722,17 +2725,18 @@ def _atomic_write_text(path, text, *, encoding="utf-8"):
 
 
 def load_portal_config():
-    return _portal_repository.load_portal_config(
-        PORTAL_CONFIG,
-        default_theme=DEFAULT_THEME,
-        default_ai_feedback_prompt=DEFAULT_AI_FEEDBACK_PROMPT,
-        default_law_ai_prompt=DEFAULT_LAW_AI_PROMPT,
-        default_study_content_pack_prompt=DEFAULT_STUDY_CONTENT_PACK_PROMPT,
-        default_medical_study_pack_ai_addendum=DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
-        validate_custom_ai_url=_validate_custom_ai_url,
-        atomic_write_json=_atomic_write_json,
-        preserve_malformed_json=_preserve_malformed_json,
-    )
+    with registry_lock:
+        return _portal_repository.load_portal_config(
+            PORTAL_CONFIG,
+            default_theme=DEFAULT_THEME,
+            default_ai_feedback_prompt=DEFAULT_AI_FEEDBACK_PROMPT,
+            default_law_ai_prompt=DEFAULT_LAW_AI_PROMPT,
+            default_study_content_pack_prompt=DEFAULT_STUDY_CONTENT_PACK_PROMPT,
+            default_medical_study_pack_ai_addendum=DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM,
+            validate_custom_ai_url=_validate_custom_ai_url,
+            atomic_write_json=_atomic_write_json,
+            preserve_malformed_json=_preserve_malformed_json,
+        )
 
 
 browser_presence_manager = BrowserPresenceManager(
@@ -2892,11 +2896,12 @@ def get_confidence_setting():
 # LAW STUDY REGISTRY
 # =========================
 def load_law_registry():
-    return _registry_repository.load_law_registry(
-        LAW_REGISTRY,
-        atomic_write_json=_atomic_write_json,
-        preserve_malformed_json=_preserve_malformed_json,
-    )
+    with registry_lock:
+        return _registry_repository.load_law_registry(
+            LAW_REGISTRY,
+            atomic_write_json=_atomic_write_json,
+            preserve_malformed_json=_preserve_malformed_json,
+        )
 
 
 def save_law_registry(registry):
@@ -2945,7 +2950,6 @@ def _delete_law_case_and_registry(case_path, registry, case_id):
 # =========================
 # QUIZ REGISTRY
 # =========================
-registry_lock = threading.RLock()
 law_raw_import_lock = threading.Lock()
 
 def load_registry():
@@ -3786,21 +3790,15 @@ def _full_data_reset_core():
 
 
 def _run_reset_with_backup(reset_label, reset_callable):
-    return _restore_service.run_reset_with_backup(
-        reset_label,
-        reset_callable,
-        require_owned_root=_require_owned_app_data_root,
-        create_backup=_create_dlms_backup,
-    )
-
-
-
-
-
-
-
-
-
+    # Always acquire restore before registry, matching restore confirmation.
+    # Keep configuration replacement outside concurrent read/modify/write saves.
+    with RESTORE_OPERATION_LOCK, registry_lock:
+        return _restore_service.run_reset_with_backup(
+            reset_label,
+            reset_callable,
+            require_owned_root=_require_owned_app_data_root,
+            create_backup=_create_dlms_backup,
+        )
 
 
 DataRootOwnershipError = _restore_service.DataRootOwnershipError
@@ -4668,29 +4666,31 @@ def _pdf_targeted_ocr_candidates(pages, question_result):
 
 
 def _complete_staged_restore(token):
-    return _restore_service.complete_staged_restore(
-        token,
-        restore_staging_dir=_restore_staging_dir,
-        validate_backup=_validate_dlms_backup,
-        require_owned_root=_require_owned_app_data_root,
-        extract_backup=_extract_validated_backup,
-        validate_semantics=_validate_staged_backup_semantics,
-        prepare_database=_prepare_staged_restore_database,
-        create_backup=_create_dlms_backup,
-        new_operation=_new_restore_operation,
-        update_journal=_update_restore_operation_journal,
-        checkpoint=_restore_operation_checkpoint,
-        apply_data=_apply_restored_data,
-        validate_current_database=_validate_current_restored_database,
-        db_path=DB_PATH,
-        reconcile_quiz_publications=reconcile_quiz_publications,
-        read_journal=_read_restore_operation_journal,
-        recover_one=_recover_one_restore_operation,
-        validate_journal=_validate_restore_operation_journal,
-        finish_cleanup=_finish_restore_operation_cleanup,
-        print_message=print,
-    )
-
+    # The route already owns the reentrant restore lock; direct callers use the
+    # same ordering. Hold registry until promotion or rollback has completed.
+    with RESTORE_OPERATION_LOCK, registry_lock:
+        return _restore_service.complete_staged_restore(
+            token,
+            restore_staging_dir=_restore_staging_dir,
+            validate_backup=_validate_dlms_backup,
+            require_owned_root=_require_owned_app_data_root,
+            extract_backup=_extract_validated_backup,
+            validate_semantics=_validate_staged_backup_semantics,
+            prepare_database=_prepare_staged_restore_database,
+            create_backup=_create_dlms_backup,
+            new_operation=_new_restore_operation,
+            update_journal=_update_restore_operation_journal,
+            checkpoint=_restore_operation_checkpoint,
+            apply_data=_apply_restored_data,
+            validate_current_database=_validate_current_restored_database,
+            db_path=DB_PATH,
+            reconcile_quiz_publications=reconcile_quiz_publications,
+            read_journal=_read_restore_operation_journal,
+            recover_one=_recover_one_restore_operation,
+            validate_journal=_validate_restore_operation_journal,
+            finish_cleanup=_finish_restore_operation_cleanup,
+            print_message=print,
+        )
 
 
 
@@ -5947,6 +5947,7 @@ def resolve_logo_filename(logo_filename):
 
 
 app.register_blueprint(create_settings_blueprint(SettingsRouteDependencies(
+    registry_lock=lambda: registry_lock,
     default_theme=lambda: DEFAULT_THEME,
     default_law_ai_prompt=lambda: DEFAULT_LAW_AI_PROMPT,
     default_study_content_pack_prompt=lambda: DEFAULT_STUDY_CONTENT_PACK_PROMPT,
@@ -6184,6 +6185,7 @@ app.register_blueprint(create_history_blueprint(HistoryRouteDependencies(
 
 
 app.register_blueprint(create_law_blueprint(LawRouteDependencies(
+    registry_lock=lambda: registry_lock,
     app_version=lambda: APP_VERSION,
     default_law_ai_prompt=lambda: DEFAULT_LAW_AI_PROMPT,
     get_portal_title=lambda: get_portal_title(),

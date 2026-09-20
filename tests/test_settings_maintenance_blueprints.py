@@ -189,6 +189,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
         ),
     }
     SETTINGS_DEPENDENCIES = {
+        "registry_lock",
         "default_theme",
         "default_law_ai_prompt",
         "default_study_content_pack_prompt",

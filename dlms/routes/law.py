@@ -46,11 +46,17 @@ class LawRouteDependencies:
     secure_filename: Dependency
     now: Dependency
     from_timestamp: Dependency
+    registry_lock: Dependency
 
 
 def _bind_dependencies(view_func, dependencies):
     @wraps(view_func)
     def bound_view(**view_args):
+        # Case files and the shared Law registry must not be published from
+        # overlapping request snapshots or race configuration replacement.
+        if request.method == "POST":
+            with dependencies.registry_lock():
+                return view_func(dependencies, **view_args)
         return view_func(dependencies, **view_args)
 
     return bound_view

@@ -75,7 +75,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
         "dlms.routes.history.HistoryRouteDependencies": 9,
         "dlms.routes.it.ITStudyDependencies": 5,
-        "dlms.routes.law.LawRouteDependencies": 30,
+        "dlms.routes.law.LawRouteDependencies": 31,
         "dlms.routes.learning.LearningRouteDependencies": 24,
         "dlms.routes.maintenance.MaintenanceRouteDependencies": 26,
         "dlms.routes.medical.MedicalRouteDependencies": 9,
@@ -84,7 +84,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.quiz.dependencies.QuizBundleDependencies": 15,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 19,
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 24,
-        "dlms.routes.settings.SettingsRouteDependencies": 11,
+        "dlms.routes.settings.SettingsRouteDependencies": 12,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (

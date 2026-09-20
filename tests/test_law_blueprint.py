@@ -67,6 +67,7 @@ class LawBlueprintTests(unittest.TestCase):
         ),
     }
     EXPECTED_DEPENDENCIES = {
+        "registry_lock",
         "app_version",
         "default_law_ai_prompt",
         "get_portal_title",

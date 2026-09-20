@@ -29,11 +29,17 @@ class SettingsRouteDependencies:
     set_browser_presence_shutdown_enabled: Dependency
     browser_presence_shutdown_runtime_eligible: Dependency
     print_message: Dependency
+    registry_lock: Dependency
 
 
 def _bind_dependencies(view_func, dependencies):
     @wraps(view_func)
     def bound_view(**view_args):
+        # Settings replace the whole portal document. Share the folder/registry
+        # lock from the initial read through publication (and lifecycle update).
+        if request.method == "POST":
+            with dependencies.registry_lock():
+                return view_func(dependencies, **view_args)
         return view_func(dependencies, **view_args)
 
     return bound_view
