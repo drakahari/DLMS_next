@@ -498,6 +498,8 @@ def handle_csrf_error(_error):
 
 @app.after_request
 def deliver_csrf_token(response):
+    # Native release smoke checks the running binary, not only its filename.
+    response.headers["X-DLMS-Version"] = APP_VERSION
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("X-Frame-Options", "DENY")

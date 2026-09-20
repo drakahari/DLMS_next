@@ -33,7 +33,77 @@ macOS verification run. The extracted macOS executable is checked during its
 native smoke test. `--smoke` remains restricted to the matching target operating
 system and architecture.
 
-## Before every target build
+## Recommended: one-command native release
+
+After the owner freezes a reviewed commit containing DLMS-124/136, activate the
+native build environment (`requirements-build.txt`) and run:
+
+```text
+python tools/build_native_release.py --target fedora44-x86_64 --expected-commit FULL_40_CHARACTER_RELEASE_COMMIT --expected-version 3.2.0
+```
+
+Replace the SHA placeholder with the independently agreed frozen commit, not a
+moving branch name. Targets are `fedora44-x86_64`, `ubuntu24.04-x86_64`,
+`ubuntu26.04-x86_64`, `omarchy-quattro-x86_64`, `windows11-x86_64`, and
+`macos-arm64`. Use the same command in PowerShell on Windows. The native OS and
+architecture gate is mandatory. Fedora/Ubuntu ID and version are checked against
+`os-release`; Omarchy requires an Arch/Omarchy host, and selecting that target
+also asserts that the operator has confirmed the Quattro environment. The
+acceptance record includes host/distribution metadata. This does not cross-compile, commit, tag or publish anything.
+
+By default, the command validates the existing `.ocr-bundle`. Use `--ocr-bundle
+PATH` to select another native bundle. `--prepare-ocr` prepares a **new** bundle
+using the existing preparation helper; it accepts that helper's
+`--tesseract-executable`, `--tessdata-dir`, three `--*-license` options and
+`--license-cache`. Network license retrieval is opt-in with
+`--prepare-ocr --download-missing-licenses`. Native Tesseract installation,
+licenses and a working locked Python environment remain prerequisites; the
+command does not install system packages or Python dependencies.
+
+The command checks a clean tracked/untracked source tree, exact commit and
+APP_VERSION, native host, port 9001 and dependency consistency. It prepares or
+validates OCR, builds/runs the frozen OCR probe, builds the application, stages
+the canonical native artifact, verifies it and runs native smoke. It then uses
+`package_release.py` to create and verify the final package and smoke its exact
+clean-extracted executable. Both smoke paths compare the running
+`X-DLMS-Version` response header with expected APP_VERSION; a missing header,
+stale binary or mismatch fails qualification. Existing filename and macOS
+bundle-version checks remain active. Structural-only verification is not a
+runtime-version qualification.
+
+Every run creates fresh task-owned PyInstaller **work, dist and cache** paths;
+probe and application work/dist paths are separate. Repository `build/` and
+`dist/` are never used as native inputs or recursively deleted. `--clean` alone
+is not a clean-build guarantee. All task-owned intermediates are removed on
+success or failure. Port conflicts fail before building; no existing server is
+terminated for you.
+
+On success, a new directory appears at
+`build/native-release/<version>/<target>/<full-commit>/` containing the final
+package, `SHA256SUMS.txt` and `acceptance.json`. The terminal prints target,
+version, commit, package path and SHA-256 under `DLMS NATIVE RELEASE ACCEPTED`.
+Use `--output-dir PATH` for a different **nonexistent** acceptance directory,
+outside the source tree or under an ignored build directory. Existing output
+is never overwritten. Failure exits nonzero, identifies the failing stage, and
+publishes no acceptance directory. Native smoke still captures bounded launch
+diagnostics. Source cleanliness/version/commit are checked again before final
+promotion. This is automation of build gates, not a substitute for desktop,
+OCR-workflow or platform-specific UAT below.
+
+macOS still uses native `ditto`; final ZIP roots remain `DLMS.app`, `README.txt`
+and `sample_quiz.txt`. The other platform package layouts are unchanged.
+Published 3.2.0 packages and the historical frozen tag are not replaced by this
+change. Older binaries without the runtime header cannot pass the strengthened
+smoke gate; use tools from their historical release if reproducing that release.
+
+## Manual component reference
+
+The steps below remain useful for diagnosing individual stages. For a qualified
+new release use the orchestrator above. If invoking PyInstaller manually, pass
+new empty `--workpath` and `--distpath` directories for each build and stage only
+from those directories; never rely on `--clean` with an old `dist/` tree.
+
+### Manual build prerequisites
 
 1. Create a clean environment from `requirements-lock.txt`, then install
    `requirements-build.txt`.
@@ -45,7 +115,7 @@ system and architecture.
    than silently producing an intended OCR release without its bundled runtime.
 4. Run the focused release tests and the full isolated pytest and unittest
    suites, compilation, and `git diff --check`.
-5. Build natively with `python -m PyInstaller --clean --noconfirm DLMS.spec`.
+5. Build natively with `python -m PyInstaller --clean --noconfirm --workpath NEW_EMPTY_WORK_DIR --distpath NEW_EMPTY_DIST_DIR DLMS.spec`.
    PyInstaller does not cross-build Windows, Linux, or macOS artifacts.
 6. Stage only the verified native input in `releases/`, using the name below. Do not
    stage `build/`, `dist/`, user data, logs, databases, or virtual environments.

@@ -684,7 +684,7 @@ def clean_extract_and_smoke(package: Path, source_root: Path) -> list[str]:
             )
             if extraction_errors:
                 return extraction_errors
-            smoke_test_executable(executable, spec.target)
+            smoke_test_executable(executable, spec.target, version)
     except (OSError, RuntimeError, tarfile.TarError, zipfile.BadZipFile) as exc:
         return [f"final-package extraction/smoke failed: {exc}"]
     return []

@@ -297,15 +297,19 @@ available under the [MIT License](LICENSE).
 
 ### Native build inputs
 
-Build natively on each target from a clean checkout. Prepare the platform-native
-OCR bundle described in [`docs/OCR_PACKAGING.md`](docs/OCR_PACKAGING.md), set
-`DLMS_TESSERACT_BUNDLE_ROOT`, then use the canonical `DLMS.spec`:
+Build natively from the reviewed frozen commit using the recommended orchestrator:
 
-```bash
+```text
 python -m pip install -r requirements-build.txt
-export DLMS_TESSERACT_BUNDLE_ROOT=/absolute/path/to/native-tesseract-bundle
-python -m PyInstaller --clean --noconfirm DLMS.spec
+python tools/build_native_release.py --target fedora44-x86_64 --expected-commit FULL_40_CHARACTER_RELEASE_COMMIT --expected-version 3.2.0
 ```
+
+Replace the SHA placeholder and select the actual native target. Prepare a native
+OCR bundle first, or use the documented `--prepare-ocr` options. See
+[Native Release Verification](docs/RELEASE_VERIFICATION.md#recommended-one-command-native-release)
+for all six targets and prerequisites. The command creates fresh isolated build
+outputs, runs OCR and version-aware native smoke gates, packages locally, and
+writes checksums and an acceptance summary. It never overwrites earlier packages.
 
 Verified native inputs use these exact names:
 
@@ -316,8 +320,8 @@ Verified native inputs use these exact names:
 - `DLMS-3.2.0-windows11-x86_64.exe`
 - `DLMS-3.2.0-macos-arm64.zip`
 
-On Apple Silicon, verify a native `arm64` Python, build `DLMS.spec`, and create
-the verified native-input ZIP with:
+The orchestrator performs the following archive step on Apple Silicon. For
+manual diagnosis only, use the freshly built app path in place of `dist/DLMS.app`:
 
 ```bash
 ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.2.0-macos-arm64.zip

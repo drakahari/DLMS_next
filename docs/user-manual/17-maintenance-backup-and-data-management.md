@@ -264,9 +264,11 @@ To run it:
 
 Each quiz's derived files are replaced safely. If one quiz cannot be rebuilt,
 DLMS keeps that quiz's previous page files, continues reporting the overall
-result, and leaves canonical quiz data unchanged. Record the failure count and
-check the local application log before deciding whether further recovery is
-needed.
+result, and leaves canonical quiz data unchanged. Read the per-quiz problems shown below the status. They identify affected quiz
+IDs and suggest checks such as disk space, write permissions, or saved quiz data.
+If a problem persists, report the quiz ID and DLMS version; do not send private
+study content unless you choose to. A connection failure means the result could
+not be confirmed, so some pages may already have been rebuilt.
 
 ## Other System Tools
 

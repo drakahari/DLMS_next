@@ -84,17 +84,16 @@ class MaintenanceTemplateTests(unittest.TestCase):
         self.assertIn(
             'body: JSON.stringify({confirmation: "rebuild-all-quiz-pages"})', page
         )
-        self.assertIn('throw new Error("Rebuild request failed")', page)
+        self.assertIn('typeof data.error === "string"', page)
         self.assertIn(
             "`Complete: ${data.rebuilt} rebuilt, 0 failed.`",
             page,
         )
         self.assertIn("Finished with issues:", page)
         self.assertIn("Failed quizzes kept their previous page files.", page)
-        self.assertIn(
-            'rebuildStatus.textContent = "Rebuild failed. Check the server log.";',
-            page,
-        )
+        self.assertIn("Could not confirm the rebuild result.", page)
+        self.assertNotIn("Check the server log", page)
+        self.assertIn('item.textContent = `Quiz ${failure.quiz_id}: ${failure.message}`', page)
         self.assertIn("rebuildBtn.disabled = false;", page)
 
     def test_inline_javascript_has_no_jinja_values_and_uses_text_only_status(self):
@@ -160,6 +159,27 @@ class MaintenanceTemplateTests(unittest.TestCase):
             )
         self.assertEqual(403, cross_origin.status_code)
         load_registry.assert_not_called()
+
+    def test_runtime_version_header_matches_application(self):
+        self.assertEqual(dlms.APP_VERSION, self.client.get('/').headers['X-DLMS-Version'])
+
+    def test_unexpected_rebuild_failure_returns_safe_actionable_message(self):
+        with mock.patch.object(dlms, '_rebuild_registered_quiz_artifacts',
+                               side_effect=RuntimeError('/private/source/secret SQL details')):
+            response = self.client.post('/admin/rebuild_all_quiz_html',
+                json={'confirmation': 'rebuild-all-quiz-pages'},
+                headers=csrf_headers(self.client, '/admin/maintenance'))
+        self.assertEqual(500, response.status_code)
+        self.assertIn('data-folder access', response.get_json()['error'])
+        self.assertNotIn('/private', response.get_data(as_text=True))
+        self.assertNotIn('SQL', response.get_data(as_text=True))
+
+    def test_malformed_confirmation_is_rejected_before_work(self):
+        with mock.patch.object(dlms, '_rebuild_registered_quiz_artifacts') as rebuild:
+            response = self.client.post('/admin/rebuild_all_quiz_html', json=['unexpected'],
+                headers=csrf_headers(self.client, '/admin/maintenance'))
+        self.assertEqual(400, response.status_code)
+        rebuild.assert_not_called()
 
 
 if __name__ == "__main__":

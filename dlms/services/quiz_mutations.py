@@ -410,6 +410,7 @@ def rebuild_registered_quiz_artifacts(
     """
     rebuilt = 0
     failed = []
+    failure_details = []
 
     with registry_lock:
         registry = load_registry()
@@ -418,6 +419,7 @@ def rebuild_registered_quiz_artifacts(
             if raw_quiz_id is None:
                 print_message("[REBUILD ALL] Failed registry entry with no quiz ID")
                 failed.append("missing-id")
+                failure_details.append({"quiz_id": "missing-id", "message": "This library entry has no quiz ID. Restore a known-good backup or contact support."})
                 continue
 
             conn = None
@@ -449,6 +451,17 @@ def rebuild_registered_quiz_artifacts(
                     f"[REBUILD ALL] Failed quiz_id={report_id}: {exc}"
                 )
                 failed.append(report_id)
+                # Never return exception text: paths, SQL and source content
+                # belong in developer diagnostics, not a packaged user's UI.
+                if isinstance(exc, PermissionError):
+                    message = "DLMS could not write the page files. Check data-folder write permissions and retry."
+                elif isinstance(exc, OSError):
+                    message = "DLMS could not read or write the page files. Check available disk space and data-folder access, then retry."
+                elif isinstance(exc, ValueError):
+                    message = "Saved quiz data is missing or invalid. Check this quiz in the Library; use a known-good backup if needed."
+                else:
+                    message = "The page could not be rebuilt. Restart DLMS and retry; if it persists, report this quiz ID and your DLMS version."
+                failure_details.append({"quiz_id": report_id if isinstance(report_id, int) and not isinstance(report_id, bool) else "invalid-id", "message": message})
             finally:
                 if conn is not None:
                     try:
@@ -467,6 +480,7 @@ def rebuild_registered_quiz_artifacts(
         "total": len(registry),
         "rebuilt": rebuilt,
         "failed": failed,
+        "failure_details": failure_details,
     }
 
 

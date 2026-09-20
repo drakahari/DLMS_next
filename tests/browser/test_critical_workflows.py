@@ -4245,6 +4245,8 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
             browser.set_viewport(width, 900)
             browser.navigate(f"{browser_stack.base_url}/admin/maintenance")
             browser.wait_for("document.getElementById('rebuildAllBtn')")
+            browser.evaluate("document.getElementById('rebuildFailures').textContent = "
+                "'Quiz 17: DLMS could not write the page files. Check data-folder write permissions and retry.';true")
             layout = browser.evaluate(
                 "(() => {const panel=document.querySelector('.system-tools-panel');"
                 "const button=document.getElementById('rebuildAllBtn');"
@@ -4267,6 +4269,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
                 browser,
                 {
                     "rebuild description": "#rebuildDescription",
+                    "rebuild diagnostics": "#rebuildFailures",
                 },
             )
             for role, state in contrast.items():
@@ -4311,7 +4314,8 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
     )
     browser.evaluate(
         "window.__resolveMaintenanceFetch(new Response(JSON.stringify({"
-        "status:'complete',rebuilt:'<img id=maintenanceInjected>',failed:['<svg>']}),"
+        "status:'complete',rebuilt:'<img id=maintenanceInjected>',failed:['<svg>'],"
+        "failure_details:[{quiz_id:17,message:'<img id=diagnosticInjected> Check disk space.'}]}),"
         "{status:200,headers:{'Content-Type':'application/json'}}));true"
     )
     browser.wait_for(
@@ -4325,8 +4329,8 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "calls:window.__maintenanceCalls,confirms:window.__maintenanceConfirms};})()"
     )
     assert safe_status == {
-        "text": "Finished with issues: <img id=maintenanceInjected> rebuilt, 1 failed. Failed quizzes kept their previous page files. Check the server log.",
-        "html": "Finished with issues: &lt;img id=maintenanceInjected&gt; rebuilt, 1 failed. Failed quizzes kept their previous page files. Check the server log.",
+        "text": "Finished with issues: <img id=maintenanceInjected> rebuilt, 1 failed. Failed quizzes kept their previous page files. Review the problems below.",
+        "html": "Finished with issues: &lt;img id=maintenanceInjected&gt; rebuilt, 1 failed. Failed quizzes kept their previous page files. Review the problems below.",
         "injected": False,
         "calls": [{
             "url": "/admin/rebuild_all_quiz_html",
@@ -4335,6 +4339,11 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         }],
         "confirms": [confirmation],
     }
+
+    assert browser.evaluate("document.querySelector('#rebuildFailures li').textContent") == (
+        'Quiz 17: <img id=diagnosticInjected> Check disk space.'
+    )
+    assert browser.evaluate("document.getElementById('diagnosticInjected') === null")
 
     assert browser.evaluate(
         "(() => {window.confirm=()=>true;window.fetch=()=>new Promise(resolve=>{"
@@ -4352,7 +4361,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
     browser.wait_for(
         "!document.getElementById('rebuildAllBtn').disabled && "
         "document.getElementById('rebuildStatus').textContent === "
-        "'Rebuild failed. Check the server log.'"
+        "'forced failure'"
     )
 
     browser.navigate(f"{browser_stack.base_url}/admin/maintenance?live=1")

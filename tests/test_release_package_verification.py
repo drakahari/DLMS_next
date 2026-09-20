@@ -1074,6 +1074,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
         self.assertEqual(errors, [])
         extracted_executable = smoke.call_args.args[0]
+        self.assertEqual(VERSION, smoke.call_args.args[2])
         self.assertEqual(
             extracted_executable.name,
             f"DLMS-{VERSION}-ubuntu24.04-x86_64",

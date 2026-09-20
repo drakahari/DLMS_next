@@ -15,6 +15,11 @@ from dlms.services.ocr import (
 )
 
 
+def supported_tesseract_version(version: str) -> bool:
+    """Accept upstream and Windows vendor spelling, but only major version 5."""
+    return re.fullmatch(r"[vV]?5(?:\.\d+)*(?:[-+][A-Za-z0-9.-]+)?", version.strip()) is not None
+
+
 def main() -> int:
     if not getattr(sys, "frozen", False):
         raise SystemExit("The OCR packaging probe must run as a frozen executable.")
@@ -23,7 +28,7 @@ def main() -> int:
     runtime = resolve_tesseract_runtime()
     if not runtime.bundled:
         raise SystemExit("Frozen OCR probe did not discover its bundled runtime.")
-    if not re.match(r"^5(?:\.|$)", runtime.version):
+    if not supported_tesseract_version(runtime.version):
         raise SystemExit(
             f"Frozen OCR probe requires Tesseract 5; found {runtime.version!r}."
         )

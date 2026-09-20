@@ -409,6 +409,7 @@ class SmokeHttpClient:
     """Small same-origin browser-session analogue for the native smoke test."""
 
     def __init__(self) -> None:
+        self.runtime_version = None
         self.cookies = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookies))
 
@@ -435,6 +436,8 @@ def _request(
             else urllib.request.urlopen(request, timeout=1.5)
         )
         with response_context as response:
+            if client is not None and path == "/":
+                client.runtime_version = response.headers.get("X-DLMS-Version")
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
@@ -455,7 +458,15 @@ def _wait_for_server(process: subprocess.Popen[bytes], client: SmokeHttpClient) 
     raise RuntimeError("DLMS local server did not become reachable within 20 seconds")
 
 
-def _assert_smoke_routes(client: SmokeHttpClient) -> None:
+def _assert_runtime_version(actual: str | None, expected: str) -> None:
+    if actual != expected:
+        raise RuntimeError(
+            f"Runtime version mismatch: expected {expected!r}, received {actual!r}. "
+            "Rebuild from the intended release commit using fresh build output."
+        )
+
+
+def _assert_smoke_routes(client: SmokeHttpClient, expected_version: str) -> None:
     expected = {
         "/": b"DLMS",
         "/static/style.css": b"body",
@@ -467,6 +478,7 @@ def _assert_smoke_routes(client: SmokeHttpClient) -> None:
         status, body = _request(path, client=client)
         if status != 200 or marker not in body:
             raise RuntimeError(f"Smoke request failed for {path} (HTTP {status})")
+    _assert_runtime_version(client.runtime_version, expected_version)
 
 
 def _clean_shutdown_returncodes(target: str) -> set[int]:
@@ -556,7 +568,7 @@ def _smoke_environment(data_root: Path, target: str, source: dict[str, str] | No
     return environment
 
 
-def _run_smoke_command(command: list[str], target: str, work_root: Path) -> None:
+def _run_smoke_command(command: list[str], target: str, work_root: Path, expected_version: str) -> None:
     """Exercise one already-resolved native command in an isolated data root."""
     data_root = work_root / "data-root"
     environment = _smoke_environment(data_root, target)
@@ -572,7 +584,7 @@ def _run_smoke_command(command: list[str], target: str, work_root: Path) -> None
             client = SmokeHttpClient()
             try:
                 _wait_for_server(process, client)
-                _assert_smoke_routes(client)
+                _assert_smoke_routes(client, expected_version)
                 _shutdown_cleanly(process, client, target)
             except Exception as exc:
                 if process.poll() is None:
@@ -589,7 +601,7 @@ def _run_smoke_command(command: list[str], target: str, work_root: Path) -> None
         raise RuntimeError("Packaged DLMS did not initialize the isolated smoke-test data root")
 
 
-def smoke_test_executable(executable: Path, target: str) -> None:
+def smoke_test_executable(executable: Path, target: str, expected_version: str | None = None) -> None:
     """Smoke-test an executable already extracted from the final distributable."""
     _assert_smoke_host(target)
     _assert_port_available()
@@ -597,18 +609,20 @@ def smoke_test_executable(executable: Path, target: str) -> None:
         raise RuntimeError(f"extracted DLMS executable does not exist: {executable}")
     with tempfile.TemporaryDirectory(prefix="dlms-final-package-smoke-") as temporary:
         _run_smoke_command(
-            [str(executable), "--no-browser"], target, Path(temporary)
+            [str(executable), "--no-browser"], target, Path(temporary),
+            expected_version or release_version(Path(__file__).resolve().parents[1]),
         )
 
 
-def smoke_test(artifact: Path, target: str) -> None:
+def smoke_test(artifact: Path, target: str, expected_version: str | None = None) -> None:
     """Launch, probe, cleanly shut down, and restart a staged native artifact."""
     _assert_smoke_host(target)
     _assert_port_available()
     with tempfile.TemporaryDirectory(prefix="dlms-native-artifact-smoke-") as temporary:
         work_root = Path(temporary)
         command = _smoke_command(artifact, target, work_root)
-        _run_smoke_command(command, target, work_root)
+        _run_smoke_command(command, target, work_root,
+                           expected_version or release_version(Path(__file__).resolve().parents[1]))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -640,7 +654,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Verified {args.artifact.name} for {TARGETS[args.target]['label']}.")
     if args.smoke:
         try:
-            smoke_test(args.artifact.resolve(), args.target)
+            smoke_test(args.artifact.resolve(), args.target, version)
         except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
             print(f"ERROR: Native smoke test failed: {exc}", file=sys.stderr)
             return 1

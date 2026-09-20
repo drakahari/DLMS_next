@@ -123,13 +123,17 @@ def edit_quiz(dependencies, quiz_id):
 
 def rebuild_all_quiz_html(dependencies):
     confirmation = request.get_json(silent=True) or {}
-    if confirmation.get("confirmation") != "rebuild-all-quiz-pages":
+    if not isinstance(confirmation, dict) or confirmation.get("confirmation") != "rebuild-all-quiz-pages":
         return jsonify({
             "status": "error",
             "error": "Confirmation is required before rebuilding quiz pages.",
         }), 400
 
-    result = dependencies.rebuild_registered_quiz_artifacts()
+    try:
+        result = dependencies.rebuild_registered_quiz_artifacts()
+    except Exception:
+        app.logger.exception("Quiz page rebuild could not complete")
+        return jsonify({"status": "error", "error": "DLMS could not finish reading or rebuilding the library. Check data-folder access, restart DLMS, and retry. Some pages may already have been rebuilt; saved questions and learning history are not changed by this operation."}), 500
     result["status"] = "complete" if not result["failed"] else "partial"
     return jsonify(result)
 

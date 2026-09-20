@@ -504,6 +504,7 @@ class QuizMutationAtomicityTests(unittest.TestCase):
                 "total": 3,
                 "rebuilt": 3,
                 "failed": [],
+                "failure_details": [],
             },
             response.get_json(),
         )

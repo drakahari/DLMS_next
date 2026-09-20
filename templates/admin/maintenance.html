@@ -33,6 +33,7 @@
             </div>
             <button id="rebuildAllBtn" class="build-primary-button" type="button" aria-describedby="rebuildDescription">🔄 Rebuild All Quiz Pages</button>
             <p id="rebuildStatus" class="system-tools-status" role="status" aria-live="polite" aria-atomic="true"></p>
+            <ul id="rebuildFailures" aria-label="Quiz rebuild problems"></ul>
         </section>
 
         <section class="system-tools-action">
@@ -50,6 +51,7 @@
 <script>
 const rebuildBtn = document.getElementById("rebuildAllBtn");
 const rebuildStatus = document.getElementById("rebuildStatus");
+const rebuildFailures = document.getElementById("rebuildFailures");
 
 rebuildBtn.addEventListener("click", async () => {
     const ok = confirm(
@@ -60,6 +62,7 @@ rebuildBtn.addEventListener("click", async () => {
     if (!ok) return;
 
     rebuildBtn.disabled = true;
+    rebuildFailures.replaceChildren();
     rebuildStatus.textContent = "Rebuilding quiz pages...";
 
     try {
@@ -69,23 +72,28 @@ rebuildBtn.addEventListener("click", async () => {
             body: JSON.stringify({confirmation: "rebuild-all-quiz-pages"})
         });
 
-        if (!response.ok) {
-            throw new Error("Rebuild request failed");
-        }
-
         const data = await response.json();
+        if (!response.ok) {
+            rebuildStatus.textContent = typeof data.error === "string" ? data.error : "DLMS could not complete the request. Refresh this page and retry.";
+            return;
+        }
 
         const failedCount = Array.isArray(data.failed) ? data.failed.length : 0;
         if (failedCount) {
             rebuildStatus.textContent =
-                `Finished with issues: ${data.rebuilt} rebuilt, ${failedCount} failed. Failed quizzes kept their previous page files. Check the server log.`;
+                `Finished with issues: ${data.rebuilt} rebuilt, ${failedCount} failed. Failed quizzes kept their previous page files. Review the problems below.`;
+            for (const failure of (data.failure_details || [])) {
+                const item = document.createElement("li");
+                item.textContent = `Quiz ${failure.quiz_id}: ${failure.message}`;
+                rebuildFailures.appendChild(item);
+            }
         } else {
             rebuildStatus.textContent = `Complete: ${data.rebuilt} rebuilt, 0 failed.`;
         }
 
     } catch (err) {
         console.error(err);
-        rebuildStatus.textContent = "Rebuild failed. Check the server log.";
+        rebuildStatus.textContent = "Could not confirm the rebuild result. Check that DLMS is running, refresh this page, and retry. Some pages may already have been rebuilt.";
     } finally {
         rebuildBtn.disabled = false;
     }
