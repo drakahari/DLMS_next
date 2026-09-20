@@ -1,12 +1,13 @@
 # DLMS 3.2 YouTube publishing package
 
-Status: **CONTENT COMPLETE / FINAL CANDIDATE**. Publishing preparation only;
-no upload or public release has occurred. Prepared against `develop/3.2.0` and
-current YouTube Help guidance checked on 2026-09-19.
+Status: **PUBLISHED**. The completed overview is available at
+<https://www.youtube.com/watch?v=nrUz3umt8vk>. Prepared against `develop/3.2.0`
+and current YouTube Help guidance checked on 2026-09-19.
 
 ## Artifact handoff
 
 - Upload: `build/demo-video/DLMS-3.2-demo-delivery.mp4`.
+- Published overview: <https://www.youtube.com/watch?v=nrUz3umt8vk>.
 - Keep archival master unchanged: `build/demo-video/DLMS-3.2-demo.mp4`.
 - Upload English captions separately: `build/demo-video/DLMS-3.2-demo.srt`.
 - Actual timeline: `build/demo-video/DLMS-3.2-demo.timeline.json`.
@@ -96,31 +97,23 @@ moving any content. YouTube requires at least three ascending timestamps,
 ones. Chapter access can depend on advanced-feature eligibility.
 [YouTube chapter guidance](https://support.google.com/youtube/answer/9884579?hl=en).
 
-## Thumbnail brief — do not generate yet
+## Thumbnail
 
-Use one real screenshot with a simple title panel, not a collage of feature
-screens. Basis: [001-dashboard.png](captures/001-dashboard.png). It shows the
-actual Today’s Review workflow and recognisable Purple & Gold cards. The closing
-[036-closing-dashboard.png](captures/036-closing-dashboard.png) is an alternative,
-but use one, not both; avoid dense Learning Intelligence tables at thumbnail size.
+The published thumbnail is tracked at
+[images/dlms-3.2-youtube-thumbnail.jpg](images/dlms-3.2-youtube-thumbnail.jpg).
+It uses the actual Dashboard and Today’s Review workflow with a simple Purple &
+Gold title panel, rather than a collage of feature screens.
 
-- Canvas: 16:9, proposed 1920×1080 design canvas.
-- Left 40%: solid deep purple sampled from the screenshot, large white **DLMS 3.2**,
-  with gold **LOCAL-FIRST STUDY** below on two lines if needed. This is the entire
-  added text; no feature checklist, claim badge, or decorative AI graphic.
-- Right 60%: crop 001 around Today’s Review and the first row of Quiz Library /
-  Build Quiz / Study Packs cards, approximately source bounds
-  `(445, 304)` to `(1787, 823)`. Fit proportionally in the panel with purple padding;
-  do not stretch or tilt. Preserve the actual UI wording. The screenshot is visual
-  context; viewers should not have to read its helper text.
-- Thin gold divider; generous text margins. Keep the lower-right corner free of
-  essential text for the duration badge. The large DLMS title provides branding;
-  an extra logo is unnecessary.
-- Check a 320×180 preview when the thumbnail is eventually made. If the UI becomes
-  too dense, tighten to the Today’s Review card rather than shrinking the title.
+- Canvas: 1280×720, 16:9 JPEG, 178,790 bytes.
+- Left side: deep Purple & Gold branded field with large **DLMS 3.2** and
+  **LOCAL-FIRST STUDY** text; no feature checklist or claim badge.
+- Right side: the real DLMS Dashboard, centered on Today’s Review and the first
+  row of workspace cards. The UI remains visual context rather than tiny copy the
+  viewer must read.
+- The gold divider, generous margins, and restrained text remain legible when the
+  image is scaled down for GitHub and YouTube surfaces.
 
 Exact thumbnail text: **DLMS 3.2 / LOCAL-FIRST STUDY**.
-No thumbnail file is created by this task.
 
 ## Recommended upload settings
 
@@ -159,9 +152,9 @@ editorial choice, not a claim that every TTS narration necessarily requires it.
 The current Help page calls the setting “AI use”; Studio wording may vary.
 [Current YouTube disclosure guidance](https://support.google.com/youtube/answer/14328491?hl=en).
 
-After the future upload, wait for 1080p processing and review small text, static
-holds, audio, manual chapter seeks, and captions on the hosted result before
-switching visibility. This package does not claim to validate YouTube's transcode.
+The hosted result should be reviewed after YouTube finishes 1080p processing,
+including small text, static holds, audio, manual chapter seeks, and captions.
+This package does not claim to validate YouTube's transcode.
 
 ## Tags
 
@@ -184,21 +177,19 @@ If you try DLMS, feedback on the workflow is welcome. A timestamp or a concrete 
 
 Replace the placeholder before posting; do not post a fabricated repository link.
 
-## Future GitHub README handoff
+## GitHub README handoff
 
-Draft only; the root README has not been edited. Replace both placeholder tokens
-with the published YouTube URL and the eventual repository-relative thumbnail
-path. The thumbnail is not yet generated. The same YouTube URL is used for both
-links; no guessed video ID is supplied.
+The root README now uses the published YouTube URL and tracked thumbnail. The
+same YouTube URL is used for both links.
 
 ```markdown
 ## Watch DLMS in Action
 
 See how DLMS 3.2 brings local-first importing, quiz practice, timed assessments, and learning-guided review into one desktop workspace.
 
-[![Watch the DLMS 3.2 overview](THUMBNAIL_PATH)](YOUTUBE_VIDEO_URL)
+[![Watch the DLMS 3.2 overview](docs/demo-video/images/dlms-3.2-youtube-thumbnail.jpg)](https://www.youtube.com/watch?v=nrUz3umt8vk)
 
-[Watch the 7:45 overview on YouTube](YOUTUBE_VIDEO_URL).
+[Watch the 7:45 DLMS 3.2 overview on YouTube](https://www.youtube.com/watch?v=nrUz3umt8vk)
 ```
 
 Keep MP4s out of Git history; link to the hosted video. A downloadable release

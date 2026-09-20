@@ -1,6 +1,6 @@
 # DLMS demo-video project
 
-**CONTENT COMPLETE / FINAL CANDIDATE — not publicly released.**
+**CONTENT COMPLETE — published overview.**
 
 The main overview now contains **40 narrated scenes, 911 words**, and runs
 **7:45.700**. It uses af_heart at speed 1.0, native Purple & Gold screenshots,
@@ -12,9 +12,10 @@ are reused unchanged. No screenshots are recaptured in this pass.
 
 Content is frozen except actual defects found in final review. Future feature
 detail belongs in focused videos, as listed in [NARRATION.md](NARRATION.md).
-The separate public delivery encode is now prepared; nothing has been published.
-The previous
-7:19.667 lossless master is archived in `build/demo-video/archive-before-final-exam/`.
+The separate public delivery encode is published at
+<https://www.youtube.com/watch?v=nrUz3umt8vk>.
+The previous 7:19.667 lossless master is archived in
+`build/demo-video/archive-before-final-exam/`.
 Current evidence and listening timestamps are in
 [FINAL_CANDIDATE.md](FINAL_CANDIDATE.md). Sections below retain prior production
 history where their counts differ from this final-candidate summary.
@@ -94,12 +95,12 @@ results are retained under ignored `build/demo-video/delivery-review/`. Redundan
 candidate MP4s are removed after selection. No application/build-tool behavior,
 content, narration, scene timing, or source screenshots changed for delivery.
 
-For GitHub, normally **link the repository README to the hosted YouTube video**
-rather than committing an MP4 into Git history. After publication, a still
-thumbnail can link to the real YouTube URL. No placeholder URL is supplied, and
-the repository's main README is unchanged. An optional downloadable video through
-a release asset is a separate future distribution choice. No upload, release,
-or publication has been performed; YouTube's own transcode remains unreviewed.
+For GitHub, **link the repository README to the hosted YouTube video** rather
+than committing an MP4 into Git history. The tracked still thumbnail at
+`docs/demo-video/images/dlms-3.2-youtube-thumbnail.jpg` links to the published
+overview. An optional downloadable video through a release asset is a separate
+future distribution choice. YouTube's own transcode is distinct from the local
+delivery validation recorded here.
 
 ## Capture standard
 
