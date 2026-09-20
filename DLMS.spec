@@ -93,6 +93,14 @@ if sys.platform == "darwin":
         },
     )
 else:
+    platform_icon = None
+    if sys.platform == "win32":
+        from PyInstaller.config import CONF
+        from tools.native_icons import windows_icon
+        platform_icon = str(windows_icon(
+            project_root / "static" / "favicon.ico",
+            Path(CONF["workpath"]) / "dlms-windows.ico",
+        ))
     executable = EXE(
         python_archive,
         analysis.scripts,
@@ -100,6 +108,7 @@ else:
         analysis.datas,
         [],
         name="DLMS",
+        icon=platform_icon,
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,

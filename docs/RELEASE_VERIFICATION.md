@@ -33,6 +33,11 @@ macOS verification run. The extracted macOS executable is checked during its
 native smoke test. `--smoke` remains restricted to the matching target operating
 system and architecture.
 
+The additive [experimental AppImage workflow and native icon notes](APPIMAGE.md)
+cover Linux desktop evaluation and the Windows icon build resource. AppImage does
+not replace or extend the required six-package release matrix; native Linux
+binary/tar.gz packages remain the supported server/headless path.
+
 ## Recommended: one-command native release
 
 After the owner freezes a reviewed commit containing DLMS-124/136, activate the
