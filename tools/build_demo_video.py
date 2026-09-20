@@ -254,14 +254,15 @@ def probe(path, media):
         raise BuildError(f'ffprobe returned malformed JSON for {path}') from exc
 
 
-def audio_inputs(scenes, audio_dir, media):
+def audio_inputs(scenes, audio_dir, media, *, known_scene_labels=None):
     """Only exact scene-label WAV names and PCM WAV; excluded known scenes are ignored."""
     if not audio_dir.is_dir():
         raise BuildError(f'Audio directory does not exist: {audio_dir}. Supply one PCM WAV per included scene (001.wav, etc.).')
     errors, clips = [], {}
+    allowed = PRODUCTION_SCENE_LABELS if known_scene_labels is None else known_scene_labels
     for path in sorted(audio_dir.iterdir()):
         if path.is_file() and path.suffix.lower() in {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.aac'}:
-            if path.stem not in PRODUCTION_SCENE_LABELS or path.suffix != '.wav':
+            if path.stem not in allowed or path.suffix != '.wav':
                 errors.append(f'Unsupported or unmapped audio: {path.name}; use exact production scene labels such as 001.wav or 013A.wav.')
     for scene in scenes:
         path = audio_dir / scene['audio_filename']

@@ -38,6 +38,10 @@ canonical manual and must not replace these files.
 
 ## Maintainer reference
 
+- [Focused documentation video series](../demo-video/series/README.md) — candidate
+  scripts, production status, and manual-to-video mappings. These supplement the
+  written guide; unpublished candidates are not required to follow the manual.
+
 The following records support documentation maintenance; the chapters above are
 the reader's entry point.
 

@@ -1,0 +1,44 @@
+{
+  "id": "reusable-study-packs",
+  "title": "Create practice from reusable Study Packs",
+  "purpose": "Distinguish package management from learning, choose dataset controls and understand the generated activity without a ZIP-format tutorial.",
+  "target_seconds": [120, 210],
+  "manual_refs": ["docs/user-manual/13-study-packs-and-content-packs.md", "docs/user-manual/11-matching-terminology-and-image-based-content.md"],
+  "implementation_refs": ["dlms/routes/content_packs.py", "dlms/routes/study_packs.py", "templates/study_packs/catalog.html"],
+  "youtube_title": "DLMS: Content Packs, Study Packs and Reusable Practice Datasets",
+  "description": "Use Content Packs to inspect reusable packages and Study Packs to create practice from their installed datasets. See how matching options lead to an activity, how image datasets support hotspots, and why a created quiz is separate from its reusable source. This starts with an installed original demonstration pack.",
+  "thumbnail_text": "ONE PACK, MORE PRACTICE",
+  "thumbnail_capture": "overview:028B",
+  "scenes": [
+    {
+      "id": "001", "capture": "overview:028A", "title": "Inspect the reusable source", "chapter": "Management and learning are separate",
+      "visual_focus": "Installed pack details, validation, datasets and tracked quizzes; not an installation preview.",
+      "narration": "Start with an installed pack in Content Packs. Details describes its datasets and runs validation; the tracked quiz count tells you that activities have already been created from it. Validation checks structure, not the truth of every educational claim. Check source quality and image rights yourself, especially when material came from an external AI workflow."
+    },
+    {
+      "id": "002", "capture": "overview:028B", "title": "Choose a dataset",
+      "visual_focus": "Learner catalog with matching, image and prepared-question rows.",
+      "narration": "Open Study Packs when you are ready to learn. Expand the installed pack and choose a dataset. Matching provides paired items, Image provides usable targets on pictures, and Mixed contains prepared questions. This catalog uses the same installed source managed by Content Packs. It is not another copy of the package or a Library folder."
+    },
+    {
+      "id": "003", "capture": "overview:028B", "title": "Set matching options", "chapter": "Create and answer matching practice",
+      "visual_focus": "Pairs, direction and Create Quiz controls; same screen retained deliberately.",
+      "narration": "For matching, choose how many pairs you want in the round and set the direction: term to definition, definition to term, or random. The count cannot exceed the available dataset. Choose Create Quiz to open the activity. These options change the practice you make; they do not remove pairs from the installed source."
+    },
+    {
+      "id": "004", "capture": "series:104", "title": "Place the answers",
+      "visual_focus": "Original matching activity before answering, pool and alternative controls.",
+      "narration": "Choose Study Mode to learn the pairs with feedback. Select an answer and its target, drag it into place, or choose Dropdowns. Read the presented direction before answering: a reversed round asks for the relationship the other way around. The empty targets here show the activity before any answers have been placed."
+    },
+    {
+      "id": "005", "capture": "overview:013B", "title": "Use an image dataset", "chapter": "Image practice and source ownership",
+      "visual_focus": "Separate hotspot example from the same original installed pack, not the matching result.",
+      "narration": "An image dataset creates a different activity. In this example, the prompt asks for the recovery copy in an original service diagram. Select its region, then use the Study feedback to check your understanding. A prepared-question dataset instead publishes the questions supplied by that dataset. Choose the activity that matches what you need to practice."
+    },
+    {
+      "id": "006", "capture": "overview:028A", "title": "Keep the reusable source",
+      "visual_focus": "Return to package details and generated-quiz tracking.",
+      "narration": "The created quiz stays in the Library while its reusable source remains installed. Return to Study Packs to make another round. Use Content Packs when you need to inspect or export the package itself. Removing a source pack is a separate management decision; make an export or backup first if you may need that source again."
+    }
+  ]
+}

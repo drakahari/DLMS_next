@@ -1,0 +1,49 @@
+{
+  "id": "study-and-exam",
+  "title": "Choose Study or Exam and answer richer questions",
+  "purpose": "Explain the feedback boundary, timing and pause behavior, then show matching before/after and spatial answers.",
+  "target_seconds": [120, 210],
+  "manual_refs": ["docs/user-manual/06-taking-quizzes.md", "docs/user-manual/11-matching-terminology-and-image-based-content.md"],
+  "implementation_refs": ["static/script.js", "dlms/rendering/quiz_artifacts.py", "templates/quiz/edit.html"],
+  "youtube_title": "DLMS: Study vs Exam, Timers, Matching and Hotspot Questions",
+  "description": "Choose an untimed learning session or a timed assessment in DLMS. This walkthrough explains feedback, the covered Pause state, matching controls, and image-region answers using original synthetic questions. It covers taking quizzes, not authoring hotspot regions.",
+  "thumbnail_text": "STUDY OR EXAM?",
+  "thumbnail_capture": "overview:011B",
+  "scenes": [
+    {
+      "id": "001", "capture": "overview:012", "title": "Study to understand", "chapter": "Study with feedback",
+      "visual_focus": "Incorrect Study response; subsequent explanations require a fully correct response where available.",
+      "narration": "Open a quiz and choose Study Mode when your goal is understanding. Study is untimed. Selecting an answer gives immediate feedback, and you can try again. A fully correct response can reveal the saved explanation. For a multi-select question, choose the complete correct set rather than stopping after the first correct choice."
+    },
+    {
+      "id": "002", "capture": "overview:011A", "title": "Set the assessment timer", "chapter": "Time an assessment",
+      "visual_focus": "Quiz editor with 20-minute value; capture is intentionally unsaved.",
+      "narration": "For assessment practice, set the quiz's Exam Mode Timer in the editor and save the quiz. The twenty-minute value shown here is an example. This setting controls Exam Mode; it does not turn Study into a timed session. An older quiz without a configured duration uses the standard ninety-minute fallback."
+    },
+    {
+      "id": "003", "capture": "overview:011B", "title": "Answer before seeing results",
+      "visual_focus": "Selected Exam answer, remaining time and Pause; no correctness feedback.",
+      "narration": "Choose Exam Mode for the attempt. You can move backward and forward, but correctness, explanations, and Study learning aids stay hidden. Submit Exam when finished; reaching zero also submits. Results follow completion. If DLMS reports that the attempt was not saved, use Retry Saving Attempt before treating your work as safely recorded."
+    },
+    {
+      "id": "004", "capture": "overview:011C", "title": "Pause conceals the assessment",
+      "visual_focus": "Real frosted Pause overlay and Resume control.",
+      "narration": "Pause stops the countdown and covers the active exam with the frosted overlay. Choose Resume to continue the same attempt. This is a convenience for your own study workspace, not a proctoring system. If you leave the quiz, an eligible recovery checkpoint belongs to this browser profile rather than every connected device."
+    },
+    {
+      "id": "005", "capture": "series:104", "title": "Place matching answers", "chapter": "Matching and image-region answers",
+      "visual_focus": "Answer pool, empty targets and Dropdowns alternative.",
+      "narration": "Some quizzes use matching instead of ordinary choices. Move an answer from the pool to its related item. You can drag it, select the answer and then its target, or switch to Dropdowns. These are alternative controls for the same answers. Use the clear control beside a placed match to change it."
+    },
+    {
+      "id": "006", "capture": "overview:013A", "title": "Check the completed pairs",
+      "visual_focus": "All three correct pairs, empty answer pool and Study feedback.",
+      "narration": "In this completed Study example, every target has an answer, the pool is empty, and correctness feedback is visible. Match the concepts, not the position of an answer in the pool. In Exam Mode, your placements are retained for grading without the immediate Study feedback shown here."
+    },
+    {
+      "id": "007", "capture": "overview:013B", "title": "Answer spatially",
+      "visual_focus": "Correct marker in Recovery copy region of the original service diagram.",
+      "narration": "Hotspot questions ask for a location on an image. Here, selecting the Recovery copy region answers the question, and Study shows the result and available explanation. Read the prompt before selecting a region. The same Study-versus-Exam feedback distinction applies, so choose the mode for your purpose before beginning the attempt."
+    }
+  ]
+}

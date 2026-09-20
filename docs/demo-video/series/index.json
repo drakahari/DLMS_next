@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "playlist": "DLMS — Focused Workflows",
+  "voice": "af_heart",
+  "speed": 1.0,
+  "videos": [
+    "imports-and-repair/video.json",
+    "study-and-exam/video.json",
+    "daily-review/video.json",
+    "organize-your-library/video.json",
+    "reusable-study-packs/video.json",
+    "portability-and-backup/video.json"
+  ]
+}

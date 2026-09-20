@@ -136,6 +136,24 @@ FRAMES = (
     *V2_FRAMES[28:],
 )
 
+# Opt-in documentation recipes; never added to the frozen overview sequence.
+DOCUMENTATION_FRAMES = (
+    frame(101, 'reviewed-bank', 'Create practice from a reviewed bank',
+          '/pdf-import/review/video_review', action='series-save-bank',
+          state='Original incomplete item repaired; reviewed bank saved through the real form; generator visible.',
+          fixture='Same original two-question staged draft; answer A supplied by its author.'),
+    frame(102, 'bundle-preview', 'Validate a bundle before importing', '/quiz-bundles',
+          action='series-bundle-preview',
+          state='Real export staged back into the isolated workspace; title collision shown; not published.',
+          fixture='Original Network Troubleshooting source quiz; no personal history exported.'),
+    frame(103, 'smart-view', 'A Smart View does not move quizzes',
+          '/library?view=visible&smart=generated-practice', focus='.library-smart-active',
+          state='Generated Practice Smart View includes active and completed sessions.'),
+    frame(104, 'matching-start', 'Choose a matching answer and its target',
+          '@matching_quiz', QUIZ_READY, action='series-matching-start', focus='#qHeader',
+          state='Study Mode; three empty targets and original answer pool; no feedback yet.'),
+)
+
 
 def serve():
     # Parent creates this root. Refuse direct --serve use against an existing
@@ -159,7 +177,28 @@ def serve():
 
 def prepare(browser, item, metadata, data_root):
     action = item.action
-    if action == 'exam-timing':
+    if action == 'series-save-bank':
+        browser.click('input[name="correct_1"][value="A"]')
+        browser.click('button.build-primary-button[form="pdfReviewForm"]')
+        browser.wait_for("document.querySelector('.pdf-bank-generator-form')", timeout=20)
+    elif action == 'series-bundle-preview':
+        # Exercise export and staged validation without a native download dialog.
+        destination = browser.evaluate("""(async () => {
+            const headers = {'X-CSRFToken': window.dlmsCsrfToken};
+            const source = new FormData(); source.append('quiz_ids', %s);
+            const exported = await fetch('/quiz-bundles/export', {method:'POST', headers, body:source});
+            if (!exported.ok) throw new Error('Bundle export failed');
+            const upload = new FormData(); upload.append('bundle_zip', await exported.blob(), 'original-demo.zip');
+            const staged = await fetch('/quiz-bundles/import', {method:'POST', headers, body:upload});
+            if (!staged.ok || !staged.url.includes('/quiz-bundles/import/')) throw new Error('Bundle validation failed');
+            return staged.url;
+        })()""" % json.dumps(metadata['critical_id']))
+        browser.navigate(destination)
+        browser.wait_for("document.body.innerText.includes('RENAMED')")
+    elif action == 'series-matching-start':
+        browser.click('.study-mode-btn')
+        browser.wait_for("document.querySelectorAll('.matching-drag-row').length === 3")
+    elif action == 'exam-timing':
         browser.evaluate("document.querySelector('[name=exam_minutes]').value='20';true")
     elif action in {'exam','exam-paused'}:
         browser.click('.exam-mode-btn')
@@ -314,6 +353,7 @@ def capture(items, output, theme, *, check_only=False, replay_prefix=False):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--list',action='store_true')
+    parser.add_argument('--documentation',action='store_true',help='Use the opt-in instructional-series recipes, not the overview.')
     parser.add_argument('--check',action='store_true',help='Exercise selected states without writing screenshots')
     parser.add_argument('--replay-prefix',action='store_true',help='Replay earlier story actions before focused recaptures, without overwriting their images')
     parser.add_argument('--only',help='Comma-separated numeric frame IDs, e.g. 001,003,014')
@@ -324,10 +364,13 @@ def main(argv=None):
     if args.serve:
         serve()
         return 0
-    requested = {normalized_frame_id(s) for s in args.only.split(',')} if args.only else {s.id for s in FRAMES}
-    if requested - {s.id for s in FRAMES}:
+    available = DOCUMENTATION_FRAMES if args.documentation else FRAMES
+    if args.documentation and args.replay_prefix:
+        parser.error('Documentation recipes are independent; do not replay the overview prefix.')
+    requested = {normalized_frame_id(s) for s in args.only.split(',')} if args.only else {s.id for s in available}
+    if requested - {s.id for s in available}:
         parser.error('Unknown frame ID')
-    items = [s for s in FRAMES if s.id in requested]
+    items = [s for s in available if s.id in requested]
     if args.list:
         print(json.dumps([asdict(s) for s in items],indent=2,ensure_ascii=False))
         return 0

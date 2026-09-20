@@ -1,0 +1,44 @@
+{
+  "id": "portability-and-backup",
+  "title": "Move quizzes or preserve your whole workspace",
+  "purpose": "Choose between a quiz bundle, reusable pack, external study export and full backup, with a real collision preview before publication.",
+  "target_seconds": [120, 210],
+  "manual_refs": ["docs/user-manual/15-import-export-and-portability.md", "docs/user-manual/17-maintenance-backup-and-data-management.md", "docs/user-manual/14-anki-decks-and-printable-cards.md"],
+  "implementation_refs": ["dlms/routes/quiz/bundles.py", "dlms/services/portable_quiz_bundles.py", "dlms/services/restore.py"],
+  "youtube_title": "DLMS: Portable Quiz Bundles, Import Previews and Full Backups",
+  "description": "Choose the right export for your goal: move ordinary source quizzes with a Portable Quiz Bundle, inspect a collision before import, or preserve persistent learning history with a full backup. Anki and printable cards are separate study outputs. No restore is performed in this walkthrough.",
+  "thumbnail_text": "MOVE QUIZZES, KEEP HISTORY",
+  "thumbnail_capture": "series:102",
+  "scenes": [
+    {
+      "id": "001", "capture": "overview:028", "title": "Choose the narrowest transfer", "chapter": "Export source quizzes",
+      "visual_focus": "Separate export and import panels on Portable Quiz Bundles.",
+      "narration": "Before exporting, decide what must travel. A Portable Quiz Bundle moves ordinary source quizzes to another compatible DLMS installation without personal attempts, scores, or schedules. A full backup has a different purpose: preserving your persistent workspace and learning history. Do not choose a format simply because both downloads happen to be ZIP files."
+    },
+    {
+      "id": "002", "capture": "overview:028", "title": "Check bundle eligibility",
+      "visual_focus": "Candidate selection, selected count and Download Portable Bundle workflow.",
+      "narration": "Open Quiz Library, then Quiz Bundles. Select eligible source quizzes and choose Download Portable Bundle. Hidden source quizzes can still be eligible. Generated review sessions and Mixed Quizzes are excluded. Bundles support choice and matching content with supported images, not interactive hotspots. Use a full backup when you need the complete persistent DLMS state."
+    },
+    {
+      "id": "003", "capture": "series:102", "title": "Preview the receiving names", "chapter": "Validate before publishing",
+      "visual_focus": "Real staged export re-import; RENAMED notice and no overwrite.",
+      "narration": "On the receiving installation, select the bundle and choose Validate and Preview. Here, Network Troubleshooting already exists, so the preview proposes an Imported name. Inspect the titles, folders, question counts, and any question previews before continuing. Validation has not published the new quizzes yet, and the existing quiz is not overwritten or merged."
+    },
+    {
+      "id": "004", "capture": "series:102", "title": "Confirm only the intended import",
+      "visual_focus": "Create these quizzes checkbox, Import Portable Bundle and Cancel Import.",
+      "narration": "If the preview is what you intended, select Create these quizzes and choose Import Portable Bundle. Otherwise, Cancel Import discards the staged copy. The new quizzes become independent Library items; the bundle does not bring another person's learning record with them. Keep the original archive until you have checked the imported questions and media."
+    },
+    {
+      "id": "005", "capture": "overview:034", "title": "Back up persistent learning history", "chapter": "Backups and other study outputs",
+      "visual_focus": "Backup and Restore overview; no destructive restore is performed.",
+      "narration": "For recovery or moving your own full workspace, use Settings, Backup and Restore. A portable backup includes persistent quizzes, history, settings, packs, and saved import banks. Keep a copy outside the installation you are protecting. Restoring replaces persistent state after validation and confirmation, so follow the manual's restore procedure rather than treating it like an ordinary quiz import."
+    },
+    {
+      "id": "006", "capture": "overview:032", "title": "Keep study exports distinct",
+      "visual_focus": "Custom Anki selection; printable layout is mentioned but not shown.",
+      "narration": "Anki packages and printable physical flash cards are separate study outputs, not DLMS backups. Select the material you want to study elsewhere; do not expect those cards to preserve interactive matching or hotspot behavior. The practical rule is simple: bundles move supported source quizzes, pack exports move reusable datasets, and backups preserve your persistent learning workspace."
+    }
+  ]
+}

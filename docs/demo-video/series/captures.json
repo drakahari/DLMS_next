@@ -1,0 +1,26 @@
+[
+  {
+    "key": "series:101",
+    "recipe": "series:101",
+    "image": "docs/demo-video/series/captures/101-reviewed-bank.png",
+    "sha256": "e154bd637102d1b2377ad3fd2bc8e913ba7a7ca00fc974fc046e68dfa3b43b42"
+  },
+  {
+    "key": "series:102",
+    "recipe": "series:102",
+    "image": "docs/demo-video/series/captures/102-bundle-preview.png",
+    "sha256": "91467d7f4487d82fa30a5fad2ef6d99f2987927ae6f30175d702f8866c7c44f4"
+  },
+  {
+    "key": "series:103",
+    "recipe": "series:103",
+    "image": "docs/demo-video/series/captures/103-smart-view.png",
+    "sha256": "923e6c8d6d936e65023ba02b655ebb4cc47fd874ba4fce327db1bcb6577cfd4e"
+  },
+  {
+    "key": "series:104",
+    "recipe": "series:104",
+    "image": "docs/demo-video/series/captures/104-matching-start.png",
+    "sha256": "af31543c194cc027b14276b01a348b67b603eb6f61666b5b30754f9e587e1870"
+  }
+]

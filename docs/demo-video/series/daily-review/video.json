@@ -1,0 +1,54 @@
+{
+  "id": "daily-review",
+  "title": "Turn learning evidence into a finished review",
+  "purpose": "Follow a daily review from recommendations and scope through scheduling, generated sources, Finish Review, and retained completion.",
+  "target_seconds": [150, 240],
+  "manual_refs": ["docs/user-manual/07-study-and-review.md", "docs/user-manual/08-learning-intelligence.md", "docs/user-manual/05-quiz-library-and-organization.md"],
+  "implementation_refs": ["dlms/services/learning_scope.py", "dlms/services/daily_review.py", "dlms/services/question_review.py", "dlms/routes/learning.py", "static/script.js"],
+  "youtube_title": "DLMS: Daily Review, Learning Scope and Finishing Generated Practice",
+  "description": "Build a practical daily review loop in DLMS: read Today's Review, choose your active learning scope, distinguish question scheduling from concept evidence, and explicitly finish generated practice. Generated Practice selects existing source questions; it does not require an AI service.",
+  "thumbnail_text": "WHAT TO REVIEW NEXT",
+  "thumbnail_capture": "overview:002",
+  "scenes": [
+    {
+      "id": "001", "capture": "overview:002", "title": "Begin with a reason", "chapter": "Choose a useful next action",
+      "visual_focus": "Today's Review cards and their reasons, not a promise of identical recommendations.",
+      "narration": "Begin on the Dashboard with Today's Review. Read the reason beside an action before choosing it: you may have due questions, a concept worth revisiting, or broader adaptive practice. The plan depends on your saved material and evidence. It is a starting point, not a requirement to complete every kind of review each day."
+    },
+    {
+      "id": "002", "capture": "overview:004", "title": "Choose the active source material",
+      "visual_focus": "Past Projects excluded while current folders remain included.",
+      "narration": "If recommendations include a subject you have put aside, open Manage Learning Scope. Exclude that folder from automatic learning recommendations while keeping its quizzes and history. Hiding a folder is a separate Library visibility choice. Scope is useful when an old project should remain available without steering your current study plan."
+    },
+    {
+      "id": "003", "capture": "overview:014", "title": "Interpret evidence cautiously", "chapter": "Evidence and scheduled questions",
+      "visual_focus": "Concept table includes strong, declining and low-evidence cases.",
+      "narration": "Learning Intelligence helps explain the recommendation. Compare mastery, trend, and the amount of evidence; one correct answer is not the same as a well-established pattern. Choose Study concept for a subject you select, or Study What I Need Most for a broader adaptive session. These actions select existing questions, not newly invented AI content."
+    },
+    {
+      "id": "004", "capture": "overview:018", "title": "Choose a due-question batch",
+      "visual_focus": "Due counts, batch selector and question queue; topic scheduling is separate.",
+      "narration": "For scheduled work, open Review Schedule and choose the number of questions in this review. Review Due Questions uses the due source-question queue. Table filters help you inspect that queue; they do not change its schedule or redefine the generated batch. Topic Retention below is a separate concept-level schedule, not another name for due questions."
+    },
+    {
+      "id": "005", "capture": "overview:022", "title": "Keep the source relationship", "chapter": "Complete generated practice",
+      "visual_focus": "Expanded source provenance on a generated review card.",
+      "narration": "The resulting review is saved as Generated Practice in the Library. Its source details show where the questions came from. Your saved answers can contribute to those original learning records rather than creating a separate schedule for each copy. The generated quiz does not replace or rewrite the source quizzes."
+    },
+    {
+      "id": "006", "capture": "overview:023", "title": "Finish explicitly after saves",
+      "visual_focus": "Answered final question, Finish Review control; completion has not yet been requested.",
+      "narration": "Work through the review in Study Mode. Reaching the last question alone does not finish a generated review. Answer the required questions and let pending learning saves complete, then choose Finish Review. If a save fails, use the displayed retry action. Do not treat an unsaved response as a completed learning record."
+    },
+    {
+      "id": "007", "capture": "overview:024", "title": "Wait for the completion acknowledgement",
+      "visual_focus": "Review completed status after real server acknowledgement.",
+      "narration": "The completion message confirms that the review has finished and its recovery checkpoint has cleared. Return to the Dashboard for a freshly calculated plan. If you reviewed only part of a larger due backlog, another batch may still be available. That is remaining source work, not the finished session returning as an unfinished reminder."
+    },
+    {
+      "id": "008", "capture": "overview:025", "title": "Keep the completed review available",
+      "visual_focus": "Completed Generated Practice group retains playable sessions.",
+      "narration": "Completed Generated Practice remains in the Library. You can reopen, hide, or organize it without losing the original source material. Completion is a lifecycle state, not automatic deletion. Use this loop when you want a manageable next action: choose relevant sources, review a focused set, finish it explicitly, then reassess what is useful next."
+    }
+  ]
+}

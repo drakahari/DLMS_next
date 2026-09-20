@@ -1,0 +1,38 @@
+{
+  "version": "3.2.0",
+  "revision": "f3a0706a854b121109bf27778308e944c7d207ed",
+  "dirty": true,
+  "captured_at": "2026-09-20T01:55:15.730464+00:00",
+  "theme": "purple-gold",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale": 1
+  },
+  "fixture_version": "dlms-demo-video-v3",
+  "replay_prefix": false,
+  "captures": [
+    {
+      "id": "101",
+      "filename": "101-reviewed-bank.png",
+      "title": "Create practice from a reviewed bank",
+      "route": "/pdf-import/review/video_review",
+      "ready": "document.querySelector('main')",
+      "state": "Original incomplete item repaired; reviewed bank saved through the real form; generator visible.",
+      "fixture": "Same original two-question staged draft; answer A supplied by its author.",
+      "focus": "",
+      "action": "series-save-bank",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-20T12:00:00+00:00"
+    }
+  ]
+}

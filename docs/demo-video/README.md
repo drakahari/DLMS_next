@@ -1,5 +1,9 @@
 # DLMS demo-video project
 
+For focused instructional production, see the [DLMS documentation video series](series/README.md).
+Its per-video definitions and batch commands reuse this pipeline while keeping
+the published overview's narration, captures and output artifacts separate.
+
 **CONTENT COMPLETE — published overview.**
 
 The main overview now contains **40 narrated scenes, 911 words**, and runs

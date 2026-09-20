@@ -1,0 +1,44 @@
+{
+  "id": "imports-and-repair",
+  "title": "From source material to a reviewed question bank",
+  "purpose": "Choose the right import path, repair uncertain answers, and create practice without repeating extraction.",
+  "target_seconds": [120, 210],
+  "manual_refs": ["docs/user-manual/04-creating-and-importing-content.md", "docs/user-manual/10-pdf-smart-pdf-and-ocr.md"],
+  "implementation_refs": ["dlms/routes/pdf_import.py", "dlms/persistence/pdf_banks.py", "templates/pdf_import/review-question-bank.html", "templates/pdf_import/question-bank.html"],
+  "youtube_title": "DLMS: Import PDFs and Screenshots, Repair Questions, Create Practice",
+  "description": "Follow the path from structured source material to reusable practice in DLMS. Learn when to use PDF text or local OCR, what to check in Review & Repair, and how a saved Question Bank differs from a playable quiz. The repair example uses an original staged draft; it is not an OCR accuracy benchmark.",
+  "thumbnail_text": "IMPORT, CHECK, STUDY",
+  "thumbnail_capture": "overview:009",
+  "scenes": [
+    {
+      "id": "001", "capture": "overview:006", "title": "Choose a source path", "chapter": "Choose the import path",
+      "visual_focus": "Build Quiz offers separate routes; do not imply every document goes through OCR.",
+      "narration": "Start in Build Quiz and choose the path that fits your material. Structured choice questions can come from text, while terminology pairs can come from CSV. For a PDF or a screenshot, open PDF and Image Import. These are different inputs, so check the manual's format examples before preparing a large file."
+    },
+    {
+      "id": "002", "capture": "overview:007", "title": "Prefer selectable PDF text",
+      "visual_focus": "PDF analysis form, content type, source title and rights confirmation.",
+      "narration": "If you can select the words in a PDF reader, try normal PDF analysis first. Choose the document, give the source bank a useful title, and select Question bank, Glossary, or Auto-detect. Confirm that you may use the material, then Analyze PDF. Structured questions work better than an arbitrary textbook chapter."
+    },
+    {
+      "id": "003", "capture": "overview:008", "title": "Use local OCR deliberately", "chapter": "OCR and uncertain answers",
+      "visual_focus": "Original screenshot selected; this frame precedes OCR submission.",
+      "narration": "For questions that exist only as pixels, use Import Quiz Screenshots. DLMS reads them with local OCR when its OCR runtime is available. Mixed PDFs can offer selected low-text pages for OCR instead. Recognition produces drafts, not trusted answers. A highlighted choice alone is not evidence that the answer is correct."
+    },
+    {
+      "id": "004", "capture": "overview:010", "title": "Repair the missing answer",
+      "visual_focus": "Incomplete filter and missing correct-answer field in original staged draft.",
+      "narration": "Review and Repair separates complete records from those needing attention. Here, the recovered question has choices but no confirmed answer. Compare it with your source, repair the text and correct-answer set, or exclude it if you cannot verify it. For multiple-answer questions, check every correct choice. Nothing is published just by opening this review."
+    },
+    {
+      "id": "005", "capture": "overview:009", "title": "Save the reviewed source", "chapter": "Save a bank and make practice",
+      "visual_focus": "Review summary; saving is explained as the next action, not shown as already completed.",
+      "narration": "When every included record is valid, choose Save Reviewed Question Bank. Check OCR correctness confirmations against their source previews before saving. This demonstration uses an original staged draft; it does not claim automatic recovery of a missing answer. The saved bank is your reusable source collection, separate from the quizzes you create from it."
+    },
+    {
+      "id": "006", "capture": "series:101", "title": "Generate a manageable practice set",
+      "visual_focus": "Actual bank generator after repairing and saving the two original questions.",
+      "narration": "Now choose a quiz title, question count, selection method, and Exam timer. Random, unused, sequential, and range selections let you reuse the bank for different sessions. Choose Create Quiz to make a playable copy. The reviewed source stays intact, so your next practice session does not require importing and checking the same document again."
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "organize-your-library",
+  "title": "Organize quizzes without losing learning context",
+  "purpose": "Distinguish folder placement, visibility, dynamic Smart Views and Learning Scope, then compare duplicates before editing.",
+  "target_seconds": [120, 210],
+  "manual_refs": ["docs/user-manual/05-quiz-library-and-organization.md", "docs/user-manual/08-learning-intelligence.md"],
+  "implementation_refs": ["templates/quiz/library.html", "dlms/routes/quiz/library.py", "dlms/services/learning_scope.py", "dlms/services/quiz_duplicates.py"],
+  "youtube_title": "DLMS: Folders, Smart Views, Learning Scope and Duplicate Review",
+  "description": "Keep a growing DLMS quiz library understandable. Learn which controls move quizzes, which only filter the view, and which change the material used for learning recommendations. Finish by comparing duplicate questions before deciding whether an edit is appropriate.",
+  "thumbnail_text": "ORGANIZE WITHOUT LOSING CONTEXT",
+  "thumbnail_capture": "series:103",
+  "scenes": [
+    {
+      "id": "001", "capture": "overview:003", "title": "Give source quizzes a home", "chapter": "Folders and visibility",
+      "visual_focus": "Core Skills folder and quiz card actions.",
+      "narration": "Use folders for stable organization, such as a subject or project. Create a folder with New Folder, then use Move on a quiz card to choose its destination. Reordering a card changes order within its folder; it does not move the quiz to another folder. The labeled Up and Down controls provide an alternative to dragging."
+    },
+    {
+      "id": "002", "capture": "overview:005", "title": "Keep saved material accessible",
+      "visual_focus": "Past Projects remains in the Library despite its scope exclusion.",
+      "narration": "Saved material does not have to stay in your everyday view. Hide changes visibility without deleting the quiz. Hidden and All let you find it again. A folder excluded from Learning Scope can also remain visible, as Past Projects does here. These controls answer different questions: where is the quiz, and do I want to see it?"
+    },
+    {
+      "id": "003", "capture": "series:103", "title": "Use a dynamic view", "chapter": "Smart Views and active learning scope",
+      "visual_focus": "Generated Practice filter, Show full library and original Uncategorized grouping.",
+      "narration": "Smart Views select a changing set of quizzes using existing information. Generated Practice finds saved review sessions across their folders, including completed ones. Search narrows the current set further. Notice that the folder is still shown: the filter did not move anything. Choose Show full library to return to ordinary browsing without undoing your organization."
+    },
+    {
+      "id": "004", "capture": "overview:004", "title": "Change what informs recommendations",
+      "visual_focus": "Learning Scope checklist and preserved excluded folder.",
+      "narration": "Learning Scope controls which folders inform automatic learning recommendations and review generation. Exclude old material here when you want it saved but not steering today's work. Its recorded history and schedules remain. Do not use deletion to solve a temporary focus problem, and do not assume that hiding a folder is the same as excluding it from scope."
+    },
+    {
+      "id": "005", "capture": "overview:029", "title": "Find possible duplication", "chapter": "Compare before editing",
+      "visual_focus": "Duplicate Review groups and result-type controls.",
+      "narration": "When similar material accumulates, open Duplicate Review from the Library tools. Use the result type and search controls to narrow the comparison. A duplicate report is a prompt to inspect content, not permission to delete it automatically. The same question can have a deliberate role in more than one source quiz."
+    },
+    {
+      "id": "006", "capture": "overview:030", "title": "Compare the actual records",
+      "visual_focus": "Exact duplicate group with both source records and answer details.",
+      "narration": "Expand a group and compare the source titles, question wording, answers, and supporting details before editing. Similar wording can conceal an important difference in correctness or context. Keep deliberate overlap when it serves a purpose. The aim is a library you can understand and trust, while preserving the learning context attached to your saved material."
+    }
+  ]
+}
