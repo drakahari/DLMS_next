@@ -831,6 +831,17 @@ function moveLibraryQuiz(event, button, direction) {
         saveLibraryQuizOrder, label);
 }
 
+// Touch/pen gestures belong to navigation and scrolling, not Sortable's
+// immediate fallback drag. Filter each event rather than disabling Sortable
+// by viewport/device so a mouse still works on hybrid touch computers.
+// preventOnFilter must remain false to preserve native taps and scrolling.
+function filterLibraryDrag(event) {
+    if (event.type.startsWith("touch") ||
+        (event.pointerType && event.pointerType !== "mouse") ||
+        event.sourceCapabilities?.firesTouchEvents) return true;
+    return Boolean(event.target.closest("form, input, button, select, textarea, a, summary"));
+}
+
 document.addEventListener("DOMContentLoaded", function() {
     let activeQuizIds = [];
     try {
@@ -866,7 +877,7 @@ document.addEventListener("DOMContentLoaded", function() {
             animation: 150,
             draggable: ".library-folder:not(.library-view-search-only):not(.library-folder-system)",
             handle: ".library-folder-header",
-            filter: "form, input, button, select, textarea, a",
+            filter: filterLibraryDrag,
             preventOnFilter: false,
             onEnd: function() {
                 void saveLibraryFolderOrder(folderList).catch(() => {
@@ -884,7 +895,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 animation: 150,
                 draggable: ".quiz-card",
                 handle: ".quiz-card",
-                filter: "form, input, button, select, textarea, a",
+                filter: filterLibraryDrag,
                 preventOnFilter: false,
                 onEnd: function() {
                     void saveLibraryQuizOrder(body).catch(() => {

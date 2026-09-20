@@ -621,6 +621,126 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
     assert browser.wait_for(f"{order_expression} === {json.dumps(expected_order)}") is True
 
 
+def test_library_touch_navigation_and_scroll_gestures_across_themes(browser_stack):
+    """Exercise Sortable's real event listeners, without emulating mobile OS physics."""
+    browser = browser_stack.browser
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/library")
+        _set_theme(browser, theme)
+        for width in (1280, 420):
+            browser.set_viewport(width, 850)
+            browser.navigate(f"{browser_stack.base_url}/library")
+            browser.wait_for("document.querySelectorAll('.library-quiz-card').length === 2")
+            result = browser.evaluate("""(() => {
+                const before = [...document.querySelectorAll('.quiz-card')].map(e=>e.dataset.id);
+                let prevented = false, chosen = false;
+                for (const selector of ['.library-quiz-title-row h3', '.library-folder-header',
+                                        '.library-primary-action.compact']) {
+                    const target = document.querySelector(selector);
+                    for (const pointerType of ['touch', 'pen']) {
+                        for (const type of ['pointerdown', 'pointermove', 'pointerup']) {
+                            const event = new PointerEvent(type, {bubbles:true, cancelable:true,
+                                pointerType, button:0, clientX:100, clientY:type==='pointermove'?300:100});
+                            target.dispatchEvent(event);
+                            prevented ||= event.defaultPrevented;
+                            chosen ||= Boolean(Sortable.dragged || Sortable.active);
+                        }
+                    }
+                    // Legacy touchstart path (used by browsers without Pointer Events).
+                    const start = new Event('touchstart', {bubbles:true, cancelable:true});
+                    Object.defineProperty(start, 'touches', {value:[{target, clientX:100, clientY:100}]});
+                    target.dispatchEvent(start);
+                    prevented ||= start.defaultPrevented;
+                    chosen ||= Boolean(Sortable.dragged || Sortable.active);
+                    const move = new Event('touchmove', {bubbles:true, cancelable:true});
+                    Object.defineProperty(move, 'touches', {value:[{target, clientX:100, clientY:300}]});
+                    target.dispatchEvent(move);
+                    prevented ||= move.defaultPrevented;
+                    chosen ||= Boolean(Sortable.dragged || Sortable.active);
+                    target.dispatchEvent(new Event('touchend', {bubbles:true}));
+                }
+                const after = [...document.querySelectorAll('.quiz-card')].map(e=>e.dataset.id);
+                return {prevented, chosen, unchanged:JSON.stringify(before)===JSON.stringify(after),
+                    overflow:document.documentElement.scrollWidth>innerWidth,
+                    href:document.querySelector('.library-primary-action.compact').getAttribute('href')};
+            })()""")
+            assert result["prevented"] is False
+            assert result["chosen"] is False
+            assert result["unchanged"] is True
+            assert result["overflow"] is False
+            # Native link activation remains intact after touch/scroll input.
+            browser.click(".library-primary-action.compact")
+            browser.wait_for(f"location.pathname === {json.dumps(result['href'])}")
+
+
+def test_library_mouse_drag_reordering(browser_stack):
+    browser = browser_stack.browser
+    browser.set_viewport(1280, 1000)
+    browser.navigate(f"{browser_stack.base_url}/library")
+    browser.wait_for("document.querySelectorAll('.library-quiz-card').length === 2")
+    order = "[...document.querySelectorAll('.library-quiz-card')].map(e=>e.dataset.id)"
+    initial = browser.evaluate(order)
+    browser.evaluate("""(() => {
+        const save = saveLibraryQuizOrder;
+        window.dragOrderSaved = false;
+        saveLibraryQuizOrder = async body => {
+            await save(body);
+            window.dragOrderSaved = true;
+        };
+    })()""")
+    points = browser.evaluate("""(() => {
+        const cards = [...document.querySelectorAll('.library-quiz-card')];
+        cards[0].scrollIntoView({block:'center'});
+        const a=cards[0].querySelector('h3').getBoundingClientRect();
+        const b=cards[1].getBoundingClientRect();
+        return {x:Math.round(a.x+15), y:Math.round(a.y+10),
+                end:Math.round(b.bottom-10)};
+    })()""")
+    browser.command("input.performActions", {
+        "context": browser.context,
+        "actions": [{"type":"pointer", "id":"mouse", "parameters":{"pointerType":"mouse"},
+                     "actions":[
+                         {"type":"pointerMove", "x":points["x"], "y":points["y"]},
+                         {"type":"pointerDown", "button":0},
+                         {"type":"pointerMove", "x":points["x"]+15, "y":points["y"]+15, "duration":200},
+                         {"type":"pointerMove", "x":points["x"], "y":points["end"], "duration":600},
+                         {"type":"pause", "duration":300},
+                         {"type":"pointerUp", "button":0}]}]})
+    browser.command("input.releaseActions", {"context":browser.context})
+    # Firefox BiDi moves the native drag but does not consistently emit its
+    # terminal dragend on pointerUp. Complete that OS event if still active.
+    browser.evaluate("""(() => {
+        if (Sortable.dragged) Sortable.dragged.dispatchEvent(
+            new DragEvent('dragend', {bubbles:true, cancelable:true}));
+    })()""")
+    reversed_order = list(reversed(initial))
+    browser.wait_for(f"JSON.stringify({order}) === {json.dumps(json.dumps(reversed_order, separators=(',', ':')))}")
+    browser.wait_for("window.dragOrderSaved === true")
+    browser.navigate(f"{browser_stack.base_url}/library")
+    assert browser.evaluate(order) == reversed_order
+
+
+
+def test_library_keyboard_focus_and_nonpointer_reordering(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/library")
+    order = "[...document.querySelectorAll('.library-quiz-card')].map(e=>e.dataset.id)"
+    initial = browser.evaluate(order)
+    browser.activate()
+    browser.evaluate("document.querySelector('.library-quiz-card a[href^=\"/export/quiz/\"]').focus(); true")
+    browser.press_key("\ue004")
+    assert browser.evaluate(
+        "document.activeElement.dataset.libraryReorder === 'quiz' && "
+        "document.activeElement.dataset.libraryReorderDirection === '1'"
+    ) is True
+    # Headless Firefox BiDi delivers Return key events without native button
+    # activation here. Exercise the non-pointer click separately from Tab focus.
+    browser.evaluate("document.activeElement.click(); true")
+    browser.wait_for("document.getElementById('libraryReorderStatus').textContent.includes('moved down')")
+    browser.navigate(f"{browser_stack.base_url}/library")
+    assert browser.evaluate(order) == list(reversed(initial))
+
+
 def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
     browser_stack,
 ):
