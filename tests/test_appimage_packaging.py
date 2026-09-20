@@ -13,6 +13,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_browser_environment_probe_rejects_bundled_library_leakage(tool):
+    import verify_appimage_runtime as runtime
+    runtime.verify_browser_environment(runtime.SERVER_URL + "\n/host/lib\n", "/host/lib")
+    for path in ("/tmp/_MEI123:/host/lib", "", "/tmp/.mount_dlms/lib"):
+        with pytest.raises(RuntimeError, match="original host library path"):
+            runtime.verify_browser_environment(runtime.SERVER_URL + "\n" + path + "\n", "/host/lib")
+
+
 @pytest.fixture
 def tool(monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "tools"))

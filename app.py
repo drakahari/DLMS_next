@@ -6631,7 +6631,7 @@ app.register_blueprint(create_quiz_blueprint(
 def _dlms_wait_and_open_browser(port, host="127.0.0.1"):
     """Open the selected local endpoint after its server socket is ready."""
     import socket
-    import webbrowser
+    from dlms.browser_launch import open_browser
 
     deadline = time.time() + 12
     while time.time() < deadline:
@@ -6646,7 +6646,7 @@ def _dlms_wait_and_open_browser(port, host="127.0.0.1"):
 
     url = f"http://{_dlms_url_host(host)}:{int(port)}"
     try:
-        opened = webbrowser.open(url, new=2)
+        opened = open_browser(url)
         if not opened:
             print(f"[DLMS] Browser could not be opened automatically. Use {url}")
     except Exception as exc:

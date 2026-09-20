@@ -84,7 +84,8 @@ Run the additional real HTTP workflow probe against the resulting trusted image:
 
 The report path must be new. The probe uses synthetic content and temporary data;
 it checks extraction fallback, screenshot OCR, scanned-PDF rendering/OCR, browser
-URL dispatch through a recording stub, and external data-root ownership. `--lan`
+URL dispatch and restoration of the host library path through a recording stub,
+and external data-root ownership. `--lan`
 additionally binds briefly to `0.0.0.0` with `--no-browser` and probes via loopback.
 This is not a remote-client/firewall test. No real browser or desktop settings are
 changed. Port 9001 must be free; existing servers are never stopped for the test.
@@ -142,7 +143,41 @@ Cross-distribution and real graphical-shell acceptance remain mandatory before
 promotion to an official additional package. Server/headless distribution stays
 on the existing native binary/tar.gz strategy regardless of this decision.
 
-### Fedora evaluation evidence
+### Browser environment portability fix
+
+Cross-distribution testing by the maintainer found the same Ubuntu 24.04-built
+image worked on Ubuntu 24.04, Fedora 44 and Ubuntu 26.04. On Omarchy Quattro the
+server worked with `--no-browser`, but automatic browser dispatch failed with a
+host shell `rl_print_keybinding` symbol error. The prior recording-stub probe
+checked dispatch only; it did not detect inherited library paths.
+
+Frozen Linux browser launches now use a child-only environment: restore
+`LD_LIBRARY_PATH_ORIG` (or unset `LD_LIBRARY_PATH`), exclude PyInstaller/AppDir
+paths from the restored path, executable search path and preload/audit entries,
+and retain other host entries. DLMS's environment, including bundled OCR library
+paths, is never changed. `BROWSER` overrides are tried before `xdg-open`,
+`gio open` and `sensible-browser`. Source runs, Windows and macOS retain their
+existing browser handling. See [PyInstaller's external-program guidance](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html#launching-external-programs-from-the-frozen-application).
+
+Rebuild on Ubuntu 24.04 using the build command above with
+`--target ubuntu24.04-x86_64` and a **new** output directory, then transfer those
+exact new bytes to Omarchy and the other three distributions. Existing images
+do not contain the fix. With port 9001 free, retest on Omarchy:
+
+```sh
+chmod +x ./DLMS-3.2.0-ubuntu24.04-x86_64.AppImage
+./DLMS-3.2.0-ubuntu24.04-x86_64.AppImage --browser
+```
+
+Confirm the actual default browser opens, no shell symbol errors appear, OCR
+still works, and shutdown/restart succeeds. After closing that instance, also
+test `--no-browser` and manually open `http://127.0.0.1:9001`. Where the development
+environment is available, run `tools/verify_appimage_runtime.py` as above against
+the rebuilt image with a new report path. Its host-library sentinel now detects
+this leakage automatically. This implementation fix does not substitute for the
+Omarchy graphical retest or promote AppImage out of experimental status.
+
+### Original Fedora evaluation evidence
 
 On Fedora 44 x86_64, the uncommitted-source 3.2.0 evaluation produced
 `build/appimage-evaluation/fedora44-candidate/DLMS-3.2.0-fedora44-x86_64.AppImage`
@@ -161,9 +196,22 @@ Local evidence: `evaluation.json` and `runtime-uat-4.json` beside the candidate.
 Earlier runtime probe records are retained as failed attempts: the synthetic PDF
 first needed its resolution matched to the 300-DPI renderer, and the probe then
 needed to expect the existing LAN shutdown denial. No application change was
-made to obtain the passing result. Actual graphical browser/file-manager/menu
-integration, Omarchy, both Ubuntu hosts, and Windows/macOS native icon checks
-remain unverified. No native six-target package or published artifact was changed.
+made to obtain the passing result. At that point, actual graphical
+browser/file-manager/menu integration, Omarchy, both Ubuntu hosts, and
+Windows/macOS native icon checks were unverified. See the later portability
+finding above. No native six-target package or published artifact was changed.
+
+### Browser-fix regression evidence
+
+The strengthened runtime probe rejects the original Fedora candidate for leaking
+the bundled library path (`fedora44-candidate/browser-leak-regression.json`).
+A fresh isolated Fedora candidate in
+`build/appimage-evaluation/browser-environment-fix/` passes FUSE build smoke,
+extraction/restart, host browser-library restoration, screenshot OCR, PDFium/OCR,
+LAN browser suppression, shutdown policy and external data-root checks. Its
+`evaluation.json` and `runtime-uat.json` record the results. Browser dispatch uses
+a shell stub, not a real graphical browser; Ubuntu rebuild and Omarchy graphical
+acceptance remain required. No existing image was overwritten.
 
 References: [AppDir specification](https://docs.appimage.org/reference/appdir.html),
 [AppImage compatibility guidance](https://docs.appimage.org/introduction/concepts.html),

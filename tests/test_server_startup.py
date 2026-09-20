@@ -9,6 +9,13 @@ import app as dlms
 
 
 class ServerStartupTests(unittest.TestCase):
+    def test_ready_server_dispatches_through_safe_browser_launcher(self):
+        with mock.patch("socket.create_connection"), mock.patch(
+            "dlms.browser_launch.open_browser", return_value=True
+        ) as opened:
+            dlms._dlms_wait_and_open_browser(9001)
+        opened.assert_called_once_with("http://127.0.0.1:9001")
+
     def test_default_host_is_loopback(self):
         options = dlms._dlms_parse_startup_options(
             [], environ={}, desktop_available=True

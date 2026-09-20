@@ -27,6 +27,13 @@ from verify_release_artifact import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def verify_browser_environment(record, expected_library_path):
+    """Fail even on hosts where leaked libraries happen to be ABI-compatible."""
+    lines = record.splitlines()
+    if lines != [SERVER_URL, expected_library_path]:
+        raise RuntimeError("Browser child did not receive the URL and original host library path")
+
+
 def post(client, path, fields, file=None):
     headers = {"X-CSRFToken": client.csrf_token(), "Origin": SERVER_URL}
     if file is None:
@@ -95,10 +102,14 @@ def evaluate(image: Path, version: str, *, lan=False):
         environment = _smoke_environment(data_root, "linux-x86_64")
         environment.pop("DLMS_NO_BROWSER", None)
         browser = work / "browser-stub"
-        browser.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$DLMS_BROWSER_PROBE"\n')
+        browser.write_text('#!/bin/sh\nprintf "%s\\n" "$1" "${LD_LIBRARY_PATH-}" > "$DLMS_BROWSER_PROBE"\n')
         browser.chmod(0o755)
         opened = work / "browser-url"
         environment.update(BROWSER=str(browser), DLMS_BROWSER_PROBE=str(opened))
+        # A harmless empty host directory proves restoration, not just removal.
+        host_libraries = work / "host-libraries"
+        host_libraries.mkdir()
+        environment["LD_LIBRARY_PATH"] = str(host_libraries)
         # A bogus override must not replace the bundled frozen OCR runtime.
         environment["DLMS_TESSERACT_EXECUTABLE"] = "/nonexistent/dlms-ocr-probe"
         modes = [("desktop", ["--browser"])]
@@ -119,6 +130,8 @@ def evaluate(image: Path, version: str, *, lan=False):
                             time.sleep(0.05)
                         if not opened.exists() or SERVER_URL not in opened.read_text():
                             raise RuntimeError("Desktop launch did not dispatch the local browser URL")
+                        verify_browser_environment(opened.read_text(), str(host_libraries))
+                        result["browser_host_library_environment"] = "PASS"
                         result["browser_dispatch_stub"] = "PASS"
                         result.update(ocr_workflows(client))
                         opened.unlink()
