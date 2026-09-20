@@ -384,7 +384,8 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
         with mock.patch.object(
             admin_image_routes, "_hotspot_editor_catalog", return_value=[]
         ), mock.patch.object(
-            dlms, "load_content_pack_image_dataset", side_effect=OSError("broken")
+            dlms, "load_content_pack_image_dataset",
+            side_effect=OSError("private-image-load-detail <script>unsafe()</script>")
         ):
             failed = dlms.app.test_client().get(
                 "/admin/image-editor?pack=missing&dataset=broken&kind=hotspot"
@@ -394,10 +395,13 @@ class AdvancedAuthoringTemplateCharacterizationTests(unittest.TestCase):
         self.assertEqual(200, failed.status_code)
         self.assertIn("const EDITOR_DATA=null;", failed_body)
         self.assertIn(
-            "The selected image dataset could not be loaded. Check the local DLMS "
-            "log for details.",
+            "The selected image dataset could not be loaded. Restart DLMS and retry. "
+            "If it persists, report this action and your DLMS version.",
             failed_body,
         )
+        self.assertNotIn("private-image-load-detail", failed_body)
+        self.assertNotIn("<script>unsafe()</script>", failed_body)
+        self.assertNotRegex(failed_body.lower(), r"check the (?:local dlms|server|application) log")
         self.assertNotIn('id="editorImage"', failed_body)
 
 

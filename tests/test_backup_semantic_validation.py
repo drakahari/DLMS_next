@@ -390,7 +390,11 @@ class BackupSemanticValidationTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 400)
         self.assertNotIn(b"bad semantics", response.data)
-        self.assertIn(b"could not complete the restore", response.data)
+        self.assertIn(b"Restore stopped before changing live data.", response.data)
+        self.assertIn(b"Check the selected backup, available disk space and data-folder access", response.data)
+        self.assertNotIn(b"successfully restored the pre-restore snapshot", response.data)
+        self.assertNotIn(b"preserved or rolled back", response.data)
+        self.assertNotRegex(response.data.lower(), rb"check the (?:local dlms|server|application) log")
         self.assertEqual(events, [])
 
     def test_valid_restore_orders_semantics_before_backup_and_apply(self):
@@ -469,7 +473,14 @@ class BackupSemanticValidationTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 500)
         self.assertNotIn(b"simulated apply failure", response.data)
-        self.assertIn(b"preserved or rolled back", response.data)
+        self.assertIn(
+            b"Restore failed. DLMS successfully restored the pre-restore snapshot.",
+            response.data,
+        )
+        self.assertIn(b"Your safety backup remains in the DLMS backups folder.", response.data)
+        self.assertNotIn(b"Restore stopped before changing live data", response.data)
+        self.assertNotIn(b"preserved or rolled back", response.data)
+        self.assertNotRegex(response.data.lower(), rb"check the (?:local dlms|server|application) log")
         self.assertEqual(len(apply_calls), 2)
 
 
