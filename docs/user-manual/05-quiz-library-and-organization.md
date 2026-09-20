@@ -63,7 +63,13 @@ deleted.
 Drag a folder header to reorder visible folder sections. Dragging a quiz card
 changes its order only within its current folder; it does not move the quiz to
 another folder. Use **Move** for that. Keyboard users can use the labeled Up
-and Down controls instead of dragging.
+and Down controls instead of dragging. Desktop mouse drag-and-drop remains
+available.
+
+On touch or pen devices, touch gestures do not start quiz or folder dragging,
+so tapping and scrolling remain reliable. Use **Open Quiz** to launch a quiz,
+the labeled Up and Down controls to reorder items, and **Move** to place a quiz
+in another folder.
 
 Select a folder header or its disclosure control to collapse or expand the
 section. The down-pointing indicator means expanded; the right-pointing
