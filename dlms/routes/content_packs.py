@@ -62,7 +62,7 @@ def content_pack_import(dependencies):
         return redirect(url_for("content_packs.content_pack_import_review", token=token))
     except Exception as exc:
         print(f"[CONTENT PACK IMPORT ERROR] {type(exc).__name__}: {exc}")
-        flash("Study Pack ZIP could not be validated. Check the local DLMS log for details.", "error")
+        flash("Study Pack ZIP could not be validated. Restart DLMS and retry. If it persists, report this action and your DLMS version.", "error")
         return redirect("/content-packs")
 
 def content_pack_import_review(dependencies, token):
@@ -159,7 +159,7 @@ def content_pack_details(dependencies, folder):
         report = _content_pack_folder_report(folder)
     except Exception as exc:
         print(f"[CONTENT PACK DETAILS ERROR] {type(exc).__name__}: {exc}")
-        flash("Content Pack details are unavailable. Check the local DLMS log for details.", "error")
+        flash("Content Pack details are unavailable. Restart DLMS and retry. If it persists, report this action and your DLMS version.", "error")
         return redirect("/content-packs")
     manifest = report.get("manifest") or {}
     matching = len(manifest.get("datasets") or []) if isinstance(manifest.get("datasets") or [], list) else 0
@@ -187,7 +187,7 @@ def export_content_pack(dependencies, folder):
         )
     except Exception as exc:
         print(f"[CONTENT PACK EXPORT ERROR] {type(exc).__name__}: {exc}")
-        flash("Study Pack export failed. Check the local DLMS log for details.", "error")
+        flash("Study Pack export failed. Restart DLMS and retry. If it persists, report this action and your DLMS version.", "error")
         return redirect("/content-packs")
 
 def content_packs_page(dependencies):

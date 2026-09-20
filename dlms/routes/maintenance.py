@@ -152,8 +152,8 @@ def settings_create_backup(dependencies):
         return render_template(
             "settings/backup-failed.html",
             error=(
-                "DLMS could not create the backup. Check the local application "
-                "log for details."
+                "DLMS could not create the backup. Check available disk space and "
+                "data-folder access, then retry. Keep any existing backups."
             ),
         ), 500
 
@@ -186,8 +186,8 @@ def settings_stage_restore(dependencies):
         return render_template(
             "settings/restore-validation-failed.html",
             error=(
-                "The backup failed validation and was not accepted. Check the "
-                "local DLMS log for details."
+                "The backup failed validation and was not accepted. Select an intact "
+                "DLMS backup ZIP or copy it again from its original location."
             ),
         ), 400
 

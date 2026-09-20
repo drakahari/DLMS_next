@@ -299,7 +299,7 @@ class RestoreMigrationTests(unittest.TestCase):
             response = self._confirm(token)
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn(dlms.RESTORE_FUTURE_SCHEMA_PUBLIC_ERROR, response.get_data(as_text=True))
+        self.assertIn("requires a newer DLMS version", response.get_data(as_text=True))
         self.assertEqual(self._quiz_title(self.db_path), "Original Live")
         self.assertEqual(self.live_sentinel.read_text(encoding="utf-8"), "original")
         safety.assert_not_called()
@@ -382,7 +382,9 @@ class RestoreMigrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertEqual(apply.call_count, 2)
         self.assertTrue(any("automatic rollback also failed" in str(call) for call in logged.call_args_list))
-        self.assertIn(b"could not complete the restore", response.data)
+        self.assertIn(b"Recovery is still required", response.data)
+        self.assertNotIn(b"preserved or rolled back", response.data)
+        self.assertIn(b"retained recovery journal", response.data)
         self.assertEqual(len(list(Path(dlms._restore_operation_root()).glob("restore_*.json"))), 1)
         self.assertTrue(safety.exists())
 
@@ -401,7 +403,7 @@ class RestoreMigrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         bootstrap.assert_not_called()
         safety.assert_not_called()
-        self.assertIn(b"not verified", response.data)
+        self.assertIn(b"could not verify its data-folder ownership", response.data)
 
     def test_corrupt_staged_database_is_rejected_without_live_mutation(self):
         corrupt = self.root / "corrupt.db"

@@ -4114,7 +4114,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
             "DLMS will create a safety backup first, then perform this reset.\n\n"
             "Continue?"
         ]
-        assert "not verified" in reset_failure["status"]
+        assert "could not verify ownership" in reset_failure["status"]
         assert reset_failure["role"] == "alert"
         assert reset_failure["live"] == "assertive"
         assert browser.evaluate("localStorage.getItem('dlms.quiz-progress.v1:failed-reset-118')") == "preserve"
@@ -4165,7 +4165,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
             "body": '{"confirmation":"REMOVE DLMS DATA"}',
         }]
         assert removal_failure["confirms"] == [removal_confirmation]
-        assert "not verified" in removal_failure["status"]
+        assert "could not verify ownership" in removal_failure["status"]
         assert removal_failure["role"] == "alert"
         assert removal_failure["live"] == "assertive"
         assert browser.evaluate("localStorage.getItem('dlms.quiz-progress.v1:failed-reset-118')") == "preserve"
@@ -4202,6 +4202,47 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         "sessionStorage.getItem('dlms-storage-failure-alert') !== null"
     )
     assert "reset completed" in browser.evaluate("sessionStorage.getItem('dlms-storage-failure-alert')")
+
+
+def test_packaged_clear_history_error_guidance_themes(browser_stack):
+    browser = browser_stack.browser
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings/reset-remove")
+        _set_theme(browser, theme)
+        for width in (1280, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(f"{browser_stack.base_url}/settings/reset-remove")
+            browser.wait_for("document.getElementById('clearDBBtn') && window.dlmsCsrfToken")
+            browser.evaluate("window.confirm=()=>true;window.fetch=async()=>new Response(JSON.stringify({error:'Restart DLMS and retry. <img id=errorInjected> If it persists, report the action and DLMS version.'}),{status:500,headers:{'Content-Type':'application/json'}});true")
+            browser.click("#clearDBBtn")
+            browser.wait_for("!document.getElementById('clearDBBtn').disabled && document.getElementById('clearDBStatus').textContent.includes('Restart DLMS')")
+            assert browser.evaluate("document.getElementById('errorInjected')===null")
+            assert browser.evaluate("document.getElementById('clearDBStatus').getAttribute('role')") == "alert"
+            assert browser.evaluate("document.documentElement.scrollWidth<=window.innerWidth+1"), (theme, width)
+            contrast = _theme_contrast_snapshot(browser, {"error": "#clearDBStatus"})
+            assert contrast["error"]["contrast"] >= 4.5, (theme, width, contrast)
+            browser.evaluate("window.fetch=async()=>{throw new Error('PRIVATE network details')};document.getElementById('clearDBBtn').click();true")
+            browser.wait_for("document.getElementById('clearDBStatus').textContent.includes('Could not confirm')")
+            assert "PRIVATE" not in browser.evaluate("document.getElementById('clearDBStatus').textContent")
+
+
+def test_restore_failure_guidance_layout_themes(browser_stack):
+    browser = browser_stack.browser
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings/backup")
+        _set_theme(browser, theme)
+        for width in (1280, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(f"{browser_stack.base_url}/settings/backup")
+            browser.wait_for("window.dlmsCsrfToken")
+            browser.evaluate("(() => {const form=document.createElement('form');form.method='POST';form.action='/settings/backup/restore/confirm/'+'0'.repeat(32);const input=document.createElement('input');input.name='csrf_token';input.value=window.dlmsCsrfToken;form.append(input);document.body.append(form);form.submit();return true})()")
+            browser.wait_for("document.querySelector('.settings-critical-panel')?.textContent.includes('before changing live data')")
+            # Service/integration tests establish this outcome. Exercise the same
+            # error panel with the longest recovery guidance for layout coverage.
+            browser.evaluate("document.querySelector('.settings-critical-panel span').textContent='Recovery is still required. DLMS could not confirm a complete recovery; live data may be partially restored. Stop making changes and keep the safety backup and retained recovery journal in the DLMS data folder. After checking disk space and data-folder access, restart DLMS to retry automatic recovery. If it still fails, seek help with your DLMS version and this message; do not delete recovery files or run a reset.';true")
+            assert browser.evaluate("document.documentElement.scrollWidth<=window.innerWidth+1"), (theme, width)
+            contrast = _theme_contrast_snapshot(browser, {"recovery": ".settings-critical-panel span"})
+            assert contrast["recovery"]["contrast"] >= 4.5, (theme, width, contrast)
 
 
 def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_stack):

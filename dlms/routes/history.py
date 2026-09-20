@@ -121,8 +121,8 @@ def clear_db_history(dependencies):
         return {
             "status": "error",
             "error": (
-                "Saved history could not be cleared. "
-                "Check the local DLMS log for details."
+                "DLMS could not confirm history clearing. Refresh History to check the current state. "
+                "Restart DLMS and retry. If it persists, report this action and your DLMS version."
             ),
         }, 500
 

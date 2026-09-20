@@ -68,7 +68,7 @@ def study_pack_ai_builder_import(dependencies):
         return redirect(url_for("content_packs.content_pack_import_review", token=token))
     except Exception as exc:
         print(f"[AI STUDY PACK IMPORT ERROR] {type(exc).__name__}: {exc}")
-        flash("Study Pack ZIP could not be validated. Check the local DLMS log for details.", "error")
+        flash("Study Pack ZIP could not be validated. Restart DLMS and retry. If it persists, report this action and your DLMS version.", "error")
         return redirect(url_for("study_packs.study_pack_ai_builder"))
 
 def _study_pack_catalog(dependencies):
@@ -493,7 +493,7 @@ def image_quiz_builder_save(dependencies):
         return redirect(f"/quizzes/{result['html_name']}")
     except Exception as exc:
         print(f"[IMAGE BUILDER CREATE ERROR] {type(exc).__name__}: {exc}")
-        return "Unable to create the image Study Pack. Check the local DLMS log for details.", 400
+        return "Unable to create the image Study Pack. Restart DLMS and retry. If it persists, report this action and your DLMS version.", 400
 
 def create_study_packs_blueprint(dependencies: StudyPackRouteDependencies) -> Blueprint:
     blueprint = Blueprint("study_packs", __name__)

@@ -97,6 +97,10 @@ class FolderMetadataCoordinationError(RuntimeError):
     """Base error for an incomplete coordinated folder metadata mutation."""
 
 
+class MissingCanonicalQuizQuestions(ValueError):
+    """A saved page has no canonical question records from which to rebuild."""
+
+
 class FolderMetadataStateConflictError(FolderMetadataCoordinationError):
     """The durable registry is neither the expected old nor target state."""
 
@@ -439,7 +443,7 @@ def rebuild_registered_quiz_artifacts(
                     "SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,)
                 ).fetchone()[0]
                 if quiz_row is None or question_count < 1:
-                    raise ValueError(
+                    raise MissingCanonicalQuizQuestions(
                         "Registered quiz has no canonical persisted questions"
                     )
 
@@ -453,7 +457,9 @@ def rebuild_registered_quiz_artifacts(
                 failed.append(report_id)
                 # Never return exception text: paths, SQL and source content
                 # belong in developer diagnostics, not a packaged user's UI.
-                if isinstance(exc, PermissionError):
+                if isinstance(exc, MissingCanonicalQuizQuestions):
+                    message = "Saved question records are missing, so DLMS cannot rebuild this quiz. Its previous page files were kept. Restore a known-good backup or re-import the original questions as a new quiz."
+                elif isinstance(exc, PermissionError):
                     message = "DLMS could not write the page files. Check data-folder write permissions and retry."
                 elif isinstance(exc, OSError):
                     message = "DLMS could not read or write the page files. Check available disk space and data-folder access, then retry."

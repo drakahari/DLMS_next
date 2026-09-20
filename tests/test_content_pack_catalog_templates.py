@@ -397,7 +397,7 @@ class ContentPackCatalogTemplateTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             flashes = session.get("_flashes", [])
         self.assertEqual(
-            [("error", "Content Pack details are unavailable. Check the local DLMS log for details.")],
+            [("error", "Content Pack details are unavailable. Restart DLMS and retry. If it persists, report this action and your DLMS version.")],
             flashes,
         )
         self.assertNotIn("private filesystem detail", response.get_data(as_text=True))

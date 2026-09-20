@@ -102,7 +102,7 @@ def admin_hotspot_editor(dependencies):
             }
         except Exception as exc:
             print(f"[IMAGE EDITOR LOAD ERROR] {type(exc).__name__}: {exc}")
-            load_error = "The selected image dataset could not be loaded. Check the local DLMS log for details."
+            load_error = "The selected image dataset could not be loaded. Restart DLMS and retry. If it persists, report this action and your DLMS version."
     return render_template(
         "admin/image-editor.html",
         catalog=catalog, selected_pack=selected_pack, selected_dataset=selected_dataset,

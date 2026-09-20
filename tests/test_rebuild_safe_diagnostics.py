@@ -25,3 +25,20 @@ def test_safe_rebuild_reason_and_cleanup(error, expected):
     assert str(error) not in detail['message']
     conn.rollback.assert_called_once()
     conn.close.assert_called_once()
+
+
+def test_missing_canonical_questions_keeps_old_pages(tmp_path):
+    page = tmp_path / 'quiz.html'
+    page.write_text('old live page')
+    conn = Mock()
+    conn.execute.return_value.fetchone.side_effect = [(17,), (0,)]
+    stage = Mock()
+    promote = Mock()
+    result = rebuild_registered_quiz_artifacts(
+        registry_lock=nullcontext(), load_registry=lambda: [{'id': 17}], get_db=lambda: conn,
+        stage_artifacts=stage, promote_artifacts=promote, print_message=Mock())
+    assert 'Saved question records are missing' in result['failure_details'][0]['message']
+    assert 'previous page files were kept' in result['failure_details'][0]['message']
+    assert page.read_text() == 'old live page'
+    stage.assert_not_called()
+    promote.assert_not_called()

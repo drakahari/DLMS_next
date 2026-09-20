@@ -129,7 +129,7 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'setOperationStatus(resetStatus,`❌ Reset failed: ${err.message}`,true)', page
+            'setOperationStatus(resetStatus,`❌ Reset failed: ${failureMessage}`,true)', page
         )
         self.assertIn(
             'document.querySelectorAll(".resetAction").forEach(b=>b.disabled=false)',
@@ -152,7 +152,7 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'setOperationStatus(clearDBStatus,"❌ History clear failed. Check the server log.",true)',
+            'setOperationStatus(clearDBStatus,`❌ ${failureMessage}`,true)',
             page,
         )
         self.assertIn('finally{clearDBBtn.disabled=false}', page)
@@ -191,7 +191,7 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'setOperationStatus(resetStatus,`❌ Permanent removal failed: ${err.message}`,true)',
+            'setOperationStatus(resetStatus,`❌ Permanent removal failed: ${failureMessage}`,true)',
             page,
         )
         self.assertIn(

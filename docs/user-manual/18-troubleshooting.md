@@ -335,7 +335,10 @@ workflow without exposing private study material:
 - for import problems, the general file type and size without sharing private
   contents unless you have chosen to do so.
 
-The local application log may contain more detail when a page tells you to
-check it. Review it for sensitive paths or content before sharing. Do not post
+Use the safe error message shown in the application; a packaged desktop launch
+does not guarantee an accessible application log. If restore reports that recovery
+is still required, stop editing, retain the safety backup and recovery files, and
+restart after checking disk space and data-folder access. If recovery still fails,
+seek help before deleting files or resetting DLMS. Do not post
 backups, private quizzes, credentials, or personal learning History in a public
 issue.

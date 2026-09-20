@@ -165,7 +165,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         self.assertEqual(
             mock.call(
                 "settings/backup-failed.html",
-                error="DLMS could not create the backup. Check the local application log for details.",
+                error="DLMS could not create the backup. Check available disk space and data-folder access, then retry. Keep any existing backups.",
             ),
             render_template.call_args,
         )
@@ -174,7 +174,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         self.assertIn('class="settings-critical-panel" role="alert"', page)
         self.assertIn("DLMS did not modify your existing data.", page)
         self.assertIn(
-            "DLMS could not create the backup. Check the local application log for details.",
+            "DLMS could not create the backup. Check available disk space and data-folder access, then retry. Keep any existing backups.",
             page,
         )
         self.assertNotIn("private path detail", page)
@@ -212,7 +212,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         self.assertEqual(
             mock.call(
                 "settings/restore-validation-failed.html",
-                error="The backup failed validation and was not accepted. Check the local DLMS log for details.",
+                error="The backup failed validation and was not accepted. Select an intact DLMS backup ZIP or copy it again from its original location.",
             ),
             render_template.call_args,
         )
@@ -221,7 +221,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         self.assertIn('class="settings-critical-panel" role="alert"', page)
         self.assertIn("No DLMS data was changed.", page)
         self.assertIn(
-            "The backup failed validation and was not accepted. Check the local DLMS log for details.",
+            "The backup failed validation and was not accepted. Select an intact DLMS backup ZIP or copy it again from its original location.",
             page,
         )
         self.assertNotIn("private archive detail", page)
@@ -369,13 +369,13 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         public_page = public.get_data(as_text=True)
         self.assertEqual(400, public.status_code)
         self.assertEqual(
-            mock.call("settings/restore-failed.html", error=public_error),
+            mock.call("settings/restore-failed.html", error=dlms._settings_restore_error(dlms.RestoreFutureSchemaError(public_error))[0]),
             render_template.call_args,
         )
         self._assert_settings_shell(public_page)
         self.assertIn("Restore failed", public_page)
         self.assertIn('class="settings-critical-panel" role="alert"', public_page)
-        self.assertIn(str(escape(public_error)), public_page)
+        self.assertIn("requires a newer DLMS version", public_page)
         self.assertNotIn(public_error, public_page)
         self.assertIn(
             "If a pre-restore backup was created, it remains in the DLMS backups folder.",
@@ -394,7 +394,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
             )
         ownership_page = ownership.get_data(as_text=True)
         self.assertEqual(409, ownership.status_code)
-        self.assertIn(str(escape(str(ownership_error))), ownership_page)
+        self.assertIn("could not verify its data-folder ownership", ownership_page)
         self.assertNotIn(str(ownership_error), ownership_page)
 
         with mock.patch.object(
@@ -409,7 +409,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         internal_page = internal.get_data(as_text=True)
         self.assertEqual(500, internal.status_code)
         self.assertIn(
-            "DLMS could not complete the restore. Existing data was preserved or rolled back. Check the local application log for details.",
+            "DLMS could not confirm the restore outcome.",
             internal_page,
         )
         self.assertNotIn("private database path and journal detail", internal_page)

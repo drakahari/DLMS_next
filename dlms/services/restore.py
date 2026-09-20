@@ -19,6 +19,15 @@ class DataRootOwnershipError(RuntimeError):
     """Raised when a destructive operation does not target owned DLMS data."""
 
 
+class RestoreFailure(RuntimeError):
+    """Internal diagnostic plus a verified, presentation-safe restore outcome."""
+
+    def __init__(self, diagnostic, outcome, status=500):
+        super().__init__(diagnostic)
+        self.outcome = outcome
+        self.status = status
+
+
 def staged_restore_database_path(staged_data_root, *, is_same_path_or_ancestor):
     """Return the exact staged results.db after enforcing restore-root containment."""
     root = os.path.abspath(staged_data_root)
@@ -726,6 +735,7 @@ def complete_staged_restore(
 ):
     journal_path = None
     journal = None
+    outcome = "not_modified"
     try:
         stage_dir = restore_staging_dir(token)
         upload_path = os.path.join(stage_dir, "restore.zip")
@@ -756,21 +766,31 @@ def complete_staged_restore(
                 ):
                     update_journal(journal_path, journal, state)
                     checkpoint(state, journal)
+                    if state == "live_apply_started":
+                        outcome = "recovery_required"
                     operation()
                 update_journal(journal_path, journal, "reconciliation_completed")
                 checkpoint("reconciliation_completed", journal)
             except Exception as restore_exc:
                 print_message("[RESTORE] Apply/finalization failed; attempting automatic rollback:", restore_exc)
                 try:
+                    # Recovery can itself modify live data even if the original
+                    # apply never ran. Require a confirmed result before reassuring.
+                    outcome = "recovery_required"
                     disk_journal, paths = read_journal(journal_path)
-                    recover_one(journal_path, disk_journal, paths)
+                    recovered = recover_one(journal_path, disk_journal, paths)
+                    outcome = {
+                        "abandoned": "not_modified",
+                        "rolled_back": "rolled_back",
+                        "preserved": "restored",
+                    }.get(recovered, "recovery_required")
                 except Exception as rollback_exc:
                     raise RuntimeError(
                         f"Restore failed ({restore_exc}); automatic rollback also failed ({rollback_exc}). "
                         f"Safety backup remains at {os.path.basename(safety_path)}."
                     ) from restore_exc
                 raise RuntimeError(
-                    "Restore failed and DLMS rolled back to the pre-restore snapshot. "
+                    f"Restore failed; recovery outcome: {outcome}. "
                     f"Safety backup: {os.path.basename(safety_path)}. Error: {restore_exc}"
                 ) from restore_exc
         finally:
@@ -788,7 +808,7 @@ def complete_staged_restore(
                 f"retry at startup: {type(cleanup_exc).__name__}: {cleanup_exc}"
             )
         return {"safety_path": safety_path, "cleanup_pending": cleanup_pending}
-    except Exception:
+    except Exception as exc:
         if journal_path is None:
             try:
                 cleanup_stage = restore_staging_dir(token)
@@ -799,7 +819,9 @@ def complete_staged_restore(
                     "[RESTORE CLEANUP ERROR] Could not remove pre-mutation staging: "
                     f"{type(cleanup_exc).__name__}: {cleanup_exc}"
                 )
-        raise
+        if isinstance(exc, (DataRootOwnershipError, RestoreFutureSchemaError)) and outcome == "not_modified":
+            raise
+        raise RestoreFailure(str(exc), outcome, 400 if isinstance(exc, ValueError) else 500) from exc
 
 
 def clear_directory_contents(path):

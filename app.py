@@ -3806,8 +3806,8 @@ DataRootOwnershipError = _restore_service.DataRootOwnershipError
 
 def _destructive_operation_error(exc, operation):
     if isinstance(exc, DataRootOwnershipError):
-        return str(exc), 409
-    return f"{operation} failed. Check the local DLMS log for details.", 500
+        return "DLMS could not verify ownership of its data folder. No destructive action was authorized. Check the configured data location before retrying.", 409
+    return "The operation did not complete. Some changes may already have occurred. Check available disk space and data-folder access. Keep any safety backup; review the current data before retrying. If the problem persists, report the action and DLMS version.", 500
 
 
 def _validate_destructive_data_root_path(root=None):
@@ -4707,14 +4707,19 @@ def _discard_restore_stage(stage_dir):
 
 
 def _settings_restore_error(exc):
-    public_error = (
-        str(exc)
-        if isinstance(exc, (DataRootOwnershipError, RestoreFutureSchemaError))
-        else (
-            "DLMS could not complete the restore. Existing data was preserved or "
-            "rolled back. Check the local application log for details."
-        )
-    )
+    messages = {
+        "not_modified": "Restore stopped before changing live data. Check the selected backup, available disk space and data-folder access before retrying.",
+        "rolled_back": "Restore failed. DLMS successfully restored the pre-restore snapshot. Your safety backup remains in the DLMS backups folder. Check available disk space and data-folder access before trying again.",
+        "restored": "Restore encountered an error, but recovery validated and retained the restored data. Review your Library before continuing. Your safety backup remains in the DLMS backups folder.",
+        "recovery_required": "Recovery is still required. DLMS could not confirm a complete recovery; live data may be partially restored. Stop making changes and keep the safety backup and retained recovery journal in the DLMS data folder. After checking disk space and data-folder access, restart DLMS to retry automatic recovery. If it still fails, seek help with your DLMS version and this message; do not delete recovery files or run a reset.",
+    }
+    if isinstance(exc, DataRootOwnershipError):
+        return "Restore was not authorized because DLMS could not verify its data-folder ownership. Check the configured data location before retrying.", 409
+    if isinstance(exc, RestoreFutureSchemaError):
+        return "Restore stopped before changing live data. This backup requires a newer DLMS version; use a compatible version or another backup.", 400
+    if isinstance(exc, _restore_service.RestoreFailure):
+        return messages.get(exc.outcome, messages["recovery_required"]), exc.status
+    public_error = "DLMS could not confirm the restore outcome. Stop making changes and retain any safety backup and recovery files. Restart DLMS to retry pending recovery; if it fails, seek help with your DLMS version and this message."
     status = (
         400
         if isinstance(exc, ValueError)

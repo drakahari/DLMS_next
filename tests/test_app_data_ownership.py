@@ -142,7 +142,7 @@ class AppDataOwnershipTests(unittest.TestCase):
                 headers=csrf_headers(client),
             )
         self.assertEqual(response.status_code, 409)
-        self.assertIn("not verified", response.get_json()["error"])
+        self.assertIn("could not verify ownership", response.get_json()["error"])
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "safe")
 
     def test_successful_remove_hands_shutdown_off_only_after_data_removal(self):
