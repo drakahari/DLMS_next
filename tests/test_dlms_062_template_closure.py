@@ -95,7 +95,8 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
         self.assertIn("{% macro settings_shell_sidebar", shared_sidebar)
         consumers = [
             TEMPLATE_ROOT / "admin/maintenance.html",
-            *sorted((TEMPLATE_ROOT / "settings").glob("*.html")),
+            *sorted(path for path in (TEMPLATE_ROOT / "settings").glob("*.html")
+                    if not path.name.startswith("_")),
         ]
         for consumer in consumers:
             with self.subTest(sidebar_consumer=consumer.relative_to(TEMPLATE_ROOT)):
@@ -103,6 +104,24 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
                     '{% from "shared/_settings-sidebar.html" import settings_shell_sidebar -%}',
                     consumer.read_text(encoding="utf-8"),
                 )
+                self.assertIn("{{ settings_shell_sidebar(", consumer.read_text(encoding="utf-8"))
+
+    def test_settings_partials_are_included_fragments_not_sidebar_pages(self):
+        from jinja2 import meta
+        partials = {path.relative_to(TEMPLATE_ROOT).as_posix(): path
+                    for path in (TEMPLATE_ROOT / "settings").glob("_*.html")}
+        self.assertEqual({"settings/_storage-usage.html"}, set(partials))
+        included = set()
+        for page in (TEMPLATE_ROOT / "settings").glob("*.html"):
+            if not page.name.startswith("_"):
+                tree = dlms.app.jinja_env.parse(page.read_text(encoding="utf-8"))
+                included.update(meta.find_referenced_templates(tree))
+        for name, path in partials.items():
+            with self.subTest(partial=name):
+                source = path.read_text(encoding="utf-8")
+                self.assertIn(name, included)
+                self.assertNotIn("settings_shell_sidebar", source)
+                self.assertNotRegex(source.lower(), r"<!doctype|<(?:html|head|body|aside)\b")
 
     def test_active_route_sources_have_no_string_renderer_or_embedded_page_payload(self):
         html_fragment = re.compile(
@@ -152,7 +171,8 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
         self.assertEqual(TEMPLATE_ROOT.resolve(), Path(dlms.app.template_folder).resolve())
 
         templates = sorted(TEMPLATE_ROOT.rglob("*.html"))
-        self.assertEqual(70, len(templates))
+        # DLMS-148 adds one included storage fragment, not a new routed page.
+        self.assertEqual(71, len(templates))
         self.assertTrue((TEMPLATE_ROOT / "dashboard/index.html").is_file())
         self.assertFalse((ROOT / "static/index.html").exists())
         self.assertNotIn("static/index.html", self.app_source)

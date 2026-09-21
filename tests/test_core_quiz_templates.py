@@ -91,7 +91,8 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
 
         consumers = [
             TEMPLATE_ROOT / "admin" / "maintenance.html",
-            *sorted((TEMPLATE_ROOT / "settings").glob("*.html")),
+            *sorted(path for path in (TEMPLATE_ROOT / "settings").glob("*.html")
+                    if not path.name.startswith("_")),
         ]
         for path in consumers:
             with self.subTest(path=path.name):
@@ -100,6 +101,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
                     '{% from "shared/_settings-sidebar.html" import settings_shell_sidebar -%}',
                     source,
                 )
+                self.assertIn("{{ settings_shell_sidebar(", source)
 
     def test_csrf_failure_keeps_html_json_status_and_escaping_contracts(self):
         marker = '</p><script id="csrf-injection">alert(1)</script>&'

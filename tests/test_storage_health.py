@@ -4,6 +4,10 @@ from unittest.mock import Mock
 
 import pytest
 
+from tests._isolation import ensure_test_data_isolation
+ensure_test_data_isolation()
+import app
+from dlms.routes import maintenance
 from dlms.services import storage_health as storage, backups, restore
 
 
@@ -127,10 +131,6 @@ def test_restore_preflight_failure_never_mutates_live_data(tmp_path, monkeypatch
 
 
 def test_backup_page_explicit_check_only_and_escaping(tmp_path, monkeypatch):
-    from tests._isolation import ensure_test_data_isolation
-    ensure_test_data_isolation()
-    import app
-    from dlms.routes import maintenance
     scan = Mock(return_value=storage.storage_snapshot(tmp_path))
     monkeypatch.setattr(maintenance, "storage_snapshot", scan)
     client = app.app.test_client()
@@ -149,10 +149,6 @@ def test_backup_page_explicit_check_only_and_escaping(tmp_path, monkeypatch):
     ("unknown", b"Available disk space could not be checked."),
 ])
 def test_storage_page_warning_states(tmp_path, monkeypatch, status, expected):
-    from tests._isolation import ensure_test_data_isolation
-    ensure_test_data_isolation()
-    import app
-    from dlms.routes import maintenance
     report = storage.storage_snapshot(tmp_path)
     report.update(status=status, partial=True)
     monkeypatch.setattr(maintenance, "storage_snapshot", lambda _: report)

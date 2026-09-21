@@ -6,7 +6,7 @@ import pytest
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
-from dlms.services import restore
+from dlms.services import restore, storage_health
 
 
 @pytest.mark.parametrize("failure,outcome", [
@@ -23,10 +23,10 @@ def test_restore_outcome_follows_recovery_result(tmp_path, failure, outcome):
     callbacks = {name: Mock() for name in inspect.signature(restore.complete_staged_restore).parameters
                  if name not in {"token", "db_path"}}
     callbacks["restore_staging_dir"].return_value = str(stage)
-    callbacks["validate_backup"].return_value = {"manifest": {}}
+    callbacks["validate_backup"].return_value = {"manifest": {}, "uncompressed_bytes": 7}
     def backup(*args):
         safety.write_bytes(b"preserved safety")
-        return str(safety), {}
+        return str(safety), {"total_uncompressed_bytes": safety.stat().st_size}
     def operation(*args, **kwargs):
         journal.write_text("{}")
         return str(journal), {}
@@ -43,13 +43,23 @@ def test_restore_outcome_follows_recovery_result(tmp_path, failure, outcome):
         callbacks["recover_one"].side_effect = OSError(private)
     if failure == "checkpoint":
         callbacks["checkpoint"].side_effect = OSError(private)
-    with pytest.raises(restore.RestoreFailure) as caught:
-        restore.complete_staged_restore("token", db_path="unused", **callbacks)
+    # These cases test restore phases, not the host's available disk capacity.
+    # Keep the real preflight, supplying a deterministic healthy filesystem.
+    with patch.object(storage_health, "available_space", return_value=(1024**4, 1024**4)), \
+         patch.object(storage_health, "require_capacity", wraps=storage_health.require_capacity) as capacity:
+        with pytest.raises(restore.RestoreFailure) as caught:
+            restore.complete_staged_restore("token", db_path=str(tmp_path / "results.db"), **callbacks)
+    assert capacity.call_count == (1 if failure == "before" else 2)
+    callbacks["extract_backup"].assert_called_once()
+    callbacks["validate_semantics"].assert_called_once()
     assert caught.value.outcome == outcome
     message, status = dlms._settings_restore_error(caught.value)
     assert private not in message and "<script>" not in message
     assert status == (400 if failure == "before" else 500)
     if failure == "before":
+        callbacks["prepare_database"].assert_not_called()
+        callbacks["create_backup"].assert_not_called()
+        callbacks["recover_one"].assert_not_called()
         callbacks["apply_data"].assert_not_called()
         assert "before changing live data" in message
     elif failure == "rollback":
@@ -64,6 +74,13 @@ def test_restore_outcome_follows_recovery_result(tmp_path, failure, outcome):
             callbacks["apply_data"].assert_not_called()
     else:
         assert "retained the restored data" in message
+    if failure != "before":
+        callbacks["prepare_database"].assert_called_once()
+        callbacks["create_backup"].assert_called_once()
+        callbacks["new_operation"].assert_called_once()
+        callbacks["recover_one"].assert_called_once()
+        if failure != "checkpoint":
+            callbacks["apply_data"].assert_called_once()
 
 
 def test_unknown_restore_failure_never_claims_recovery():
