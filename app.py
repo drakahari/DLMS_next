@@ -2517,13 +2517,19 @@ def finalize_logo_from_request(app, ts, *, logo_file=None, temp_logo_name=None):
 
 
 
-def save_preview_logo(app, logo_file):
+def save_preview_logo(app, logo_file, *, temp_logo_name=None):
     """
     Saves a temporary preview logo for paste preview.
     Preview logos live ONLY in APP_DATA_DIR/static/logos/_temp
     """
 
     if not logo_file or not logo_file.filename:
+        # Re-preview only retains a helper-created name within the temp directory.
+        name = (temp_logo_name or "").strip()
+        if re.fullmatch(r"temp_\d+\.(?:png|jpg|jpeg|gif|webp)", name):
+            path = os.path.join(LOGO_TEMP_FOLDER, name)
+            if os.path.isfile(path) and not os.path.islink(path):
+                return name
         return None
 
     ext = os.path.splitext(logo_file.filename)[1].lower()

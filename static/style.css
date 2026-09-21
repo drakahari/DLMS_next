@@ -5104,6 +5104,7 @@ a.settings-hub-card:active {
 }
 
 .paste-preview-summary {
+    overflow-wrap: anywhere;
     margin-bottom: 18px;
     padding: 14px 16px;
     color: var(--theme-page-text, #eaf2ff);

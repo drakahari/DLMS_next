@@ -106,8 +106,8 @@ Practice Only"></textarea>
                     <small>One value per line, case-insensitive. Any matching line will be removed.</small>
                 </label>
 
-                {% if cfg.enable_regex_replace %}
                 <div class="build-advanced-block">
+                    {% if cfg.enable_regex_replace %}
                     <div class="build-advanced-heading">
                         <div>
                             <span class="build-method-label">ADVANCED PARSING</span>
@@ -121,19 +121,19 @@ Practice Only"></textarea>
 Question\s*#\d+ => "></textarea>
                         <small>Format: REGEX =&gt; REPLACEMENT. Rules run before parsing.</small>
                     </label>
+                    {% endif %}
                     <div class="build-preset-list">
-                        <label><input type="checkbox" name="preset_number_prefix" value="1"><span><strong>Remove numbered prefixes</strong><small>Removes leading values such as 1., 22., or 5.</small></span></label>
+                        <label><input type="checkbox" name="preset_number_prefix" value="1"><span><strong>Remove numbered prefixes</strong><small>Advanced: removes prefixes such as 1. Keep question numbering; removing it can merge questions.</small></span></label>
                         <label><input type="checkbox" name="preset_pdf_spacing" value="1"><span><strong>Fix PDF / Microsoft wrapping</strong><small>Attempts to repair broken line wrapping and hyphenation.</small></span></label>
                         <label><input type="checkbox" name="preset_headers" value="1"><span><strong>Remove page headers / footers</strong><small>Attempts to strip repeating header and footer text.</small></span></label>
                     </div>
                 </div>
-                {% endif %}
             </section>
 
             <section class="dashboard-panel build-section">
                 <div class="build-section-heading">
                     <div class="build-step-number">3</div>
-                    <div><h2>Logo &amp; Preview</h2><p>Add an optional logo, then inspect the parsed result before committing.</p></div>
+                    <div><h2>Logo &amp; Preview</h2><p>Add an optional logo, then inspect the cleaned source before building.</p></div>
                 </div>
                 <label class="build-field">
                     <span>Quiz Logo <em>Optional</em></span>

@@ -3838,6 +3838,54 @@ def test_manual_quiz_choice_labels_are_readable_across_themes(browser_stack):
     ) == 200
 
 
+def test_paste_preview_diff_is_inert_and_fix_preserves_state(browser_stack):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    portal = browser_stack.data_root / "config" / "portal.json"
+    cfg = json.loads(portal.read_text())
+    cfg.update(enable_regex_replace=True, enable_show_invisibles=True)
+    portal.write_text(json.dumps(cfg))
+    removed = '<img id="preview-injected-image" src="missing" onerror="window.previewInjected=true">'
+    added = '<svg id="preview-injected-svg" onload="window.previewInjected=true"></svg>'
+    script = '<script id="preview-injected-script">window.previewInjected=true</script>'
+    source = "Page 5\nDROP " + removed + script + "\n1. TOKEN\nA. First\nB. Second\nCorrect Answer: A"
+    browser.navigate(base + "/settings")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        for width in (1440, 420):
+            browser.set_viewport(width, 1100)
+            browser.navigate(base + "/paste")
+            browser.wait_for("document.querySelector('.build-workspace input[name=csrf_token]')")
+            data = {"quiz_title": "Safe preview", "exam_minutes": "37", "quiz_text": source,
+                    "strip_text": "DROP", "replace_rules": "TOKEN => " + added}
+            browser.evaluate("""(() => {
+                const form=document.querySelector('.build-workspace');
+                for(const [key,value] of Object.entries(""" + json.dumps(data) + """)) {
+                    form.elements[key].value=value;
+                }
+                form.requestSubmit();return true;
+            })()""")
+            browser.wait_for("document.getElementById('diffView') && typeof runDiff === 'function'")
+            browser.wait_for_page_ready()
+            browser.evaluate("document.querySelector('button[onclick=\"toggleDiff()\"]').click();true")
+            assert browser.evaluate("document.querySelector('#diffView .diff-removed').textContent").startswith("[REMOVED]")
+            assert removed in browser.evaluate("document.getElementById('diffView').textContent")
+            assert added in browser.evaluate("document.getElementById('diffView').textContent")
+            assert not browser.evaluate("!!document.querySelector('[id^=preview-injected]') || !!window.previewInjected")
+            assert browser.evaluate("[...document.querySelector('#diffView').children].every(el=>['SPAN','BR'].includes(el.tagName))")
+            browser.evaluate("toggleDiff();toggleDiff();true")
+            assert not browser.evaluate("!!document.querySelector('[id^=preview-injected]') || !!window.previewInjected")
+            geometry = browser.evaluate("({width:innerWidth,scroll:document.documentElement.scrollWidth,x:scrollX,wide:[...document.querySelectorAll('*')].filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>[el.tagName,el.id,el.className,el.scrollWidth,el.clientWidth])})")
+            assert geometry["scroll"] <= geometry["width"] + 1, geometry
+            browser.evaluate("document.querySelector('button[onclick=\"toggleInvisible()\"]').click();true")
+            assert browser.evaluate("document.querySelector('#visualOrig').textContent.includes('[ZWSP]')") is False
+            browser.wait_for("document.querySelector('form[action=\"/preview_paste\"] input[name=csrf_token]')")
+            browser.evaluate("document.querySelector('form[action=\"/preview_paste\"]').requestSubmit();true")
+            browser.wait_for("document.getElementById('cleanBox') && !document.getElementById('cleanBox').textContent.includes('Page 5')")
+            assert browser.evaluate("document.querySelector('form[action=\"/process_paste\"] [name=exam_minutes]').value") == "37"
+            assert not browser.evaluate("!!document.querySelector('[id^=preview-injected]') || !!window.previewInjected")
+
+
 def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_path):
     browser = browser_stack.browser
     base_url = browser_stack.base_url

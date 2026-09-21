@@ -369,7 +369,8 @@ def preview_paste(dependencies):
     # =========================
     preview_logo_name = save_preview_logo(
         app,
-        request.files.get("quiz_logo")
+        request.files.get("quiz_logo"),
+        temp_logo_name=request.form.get("temp_logo_name"),
     )
 
 
@@ -479,62 +480,32 @@ def preview_paste(dependencies):
     preset_pdf_spacing_checked = bool(request.form.get("preset_pdf_spacing"))
     preset_headers_checked = bool(request.form.get("preset_headers"))
 
-    if regex_replace_enabled:
-        preset_patterns = []
-
-    # 1️⃣ Remove numbered prefixes FIRST
+    # Built-in presets are independent of permission to run arbitrary regex.
+    preset_patterns = []
     if preset_number_prefix_checked:
         preset_patterns.append((
-            r"^\s*\d+\.\s*",
-            "",
-            "Removed numbered prefixes"
+            r"^[ \t]*\d+\.[ \t]*", "", "Removed numbered prefixes",
+            re.MULTILINE,
         ))
-
-    # 2️⃣ REMOVE HEADERS / FOOTERS SECOND
     if preset_headers_checked:
         preset_patterns.append((
-            r"^\s*(Page\s+\d+.*|Copyright.*|All\s+Rights\s+Reserved.*)$",
-            "",
-            "Removed header/footer text"
+            r"^[ \t]*(Page[ \t]+\d+[^\n]*|Copyright[^\n]*|All[ \t]+Rights[ \t]+Reserved[^\n]*)$",
+            "", "Removed header/footer text", re.IGNORECASE | re.MULTILINE,
         ))
-
-    # 2️⃣ Fix PDF / Microsoft wrapped lines + hyphenation
     if preset_pdf_spacing_checked:
-        preset_patterns.append((
-            r"-\s*\n\s*",
-            "",
-            "Fixed PDF hyphen wraps"
-        ))
-
-        # SUPER SAFE PDF WRAP JOIN
-        # Will NOT join across question boundaries
-        preset_patterns.append((
-            r"(?<=[a-z,;])\n(?=\s*[a-z])",
-            " ",
-            "Joined wrapped lines safely"
-        ))
-
-
-
-
-
-        # ---------- APPLY PRESETS ----------
-        for pattern, replacement, label in preset_patterns:
-            try:
-                new_text = re.sub(
-                    pattern,
-                    replacement,
-                    clean_text,
-                    flags=re.IGNORECASE | re.MULTILINE
-                )
-
-                if new_text != clean_text:
-                    applied_rules.append(label)
-
-                clean_text = new_text
-
-            except re.error:
-                applied_rules.append(f"[INVALID PRESET REGEX] {pattern}")
+        preset_patterns.extend([
+            (r"-[ \t]*\n[ \t]*(?=[a-z])", "", "Fixed PDF hyphen wraps", re.MULTILINE),
+            # Case-sensitive lower-case continuation; never join labeled choices,
+            # explicit answer lines, or numbered question boundaries.
+            (r"(?<=[a-z,;])\n[ \t]*(?=[a-z])(?![a-z][.)][ \t])"
+             r"(?!(?i:correct|suggested)[ \t]+(?i:answers?)[ \t]*[:\-])",
+             " ", "Joined wrapped lines", re.MULTILINE),
+        ])
+    for pattern, replacement, label, flags in preset_patterns:
+        new_text = re.sub(pattern, replacement, clean_text, flags=flags)
+        if new_text != clean_text:
+            applied_rules.append(label)
+        clean_text = new_text
 
     # =========================
     # AUTO MULTI-QUESTION SPLIT FIX
@@ -619,72 +590,45 @@ def preview_paste(dependencies):
     # -------- SMART SUGGESTIONS --------
     smart_suggestions = []
 
-    def add_suggestion(title, detail, recommend, rule=None):
+    def add_suggestion(title, detail, recommend, preset=None):
         smart_suggestions.append({
-            "title": title,
-            "detail": detail,
-            "recommend": recommend,
-            "suggest_rule": rule
+            "title": title, "detail": detail, "recommend": recommend,
+            "preset": preset,
         })
 
     text = clean_text
-
-    # 1️⃣ Detect wrapped PDF text
-    if re.search(r"(?<![.!?])\n(?!\n)", text):
+    # Only suggest wrapping for likely prose continuations, not every MCQ newline.
+    if re.search(
+        r"(?<=[a-z,;])\n[ \t]*(?=[a-z])(?![a-z][.)][ \t])"
+        r"(?!(?i:correct|suggested)[ \t]+(?i:answers?)[ \t]*[:\-])", text
+    ) or re.search(r"-[ \t]*\n[ \t]*(?=[a-z])", text):
         add_suggestion(
             "Possible PDF Wrap Detected",
-            "Lines appear split where they should be continuous sentences.",
-            "Enable PDF Line Wrapping Fix preset.",
-            "Enable preset: PDF Wrapping"
+            "Some lines may continue the preceding sentence.",
+            "Try the wrapping preset only if the source confirms a broken line.",
+            "preset_pdf_spacing",
         )
-
-    # 2️⃣ Detect numbered prefixes like 1. Question
-    if re.search(r"^\s*\d+\.\s+", text, re.MULTILINE):
+    if re.search(r"^[ \t]*\d+\.[ \t]+", text, re.MULTILINE):
         add_suggestion(
-            "Numbered Question Prefixes Found",
-            "Detected numbering like '1.' or '22.' before questions.",
-            "Enable Number Prefix Removal preset.",
-            r"^\s*\d+\.\s* => "
+            "Keep Question Numbering",
+            "Numbered prefixes help the parser separate questions.",
+            "Keep them when they identify question starts.",
         )
-
-    # 3️⃣ Detect repeated header/footer patterns
-    if re.search(r"Page\s+\d+", text) or re.search(r"Copyright", text, re.I):
+    if re.search(r"^[ \t]*(?:Page[ \t]+\d+|Copyright|All[ \t]+Rights[ \t]+Reserved)", text, re.I | re.M):
         add_suggestion(
-            "Likely Headers/Footers Detected",
-            "Repeated structural text such as page numbers or copyright text found.",
-            "Enable Header/Footer Cleanup preset.",
-            "Enable preset: Headers"
+            "Possible Headers/Footers",
+            "Some lines resemble page numbers or copyright notices.",
+            "Remove them only if they are not part of a question or answer.",
+            "preset_headers",
         )
-
-    # 4️⃣ Detect if nothing changed
-    if quiz_text == clean_text:
+    if not smart_suggestions:
         add_suggestion(
-            "No Formatting Changes Applied",
-            "None of your strip or regex rules changed the text.",
-            "Try enabling presets or adding regex rules."
+            "Review the Source",
+            "These checks look for formatting patterns only.",
+            "No cleanup may be needed. Verify question boundaries, choices and answer keys.",
         )
 
-    # 5️⃣ If no warnings, say it’s clean
-    if len(smart_suggestions) == 0:
-        add_suggestion(
-            "Formatting Looks Excellent",
-            "No structural or formatting problems detected.",
-            "You can safely continue 👍"
-        )
-
-
-    # =========================
-    # UI SUPPORT LOGIC — ensure template displays correctly
-    # =========================
-
-    # If global regex replace enabled but user did not submit rules,
-    # keep replace_rules list empty but still treat engine as active
     replace_rules = replace_rules_raw.splitlines() if replace_rules_raw else []
-
-    # Make template show replace rules section when enabled globally
-    if regex_replace_enabled and not replace_rules:
-        replace_rules = ["(Regex engine enabled — no manual rules entered)"]
-
 
     # ---------- RENDER PREVIEW ----------
     return render_template("quiz/paste-preview.html",
@@ -697,6 +641,9 @@ def preview_paste(dependencies):
         conf_details=conf_details,
         preview_logo_name=preview_logo_name,
         regex_mode=regex_mode,
+        show_invisibles=cfg.get("enable_show_invisibles", True),
+        strip_rules_raw=strip_rules_raw,
+        replace_rules_raw=replace_rules_raw,
         strip_rules=strip_rules,
         replace_rules=replace_rules,
         applied_rules=applied_rules,

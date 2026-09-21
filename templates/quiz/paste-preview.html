@@ -1,7 +1,9 @@
 
 
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Preview Before Parsing</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
@@ -27,6 +29,7 @@
 <div class="container">
     
     <h1 class="hero-title">👀 Preview Quiz Before Building</h1>
+    <p class="paste-preview-helper">This previews text cleanup, not parsed questions. After building, check the question count and answer keys.</p>
 
     <div class="card">
         <h2>Quiz Title:</h2>
@@ -117,7 +120,7 @@
 
 
                        <!-- SMART SUGGESTIONS -->
-                    <h3 class="paste-preview-suggestions-heading">💡 Smart Suggestions</h3>
+                    <h3 class="paste-preview-suggestions-heading">💡 Formatting Suggestions</h3>
 
                     {% if smart_suggestions and smart_suggestions|length > 0 %}
                     <ul class="paste-preview-suggestions">
@@ -127,52 +130,32 @@
                         <span class="paste-preview-suggestion-detail">{{s.detail}}</span><br>
                         <span class="paste-preview-suggestion-recommendation">Recommendation: {{s.recommend}}</span>
 
-                        {% if s.suggest_rule %}
-                        <br>
-                        <code class="paste-preview-suggestion-rule">
-                            {{s.suggest_rule}}
-                        </code>
-                        {% endif %}
-
-                        <!-- APPLY BUTTON -->
+                        {% if s.preset %}
                         <form action="/preview_paste" method="POST" style="margin-top:8px;">
-
-                            <!-- always resend original data -->
                             <input type="hidden" name="quiz_title" value="{{quiz_title}}">
-                            <textarea name="quiz_text" style="display:none;">{{original}}</textarea>
-
-                            <!-- preserve user cleanup fields if they existed -->
-                            <textarea name="strip_text" style="display:none;">
-                    {% for r in strip_rules %}{{r}}
-                    {% endfor %}
-                            </textarea>
-
-                            <textarea name="replace_rules" style="display:none;">
-                    {% for r in replace_rules %}{{r}}
-                    {% endfor %}
-                            </textarea>
-
-                            <!-- turn on correct preset -->
-                            {% if "PDF" in s.title %}
-                                <input type="hidden" name="preset_pdf_spacing" value="1">
+                            <input type="hidden" name="exam_minutes" value="{{exam_minutes}}">
+                            <input type="hidden" name="temp_logo_name" value="{{preview_logo_name or ''}}">
+                            <textarea name="quiz_text" hidden>{{original}}</textarea>
+                            <textarea name="strip_text" hidden>{{strip_rules_raw}}</textarea>
+                            <textarea name="replace_rules" hidden>{{replace_rules_raw}}</textarea>
+                            {% if preset_number_prefix_checked %}
+                            <input type="hidden" name="preset_number_prefix" value="1">
                             {% endif %}
-
-                            {% if "Number" in s.title %}
-                                <input type="hidden" name="preset_number_prefix" value="1">
+                            {% if preset_pdf_spacing_checked or s.preset == 'preset_pdf_spacing' %}
+                            <input type="hidden" name="preset_pdf_spacing" value="1">
                             {% endif %}
-
-                            {% if "Header" in s.title or "Footer" in s.title %}
-                                <input type="hidden" name="preset_headers" value="1">
+                            {% if preset_headers_checked or s.preset == 'preset_headers' %}
+                            <input type="hidden" name="preset_headers" value="1">
                             {% endif %}
-
                             <button type="submit">⚙ Apply This Fix</button>
                         </form>
+                        {% endif %}
 
                     </li>
                     {% endfor %}
                     </ul>
                     {% else %}
-                    <p>No suggestions — formatting already looks great 🎯</p>
+                    <p>No formatting suggestions. Check the source before building.</p>
                     {% endif %}
 
 
@@ -185,6 +168,7 @@
         <h2>Text To Be Parsed: (passed to quiz)</h2>
         <pre id="cleanBox" class="paste-preview-source paste-preview-source-clean">{{cleaned}}</pre>
 
+        {% if show_invisibles|default(true) %}
         <br>
         <button onclick="toggleInvisible()" style="margin-top:5px;">
             👁 Show / Hide Invisible Characters
@@ -200,7 +184,7 @@
             <h3>Original Input</h3>
             <pre id="visualOrig" class="paste-preview-source"></pre>
 
-            <h3>Parsed (Cleaned) Version</h3>
+            <h3>Cleaned Source</h3>
             <pre id="visualClean" class="paste-preview-source paste-preview-source-clean"></pre>
         </div>
 
@@ -231,6 +215,8 @@
             panel.style.display = show ? "block" : "none";
         }
         </script>
+
+        {% endif %}
 
         <!-- 🔍 DIFF VIEW -->
         <button onclick="toggleDiff()" style="margin-top:10px;">
@@ -279,38 +265,31 @@ function runDiff() {
         .map(normalizeKey)
         .filter(Boolean);
 
-    let out = "";
-
-    // REMOVED
+    const output = document.getElementById("diffView");
+    output.replaceChildren();
+    function addLine(kind, line) {
+        const span = document.createElement("span");
+        span.className = "diff-" + kind;
+        span.textContent = "[" + kind.toUpperCase() + "] " + line;
+        output.append(span, document.createElement("br"));
+    }
     for (const line of origLines) {
-        if (!cleanLines.includes(line)) {
-            out += "<span class='diff-removed'>[REMOVED] " + line + "</span><br>";
-
-
-        }
+        if (!cleanLines.includes(line)) addLine("removed", line);
     }
-
-    // ADDED
     for (const line of cleanLines) {
-        if (!origLines.includes(line)) {
-            out += "<span class='diff-added'>[ADDED] " + line + "</span><br>";
-
-
-        }
+        if (!origLines.includes(line)) addLine("added", line);
     }
-
-    if (!out.trim()) {
-        out = "No structural differences detected.";
+    if (!output.hasChildNodes()) {
+        output.textContent = "No structural differences detected.";
     }
-
-    document.getElementById("diffView").innerHTML = out;
 }
 </script>
 
 
 
         {% if conf_details %}
-        <h2 class="paste-preview-confidence">🧠 Confidence Analysis</h2>
+        <h2 class="paste-preview-confidence">🧠 Confidence Analysis — Format Only</h2>
+        <p class="paste-preview-helper">Structural checks do not verify facts or correct answers and are separate from Learning Intelligence.</p>
         <p class="paste-preview-confidence-summary">
             <b>Total blocks:</b> {{conf_summary.total}}<br>
             ✅ High: {{conf_summary.high}} &nbsp;
