@@ -33,7 +33,10 @@ It is not a substitute for a backup.
 
 Open **Settings → Backup & Restore → Check / refresh storage** to see the
 DLMS data size, database size, backups, packs, artifacts, import working data,
-and available disk space on the data drive. The check changes no data. It runs
+and available disk space on the data drive. A compact donut summarizes the same
+measured data categories; the full text breakdown remains available, including
+tiny and empty categories. Free disk space is separate from the chart, and a
+partial scan is labeled as only the measured portion. The check changes no data. It runs
 only when requested; large or inaccessible directories can produce a clearly
 labeled partial measurement. Sizes are approximate file sizes, not allocated
 disk blocks, and exclude downloads saved outside the DLMS data folder.

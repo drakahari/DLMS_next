@@ -1,0 +1,46 @@
+/* Storage visualization is supplemental to the complete textual breakdown. */
+.storage-usage {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.5rem;
+    margin-block: 1.5rem;
+    color: var(--page-text);
+}
+.storage-usage-visual { flex: 0 1 14rem; max-width: 100%; text-align: center; }
+.storage-donut { position: relative; width: 13rem; max-width: 100%; margin-inline: auto; }
+.storage-donut svg { display: block; width: 100%; height: auto; }
+.storage-ring-track, .storage-slice { fill: none; stroke-width: 18; }
+.storage-ring-track { stroke: var(--panel-border); }
+.storage-slice { stroke: var(--storage-color); }
+.storage-donut-total {
+    position: absolute;
+    inset: 27%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: .25rem;
+    overflow-wrap: anywhere;
+    font-size: .85rem;
+}
+.storage-donut-total strong { font-size: 1.05rem; }
+.storage-usage-visual p { font-size: .875rem; color: var(--muted-text); }
+.storage-usage .storage-usage-list { flex: 1 1 18rem; min-width: 0; list-style: none; padding: 0; margin: 0; }
+.storage-usage-list li { display: flex; align-items: baseline; gap: .65rem; margin-block: .4rem; overflow-wrap: anywhere; }
+.storage-swatch { flex: 0 0 .8rem; height: .8rem; background: var(--storage-color); border: 1px solid var(--panel-border); border-radius: .15rem; }
+/* Fixed category order keeps swatches stable when some categories are empty. */
+.storage-color-0 { --storage-color: light-dark(#215faf, #75adf3); }
+.storage-color-1 { --storage-color: light-dark(#7542aa, #b391dc); }
+.storage-color-2 { --storage-color: light-dark(#967000, #e3bf50); }
+.storage-color-3 { --storage-color: light-dark(#14766c, #61cbbd); }
+.storage-color-4 { --storage-color: light-dark(#af4c24, #f39a72); }
+.storage-color-5 { --storage-color: light-dark(#a43d75, #df8bb9); }
+.storage-color-6 { --storage-color: light-dark(#4e772b, #a3c87b); }
+.storage-color-7 { --storage-color: light-dark(#336d89, #85c4df); }
+.storage-color-8 { --storage-color: light-dark(#95464d, #df989e); }
+.storage-color-9 { --storage-color: light-dark(#616975, #adb6c4); }
+@media (max-width: 600px) {
+    .storage-usage { flex-direction: column; align-items: stretch; gap: 1rem; }
+    .storage-usage-visual { flex-basis: auto; align-self: center; width: 14rem; }
+    .storage-usage .storage-usage-list { flex-basis: auto; }
+}

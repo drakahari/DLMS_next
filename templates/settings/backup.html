@@ -1,7 +1,7 @@
 {% from "shared/_settings-sidebar.html" import settings_shell_sidebar -%}
 
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Backup & Restore Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" href="/static/favicon.ico"></head>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Backup & Restore Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/storage-health.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
 <div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>💾 Backup &amp; Restore</h1><p>Create portable backups or validate and restore an existing DLMS backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 
@@ -15,7 +15,7 @@
 {% if storage.status in ['low', 'critical'] %}<div class="settings-warning-panel" role="status"><strong>{{ 'Very little disk space remains.' if storage.status == 'critical' else 'Available disk space is low.' }}</strong><span>Backups, restores and imports need extra working space. Free space before large operations. Keep safety backups and recovery files.</span></div>
 {% elif storage.status == 'unknown' %}<p>Available disk space could not be checked. Check it in your operating system before large operations.</p>
 {% else %}<p>Available disk space is healthy at this check.</p>{% endif %}
-<ul>{% for group in storage.groups %}<li>{{ group.label }}: {{ group.size }}</li>{% endfor %}</ul>
+{% include "settings/_storage-usage.html" %}
 <p class="settings-image-guidance">Approximate file sizes, not disk allocation. The scan is bounded; inaccessible files and symbolic links are skipped. {% if storage.partial %}The scan is incomplete; reported sizes are lower bounds.{% endif %} Downloads outside the DLMS data folder are not counted. Backups includes retained ZIPs and restore staging. There is no automatic backup pruning or database size cap.</p>
 {% endif %}
 </section>

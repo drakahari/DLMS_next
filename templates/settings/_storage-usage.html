@@ -1,0 +1,31 @@
+{# Presentation only: both chart and list consume the same measured groups. #}
+<div class="storage-usage" aria-describedby="storageChartNote">
+    <div class="storage-usage-visual">
+        <div class="storage-donut" aria-hidden="true">
+            <svg viewBox="0 0 120 120" focusable="false">
+                <circle class="storage-ring-track" cx="60" cy="60" r="46" />
+                {% set slices = namespace(offset=0) %}
+                {% if storage.bytes > 0 %}
+                {% for group in storage.groups %}
+                {% if group.bytes > 0 %}
+                {% set share = group.bytes / storage.bytes * 100 %}
+                <circle class="storage-slice storage-color-{{ loop.index0 }}"
+                        data-bytes="{{ group.bytes }}" data-category="{{ group.label }}"
+                        cx="60" cy="60" r="46" pathLength="100"
+                        stroke-dasharray="{{ share }} {{ 100 - share }}"
+                        stroke-dashoffset="{{ -slices.offset }}" transform="rotate(-90 60 60)" />
+                {% set slices.offset = slices.offset + share %}
+                {% endif %}
+                {% endfor %}
+                {% endif %}
+            </svg>
+            <div class="storage-donut-total"><strong>{{ storage.size }}</strong><span>{{ 'Measured data' if storage.partial else 'DLMS data' }}</span></div>
+        </div>
+        <p id="storageChartNote">{% if storage.partial %}Measured portion only — scan incomplete.{% elif storage.bytes == 0 %}No measured file data.{% else %}Approximate DLMS data usage.{% endif %} Free disk space is separate.</p>
+    </div>
+    <ul class="storage-usage-list" aria-label="DLMS storage categories">
+        {% for group in storage.groups %}
+        <li class="storage-color-{{ loop.index0 }}" data-bytes="{{ group.bytes }}" data-category="{{ group.label }}"><span class="storage-swatch" aria-hidden="true"></span><span>{{ group.label }}: <strong>{{ group.size }}</strong></span></li>
+        {% endfor %}
+    </ul>
+</div>

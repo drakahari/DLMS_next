@@ -58,6 +58,16 @@ def test_storage_health_themes_and_narrow_layout(browser_stack):
             contrast = _theme_contrast_snapshot(browser, {"body": "#storage-health p", "heading": "#storageHeading"})
             assert contrast["body"]["contrast"] >= 4.5
             assert contrast["heading"]["contrast"] >= 3
+            geometry = browser.evaluate("(() => {const chart=document.querySelector('.storage-donut').getBoundingClientRect();const list=document.querySelector('.storage-usage-list').getBoundingClientRect();return {chartWidth:chart.width,left:chart.left,right:chart.right,chartTop:chart.top,listTop:list.top,listLeft:list.left};})()")
+            assert 150 <= geometry["chartWidth"] <= 240
+            assert geometry["left"] >= 0 and geometry["right"] <= width
+            if width == 420:
+                assert geometry["listTop"] > geometry["chartTop"] + geometry["chartWidth"]
+            else:
+                assert geometry["listLeft"] > geometry["right"]
+            assert browser.evaluate("[...document.querySelectorAll('.storage-slice')].every(s=>[...document.querySelectorAll('.storage-usage-list li')].some(li=>li.dataset.category===s.dataset.category&&li.dataset.bytes===s.dataset.bytes))")
+            extra_contrast = _theme_contrast_snapshot(browser, {"total": ".storage-donut-total strong", "legend": ".storage-usage-list li", "note": "#storageChartNote"})
+            assert all(item["contrast"] >= 4.5 for item in extra_contrast.values()), (theme, width, extra_contrast)
 
 
 @dataclass
