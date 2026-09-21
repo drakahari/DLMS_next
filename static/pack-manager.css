@@ -41,20 +41,17 @@
 .content-pack-manager .is-compact td[data-label="Storage"] > small { display: inline; margin: 0; }
 .is-compact td[data-label="Storage"] > small::before { content: " · "; }
 @media (min-width: 1101px) {
-    .content-pack-manager .is-compact th:first-child { width: 28%; }
-    .content-pack-manager .is-compact th:last-child { width: 17%; }
-    .content-pack-manager .is-compact th:nth-child(3) { width: 18%; }
-    .content-pack-manager .is-compact th:nth-child(4) { width: 15%; }
-    .content-pack-manager .is-compact th:nth-child(5) { width: 6%; }
+    /* Reserve readable heading/action tracks; let identity/content share the remainder. */
+    .content-pack-manager .is-compact th { padding-inline: .5rem; }
+    .content-pack-manager .is-compact th:first-child { width: 26%; }
+    .content-pack-manager .is-compact th:last-child { width: 10rem; }
+    .content-pack-manager .is-compact th:nth-child(3) { width: 17%; }
+    .content-pack-manager .is-compact th:nth-child(4) { width: 14%; }
+    .content-pack-manager .is-compact th:nth-child(5) { width: 6rem; }
     .content-pack-manager .is-compact td { padding: .4rem .5rem; vertical-align: middle; }
     .is-compact .content-pack-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .is-compact .pack-summary-row:has(.pack-more[open]) .content-pack-name strong { white-space: normal; }
     .content-pack-manager .is-compact .content-pack-action { min-height: 36px; }
-}
-/* Give adjacent headers room without shifting Actions or changing wide tables. */
-@media (min-width: 1101px) and (max-width: 1600px) {
-    .content-pack-manager .is-compact th:nth-child(4) { width: 13.5%; }
-    .content-pack-manager .is-compact th:nth-child(5) { width: 7.5%; }
 }
 @media (pointer: coarse) {
     .content-pack-manager .is-compact .content-pack-action { min-height: 44px; }

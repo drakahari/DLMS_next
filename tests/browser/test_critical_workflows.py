@@ -4909,7 +4909,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         set_theme(theme)
         # Pack metrics have three text children, unlike icon+copy dashboard
         # cards. Check real layout across the four/two/one-column breakpoints.
-        for width in (1920, 1440, 1280, 1024, 768, 420):
+        for width in (1920, 1600, 1440, 1280, 1200, 1180, 1024, 768, 420):
             browser.set_viewport(width, 1080)
             browser.navigate(f"{base_url}/content-packs")
             browser.wait_for("document.querySelector('.pack-manager-controls')?.hidden === false")
@@ -4917,23 +4917,29 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), (theme, width)
             assert browser.evaluate("document.querySelector('.content-pack-detail-row').hidden")
             dense_height = browser.evaluate("document.querySelector('.pack-summary-row').getBoundingClientRect().height")
-            if 1100 < width <= 1600:
+            if width > 1100:
                 spacing = browser.evaluate("""(() => {
-                    const headers=document.querySelectorAll('.content-pack-table th');
+                    const headers=[...document.querySelectorAll('.content-pack-table th')];
+                    const cells=[...document.querySelector('.pack-summary-row').cells];
                     const textRect=el=>{const range=document.createRange();range.selectNodeContents(el);return range.getBoundingClientRect();};
-                    const gap=textRect(headers[5]).left-textRect(headers[4]).right;
-                    const action=document.querySelector('.content-pack-actions').getBoundingClientRect().left;
-                    const row=document.querySelector('.pack-summary-row');
-                    const height=row.getBoundingClientRect().height;
-                    headers[3].style.width='15%';headers[4].style.width='6%';
-                    const oldAction=document.querySelector('.content-pack-actions').getBoundingClientRect().left;
-                    const oldHeight=row.getBoundingClientRect().height;
-                    headers[3].style.width='';headers[4].style.width='';
-                    return {gap,actionShift:Math.abs(action-oldAction),heightChange:height-oldHeight};
+                    const actions=document.querySelector('.content-pack-actions');
+                    const open=actions.querySelector('a').getBoundingClientRect();
+                    const more=actions.querySelector('summary').getBoundingClientRect();
+                    return {
+                        gap:textRect(headers[5]).left-textRect(headers[4]).right,
+                        widths:headers.map(el=>el.getBoundingClientRect().width),
+                        alignment:[4,5].map(i=>Math.abs(textRect(headers[i]).left-
+                            (cells[i].getBoundingClientRect().left+parseFloat(getComputedStyle(cells[i]).paddingLeft)))),
+                        buttonsFit:Math.abs(open.top-more.top)<1 && more.right<=cells[5].getBoundingClientRect().right,
+                        height:document.querySelector('.pack-summary-row').getBoundingClientRect().height
+                    };
                 })()""")
-                assert spacing["gap"] >= 8, (theme, width, spacing)
-                assert spacing["actionShift"] <= 1, (theme, width, spacing)
-                assert spacing["heightChange"] <= 1, (theme, width, spacing)
+                (tmp_path / f"geometry-{theme}-{width}.json").write_text(json.dumps(spacing))
+                # Measure glyph bounds, not just non-overlapping table cells.
+                assert spacing["gap"] >= 32, (theme, width, spacing)
+                assert max(spacing["alignment"]) <= 1, (theme, width, spacing)
+                assert spacing["buttonsFit"], (theme, width, spacing)
+                assert spacing["height"] <= 64, (theme, width, spacing)
             assert browser.evaluate("!document.querySelector('.pack-more').open")
             assert browser.evaluate("getComputedStyle(document.querySelector('.content-pack-name small')).display") == "none"
             if width == 1920:
@@ -4951,7 +4957,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             browser.click(".pack-more summary")
             browser.click("#packSearch")
             assert browser.evaluate("!document.querySelector('.pack-more').open")
-            if width in (1920, 420):
+            if width in (1920, 1600, 1440, 1280, 1200, 1180, 1024, 768, 420):
                 browser.evaluate("document.querySelector('.content-pack-manager').scrollIntoView();true")
                 screenshot = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "viewport"})
                 (tmp_path / f"manager-{theme}-{width}.png").write_bytes(base64.b64decode(screenshot["data"]))
