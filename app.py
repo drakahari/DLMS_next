@@ -4742,18 +4742,23 @@ def _settings_restore_error(exc):
 def _settings_recent_backups():
     recent_backups = []
     try:
-        for name in sorted(os.listdir(BACKUP_FOLDER), reverse=True):
+        candidates = []
+        for name in os.listdir(BACKUP_FOLDER):
             path = os.path.join(BACKUP_FOLDER, name)
             if name.lower().endswith(".zip") and os.path.isfile(path):
-                recent_backups.append({
-                    "name": name,
-                    "size": _format_bytes(os.path.getsize(path)),
-                    "modified": datetime.fromtimestamp(
-                        os.path.getmtime(path)
-                    ).strftime("%b %d, %Y %I:%M %p"),
-                })
-                if len(recent_backups) >= 5:
-                    break
+                modified_at = os.path.getmtime(path)
+                candidates.append((modified_at, name, path))
+        for modified_at, name, path in sorted(
+            candidates, key=lambda item: (item[0], item[1].casefold()), reverse=True
+        )[:5]:
+            created = datetime.fromtimestamp(modified_at).astimezone()
+            recent_backups.append({
+                "name": name,
+                "label": _backup_service.backup_display_label(name),
+                "size": _format_bytes(os.path.getsize(path)),
+                "created": created.strftime("%b %d, %Y %I:%M %p"),
+                "created_iso": created.isoformat(timespec="seconds"),
+            })
     except Exception:
         recent_backups = []
     return recent_backups

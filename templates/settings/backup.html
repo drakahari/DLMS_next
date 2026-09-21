@@ -22,7 +22,22 @@
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">⇩</div><div><h2>Portable Backup</h2><p>Create one ZIP snapshot containing your persistent DLMS data.</p></div></div>
 <div class="settings-image-guidance"><strong>Included:</strong> quizzes and runtime JSON, database/history, settings, Study/Content Packs, quiz assets, PDF &amp; Image Import source banks, drafts, Law Study content, backgrounds, and persistent logos.<br><strong>Excluded:</strong> temporary uploads, Content Pack staging files, temporary logo previews, and older backup archives.</div>
 <form method="POST" action="/settings/backup/create"><div class="settings-form-actions"><button type="submit" class="settings-primary-button">⇩ Create &amp; Download Backup</button></div></form>
-{% if recent_backups %}<div class="settings-current-value"><strong>Recent safety backups kept on this device:</strong><ul>{% for item in recent_backups %}<li>{{ item.name }} — {{ item.size }} — {{ item.modified }}</li>{% endfor %}</ul></div>{% endif %}
+<section class="backup-inventory" aria-labelledby="backupInventoryHeading">
+<h3 id="backupInventoryHeading">Recent safety backups kept on this device</h3>
+{% if recent_backups %}
+<div class="backup-inventory-table-wrap">
+<table class="backup-inventory-table">
+<caption>Up to five newest backup ZIP files stored in the DLMS data folder.</caption>
+<thead><tr><th scope="col">Backup</th><th scope="col" class="backup-size-column">Size</th><th scope="col">Created</th></tr></thead>
+<tbody>{% for item in recent_backups %}<tr>
+<th scope="row"><span class="backup-mobile-label" aria-hidden="true">Backup</span><strong class="backup-display-label">{{ item.label }}</strong><span class="backup-full-name" title="{{ item.name }}">{{ item.name }}</span></th>
+<td class="backup-size-column"><span class="backup-mobile-label" aria-hidden="true">Size</span><span>{{ item.size }}</span></td>
+<td><span class="backup-mobile-label" aria-hidden="true">Created</span><time datetime="{{ item.created_iso }}">{{ item.created }}</time></td>
+</tr>{% endfor %}</tbody>
+</table>
+</div>
+{% else %}<p class="backup-inventory-empty">No safety backups are currently stored in the DLMS data folder.</p>{% endif %}
+</section>
 </section>
 
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-blue">⇧</div><div><h2>Restore from Backup</h2><p>Upload a DLMS portable-backup ZIP. DLMS validates it and shows a confirmation page before changing anything.</p></div></div>

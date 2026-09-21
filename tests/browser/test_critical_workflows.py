@@ -68,6 +68,22 @@ def test_storage_health_themes_and_narrow_layout(browser_stack):
             assert browser.evaluate("[...document.querySelectorAll('.storage-slice')].every(s=>[...document.querySelectorAll('.storage-usage-list li')].some(li=>li.dataset.category===s.dataset.category&&li.dataset.bytes===s.dataset.bytes))")
             extra_contrast = _theme_contrast_snapshot(browser, {"total": ".storage-donut-total strong", "legend": ".storage-usage-list li", "note": "#storageChartNote"})
             assert all(item["contrast"] >= 4.5 for item in extra_contrast.values()), (theme, width, extra_contrast)
+            inventory = browser.evaluate("(() => {const table=document.querySelector('.backup-inventory-table');const row=table.querySelector('tbody tr');const cells=[...row.children];return {tableRole:table.tagName,caption:table.caption.textContent.trim(),headers:[...table.querySelectorAll('thead th')].map(n=>[n.textContent.trim(),n.scope]),rowHeader:cells[0].scope,display:getComputedStyle(row).display,overflow:document.documentElement.scrollWidth-innerWidth,fullName:row.querySelector('.backup-full-name').textContent.trim(),label:row.querySelector('.backup-display-label').textContent.trim(),mobileLabels:[...row.querySelectorAll('.backup-mobile-label')].map(n=>[n.textContent.trim(),getComputedStyle(n).display])};})()")
+            assert inventory["tableRole"] == "TABLE"
+            assert inventory["headers"] == [["Backup", "col"], ["Size", "col"], ["Created", "col"]]
+            assert inventory["rowHeader"] == "row"
+            assert inventory["fullName"].endswith(".zip") and inventory["label"] == "Browser Restore Fixture"
+            assert inventory["overflow"] <= 1
+            if width == 420:
+                assert inventory["display"] == "block"
+                assert all(display == "block" for _, display in inventory["mobileLabels"])
+            else:
+                assert inventory["display"] == "table-row"
+                assert all(display == "none" for _, display in inventory["mobileLabels"])
+            inventory_contrast = _theme_contrast_snapshot(browser, {"backupLabel": ".backup-display-label", "backupName": ".backup-full-name", "backupHeading": "#backupInventoryHeading"})
+            assert inventory_contrast["backupLabel"]["contrast"] >= 4.5
+            assert inventory_contrast["backupName"]["contrast"] >= 4.5
+            assert inventory_contrast["backupHeading"]["contrast"] >= 3
 
 
 @dataclass

@@ -44,3 +44,31 @@
     .storage-usage-visual { flex-basis: auto; align-self: center; width: 14rem; }
     .storage-usage .storage-usage-list { flex-basis: auto; }
 }
+
+/* Read-only backup inventory: semantic table on desktop, labeled rows on mobile. */
+.backup-inventory { margin-top: 1.5rem; }
+.backup-inventory h3 { margin: 0 0 .75rem; color: var(--page-text); }
+.backup-inventory-table-wrap { max-width: 100%; overflow: hidden; border: 1px solid var(--panel-border); border-radius: .75rem; }
+.backup-inventory-table { width: 100%; border-collapse: collapse; table-layout: fixed; color: var(--page-text); }
+.backup-inventory-table caption { padding: .7rem 1rem; color: var(--muted-text); text-align: left; font-size: .85rem; }
+.backup-inventory-table th, .backup-inventory-table td { padding: .7rem 1rem; border-top: 1px solid var(--panel-border); text-align: left; vertical-align: top; }
+.backup-inventory-table thead th { color: var(--muted-text); font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
+.backup-inventory-table thead th:first-child { width: 54%; }
+.backup-inventory-table .backup-size-column { width: 16%; text-align: right; white-space: nowrap; }
+.backup-display-label, .backup-full-name { display: block; min-width: 0; overflow-wrap: anywhere; }
+.backup-display-label { color: var(--page-text); }
+.backup-full-name { margin-top: .2rem; color: var(--muted-text); font-size: .78rem; font-weight: 400; }
+.backup-mobile-label { display: none; color: var(--muted-text); font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.backup-inventory-empty { margin: 0; color: var(--muted-text); }
+@media (max-width: 600px) {
+    .backup-inventory-table-wrap { border: 0; overflow: visible; }
+    .backup-inventory-table, .backup-inventory-table tbody, .backup-inventory-table tr,
+    .backup-inventory-table th, .backup-inventory-table td { display: block; width: 100%; }
+    .backup-inventory-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+    .backup-inventory-table caption { padding: 0 0 .65rem; }
+    .backup-inventory-table tr { margin-bottom: .75rem; border: 1px solid var(--panel-border); border-radius: .65rem; overflow: hidden; }
+    .backup-inventory-table th, .backup-inventory-table td { padding: .65rem .75rem; border-top: 1px solid var(--panel-border); text-align: left; white-space: normal; }
+    .backup-inventory-table tr > :first-child { border-top: 0; }
+    .backup-inventory-table .backup-size-column { width: 100%; text-align: left; }
+    .backup-mobile-label { display: block; margin-bottom: .2rem; }
+}

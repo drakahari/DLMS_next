@@ -69,17 +69,18 @@ class BackupSettingsTemplateTests(unittest.TestCase):
 
     def test_get_renders_forms_recent_backups_banners_and_escaped_filenames(self):
         names = [
-            'z-<img onerror="attack">-&-\'.zip',
-            "y-safety.zip",
-            "x-safety.zip",
-            "w-safety.zip",
-            "v-safety.zip",
-            "a-sixth-is-hidden.zip",
+            'DLMS-backup-20260921-120000-pre-reset-<img onerror="attack">.zip',
+            "DLMS-backup-20260921-110000-pre-restore.zip",
+            "DLMS-backup-20260921-100000-rollback-safety.zip",
+            "DLMS-backup-20260921-090000-semantic-safety.zip",
+            "DLMS-backup-20260921-080000-manual.zip",
+            "DLMS-backup-20260921-070000-sixth-is-hidden.zip",
         ]
         for index, name in enumerate(names):
             path = self.backups / name
             path.write_bytes(b"x" * (index + 1))
-            os.utime(path, (1_700_000_000 + index, 1_700_000_000 + index))
+            timestamp = 1_700_000_000 - index
+            os.utime(path, (timestamp, timestamp))
 
         with mock.patch.object(
             maintenance_routes,
@@ -122,6 +123,20 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         self.assertIn("No DLMS data was changed.", page)
         self.assertIn(str(escape(names[0])), page)
         self.assertNotIn(names[0], page)
+        inventory = render_template.call_args.kwargs["recent_backups"]
+        self.assertEqual(names[:5], [item["name"] for item in inventory])
+        self.assertEqual(
+            ["Pre-reset &lt;img Onerror=&#34;attack&#34;&gt;", "Pre-restore", "Rollback Safety", "Semantic Safety", "Manual"],
+            [str(escape(item["label"])) for item in inventory],
+        )
+        self.assertRegex(inventory[0]["created_iso"], r"^2023-11-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$")
+        self.assertEqual("1 B", inventory[0]["size"])
+        self.assertIn('<table class="backup-inventory-table">', page)
+        self.assertIn('<caption>Up to five newest backup ZIP files stored in the DLMS data folder.</caption>', page)
+        self.assertIn('<th scope="col">Backup</th>', page)
+        self.assertIn('<th scope="row">', page)
+        self.assertIn('<time datetime="', page)
+        self.assertIn('aria-hidden="true">Size</span>', page)
         for name in names[1:5]:
             self.assertIn(name, page)
         self.assertNotIn(names[5], page)
@@ -130,6 +145,22 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         plain = self.client.get("/settings/backup").get_data(as_text=True)
         self.assertNotIn("Restore file not accepted", plain)
         self.assertNotIn("Restore cancelled", plain)
+
+    def test_empty_backup_inventory_has_read_only_empty_state(self):
+        page = self.client.get("/settings/backup").get_data(as_text=True)
+        self.assertIn("Recent safety backups kept on this device", page)
+        self.assertIn("No safety backups are currently stored", page)
+        self.assertNotIn('class="backup-inventory-table"', page)
+        self.assertNotIn("Delete backup", page)
+
+    def test_long_backup_name_remains_visible_and_escaped(self):
+        name = "DLMS-backup-20260921-120000-pre-reset-" + "very-long-label-" * 8 + "<&>.zip"
+        (self.backups / name).write_bytes(b"backup")
+        page = self.client.get("/settings/backup").get_data(as_text=True)
+        escaped = str(escape(name))
+        self.assertGreaterEqual(page.count(escaped), 2)  # visible text and optional title
+        self.assertNotIn(name, page)
+        self.assertIn("overflow-wrap", (Path(dlms.__file__).parent / "static" / "storage-health.css").read_text())
 
     def test_backup_download_success_and_failure_view_keep_existing_contracts(self):
         archive = self.backups / "DLMS-backup.zip"

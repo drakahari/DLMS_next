@@ -27,6 +27,25 @@ BACKUP_RESTORE_LIMIT_MESSAGE = (
 )
 
 
+def backup_display_label(filename):
+    """Return a concise label while leaving the real filename authoritative."""
+    name = str(filename or "")
+    match = re.fullmatch(
+        r"DLMS-backup-\d{8}-\d{6}-(.+)\.zip", name, flags=re.IGNORECASE
+    )
+    label = match.group(1) if match else re.sub(r"\.zip$", "", name, flags=re.IGNORECASE)
+    label = re.sub(r"[-_]+", " ", label).strip()
+    if not label:
+        return "DLMS backup"
+    words = label.split()
+    if len(words) >= 2 and words[0].casefold() == "pre":
+        return "Pre-" + words[1].casefold() + (
+            " " + " ".join(word.capitalize() for word in words[2:])
+            if len(words) > 2 else ""
+        )
+    return " ".join(word.capitalize() for word in words)
+
+
 # Keep the filename contract scoped to roots that the repository actually
 # writes atomically. Installed content packs may legitimately contain arbitrary
 # similarly named files and must remain portable.
