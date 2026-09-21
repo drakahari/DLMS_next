@@ -462,6 +462,13 @@ def validate_unsafe_request_origin():
 @app.before_request
 def reject_declared_oversized_workflow_upload():
     """Reject honest oversized multipart requests before CSRF/form parsing."""
+    # Flask 3.1 supports a request-local ceiling. Set it even without a declared
+    # length so streamed multipart parsing remains bounded; leave other routes
+    # under the general 300 MiB ceiling. This hook precedes csrf.init_app.
+    if request.method == "POST" and request.path in {
+        "/settings/data/restore/stage", "/settings/backup/restore/stage",
+    }:
+        request.max_content_length = BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES
     if request.method != "POST" or not request.content_length:
         return None
     route_limits = {
@@ -646,9 +653,9 @@ MATCHING_CSV_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
 RASTER_UPLOAD_MAX_BYTES = 32 * 1024 * 1024
 LOGO_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
 IMAGE_BUILDER_TOTAL_UPLOAD_MAX_BYTES = 192 * 1024 * 1024
-# Reserve 2 MB beneath the existing 300 MB request ceiling for multipart
-# framing while preserving nearly all of the prior effective restore capacity.
-BACKUP_UPLOAD_MAX_BYTES = 298 * 1024 * 1024
+# DLMS-149: bounded, restore-only HTTP allowance; see the capacity audit.
+# Creation uses this same ZIP cap. Multipart framing remains separate.
+BACKUP_UPLOAD_MAX_BYTES = 1024 * 1024 * 1024
 PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES = (
     _portable_quiz_bundle_service.PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES
 )

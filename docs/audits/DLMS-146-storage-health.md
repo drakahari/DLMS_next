@@ -32,7 +32,8 @@ DLMS-146. **Resolved by DLMS-147:** creation now checks the finished ZIP against
 the upload cap and the actual restore validator before publishing it. Larger
 workspaces remain usable, but cannot produce a supported full backup until the
 snapshot fits. A future large-workspace backup format/path would need its own
-resource/security review.
+resource/security review. DLMS-149 subsequently raised only the restore ZIP
+upload allowance to 1 GiB; see [the capacity audit](DLMS-149-backup-capacity.md).
 
 SQLite's size ceiling is not a realistic single-user DLMS constraint. Current
 SQLite permits up to 4,294,967,294 pages (about 17.6 TB at 4 KiB pages, up to

@@ -173,7 +173,7 @@ def settings_stage_restore(dependencies):
         + dependencies.upload_multipart_overhead_bytes()
     )
     if request.content_length and request.content_length > upload_limit:
-        return "Backup exceeds the 298 MB restore upload limit.", 413
+        return "Backup request exceeds the supported restore upload limit.", 413
 
     token = dependencies.make_restore_token()
     stage_dir = dependencies.restore_staging_dir(token)

@@ -64,7 +64,7 @@ backup page may also list up to five recent safety backups retained on the host
 computer.
 
 Before offering a download, DLMS checks the finished ZIP against the same
-size and resource limits as Restore: 298 MiB uploaded ZIP, 2 GiB expanded content,
+size and resource limits as Restore: 1 GiB uploaded ZIP, 2 GiB expanded content,
 768 MiB per file, and 20,000 archive entries (including the manifest), plus
 compression-ratio protections. A backup exceeding these bounds is not published;
 existing data and older backups remain unchanged. These are restore safety
@@ -77,6 +77,12 @@ before retrying. Deleting older backup ZIPs will not reduce the new snapshot:
 they are already excluded. Safety-backup creation for resets and restores uses
 the same checks and may prevent those operations from proceeding. Never remove
 active recovery resources to work around a failure.
+
+Large restores need additional space for the uploaded ZIP, temporary copies,
+extracted data and a safety backup. Existing free-space preflight still applies;
+the upload allowance is not a promise that every device can restore a 1 GiB ZIP.
+For trusted-LAN installations behind a proxy, its upload limit and timeout may
+also need adjustment. Do not expose DLMS directly to an untrusted network.
 
 A backup includes persistent material such as:
 
@@ -109,7 +115,7 @@ Older backups without a Learning Scope setting restore with all folders included
 
 1. Open **Settings → Backup & Restore**.
 2. Under **Restore from Backup**, select a DLMS portable-backup ZIP. The upload
-   may be up to 298 MiB.
+   may be up to 1 GiB.
 3. Choose **Validate Backup & Continue**.
 4. Read the validation report. It identifies the backup version and creation
    time, file and expanded-data totals, and summaries of content such as

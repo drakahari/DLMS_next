@@ -733,7 +733,7 @@ below.
 | Screen / reach | Settings → Backup & Restore. |
 | What and why | Downloads a portable recovery snapshot and stages a validated replacement of persistent DLMS data. |
 | Backup scope | Quizzes/generated artifacts and assets, database/history, settings, Study/Content Packs, PDF/Image banks and relevant drafts, Law data, background/logo. Transient temp/staging/previews and older backup files are excluded. |
-| Restore safety | Upload up to 298 MiB; traversal/symlink/schema/duplicate/expanded-content checks; review summary; confirm/cancel; pre-restore safety backup; cleanup recovery; successful restore instructs reload and clears browser recovery records. |
+| Restore safety | Upload up to 1 GiB; traversal/symlink/schema/duplicate/expanded-content checks; review summary; confirm/cancel; pre-restore safety backup; cleanup recovery; successful restore instructs reload and clears browser recovery records. |
 | Distinction | A backup contains personal application state and must be protected. It is not a public Portable Quiz Bundle or Content Pack. |
 | Evidence | settings/maintenance routes/templates; backup services; backup/restore/security/Firefox tests. |
 | Manual / screenshot / status | Ch. 17; UM-26; **Verified**. |

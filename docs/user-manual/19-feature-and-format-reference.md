@@ -76,7 +76,7 @@ They protect a local application from unexpectedly large or malformed input.
 | External AI matching request | 2–100 pairs. Pasted structured response up to 1 MiB. |
 | Portable Quiz Bundle import | Archive up to 128 MiB; up to 100 quizzes and 10,000 questions in total. DLMS also enforces per-file, expanded-size, media, and archive-safety limits. |
 | Content Pack import | Archive up to 256 MiB. DLMS also validates its expanded size, entries, paths, and supported content. |
-| Backup restore upload | Backup ZIP up to 298 MiB. |
+| Backup restore upload | Backup ZIP up to 1 GiB. |
 | Image Study uploads | Up to 12 PNG, JPEG/JPG, or WebP images; each image up to 32 MiB and 80 million pixels, with a 16,000-pixel side limit; total staged images up to 192 MiB. |
 | Mixed Quiz | Select at least two source quizzes and at least two questions. |
 

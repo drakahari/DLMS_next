@@ -279,7 +279,7 @@ the quizzes have not been moved.
 DLMS validates the archive before replacing data. It can reject an invalid or
 incompatible backup, an unsafe path or symbolic link, duplicate paths,
 unexpected structure, excessive files or expansion, or an upload above the
-298 MiB limit. Use the original ZIP created by **Backup & Restore**; do not
+1 GiB limit. Use the original ZIP created by **Backup & Restore**; do not
 unpack, edit, and re-zip its contents.
 
 Because validation did not reach confirmation, current DLMS data remains
