@@ -354,6 +354,8 @@ class LearningScopeTests(unittest.TestCase):
             backup_data_prefix=dlms.DLMS_BACKUP_DATA_PREFIX,
             file_inventory=lambda: [(str(self.root / "config" / "portal.json"), "config/portal.json")],
             summary=lambda: {},
+            restore_upload_max_bytes=dlms.BACKUP_UPLOAD_MAX_BYTES,
+            validate_restore_archive=dlms._validate_dlms_backup,
         )
         with zipfile.ZipFile(archive_path) as archive:
             portal = json.loads(archive.read("DLMS_DATA/config/portal.json"))

@@ -28,7 +28,11 @@ restore upload/validation limits. Restore currently accepts at most 298 MiB
 uploaded ZIP, 2 GiB expanded data, 768 MiB per file and 20,000 files (`app.py`).
 A sufficiently large locally created backup can exceed these restore limits.
 These are security boundaries, not SQLite limits; they were not weakened in
-this task. A large-workspace backup/restore compatibility follow-up is warranted.
+DLMS-146. **Resolved by DLMS-147:** creation now checks the finished ZIP against
+the upload cap and the actual restore validator before publishing it. Larger
+workspaces remain usable, but cannot produce a supported full backup until the
+snapshot fits. A future large-workspace backup format/path would need its own
+resource/security review.
 
 SQLite's size ceiling is not a realistic single-user DLMS constraint. Current
 SQLite permits up to 4,294,967,294 pages (about 17.6 TB at 4 KiB pages, up to

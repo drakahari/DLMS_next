@@ -64,6 +64,15 @@ class BackupTransientInventoryTests(unittest.TestCase):
             backup_data_prefix="DLMS_DATA/",
             file_inventory=self._inventory,
             summary=lambda: {"quizzes": 0},
+            restore_upload_max_bytes=1024 * 1024,
+            validate_restore_archive=lambda path: backups.validate_dlms_backup(
+                path, backup_manifest="DLMS_BACKUP_MANIFEST.json",
+                backup_data_prefix="DLMS_DATA/", backup_schema_version=1,
+                max_files=200, max_uncompressed=1024 * 1024,
+                max_compressed=1024 * 1024, max_single_file=1024 * 1024,
+                max_compression_ratio=1000, ratio_min_uncompressed=1024 * 1024,
+                rel_is_excluded=self._rel_is_excluded,
+            ),
             now=lambda: datetime(2026, 9, 8, 12, 0, 0),
             platform="test",
         )

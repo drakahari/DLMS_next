@@ -14,6 +14,19 @@ from pathlib import Path
 from dlms.persistence import json_files
 
 
+class BackupRestoreLimitError(ValueError):
+    """An archive exceeds a supported restore resource boundary."""
+
+
+BACKUP_RESTORE_LIMIT_MESSAGE = (
+    "Backup not created: it would exceed the supported restore size or resource limits. "
+    "Review Storage health in Backup & Restore. Archive unnecessary study content "
+    "outside DLMS and remove it through the appropriate DLMS controls, then retry. "
+    "Keep verified copies before removing anything. Older backup ZIPs are excluded "
+    "from new backups, so deleting them will not reduce this archive's size."
+)
+
+
 # Keep the filename contract scoped to roots that the repository actually
 # writes atomically. Installed content packs may legitimately contain arbitrary
 # similarly named files and must remain portable.
@@ -173,6 +186,8 @@ def create_dlms_backup(
     backup_data_prefix,
     file_inventory,
     summary,
+    restore_upload_max_bytes,
+    validate_restore_archive,
     now=datetime.now,
     platform=None,
     sqlite_module=sqlite3,
@@ -235,6 +250,11 @@ def create_dlms_backup(
             if db_temp:
                 archive.write(db_temp, backup_data_prefix + "results.db")
 
+        # Qualify the actual bytes, including manifest and ZIP overhead, using
+        # the same validator as restore. Never publish an incompatible backup.
+        if os.path.getsize(temp_path) > restore_upload_max_bytes:
+            raise BackupRestoreLimitError("Backup exceeds the restore upload limit")
+        validate_restore_archive(temp_path)
         os.replace(temp_path, final_path)
         return final_path, manifest
     finally:
@@ -290,7 +310,7 @@ def validate_dlms_backup(
         manifest_member = None
         infos = archive.infolist()
         if len(infos) > max_files:
-            raise ValueError(f"Backup contains more than {max_files} members")
+            raise BackupRestoreLimitError(f"Backup contains more than {max_files} members")
 
         for info in infos:
             normalized = safe_member_name(info.filename)
@@ -327,16 +347,16 @@ def validate_dlms_backup(
             total_size += uncompressed_size
             total_compressed += compressed_size
             if file_count > max_files:
-                raise ValueError(f"Backup contains more than {max_files} files")
+                raise BackupRestoreLimitError(f"Backup contains more than {max_files} files")
             if compressed_size > max_compressed or total_compressed > max_compressed:
-                raise ValueError("Backup compressed data exceeds the permitted restore safety limit")
+                raise BackupRestoreLimitError("Backup compressed data exceeds the permitted restore safety limit")
             if uncompressed_size > max_single_file:
-                raise ValueError(f"Backup contains an oversized single file: {normalized}")
+                raise BackupRestoreLimitError(f"Backup contains an oversized single file: {normalized}")
             if total_size > max_uncompressed:
-                raise ValueError("Backup expands beyond the permitted restore safety limit")
+                raise BackupRestoreLimitError("Backup expands beyond the permitted restore safety limit")
             if uncompressed_size >= ratio_min_uncompressed:
                 if compressed_size == 0 or uncompressed_size / compressed_size > max_compression_ratio:
-                    raise ValueError(f"Backup member has a suspicious compression ratio: {normalized}")
+                    raise BackupRestoreLimitError(f"Backup member has a suspicious compression ratio: {normalized}")
 
             if normalized == backup_manifest:
                 manifest_member = info
@@ -352,7 +372,7 @@ def validate_dlms_backup(
 
         if total_size >= ratio_min_uncompressed:
             if total_compressed == 0 or total_size / total_compressed > max_compression_ratio:
-                raise ValueError("Backup has a suspicious overall compression ratio")
+                raise BackupRestoreLimitError("Backup has a suspicious overall compression ratio")
 
         if manifest_member is None:
             raise ValueError("Backup is missing DLMS_BACKUP_MANIFEST.json")

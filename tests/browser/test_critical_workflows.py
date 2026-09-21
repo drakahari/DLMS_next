@@ -4366,6 +4366,29 @@ def test_packaged_clear_history_error_guidance_themes(browser_stack):
             assert "PRIVATE" not in browser.evaluate("document.getElementById('clearDBStatus').textContent")
 
 
+def test_backup_limit_guidance_layout_themes(browser_stack):
+    # A small sparse fixture compresses beyond the unchanged restore ratio cap.
+    # Exercise the real POST and rejected archive, without altering server limits.
+    fixture = browser_stack.data_root / "data" / "backup-limit-fixture.txt"
+    with fixture.open("wb") as handle:
+        handle.truncate(17 * 1024 * 1024)
+    browser = browser_stack.browser
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        browser.navigate(f"{browser_stack.base_url}/settings/backup")
+        _set_theme(browser, theme)
+        for width in (1280, 420):
+            browser.set_viewport(width, 900)
+            browser.navigate(f"{browser_stack.base_url}/settings/backup")
+            browser.wait_for("window.dlmsCsrfToken")
+            browser.click("form[action='/settings/backup/create'] button")
+            browser.wait_for("document.querySelector('.settings-critical-panel')?.textContent.includes('supported restore size')")
+            assert browser.evaluate("document.documentElement.scrollWidth<=window.innerWidth+1"), (theme, width)
+            assert "backup-limit-fixture" not in browser.evaluate("document.body.textContent")
+            contrast = _theme_contrast_snapshot(browser, {"error": ".settings-critical-panel span"})
+            assert contrast["error"]["contrast"] >= 4.5, (theme, width, contrast)
+    assert not list((browser_stack.data_root / "backups").glob("*.tmp"))
+
+
 def test_restore_failure_guidance_layout_themes(browser_stack):
     browser = browser_stack.browser
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):

@@ -84,6 +84,7 @@ def test_backup_refused_before_snapshot_or_archive(tmp_path, monkeypatch, free_v
             app_data_dir=str(tmp_path), db_path=str(db), app_version="test",
             backup_schema_version=1, backup_manifest="manifest", backup_data_prefix="data/",
             file_inventory=lambda: [], summary=lambda: {}, sqlite_module=sqlite,
+            restore_upload_max_bytes=1000, validate_restore_archive=Mock(),
         )
     sqlite.connect.assert_not_called()
     assert list(tmp_path.iterdir()) == [db]

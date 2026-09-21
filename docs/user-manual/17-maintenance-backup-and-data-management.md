@@ -60,6 +60,21 @@ DLMS creates a ZIP snapshot and sends it to your browser as a download. The
 backup page may also list up to five recent safety backups retained on the host
 computer.
 
+Before offering a download, DLMS checks the finished ZIP against the same
+size and resource limits as Restore: 298 MiB uploaded ZIP, 2 GiB expanded content,
+768 MiB per file, and 20,000 archive entries (including the manifest), plus
+compression-ratio protections. A backup exceeding these bounds is not published;
+existing data and older backups remain unchanged. These are restore safety
+limits, not limits on how much data you may keep in DLMS.
+
+If creation reports that the backup is too large, use **Check / refresh storage**
+to identify large content categories. Archive unnecessary study material outside
+DLMS, verify those copies, and remove it through the appropriate DLMS controls
+before retrying. Deleting older backup ZIPs will not reduce the new snapshot:
+they are already excluded. Safety-backup creation for resets and restores uses
+the same checks and may prevent those operations from proceeding. Never remove
+active recovery resources to work around a failure.
+
 A backup includes persistent material such as:
 
 - quizzes, generated quiz artifacts, question data, quiz assets, and logos;

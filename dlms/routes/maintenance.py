@@ -7,6 +7,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, redirect, render_template, request
 from dlms.services.storage_health import InsufficientStorageError, LOW_SPACE_MESSAGE, storage_snapshot
+from dlms.services.backups import BackupRestoreLimitError, BACKUP_RESTORE_LIMIT_MESSAGE
 
 
 Dependency = Callable[..., Any]
@@ -153,6 +154,7 @@ def settings_create_backup(dependencies):
         return render_template(
             "settings/backup-failed.html",
             error=(
+                BACKUP_RESTORE_LIMIT_MESSAGE if isinstance(exc, BackupRestoreLimitError) else
                 LOW_SPACE_MESSAGE if isinstance(exc, InsufficientStorageError) else
                 "DLMS could not create the backup. Check available disk space and "
                 "data-folder access, then retry. Keep any existing backups."
