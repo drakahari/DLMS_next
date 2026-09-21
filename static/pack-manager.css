@@ -4,6 +4,7 @@
 .pack-manager-controls label { display: flex; align-items: center; gap: .5rem; font-size: .875rem; }
 .pack-manager-controls select { max-width: 100%; min-height: 44px; padding: .4rem; background: var(--theme-surface); color: var(--theme-page-text); border: 1px solid var(--theme-border); border-radius: .4rem; }
 .pack-manager-controls input { width: 1.1rem; height: 1.1rem; }
+.pack-manager-controls input[type="search"] { width: 16rem; max-width: 100%; height: 44px; margin: 0; }
 .pack-manager-controls label:has(input) { min-height: 44px; cursor: pointer; }
 #packViewStatus { font-size: .8rem; color: var(--theme-muted-text); }
 .pack-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -21,7 +22,38 @@
 .content-pack-manager .content-pack-action.is-primary { background: var(--theme-accent-2); color: var(--semantic-primary-control-text); border-color: var(--theme-accent); }
 .content-pack-manager .content-pack-action.danger { background: transparent; }
 .content-pack-manager .content-pack-action:hover { background: var(--theme-surface-2); color: var(--theme-page-text); }
-.content-pack-manager :is(a,button,input,select):focus-visible { outline: 2px solid var(--theme-link); outline-offset: 3px; }
+.content-pack-manager :is(a,button,input,select,summary):focus-visible { outline: 2px solid var(--theme-link); outline-offset: 3px; }
+.pack-filter-empty { padding: 1rem; color: var(--theme-muted-text); }
+.pack-secondary-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.pack-more { min-width: 0; }
+.pack-more > summary { cursor: pointer; list-style: none; }
+.pack-more > summary::after { content: " ▾"; margin-left: .35rem; }
+.pack-more[open] > summary::after { content: " ▴"; }
+.content-pack-table:not(.is-compact) .pack-more > summary { display: none; }
+.is-compact .pack-more[open] .pack-secondary-actions { margin-top: .4rem; }
+.is-compact .pack-secondary-actions { flex-direction: column; }
+.is-compact .content-pack-actions { flex-wrap: nowrap; }
+.is-compact .content-pack-name > :is(span,small),
+.is-compact td[data-label="Quizzes"] > small { display: none; }
+.is-compact .pack-summary-row:has(.pack-more[open]) .content-pack-name > :is(span,small) { display: block; }
+.is-compact .content-pack-counts { flex-direction: row; gap: .2rem; }
+.is-compact .content-pack-counts span + span::before { content: "· "; }
+.content-pack-manager .is-compact td[data-label="Storage"] > small { display: inline; margin: 0; }
+.is-compact td[data-label="Storage"] > small::before { content: " · "; }
+@media (min-width: 1101px) {
+    .content-pack-manager .is-compact th:first-child { width: 28%; }
+    .content-pack-manager .is-compact th:last-child { width: 17%; }
+    .content-pack-manager .is-compact th:nth-child(3) { width: 18%; }
+    .content-pack-manager .is-compact th:nth-child(4) { width: 15%; }
+    .content-pack-manager .is-compact th:nth-child(5) { width: 6%; }
+    .content-pack-manager .is-compact td { padding: .4rem .5rem; vertical-align: middle; }
+    .is-compact .content-pack-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .is-compact .pack-summary-row:has(.pack-more[open]) .content-pack-name strong { white-space: normal; }
+    .content-pack-manager .is-compact .content-pack-action { min-height: 36px; }
+}
+@media (pointer: coarse) {
+    .content-pack-manager .is-compact .content-pack-action { min-height: 44px; }
+}
 @media (max-width: 1100px) {
     .content-pack-manager .content-pack-table-wrap { overflow: visible; }
     .content-pack-manager .content-pack-table,
@@ -34,4 +66,7 @@
     .content-pack-manager td[data-label]::before { content: attr(data-label); display: block; color: var(--theme-muted-text); font-size: .7rem; font-weight: 700; margin-bottom: .35rem; }
     .content-pack-manager .content-pack-detail-row { display: block; padding: 0 .75rem .75rem; }
     .pack-manager-controls label { flex-wrap: wrap; }
+    .content-pack-manager .is-compact .pack-summary-row { padding: .4rem; }
+    .content-pack-manager .is-compact td { padding: .4rem; }
+    .is-compact .content-pack-name strong { white-space: normal; }
 }

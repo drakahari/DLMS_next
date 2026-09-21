@@ -100,6 +100,7 @@
 
             {% if packs %}
             <div class="pack-manager-controls" hidden>
+                <label for="packSearch">Find packs <input type="search" id="packSearch" placeholder="Name, folder, ID or domain" aria-controls="packInventory"></label>
                 <label for="packSort">Sort packs <select id="packSort">
                     <option value="original">Folder name (default)</option>
                     <option value="name">Pack name (A–Z)</option>
@@ -110,7 +111,7 @@
                 <span id="packViewStatus" role="status" aria-live="polite"></span>
             </div>
             <div class="content-pack-table-wrap">
-            <table class="content-pack-table">
+            <table class="content-pack-table" id="packInventory">
                 <caption class="pack-sr-only">Installed packs. Compact view keeps warnings and errors visible.</caption>
                 <thead>
                     <tr>
@@ -124,10 +125,10 @@
                 </thead>
                 <tbody>
                 {% for pack in packs %}
-                    <tr class="pack-summary-row" data-name="{{ pack.name }}" data-quizzes="{{ pack.generated_quizzes }}" data-priority="{{ 0 if pack.status == 'Invalid' or pack.error_count else (1 if pack.warning_count else 2) }}">
+                    <tr class="pack-summary-row" data-name="{{ pack.name }}" data-search="{{ pack.name }} {{ pack.folder }} {{ pack.id }} {{ pack.domain }} {{ pack.version }}" data-quizzes="{{ pack.generated_quizzes }}" data-priority="{{ 0 if pack.status == 'Invalid' or pack.error_count else (1 if pack.warning_count else 2) }}">
                         <td data-label="Pack">
                             <div class="content-pack-name">
-                                <strong>{{ pack.name }}</strong>
+                                <strong title="{{ pack.name }}">{{ pack.name }}</strong>
                                 <span>{{ pack.domain }}{% if pack.version %} · v{{ pack.version }}{% endif %}</span>
                                 <small>{{ pack.folder }}</small>
                             </div>
@@ -153,6 +154,11 @@
                             <div class="content-pack-actions" role="group" aria-label="Actions for {{ pack.name }}">
                                 {% if pack.exportable %}
                                 <a class="content-pack-action is-primary" href="/study-packs">Open</a>
+                                {% endif %}
+                                <details class="pack-more" open>
+                                <summary class="content-pack-action" aria-label="More actions and metadata for {{ pack.name }}">More</summary>
+                                <div class="pack-secondary-actions">
+                                {% if pack.exportable %}
                                 <a class="content-pack-action" href="{{ url_for('content_packs.export_content_pack', folder=pack.folder) }}">Export</a>
                                 {% endif %}
                                 <a class="content-pack-action" href="{{ url_for('content_packs.content_pack_details', folder=pack.folder) }}">Details</a>
@@ -161,6 +167,8 @@
                                 {% else %}
                                 <button type="button" class="content-pack-action danger" onclick='openDeletePack({{ pack.folder|tojson }},{{ pack.name|tojson }})'>Delete</button>
                                 {% endif %}
+                                </div>
+                                </details>
                             </div>
                         </td>
                     </tr>
@@ -175,6 +183,7 @@
                 </tbody>
             </table>
             </div>
+            <p id="packFilterEmpty" class="pack-filter-empty" hidden>No packs match your search. Clear or change the search to see installed packs.</p>
             {% else %}
             <div class="pack-empty-card"><h2>No content packs installed</h2><p>DLMS core is working normally. Install or create a Study Pack to manage it here.</p></div>
             {% endif %}
@@ -211,8 +220,12 @@ if(packTable){
     const controls=document.querySelector('.pack-manager-controls');
     const sort=document.getElementById('packSort');
     const compact=document.getElementById('packCompact');
+    const search=document.getElementById('packSearch');
     const rows=[...packTable.querySelectorAll('.pack-summary-row')].map((row,index)=>({row,detail:row.nextElementSibling,index}));
     function updatePackView(announce=false){
+        packTable.classList.toggle('is-compact',compact.checked);
+        const query=search.value.trim().toLocaleLowerCase();
+        let visible=0;
         const ordered=[...rows].sort((a,b)=>{
             let difference=0;
             if(sort.value==='name') difference=a.row.dataset.name.localeCompare(b.row.dataset.name, 'en', {sensitivity:'base',numeric:true});
@@ -222,13 +235,32 @@ if(packTable){
         });
         for(const {row,detail} of ordered){
             packTable.tBodies[0].append(row,detail);
-            detail.hidden=compact.checked && detail.dataset.routine==='yes';
+            row.hidden=!row.dataset.search.toLocaleLowerCase().includes(query);
+            if(!row.hidden) visible++;
+            detail.hidden=row.hidden || (compact.checked && detail.dataset.routine==='yes');
+            row.querySelector('.pack-more').open=!compact.checked;
         }
-        if(announce) document.getElementById('packViewStatus').textContent=`${rows.length} packs · ${sort.selectedOptions[0].textContent} · ${compact.checked?'Compact':'Expanded'} view`;
+        document.getElementById('packFilterEmpty').hidden=visible!==0;
+        if(announce) document.getElementById('packViewStatus').textContent=`${visible} of ${rows.length} packs · ${sort.selectedOptions[0].textContent} · ${compact.checked?'Compact':'Expanded'} view`;
     }
     controls.hidden=false;
     sort.addEventListener('change',()=>updatePackView(true));
     compact.addEventListener('change',()=>updatePackView(true));
+    search.addEventListener('input',()=>updatePackView(true));
+    packTable.addEventListener('keydown',event=>{
+        const more=event.target.closest('.pack-more');
+        if(event.key==='Escape' && compact.checked && more?.open){
+            more.open=false;
+            more.querySelector('summary').focus();
+            event.preventDefault();
+        }
+    });
+    document.addEventListener('click',event=>{
+        if(!compact.checked) return;
+        for(const more of packTable.querySelectorAll('.pack-more[open]')){
+            if(!more.contains(event.target)) more.open=false;
+        }
+    });
     updatePackView();
 }
 const menuButton=document.getElementById("menuButton");

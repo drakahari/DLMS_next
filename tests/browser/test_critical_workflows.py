@@ -4738,6 +4738,7 @@ def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stac
         "injected": False,
     }
 
+    browser.click(".pack-more summary")
     browser.click(".content-pack-action.danger")
     browser.wait_for("!document.getElementById('deletePackDialog').hidden")
     opened = browser.evaluate(
@@ -4824,9 +4825,25 @@ def test_pack_manager_sorting_keeps_details_and_actions_with_packs(browser_stack
     assert browser.evaluate("[...document.querySelectorAll('.pack-summary-row')].map(r=>r.dataset.name)") == original
     assert browser.evaluate("[...document.querySelectorAll('[data-routine=no]')].every(r=>!r.hidden)")
     assert browser.evaluate("[...document.querySelectorAll('[data-routine=yes]')].every(r=>r.hidden)")
+    def search(value):
+        browser.evaluate(f"(() => {{const s=document.getElementById('packSearch');s.value={json.dumps(value)};s.dispatchEvent(new Event('input'));return true;}})()")
+    search("sort_2")
+    assert browser.evaluate("[...document.querySelectorAll('.pack-summary-row:not([hidden])')].map(r=>r.dataset.name)") == ["Pack 10"]
+    browser.evaluate("document.getElementById('packSort').value='quizzes';document.getElementById('packSort').dispatchEvent(new Event('change'));true")
+    search("Pack 1")
+    assert browser.evaluate("document.querySelector('.pack-summary-row:not([hidden])').dataset.name") == "Pack 10"
+    search("<no matching pack>")
+    assert browser.evaluate("!document.getElementById('packFilterEmpty').hidden && document.querySelectorAll('.pack-summary-row:not([hidden])').length===0")
+    browser.evaluate("document.getElementById('packCompact').click();true")
+    assert browser.evaluate("document.querySelectorAll('.content-pack-detail-row:not([hidden])').length===0")
+    search(" SORT-04 ")
+    assert browser.evaluate("document.querySelectorAll('.pack-summary-row:not([hidden])').length===1 && !document.querySelector('[data-routine=no]').hidden")
+    search("")
+    assert browser.evaluate("document.getElementById('packSort').value") == "quizzes"
+    assert browser.evaluate("document.querySelectorAll('.pack-summary-row:not([hidden])').length") == 12
 
 
-def test_content_pack_detail_and_library_consistency_across_themes(browser_stack):
+def test_content_pack_detail_and_library_consistency_across_themes(browser_stack, tmp_path):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     portal_path = browser_stack.data_root / "config" / "portal.json"
@@ -4892,6 +4909,28 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             browser.activate()
             assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), (theme, width)
             assert browser.evaluate("document.querySelector('.content-pack-detail-row').hidden")
+            dense_height = browser.evaluate("document.querySelector('.pack-summary-row').getBoundingClientRect().height")
+            assert browser.evaluate("!document.querySelector('.pack-more').open")
+            assert browser.evaluate("getComputedStyle(document.querySelector('.content-pack-name small')).display") == "none"
+            if width == 1920:
+                assert dense_height <= 64, dense_height
+                assert browser.evaluate("getComputedStyle(document.querySelector('.content-pack-name strong')).textOverflow") == "ellipsis"
+            # Native disclosure supports Tab navigation; Escape returns focus
+            # to its summary. Use non-pointer activation for headless BiDi.
+            browser.evaluate("document.querySelector('.pack-more summary').focus();document.activeElement.click();true")
+            assert browser.evaluate("document.querySelector('.pack-more').open")
+            assert browser.evaluate("getComputedStyle(document.querySelector('.content-pack-name small')).display") != "none"
+            browser.press_key("\ue004")
+            assert browser.evaluate("document.activeElement.textContent") == "Export"
+            browser.press_key("\ue00c")
+            assert browser.evaluate("!document.querySelector('.pack-more').open && document.activeElement.tagName==='SUMMARY'")
+            browser.click(".pack-more summary")
+            browser.click("#packSearch")
+            assert browser.evaluate("!document.querySelector('.pack-more').open")
+            if width in (1920, 420):
+                browser.evaluate("document.querySelector('.content-pack-manager').scrollIntoView();true")
+                screenshot = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "viewport"})
+                (tmp_path / f"manager-{theme}-{width}.png").write_bytes(base64.b64decode(screenshot["data"]))
             browser.evaluate("document.getElementById('packSort').focus(); true")
             browser.press_key("\ue004")
             assert browser.evaluate("document.activeElement.id") == "packCompact"
@@ -4900,6 +4939,10 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             browser.evaluate("document.activeElement.click();true")
             browser.wait_for("!document.querySelector('.content-pack-detail-row').hidden")
             assert not browser.evaluate("document.querySelector('.content-pack-detail-row').hidden")
+            assert browser.evaluate("document.querySelector('.pack-more').open")
+            assert browser.evaluate("getComputedStyle(document.querySelector('.content-pack-name small')).display") != "none"
+            if width == 1920:
+                assert browser.evaluate("document.querySelector('.pack-summary-row').getBoundingClientRect().height") > dense_height * 1.4
             assert browser.evaluate("document.activeElement.id") == "packCompact"
             colors = _theme_contrast_snapshot(browser, {"name": ".content-pack-name strong", "open": ".content-pack-action.is-primary", "secondary": ".content-pack-action:not(.is-primary)", "delete": ".content-pack-action.danger"})
             assert all(value["contrast"] >= 4.5 for value in colors.values()), (theme, width, colors)
