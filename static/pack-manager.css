@@ -51,6 +51,11 @@
     .is-compact .pack-summary-row:has(.pack-more[open]) .content-pack-name strong { white-space: normal; }
     .content-pack-manager .is-compact .content-pack-action { min-height: 36px; }
 }
+/* Give adjacent headers room without shifting Actions or changing wide tables. */
+@media (min-width: 1101px) and (max-width: 1600px) {
+    .content-pack-manager .is-compact th:nth-child(4) { width: 13.5%; }
+    .content-pack-manager .is-compact th:nth-child(5) { width: 7.5%; }
+}
 @media (pointer: coarse) {
     .content-pack-manager .is-compact .content-pack-action { min-height: 44px; }
 }

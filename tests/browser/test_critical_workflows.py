@@ -119,6 +119,8 @@ def _set_theme(browser, theme):
 
 def _theme_contrast_snapshot(browser, selectors):
     """Measure rendered text contrast against each element's effective background."""
+    # Contrast has no meaning until blocking stylesheets have loaded.
+    browser.wait_for_page_ready()
     return browser.evaluate(
         "(() => {"
         "const selectors=" + json.dumps(selectors) + ";"
@@ -2827,7 +2829,9 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
         "DLMS_BROWSER_TEST_PORT": str(server_port),
         "DLMS_BROWSER_REUSE_DATA": "1",
         "DLMS_BROWSER_PRESENCE_TEST_GRACE_SECONDS": "2",
-        "DLMS_BROWSER_PRESENCE_TEST_TOKEN_TTL_SECONDS": "0.5",
+        # Must exceed the real page's 30-second heartbeat interval.
+        "DLMS_BROWSER_PRESENCE_TEST_TOKEN_TTL_SECONDS": "35",
+        "DLMS_BROWSER_PRESENCE_TEST_WAIT_FOR_CLIENT": "1",
         "DLMS_BROWSER_PRESENCE_TEST_POLL_SECONDS": "0.05",
         "MOZ_CRASHREPORTER_DISABLE": "1",
         "MOZ_DISABLE_AUTO_SAFE_MODE": "1",
@@ -2884,6 +2888,7 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
         browser_process, browser_output, browser = start_browser("first")
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true && window.dlmsBrowserPresence?.enabled === true")
+        browser.wait_for("window.dlmsBrowserPresence.heartbeat()")
         browser.click(".study-mode-btn")
         browser.click("#choices .choice[data-index='0']")
         recovery_key = browser.evaluate("quizRecoveryController.storageKey")
@@ -2891,7 +2896,9 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
         browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
         close_browser()
 
-        deadline = time.monotonic() + 6
+        # pagehide normally closes the token immediately; allow expiry too
+        # when Firefox exits without delivering its final keepalive request.
+        deadline = time.monotonic() + 40
         while server_process.poll() is None and time.monotonic() < deadline:
             time.sleep(0.05)
         assert server_process.poll() is not None
@@ -4407,7 +4414,7 @@ def test_backup_limit_guidance_layout_themes(browser_stack):
             browser.navigate(f"{browser_stack.base_url}/settings/backup")
             browser.wait_for("window.dlmsCsrfToken")
             browser.click("form[action='/settings/backup/create'] button")
-            browser.wait_for("document.querySelector('.settings-critical-panel')?.textContent.includes('supported restore size')")
+            browser.wait_for_page_ready("document.querySelector('.settings-critical-panel')?.textContent.includes('supported restore size')")
             assert browser.evaluate("document.documentElement.scrollWidth<=window.innerWidth+1"), (theme, width)
             assert "backup-limit-fixture" not in browser.evaluate("document.body.textContent")
             contrast = _theme_contrast_snapshot(browser, {"error": ".settings-critical-panel span"})
@@ -4902,7 +4909,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         set_theme(theme)
         # Pack metrics have three text children, unlike icon+copy dashboard
         # cards. Check real layout across the four/two/one-column breakpoints.
-        for width in (1920, 1024, 768, 420):
+        for width in (1920, 1440, 1280, 1024, 768, 420):
             browser.set_viewport(width, 1080)
             browser.navigate(f"{base_url}/content-packs")
             browser.wait_for("document.querySelector('.pack-manager-controls')?.hidden === false")
@@ -4910,6 +4917,23 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
             assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), (theme, width)
             assert browser.evaluate("document.querySelector('.content-pack-detail-row').hidden")
             dense_height = browser.evaluate("document.querySelector('.pack-summary-row').getBoundingClientRect().height")
+            if 1100 < width <= 1600:
+                spacing = browser.evaluate("""(() => {
+                    const headers=document.querySelectorAll('.content-pack-table th');
+                    const textRect=el=>{const range=document.createRange();range.selectNodeContents(el);return range.getBoundingClientRect();};
+                    const gap=textRect(headers[5]).left-textRect(headers[4]).right;
+                    const action=document.querySelector('.content-pack-actions').getBoundingClientRect().left;
+                    const row=document.querySelector('.pack-summary-row');
+                    const height=row.getBoundingClientRect().height;
+                    headers[3].style.width='15%';headers[4].style.width='6%';
+                    const oldAction=document.querySelector('.content-pack-actions').getBoundingClientRect().left;
+                    const oldHeight=row.getBoundingClientRect().height;
+                    headers[3].style.width='';headers[4].style.width='';
+                    return {gap,actionShift:Math.abs(action-oldAction),heightChange:height-oldHeight};
+                })()""")
+                assert spacing["gap"] >= 8, (theme, width, spacing)
+                assert spacing["actionShift"] <= 1, (theme, width, spacing)
+                assert spacing["heightChange"] <= 1, (theme, width, spacing)
             assert browser.evaluate("!document.querySelector('.pack-more').open")
             assert browser.evaluate("getComputedStyle(document.querySelector('.content-pack-name small')).display") == "none"
             if width == 1920:
@@ -7191,7 +7215,8 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     browser.click('a[href="/external-ai/quiz-builder"]')
     browser.wait_for(
         "location.pathname === '/external-ai/quiz-builder' && "
-        "document.getElementById('externalAiBuilderForm')"
+        "window.dlmsCsrfToken && "
+        "document.querySelector('#externalAiBuilderForm input[name=csrf_token]')?.value === window.dlmsCsrfToken"
     )
     builder_initial = browser.evaluate(
         "(() => ({copyDisabled:document.getElementById('externalAiCopyPrompt').disabled,"
@@ -8128,6 +8153,9 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
     offer_url = browser.evaluate("location.href")
     surfaces = {}
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        # Each navigation replaces the fetch wrapper; markup can be ready
+        # before nav-normalize has installed CSRF protection on this page.
+        browser.wait_for("window.dlmsCsrfToken && typeof window.dlmsProtectForm === 'function'")
         status = browser.evaluate(
             f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
@@ -11412,7 +11440,10 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
             browser.evaluate("document.querySelector('.daily-review-unfinished a').focus(); true")
             browser.press_key("\ue004")
             assert browser.evaluate("document.activeElement.className") == "daily-review-remove"
-            browser.click("#dailyReviewList .daily-review-remove")
+            # Activate the control whose Tab focus was just verified. A new
+            # pointer move after viewport/scroll changes can hit the adjacent
+            # resume link; pointer removal is exercised separately below.
+            browser.evaluate("document.activeElement.click();true")
             browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
             geometry = browser.evaluate(
                 "(() => {const d=document.getElementById('dailyReviewClearDialog');"

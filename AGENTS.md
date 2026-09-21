@@ -116,6 +116,20 @@ Do not weaken, delete, or bypass a legitimate test merely to make the suite pass
 
 If an existing test is incorrect because requirements changed, explain why before updating it.
 
+For substantive UI/browser changes, focused tests are the first check, not the
+completion gate. Before reporting the change complete or ready to push, run both
+full gates against the final working tree using the project test environment:
+
+```sh
+python -m pytest -q -p no:cacheprovider -m "not browser"
+export DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1
+python -m pytest -q -p no:cacheprovider -m browser tests/browser/test_critical_workflows.py
+```
+
+Both must pass; skipped/disabled browser coverage does not count as a passing
+Firefox gate. If either gate cannot run, report the limitation and leave validation
+incomplete. This validation rule does not authorize committing or pushing.
+
 ### Browser / Screenshot Test Cleanup
 
 When using Firefox, Chromium, Chrome, or another browser in headless mode for runtime validation, screenshots, or visual inspection:

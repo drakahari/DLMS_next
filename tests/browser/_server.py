@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 
@@ -221,6 +222,22 @@ def main():
             ),
             suspend_gap_seconds=60.0,
         )
+        if os.environ.get("DLMS_BROWSER_PRESENCE_TEST_WAIT_FOR_CLIENT") == "1":
+            # Browser startup is outside the lifecycle under test. Keep the
+            # shortened grace period from expiring before a page has joined.
+            manager = dlms.browser_presence_manager
+            manager.begin_critical_operation()
+            startup_lock = threading.Lock()
+            startup_pending = True
+
+            @dlms.app.after_request
+            def release_presence_startup_hold(response):
+                nonlocal startup_pending
+                with startup_lock:
+                    if startup_pending and manager.snapshot()["active_clients"]:
+                        manager.end_critical_operation()
+                        startup_pending = False
+                return response
     dlms.start_browser_presence_monitor(bind_host)
     port = int(os.environ["DLMS_BROWSER_TEST_PORT"])
     server = make_server(bind_host, port, dlms.app, threaded=True)
