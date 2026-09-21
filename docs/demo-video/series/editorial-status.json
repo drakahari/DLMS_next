@@ -28,5 +28,9 @@
     "docs/demo-video/series/organize-your-library/video.json": "a2a4f674e7ae5b47f4a36027989fbf51c8183f607c4791260e97dbf4c2e5d00a",
     "docs/demo-video/series/reusable-study-packs/video.json": "bb7ef50ac04f51891a201637c830ade3b4f149953fbd80a8d6af63640a7ed4a5",
     "docs/demo-video/series/portability-and-backup/video.json": "9c05ef94e05544873c6fed8e1842de3097714de5fbe39147d929c8a07456a17c"
-  }
+  },
+  "parsing_tutorial_status": "CANDIDATE \u2014 pending user listening and editorial review",
+  "parsing_tutorial_candidates": [
+    "parsing-pasted-text"
+  ]
 }

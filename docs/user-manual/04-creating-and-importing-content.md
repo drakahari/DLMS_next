@@ -107,58 +107,116 @@ Learning Intelligence chapter.
 
 ## Import structured choice-question text
 
-Both text-file and paste workflows expect recognizable choice-question
-structure: a numbered question stem, labeled answers such as `A.` or `B)`, and
-an explicit correct-answer line. A small source block can look like this:
+Use traditional Parsing when you already have choice questions and known answer
+keys in structured text. It is a direct, local way to create a quiz without
+retyping each question into the manual builder.
+
+> Parsing was one of DLMS's foundational workflows. The earliest recoverable
+> version converted structured question text from uploaded files into interactive
+> quizzes, and pasted-text creation followed shortly afterward. Today, this is
+> one of several ways to bring content into DLMS.
+
+### Prepare the question structure
+
+Keep a numbered start for each question, such as `1.`, `2)`, or `Question #3`.
+Use lettered choices such as `A.` or `A)`, followed by a space and the answer
+text. End each question with an explicit `Correct Answer:` or
+`Suggested Answer:` line. A single answer uses one letter; multiple answers use
+adjacent letters such as `AC`. A bare letter or `Answer: B` is not recognized
+as the answer marker.
+
+This original two-question example includes a repeated label to remove:
 
 ```text
-1. Which answer completes this example?
-A. First option
-B. Second option
-Correct Answer: B
+Practice copy
+1. Which file contains plain text?
+A. notes.txt
+B. photo.png
+Correct Answer: A
+Practice copy
+2. Which actions preserve another copy of your work?
+A. Create a backup
+B. Delete the only copy
+C. Export a portable quiz bundle
+Correct Answer: AC
 ```
-
-The current text parser recognizes a final line such as `Suggested Answer: B`
-or `Correct Answer: D`; a bare letter or a plain `Answer: B` line is not treated
-as the correct-answer marker.
-
-Correctness is essential. DLMS does not safely turn an ordinary block of prose
-or a list of choices with no recognized answer into a completed choice quiz.
 
 ### Build from a text file
 
-Use **Build from a text file** when your questions are already stored in a
-properly formatted `.txt` file.
+Use **Build from a text file** for an already formatted UTF-8 `.txt` file.
 
-1. Enter a **Quiz Display Title**.
-2. Choose the text file.
-3. Optionally add a supported image logo.
-4. Set the Exam Mode timer if needed.
-5. Choose **Upload & Build Quiz**.
+1. Enter a **Quiz Display Title** and choose the file (up to 16 MiB).
+2. Optionally add a logo and set the Exam Mode timer.
+3. Choose **Upload & Build Quiz**.
+4. In Quiz Library, open the quiz, check the question count, and verify its answers.
 
-This is a direct import rather than a general document-analysis workflow. If
-the source is a PDF, a scan, or irregular copied text, use the corresponding
-preview or Review & Repair workflow instead of merely changing its filename.
+File import parses and publishes directly; it does not run the paste-preview
+cleanup tools. Remove repeated labels from the file first, or use Paste questions
+to preview that cleanup. Renaming a PDF to `.txt` does not convert it.
 
 ### Create from pasted text
 
-Use **Paste questions** when you can copy the complete structured question set
-into DLMS and want to inspect parsing before publication.
+1. Open **Build Quiz → Paste questions**.
+2. Enter **Structured Text Practice** as the title and paste the example above.
+   Optionally change the timer (the tutorial uses 15 minutes) or add a logo.
+3. In **Remove Unwanted Lines**, enter `Practice copy`. This is a case-insensitive
+   substring match: it removes the **entire matching line**. Choose specific text
+   so useful question or answer lines are not removed accidentally.
+4. Leave the built-in presets unchecked for this example. They work independently
+   of manual regex settings, but this source does not need wrapping or header
+   repairs. **Keep question numbering.** Explicit number-prefix removal remains
+   available for advanced cleanup, with a warning that it can merge questions.
+5. Choose **Preview & Continue**. Compare **Original Text** with **Text To Be
+   Parsed**. Both numbered questions and their answer keys should remain;
+   the repeated `Practice copy` lines should be gone.
+6. Optionally open **Show / Hide Differences** to see changed lines, or **Show /
+   Hide Invisible Characters** to inspect hidden characters when that tool is
+   enabled. **Download Cleaned Text** saves a reusable text copy.
+7. Treat **Formatting Suggestions** and **Confidence Analysis — Format Only**
+   as hints about structure. They do not verify facts or correct answers.
+   **Apply This Fix** re-previews the original source with the selected cleanup,
+   retaining the title, timer, temporary logo and existing cleanup selections.
+8. Choose **Yes, Build My Quiz** when the cleaned source is ready. This is where
+   the actual parser and publication workflow run. Preview alone has not created
+   final parsed question records or a quiz.
+9. In **Quiz Library**, choose **Open Quiz** and verify that the result contains
+   **two questions**. Use Study Mode to check the first answer (`A`) and both answers
+   for the second question (`A` and `C`). Use the quiz editor to inspect or
+   correct the result before relying on it for study.
 
-Enter a title, timer, and the question-and-answer text. Optional cleanup tools
-can remove unwanted repeated lines. If advanced regex replacement is enabled
-in Settings, the page also offers documented presets and manual replacement
-rules for problems such as numbered prefixes, PDF line wrapping, and repeated
-headers or footers.
+Manual regex replacements are optional and enabled separately in
+[Parsing Settings](16-settings-and-runtime.md#configure-text-parsing-tools).
+Rules use `REGEX => REPLACEMENT`; broad rules can remove meaningful content.
+Preview every change rather than applying cleanup simply because it is available.
 
-Choose **Preview & Continue**. The preview reports cleanup that was applied,
-shows parsing suggestions when available, and lets you compare the source with
-the cleaned text. Review the detected questions and answers before building
-the quiz. If parsing is wrong, return to the source step or apply an appropriate
-cleanup rather than publishing an incorrect result.
+### Check the result and choose the right input path
 
-Regex replacement is an advanced text-cleaning feature. A broad expression
-can remove meaningful material, so always inspect the preview.
+Traditional Parsing is designed for consistent choice-question text:
+
+- Blank lines alone are not reliable separators between multiple questions.
+  Retain numbered boundaries.
+- Write `Correct Answer: AC`, not `Correct Answer: A, C`; comma-separated
+  keys are not equivalent and may retain only the first letter.
+- Keep each choice on one line where possible. Wrapped choice continuation text
+  may not be retained reliably.
+- Blocks with missing recognized answer keys or fewer than two choices may be
+  skipped. If nothing parses, DLMS provides a failure page and downloadable parse
+  log. If only some blocks parse, a quiz may still be created: compare its count
+  with your source and check every answer key.
+- Use one unambiguous answer line per question, with letters that exist among
+  its choices. Format confidence is not a correctness guarantee.
+- Traditional text parsing does not create structured explanations, matching
+  pairs, hotspot regions or rich image metadata. Add supported details in the
+  editor, or choose a better-suited creation method.
+
+Use [PDF/OCR and Review & Repair](10-pdf-smart-pdf-and-ocr.md) for document
+extraction and uncertain recovered content; [External AI](12-external-ai-workflows.md)
+for reviewed structured returned content; matching CSV for terminology pairs;
+and the image builder for image/hotspot material. Reusable datasets belong in
+[Study Packs / Content Packs](13-study-packs-and-content-packs.md).
+
+The supplemental [Parsing tutorial source and review status](../demo-video/series/parsing-pasted-text/README.md)
+follows this same example. The written instructions above are complete without it.
 
 ## Import a matching CSV
 

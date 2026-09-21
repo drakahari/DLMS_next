@@ -1,0 +1,100 @@
+{
+  "id": "parsing-pasted-text",
+  "title": "Parsing Pasted Quiz Text in DLMS — From Text to a Working Quiz",
+  "purpose": "Prepare structured text, inspect cleanup without mistaking preview for parsed records, then publish and verify both answer types.",
+  "target_seconds": [
+    180,
+    240
+  ],
+  "manual_refs": [
+    "docs/user-manual/04-creating-and-importing-content.md#import-structured-choice-question-text",
+    "docs/user-manual/16-settings-and-runtime.md#configure-text-parsing-tools"
+  ],
+  "implementation_refs": [
+    "dlms/parsing/quiz_text.py",
+    "dlms/routes/quiz/authoring.py",
+    "templates/quiz/paste.html",
+    "templates/quiz/paste-preview.html",
+    "tools/documentation_video_parsing.py"
+  ],
+  "youtube_title": "Parsing Pasted Quiz Text in DLMS — From Text to a Working Quiz",
+  "description": "Turn an original two-question text sample into a playable DLMS quiz. Preserve numbered boundaries, remove repeated labels, understand structural-format confidence, compare source changes, and verify single- and multiple-answer results. The source preview is separate from actual parsing and publication. Companion guide: Chapters 4 and 16 of the canonical Markdown user manual.",
+  "thumbnail_text": "TEXT TO QUIZ",
+  "thumbnail_capture": "series:307",
+  "scenes": [
+    {
+      "id": "001",
+      "capture": "overview:006",
+      "title": "Choose structured text",
+      "visual_focus": "Build Quiz method selection.",
+      "narration": "Structured text parsing is one of DLMS's foundational workflows. Early versions converted uploaded question text into interactive quizzes; pasted-text creation followed shortly afterward. Today, choose Paste Questions when you already have numbered choice questions and explicit answer keys. A prepared text file can use Import Quiz instead.",
+      "chapter": "Choose the text workflow"
+    },
+    {
+      "id": "002",
+      "capture": "series:302",
+      "title": "Prepare two questions",
+      "visual_focus": "Original numbered source, single A and adjacent AC keys.",
+      "narration": "This original sample has two numbered questions, lettered choices, and a Correct Answer line for each. The first key is A. The second is A C, written together without a comma. Keep the question numbers: blank lines alone are not reliable boundaries. Suggested Answer is also a supported marker."
+    },
+    {
+      "id": "003",
+      "capture": "series:301",
+      "title": "Check Parsing settings",
+      "visual_focus": "Four real saved default controls.",
+      "narration": "In Settings, Parsing, these are the defaults. Confidence Analysis and Show Invisible Characters are enabled; manual regex replacement and invisible-character cleanup are disabled. Confidence means structural format, not factual correctness or learner mastery. The invisible-character tool reveals hidden text; cleanup changes it. Saving these settings does not rewrite existing quizzes.",
+      "chapter": "Settings and cleanup"
+    },
+    {
+      "id": "004",
+      "capture": "series:303",
+      "title": "Remove repeated labels",
+      "visual_focus": "Literal removal field; preset controls left unchecked.",
+      "narration": "Give the quiz a title and paste your source. We selected a fifteen-minute Exam timer. Under Remove Unwanted Lines, enter Practice copy. This removes matching lines, so use distinctive text. Built-in cleanup presets work independently of manual regex. Leave number removal unchecked: removing useful boundaries can merge questions. Then choose Preview and Continue."
+    },
+    {
+      "id": "005",
+      "capture": "series:304",
+      "title": "Review the source",
+      "visual_focus": "Original and cleaned text, format confidence.",
+      "narration": "Compare the original source with Text To Be Parsed. The repeated labels are gone; the two numbered questions and their answer keys remain. This is a source and structure preview. DLMS has not yet created the final parsed question records. A high format rating does not verify the answers.",
+      "chapter": "Preview before building"
+    },
+    {
+      "id": "006",
+      "capture": "series:305",
+      "title": "Check differences and build",
+      "visual_focus": "Actual removed lines and Yes Build My Quiz button.",
+      "narration": "Show Differences identifies the removed lines. Show Invisible Characters can help diagnose hidden characters when needed. If something is wrong, go back and edit before continuing. When the source looks right, choose Yes, Build My Quiz. This is where parsing and publication proceed."
+    },
+    {
+      "id": "007",
+      "capture": "series:306",
+      "title": "Find the published quiz",
+      "visual_focus": "Search narrows real library to published sample.",
+      "narration": "The new quiz is now in Quiz Library. Search for Structured Text Practice and choose Open Quiz. Publication is not a substitute for checking the result: malformed blocks can be skipped. We expect exactly two questions, with the answers from our original sample.",
+      "chapter": "Verify the result"
+    },
+    {
+      "id": "008",
+      "capture": "series:307",
+      "title": "Verify the single answer",
+      "visual_focus": "Question1of2 with A selected and correct feedback.",
+      "narration": "In Study Mode, confirm Question one of two. Selecting notes dot text gives correct feedback, matching the first answer key. Check the wording and every choice against your source, especially if copied text originally wrapped across lines."
+    },
+    {
+      "id": "009",
+      "capture": "series:308",
+      "title": "Verify multiple answers",
+      "visual_focus": "Question2of2 with A and C selected and correct feedback.",
+      "narration": "On the second question, select both Create a backup and Export a portable quiz bundle. Both are required for the correct result. This confirms that the adjacent-letter key became a multiple-answer question. A comma-separated key is not an equivalent format for this parser."
+    },
+    {
+      "id": "010",
+      "capture": "overview:006",
+      "title": "Choose the right tool",
+      "visual_focus": "Return to real Build Quiz method choices.",
+      "narration": "Use structured text for a small, well-formatted question set you can verify. PDF and OCR workflows help with documents and scans; External AI has its own reviewed handoff. Matching pairs, hotspot regions, and rich image content need their dedicated workflows. The manual includes this sample and the full Parsing settings guide."
+    }
+  ]
+}

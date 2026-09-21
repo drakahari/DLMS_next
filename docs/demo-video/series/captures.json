@@ -250,5 +250,53 @@
     "recipe": "series:238",
     "image": "docs/demo-video/series/captures/238-anki-export.png",
     "sha256": "1e03b6c71f4fe0323429d786617c0b59ec26d4dfffeb4080994c2deb93d94d1f"
+  },
+  {
+    "key": "series:301",
+    "recipe": "series:301",
+    "image": "docs/demo-video/series/parsing-pasted-text/captures/301-parsing-settings.png",
+    "sha256": "4be605cc391a962bc09778ebcd776c7180627d4de54a98c79b07e8252b8c19e9"
+  },
+  {
+    "key": "series:302",
+    "recipe": "series:302",
+    "image": "docs/demo-video/series/parsing-pasted-text/captures/302-pasted-source.png",
+    "sha256": "3bb3b2abdf1e57724126660ecbc955c93f33c639dcc3bfc3e0d11e7faafa2835"
+  },
+  {
+    "key": "series:303",
+    "recipe": "series:303",
+    "image": "docs/demo-video/series/parsing-pasted-text/captures/303-paste-cleanup.png",
+    "sha256": "6ae5dae14df9851fa38d79e2b6c34415c22dae4f8a0f604c1700129c9242cd4e"
+  },
+  {
+    "key": "series:304",
+    "recipe": "series:304",
+    "image": "docs/demo-video/series/parsing-pasted-text/captures/304-paste-preview.png",
+    "sha256": "5f011ee352564248507a44732ba71e3438e7a80aff21d1e0edfc45a9af9faae7"
+  },
+  {
+    "key": "series:305",
+    "recipe": "series:305",
+    "image": "docs/demo-video/series/parsing-pasted-text/captures/305-paste-differences.png",
+    "sha256": "e1dea8c753c5478ad0fc1fd2da176785da7a2447819977d3fd1de8d7bd991abb"
+  },
+  {
+    "key": "series:306",
+    "recipe": "series:306",
+    "image": "docs/demo-video/series/parsing-pasted-text/captures/306-parsed-library.png",
+    "sha256": "3b2039e81be24f4099c17f00ad6d0eb415b0af9bef64e0e90406f4288b3d2e61"
+  },
+  {
+    "key": "series:307",
+    "recipe": "series:307",
+    "image": "docs/demo-video/series/parsing-pasted-text/captures/307-parsed-single-answer.png",
+    "sha256": "dcf91039a7b85ee750c8ec5200cc5bd30d0b667f4d713b632d686df513638e7b"
+  },
+  {
+    "key": "series:308",
+    "recipe": "series:308",
+    "image": "docs/demo-video/series/parsing-pasted-text/captures/308-parsed-multiple-answer.png",
+    "sha256": "abadc00e944f60d88dd1673eadc2293b64246899c753b2572e93b027817987d3"
   }
 ]

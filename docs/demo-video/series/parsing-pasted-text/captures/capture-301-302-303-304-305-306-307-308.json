@@ -1,0 +1,192 @@
+{
+  "version": "3.2.0",
+  "revision": "744cb9f3298be6065a00641ce5b9f56468cfa8ca",
+  "dirty": true,
+  "captured_at": "2026-09-21T19:20:26.047970+00:00",
+  "theme": "purple-gold",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale": 1
+  },
+  "fixture_version": "dlms-demo-video-v3",
+  "replay_prefix": false,
+  "captures": [
+    {
+      "id": "301",
+      "filename": "301-parsing-settings.png",
+      "title": "Parsing defaults",
+      "route": "/settings/parsing",
+      "ready": "document.querySelector('form')",
+      "state": "Parsing defaults",
+      "fixture": "Original sample.txt; real paste preview and publication in disposable data root.",
+      "focus": ".settings-detail-card",
+      "action": "parsing-settings",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-21T12:00:00+00:00"
+    },
+    {
+      "id": "302",
+      "filename": "302-pasted-source.png",
+      "title": "Original two-question source",
+      "route": "/paste",
+      "ready": "document.querySelector('form')",
+      "state": "Original two-question source",
+      "fixture": "Original sample.txt; real paste preview and publication in disposable data root.",
+      "focus": ".build-workspace",
+      "action": "parsing-source",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-21T12:00:00+00:00"
+    },
+    {
+      "id": "303",
+      "filename": "303-paste-cleanup.png",
+      "title": "Remove repeated source labels",
+      "route": "/paste",
+      "ready": "document.querySelector('form')",
+      "state": "Remove repeated source labels",
+      "fixture": "Original sample.txt; real paste preview and publication in disposable data root.",
+      "focus": ".build-section:nth-of-type(2)",
+      "action": "parsing-cleanup",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-21T12:00:00+00:00"
+    },
+    {
+      "id": "304",
+      "filename": "304-paste-preview.png",
+      "title": "Preview source before parsing",
+      "route": "/paste",
+      "ready": "document.querySelector('form')",
+      "state": "Preview source before parsing",
+      "fixture": "Original sample.txt; real paste preview and publication in disposable data root.",
+      "focus": "#origBox",
+      "action": "parsing-preview",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-21T12:00:00+00:00"
+    },
+    {
+      "id": "305",
+      "filename": "305-paste-differences.png",
+      "title": "Review actual cleanup differences",
+      "route": "/paste",
+      "ready": "document.querySelector('form')",
+      "state": "Review actual cleanup differences",
+      "fixture": "Original sample.txt; real paste preview and publication in disposable data root.",
+      "focus": "#diffPanel",
+      "action": "parsing-diff",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-21T12:00:00+00:00"
+    },
+    {
+      "id": "306",
+      "filename": "306-parsed-library.png",
+      "title": "Published quiz in the library",
+      "route": "/paste",
+      "ready": "document.querySelector('form')",
+      "state": "Published quiz in the library",
+      "fixture": "Original sample.txt; real paste preview and publication in disposable data root.",
+      "focus": "#quizList",
+      "action": "parsing-library",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-21T12:00:00+00:00"
+    },
+    {
+      "id": "307",
+      "filename": "307-parsed-single-answer.png",
+      "title": "Verify the single answer",
+      "route": "/paste",
+      "ready": "document.querySelector('form')",
+      "state": "Verify the single answer",
+      "fixture": "Original sample.txt; real paste preview and publication in disposable data root.",
+      "focus": "#qHeader",
+      "action": "parsing-single",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-21T12:00:00+00:00"
+    },
+    {
+      "id": "308",
+      "filename": "308-parsed-multiple-answer.png",
+      "title": "Verify both correct answers",
+      "route": "/paste",
+      "ready": "document.querySelector('form')",
+      "state": "Verify both correct answers",
+      "fixture": "Original sample.txt; real paste preview and publication in disposable data root.",
+      "focus": "#qHeader",
+      "action": "parsing-multi",
+      "seconds": 10,
+      "essential": true,
+      "scroll_margin": 24,
+      "theme": "purple-gold",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "status": "captured",
+      "fixture_version": "dlms-demo-video-v3",
+      "evidence_anchor": "2026-09-21T12:00:00+00:00"
+    }
+  ]
+}

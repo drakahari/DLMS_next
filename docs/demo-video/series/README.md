@@ -19,7 +19,7 @@ Each linked `video.json` is the authoritative script and storyboard. Narration
 appears beside its scene, visual focus and capture reference, so editors cannot
 accidentally update a separate transcript but leave subtitles behind.
 
-| Order | Video definition | What the sequence adds | Written guide | Narrated duration |
+| Stable tutorial number | Video definition | What the sequence adds | Written guide | Narrated duration |
 |---|---|---|---|---|
 | 1 | [Import and repair](imports-and-repair/video.json) | Source choice → uncertain answers → saved bank → practice generator | [Creating content](../../user-manual/04-creating-and-importing-content.md), [PDF/OCR](../../user-manual/10-pdf-smart-pdf-and-ocr.md) | 2:16.533 |
 | 2 | [Study and Exam](study-and-exam/video.json) | Feedback versus assessment, timer, covered Pause, matching before/after, hotspot result | [Taking quizzes](../../user-manual/06-taking-quizzes.md), [Rich questions](../../user-manual/11-matching-terminology-and-image-based-content.md) | 2:26.233 |
@@ -27,7 +27,6 @@ accidentally update a separate transcript but leave subtitles behind.
 | 4 | [Organize your library](organize-your-library/video.json) | Separate placement, visibility, filters and learning scope; compare duplicate records | [Library organization](../../user-manual/05-quiz-library-and-organization.md) | 2:13.900 |
 | 5 | [Reusable Study Packs](reusable-study-packs/video.json) | Management versus learner catalog, matching options, generated activities and retained sources | [Packs](../../user-manual/13-study-packs-and-content-packs.md) | 2:10.967 |
 | 6 | [Portability and backup](portability-and-backup/video.json) | Choose a transfer format, inspect a real title-collision preview, distinguish backups and study exports | [Portability](../../user-manual/15-import-export-and-portability.md), [Backup](../../user-manual/17-maintenance-backup-and-data-management.md) | 2:27.300 |
-
 | 7 | [Specialized studies](specialized-study/video.json) | IT, Medical and Other catalogs; installed sources versus shared quiz behavior | [Packs](../../user-manual/13-study-packs-and-content-packs.md), [Rich questions](../../user-manual/11-matching-terminology-and-image-based-content.md) | 2:23.367 |
 | 8 | [Law case review](law-case-review/video.json) | Prepared packet → saved case → IRAC and Socratic responses → notes | [External workflows](../../user-manual/12-external-ai-workflows.md), [Packs and Law](../../user-manual/13-study-packs-and-content-packs.md) | 2:14.733 |
 | 9 | [Reset and maintenance](reset-and-maintenance/video.json) | Choose the correct scope; distinguish history, evidence, sources and browser checkpoints | [Maintenance](../../user-manual/17-maintenance-backup-and-data-management.md), [Reset audit](RESET_SCOPE.md) | 4:01.033 |
@@ -35,6 +34,12 @@ accidentally update a separate transcript but leave subtitles behind.
 | 11 | [AI to Study Pack](ai-to-study-pack/video.json) | Request → returned ZIP → independent validation → install → dataset practice | [External AI](../../user-manual/12-external-ai-workflows.md), [Packs](../../user-manual/13-study-packs-and-content-packs.md) | 2:26.900 |
 | 12 | [Anki and physical cards](anki-and-physical-cards/video.json) | Select and preview → APKG handoff → actual printable fronts and backs | [Anki and cards](../../user-manual/14-anki-decks-and-printable-cards.md) | 2:19.567 |
 | 13 | [Image and hotspot authoring](image-and-hotspot-authoring/video.json) | Original upload → target geometry → saved playable quiz → installed-source editing | [Image content](../../user-manual/11-matching-terminology-and-image-based-content.md), [Packs](../../user-manual/13-study-packs-and-content-packs.md) | 2:16.000 |
+| 14 | [Parsing pasted text](parsing-pasted-text/video.json) | Numbered source → cleanup → source preview → publication → answer verification | [Creating content](../../user-manual/04-creating-and-importing-content.md), [Parsing settings](../../user-manual/16-settings-and-runtime.md#configure-text-parsing-tools) | 3:29.067 (candidate) |
+
+Tutorial 14 is a **candidate pending editorial review**. Its recommended viewing
+position is immediately after Import and Repair, as recorded in `index.json`.
+Existing tutorial numbers and source definitions remain unchanged. See its
+[production notes and sample](parsing-pasted-text/README.md).
 
 Silent previews use a declared **135 WPM estimate plus scene tails**, not synthesized
 speech. The table above uses actual narration, which also determines SRT cues and chapter markers.

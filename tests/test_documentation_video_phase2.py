@@ -33,10 +33,11 @@ def test_phase2_selection_and_protected_definitions(monkeypatch):
     import build_documentation_videos as batch
     index, videos, catalog = batch.load_series()
     state = json.loads((batch.SERIES / 'editorial-status.json').read_text())
-    assert [v['id'] for v in videos[6:]] == state['phase2_candidates']
+    phase2 = [v for v in videos if v['id'] in state['phase2_candidates']]
+    assert [v['id'] for v in phase2] == state['phase2_candidates']
     chosen = batch.select(videos, 'image-and-hotspot-authoring,reset-and-maintenance')
     assert [v['id'] for v in chosen] == ['reset-and-maintenance', 'image-and-hotspot-authoring']
-    for video in videos[6:]:
+    for video in phase2:
         assert len(batch.select(videos, video['id'])) == 1
         assert len([s for s in video['scenes'] if s.get('chapter')]) >= 3
         assert all(s['audio_filename'] == s['id'] + '.wav' for s in video['scenes'])

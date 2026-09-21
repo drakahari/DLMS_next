@@ -167,7 +167,7 @@ below.
 | Screen / reach | Build Quiz → upload text file. |
 | What and why | Parses a structured `.txt` question set into a quiz. |
 | Inputs | UTF-8 text up to 16 MiB, title, optional raster logo, optional timer. Correctness uses supported explicit answer-marker syntax. |
-| Failure / review | Validation and parse failures return actionable pages without silently publishing malformed content. Users can return to Build Quiz or choose a different input path. |
+| Failure / review | No parsed questions produces a failure page and parse log; malformed blocks can be skipped when other blocks succeed. Check the published count and answers. |
 | Evidence | `templates/quiz/upload.html`; `dlms/routes/quiz/authoring.py`; `dlms/parsing/quiz_text.py`; parser/authoring tests. |
 | Manual / screenshot / status | Ch. 4 and format reference; no dedicated screenshot; **Verified**. |
 
@@ -177,9 +177,9 @@ below.
 | --- | --- |
 | Screen / reach | Build Quiz → paste text. |
 | What and why | Cleans copied question text, previews transformations, and parses it without requiring a file. |
-| Controls / options | Optional removal strings; numbered-prefix, PDF-wrapping, and header-cleanup presets; optional manual regular expressions; BOM/invisible-character cleanup; Smart Suggestions; optional confidence analysis; original/cleaned/diff/invisible previews; download cleaned text. |
-| Validation | Supported explicit answer markers include `Suggested Answer:` and `Correct Answer:`. A bare `Answer:` is deliberately not treated as correctness evidence. Settings can disable advanced parsing tools. |
-| Output / failure | Valid preview proceeds to shared publication. Parse-failure and confidence results preserve context for revision rather than inventing answers. |
+| Controls / options | Optional removal strings; numbered-prefix, PDF-wrapping, and header-cleanup presets; optional manual regular expressions; BOM/invisible-character cleanup; Formatting Suggestions; optional structural-format confidence analysis; original/cleaned/diff/invisible previews; download cleaned text. |
+| Validation | Supported explicit answer markers include `Suggested Answer:` and `Correct Answer:`. A bare `Answer:` is deliberately not treated as correctness evidence. Manual regex and diagnostic tools follow their settings; built-in presets remain available independently. |
+| Output / failure | Preview shows cleaned source and structural hints, not parsed records. Yes, Build My Quiz parses and publishes; inspect the resulting count and answers. |
 | Evidence | `templates/quiz/paste.html`; `paste-preview.html`; `parse-failed.html`; parsing settings; `dlms/parsing/quiz_text.py`; parser tests. |
 | Manual / screenshot / status | Ch. 4 and 18; focused crop optional; **Verified**. |
 
@@ -920,7 +920,7 @@ endpoints and static assets are not pages.
 | Install and first launch | Download target package → extract/install as documented → acknowledge platform warning if needed → launch → browser Dashboard | Package is native to its target; data is outside the executable; no account. Default is loopback. | 2 |
 | Create a normal quiz | Build Quiz → Short Builder → title/timer/logo → add choice/matching content → mark correctness/pairs → publish → open/Library | Server revalidates; creates persistent canonical source quiz plus derived playable artifacts. | 4 |
 | Import a text quiz | Build Quiz → Text File → choose `.txt` and options → parse/publish | Strict answer-marker contract; errors do not invent correctness. | 4 |
-| Paste and clean quiz text | Build Quiz → Paste → choose cleanup/presets/optional regex → inspect preview/diff/confidence → continue/publish | Preserve input during repair; bare `Answer:` is not correctness; advanced tools depend on settings. | 4 |
+| Paste and clean quiz text | Build Quiz → Paste → choose cleanup/presets/optional regex → inspect preview/diff/confidence → continue/publish | Preserve input during repair; bare `Answer:` is not correctness; manual regex depends on its setting; built-in presets do not. | 4 |
 | Import matching CSV | Build Quiz → Matching CSV → choose file/direction/round/source info → repair pairs → publish | At least two unique non-conflicting pairs; creates normal matching quiz. | 4, 11 |
 | Edit or remove a quiz | Quiz Library → Edit → change content/order/metadata → Save, or confirmed Delete | Shared safe rebuild; identity retained. Explain recovery invalidation and deletion conservatively. | 4–5 |
 | Take Study Mode | Open quiz → Study Mode → answer each question → inspect immediate feedback/explanation → continue | Each completed answer must be acknowledged; failed saves remain retryable/recoverable; generated evidence follows source lineage. | 6 |

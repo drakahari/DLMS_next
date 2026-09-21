@@ -5,6 +5,7 @@
   "speed": 1.0,
   "videos": [
     "imports-and-repair/video.json",
+    "parsing-pasted-text/video.json",
     "study-and-exam/video.json",
     "daily-review/video.json",
     "organize-your-library/video.json",

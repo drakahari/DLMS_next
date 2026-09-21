@@ -95,32 +95,37 @@ For the actual copy/paste and archive workflows, see
 
 ## Configure text parsing tools
 
-**Settings → Parsing** controls optional tools used when preparing pasted or
-imported choice-question text. It does not rewrite quizzes you have already
-published.
+**Settings → Parsing** controls optional pasted-text preparation tools. Saving
+these settings affects future previews; it does not rewrite published quizzes
+or change Learning Intelligence. For a complete example, see
+[Create from pasted text](04-creating-and-importing-content.md#create-from-pasted-text).
 
-### Confidence Analysis
+| Setting | Default | What it controls |
+| --- | --- | --- |
+| **Enable Confidence Analysis on Preview** | On | Shows structural-format checks for question blocks, choice labels and explicit answer markers. This is not factual accuracy, answer correctness, learner mastery or Learning Intelligence. |
+| **Enable Regex Replace Engine** | Off | Shows and enables **manual** `REGEX => REPLACEMENT` rules in pasted-text cleanup. It does not gate built-in presets or literal line removal. |
+| **Enable Invisible Character & BOM Cleanup** | Off | Removes BOM, zero-width space, zero-width non-joiner, zero-width joiner and word-joiner characters during paste preview; also reduces excessive blank lines. It is not a general Unicode repair tool. |
+| **Enable “Show Invisible Characters” Debug Tool** | On | Makes the preview's Show / Hide Invisible Characters tool available. Visualization reveals selected hidden characters, spaces and newlines; it does not change the source. |
 
-This option shows or hides the Confidence Analysis panel on the parsed-content
-preview. It helps identify records that deserve closer review; it does not
-guarantee that imported material is correct.
+These are the defaults when no saved preference overrides them. The core parser
+also strips a **leading BOM** independently of the broader automatic-cleanup
+setting. Text-file import uses that parser directly and bypasses paste-preview
+cleanup.
 
-### Regex Strip / Replace Engine
+The paste form offers three distinct kinds of cleanup:
 
-This option makes regular-expression cleanup available before quiz parsing. It
-is an advanced text-editing tool. Preview the result before parsing, especially
-when a broad pattern could remove meaningful question or answer text.
+- **Remove Unwanted Lines:** case-insensitive literal matching; removes the whole
+  line containing the entered text.
+- **Built-in presets:** number-prefix removal, PDF / Microsoft wrapping, and
+  header/footer removal. Each runs independently, even with manual regex off.
+  Leave presets unchecked when unnecessary. Keep meaningful question numbering:
+  removing it can merge questions.
+- **Manual regex replacement:** advanced pattern-based changes, available only
+  when the Regex Replace Engine is enabled. Inspect the cleaned source carefully.
 
-### Invisible / BOM Cleanup
-
-Automatic cleanup removes hidden characters such as byte-order marks and
-zero-width spaces that can arrive through PDF or word-processor copy/paste.
-These characters can otherwise interfere with question parsing.
-
-### Show Invisible Characters
-
-This optional diagnostic view makes hidden text characters visible during
-preview. Use it when text looks normal but splits or parses unexpectedly.
+Preview is a source-transformation check, not the final parsed question
+collection. **Yes, Build My Quiz** proceeds to parsing and publication; verify
+the resulting question count and answer keys afterward.
 
 ## Understand how DLMS is running
 

@@ -157,6 +157,8 @@ DOCUMENTATION_FRAMES = (
 # Phase 2 uses this same browser/server lifecycle, with opt-in original fixtures.
 from documentation_video_phase2 import frames as phase2_frames
 DOCUMENTATION_FRAMES += phase2_frames(frame)
+from documentation_video_parsing import frames as parsing_frames
+DOCUMENTATION_FRAMES += parsing_frames(frame)
 
 
 def serve():
@@ -184,7 +186,10 @@ def serve():
 
 def prepare(browser, item, metadata, data_root):
     action = item.action
-    if action.startswith('phase2'):
+    if action.startswith('parsing-'):
+        from documentation_video_parsing import prepare as prepare_parsing
+        prepare_parsing(browser, item, metadata, data_root)
+    elif action.startswith('phase2'):
         from documentation_video_phase2 import prepare as prepare_phase2
         prepare_phase2(browser, item, metadata, data_root)
     elif action == 'series-save-bank':

@@ -1,0 +1,11 @@
+Practice copy
+1. Which file contains plain text?
+A. notes.txt
+B. photo.png
+Correct Answer: A
+Practice copy
+2. Which actions preserve another copy of your work?
+A. Create a backup
+B. Delete the only copy
+C. Export a portable quiz bundle
+Correct Answer: AC
