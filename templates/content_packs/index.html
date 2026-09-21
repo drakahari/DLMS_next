@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Content Packs - DLMS</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/pack-manager.css">
 <link rel="icon" href="/static/favicon.ico">
 </head>
 <body class="dashboard-home content-packs-page">
@@ -98,33 +99,44 @@
             </div>
 
             {% if packs %}
+            <div class="pack-manager-controls" hidden>
+                <label for="packSort">Sort packs <select id="packSort">
+                    <option value="original">Folder name (default)</option>
+                    <option value="name">Pack name (A–Z)</option>
+                    <option value="status">Status (needs attention first)</option>
+                    <option value="quizzes">Quiz count (most first)</option>
+                </select></label>
+                <label><input type="checkbox" id="packCompact" checked> Compact view</label>
+                <span id="packViewStatus" role="status" aria-live="polite"></span>
+            </div>
             <div class="content-pack-table-wrap">
             <table class="content-pack-table">
+                <caption class="pack-sr-only">Installed packs. Compact view keeps warnings and errors visible.</caption>
                 <thead>
                     <tr>
-                        <th>Pack</th>
-                        <th>Status</th>
-                        <th>Content</th>
-                        <th>Storage</th>
-                        <th>Quizzes</th>
-                        <th class="content-pack-actions-col">Actions</th>
+                        <th scope="col">Pack</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Content</th>
+                        <th scope="col">Storage</th>
+                        <th scope="col">Quizzes</th>
+                        <th scope="col" class="content-pack-actions-col">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for pack in packs %}
-                    <tr>
-                        <td>
+                    <tr class="pack-summary-row" data-name="{{ pack.name }}" data-quizzes="{{ pack.generated_quizzes }}" data-priority="{{ 0 if pack.status == 'Invalid' or pack.error_count else (1 if pack.warning_count else 2) }}">
+                        <td data-label="Pack">
                             <div class="content-pack-name">
                                 <strong>{{ pack.name }}</strong>
                                 <span>{{ pack.domain }}{% if pack.version %} · v{{ pack.version }}{% endif %}</span>
                                 <small>{{ pack.folder }}</small>
                             </div>
                         </td>
-                        <td>
+                        <td data-label="Status">
                             <span class="content-pack-status {{ 'is-invalid' if pack.status == 'Invalid' else ('is-warning' if pack.warning_count else 'is-valid') }}">{{ pack.status }}</span>
                             {% if pack.protected %}<span class="content-pack-protected">Protected</span>{% endif %}
                         </td>
-                        <td>
+                        <td data-label="Content">
                             <div class="content-pack-counts">
                                 {% if pack.matching_count %}<span>{{ pack.matching_count }} matching</span>{% endif %}
                                 {% if pack.image_count %}<span>{{ pack.image_count }} image</span>{% endif %}
@@ -132,15 +144,15 @@
                                 {% if not pack.dataset_count %}<span>—</span>{% endif %}
                             </div>
                         </td>
-                        <td><span class="content-pack-storage">{{ pack.size }}</span><small>{{ pack.file_count }} files</small></td>
-                        <td>
+                        <td data-label="Storage"><span class="content-pack-storage">{{ pack.size }}</span><small>{{ pack.file_count }} files</small></td>
+                        <td data-label="Quizzes">
                             <span class="content-pack-storage">{{ pack.generated_quizzes }}</span>
                             <small>tracked generated</small>
                         </td>
-                        <td class="content-pack-actions-col">
-                            <div class="content-pack-actions">
+                        <td class="content-pack-actions-col" data-label="Actions">
+                            <div class="content-pack-actions" role="group" aria-label="Actions for {{ pack.name }}">
                                 {% if pack.exportable %}
-                                <a class="content-pack-action" href="/study-packs">Open</a>
+                                <a class="content-pack-action is-primary" href="/study-packs">Open</a>
                                 <a class="content-pack-action" href="{{ url_for('content_packs.export_content_pack', folder=pack.folder) }}">Export</a>
                                 {% endif %}
                                 <a class="content-pack-action" href="{{ url_for('content_packs.content_pack_details', folder=pack.folder) }}">Details</a>
@@ -152,7 +164,7 @@
                             </div>
                         </td>
                     </tr>
-                    <tr class="content-pack-detail-row content-pack-inline-status-row">
+                    <tr class="content-pack-detail-row content-pack-inline-status-row" data-routine="{{ 'yes' if pack.status == 'Valid' and not pack.warning_count and not pack.error_count else 'no' }}">
                         <td colspan="6"><div class="content-pack-inline-status">
                             <span>{{ pack.status_detail }}</span>
                             {% if pack.warning_count %}<span class="content-pack-inline-warning">{{ pack.warning_count }} warning{{ '' if pack.warning_count == 1 else 's' }}</span>{% endif %}
@@ -194,6 +206,31 @@
 </div>
 
 <script>
+const packTable=document.querySelector('.content-pack-manager .content-pack-table');
+if(packTable){
+    const controls=document.querySelector('.pack-manager-controls');
+    const sort=document.getElementById('packSort');
+    const compact=document.getElementById('packCompact');
+    const rows=[...packTable.querySelectorAll('.pack-summary-row')].map((row,index)=>({row,detail:row.nextElementSibling,index}));
+    function updatePackView(announce=false){
+        const ordered=[...rows].sort((a,b)=>{
+            let difference=0;
+            if(sort.value==='name') difference=a.row.dataset.name.localeCompare(b.row.dataset.name, 'en', {sensitivity:'base',numeric:true});
+            if(sort.value==='status') difference=Number(a.row.dataset.priority)-Number(b.row.dataset.priority);
+            if(sort.value==='quizzes') difference=Number(b.row.dataset.quizzes)-Number(a.row.dataset.quizzes);
+            return difference || a.index-b.index;
+        });
+        for(const {row,detail} of ordered){
+            packTable.tBodies[0].append(row,detail);
+            detail.hidden=compact.checked && detail.dataset.routine==='yes';
+        }
+        if(announce) document.getElementById('packViewStatus').textContent=`${rows.length} packs · ${sort.selectedOptions[0].textContent} · ${compact.checked?'Compact':'Expanded'} view`;
+    }
+    controls.hidden=false;
+    sort.addEventListener('change',()=>updatePackView(true));
+    compact.addEventListener('change',()=>updatePackView(true));
+    updatePackView();
+}
 const menuButton=document.getElementById("menuButton");
 const sidebar=document.getElementById("dashboardSidebar");
 if(menuButton&&sidebar){menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));}

@@ -1,0 +1,37 @@
+/* Catalog-only presentation; detail/import reports retain their existing styles. */
+.pack-manager-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; padding: 1rem; color: var(--theme-page-text); }
+.pack-manager-controls[hidden], .content-pack-manager tr[hidden] { display: none !important; }
+.pack-manager-controls label { display: flex; align-items: center; gap: .5rem; font-size: .875rem; }
+.pack-manager-controls select { max-width: 100%; min-height: 44px; padding: .4rem; background: var(--theme-surface); color: var(--theme-page-text); border: 1px solid var(--theme-border); border-radius: .4rem; }
+.pack-manager-controls input { width: 1.1rem; height: 1.1rem; }
+.pack-manager-controls label:has(input) { min-height: 44px; cursor: pointer; }
+#packViewStatus { font-size: .8rem; color: var(--theme-muted-text); }
+.pack-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.content-pack-manager .content-pack-table { min-width: 0; table-layout: fixed; }
+.content-pack-manager .content-pack-table th:first-child { width: 25%; }
+.content-pack-manager .content-pack-table th:last-child { width: 24%; }
+.content-pack-manager .content-pack-table td { padding: .75rem .6rem; vertical-align: top; overflow-wrap: anywhere; }
+.content-pack-manager .content-pack-name small { font-size: .7rem; }
+.content-pack-manager .content-pack-status,
+.content-pack-manager .content-pack-protected { padding: 2px 5px; border-radius: .3rem; max-width: 100%; width: auto; }
+.content-packs-page .content-pack-manager .content-pack-counts span { background: transparent !important; border: 0; padding: 0; border-radius: 0; font-size: .75rem; }
+.content-pack-manager .content-pack-counts { flex-direction: column; gap: .2rem; }
+.content-pack-manager .content-pack-actions { justify-content: flex-start; gap: .35rem; }
+.content-pack-manager .content-pack-action { min-height: 44px; padding: .4rem .6rem; border-radius: .4rem; background: var(--theme-surface); color: var(--theme-page-text); border-color: var(--theme-border); }
+.content-pack-manager .content-pack-action.is-primary { background: var(--theme-accent-2); color: var(--semantic-primary-control-text); border-color: var(--theme-accent); }
+.content-pack-manager .content-pack-action.danger { background: transparent; }
+.content-pack-manager .content-pack-action:hover { background: var(--theme-surface-2); color: var(--theme-page-text); }
+.content-pack-manager :is(a,button,input,select):focus-visible { outline: 2px solid var(--theme-link); outline-offset: 3px; }
+@media (max-width: 1100px) {
+    .content-pack-manager .content-pack-table-wrap { overflow: visible; }
+    .content-pack-manager .content-pack-table,
+    .content-pack-manager .content-pack-table tbody { display: block; width: 100%; }
+    .content-pack-manager .content-pack-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .content-pack-manager .pack-summary-row { display: grid; grid-template-columns: 1fr 1fr; padding: .75rem; border-top: 1px solid var(--theme-border); }
+    .content-pack-manager .content-pack-table td { display: block; width: auto; min-width: 0; border: 0; }
+    .content-pack-manager .pack-summary-row td:first-child,
+    .content-pack-manager .pack-summary-row td:last-child { grid-column: 1 / -1; }
+    .content-pack-manager td[data-label]::before { content: attr(data-label); display: block; color: var(--theme-muted-text); font-size: .7rem; font-weight: 700; margin-bottom: .35rem; }
+    .content-pack-manager .content-pack-detail-row { display: block; padding: 0 .75rem .75rem; }
+    .pack-manager-controls label { flex-wrap: wrap; }
+}

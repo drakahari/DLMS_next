@@ -261,6 +261,23 @@ class ContentPackCatalogTemplateTests(unittest.TestCase):
         )
         self.assertNotIn("onclick='openDeletePack(\"folder-</script>", page)
 
+    def test_large_catalog_keeps_identity_actions_and_warning_details(self):
+        packs = [self._pack(folder=f"pack-{i}", name=f"Pack {i}", generated_quizzes=i) for i in range(30)]
+        packs[3].update(status="Invalid", error_count=1)
+        packs[5].update(status="Valid with warnings", warning_count=2)
+        page = self._catalog(packs)
+        self.assertEqual(30, page.count('class="pack-summary-row"'))
+        self.assertEqual(28, page.count('data-routine="yes"'))
+        self.assertEqual(2, page.count('data-routine="no"'))
+        for i in range(30):
+            self.assertIn(f'data-quizzes="{i}"', page)
+            self.assertIn(f'href="/content-packs/details/pack-{i}"', page)
+            self.assertIn(f'href="/content-packs/export/pack-{i}"', page)
+        self.assertIn('<label for="packSort">', page)
+        self.assertIn('id="packCompact" checked', page)
+        self.assertEqual(6, page.count('scope="col"'))
+        self.assertIn('role="status" aria-live="polite"', page)
+
     def test_catalog_builds_encoded_folder_links_that_reach_details_and_export(self):
         folder = 'Study ? # % space "double" \'single\' & Café'
         pack = self._pack(folder=folder)

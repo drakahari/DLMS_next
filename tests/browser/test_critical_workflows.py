@@ -4790,6 +4790,42 @@ def test_content_pack_catalog_detail_dialog_navigation_and_escaping(browser_stac
     }
 
 
+def test_pack_manager_sorting_keeps_details_and_actions_with_packs(browser_stack):
+    browser = browser_stack.browser
+    root = browser_stack.data_root
+    for i in range(12):
+        pack = root / "content_packs" / f"sort-{i:02}"
+        (pack / "data").mkdir(parents=True)
+        (pack / "manifest.json").write_text(json.dumps({
+            "schema_version": 1, "id": f"sort_{i}", "name": f"Pack {12-i}",
+            "version": "1.0", "content_domain": "Other",
+            "datasets": [{"id": "terms", "title": "Terms", "type": "matching", "path": "data/terms.json"}],
+            "image_datasets": [], "quiz_datasets": [],
+        }))
+        if i != 4:  # Missing dataset must remain visible even in compact view.
+            (pack / "data" / "terms.json").write_text(json.dumps({
+                "schema_version": 1, "id": "terms", "title": "Terms",
+                "source": {"organization": "DLMS test", "license": "CC0"},
+                "terms": [{"term": "One", "definition": "First"}, {"term": "Two", "definition": "Second"}],
+            }))
+    registry = root / "config" / "quizzes.json"
+    entries = json.loads(registry.read_text())
+    entries.extend({"id": 8000+i, "title": "Sort fixture", "source_pack_id": "sort_2"} for i in range(3))
+    entries.append({"id": 8010, "title": "Sort fixture", "source_pack_id": "sort_1"})
+    registry.write_text(json.dumps(entries))
+    browser.navigate(browser_stack.base_url + "/content-packs")
+    browser.wait_for("document.querySelectorAll('.pack-summary-row').length === 12")
+    original = browser.evaluate("[...document.querySelectorAll('.pack-summary-row')].map(r=>r.dataset.name)")
+    for mode, first in (("name", "Pack 1"), ("status", "Pack 8"), ("quizzes", "Pack 10"), ("original", "Pack 12")):
+        browser.evaluate(f"(() => {{const s=document.getElementById('packSort');s.value={json.dumps(mode)};s.dispatchEvent(new Event('change'));return true;}})()")
+        assert browser.evaluate("document.querySelector('.pack-summary-row').dataset.name") == first
+        assert browser.evaluate("[...document.querySelectorAll('.pack-summary-row')].every(r=>r.nextElementSibling.classList.contains('content-pack-detail-row'))")
+        assert browser.evaluate("[...document.querySelectorAll('.pack-summary-row')].every(r=>r.querySelector('a[href*=details]').getAttribute('href').endsWith(r.querySelector('.content-pack-name small').textContent))")
+    assert browser.evaluate("[...document.querySelectorAll('.pack-summary-row')].map(r=>r.dataset.name)") == original
+    assert browser.evaluate("[...document.querySelectorAll('[data-routine=no]')].every(r=>!r.hidden)")
+    assert browser.evaluate("[...document.querySelectorAll('[data-routine=yes]')].every(r=>r.hidden)")
+
+
 def test_content_pack_detail_and_library_consistency_across_themes(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
@@ -4851,6 +4887,23 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         # cards. Check real layout across the four/two/one-column breakpoints.
         for width in (1920, 1024, 768, 420):
             browser.set_viewport(width, 1080)
+            browser.navigate(f"{base_url}/content-packs")
+            browser.wait_for("document.querySelector('.pack-manager-controls')?.hidden === false")
+            browser.activate()
+            assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), (theme, width)
+            assert browser.evaluate("document.querySelector('.content-pack-detail-row').hidden")
+            browser.evaluate("document.getElementById('packSort').focus(); true")
+            browser.press_key("\ue004")
+            assert browser.evaluate("document.activeElement.id") == "packCompact"
+            # As in the library keyboard test, headless BiDi has no native
+            # activation/window focus. Check Tab order and non-pointer click.
+            browser.evaluate("document.activeElement.click();true")
+            browser.wait_for("!document.querySelector('.content-pack-detail-row').hidden")
+            assert not browser.evaluate("document.querySelector('.content-pack-detail-row').hidden")
+            assert browser.evaluate("document.activeElement.id") == "packCompact"
+            colors = _theme_contrast_snapshot(browser, {"name": ".content-pack-name strong", "open": ".content-pack-action.is-primary", "secondary": ".content-pack-action:not(.is-primary)", "delete": ".content-pack-action.danger"})
+            assert all(value["contrast"] >= 4.5 for value in colors.values()), (theme, width, colors)
+            assert browser.evaluate("[...document.querySelectorAll('.content-pack-actions a, .content-pack-actions button')].every(el=>el.getBoundingClientRect().height >= 44)")
             browser.navigate(f"{base_url}/content-packs/details/{encoded_folder}")
             browser.wait_for("document.querySelectorAll('.pack-detail-stat-grid > article').length === 4")
             assert browser.evaluate("""(() => {
