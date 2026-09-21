@@ -187,6 +187,14 @@ def create_dlms_backup(
 
     inventory = file_inventory()
     total_bytes = sum(os.path.getsize(path) for path, _ in inventory if os.path.isfile(path))
+    from dlms.services.storage_health import require_capacity
+    db_bytes = os.path.getsize(db_path) if os.path.isfile(db_path) else 0
+    if os.path.isfile(str(db_path) + "-wal"):
+        db_bytes += os.path.getsize(str(db_path) + "-wal")
+    # Include both ZIP and DB snapshot even when temp/data share a filesystem.
+    # Small ZIP overhead allowance; incompressible content cannot be assumed to shrink.
+    require_capacity(backup_folder, int((total_bytes + 2 * db_bytes) * 1.02))
+    require_capacity(tempfile.gettempdir(), db_bytes)
     included_roots = sorted({rel.split("/", 1)[0] for _, rel in inventory})
 
     db_temp = None
@@ -771,6 +779,8 @@ def stage_backup_restore(
     try:
         bounded_save_upload(upload, upload_path, upload_max_bytes, "Backup ZIP")
         report = validate_backup(upload_path)
+        from dlms.services.storage_health import require_capacity
+        require_capacity(stage_dir, 2 * report["uncompressed_bytes"])
         semantic_root = os.path.join(stage_dir, "semantic_check")
         extract_backup(upload_path, semantic_root, report)
         try:

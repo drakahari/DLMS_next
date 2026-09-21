@@ -6,6 +6,19 @@
 <div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1>💾 Backup &amp; Restore</h1><p>Create portable backups or validate and restore an existing DLMS backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 
 <div class="settings-detail-card">
+<section class="settings-form-section" id="storage-health" aria-labelledby="storageHeading">
+<h2 id="storageHeading">Storage health</h2>
+<p>Check DLMS data size and available disk space. Nothing is deleted or changed.</p>
+<a class="settings-secondary-button" href="/settings/backup?storage=1#storage-health">Check / refresh storage</a>
+{% if storage %}
+<p><strong>DLMS data size:</strong> {{ storage.size }}{% if storage.partial %} (partial measurement){% endif %}<br><strong>Available disk space:</strong> {{ storage.free }}</p>
+{% if storage.status in ['low', 'critical'] %}<div class="settings-warning-panel" role="status"><strong>{{ 'Very little disk space remains.' if storage.status == 'critical' else 'Available disk space is low.' }}</strong><span>Backups, restores and imports need extra working space. Free space before large operations. Keep safety backups and recovery files.</span></div>
+{% elif storage.status == 'unknown' %}<p>Available disk space could not be checked. Check it in your operating system before large operations.</p>
+{% else %}<p>Available disk space is healthy at this check.</p>{% endif %}
+<ul>{% for group in storage.groups %}<li>{{ group.label }}: {{ group.size }}</li>{% endfor %}</ul>
+<p class="settings-image-guidance">Approximate file sizes, not disk allocation. The scan is bounded; inaccessible files and symbolic links are skipped. {% if storage.partial %}The scan is incomplete; reported sizes are lower bounds.{% endif %} Downloads outside the DLMS data folder are not counted. Backups includes retained ZIPs and restore staging. There is no automatic backup pruning or database size cap.</p>
+{% endif %}
+</section>
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-green">⇩</div><div><h2>Portable Backup</h2><p>Create one ZIP snapshot containing your persistent DLMS data.</p></div></div>
 <div class="settings-image-guidance"><strong>Included:</strong> quizzes and runtime JSON, database/history, settings, Study/Content Packs, quiz assets, PDF &amp; Image Import source banks, drafts, Law Study content, backgrounds, and persistent logos.<br><strong>Excluded:</strong> temporary uploads, Content Pack staging files, temporary logo previews, and older backup archives.</div>
 <form method="POST" action="/settings/backup/create"><div class="settings-form-actions"><button type="submit" class="settings-primary-button">⇩ Create &amp; Download Backup</button></div></form>

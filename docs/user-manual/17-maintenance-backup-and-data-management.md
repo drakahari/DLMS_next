@@ -29,6 +29,30 @@ The Portable Quiz Bundle workflow is covered in
 [Import, Export, and Portability](15-import-export-and-portability.md#move-quizzes-with-a-portable-quiz-bundle).
 It is not a substitute for a backup.
 
+## Check storage health
+
+Open **Settings → Backup & Restore → Check / refresh storage** to see the
+DLMS data size, database size, backups, packs, artifacts, import working data,
+and available disk space on the data drive. The check changes no data. It runs
+only when requested; large or inaccessible directories can produce a clearly
+labeled partial measurement. Sizes are approximate file sizes, not allocated
+disk blocks, and exclude downloads saved outside the DLMS data folder.
+
+Low-space warnings appear below 2 GiB free, or below 5% free while less than
+10 GiB remains. Below 512 MiB the warning is stronger. These are warnings, not
+data quotas. Backups and restores also check estimated working space with
+256 MiB headroom before large writes or live restore changes. Space can change
+after a check; if space cannot be measured, DLMS retains its normal error and
+recovery handling. Imports do not yet have a general capacity preflight.
+
+Manual and safety backups accumulate; downloading a backup can also create a
+second copy in your browser's download folder. DLMS does not automatically prune
+them or provide a backup-deletion manager. Keep verified copies on another drive
+and use your operating system to manage old ZIPs deliberately. Never remove
+retained recovery files or the safety backup for an incomplete restore.
+Clearing history does not necessarily shrink the database file; SQLite can reuse
+the freed space. There is no artificial database size cap.
+
 ## Create a backup
 
 Open **Settings → Backup & Restore**, then choose **Create & Download Backup**.

@@ -186,7 +186,7 @@ class BackupActiveHtmlHardeningTests(unittest.TestCase):
         fake_journal = {"state": "safety_backup_created"}
         client = dlms.app.test_client()
         with mock.patch.object(dlms, "_restore_staging_dir", return_value=str(stage_dir)), \
-             mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {})), \
+             mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {"total_uncompressed_bytes": Path(dlms.DB_PATH).stat().st_size})), \
              mock.patch.object(dlms, "_new_restore_operation", return_value=("journal.json", fake_journal)), \
              mock.patch.object(dlms, "_update_restore_operation_journal"), \
              mock.patch.object(dlms, "_restore_operation_checkpoint"), \

@@ -418,7 +418,7 @@ class BackupSemanticValidationTests(unittest.TestCase):
         with mock.patch.object(dlms, "_restore_staging_dir", return_value=str(stage_dir)), \
              mock.patch.object(dlms, "_validate_staged_backup_semantics", side_effect=semantic), \
              mock.patch.object(dlms, "_prepare_staged_restore_database", side_effect=lambda *_: events.append("migrate")), \
-             mock.patch.object(dlms, "_create_dlms_backup", side_effect=lambda *_: (events.append("backup") or (str(safety), {}))), \
+             mock.patch.object(dlms, "_create_dlms_backup", side_effect=lambda *_: (events.append("backup") or (str(safety), {"total_uncompressed_bytes": 2}))), \
              mock.patch.object(dlms, "_new_restore_operation", return_value=("journal.json", fake_journal)), \
              mock.patch.object(dlms, "_update_restore_operation_journal"), \
              mock.patch.object(dlms, "_validate_restore_operation_journal", return_value={}), \
@@ -460,7 +460,7 @@ class BackupSemanticValidationTests(unittest.TestCase):
         with mock.patch.object(dlms, "_restore_staging_dir", return_value=str(stage_dir)), \
              mock.patch.object(dlms, "_validate_staged_backup_semantics", return_value={"status": "valid"}), \
              mock.patch.object(dlms, "_prepare_staged_restore_database", return_value={"status": "current"}), \
-             mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {})), \
+             mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {"total_uncompressed_bytes": 2})), \
              mock.patch.object(dlms, "_new_restore_operation", return_value=("journal.json", fake_journal)), \
              mock.patch.object(dlms, "_update_restore_operation_journal"), \
              mock.patch.object(dlms, "_read_restore_operation_journal", return_value=(fake_journal, {})), \

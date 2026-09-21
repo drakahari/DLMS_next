@@ -6,6 +6,7 @@ from functools import wraps
 from typing import Any
 
 from flask import Blueprint, jsonify, redirect, render_template, request
+from dlms.services.storage_health import InsufficientStorageError, LOW_SPACE_MESSAGE, storage_snapshot
 
 
 Dependency = Callable[..., Any]
@@ -152,6 +153,7 @@ def settings_create_backup(dependencies):
         return render_template(
             "settings/backup-failed.html",
             error=(
+                LOW_SPACE_MESSAGE if isinstance(exc, InsufficientStorageError) else
                 "DLMS could not create the backup. Check available disk space and "
                 "data-folder access, then retry. Keep any existing backups."
             ),
@@ -186,6 +188,7 @@ def settings_stage_restore(dependencies):
         return render_template(
             "settings/restore-validation-failed.html",
             error=(
+                LOW_SPACE_MESSAGE if isinstance(exc, InsufficientStorageError) else
                 "The backup failed validation and was not accepted. Select an intact "
                 "DLMS backup ZIP or copy it again from its original location."
             ),
@@ -250,7 +253,8 @@ def settings_data_legacy_redirect(_dependencies):
 
 def settings_backup_page(dependencies):
     return render_template(
-        "settings/backup.html", recent_backups=dependencies.recent_backups()
+        "settings/backup.html", recent_backups=dependencies.recent_backups(),
+        storage=storage_snapshot(dependencies.app_data_dir()) if request.args.get("storage") == "1" else None,
     )
 
 

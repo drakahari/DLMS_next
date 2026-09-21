@@ -743,6 +743,8 @@ def complete_staged_restore(
             raise FileNotFoundError("Staged restore file was not found or expired")
         report = validate_backup(upload_path)
         require_owned_root("restore DLMS backup data")
+        from dlms.services.storage_health import require_capacity
+        require_capacity(stage_dir, 2 * report["uncompressed_bytes"])
         temp_extract = tempfile.mkdtemp(prefix="apply-", dir=stage_dir)
         try:
             extract_backup(upload_path, temp_extract, report)
@@ -753,6 +755,10 @@ def complete_staged_restore(
                 shutil.rmtree(stage_dir, ignore_errors=True)
                 raise
             safety_path, safety_manifest = create_backup("pre-restore")
+            # Before any live mutation, retain room for publication and rollback
+            # extraction/copy. Recovery itself must never be blocked by this gate.
+            require_capacity(os.path.dirname(db_path),
+                             report["uncompressed_bytes"] + 2 * safety_manifest["total_uncompressed_bytes"])
             journal_path, journal = new_operation(
                 token, safety_path, report.get("manifest"),
                 safety_manifest=safety_manifest,

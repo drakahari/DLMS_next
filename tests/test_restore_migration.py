@@ -196,7 +196,7 @@ class RestoreMigrationTests(unittest.TestCase):
             events.append(("reconcile", self._schema_version(self.db_path)))
             return {"processed": 0, "failed": 0}
 
-        with mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {})), \
+        with mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {"total_uncompressed_bytes": self.db_path.stat().st_size})), \
              mock.patch.object(dlms, "_ensure_runtime_data_dirs"), \
              mock.patch.object(dlms, "_apply_restored_data", side_effect=apply_checked), \
              mock.patch.object(dlms, "reconcile_quiz_publications", side_effect=reconcile_checked):
@@ -261,7 +261,7 @@ class RestoreMigrationTests(unittest.TestCase):
         migration = mock.Mock(side_effect=AssertionError("migration must not run"))
 
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS, {2: migration}), \
-             mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {})), \
+             mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {"total_uncompressed_bytes": self.db_path.stat().st_size})), \
              mock.patch.object(dlms, "_ensure_runtime_data_dirs"), \
              mock.patch.object(dlms, "reconcile_quiz_publications", return_value={"processed": 0}):
             response = self._confirm(token)
@@ -355,7 +355,7 @@ class RestoreMigrationTests(unittest.TestCase):
                 raise RuntimeError("post-apply failure")
             return {"processed": 0, "failed": 0}
 
-        with mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {})), \
+        with mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {"total_uncompressed_bytes": self.db_path.stat().st_size})), \
              mock.patch.object(dlms, "_ensure_runtime_data_dirs"), \
              mock.patch.object(dlms, "reconcile_quiz_publications", side_effect=reconcile):
             response = self._confirm(token)
@@ -373,7 +373,7 @@ class RestoreMigrationTests(unittest.TestCase):
         safety = self._safety_archive()
         apply = mock.Mock(side_effect=[RuntimeError("apply failed"), RuntimeError("rollback failed")])
 
-        with mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {})), \
+        with mock.patch.object(dlms, "_create_dlms_backup", return_value=(str(safety), {"total_uncompressed_bytes": self.db_path.stat().st_size})), \
              mock.patch.object(dlms, "_ensure_runtime_data_dirs"), \
              mock.patch.object(dlms, "_apply_restored_data", apply), \
              mock.patch("builtins.print") as logged:

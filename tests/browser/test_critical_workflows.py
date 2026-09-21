@@ -40,6 +40,26 @@ pytestmark = [
 ]
 
 
+def test_storage_health_themes_and_narrow_layout(browser_stack):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.navigate(base + "/settings/backup")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(base + "/settings/backup?storage=1")
+        browser.wait_for("document.querySelector('#storage-health').textContent.includes('Database size')")
+        for width in (1440, 420):
+            browser.set_viewport(width, 1000)
+            browser.wait_for_page_ready()
+            assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+            assert browser.evaluate("document.querySelector('#storage-health').textContent.includes('Available disk space')")
+            browser.evaluate("document.querySelector('#storage-health a').focus(); true")
+            assert browser.evaluate("document.activeElement.getAttribute('href')") == "/settings/backup?storage=1#storage-health"
+            contrast = _theme_contrast_snapshot(browser, {"body": "#storage-health p", "heading": "#storageHeading"})
+            assert contrast["body"]["contrast"] >= 4.5
+            assert contrast["heading"]["contrast"] >= 3
+
+
 @dataclass
 class BrowserStack:
     browser: FirefoxBidi
