@@ -63,6 +63,22 @@ class FirefoxBidiNavigationTests(unittest.TestCase):
 
         command.assert_called_once()
 
+    def test_session_start_uses_one_budget_across_initialization_commands(self):
+        with mock.patch('tests.browser._bidi.time.monotonic', side_effect=[0, 0, 9, 12]), mock.patch.object(
+            self.client, 'command', side_effect=[{}, {'contexts': []}, {'context': 'new-tab'}]
+        ) as command:
+            self.client.start_session(timeout=30)
+        self.assertEqual(self.client.context, 'new-tab')
+        self.assertEqual([30, 21, 18], [call.kwargs['timeout'] for call in command.call_args_list])
+
+    def test_session_start_does_not_issue_another_command_after_deadline(self):
+        with mock.patch('tests.browser._bidi.time.monotonic', side_effect=[0, 0, 31]), mock.patch.object(
+            self.client, 'command', return_value={}
+        ) as command:
+            with self.assertRaisesRegex(TimeoutError, 'starting Firefox BiDi session'):
+                self.client.start_session(timeout=30)
+        command.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

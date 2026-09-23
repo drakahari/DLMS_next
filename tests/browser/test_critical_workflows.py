@@ -183,7 +183,10 @@ def _wait_for_server(url, process, log_path, timeout=12.0):
     raise RuntimeError(f"DLMS test server did not start: {last_error}\n{log[-4000:]}")
 
 
-def _connect_firefox(port, process, log_path, timeout=12.0):
+def _connect_firefox(port, process, log_path, timeout=30.0):
+    # Hosted cold starts can spend the old 12-second budget before the listener
+    # or initial content process is ready. Share this startup-only deadline with
+    # session creation; ordinary browser command/condition budgets stay unchanged.
     deadline = time.monotonic() + timeout
     last_error = None
     while time.monotonic() < deadline:
@@ -191,8 +194,10 @@ def _connect_firefox(port, process, log_path, timeout=12.0):
             break
         client = None
         try:
-            client = FirefoxBidi.connect("127.0.0.1", port, timeout=0.5)
-            client.start_session()
+            client = FirefoxBidi.connect(
+                "127.0.0.1", port, timeout=min(0.5, max(0.05, deadline - time.monotonic()))
+            )
+            client.start_session(timeout=max(0.05, deadline - time.monotonic()))
             return client
         except Exception as exc:
             last_error = exc
@@ -7876,6 +7881,43 @@ def test_external_ai_help_is_discoverable_and_twenty_five_screenshot_queue_is_re
     assert queue_state["cancel"] is True
 
 
+def _wait_for_reviewed_pdf_bank(browser_stack, timeout=20.0):
+    """Observe the completed bank document, retaining evidence on failure.
+
+    Saving includes atomic persistence and staging cleanup before the redirect.
+    Use the same bounded budget as the OCR review navigation, without resubmitting
+    a potentially successful save or treating an existing file alone as success.
+    """
+    browser = browser_stack.browser
+    try:
+        browser.wait_for_page_ready(
+            "location.pathname.startsWith('/pdf-import/bank/') && "
+            "document.querySelector('.pdf-bank-question-table') !== null",
+            timeout=timeout,
+        )
+    except TimeoutError as exc:
+        try:
+            state = browser.evaluate(
+                "({url:location.href,readyState:document.readyState,"
+                "invalid:[...document.querySelectorAll(':invalid')].map(e=>e.name||e.id),"
+                "messages:[...document.querySelectorAll('.flash')].map(e=>e.textContent)})"
+            )
+        except Exception as diagnostic_error:
+            state = {"inspection_error": str(diagnostic_error)}
+        work_root = browser_stack.data_root.parent
+        bank_files = sorted(p.name for p in (browser_stack.data_root / "pdf_question_banks").glob("*.json"))
+        logs = {}
+        for path in [work_root / "server.log", *work_root.glob("firefox-session-*/firefox.log")]:
+            try:
+                logs[str(path.relative_to(work_root))] = path.read_text(encoding="utf-8", errors="replace")[-8000:]
+            except OSError as log_error:
+                logs[path.name] = str(log_error)
+        raise TimeoutError(
+            f"Reviewed bank did not become ready within {timeout}s. "
+            f"Browser: {state!r}; persisted bank files: {bank_files!r}; logs: {logs!r}"
+        ) from exc
+
+
 def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
@@ -8080,7 +8122,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "document.getElementById('questionReviewSkippedDetails').hidden"
     ) is True
     browser.click("#pdfReviewForm button[type=submit]:not([formaction])")
-    browser.wait_for("location.pathname.startsWith('/pdf-import/bank/')")
+    _wait_for_reviewed_pdf_bank(browser_stack)
     saved = browser.evaluate(
         "(() => ({title:document.querySelector('h1').textContent.trim(),"
         "source:document.body.innerText.includes('Browser OCR Review'),"

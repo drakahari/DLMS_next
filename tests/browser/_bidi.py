@@ -69,12 +69,20 @@ class FirefoxBidi:
             sock.close()
             raise
 
-    def start_session(self) -> None:
-        self.command("session.new", {"capabilities": {}})
-        tree = self.command("browsingContext.getTree", {})
+    def start_session(self, timeout: float = 8.0) -> None:
+        deadline = time.monotonic() + timeout
+
+        def startup_command(method, params):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Timed out starting Firefox BiDi session")
+            return self.command(method, params, timeout=remaining)
+
+        startup_command("session.new", {"capabilities": {}})
+        tree = startup_command("browsingContext.getTree", {})
         contexts = tree.get("contexts") or []
         if not contexts:
-            created = self.command("browsingContext.create", {"type": "tab"})
+            created = startup_command("browsingContext.create", {"type": "tab"})
             self.context = created["context"]
         else:
             self.context = contexts[0]["context"]
