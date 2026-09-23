@@ -169,6 +169,21 @@ def test_command_failure_has_stage_name(tool, tmp_path, monkeypatch):
         tool.run_stage('build', ['builder'], root=tmp_path, environment={})
 
 
+def test_incomplete_python_stops_before_ocr_or_build(tool, pipeline, tmp_path, monkeypatch):
+    args, calls, _ = pipeline
+    def fail_dependencies(name, command, **kwargs):
+        assert name == 'dependency preflight'
+        assert command == [tool.sys.executable, '-B', tmp_path / 'tools/check_release_dependencies.py']
+        raise tool.ReleaseError('incomplete active Python environment')
+    monkeypatch.setattr(tool, 'run_stage', fail_dependencies)
+    build = mock.Mock()
+    monkeypatch.setattr(tool, 'build_frozen', build)
+    with pytest.raises(tool.ReleaseError, match='incomplete active Python'):
+        tool.orchestrate(args, root=tmp_path)
+    build.assert_not_called()
+    assert not args.output_dir.exists()
+
+
 def test_arguments_and_existing_output_fail_closed(tool, pipeline, tmp_path):
     with pytest.raises(SystemExit): tool.parser().parse_args(['--target', 'macos-x86_64'])
     with pytest.raises(SystemExit): tool.main(['--target', 'fedora44-x86_64', '--expected-commit', COMMIT,

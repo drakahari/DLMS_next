@@ -109,7 +109,7 @@ def orchestrate(args, *, root=ROOT):
     bundle = args.ocr_bundle.resolve()
     environment = os.environ.copy()
     environment["DLMS_TESSERACT_BUNDLE_ROOT"] = str(bundle)
-    run_stage("dependency preflight", [sys.executable, "-m", "pip", "check"],
+    run_stage("dependency preflight", [sys.executable, "-B", root / "tools/check_release_dependencies.py"],
               root=root, environment=environment)
     bundle_command = [sys.executable, root / "tools/prepare_ocr_bundle.py", "--output", bundle]
     if args.prepare_ocr:
