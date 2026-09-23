@@ -34,13 +34,31 @@ jobs:
       - name: Install locked runtime and test dependencies
         run: python -m pip install -r requirements-test.txt
 
-      - name: Confirm hosted Firefox availability
-        run: firefox --version
+      - name: Prepare and diagnose Firefox display environment
+        run: |
+          if ! command -v Xvfb || ! command -v xvfb-run || ! command -v xauth; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y xvfb xauth
+          fi
+          cat /etc/os-release
+          command -v firefox Xvfb xvfb-run xauth
+          readlink -f "$(command -v firefox)"
+          firefox --version
+          dpkg-query -W firefox xvfb xauth
+          for variable in DISPLAY MOZ_HEADLESS MOZ_WEBRENDER MOZ_ENABLE_WAYLAND GDK_BACKEND LIBGL_ALWAYS_SOFTWARE; do
+            printf '%s=%s\n' "$variable" "${!variable-<unset>}"
+          done
 
       - name: Run isolated Firefox release gate
         env:
           DLMS_RUN_BROWSER_TESTS: "1"
+          DLMS_FIREFOX_MODE: xvfb
           PYTHONDONTWRITEBYTECODE: "1"
-        run: >-
-          python -m pytest -q -p no:cacheprovider -m browser
-          tests/browser/test_critical_workflows.py
+        # xvfb-run owns the X server/auth file and cleans up on command exit.
+        # Firefox must not use native --headless with this virtual framebuffer.
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24 -nolisten tcp" \
+            bash -euc '
+              printf "Firefox mode=%s DISPLAY=%s\n" "$DLMS_FIREFOX_MODE" "$DISPLAY"
+              python -m pytest -q -p no:cacheprovider -m browser tests/browser/test_critical_workflows.py
+            '

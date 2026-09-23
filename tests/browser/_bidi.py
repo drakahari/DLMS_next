@@ -179,6 +179,23 @@ class FirefoxBidi:
             timeout=timeout,
         )
 
+    def wait_for_pointer_target(self, selector: str) -> None:
+        # Responsive overlays can still be animating after document/viewport
+        # readiness. Observe hit testing before sending real pointer input;
+        # never click through an overlay or retry a potentially destructive click.
+        encoded = json.dumps(selector)
+        self.wait_for(
+            "(() => {"
+            f"const element = document.querySelector({encoded});"
+            "if (!element) return false;"
+            "const rect = element.getBoundingClientRect();"
+            "const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);"
+            "const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);"
+            "return right > left && bottom > top && "
+            "element.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2));"
+            "})()"
+        )
+
     def click(self, selector: str) -> None:
         # A workflow condition can become visible while the new document is
         # still loading its styles.  Wait for the load boundary before asking
@@ -203,6 +220,7 @@ class FirefoxBidi:
         shared_id = result.get("sharedId")
         if result.get("type") != "node" or not shared_id:
             raise BidiError(f"Element not found or unavailable for click: {selector}")
+        self.wait_for_pointer_target(selector)
         self.command(
             "input.performActions",
             {

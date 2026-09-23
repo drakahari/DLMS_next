@@ -183,20 +183,42 @@ def _wait_for_server(url, process, log_path, timeout=12.0):
     raise RuntimeError(f"DLMS test server did not start: {last_error}\n{log[-4000:]}")
 
 
+def _firefox_command(firefox, profile, port, env):
+    # Local runs retain native headless mode. CI explicitly opts into a private
+    # Xvfb display; DISPLAY alone must never open a developer's desktop browser.
+    mode = env.get("DLMS_FIREFOX_MODE", "headless")
+    if mode not in {"headless", "xvfb"}:
+        raise ValueError(f"Unsupported DLMS_FIREFOX_MODE: {mode!r}")
+    if mode == "xvfb":
+        if not env.get("DISPLAY"):
+            raise ValueError("DLMS_FIREFOX_MODE=xvfb requires DISPLAY from xvfb-run")
+        if env.get("MOZ_HEADLESS"):
+            raise ValueError("Unset MOZ_HEADLESS for DLMS_FIREFOX_MODE=xvfb")
+    return [
+        firefox,
+        *(["--headless"] if mode == "headless" else []),
+        "--no-remote", "--profile", str(profile),
+        "--remote-debugging-port", str(port), "about:blank",
+    ]
+
+
 def _connect_firefox(port, process, log_path, timeout=30.0):
     # Hosted cold starts can spend the old 12-second budget before the listener
     # or initial content process is ready. Share this startup-only deadline with
     # session creation; ordinary browser command/condition budgets stay unchanged.
     deadline = time.monotonic() + timeout
     last_error = None
+    stage = "listener connection"
     while time.monotonic() < deadline:
         if process.poll() is not None:
             break
         client = None
         try:
+            stage = "listener connection"
             client = FirefoxBidi.connect(
                 "127.0.0.1", port, timeout=min(0.5, max(0.05, deadline - time.monotonic()))
             )
+            stage = "session initialization"
             client.start_session(timeout=max(0.05, deadline - time.monotonic()))
             return client
         except Exception as exc:
@@ -205,7 +227,10 @@ def _connect_firefox(port, process, log_path, timeout=30.0):
                 client.close()
         time.sleep(0.05)
     log = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
-    raise RuntimeError(f"Firefox WebDriver BiDi did not start: {last_error}\n{log[-4000:]}")
+    raise RuntimeError(
+        f"Firefox WebDriver BiDi did not start during {stage} "
+        f"(budget={timeout}s, command={process.args!r}): {last_error}\n{log[-4000:]}"
+    )
 
 
 def _terminate_process_tree(process):
@@ -338,16 +363,7 @@ def browser_stack(browser_server):
     try:
         with browser_log.open("w", encoding="utf-8") as browser_output:
             browser_process = subprocess.Popen(
-                [
-                    browser_server.firefox,
-                    "--headless",
-                    "--no-remote",
-                    "--profile",
-                    str(profile),
-                    "--remote-debugging-port",
-                    str(browser_port),
-                    "about:blank",
-                ],
+                _firefox_command(browser_server.firefox, profile, browser_port, browser_server.env),
                 cwd=ROOT,
                 env=browser_server.env,
                 stdout=browser_output,
@@ -2761,8 +2777,7 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
         log_path = browser_server.work_root / f"firefox-recovery-reopen-{label}.log"
         output = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(
-            [browser_server.firefox, "--headless", "--no-remote", "--profile", str(profile),
-             "--remote-debugging-port", str(port), "about:blank"],
+            _firefox_command(browser_server.firefox, profile, port, browser_server.env),
             cwd=ROOT,
             env=browser_server.env,
             stdout=output,
@@ -2861,8 +2876,7 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
         log_path = tmp_path / f"recovery-presence-firefox-{label}.log"
         output = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(
-            [firefox, "--headless", "--no-remote", "--profile", str(profile),
-             "--remote-debugging-port", str(port), "about:blank"],
+            _firefox_command(firefox, profile, port, env),
             cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT,
             **process_options,
         )
@@ -9294,16 +9308,7 @@ def test_browser_presence_runtime_mode_isolated_server(
 
         with browser_log.open("w", encoding="utf-8") as browser_output:
             browser_process = subprocess.Popen(
-                [
-                    firefox,
-                    "--headless",
-                    "--no-remote",
-                    "--profile",
-                    str(profile),
-                    "--remote-debugging-port",
-                    str(browser_port),
-                    "about:blank",
-                ],
+                _firefox_command(firefox, profile, browser_port, env),
                 cwd=ROOT,
                 env=env,
                 stdout=browser_output,
@@ -11346,16 +11351,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         log_path = session_root / "firefox.log"
         output = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(
-            [
-                browser_server.firefox,
-                "--headless",
-                "--no-remote",
-                "--profile",
-                str(profile),
-                "--remote-debugging-port",
-                str(port),
-                "about:blank",
-            ],
+            _firefox_command(browser_server.firefox, profile, port, browser_server.env),
             cwd=ROOT,
             env=browser_server.env,
             stdout=output,

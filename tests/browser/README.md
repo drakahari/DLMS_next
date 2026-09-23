@@ -27,6 +27,28 @@ Normal `pytest` runs collect these tests but skip them unless
 `DLMS_RUN_BROWSER_TESTS=1` is set. This separation is intentional because a
 real browser adds startup cost and may not be installed in every environment.
 
+Local critical-workflow runs use Firefox's native `--headless` mode, even when
+`DISPLAY` is present. The hosted Linux release gate explicitly selects
+`DLMS_FIREFOX_MODE=xvfb` and runs normal Firefox inside a private virtual X
+display to avoid the native-headless framebuffer path. To reproduce that mode
+locally (requires `Xvfb`, `xvfb-run`, and `xauth`):
+
+```bash
+DLMS_RUN_BROWSER_TESTS=1 DLMS_FIREFOX_MODE=xvfb PYTHONDONTWRITEBYTECODE=1 \
+  xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24 -nolisten tcp" \
+  .venv/bin/python -m pytest -q -p no:cacheprovider -m browser tests/browser/test_critical_workflows.py
+```
+
+Unset `MOZ_HEADLESS` in virtual-display mode; conflicting or unknown modes fail
+before Firefox launches. `xvfb-run` owns display/authentication cleanup and
+preserves the test command's exit status. The harness still owns Firefox and
+server cleanup. The startup budget remains 30 seconds; startup failures report
+the listener/session stage, launch command, and Firefox log tail. This mode
+changes test infrastructure only, not DLMS behavior or browser assertions.
+Pointer clicks also wait for the target's visible center to be unobstructed,
+so a responsive overlay's exit transition cannot intercept the click. The
+existing condition budget applies; permanently covered controls still fail.
+
 The focused cases cover:
 
 - Quiz Library reorder controls through the browser, including the CSRF-protected

@@ -63,6 +63,40 @@ class FirefoxBidiNavigationTests(unittest.TestCase):
 
         command.assert_called_once()
 
+    def test_pointer_readiness_checks_visible_center_hit_target(self):
+        with mock.patch.object(self.client, "wait_for") as wait:
+            self.client.wait_for_pointer_target("#toggle")
+        expression = wait.call_args.args[0]
+        for required in ('"#toggle"', 'document.elementFromPoint', 'element.contains',
+                         'right > left && bottom > top', 'Math.min(innerWidth', 'Math.min(innerHeight'):
+            self.assertIn(required, expression)
+        self.assertNotIn("timeout", wait.call_args.kwargs)
+
+    def test_obscured_pointer_target_fails_without_sending_click(self):
+        with mock.patch.object(self.client, "wait_for_page_ready"), mock.patch.object(
+            self.client, "command", return_value={"result": {"type": "node", "sharedId": "button"}}
+        ) as command, mock.patch.object(
+            self.client, "wait_for_pointer_target", side_effect=TimeoutError("still covered")
+        ):
+            with self.assertRaisesRegex(TimeoutError, "still covered"):
+                self.client.click("#toggle")
+        self.assertEqual([call.args[0] for call in command.call_args_list], ["script.evaluate"])
+
+    def test_click_waits_for_hit_target_before_real_element_origin_input(self):
+        sequence = []
+        def command(method, params):
+            sequence.append(method)
+            return {"result": {"type": "node", "sharedId": "button"}}
+        with mock.patch.object(self.client, "wait_for_page_ready"), mock.patch.object(
+            self.client, "command", side_effect=command
+        ) as commands, mock.patch.object(
+            self.client, "wait_for_pointer_target", side_effect=lambda selector: sequence.append("hit-test")
+        ):
+            self.client.click("#toggle")
+        self.assertEqual(sequence, ["script.evaluate", "hit-test", "input.performActions", "input.releaseActions"])
+        pointer = commands.call_args_list[1].args[1]["actions"][0]["actions"][0]
+        self.assertEqual(pointer["origin"], {"type": "element", "element": {"sharedId": "button"}})
+
     def test_session_start_uses_one_budget_across_initialization_commands(self):
         with mock.patch('tests.browser._bidi.time.monotonic', side_effect=[0, 0, 9, 12]), mock.patch.object(
             self.client, 'command', side_effect=[{}, {'contexts': []}, {'context': 'new-tab'}]

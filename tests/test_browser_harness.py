@@ -10,6 +10,51 @@ from tests.browser import test_critical_workflows as browser_workflows
 
 
 class BrowserHarnessStructureTests(unittest.TestCase):
+    def test_local_launch_stays_headless_even_with_desktop_display(self):
+        for env in ({}, {"DISPLAY": ":0"}, {"DLMS_FIREFOX_MODE": "headless"}):
+            with self.subTest(env=env):
+                self.assertEqual(
+                    browser_workflows._firefox_command("firefox", Path("profile"), 1234, env),
+                    ["firefox", "--headless", "--no-remote", "--profile", "profile",
+                     "--remote-debugging-port", "1234", "about:blank"],
+                )
+
+    def test_virtual_display_launch_omits_only_headless_argument(self):
+        command = browser_workflows._firefox_command(
+            "firefox", Path("profile"), 1234,
+            {"DLMS_FIREFOX_MODE": "xvfb", "DISPLAY": ":99"},
+        )
+        local = browser_workflows._firefox_command("firefox", Path("profile"), 1234, {})
+        local.remove("--headless")
+        self.assertEqual(command, local)
+
+    def test_invalid_or_conflicting_display_modes_fail_before_launch(self):
+        for env in (
+            {"DLMS_FIREFOX_MODE": "typo"},
+            {"DLMS_FIREFOX_MODE": "xvfb"},
+            {"DLMS_FIREFOX_MODE": "xvfb", "DISPLAY": ":99", "MOZ_HEADLESS": "1"},
+            {"DLMS_FIREFOX_MODE": "xvfb", "DISPLAY": ":99", "MOZ_HEADLESS": "0"},
+        ):
+            with self.subTest(env=env), self.assertRaises(ValueError):
+                browser_workflows._firefox_command("firefox", Path("profile"), 1234, env)
+
+    def test_browser_fixture_cleans_process_and_profile_after_startup_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            server = SimpleNamespace(
+                work_root=Path(directory), firefox="firefox", env={}, process_options={},
+            )
+            process = mock.Mock()
+            with mock.patch.object(browser_workflows.subprocess, "Popen", return_value=process), mock.patch.object(
+                browser_workflows, "_connect_firefox", side_effect=RuntimeError("startup failed")
+            ), mock.patch.object(browser_workflows, "_free_loopback_port", return_value=1234), mock.patch.object(
+                browser_workflows, "_terminate_process_tree"
+            ) as terminate:
+                fixture = browser_workflows.browser_stack.__wrapped__(server)
+                with self.assertRaisesRegex(RuntimeError, "startup failed"):
+                    next(fixture)
+                terminate.assert_called_once_with(process)
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_server_data_and_bidi_session_are_workflow_scoped(self):
         self.assertEqual(
             "function",
@@ -92,9 +137,12 @@ class BrowserReadinessTests(unittest.TestCase):
             with mock.patch.object(browser_workflows.time, 'monotonic', side_effect=[0, 0, 0, 0, 31]), mock.patch.object(
                 browser_workflows.time, 'sleep'
             ), mock.patch.object(FirefoxBidi, 'connect', return_value=client):
-                with self.assertRaisesRegex(RuntimeError, 'session initialization failed'):
+                with self.assertRaisesRegex(RuntimeError, 'session initialization failed') as caught:
                     browser_workflows._connect_firefox(1234, mock.Mock(poll=lambda: None), log)
             client.close.assert_called_once()
+            self.assertIn('during session initialization', str(caught.exception))
+            self.assertIn('budget=30.0s', str(caught.exception))
+            self.assertIn('command=', str(caught.exception))
 
     def test_bank_document_can_become_ready_after_default_six_seconds(self):
         clock = [0.0]

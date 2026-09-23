@@ -56,6 +56,21 @@ class RepositoryAutomationTests(unittest.TestCase):
         self.assertNotIn("pull_request", workflow["on"])
         self.assertNotIn("push", workflow["on"])
 
+    def test_firefox_gate_explicitly_owns_virtual_display_without_masking_failures(self):
+        workflow, text = _workflow("firefox.yml")
+        job = workflow["jobs"]["firefox-workflows"]
+        self.assertEqual(job["runs-on"], "ubuntu-24.04")
+        gate = job["steps"][-1]
+        self.assertEqual(gate["env"]["DLMS_FIREFOX_MODE"], "xvfb")
+        self.assertEqual(gate["env"]["DLMS_RUN_BROWSER_TESTS"], "1")
+        self.assertIn('xvfb-run --auto-servernum', gate["run"])
+        self.assertIn('-screen 0 1920x1080x24 -nolisten tcp', gate["run"])
+        self.assertIn("bash -euc", gate["run"])
+        self.assertNotIn("|| true", gate["run"])
+        self.assertNotIn("continue-on-error", text)
+        self.assertNotIn("MOZ_WEBRENDER=0", text)
+        self.assertIn('sudo apt-get install --no-install-recommends -y xvfb xauth', text)
+
     def test_dependency_audit_is_bounded_scheduled_and_manual(self):
         workflow, text = _workflow("dependency-audit.yml")
 
