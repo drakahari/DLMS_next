@@ -7,6 +7,7 @@ import hashlib
 import http.cookiejar
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -183,17 +184,42 @@ def _wait_for_server(url, process, log_path, timeout=12.0):
     raise RuntimeError(f"DLMS test server did not start: {last_error}\n{log[-4000:]}")
 
 
+def _require_private_xvfb(env):
+    match = re.fullmatch(r":([0-9]+)(?:\.0)?", env.get("DISPLAY", ""))
+    try:
+        if not match or not Path(env.get("XAUTHORITY", "")).is_file():
+            raise ValueError("missing local display or private authentication")
+        number = match[1]
+        pid = int(Path(f"/tmp/.X{number}-lock").read_text().strip())
+        process = Path(f"/proc/{pid}")
+        if (process / "comm").read_text().strip() != "Xvfb":
+            raise ValueError("display is not owned by Xvfb")
+        if f":{number}" not in (process / "cmdline").read_text().split("\0"):
+            raise ValueError("Xvfb owns a different display")
+    except (OSError, ValueError) as exc:
+        raise ValueError("DLMS_FIREFOX_MODE=xvfb requires a private xvfb-run display") from exc
+
+
 def _firefox_command(firefox, profile, port, env):
+    """Prepare arguments and sanitize the dedicated child-process environment."""
     # Local runs retain native headless mode. CI explicitly opts into a private
     # Xvfb display; DISPLAY alone must never open a developer's desktop browser.
     mode = env.get("DLMS_FIREFOX_MODE", "headless")
     if mode not in {"headless", "xvfb"}:
         raise ValueError(f"Unsupported DLMS_FIREFOX_MODE: {mode!r}")
     if mode == "xvfb":
-        if not env.get("DISPLAY"):
-            raise ValueError("DLMS_FIREFOX_MODE=xvfb requires DISPLAY from xvfb-run")
+        _require_private_xvfb(env)
         if env.get("MOZ_HEADLESS"):
             raise ValueError("Unset MOZ_HEADLESS for DLMS_FIREFOX_MODE=xvfb")
+    else:
+        env.pop("DISPLAY", None)
+        env.pop("XAUTHORITY", None)
+    # DISPLAY does not isolate Firefox when inherited Wayland controls select
+    # the owner's compositor. This also protects direct diagnostic callers.
+    env.pop("WAYLAND_DISPLAY", None)
+    env.pop("WAYLAND_SOCKET", None)
+    env["GDK_BACKEND"] = "x11"
+    env["MOZ_ENABLE_WAYLAND"] = "0"
     return [
         firefox,
         *(["--headless"] if mode == "headless" else []),
@@ -10300,6 +10326,8 @@ def test_mastery_explanation_and_recovery_actions_are_accessible_across_themes(
         )
         for role, state in disabled.items():
             assert state["contrast"] >= 4.5, (theme, role, state)
+            if theme == "light":
+                assert state["contrast"] >= 4.8, (theme, role, state)
             assert state["opacity"] == "1", (theme, role, state)
             assert state["cursor"] == "not-allowed", (theme, role, state)
 

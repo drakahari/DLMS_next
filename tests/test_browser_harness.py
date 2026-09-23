@@ -20,13 +20,73 @@ class BrowserHarnessStructureTests(unittest.TestCase):
                 )
 
     def test_virtual_display_launch_omits_only_headless_argument(self):
-        command = browser_workflows._firefox_command(
-            "firefox", Path("profile"), 1234,
-            {"DLMS_FIREFOX_MODE": "xvfb", "DISPLAY": ":99"},
-        )
+        env = {"DLMS_FIREFOX_MODE": "xvfb", "DISPLAY": ":99", "XAUTHORITY": "/tmp/auth",
+               "WAYLAND_DISPLAY": "wayland-1", "WAYLAND_SOCKET": "4",
+               "GDK_BACKEND": "wayland,x11", "MOZ_ENABLE_WAYLAND": "1"}
+        with mock.patch.object(browser_workflows, "_require_private_xvfb") as require:
+            command = browser_workflows._firefox_command("firefox", Path("profile"), 1234, env)
+        require.assert_called_once_with(env)
+        self.assertEqual(env["DISPLAY"], ":99")
+        self.assertEqual(env["GDK_BACKEND"], "x11")
+        self.assertEqual(env["MOZ_ENABLE_WAYLAND"], "0")
+        self.assertNotIn("WAYLAND_DISPLAY", env)
+        self.assertNotIn("WAYLAND_SOCKET", env)
         local = browser_workflows._firefox_command("firefox", Path("profile"), 1234, {})
         local.remove("--headless")
         self.assertEqual(command, local)
+
+    def test_default_launch_removes_physical_display_access(self):
+        env = {"DISPLAY": ":0", "XAUTHORITY": "/tmp/desktop-auth", "WAYLAND_DISPLAY": "wayland-1",
+               "WAYLAND_SOCKET": "4", "GDK_BACKEND": "wayland,x11", "MOZ_ENABLE_WAYLAND": "1"}
+        command = browser_workflows._firefox_command("firefox", Path("profile"), 1234, env)
+        self.assertIn("--headless", command)
+        for name in ("DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET"):
+            self.assertNotIn(name, env)
+        self.assertEqual(env["GDK_BACKEND"], "x11")
+        self.assertEqual(env["MOZ_ENABLE_WAYLAND"], "0")
+
+    def test_xvfb_requires_matching_live_virtual_server_not_desktop_or_stale_marker(self):
+        env = {"DISPLAY": ":99", "XAUTHORITY": "/tmp/auth"}
+        for comm, command, valid in (
+            ("Xvfb\n", "Xvfb\0:99\0-screen\0", True),
+            ("Xorg\n", "Xorg\0:99\0", False),
+            ("Xwayland\n", "Xwayland\0:99\0", False),
+            ("Xvfb\n", "Xvfb\0:100\0", False),
+        ):
+            with self.subTest(comm=comm, command=command), mock.patch.object(Path, "is_file", return_value=True), mock.patch.object(
+                Path, "read_text", side_effect=["12345", comm, command]
+            ):
+                if valid:
+                    browser_workflows._require_private_xvfb(env)
+                else:
+                    with self.assertRaises(ValueError):
+                        browser_workflows._require_private_xvfb(env)
+        with mock.patch.object(Path, "is_file", return_value=True), mock.patch.object(Path, "read_text", side_effect=FileNotFoundError):
+            with self.assertRaises(ValueError):
+                browser_workflows._require_private_xvfb(env)
+
+    def test_all_five_browser_launch_sites_use_the_guarded_command_and_child_env(self):
+        import ast
+        module = ast.parse(inspect.getsource(browser_workflows))
+        launches = [node for node in ast.walk(module) if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute) and node.func.attr == "Popen"
+                    and node.args and isinstance(node.args[0], ast.Call)
+                    and isinstance(node.args[0].func, ast.Name) and node.args[0].func.id == "_firefox_command"]
+        self.assertEqual(len(launches), 5)
+        for launch in launches:
+            child_env = next(keyword.value for keyword in launch.keywords if keyword.arg == "env")
+            self.assertEqual(ast.dump(launch.args[0].args[-1]), ast.dump(child_env))
+
+    def test_manual_and_demo_capture_launcher_is_unconditionally_headless(self):
+        import ast
+        root = Path(__file__).resolve().parents[1]
+        module = ast.parse((root / "tools/capture_user_manual_screenshots.py").read_text())
+        launch = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "_start_firefox")
+        processes = [node for node in ast.walk(launch) if isinstance(node, ast.Call)
+                     and isinstance(node.func, ast.Attribute) and node.func.attr == "Popen"]
+        self.assertEqual(len(processes), 1)
+        self.assertIsInstance(processes[0].args[0], ast.List)
+        self.assertIn("--headless", [node.value for node in processes[0].args[0].elts if isinstance(node, ast.Constant)])
 
     def test_invalid_or_conflicting_display_modes_fail_before_launch(self):
         for env in (

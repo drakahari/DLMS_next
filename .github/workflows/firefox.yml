@@ -53,6 +53,8 @@ jobs:
         env:
           DLMS_RUN_BROWSER_TESTS: "1"
           DLMS_FIREFOX_MODE: xvfb
+          GDK_BACKEND: x11
+          MOZ_ENABLE_WAYLAND: "0"
           PYTHONDONTWRITEBYTECODE: "1"
         # xvfb-run owns the X server/auth file and cleans up on command exit.
         # Firefox must not use native --headless with this virtual framebuffer.

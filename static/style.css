@@ -761,7 +761,7 @@ body.home .quiz-card img {
 }
 
 .quiz-recovery-actions .quiz-recovery-start-over:disabled {
-    color: color-mix(in srgb, var(--theme-muted-text, #b8c2cc) 95%, var(--theme-heading, #fff));
+    color: color-mix(in srgb, var(--theme-muted-text, #b8c2cc) 75%, var(--theme-heading, #fff));
     background: var(--theme-surface, rgba(5,18,39,.58));
     border-color: var(--theme-border-soft, rgba(98,155,255,.24));
     box-shadow: none;

@@ -62,6 +62,8 @@ class RepositoryAutomationTests(unittest.TestCase):
         self.assertEqual(job["runs-on"], "ubuntu-24.04")
         gate = job["steps"][-1]
         self.assertEqual(gate["env"]["DLMS_FIREFOX_MODE"], "xvfb")
+        self.assertEqual(gate["env"]["GDK_BACKEND"], "x11")
+        self.assertEqual(gate["env"]["MOZ_ENABLE_WAYLAND"], "0")
         self.assertEqual(gate["env"]["DLMS_RUN_BROWSER_TESTS"], "1")
         self.assertIn('xvfb-run --auto-servernum', gate["run"])
         self.assertIn('-screen 0 1920x1080x24 -nolisten tcp', gate["run"])
