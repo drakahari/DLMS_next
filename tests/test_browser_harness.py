@@ -106,6 +106,43 @@ class BrowserHarnessStructureTests(unittest.TestCase):
 
 
 class BrowserReadinessTests(unittest.TestCase):
+    def test_review_submit_loads_and_decodes_each_lazy_preview_before_click(self):
+        browser = mock.Mock()
+        browser.evaluate.side_effect = [True, 2, True, True, True, True]
+        stack = SimpleNamespace(browser=browser)
+        with mock.patch.object(browser_workflows, '_wait_for_reviewed_pdf_bank') as bank_ready:
+            browser_workflows._submit_reviewed_pdf_bank(stack)
+        calls = browser.method_calls
+        self.assertEqual([call[0] for call in calls], [
+            'evaluate', 'evaluate', 'evaluate', 'wait_for', 'evaluate',
+            'evaluate', 'wait_for', 'evaluate', 'click',
+        ])
+        for index, position in enumerate((3, 6)):
+            condition = calls[position].args[0]
+            self.assertIn(f'[{index}].complete', condition)
+            self.assertIn('naturalWidth > 0', condition)
+            self.assertIn('.decode()', calls[position + 1].args[0])
+        browser.click.assert_called_once_with('#pdfReviewForm button[type=submit]:not([formaction])')
+        bank_ready.assert_called_once_with(stack)
+
+    def test_review_submit_does_not_click_when_preview_readiness_fails(self):
+        browser = mock.Mock()
+        browser.evaluate.side_effect = [True, 1, True, {'disabled': False, 'events': []}]
+        browser.wait_for.side_effect = TimeoutError('image not loaded')
+        with self.assertRaisesRegex(RuntimeError, 'image not loaded') as caught:
+            browser_workflows._submit_reviewed_pdf_bank(SimpleNamespace(browser=browser))
+        browser.click.assert_not_called()
+        self.assertIn("'events': []", str(caught.exception))
+
+    def test_review_submit_keeps_trace_and_bank_failure_without_retry(self):
+        browser = mock.Mock()
+        browser.evaluate.side_effect = [True, 0, {'events': [{'type': 'click', 'defaultPrevented': True}]}]
+        with mock.patch.object(browser_workflows, '_wait_for_reviewed_pdf_bank', side_effect=TimeoutError('no bank; server log')):
+            with self.assertRaisesRegex(RuntimeError, 'no bank; server log') as caught:
+                browser_workflows._submit_reviewed_pdf_bank(SimpleNamespace(browser=browser))
+        browser.click.assert_called_once()
+        self.assertIn("'defaultPrevented': True", str(caught.exception))
+
     def test_cold_listener_and_session_share_startup_budget(self):
         clock = [0.0]
         client = mock.Mock()

@@ -7895,6 +7895,32 @@ def test_external_ai_help_is_discoverable_and_twenty_five_screenshot_queue_is_re
     assert queue_state["cancel"] is True
 
 
+def _submit_reviewed_pdf_bank(browser_stack):
+    browser = browser_stack.browser
+    browser.evaluate((ROOT / "tests/browser/_form_submit_probe.js").read_text(encoding="utf-8"))
+    try:
+        # Lazy source previews do not participate in document.readyState. Load
+        # each through normal scrolling before a late intrinsic-size change can
+        # move Save between pointer-down and pointer-up. Do not resubmit a miss.
+        count = browser.evaluate("document.querySelectorAll('.pdf-ocr-preview-frame img').length")
+        for index in range(count):
+            image = f"document.querySelectorAll('.pdf-ocr-preview-frame img')[{index}]"
+            browser.evaluate(f"{image}.scrollIntoView({{block:'center'}}); true")
+            browser.wait_for(f"{image}.complete && {image}.naturalWidth > 0")
+            browser.evaluate(f"{image}.decode().then(() => true)")
+        browser.click("#pdfReviewForm button[type=submit]:not([formaction])")
+        _wait_for_reviewed_pdf_bank(browser_stack)
+    except Exception as exc:
+        try:
+            trace = browser.evaluate(
+                "window.__dlmsReviewSubmitSnapshot?.() ?? "
+                "JSON.parse(sessionStorage.getItem('__dlmsReviewSubmitProbe'))"
+            )
+        except Exception as diagnostic_error:
+            trace = {"inspection_error": str(diagnostic_error)}
+        raise RuntimeError(f"Reviewed-bank submit failed. Submit trace: {trace!r}. {exc}") from exc
+
+
 def _wait_for_reviewed_pdf_bank(browser_stack, timeout=20.0):
     """Observe the completed bank document, retaining evidence on failure.
 
@@ -7930,6 +7956,50 @@ def _wait_for_reviewed_pdf_bank(browser_stack, timeout=20.0):
             f"Reviewed bank did not become ready within {timeout}s. "
             f"Browser: {state!r}; persisted bank files: {bank_files!r}; logs: {logs!r}"
         ) from exc
+
+
+def test_review_submit_probe_records_native_events_cancellation_and_state(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/pdf-import")
+    browser.evaluate(
+        "(() => {const form=document.createElement('form'); form.id='pdfReviewForm';"
+        "form.method='post'; form.action='/unused-submit-probe';"
+        "form.style.cssText='position:fixed;inset:100px;z-index:2147483647;background:white';"
+        "const button=document.createElement('button'); button.type='submit';"
+        "button.textContent='Diagnostic fixture'; form.append(button); document.body.append(form);"
+        "form.addEventListener('submit',event=>event.preventDefault()); return true;})()"
+    )
+    browser.evaluate((ROOT / "tests/browser/_form_submit_probe.js").read_text(encoding="utf-8"))
+    browser.click("#pdfReviewForm button")
+    trace = browser.evaluate("window.__dlmsReviewSubmitSnapshot()")
+    clicks = [event for event in trace["events"] if event["type"] == "click"]
+    submits = [event for event in trace["events"] if event["type"] == "submit"]
+    assert len(clicks) == len(submits) == 1
+    assert clicks[0]["trusted"] and clicks[0]["onButton"]
+    assert not clicks[0]["defaultPrevented"]
+    assert submits[0]["onForm"] and submits[0]["defaultPrevented"]
+    assert trace["current"]["method"] == "post"
+    assert trace["current"]["action"].endswith("/unused-submit-probe")
+    assert trace["current"]["topmost"].startswith("BUTTON")
+    assert trace["current"]["rect"]["width"] > 0
+    assert trace["current"]["pointerEvents"] == "auto"
+    browser.evaluate(
+        "document.querySelector('#pdfReviewForm button').addEventListener("
+        "'click',event=>event.preventDefault(),{once:true}); true"
+    )
+    browser.click("#pdfReviewForm button")
+    trace = browser.evaluate("window.__dlmsReviewSubmitSnapshot()")
+    assert [event for event in trace["events"] if event["type"] == "click"][-1]["defaultPrevented"]
+    assert len([event for event in trace["events"] if event["type"] == "submit"]) == 1
+    # Only this canceled diagnostic fixture invokes requestSubmit: the OCR flow
+    # still uses a real pointer click and native submission, never this method.
+    browser.evaluate("document.getElementById('pdfReviewForm').requestSubmit(); true")
+    browser.evaluate("document.querySelector('#pdfReviewForm button').disabled=true; true")
+    trace = browser.evaluate("window.__dlmsReviewSubmitSnapshot()")
+    assert [call["method"] for call in trace["calls"]] == ["requestSubmit"]
+    assert trace["mutations"][-1]["state"]["disabled"] is True
+    assert trace["current"]["effectivelyDisabled"] is True
+    assert browser.evaluate("location.pathname") == "/pdf-import"
 
 
 def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
@@ -8135,8 +8205,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
     assert browser.evaluate(
         "document.getElementById('questionReviewSkippedDetails').hidden"
     ) is True
-    browser.click("#pdfReviewForm button[type=submit]:not([formaction])")
-    _wait_for_reviewed_pdf_bank(browser_stack)
+    _submit_reviewed_pdf_bank(browser_stack)
     saved = browser.evaluate(
         "(() => ({title:document.querySelector('h1').textContent.trim(),"
         "source:document.body.innerText.includes('Browser OCR Review'),"
