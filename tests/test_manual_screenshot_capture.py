@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -46,7 +47,12 @@ def test_manual_capture_assets_and_sidecar_match_contract():
     metadata = json.loads((IMAGE_ROOT / "capture-metadata.json").read_text(encoding="utf-8"))
     records = metadata["captures"]
 
-    assert metadata["version"] == tool._application_version()
+    # Captures retain their original version when only release text changes.
+    # Their provenance must agree with the capture manifest, not today's app.
+    manifest = (ROOT / "docs/user-manual/SCREENSHOT_MANIFEST.md").read_text(encoding="utf-8")
+    captured_version = re.search(r"\*\*Application:\*\* DLMS (\d+\.\d+\.\d+)", manifest)
+    assert captured_version is not None
+    assert metadata["version"] == captured_version.group(1)
     assert metadata["theme"] == tool.THEME == "light"
     assert metadata["viewport"] == {"width": 1440, "height": 1000, "device_scale": 1}
     assert metadata["fixture_version"] == tool.FIXTURE_VERSION
@@ -60,3 +66,11 @@ def test_manual_capture_assets_and_sidecar_match_contract():
         assert record["status"] == "Captured"
         assert record["dimensions"] == "1440×1000"
         assert record["classification"] == item.classification
+
+
+def test_future_captures_read_the_current_application_version():
+    tool = _load_capture_tool()
+    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    version = re.search(r'^APP_VERSION = "([^"]+)"$', source, re.MULTILINE)
+    assert version is not None
+    assert tool._application_version() == version.group(1)

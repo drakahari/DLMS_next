@@ -8,16 +8,16 @@ manual.
 
 ## Current native package targets
 
-The DLMS 3.2.0 release process defines user packages for:
+The DLMS 3.2.1 release process defines user packages for:
 
 | Platform | Architecture | Canonical package name |
 | --- | --- | --- |
-| Fedora 44 | x86-64 | `DLMS-3.2.0-fedora44-x86_64.tar.gz` |
-| Ubuntu 24.04 | x86-64 | `DLMS-3.2.0-ubuntu24.04-x86_64.tar.gz` |
-| Ubuntu 26.04 | x86-64 | `DLMS-3.2.0-ubuntu26.04-x86_64.tar.gz` |
-| Omarchy Quattro | x86-64 | `DLMS-3.2.0-omarchy-quattro-x86_64.tar.gz` |
-| Windows 11 | x86-64 | `DLMS-3.2.0-windows11-x86_64.zip` |
-| macOS Apple Silicon | arm64 | `DLMS-3.2.0-macos-arm64.zip` |
+| Fedora 44 | x86-64 | `DLMS-3.2.1-fedora44-x86_64.tar.gz` |
+| Ubuntu 24.04 | x86-64 | `DLMS-3.2.1-ubuntu24.04-x86_64.tar.gz` |
+| Ubuntu 26.04 | x86-64 | `DLMS-3.2.1-ubuntu26.04-x86_64.tar.gz` |
+| Omarchy Quattro | x86-64 | `DLMS-3.2.1-omarchy-quattro-x86_64.tar.gz` |
+| Windows 11 | x86-64 | `DLMS-3.2.1-windows11-x86_64.zip` |
+| macOS Apple Silicon | arm64 | `DLMS-3.2.1-macos-arm64.zip` |
 
 Choose the package that matches the computer that will run DLMS. A package
 target identifies the environment in which the release is built and verified;

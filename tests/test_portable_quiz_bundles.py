@@ -199,7 +199,7 @@ class PortableQuizBundleTests(unittest.TestCase):
 
         self.assertEqual(1, len(single_manifest["quizzes"]))
         self.assertEqual(
-            {"application": "DLMS", "version": "3.2.0"},
+            {"application": "DLMS", "version": "3.2.1"},
             manifest["created_by"],
         )
         self.assertEqual("DLMS-Quiz-Bundle-", name[:17])

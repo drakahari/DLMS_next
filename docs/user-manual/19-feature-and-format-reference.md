@@ -58,7 +58,7 @@ complete DLMS backup or a universal import format.
 
 ## Input and creation limits
 
-The following limits are part of the current DLMS 3.2.0 user-facing contract.
+The following limits are part of the current DLMS 3.2.1 user-facing contract.
 They protect a local application from unexpectedly large or malformed input.
 
 | Workflow | Current limit or requirement |
@@ -152,7 +152,7 @@ For privacy implications, see [Privacy and Data Handling](appendix-privacy-and-d
 
 ## Native packages
 
-DLMS 3.2.0 is packaged for these targets:
+DLMS 3.2.1 is packaged for these targets:
 
 - Fedora 44 x86-64;
 - Ubuntu 24.04 x86-64;

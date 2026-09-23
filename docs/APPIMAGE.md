@@ -34,7 +34,7 @@ From the repository root, the exact evaluation command is:
 
 ```sh
 .venv-build/bin/python tools/build_appimage.py \
-  --target fedora44-x86_64 --expected-version 3.2.0 --candidate \
+  --target fedora44-x86_64 --expected-version 3.2.1 --candidate \
   --appimagetool build/appimage-tools/appimagetool-x86_64.AppImage \
   --appimagetool-sha256 a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0 \
   --runtime-file build/appimage-tools/runtime-x86_64 \
@@ -77,8 +77,8 @@ Run the additional real HTTP workflow probe against the resulting trusted image:
 
 ```sh
 .venv-build/bin/python tools/verify_appimage_runtime.py \
-  build/appimage-evaluation/fedora44-candidate/DLMS-3.2.0-fedora44-x86_64.AppImage \
-  --expected-version 3.2.0 --lan \
+  build/appimage-evaluation/fedora44-candidate/DLMS-3.2.1-fedora44-x86_64.AppImage \
+  --expected-version 3.2.1 --lan \
   --report build/appimage-evaluation/fedora44-candidate/runtime-uat.json
 ```
 
@@ -124,7 +124,15 @@ require a new filename/shortcut or shell refresh during evaluation. The browser
 window and console retain their host application's identity. macOS still requires
 its normal bundle/Finder/Dock smoke on a native rebuild.
 
-## Compatibility decision and remaining matrix
+## Compatibility decision and release-artifact acceptance matrix
+
+As reconciled on September 23, 2026, [DLMS-145 issue #4](https://github.com/drakahari/DLMS_next/issues/4)
+records DLMS-144 implementation, the Omarchy fix and prior cross-distribution
+validation as complete. Do not reopen that work. The matrix below must be
+recorded again against the exact frozen 3.2.1 AppImage if it is offered for
+release; previous candidate results do not accept a future artifact. Retain its
+source commit, image SHA-256, build baseline, per-host results and human review
+in the release handoff outside the frozen source tree.
 
 Keep AppImage **experimental/optional**. A Fedora-built payload retains its glibc
 and system-library baseline; the AppImage runtime does not make it runnable on
@@ -159,14 +167,14 @@ paths, is never changed. `BROWSER` overrides are tried before `xdg-open`,
 `gio open` and `sensible-browser`. Source runs, Windows and macOS retain their
 existing browser handling. See [PyInstaller's external-program guidance](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html#launching-external-programs-from-the-frozen-application).
 
-Rebuild on Ubuntu 24.04 using the build command above with
+For final-artifact acceptance, build on Ubuntu 24.04 using the command above with
 `--target ubuntu24.04-x86_64` and a **new** output directory, then transfer those
-exact new bytes to Omarchy and the other three distributions. Existing images
-do not contain the fix. With port 9001 free, retest on Omarchy:
+exact new bytes to Omarchy and the other three distributions. Images built before
+the fix do not contain it. With port 9001 free, test the final image on Omarchy:
 
 ```sh
-chmod +x ./DLMS-3.2.0-ubuntu24.04-x86_64.AppImage
-./DLMS-3.2.0-ubuntu24.04-x86_64.AppImage --browser
+chmod +x ./DLMS-3.2.1-ubuntu24.04-x86_64.AppImage
+./DLMS-3.2.1-ubuntu24.04-x86_64.AppImage --browser
 ```
 
 Confirm the actual default browser opens, no shell symbol errors appear, OCR
@@ -211,7 +219,9 @@ extraction/restart, host browser-library restoration, screenshot OCR, PDFium/OCR
 LAN browser suppression, shutdown policy and external data-root checks. Its
 `evaluation.json` and `runtime-uat.json` record the results. Browser dispatch uses
 a shell stub, not a real graphical browser; Ubuntu rebuild and Omarchy graphical
-acceptance remain required. No existing image was overwritten.
+acceptance were still required at the time of this historical record. The later
+completion is recorded in issue #4; final 3.2.1 artifact acceptance remains separate.
+No existing image was overwritten.
 
 References: [AppDir specification](https://docs.appimage.org/reference/appdir.html),
 [AppImage compatibility guidance](https://docs.appimage.org/introduction/concepts.html),

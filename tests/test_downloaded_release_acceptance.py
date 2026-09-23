@@ -37,7 +37,7 @@ def make_package(path, platform):
                 b"\xcf\xfa\xed\xfe" + struct.pack("<I", 0x0100000C) + b"\0" * 24, 0o755)
             add("DLMS.app/Contents/Resources/icon.icns", b"icon")
             add("DLMS.app/Contents/Info.plist", plistlib.dumps({
-                "CFBundleShortVersionString": "3.2.0", "CFBundleVersion": "3.2.0",
+                "CFBundleShortVersionString": "3.2.1", "CFBundleVersion": "3.2.1",
                 "CFBundleExecutable": "DLMS", "CFBundleIdentifier": "io.github.drakahari.DLMS",
             }))
         else:
@@ -51,7 +51,7 @@ def make_package(path, platform):
 
 @pytest.fixture(params=["windows11-x86_64", "macos-arm64"])
 def scenario(tool, tmp_path, monkeypatch, request):
-    asset = f"DLMS-3.2.0-{request.param}.zip"
+    asset = f"DLMS-3.2.1-{request.param}.zip"
     remote = tmp_path / "remote"
     remote.mkdir()
     make_package(remote / asset, request.param)
@@ -61,7 +61,7 @@ def scenario(tool, tmp_path, monkeypatch, request):
     manifest.write_text(f"{digest}  {asset}\n{'a' * 64}  another-package.zip\n")
 
     def source(repository, tag, destination):
-        (destination / "app.py").write_text('APP_VERSION = "3.2.0"\n')
+        (destination / "app.py").write_text('APP_VERSION = "3.2.1"\n')
         (destination / "release_assets").mkdir()
         for name in ("README.txt", "sample_quiz.txt"):
             (destination / "release_assets" / name).write_text(name)
@@ -74,7 +74,7 @@ def scenario(tool, tmp_path, monkeypatch, request):
 
     monkeypatch.setattr(tool, "tagged_source", source)
     monkeypatch.setattr(tool, "download", download)
-    args = SimpleNamespace(repo="drakahari/DLMS_next", tag="v3.2.0", asset=asset,
+    args = SimpleNamespace(repo="drakahari/DLMS_next", tag="v3.2.1", asset=asset,
                            source_root=ROOT, output_dir=tmp_path / "acceptance", smoke=False)
     return args, remote, calls
 
@@ -136,7 +136,7 @@ def test_native_smoke_is_composed_and_never_clears_manual_gate(tool, scenario, m
     calls = []
     def smoke(package, source):
         calls.append(package)
-        assert tool.release_version(source) == "3.2.0"
+        assert tool.release_version(source) == "3.2.1"
         return errors
     monkeypatch.setattr(tool, "clean_extract_and_smoke", smoke)
     record, _ = tool.accept(args)
@@ -168,7 +168,7 @@ def test_cli_status_and_output(tool, scenario, capsys):
 @pytest.mark.parametrize("field,value", [("repo", "--evil"), ("tag", "latest"),
                                          ("asset", "../escape.zip"), ("asset", "*.zip")])
 def test_argument_validation(tool, field, value):
-    values = dict(repo="owner/repo", tag="v3.2.0", asset="DLMS-3.2.0-macos-arm64.zip")
+    values = dict(repo="owner/repo", tag="v3.2.1", asset="DLMS-3.2.1-macos-arm64.zip")
     values[field] = value
     with pytest.raises(SystemExit) as error:
         tool.main([f"--{key}={value}" for key, value in values.items()])
@@ -181,9 +181,9 @@ def test_github_download_contract(tool, tmp_path, monkeypatch):
         calls.append((command, kwargs))
         (tmp_path / "SHA256SUMS.txt").write_text("download")
     monkeypatch.setattr(tool.subprocess, "run", run)
-    tool.download("owner/repo", "v3.2.0", "SHA256SUMS.txt", tmp_path)
+    tool.download("owner/repo", "v3.2.1", "SHA256SUMS.txt", tmp_path)
     command, options = calls[0]
-    assert command == ["gh", "release", "download", "v3.2.0", "--repo", "github.com/owner/repo",
+    assert command == ["gh", "release", "download", "v3.2.1", "--repo", "github.com/owner/repo",
                        "--pattern", "SHA256SUMS.txt", "--dir", str(tmp_path)]
     assert options["check"] is True and options["timeout"] == 600
     assert options["env"]["GH_HOST"] == "github.com"
@@ -192,7 +192,7 @@ def test_github_download_contract(tool, tmp_path, monkeypatch):
 def test_missing_download_despite_success(tool, tmp_path, monkeypatch):
     monkeypatch.setattr(tool.subprocess, "run", lambda *a, **kw: None)
     with pytest.raises(ValueError, match="did not produce"):
-        tool.download("owner/repo", "v3.2.0", "SHA256SUMS.txt", tmp_path)
+        tool.download("owner/repo", "v3.2.1", "SHA256SUMS.txt", tmp_path)
 
 
 def test_tagged_source_uses_immutable_commit(tool, tmp_path, monkeypatch):
@@ -201,10 +201,10 @@ def test_tagged_source_uses_immutable_commit(tool, tmp_path, monkeypatch):
         calls.append(command)
         if "rev-parse" in command:
             return "a" * 40 + "\n"
-        return b'APP_VERSION = "3.2.0"\n' if command[-1].endswith(":app.py") else b"support asset"
+        return b'APP_VERSION = "3.2.1"\n' if command[-1].endswith(":app.py") else b"support asset"
     monkeypatch.setattr(tool.subprocess, "check_output", git)
-    assert tool.tagged_source(ROOT, "v3.2.0", tmp_path) == "a" * 40
-    assert calls[0][-1] == "refs/tags/v3.2.0^{commit}"
+    assert tool.tagged_source(ROOT, "v3.2.1", tmp_path) == "a" * 40
+    assert calls[0][-1] == "refs/tags/v3.2.1^{commit}"
     assert all(call[-1].startswith("a" * 40 + ":") for call in calls[1:])
     assert (tmp_path / "release_assets/README.txt").read_bytes() == b"support asset"
 
