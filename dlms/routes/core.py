@@ -17,7 +17,6 @@ class CoreRouteDependencies:
     get_portal_title: Callable[[], str]
     content_pack_summary: Callable[[], list[dict[str, Any]]]
     load_portal_config: Callable[[], dict[str, Any]]
-    debug_print: Callable[..., None]
     app_data_dir: Callable[[], str]
     static_folder: Callable[[], str]
     default_theme: Callable[[], str]
@@ -123,10 +122,6 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
         This is the single source of truth for UI settings
         (title, background image, feature toggles).
         """
-        dependencies.debug_print(
-            "\n[PORTAL CONFIG] ===== SERVING /config/portal.json ====="
-        )
-
         cfg = dict(dependencies.load_portal_config())
         dependencies.browser_presence_setting_loaded(cfg)
 
@@ -138,11 +133,6 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
         )
         cfg["runtime_mode"] = (
             "local" if cfg["manual_shutdown_available"] else "lan_server"
-        )
-
-        dependencies.debug_print("[PORTAL CONFIG] Loaded config:", cfg)
-        dependencies.debug_print(
-            "[PORTAL CONFIG] ===== END SERVE =====\n"
         )
 
         return jsonify(cfg)

@@ -94,9 +94,7 @@ def _database_column_info(conn, table):
     return {row[1]: row for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()}
 
 
-def _create_current_database_schema(conn, init_sql_path, *, debug_print=None):
-    if debug_print is not None:
-        debug_print(f"[DB] init.sql path = {init_sql_path}")
+def _create_current_database_schema(conn, init_sql_path):
     with open(init_sql_path, "r", encoding="utf-8") as handle:
         sql = handle.read()
     # executescript commits any pending transaction before it starts. Prefixing

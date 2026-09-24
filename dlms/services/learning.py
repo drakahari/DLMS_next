@@ -148,7 +148,7 @@ def _concept_performance_trend(
     }
 
 
-def _learning_intelligence_topics(cur, now=None, *, scope=None):
+def _learning_intelligence_topics(cur, now=None, *, scope=None, answer_events=None):
     """Build explainable concept-level learning metrics for DLMS-008/009/010.
 
     Study responses are de-duplicated to the latest response for a question in a
@@ -200,7 +200,7 @@ def _learning_intelligence_topics(cur, now=None, *, scope=None):
             source_quiz_ids_by_concept.setdefault(concept_id, set()).add(row["quiz_id"])
 
     evidence_by_concept = {}
-    for row in _deduplicated_learning_answer_events(cur):
+    for row in answer_events if answer_events is not None else _deduplicated_learning_answer_events(cur):
         question = question_by_id.get(row["question_id"])
         if question is None:
             continue
@@ -413,8 +413,12 @@ def _learning_topics_with_retention(
     *,
     learning_intelligence_topics=_learning_intelligence_topics,
     retention_schedule_for_topic=_retention_schedule_for_topic,
+    answer_events=None,
 ):
-    topics = learning_intelligence_topics(cur, now=now)
+    if answer_events is None:
+        topics = learning_intelligence_topics(cur, now=now)
+    else:
+        topics = learning_intelligence_topics(cur, now=now, answer_events=answer_events)
     for topic in topics:
         topic.update(retention_schedule_for_topic(topic, now=now))
     return topics
@@ -515,7 +519,7 @@ def _native_question_schedule_entry(events, *, now):
     }
 
 
-def _native_spaced_repetition_schedule(cur, now=None, *, scope=None):
+def _native_spaced_repetition_schedule(cur, now=None, *, scope=None, answer_events=None):
     """Schedule canonical source questions from existing learning events."""
     now = now or datetime.now(timezone.utc)
     question_rows = cur.execute("""
@@ -559,7 +563,7 @@ def _native_spaced_repetition_schedule(cur, now=None, *, scope=None):
         for concept in concepts_by_question.get(row["id"], []):
             group["concepts"].setdefault(concept.casefold(), concept)
 
-    for event in _deduplicated_learning_answer_events(cur):
+    for event in answer_events if answer_events is not None else _deduplicated_learning_answer_events(cur):
         if scope is not None:
             question = question_by_id.get(event["question_id"])
             if question is None or not scope.allows_question(question):
@@ -646,11 +650,16 @@ def _review_schedule_payload(
     *,
     learning_topics_with_retention=_learning_topics_with_retention,
     native_question_schedule=None,
+    answer_events=None,
 ):
     if native_question_schedule is None:
         native_question_schedule = _native_spaced_repetition_schedule
-    topics = learning_topics_with_retention(cur, now=now)
-    question_schedule = native_question_schedule(cur, now=now)
+    if answer_events is None:
+        topics = learning_topics_with_retention(cur, now=now)
+        question_schedule = native_question_schedule(cur, now=now)
+    else:
+        topics = learning_topics_with_retention(cur, now=now, answer_events=answer_events)
+        question_schedule = native_question_schedule(cur, now=now, answer_events=answer_events)
     scheduled = [t for t in topics if t.get("evidence", 0) >= 3 and t.get("review_state") != "unscheduled"]
     due = [t for t in scheduled if t.get("review_state") in ("due", "overdue")]
     overdue = [t for t in scheduled if t.get("review_state") == "overdue"]
@@ -687,9 +696,13 @@ def _review_schedule_payload(
 
 
 def _learning_intelligence_payload(
-    cur, now=None, *, learning_topics_with_retention=_learning_topics_with_retention
+    cur, now=None, *, learning_topics_with_retention=_learning_topics_with_retention,
+    answer_events=None,
 ):
-    topics = learning_topics_with_retention(cur, now=now)
+    if answer_events is None:
+        topics = learning_topics_with_retention(cur, now=now)
+    else:
+        topics = learning_topics_with_retention(cur, now=now, answer_events=answer_events)
     evidenced = [t for t in topics if t["evidence"] > 0]
     measurable = [t for t in topics if t["evidence"] >= 3]
     weak = [t for t in topics if t["status"] == "weak"]
@@ -1064,6 +1077,7 @@ def _adaptive_study_candidates(
     *,
     learning_topics_with_retention=_learning_topics_with_retention,
     scope=None,
+    answer_events=None,
 ):
     """Rank canonical source questions for a deterministic adaptive session.
 
@@ -1075,7 +1089,10 @@ def _adaptive_study_candidates(
     not crowd out other useful material.
     """
     now = now or datetime.now(timezone.utc)
-    topics = learning_topics_with_retention(cur, now=now)
+    if answer_events is None:
+        topics = learning_topics_with_retention(cur, now=now)
+    else:
+        topics = learning_topics_with_retention(cur, now=now, answer_events=answer_events)
     topics_by_id = {topic["concept_id"]: topic for topic in topics}
 
     question_rows = cur.execute("""
@@ -1122,7 +1139,7 @@ def _adaptive_study_candidates(
         group["source_rows"].append(row)
         group["concept_ids"].update(concepts_by_question.get(row["id"], []))
 
-    for event in _deduplicated_learning_answer_events(cur):
+    for event in answer_events if answer_events is not None else _deduplicated_learning_answer_events(cur):
         if scope is not None:
             question = question_by_id.get(event["question_id"])
             if question is None or not scope.allows_question(question):
@@ -1335,6 +1352,21 @@ def _daily_review_plan(
     scope=None,
 ):
     """Compatibility boundary for callers of the original learning service."""
+    # The three canonical signals consume the same immutable answer snapshot.
+    # Keep injected test/custom providers on their original call contract.
+    if (review_schedule_payload is _review_schedule_payload
+            and learning_intelligence_payload is _learning_intelligence_payload
+            and adaptive_study_candidates is _adaptive_study_candidates):
+        events = _deduplicated_learning_answer_events(cur)
+        review_schedule_payload = lambda cursor, now=None: _review_schedule_payload(
+            cursor, now=now, answer_events=events)
+        learning_intelligence_payload = lambda cursor, now=None: _learning_intelligence_payload(
+            cursor, now=now, answer_events=events)
+        adaptive_study_candidates = lambda cursor, now=None: _adaptive_study_candidates(
+            cursor, now=now, answer_events=events)
+        learning_answer_events = lambda cursor: events
+    else:
+        learning_answer_events = _deduplicated_learning_answer_events
     return build_daily_review_plan(
         cur,
         registry=registry,
@@ -1343,7 +1375,7 @@ def _daily_review_plan(
         review_schedule_payload=review_schedule_payload,
         learning_intelligence_payload=learning_intelligence_payload,
         adaptive_study_candidates=adaptive_study_candidates,
-        learning_answer_events=_deduplicated_learning_answer_events,
+        learning_answer_events=learning_answer_events,
         parse_datetime=_parse_learning_datetime,
         due_batch_size=due_batch_size,
         scope=scope,

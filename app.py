@@ -353,7 +353,12 @@ csrf = CSRFProtect()
 
 
 def _is_json_request():
-    return request.is_json or request.path.startswith("/api/") or request.accept_mimetypes.best == "application/json"
+    accepts = request.accept_mimetypes
+    return (
+        request.is_json
+        or request.path.startswith("/api/")
+        or accepts["application/json"] > accepts["text/html"]
+    )
 
 
 def _csrf_failure(message, status=400):
@@ -537,10 +542,6 @@ def dlms_request_too_large(_error):
 
 
 
-# DEBUG - retained for troubleshooting static-file path issues
-# print("[DEBUG] Flask static folder =", app.static_folder)
-# DEBUG - retained for troubleshooting packaged/dev data-directory issues
-# print("[BUILD CHECK] APP_DATA_DIR =", APP_DATA_DIR)
 
 
 
@@ -550,15 +551,6 @@ def dlms_request_too_large(_error):
 
 
 
-DEBUG_LOGS = False
-
-def dprint(*args, **kwargs):
-    if DEBUG_LOGS:
-        print(*args, **kwargs)
-
-#dprint("DEBUG TEST — YOU SHOULD NOT SEE THIS")
-# DEBUG - retained for troubleshooting static-file path issues
-# print("[DEBUG] Flask static folder =", app.static_folder)
 
 
 
@@ -568,8 +560,6 @@ def dprint(*args, **kwargs):
 # =========================
 IS_BUNDLED = hasattr(sys, "_MEIPASS")
 
-# DEBUG - retained for troubleshooting packaged/dev data-directory issues
-# print("[BUILD CHECK] APP_DATA_DIR =", APP_DATA_DIR)
 
 
 
@@ -1783,7 +1773,6 @@ def _create_current_database_schema(conn):
     return _database._create_current_database_schema(
         conn,
         init_sql_path,
-        debug_print=dprint,
     )
 
 
@@ -1863,7 +1852,6 @@ def bootstrap_database(db_path=None, *, require_owned_root=True):
 
 def ensure_db_initialized():
     """Compatibility wrapper for startup, reset, and tests that rebind DB_PATH."""
-    dprint(f"[DB] ensure_db_initialized using DB_PATH = {DB_PATH}")
     return bootstrap_database(DB_PATH)
 
 
@@ -3119,7 +3107,6 @@ app.register_blueprint(create_core_blueprint(CoreRouteDependencies(
     get_portal_title=lambda: get_portal_title(),
     content_pack_summary=lambda: content_pack_summary(),
     load_portal_config=lambda: load_portal_config(),
-    debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
     app_data_dir=lambda: APP_DATA_DIR,
     static_folder=lambda: app.static_folder,
     default_theme=lambda: DEFAULT_THEME,
@@ -5809,14 +5796,11 @@ def _format_anki_missed_tsv(rows):
 # =========================
 # ROBUST PARSER + LOGGING
 # =========================
-DEBUG_PARSE = True
 PARSE_LOG = []
 
 
 def dbg(*msg):
     text = " ".join(str(m) for m in msg)
-    if DEBUG_PARSE:
-        dprint("[PARSE]", text)
     PARSE_LOG.append(text)
 
 
@@ -5876,7 +5860,6 @@ def build_quiz_html(name, jsonfile, outpath, portal_title, quiz_title, logo_file
 # DATABASE HELPERS
 # =========================
 def get_db():
-    dprint(f"[DB] get_db using DB_PATH = {DB_PATH}")
     return _database.get_db(DB_PATH, sqlite_module=sqlite3)
 
 
@@ -6520,8 +6503,6 @@ app.register_blueprint(create_admin_images_blueprint(AdminImageRouteDependencies
 app.register_blueprint(create_quiz_blueprint(
     QuizLibraryDependencies(
         app_version=lambda: APP_VERSION,
-        logo_folder=lambda: LOGO_FOLDER,
-        quiz_registry_path=lambda: QUIZ_REGISTRY,
         registry_lock=lambda: registry_lock,
         load_registry=lambda: load_registry(),
         save_registry=lambda registry: save_registry(registry),
@@ -6541,7 +6522,6 @@ app.register_blueprint(create_quiz_blueprint(
         ),
         get_portal_title=lambda: get_portal_title(),
         resolve_logo_filename=lambda filename: resolve_logo_filename(filename),
-        debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
         get_db=lambda: get_db(),
         mixed_quiz_catalog=lambda cur, registry: (
             _quiz_composition_service.build_mixed_quiz_catalog(cur, registry)
@@ -6612,7 +6592,6 @@ app.register_blueprint(create_quiz_blueprint(
         get_confidence_setting=lambda: get_confidence_setting(),
         analyze_confidence=lambda text: analyze_confidence(text),
         parse_questions=lambda source: parse_questions(source),
-        debug_print=lambda *args, **kwargs: dprint(*args, **kwargs),
     ),
     QuizBundleDependencies(
         app_version=lambda: APP_VERSION,

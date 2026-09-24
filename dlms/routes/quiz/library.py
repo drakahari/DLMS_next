@@ -641,8 +641,6 @@ def export_single_quiz_txt(dependencies, quiz_id):
 
 def quiz_library(dependencies):
     APP_VERSION = dependencies.app_version()
-    LOGO_FOLDER = dependencies.logo_folder()
-    QUIZ_REGISTRY = dependencies.quiz_registry_path()
     registry_lock = dependencies.registry_lock()
     load_registry = dependencies.load_registry
     normalize_quiz_folders = dependencies.normalize_quiz_folders
@@ -651,31 +649,12 @@ def quiz_library(dependencies):
     get_hidden_quiz_folders = dependencies.get_hidden_quiz_folders
     get_portal_title = dependencies.get_portal_title
     resolve_logo_filename = dependencies.resolve_logo_filename
-    dprint = dependencies.debug_print
 
     with registry_lock:
         registry = normalize_quiz_folders(load_registry())
         configured_folders = get_quiz_folders()
         identity = build_folder_identity(configured_folders, registry)
         hidden_folder_names = get_hidden_quiz_folders(configured_folders)
-
-    dprint("[REGISTRY DEBUG] Using registry file:", QUIZ_REGISTRY)
-    dprint("[REGISTRY DEBUG] Registry size:", len(registry))
-    dprint("[REGISTRY DEBUG] Registry entries:", [
-        {
-            "id": q.get("id"),
-            "title": q.get("title"),
-            "html": q.get("html"),
-            "hidden": q.get("hidden", False),
-        }
-        for q in registry
-    ])
-
-    for q in registry:
-        logo = q.get("logo")
-        if logo:
-            path = os.path.join(LOGO_FOLDER, logo)
-            dprint("[DEBUG] Logo check:", logo, "exists =", os.path.exists(path), "path =", path)
 
     portal_title = get_portal_title()
 

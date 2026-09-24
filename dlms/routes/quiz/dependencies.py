@@ -11,8 +11,6 @@ Dependency = Callable[..., Any]
 @dataclass(frozen=True)
 class QuizLibraryDependencies:
     app_version: Dependency
-    logo_folder: Dependency
-    quiz_registry_path: Dependency
     registry_lock: Dependency
     load_registry: Dependency
     save_registry: Dependency
@@ -26,7 +24,6 @@ class QuizLibraryDependencies:
     delete_quiz_folder_metadata: Dependency
     get_portal_title: Dependency
     resolve_logo_filename: Dependency
-    debug_print: Dependency
     get_db: Dependency
     mixed_quiz_catalog: Dependency
     mixed_quiz_filter_options: Dependency
@@ -99,4 +96,3 @@ class QuizAuthoringDependencies:
     get_confidence_setting: Dependency
     analyze_confidence: Dependency
     parse_questions: Dependency
-    debug_print: Dependency

@@ -65,13 +65,13 @@ class QuizBlueprintTests(unittest.TestCase):
         "quiz.cancel_portable_quiz_bundle": ("/quiz-bundles/import/<token>/cancel", {"POST"}),
     }
     LIBRARY_DEPENDENCIES = {
-        "app_version", "logo_folder", "quiz_registry_path", "registry_lock",
+        "app_version", "registry_lock",
         "load_registry", "save_registry", "normalize_quiz_folders",
         "build_quiz_folder_identity", "get_quiz_folders",
         "save_quiz_folders", "get_hidden_quiz_folders",
         "save_quiz_folder_state", "rename_quiz_folder_metadata",
         "delete_quiz_folder_metadata", "get_portal_title",
-        "resolve_logo_filename", "debug_print", "get_db",
+        "resolve_logo_filename", "get_db",
         "mixed_quiz_catalog", "mixed_quiz_filter_options",
         "quiz_duplicate_report", "quiz_smart_views",
         "question_payload_from_db", "publish_quiz",
@@ -95,7 +95,6 @@ class QuizBlueprintTests(unittest.TestCase):
         "publish_quiz", "read_bounded_upload", "normalize_exam_minutes",
         "finalize_logo_from_request", "save_preview_logo",
         "get_confidence_setting", "analyze_confidence", "parse_questions",
-        "debug_print",
     }
     BUNDLE_DEPENDENCIES = {
         "app_version", "get_portal_title", "get_db", "load_registry",

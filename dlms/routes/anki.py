@@ -578,7 +578,6 @@ def export_anki_missed_tsv(dependencies):
     )
 
     if not attempt_id or not attempt_qnums:
-        print("[ANKI DEBUG] raw payload:", data)
         return {"error": "Missing attempt_id or attempt_question_numbers"}, 400
 
     attempt_qnums = [

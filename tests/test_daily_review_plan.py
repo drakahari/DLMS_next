@@ -34,6 +34,54 @@ class DailyReviewPlanTests(unittest.TestCase):
         dlms.ensure_db_initialized()
         self.now = datetime(2026, 9, 12, 12, 0, tzinfo=timezone.utc)
 
+    def test_default_plan_reuses_events_without_changing_results(self):
+        quiz_id = seed_current_quiz(dlms.get_db, "Snapshot test", "snapshot-test.txt", [{
+            "number": 1,
+            "question": "Which answer?",
+            "choices": [
+                {"label": "A", "text": "Correct", "is_correct": True},
+                {"label": "B", "text": "Wrong", "is_correct": False},
+            ],
+            "concepts": ["Snapshot concept"],
+        }])
+        conn = dlms.get_db()
+        cur = conn.cursor()
+        question_id = cur.execute("SELECT id FROM questions WHERE quiz_id=?", (quiz_id,)).fetchone()[0]
+        for session, correct in [("one", False), ("one", True), ("two", False)]:
+            dlms._record_learning_event(cur, event_type="study_answer", quiz_id=quiz_id,
+                                        question_id=question_id, session_id=session,
+                                        mode="Study", was_correct=correct)
+        dlms._record_learning_event(cur, event_type="exam_answer", quiz_id=quiz_id,
+                                    question_id=question_id, attempt_id="exam-one",
+                                    mode="Exam", was_correct=True)
+        conn.commit()
+        event_reads = []
+
+        def count_reads(sql):
+            if "FROM learning_events" in sql:
+                event_reads.append(sql)
+
+        try:
+            conn.set_trace_callback(count_reads)
+            registry = [{"id": str(quiz_id), "html": "snapshot-test.html",
+                         "title": "Snapshot test", "source_pack_id": "pack-a"}]
+            for packs, expected_old_reads in [([], 5), ([{"id": "pack-a", "name": "Pack A"}], 6)]:
+                event_reads.clear()
+                shared = dlms._learning_service._daily_review_plan(
+                    cur, registry=registry, installed_content_packs=packs, now=self.now)
+                self.assertEqual(len(event_reads), 1)
+                event_reads.clear()
+                old_composition = dlms._learning_service._daily_review_plan(
+                    cur, registry=registry, installed_content_packs=packs, now=self.now,
+                    review_schedule_payload=lambda cursor, now=None: dlms._learning_service._review_schedule_payload(cursor, now=now),
+                    learning_intelligence_payload=lambda cursor, now=None: dlms._learning_service._learning_intelligence_payload(cursor, now=now),
+                    adaptive_study_candidates=lambda cursor, now=None: dlms._learning_service._adaptive_study_candidates(cursor, now=now))
+                self.assertEqual(len(event_reads), expected_old_reads)
+                self.assertEqual(shared, old_composition)
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
     @staticmethod
     def _schedule(questions=None):
         return {

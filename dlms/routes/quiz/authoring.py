@@ -681,7 +681,6 @@ def process_paste(dependencies):
     normalize_exam_minutes = dependencies.normalize_exam_minutes
     finalize_logo_from_request = dependencies.finalize_logo_from_request
     parse_questions = dependencies.parse_questions
-    dprint = dependencies.debug_print
 
     #cleanup_temp_logos()   # 🧹 clean abandoned logos again
 
@@ -791,7 +790,6 @@ def process_paste(dependencies):
     if logo_filename:
         final_logo_path = os.path.join(LOGO_FOLDER, logo_filename)
         if not os.path.exists(final_logo_path):
-            dprint("[LOGO FIX] Prevented registering missing logo:", logo_filename)
             logo_filename = None
 
     #add_quiz_to_registry(html_name, quiz_title, logo_filename)
@@ -808,7 +806,6 @@ def process_file(dependencies):
     normalize_exam_minutes = dependencies.normalize_exam_minutes
     finalize_logo_from_request = dependencies.finalize_logo_from_request
     parse_questions = dependencies.parse_questions
-    dprint = dependencies.debug_print
 
     #cleanup_temp_logos()  # 🧹 clean abandoned logos
     file = request.files.get("file")
@@ -866,19 +863,6 @@ def process_file(dependencies):
 
     if not quiz_data:
         return render_template("quiz/parse-failed.html", log_filename=log_filename), 400
-
-    print("UPLOAD MODE FINAL PARSE COUNT:", len(quiz_data))
-
-    # =========================
-    # PARSE DIAGNOSTICS (TEMP)
-    # =========================
-    for i, q in enumerate(quiz_data, 1):
-        choices = q.get("choices", [])
-        has_correct = any(c.get("is_correct") for c in choices)
-
-        if not choices or not has_correct:
-            dprint(f"[PARSE WARNING] Q{i} missing choices or correct answer")
-
 
     # =========================
     # HANDLE LOGO (FINAL, SINGLE SOURCE OF TRUTH)

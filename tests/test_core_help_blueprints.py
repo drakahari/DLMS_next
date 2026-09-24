@@ -46,7 +46,6 @@ class CoreHelpBlueprintTests(unittest.TestCase):
         "get_portal_title",
         "content_pack_summary",
         "load_portal_config",
-        "debug_print",
         "app_data_dir",
         "static_folder",
         "default_theme",
