@@ -43,26 +43,128 @@ pytestmark = [
 
 def test_local_feature_icons_render_and_follow_each_theme(browser_stack):
     browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/settings/appearance")
+    browser.wait_for_page_ready()
+    exposed_themes = browser.evaluate("[...document.querySelectorAll('input[name=\"theme\"]')].map(input => input.value)")
+    assert set(exposed_themes) == {"light", "dark", "purple-gold", "maroon-gold"}
     browser.navigate(browser_stack.base_url + "/")
+    feature_accents = {
+        "/": "blue", "/library": "blue", "/study-packs": "blue",
+        "/it": "blue", "/settings": "blue", "/upload": "orange",
+        "/anki": "orange", "/law": "green", "/admin/image-editor": "green",
+        "/medical": "cyan", "/dashboard": "cyan", "/content-packs": "cyan",
+        "/study-packs?domain_group=other": "purple", "/history": "purple",
+        "/learning-intelligence": "purple",
+    }
     colors = {}
     for theme in ("light", "dark", "purple-gold", "maroon-gold"):
         _set_theme(browser, theme)
         browser.navigate(browser_stack.base_url + "/")
         browser.wait_for_page_ready()
-        snapshot = browser.evaluate("(() => {"
-            "const nav=document.querySelector('.dashboard-nav-item[href=\"/settings\"] .dashboard-nav-icon');"
-            "const card=document.querySelector('.dashboard-action-card[href=\"/settings\"] .dlms-icon');"
-            "const inspect=svg=>({href:svg.querySelector('use').getAttribute('href'),"
-            "painted:svg.querySelector('use').getBBox().width>0,"
-            "hidden:svg.getAttribute('aria-hidden'),color:getComputedStyle(svg).color});"
-            "return {nav:inspect(nav),card:inspect(card),label:nav.parentElement.textContent.trim()};"
-            "})()")
-        assert snapshot["nav"]["href"] == "/static/icons.svg#settings"
-        assert snapshot["card"]["href"] == snapshot["nav"]["href"]
-        assert snapshot["nav"]["painted"] and snapshot["card"]["painted"]
-        assert snapshot["nav"]["hidden"] == snapshot["card"]["hidden"] == "true"
-        assert snapshot["label"] == "Settings"
-        colors[theme] = snapshot["card"]["color"]
+        browser.wait_for("document.querySelector('.dashboard-nav-item[data-nav-key=\"medical\"]')")
+        snapshot = browser.evaluate(r"""(() => {
+            const expected = __EXPECTED__;
+            const root = getComputedStyle(document.documentElement);
+            const parseColor = value => {
+                const probe = document.createElement('span');
+                probe.style.color = value;
+                document.body.append(probe);
+                const parts = getComputedStyle(probe).color.match(/[\d.]+/g).map(Number);
+                probe.remove();
+                return [parts[0], parts[1], parts[2], parts[3] ?? 1];
+            };
+            const over = (top, bottom) => top.slice(0, 3).map((part, i) =>
+                part * top[3] + bottom[i] * (1 - top[3]));
+            const body = parseColor(root.getPropertyValue('--theme-body-base'));
+            const backgrounds = ['--theme-sidebar-1', '--theme-sidebar-2'].map(token =>
+                over(parseColor(root.getPropertyValue(token)), body));
+            const luminance = rgb => rgb.slice(0, 3).map(value => {
+                value /= 255;
+                return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+            }).reduce((sum, part, i) => sum + part * [.2126, .7152, .0722][i], 0);
+            const contrast = (a, b) => {
+                const values = [luminance(a), luminance(b)].sort((x, y) => y - x);
+                return (values[0] + .05) / (values[1] + .05);
+            };
+            const sample = token => {
+                const probe = document.createElement('span');
+                probe.style.color = `var(--${token})`;
+                document.body.append(probe);
+                const color = getComputedStyle(probe).color;
+                probe.remove();
+                return color;
+            };
+            const tokens = Object.fromEntries(['blue','orange','green','cyan','purple']
+                .map(family => [family, sample(`icon-${family}`)]));
+            const inspect = svg => ({
+                href: svg.querySelector('use').getAttribute('href'),
+                painted: svg.querySelector('use').getBBox().width > 0,
+                hidden: svg.getAttribute('aria-hidden'),
+                focusable: svg.getAttribute('focusable'),
+                color: getComputedStyle(svg).color,
+            });
+            const features = Object.fromEntries(Object.entries(expected).map(([href, family]) => {
+                const link = [...document.querySelectorAll('.dashboard-nav-item')]
+                    .find(item => item.getAttribute('href') === href);
+                const nav = inspect(link.querySelector('.dashboard-nav-icon'));
+                const card = [...document.querySelectorAll('.dashboard-action-card')]
+                    .find(item => item.getAttribute('href') === href);
+                const cardIcon = card && inspect(card.querySelector('.dlms-icon'));
+                const normal = nav.color;
+                link.classList.add('active');
+                const active = getComputedStyle(link.querySelector('.dashboard-nav-icon')).color;
+                link.classList.remove('active');
+                const minContrast = Math.min(...backgrounds.map(background =>
+                    contrast(parseColor(normal), background)));
+                return [href, {family, nav, card: cardIcon, active, minContrast,
+                    labelColor: getComputedStyle(link.querySelector('span')).color,
+                    label: link.textContent.trim()}];
+            }));
+            const help = document.querySelector('.dashboard-nav-item[href="/help"]');
+            return {tokens, features, helpColor:getComputedStyle(help.querySelector('svg')).color,
+                neutral:sample('theme-nav-muted')};
+        })()""".replace("__EXPECTED__", json.dumps(feature_accents)))
+        for href, family in feature_accents.items():
+            feature = snapshot["features"][href]
+            assert feature["nav"]["href"].startswith("/static/icons.svg#"), (theme, href, feature)
+            assert feature["nav"]["painted"], (theme, href, feature)
+            assert feature["nav"]["hidden"] == "true", (theme, href, feature)
+            assert feature["nav"]["focusable"] == "false", (theme, href, feature)
+            assert feature["nav"]["color"] == snapshot["tokens"][family], (theme, href, feature)
+            assert feature["active"] == feature["nav"]["color"], (theme, href, feature)
+            assert feature["minContrast"] >= 3, (theme, href, feature)
+            assert feature["labelColor"] != feature["nav"]["color"], (theme, href, feature)
+            if feature["card"]:
+                assert feature["card"]["href"] == feature["nav"]["href"], (theme, href)
+                assert feature["card"]["color"] == feature["nav"]["color"], (theme, href)
+                assert feature["card"]["painted"] and feature["card"]["hidden"] == "true"
+        assert snapshot["features"]["/settings"]["label"] == "Settings"
+        assert snapshot["helpColor"] == snapshot["neutral"], (theme, snapshot["helpColor"])
+        colors[theme] = snapshot["features"]["/settings"]["nav"]["color"]
+
+        point = browser.evaluate("(() => {const link=document.querySelector('.dashboard-nav-item[href=\"/settings\"]');"
+            "link.scrollIntoView({block:'center'}); const box=link.getBoundingClientRect();"
+            "return [Math.round(box.left+box.width/2),Math.round(box.top+box.height/2)];})()")
+        browser.command("input.performActions", {"context": browser.context, "actions": [{
+            "type": "pointer", "id": "icon-theme-mouse", "parameters": {"pointerType": "mouse"},
+            "actions": [{"type": "pointerMove", "x": point[0], "y": point[1],
+                         "duration": 0, "origin": "viewport"}],
+        }]})
+        hovered = browser.evaluate("(() => {const link=document.querySelector('.dashboard-nav-item[href=\"/settings\"]');"
+            "return {hover:link.matches(':hover'), color:getComputedStyle(link.querySelector('svg')).color};})()")
+        browser.command("input.releaseActions", {"context": browser.context})
+        assert hovered == {"hover": True, "color": colors[theme]}, (theme, hovered)
+
+        browser.evaluate("document.querySelector('.dashboard-nav-item[href=\"/settings\"]').focus(); true")
+        browser.press_key("\ue004")  # Tab to Content Packs using real keyboard input.
+        browser.press_key("\ue004")  # Continue to Image Study Editor.
+        focus = browser.evaluate("(() => {const link=document.activeElement;"
+            "return {href:link.getAttribute('href'), className:link.className,"
+            "color:getComputedStyle(link.querySelector('svg')).color};})()")
+        assert focus["href"] == "/admin/image-editor", (theme, focus)
+        assert focus["className"] == "dashboard-nav-item", (theme, focus)
+        assert focus["color"] == snapshot["tokens"]["green"], (theme, focus)
+
         browser.navigate(browser_stack.base_url + "/settings")
         browser.wait_for_page_ready()
         assert browser.evaluate("(() => {"

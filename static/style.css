@@ -11808,9 +11808,15 @@ a:hover,a:active { color: var(--theme-link-hover, #9bd2ff); }
     color:var(--theme-page-text,#eaf2ff);
 }
 .dashboard-nav-item { color:var(--theme-nav-text,#e8f2ff); }
-.dashboard-nav-icon,.dashboard-action-arrow { color:var(--theme-nav-muted,#cde6ff); }
-.dashboard-nav-item:hover .dashboard-nav-icon,
-.dashboard-nav-item.active .dashboard-nav-icon { color:var(--theme-accent-text,#78bfff); }
+/* Match feature icons to the dashboard's theme-aware accent families. The
+   color belongs to the SVG only; navigation labels keep their own states. */
+.dashboard-nav-item:is([href="/"],[href="/library"],[href="/study-packs"],[href="/it"],[href="/settings"]) { --nav-icon-accent:var(--icon-blue); }
+.dashboard-nav-item:is([href="/upload"],[href="/anki"]) { --nav-icon-accent:var(--icon-orange); }
+.dashboard-nav-item:is([href="/law"],[href="/admin/image-editor"]) { --nav-icon-accent:var(--icon-green); }
+.dashboard-nav-item:is([href="/medical"],[href="/dashboard"],[href="/content-packs"]) { --nav-icon-accent:var(--icon-cyan); }
+.dashboard-nav-item:is([href="/study-packs?domain_group=other"],[href="/history"],[href="/learning-intelligence"]) { --nav-icon-accent:var(--icon-purple); }
+.dashboard-nav-icon { color:var(--nav-icon-accent,var(--theme-nav-muted,#cde6ff)); }
+.dashboard-action-arrow { color:var(--theme-nav-muted,#cde6ff); }
 .dashboard-nav-item:hover { background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 18%,var(--theme-surface,transparent)); border-color:var(--theme-border-soft); color:var(--theme-heading,#fff); }
 .dashboard-nav-item.active { background:linear-gradient(90deg,color-mix(in srgb,var(--theme-accent,#1b9ff2) 32%,transparent),color-mix(in srgb,var(--theme-accent-3,#0f6fb3) 26%,transparent)); border-color:var(--theme-accent,#1b9ff2); }
 .dashboard-nav-section-label,.settings-eyebrow,.build-eyebrow,.medical-eyebrow,.learning-diagnostics-page .build-eyebrow { color:var(--theme-accent,#1b9ff2); }

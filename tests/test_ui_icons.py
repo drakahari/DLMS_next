@@ -130,8 +130,37 @@ class UiIconTests(unittest.TestCase):
         self.assertIn("--icon-orange: light-dark(", css)
         self.assertIn("--icon-purple: light-dark(", css)
         self.assertIn("--icon-cyan: light-dark(", css)
-        self.assertIn(".dashboard-nav-icon,.dashboard-action-arrow { color:var(--theme-nav-muted", css)
-        self.assertIn(".dashboard-nav-item.active .dashboard-nav-icon { color:var(--theme-accent-text", css)
+        self.assertIn(".dashboard-nav-icon { color:var(--nav-icon-accent,var(--theme-nav-muted", css)
+        self.assertNotRegex(css, r"\.dashboard-nav-item(?:\.active|:hover) \.dashboard-nav-icon\s*\{\s*color:")
+
+        accents = {}
+        for selectors, accent in re.findall(
+            r"\.dashboard-nav-item:is\(([^{}]+)\) \{ --nav-icon-accent:var\(--icon-(\w+)\); \}",
+            css,
+        ):
+            for href in re.findall(r'\[href="([^"]+)"\]', selectors):
+                self.assertNotIn(href, accents)
+                accents[href] = accent
+        self.assertEqual(accents, {
+            "/": "blue", "/library": "blue", "/study-packs": "blue",
+            "/it": "blue", "/settings": "blue", "/upload": "orange",
+            "/anki": "orange", "/law": "green", "/admin/image-editor": "green",
+            "/medical": "cyan", "/dashboard": "cyan", "/content-packs": "cyan",
+            "/study-packs?domain_group=other": "purple", "/history": "purple",
+            "/learning-intelligence": "purple",
+        })
+        # Utility Help deliberately uses the neutral navigation token.
+        self.assertNotIn("/help", accents)
+        page = dlms.app.test_client().get("/").get_data(as_text=True)
+        for href in ("/library", "/upload", "/study-packs", "/it", "/law",
+                     "/medical", "/history", "/dashboard", "/settings"):
+            with self.subTest(href=href):
+                self.assertRegex(
+                    page,
+                    r'<a class="dashboard-action-card" href="' + re.escape(href)
+                    + r'">\s*<div class="dashboard-action-icon icon-'
+                    + accents[href] + r'"',
+                )
 
 
 if __name__ == "__main__":
