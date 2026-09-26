@@ -13,19 +13,19 @@
 <aside class="dashboard-sidebar" id="dashboardSidebar">
     <div class="dashboard-brand"><div class="dashboard-brand-mark">AI</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
     <nav class="dashboard-nav">
-        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
-        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
-        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
-        <a class="dashboard-nav-item active" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
-        {% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>{% endif %}
-        <a class="dashboard-nav-item" href="/admin/image-editor"><span class="dashboard-nav-icon">◎</span><span>Image Study Editor</span></a>
+        <a class="dashboard-nav-item" href="/"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg><span>Build Quiz</span></a>
+        <a class="dashboard-nav-item active" href="/study-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg><span>Study Packs</span></a>
+        {% if medical_pack_installed %}<a class="dashboard-nav-item" href="/medical"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg><span>Medical Study</span></a>{% endif %}
+        <a class="dashboard-nav-item" href="/admin/image-editor"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#image"></use></svg><span>Image Study Editor</span></a>
     </nav>
     <div class="dashboard-sidebar-version">AI Study Pack Builder</div>
 </aside>
 
 <main class="dashboard-main medical-main">
     <header class="dashboard-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
             <div class="medical-eyebrow">ANY SUBJECT · CUSTOM CONTENT</div>
             <h1>AI Study Pack Builder</h1>

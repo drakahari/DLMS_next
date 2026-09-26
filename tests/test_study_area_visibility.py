@@ -96,7 +96,7 @@ class StudyAreaVisibilityTests(unittest.TestCase):
         self.assertEqual(4, page.count('class="settings-toggle-row"'))
         self.assertEqual(4, page.count('type="checkbox" name="study_area_'))
         self.assertIn(
-            '<button type="submit" class="settings-primary-button">💾 Save Navigation</button>',
+            '<button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Navigation</button>',
             page,
         )
         self.assertIn('aria-label="Toggle navigation"', page)
@@ -131,13 +131,13 @@ class StudyAreaVisibilityTests(unittest.TestCase):
         # The shared sidebar is mounted once. Configuration then changes only
         # the visibility of its optional study-area links, avoiding a second
         # asynchronous DOM replacement and the resulting layout shift.
-        self.assertIn("item('it','/it','⌘','IT Study')", source)
-        self.assertIn("item('law','/law','⚖','Law Study')", source)
-        self.assertIn("item('medical','/medical','✚','Medical Study')", source)
-        self.assertIn("item('other','/study-packs?domain_group=other','◇','Other Studies')", source)
+        self.assertIn("item('it','/it','it','IT Study')", source)
+        self.assertIn("item('law','/law','law','Law Study')", source)
+        self.assertIn("item('medical','/medical','medical','Medical Study')", source)
+        self.assertIn("item('other','/study-packs?domain_group=other','other','Other Studies')", source)
         self.assertIn("if (navItem) navItem.hidden = !visible", source)
-        self.assertIn("item('study','/study-packs','▣','Study Packs')", source)
-        self.assertIn("item('settings','/settings','⚙','Settings')", source)
+        self.assertIn("item('study','/study-packs','study','Study Packs')", source)
+        self.assertIn("item('settings','/settings','settings','Settings')", source)
 
         css = Path(dlms.STATIC_ROOT, "style.css").read_text(encoding="utf-8")
         self.assertRegex(

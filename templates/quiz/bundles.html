@@ -12,21 +12,21 @@
     <aside class="dashboard-sidebar" id="dashboardSidebar">
         <div class="dashboard-brand"><div class="dashboard-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5 12 3l8 2.5v5.7c0 4.9-3.3 8.1-8 9.8-4.7-1.7-8-4.9-8-9.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m8 12 2.3-2.4 2.1 2.1L16 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
         <nav class="dashboard-nav" aria-label="Primary navigation">
-            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
-            <a class="dashboard-nav-item active" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
-            <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
-            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
-            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
-            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <a class="dashboard-nav-item" href="/"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg><span>Dashboard</span></a>
+            <a class="dashboard-nav-item active" href="/library"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item" href="/upload"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/history"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg><span>Analytics</span></a>
         </nav>
         <div class="dashboard-nav-section-label"><span>System</span></div>
-        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation"><a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a><a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a></nav>
-        <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button>
+        <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation"><a class="dashboard-nav-item" href="/settings"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg><span>Settings</span></a><a class="dashboard-nav-item" href="/help"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#help"></use></svg><span>Help</span></a></nav>
+        <button class="dashboard-shutdown" id="shutdownBtn" type="button"><svg class="dlms-icon dashboard-shutdown-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#power"></use></svg><span>Shutdown DLMS</span></button>
         <div class="dashboard-sidebar-version">DLMS v{{ app_version }}</div>
     </aside>
 
     <main class="dashboard-main portable-bundle-main">
-        <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><h1>Portable Quiz Bundles</h1><p>Quiz Library <span>•</span> Export <span>•</span> Validate <span>•</span> Import</p></div></header>
+        <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button><div><h1>Portable Quiz Bundles</h1><p>Quiz Library <span>•</span> Export <span>•</span> Validate <span>•</span> Import</p></div></header>
 
         <section class="dashboard-panel portable-bundle-intro">
             <div><span class="library-eyebrow">CURATED QUIZ PORTABILITY</span><h2>Move ordinary quizzes between DLMS installations.</h2><p>A portable quiz bundle contains selected quiz content and required images—not scores, attempts, learning history, or review schedules. Study Packs remain a separate, richer format.</p></div>

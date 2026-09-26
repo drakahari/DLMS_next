@@ -9,17 +9,17 @@
 <body class="dashboard-home content-packs-page">
 <div class="dashboard-shell">
 <aside class="dashboard-sidebar" id="dashboardSidebar">
-<div class="dashboard-brand"><div class="dashboard-brand-mark">✓</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+<div class="dashboard-brand"><div class="dashboard-brand-mark" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg></div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
 <nav class="dashboard-nav">
-<a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
-<a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
-<a class="dashboard-nav-item active" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
-<a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+<a class="dashboard-nav-item" href="/"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg><span>Dashboard</span></a>
+<a class="dashboard-nav-item" href="/study-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg><span>Study Packs</span></a>
+<a class="dashboard-nav-item active" href="/content-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#content"></use></svg><span>Content Packs</span></a>
+<a class="dashboard-nav-item" href="/medical"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg><span>Medical Study</span></a>
 </nav>
 <div class="dashboard-sidebar-version">Pack Validation</div>
 </aside>
 <main class="dashboard-main content-packs-main">
-<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><div class="medical-eyebrow">{{ 'AI STUDY PACK WORKFLOW' if ai_workflow else 'CONTENT PACK IMPORT' }}</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
+<header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button><div><div class="medical-eyebrow">{{ 'AI STUDY PACK WORKFLOW' if ai_workflow else 'CONTENT PACK IMPORT' }}</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
 
 {% if ai_workflow %}
 <ol class="study-pack-workflow-steps" aria-label="AI Study Pack workflow">

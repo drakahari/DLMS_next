@@ -27,8 +27,8 @@
 .pack-secondary-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
 .pack-more { min-width: 0; }
 .pack-more > summary { cursor: pointer; list-style: none; }
-.pack-more > summary::after { content: " ▾"; margin-left: .35rem; }
-.pack-more[open] > summary::after { content: " ▴"; }
+.pack-more > summary::after { content: ""; display: inline-block; width: .42rem; height: .42rem; margin: 0 0 .15rem .55rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+.pack-more[open] > summary::after { transform: rotate(225deg); margin-bottom: -.1rem; }
 .content-pack-table:not(.is-compact) .pack-more > summary { display: none; }
 .is-compact .pack-more[open] .pack-secondary-actions { margin-top: .4rem; }
 .is-compact .pack-secondary-actions { flex-direction: column; }

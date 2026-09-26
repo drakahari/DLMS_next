@@ -30,7 +30,9 @@ class AICombinedLaunchTests(unittest.TestCase):
         )
         self.assertIn("if (aiConfig.ai_auto_copy_prompt)", block)
         self.assertIn("copyTextToClipboardSynchronously(prompt)", block)
-        self.assertIn('btn.innerText = "✅ Prompt Copied"', block)
+        self.assertIn('btn.innerHTML =', block)
+        self.assertIn('/static/icons.svg#check', block)
+        self.assertIn('Prompt Copied', block)
         self.assertNotIn("navigator.clipboard.writeText", block)
         self.assertNotIn("await ", block)
         self.assertLess(
@@ -66,7 +68,8 @@ class AICombinedLaunchTests(unittest.TestCase):
         )
         self.assertIn("await navigator.clipboard.writeText(text)", helper)
         self.assertIn("await copyTextToClipboard(prompt)", explicit_copy)
-        self.assertIn("📋 Copy Explain Prompt", self.review_source)
+        self.assertIn('/static/icons.svg#library', self.review_source)
+        self.assertIn("Copy Explain Prompt", self.review_source)
 
     def test_combined_copy_helpers_use_textarea_selection_and_exec_command(self):
         history_helper = source_block(

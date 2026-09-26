@@ -218,12 +218,13 @@ class AISettingsTemplateTests(unittest.TestCase):
 
     def test_saved_banner_depends_on_the_current_request_query(self):
         config = self._config()
-        message = "✓ AI integration settings saved."
+        message = "AI integration settings saved."
         self.assertNotIn(message, self._render(config))
         self.assertNotIn(message, self._render(config, "?saved=0"))
         self.assertNotIn(message, self._render(config, "?saved=true"))
         saved = self._render(config, "?saved=1")
         self.assertIn(message, saved)
+        self.assertIn('/static/icons.svg#check', saved)
         self.assertIn(
             'class="settings-success-banner" role="status" aria-live="polite"',
             saved,

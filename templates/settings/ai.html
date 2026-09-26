@@ -15,17 +15,17 @@
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
             <span class="settings-eyebrow">SETTINGS / AI INTEGRATION</span>
-            <h1>🤖 AI Integration</h1>
+            <h1><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#ai"></use></svg> AI Integration</h1>
             <p>Configure how DLMS prepares explanation prompts and opens your preferred AI provider.</p>
         </div>
         <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
     </div>
 
     {% if request.args.get('saved') == '1' %}
-    <div class="settings-success-banner" role="status" aria-live="polite">✓ AI integration settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> AI integration settings saved.</div>
     {% endif %}
 
     <form class="settings-detail-card" action="/settings/ai/save" method="POST">
@@ -61,7 +61,7 @@
 
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-blue">↗</div>
+                <div class="settings-section-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#external"></use></svg></div>
                 <div>
                     <h2>Provider</h2>
                     <p>Select the AI service DLMS should open for explanation workflows.</p>
@@ -92,7 +92,7 @@
 
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-green">✎</div>
+                <div class="settings-section-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg></div>
                 <div>
                     <h2>Explanation Prompt Template</h2>
                     <p>Customize the prompt DLMS prepares for missed-question explanations.</p>
@@ -109,13 +109,13 @@
                       rows="14">{{ cfg.ai_prompt_template }}</textarea>
 
             <div class="settings-inline-actions">
-                <button type="button" class="settings-secondary-button" id="resetAIPromptBtn">🔄 Reset to Default Prompt</button>
+                <button type="button" class="settings-secondary-button" id="resetAIPromptBtn"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#refresh"></use></svg> Reset to Default Prompt</button>
             </div>
         </section>
 
         <section class="settings-form-section settings-study-pack-prompt-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-green">▣</div>
+                <div class="settings-section-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg></div>
                 <div>
                     <h2>Study Pack Prompt Template</h2>
                     <p>Customize the source-first template used by the AI Study Pack Builder for non-medical subjects.</p>
@@ -139,13 +139,13 @@
                       rows="28">{{ cfg.study_pack_ai_prompt_template }}</textarea>
 
             <div class="settings-inline-actions">
-                <button type="button" class="settings-secondary-button" id="resetStudyPackPromptBtn">🔄 Reset to Default Study Pack Prompt</button>
+                <button type="button" class="settings-secondary-button" id="resetStudyPackPromptBtn"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#refresh"></use></svg> Reset to Default Study Pack Prompt</button>
             </div>
         </section>
 
         <section class="settings-form-section settings-study-pack-prompt-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-red">✚</div>
+                <div class="settings-section-icon icon-red" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg></div>
                 <div>
                     <h2>Medical Study Pack Safety Addendum</h2>
                     <p>Additional guardrails appended automatically when the Study Pack domain is Medical.</p>
@@ -162,13 +162,13 @@
                       rows="14">{{ cfg.medical_study_pack_ai_addendum }}</textarea>
 
             <div class="settings-inline-actions">
-                <button type="button" class="settings-secondary-button" id="resetMedicalStudyPackPromptBtn">🔄 Reset Medical Safety Addendum</button>
+                <button type="button" class="settings-secondary-button" id="resetMedicalStudyPackPromptBtn"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#refresh"></use></svg> Reset Medical Safety Addendum</button>
             </div>
         </section>
 
         <section class="settings-form-section settings-law-prompt-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-blue">⚖</div>
+                <div class="settings-section-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg></div>
                 <div>
                     <h2>Law Study Prompt Template</h2>
                     <p>Customize the prompt DLMS uses to generate Law Study case packets.</p>
@@ -188,12 +188,12 @@
                       rows="24">{{ cfg.law_ai_prompt_template }}</textarea>
 
             <div class="settings-inline-actions">
-                <button type="button" class="settings-secondary-button" id="resetLawPromptBtn">🔄 Reset to Default Law Prompt</button>
+                <button type="button" class="settings-secondary-button" id="resetLawPromptBtn"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#refresh"></use></svg> Reset to Default Law Prompt</button>
             </div>
         </section>
 
         <div class="settings-form-actions">
-            <button type="submit" class="settings-primary-button">💾 Save AI Settings</button>
+            <button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save AI Settings</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
     </form>

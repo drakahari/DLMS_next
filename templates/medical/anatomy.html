@@ -15,7 +15,7 @@
 
     <main class="dashboard-main medical-main">
         <header class="dashboard-header medical-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div>
                 <div class="medical-eyebrow">MEDICAL STUDY · VISUAL PRACTICE</div>
                 <h1>Anatomy &amp; Images</h1>
@@ -36,7 +36,7 @@
         {% if image_framework %}
         <section class="dashboard-panel medical-image-framework-card medical-image-framework-compact">
             <div class="medical-dataset-heading">
-                <div class="medical-dataset-icon">◎</div>
+                <div class="medical-dataset-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#image"></use></svg></div>
                 <div>
                     <span class="medical-eyebrow">IMAGE CONTENT FRAMEWORK</span>
                     <h2>{{ image_framework.get("name", "Anatomy Image / Hotspot Schema") }}</h2>

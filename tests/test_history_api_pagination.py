@@ -402,7 +402,7 @@ class HistoryApiPaginationTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/attempts?origin=medical").get_json()["total"], 0)
         self.assertIn(
             'if (!dbAttempts.length) {\n'
-            '        box.innerHTML = `<div class="history-table-empty"><div class="history-table-empty-icon">↶</div><h2>No attempts in this category</h2>',
+            '        box.innerHTML = `<div class="history-table-empty"><div class="history-table-empty-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg></div><h2>No attempts in this category</h2>',
             source,
         )
 

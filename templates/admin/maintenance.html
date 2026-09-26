@@ -15,7 +15,7 @@
 {{ settings_shell_sidebar("System Tools")|safe }}
 <main class="dashboard-main system-tools-main">
     <header class="dashboard-header system-tools-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
             <div class="build-eyebrow">SETTINGS / SYSTEM TOOLS</div>
             <h1>System Tools</h1>
@@ -31,7 +31,7 @@
                 <p><strong>Occasional maintenance:</strong> You normally do not need to run this after updating DLMS. Use it when DLMS specifically instructs you to refresh generated quiz pages, when existing quiz pages look stale or inconsistent with the current quiz interface, or when their generated page files need repair.</p>
                 <p class="system-tools-note" id="rebuildDescription">This rebuilds derived HTML and playable JSON only. It does not change questions, answers, correctness, quiz or question IDs, concepts, lineage, folders, source or provenance details, scores, attempt history, learning events, or other learning history.</p>
             </div>
-            <button id="rebuildAllBtn" class="build-primary-button" type="button" aria-describedby="rebuildDescription">🔄 Rebuild All Quiz Pages</button>
+            <button id="rebuildAllBtn" class="build-primary-button" type="button" aria-describedby="rebuildDescription"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#refresh"></use></svg> Rebuild All Quiz Pages</button>
             <p id="rebuildStatus" class="system-tools-status" role="status" aria-live="polite" aria-atomic="true"></p>
             <ul id="rebuildFailures" aria-label="Quiz rebuild problems"></ul>
         </section>

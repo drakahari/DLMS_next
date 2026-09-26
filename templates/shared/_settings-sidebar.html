@@ -1,11 +1,11 @@
 {% macro settings_shell_sidebar(label="Settings") %}
 <aside class="dashboard-sidebar" id="dashboardSidebar">
     <div class="dashboard-brand">
-        <div class="dashboard-brand-mark" aria-hidden="true">⚙</div>
+        <div class="dashboard-brand-mark" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg></div>
         <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
     </div>
     <nav class="dashboard-nav" aria-label="Primary navigation">
-        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg><span>Dashboard</span></a>
     </nav>
     <div class="dashboard-sidebar-version">{{ label }}</div>
 </aside>{% endmacro %}

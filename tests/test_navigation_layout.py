@@ -124,7 +124,8 @@ class NavigationLayoutTests(unittest.TestCase):
         page = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("✓ Parsing settings saved.", page)
+        self.assertIn('/static/icons.svg#check', page)
+        self.assertIn("Parsing settings saved.", page)
         self.assertIn('action="/settings/parsing/save" method="POST"', page)
         for name in ("show_confidence", "auto_bom_clean"):
             self.assertRegex(page, rf'name="{name}"\s+value="1"\s+checked')
@@ -177,15 +178,15 @@ class NavigationLayoutTests(unittest.TestCase):
         source = self._static("nav-normalize.js")
 
         self.assertIn("path === '/admin/maintenance'", source)
-        self.assertIn("item('settings','/settings','⚙','Settings')", source)
-        self.assertIn("item('image','/admin/image-editor','◎','Image Study Editor')", source)
+        self.assertIn("item('settings','/settings','settings','Settings')", source)
+        self.assertIn("item('image','/admin/image-editor','image','Image Study Editor')", source)
         self.assertNotIn("item('maintenance','/admin/maintenance'", source)
 
     def test_pdf_and_image_import_navigation_label_keeps_the_existing_route(self):
         source = self._static("nav-normalize.js")
 
         self.assertIn(
-            "sub('/pdf-import','↳','PDF & Image Import', path.startsWith('/pdf-import'))",
+            "sub('/pdf-import','branch','PDF & Image Import', path.startsWith('/pdf-import'))",
             source,
         )
         self.assertNotIn("PDF Import & Banks", source)
@@ -217,10 +218,10 @@ class NavigationLayoutTests(unittest.TestCase):
         source = self._static("nav-normalize.js")
 
         self.assertIn(
-            "sub('/anki/custom','↳','Custom Deck & Printable Cards', path === '/anki/custom')",
+            "sub('/anki/custom','branch','Custom Deck & Printable Cards', path === '/anki/custom')",
             source,
         )
-        self.assertIn("sub('/anki/law','↳','Law Study Anki', path === '/anki/law')", source)
+        self.assertIn("sub('/anki/law','branch','Law Study Anki', path === '/anki/law')", source)
         self.assertNotIn("sub('/anki/custom#printableCards'", source)
         self.assertNotIn("'Printable Cards', path === '/anki/printable'", source)
 

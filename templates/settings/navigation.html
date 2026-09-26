@@ -15,23 +15,23 @@
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
             <span class="settings-eyebrow">SETTINGS / NAVIGATION</span>
-            <h1>☰ Navigation</h1>
+            <h1><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg> Navigation</h1>
             <p>Choose which study areas appear in the DLMS sidebar.</p>
         </div>
         <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
     </div>
 
     {% if request.args.get('saved') %}
-    <div class="settings-success-banner" role="status" aria-live="polite">✓ Navigation settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Navigation settings saved.</div>
     {% endif %}
 
     <form class="settings-detail-card" action="/settings/navigation/save" method="POST">
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-green">☰</div>
+                <div class="settings-section-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></div>
                 <div>
                     <h2>Study Areas</h2>
                     <p>Hiding a study area removes it from navigation only. It does not delete, disable, or alter saved content, history, analytics, or direct links.</p>
@@ -57,7 +57,7 @@
         </section>
 
         <div class="settings-form-actions">
-            <button type="submit" class="settings-primary-button">💾 Save Navigation</button>
+            <button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Navigation</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
     </form>

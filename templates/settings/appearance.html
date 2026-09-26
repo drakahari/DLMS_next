@@ -15,23 +15,23 @@
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
             <span class="settings-eyebrow">SETTINGS / APPEARANCE</span>
-            <h1>🎨 Appearance</h1>
+            <h1><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#palette"></use></svg> Appearance</h1>
             <p>Customize the global DLMS theme, dashboard title, and background without changing quiz, AI, parsing, or history settings.</p>
         </div>
         <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
     </div>
 
     {% if request.args.get('saved') == '1' %}
-    <div class="settings-success-banner" role="status" aria-live="polite">✓ Appearance settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Appearance settings saved.</div>
     {% endif %}
 
     <form class="settings-detail-card" action="/settings/appearance/save" method="POST" enctype="multipart/form-data">
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-purple">◐</div>
+                <div class="settings-section-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#palette"></use></svg></div>
                 <div>
                     <h2>DLMS Theme</h2>
                     <p>Choose the global color system used throughout DLMS. Purple &amp; Gold is the default for new installations.</p>
@@ -78,7 +78,7 @@
 
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-green">▧</div>
+                <div class="settings-section-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#image"></use></svg></div>
                 <div>
                     <h2>Background Image</h2>
                     <p>Upload a replacement background. Leaving the file field empty keeps your current background.</p>
@@ -108,7 +108,7 @@
         </section>
 
         <div class="settings-form-actions">
-            <button type="submit" class="settings-primary-button">💾 Save Appearance</button>
+            <button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Appearance</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
     </form>

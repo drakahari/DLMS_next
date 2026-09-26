@@ -1208,7 +1208,7 @@ function updateStudyModeBadge() {
             badge = document.createElement("div");
             badge.id = "studyModeBadge";
             badge.className = "study-mode-badge";
-            badge.innerHTML = '<span aria-hidden="true">📘</span><span>Study Mode</span>';
+            badge.innerHTML = '<svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg><span>Study Mode</span>';
 
             const timer = document.getElementById("timer");
             if (timer && timer.parentNode) {
@@ -1312,9 +1312,9 @@ function updateStudyAnkiButton() {
     btn.style.display = "inline-block";
 
     if (studyAnkiSelections.has(index)) {
-        btn.textContent = "✓ Marked for Anki";
+        btn.innerHTML = '<svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Marked for Anki';
     } else {
-        btn.textContent = "⭐ Mark for Anki";
+        btn.innerHTML = '<svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#star"></use></svg> Mark for Anki';
     }
 }
 
@@ -1327,7 +1327,7 @@ function updateStudyAnkiExportButton() {
 
     if (!examMode && isLastQuestion && selectedCount > 0) {
         btn.style.display = "inline-block";
-        btn.textContent = `📦 Export ${selectedCount} Selected to Anki`;
+        btn.innerHTML = `<svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#content"></use></svg> Export ${selectedCount} Selected to Anki`;
     } else {
         btn.style.display = "none";
     }
@@ -1858,7 +1858,7 @@ function renderExamResult(pending, state) {
             : `<p role="alert">Your score was calculated, but this attempt was not saved. Retry before leaving this page if you want it in History, Analytics, Learning Intelligence, and Review.</p>`;
     const persistenceAction = saved
         ? `<button onclick="location.href='/history?attempt=${reviewAttempt}'">
-                📌 Review This Attempt
+                <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#review"></use></svg> Review This Attempt
             </button>`
         : saving
             ? `<button disabled aria-disabled="true">Saving Attempt…</button>`
@@ -1878,15 +1878,15 @@ function renderExamResult(pending, state) {
         ${completionNotice}
 
         <button onclick="location.href='/history'">
-            📜 View Full History
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg> View Full History
         </button>
 
         <button onclick="location.reload()">
-            🔁 Retake Exam
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#refresh"></use></svg> Retake Exam
         </button>
 
         <button onclick="location.href='/'">
-            🏠 Return to Dashboard
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg> Return to Dashboard
         </button>
     `;
 }
@@ -2126,7 +2126,7 @@ async function submitQuiz(force = false, recoveredAttempt = null) {
         number: q.number || (i + 1),
         question: q.question,
 
-        // 🔑 FULL SNAPSHOT OF ALL CHOICES (THIS IS THE FIX)
+        // Full snapshot of all choices.
         choices: q.choices.map(c => ({
             label: c.label,
             text: c.text
@@ -2246,8 +2246,8 @@ function saveHistory(percent, correct, total, missed, attemptId) {
     /* --------------------------------------------
        Determine Quiz KEY for grouping history
        Priority:
-       1️⃣ User-supplied quiz name (from your portal)
-       2️⃣ Existing QUIZ_FILE fallback (old behavior)
+       1. User-supplied quiz name (from your portal)
+       2. Existing QUIZ_FILE fallback (old behavior)
     -------------------------------------------- */
     let quizKey = "Unnamed Quiz";
 
@@ -2292,7 +2292,7 @@ function saveHistory(percent, correct, total, missed, attemptId) {
 
 function resetDatabase() {
     const msg =
-        "⚠️ WARNING ⚠️\n\n" +
+        "WARNING\n\n" +
         "This will permanently delete:\n" +
         "• ALL quizzes\n" +
         "• ALL attempts\n" +

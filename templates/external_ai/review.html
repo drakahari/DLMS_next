@@ -10,23 +10,23 @@
 <body class="dashboard-home pdf-import-page external-ai-review-page">
 <div class="dashboard-shell">
     <aside class="dashboard-sidebar" id="dashboardSidebar">
-        <div class="dashboard-brand"><div class="dashboard-brand-mark">▤</div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
+        <div class="dashboard-brand"><div class="dashboard-brand-mark" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div><div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div></div>
         <nav class="dashboard-nav" aria-label="Primary navigation">
-            <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
-            <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
-            <a class="dashboard-nav-item active" href="/upload" aria-current="page"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
-            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
-            <a class="dashboard-nav-item" href="/law"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
-            <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
-            <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
-            <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+            <a class="dashboard-nav-item" href="/"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg><span>Dashboard</span></a>
+            <a class="dashboard-nav-item" href="/library"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg><span>Quiz Library</span></a>
+            <a class="dashboard-nav-item active" href="/upload" aria-current="page"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg><span>Study Packs</span></a>
+            <a class="dashboard-nav-item" href="/law"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg><span>Law Study</span></a>
+            <a class="dashboard-nav-item" href="/medical"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg><span>Medical Study</span></a>
+            <a class="dashboard-nav-item" href="/history"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg><span>History</span></a>
+            <a class="dashboard-nav-item" href="/dashboard"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg><span>Analytics</span></a>
         </nav>
         <div class="dashboard-nav-section-label"><span>System</span></div>
         <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
-            <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
-            <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
-            <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
-            <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+            <a class="dashboard-nav-item" href="/settings"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg><span>Settings</span></a>
+            <a class="dashboard-nav-item" href="/content-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#content"></use></svg><span>Content Packs</span></a>
+            <a class="dashboard-nav-item" href="/help"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#help"></use></svg><span>Help</span></a>
+            <a class="dashboard-nav-item" href="/admin/maintenance"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#maintenance"></use></svg><span>Maintenance</span></a>
         </nav>
         <div class="dashboard-sidebar-version">{{ "OCR Matching Review" if draft.origin == "ocr_matching" else "External AI Review" }}</div>
     </aside>
@@ -37,7 +37,7 @@
         {% endwith %}
 
         <header class="dashboard-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div><div class="build-eyebrow">{% if draft.origin == "ocr_matching" %}LOCAL OCR MATCHING{% else %}EXTERNAL AI {{ "MATCHING" if draft.content_type == "matching" else "QUIZ" }}{% endif %} · REVIEW</div><h1>Review &amp; Repair</h1><p>{% if draft.origin == "ocr_matching" %}OCR can misread text and uncertain layout is not silently paired. Repair the candidates, use the retained unassigned text when helpful, and explicitly confirm every final term/definition pair.{% elif draft.content_type == "matching" %}AI-generated pairings may be wrong. Repair every kept matching question and explicitly confirm every term/definition pair before publication.{% else %}AI-generated correctness is only a proposal. Repair every kept question and explicitly confirm its complete correct-answer set before publication.{% endif %}</p></div>
         </header>
 
@@ -119,7 +119,7 @@
                         <div><label class="pdf-review-select-toggle"><input type="checkbox" data-pdf-role="select"><span>Select</span></label><span class="pdf-status {{ q.status }}">{{ q.status|replace('_', ' ')|upper }}</span><strong>Question {{ q.number }}</strong></div>
                         <label class="pdf-delete-toggle"><input type="checkbox" data-pdf-role="delete" {% if q.excluded %}checked{% endif %}><span>Exclude question</span></label>
                     </div>
-                    {% if q.validation_issues %}<div class="pdf-import-issues" role="status">{% for issue in q.validation_issues %}<div>⚠ {{ issue.message if issue is mapping else issue }}</div>{% endfor %}</div>{% endif %}
+                    {% if q.validation_issues %}<div class="pdf-import-issues" role="status">{% for issue in q.validation_issues %}<div><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#warning"></use></svg> {{ issue.message if issue is mapping else issue }}</div>{% endfor %}</div>{% endif %}
                     <label class="build-field"><span>Question text</span><textarea rows="4" maxlength="10000" data-pdf-role="question">{{ q.question }}</textarea></label>
                     {% if draft.content_type == "matching" %}
                     <div class="external-ai-matching-settings">

@@ -35,6 +35,12 @@
 :root {
     --page-text: var(--theme-page-text, #eaf2ff);
     --muted-text: var(--theme-muted-text, #b8c2cc);
+    --icon-blue: var(--theme-accent-text, #78bfff);
+    --icon-orange: light-dark(#975815, #ffbf68);
+    --icon-green: light-dark(#176c4e, #70e7b4);
+    --icon-purple: light-dark(#704ab6, #c3a5ff);
+    --icon-cyan: light-dark(#086d82, #6fe3ff);
+    --icon-red: var(--semantic-error-text);
     --panel-bg: linear-gradient(180deg, var(--theme-panel-1, rgba(6,18,40,.82)), var(--theme-panel-2, rgba(8,18,34,.72)));
     --panel-bg-strong: linear-gradient(180deg, var(--theme-panel-1, rgba(5,16,36,.86)), var(--theme-panel-2, rgba(5,16,36,.72)));
     --panel-border: var(--theme-border-soft, rgba(98,155,255,.24));
@@ -178,8 +184,8 @@
 .duplicate-question-navigation{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:16px 0;}
 .duplicate-question-navigation p{flex:1 1 260px;margin:0;color:var(--theme-muted-text);}
 .duplicate-question-group summary{cursor:pointer;overflow-wrap:anywhere;}
-.duplicate-question-group summary::before{content:'▸';flex-shrink:0;color:var(--theme-heading);}
-.duplicate-question-group[open] summary::before{content:'▾';}
+.duplicate-question-group summary::before{content:"";width:.45em;height:.45em;flex-shrink:0;border-right:2px solid currentColor;border-bottom:2px solid currentColor;color:var(--theme-heading);transform:rotate(-45deg);}
+.duplicate-question-group[open] summary::before{transform:rotate(45deg);}
 .duplicate-question-group summary:focus-visible,.portable-bundle-quiz-list:focus-visible{outline:2px solid var(--theme-accent);outline-offset:4px;}
 .duplicate-question-filters :is(input,select,button,a):focus-visible,.duplicate-question-navigation :is(button,a):focus-visible{outline:2px solid var(--theme-accent);outline-offset:3px;}
 .duplicate-question-group:not([open]) summary{padding-bottom:0;border-bottom:0;}
@@ -1873,6 +1879,31 @@ body.dashboard-home {
     color: #cde6ff;
 }
 
+/* The local SVG sprite uses currentColor, so browser and emoji fonts never
+   participate in feature icon rendering. Labels still name each control. */
+.dlms-icon {
+    display: block;
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+    overflow: visible;
+}
+.dlms-inline-icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    margin-right: .25em;
+    vertical-align: -.12em;
+}
+.library-icon-button .dlms-inline-icon,
+.law-trash-action .dlms-inline-icon,
+.law-parse-check .dlms-inline-icon { margin-right: 0; }
+.dashboard-nav-icon.dlms-icon { width: 28px; height: 24px; }
+.dashboard-nav-subicon.dlms-icon { width: 16px; height: 16px; }
+.dashboard-shutdown-icon.dlms-icon { width: 28px; height: 25px; }
+.dashboard-action-arrow.dlms-icon { width: 22px; height: 22px; }
+.dashboard-menu-button .dlms-icon { width: 22px; height: 22px; margin: 10px auto; }
+
 .dashboard-nav-section-label {
     display: flex;
     align-items: center;
@@ -2148,11 +2179,11 @@ body.dashboard-home {
     font-weight: 300;
 }
 
-.icon-blue { color: #55a9ff; }
-.icon-orange { color: #ffad48; }
-.icon-green { color: #53df91; }
-.icon-purple { color: #a477ff; }
-.icon-cyan { color: #48d0e7; }
+.icon-blue { color: var(--icon-blue); }
+.icon-orange { color: var(--icon-orange); }
+.icon-green { color: var(--icon-green); }
+.icon-purple { color: var(--icon-purple); }
+.icon-cyan { color: var(--icon-cyan); }
 
 .dashboard-lower-grid {
     display: grid;
@@ -2761,17 +2792,17 @@ a.settings-hub-card:active {
 }
 
 .settings-hub-icon.icon-blue,
-.settings-section-icon.icon-blue { background: rgba(25, 104, 210, .28); color: #79c8ff; }
+.settings-section-icon.icon-blue { background: color-mix(in srgb, var(--icon-blue) 12%, var(--theme-surface)); color: var(--icon-blue); }
 .settings-hub-icon.icon-green,
-.settings-section-icon.icon-green { background: rgba(19, 130, 93, .24); color: #70e7b4; }
+.settings-section-icon.icon-green { background: color-mix(in srgb, var(--icon-green) 12%, var(--theme-surface)); color: var(--icon-green); }
 .settings-hub-icon.icon-orange,
-.settings-section-icon.icon-orange { background: rgba(180, 99, 23, .25); color: #ffbf68; }
+.settings-section-icon.icon-orange { background: color-mix(in srgb, var(--icon-orange) 12%, var(--theme-surface)); color: var(--icon-orange); }
 .settings-hub-icon.icon-purple,
-.settings-section-icon.icon-purple { background: rgba(100, 61, 190, .25); color: #c3a5ff; }
+.settings-section-icon.icon-purple { background: color-mix(in srgb, var(--icon-purple) 12%, var(--theme-surface)); color: var(--icon-purple); }
 .settings-hub-icon.icon-cyan,
-.settings-section-icon.icon-cyan { background: rgba(13, 128, 154, .25); color: #6fe3ff; }
+.settings-section-icon.icon-cyan { background: color-mix(in srgb, var(--icon-cyan) 12%, var(--theme-surface)); color: var(--icon-cyan); }
 .settings-hub-icon.icon-red,
-.settings-section-icon.icon-red { background: rgba(170, 44, 44, .26); color: #ff8e8e; }
+.settings-section-icon.icon-red { background: color-mix(in srgb, var(--icon-red) 12%, var(--theme-surface)); color: var(--icon-red); }
 
 .settings-scope-note,
 .settings-success-banner {
@@ -8232,7 +8263,7 @@ a.settings-hub-card:active {
 
 
 /* DLMS 3.0 - optional source metadata + hotspot calibration editor */
-.build-optional-source{overflow:hidden}.build-optional-source>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 0;color:#eaf3ff}.build-optional-source>summary::-webkit-details-marker{display:none}.build-optional-source>summary::after{content:"▾";font-size:18px;color:#70c8ff;transition:transform .15s ease}.build-optional-source[open]>summary::after{transform:rotate(180deg)}.build-optional-source-title{font-size:18px;font-weight:800}.build-optional-source-hint{margin-left:auto;color:#96aac1;font-size:12px;font-weight:650}.build-optional-source-body{margin-top:18px;padding-top:18px;border-top:1px solid rgba(99,154,216,.22)}.build-optional-source-copy{margin:0 0 16px;color:#aebfd2;line-height:1.5}.hotspot-editor-main{min-width:0}.hotspot-editor-picker form,.hotspot-editor-toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:end}.hotspot-editor-picker label,.hotspot-editor-toolbar label{display:flex;flex-direction:column;gap:7px;min-width:190px;color:#c9d9ea;font-size:12px;font-weight:750}.hotspot-editor-picker select,.hotspot-editor-toolbar select,.hotspot-editor-toolbar input[type=range]{min-height:42px;padding:8px 10px;color:#eaf3ff;background:rgba(3,13,30,.86);border:1px solid rgba(91,146,215,.42);border-radius:9px}.hotspot-editor-toolbar #radiusControl{min-width:230px}.hotspot-editor-actions{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 10px}.hotspot-editor-help{color:#aebfd2;margin:8px 0 14px}.hotspot-editor-stage{position:relative;width:min(100%,800px);margin:0 auto;line-height:0;user-select:none}.hotspot-editor-stage img{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;background:#eef2f6;border:1px solid rgba(91,146,215,.38);border-radius:14px;cursor:crosshair}.hotspot-editor-stage svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}#polygonShape,#circleShape{fill:rgba(52,211,153,.18);stroke:#34d399;stroke-width:4;vector-effect:non-scaling-stroke}.hotspot-editor-handle{fill:#eaf3ff;stroke:#1fa875;stroke-width:4;vector-effect:non-scaling-stroke}.hotspot-editor-test-marker{position:absolute;width:18px;height:18px;border-radius:50%;transform:translate(-50%,-50%);border:3px solid #fff;pointer-events:none}.hotspot-editor-test-marker.inside{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.28)}.hotspot-editor-test-marker.outside{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.28)}.hotspot-editor-status{width:min(100%,800px);margin:12px auto 0;padding:10px 12px;border-radius:9px;color:#bdd0e4;background:rgba(4,16,34,.76);border:1px solid rgba(88,143,205,.28);line-height:1.45}.hotspot-editor-status.success{color:#bff4d5;border-color:rgba(46,200,126,.42)}.hotspot-editor-status.error{color:#ffd0d4;border-color:rgba(235,93,104,.46)}.hotspot-editor-json{width:min(100%,800px);margin:14px auto 0;color:#9fb4ca}.hotspot-editor-json pre{white-space:pre-wrap;background:rgba(1,8,19,.8);padding:12px;border-radius:9px;overflow:auto}@media(max-width:700px){.build-optional-source>summary{align-items:flex-start}.build-optional-source-hint{display:none}.hotspot-editor-picker form,.hotspot-editor-toolbar{display:grid;grid-template-columns:1fr}.hotspot-editor-toolbar label{min-width:0}.hotspot-editor-stage img{max-height:64vh}}
+.build-optional-source{overflow:hidden}.build-optional-source>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 0;color:#eaf3ff}.build-optional-source>summary::-webkit-details-marker{display:none}.build-optional-source>summary::after{content:"";width:.5em;height:.5em;flex-shrink:0;border-right:2px solid currentColor;border-bottom:2px solid currentColor;color:var(--theme-accent-text,#78bfff);transform:rotate(45deg);transition:transform .15s ease}.build-optional-source[open]>summary::after{transform:rotate(225deg)}.build-optional-source-title{font-size:18px;font-weight:800}.build-optional-source-hint{margin-left:auto;color:#96aac1;font-size:12px;font-weight:650}.build-optional-source-body{margin-top:18px;padding-top:18px;border-top:1px solid rgba(99,154,216,.22)}.build-optional-source-copy{margin:0 0 16px;color:#aebfd2;line-height:1.5}.hotspot-editor-main{min-width:0}.hotspot-editor-picker form,.hotspot-editor-toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:end}.hotspot-editor-picker label,.hotspot-editor-toolbar label{display:flex;flex-direction:column;gap:7px;min-width:190px;color:#c9d9ea;font-size:12px;font-weight:750}.hotspot-editor-picker select,.hotspot-editor-toolbar select,.hotspot-editor-toolbar input[type=range]{min-height:42px;padding:8px 10px;color:#eaf3ff;background:rgba(3,13,30,.86);border:1px solid rgba(91,146,215,.42);border-radius:9px}.hotspot-editor-toolbar #radiusControl{min-width:230px}.hotspot-editor-actions{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 10px}.hotspot-editor-help{color:#aebfd2;margin:8px 0 14px}.hotspot-editor-stage{position:relative;width:min(100%,800px);margin:0 auto;line-height:0;user-select:none}.hotspot-editor-stage img{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;background:#eef2f6;border:1px solid rgba(91,146,215,.38);border-radius:14px;cursor:crosshair}.hotspot-editor-stage svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}#polygonShape,#circleShape{fill:rgba(52,211,153,.18);stroke:#34d399;stroke-width:4;vector-effect:non-scaling-stroke}.hotspot-editor-handle{fill:#eaf3ff;stroke:#1fa875;stroke-width:4;vector-effect:non-scaling-stroke}.hotspot-editor-test-marker{position:absolute;width:18px;height:18px;border-radius:50%;transform:translate(-50%,-50%);border:3px solid #fff;pointer-events:none}.hotspot-editor-test-marker.inside{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.28)}.hotspot-editor-test-marker.outside{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.28)}.hotspot-editor-status{width:min(100%,800px);margin:12px auto 0;padding:10px 12px;border-radius:9px;color:#bdd0e4;background:rgba(4,16,34,.76);border:1px solid rgba(88,143,205,.28);line-height:1.45}.hotspot-editor-status.success{color:#bff4d5;border-color:rgba(46,200,126,.42)}.hotspot-editor-status.error{color:#ffd0d4;border-color:rgba(235,93,104,.46)}.hotspot-editor-json{width:min(100%,800px);margin:14px auto 0;color:#9fb4ca}.hotspot-editor-json pre{white-space:pre-wrap;background:rgba(1,8,19,.8);padding:12px;border-radius:9px;overflow:auto}@media(max-width:700px){.build-optional-source>summary{align-items:flex-start}.build-optional-source-hint{display:none}.hotspot-editor-picker form,.hotspot-editor-toolbar{display:grid;grid-template-columns:1fr}.hotspot-editor-toolbar label{min-width:0}.hotspot-editor-stage img{max-height:64vh}}
 
 
 /* Image Study Editor chrome follows the shared theme surfaces. Canvas,
@@ -11778,6 +11809,8 @@ a:hover,a:active { color: var(--theme-link-hover, #9bd2ff); }
 }
 .dashboard-nav-item { color:var(--theme-nav-text,#e8f2ff); }
 .dashboard-nav-icon,.dashboard-action-arrow { color:var(--theme-nav-muted,#cde6ff); }
+.dashboard-nav-item:hover .dashboard-nav-icon,
+.dashboard-nav-item.active .dashboard-nav-icon { color:var(--theme-accent-text,#78bfff); }
 .dashboard-nav-item:hover { background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 18%,var(--theme-surface,transparent)); border-color:var(--theme-border-soft); color:var(--theme-heading,#fff); }
 .dashboard-nav-item.active { background:linear-gradient(90deg,color-mix(in srgb,var(--theme-accent,#1b9ff2) 32%,transparent),color-mix(in srgb,var(--theme-accent-3,#0f6fb3) 26%,transparent)); border-color:var(--theme-accent,#1b9ff2); }
 .dashboard-nav-section-label,.settings-eyebrow,.build-eyebrow,.medical-eyebrow,.learning-diagnostics-page .build-eyebrow { color:var(--theme-accent,#1b9ff2); }

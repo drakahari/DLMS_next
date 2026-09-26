@@ -15,7 +15,7 @@
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
             <span class="settings-eyebrow">SETTINGS / APPLICATION LIFECYCLE</span>
             <h1>◷ Application Lifecycle</h1>
@@ -25,7 +25,7 @@
     </div>
 
     {% if request.args.get('saved') %}
-    <div class="settings-success-banner" role="status" aria-live="polite">✓ Application lifecycle settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Application lifecycle settings saved.</div>
     {% endif %}
     {% if request.args.get('unavailable') %}
     <div class="settings-warning-panel" role="status" aria-live="polite">No lifecycle setting was changed while DLMS is in LAN/server mode.</div>
@@ -41,7 +41,7 @@
     <form class="settings-detail-card" action="/settings/lifecycle/save" method="POST">
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-cyan">◷</div>
+                <div class="settings-section-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#review"></use></svg></div>
                 <div>
                     <h2>Browser presence</h2>
                     <p>This setting checks only whether a DLMS page is still open. It does not monitor clicks, typing, scrolling, quiz progress, or inactivity.</p>
@@ -62,7 +62,7 @@
         </section>
 
         <div class="settings-form-actions">
-            <button type="submit" class="settings-primary-button" {% if not browser_presence_shutdown_runtime_eligible %}disabled{% endif %}>💾 Save Application Lifecycle</button>
+            <button type="submit" class="settings-primary-button" {% if not browser_presence_shutdown_runtime_eligible %}disabled{% endif %}><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Application Lifecycle</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
     </form>

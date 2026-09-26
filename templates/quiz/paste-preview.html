@@ -28,7 +28,7 @@
 
 <div class="container">
     
-    <h1 class="hero-title">👀 Preview Quiz Before Building</h1>
+    <h1 class="hero-title"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#eye"></use></svg> Preview Quiz Before Building</h1>
     <p class="paste-preview-helper">This previews text cleanup, not parsed questions. After building, check the question count and answer keys.</p>
 
     <div class="card">
@@ -37,13 +37,13 @@
 
         <!-- STEP 7: PRE-PROCESS SUMMARY PANEL -->
 <div class="paste-preview-summary">
-    <h2>🧪 Pre-Processing Summary</h2>
+    <h2><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#flask"></use></svg> Pre-Processing Summary</h2>
 
     <!-- =============================
           REGEX STRIP + STRIP RULES
     ============================== -->
     {% if regex_mode %}
-    <p><b>Regex Strip Mode:</b> Enabled ✔</p>
+    <p><b>Regex Strip Mode:</b> Enabled <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg></p>
 
         {% if strip_rules %}
         <h3>Lines Removed By Strip Rules</h3>
@@ -71,18 +71,18 @@
           PRESETS — ONLY IF ANY USED
     ============================== -->
     {% if preset_number_prefix_checked or preset_pdf_spacing_checked or preset_headers_checked %}
-    <h3>✨ Regex Presets</h3>
+    <h3><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#star"></use></svg> Regex Presets</h3>
     <ul>
         {% if preset_number_prefix_checked %}
-        <li>Number Prefix Removal Enabled ✔</li>
+        <li>Number Prefix Removal Enabled <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg></li>
         {% endif %}
 
         {% if preset_pdf_spacing_checked %}
-        <li>PDF Line Wrapping Fix Enabled ✔</li>
+        <li>PDF Line Wrapping Fix Enabled <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg></li>
         {% endif %}
 
         {% if preset_headers_checked %}
-        <li>Header/Footer Cleanup Enabled ✔</li>
+        <li>Header/Footer Cleanup Enabled <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg></li>
         {% endif %}
     </ul>
     {% endif %}
@@ -94,7 +94,7 @@
     <h3>Rules That Actually Changed Text</h3>
     <ul>
         {% for r in applied_rules %}
-        <li>✔ {{r}}</li>
+        <li><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> {{r}}</li>
         {% endfor %}
     </ul>
     {% endif %}
@@ -113,14 +113,14 @@
             {% endfor %}
         </ul>
         {% else %}
-        <p>No hidden Unicode issues found 🎉</p>
+        <p>No hidden Unicode issues found <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#star"></use></svg></p>
         {% endif %}
     {% endif %}
 </div>
 
 
                        <!-- SMART SUGGESTIONS -->
-                    <h3 class="paste-preview-suggestions-heading">💡 Formatting Suggestions</h3>
+                    <h3 class="paste-preview-suggestions-heading"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#idea"></use></svg> Formatting Suggestions</h3>
 
                     {% if smart_suggestions and smart_suggestions|length > 0 %}
                     <ul class="paste-preview-suggestions">
@@ -147,7 +147,7 @@
                             {% if preset_headers_checked or s.preset == 'preset_headers' %}
                             <input type="hidden" name="preset_headers" value="1">
                             {% endif %}
-                            <button type="submit">⚙ Apply This Fix</button>
+                            <button type="submit"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg> Apply This Fix</button>
                         </form>
                         {% endif %}
 
@@ -171,7 +171,7 @@
         {% if show_invisibles|default(true) %}
         <br>
         <button onclick="toggleInvisible()" style="margin-top:5px;">
-            👁 Show / Hide Invisible Characters
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#eye"></use></svg> Show / Hide Invisible Characters
         </button>
 
         <p class="paste-preview-helper">
@@ -179,7 +179,7 @@
         </p>
 
         <div id="visualPanel" style="display:none; margin-top:15px;">
-            <h2>🔍 Visualized Text</h2>
+            <h2><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#search"></use></svg> Visualized Text</h2>
 
             <h3>Original Input</h3>
             <pre id="visualOrig" class="paste-preview-source"></pre>
@@ -218,13 +218,13 @@
 
         {% endif %}
 
-        <!-- 🔍 DIFF VIEW -->
+        <!-- DIFF VIEW -->
         <button onclick="toggleDiff()" style="margin-top:10px;">
-            🔍 Show / Hide Differences
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#search"></use></svg> Show / Hide Differences
         </button>
 
         <div id="diffPanel" style="display:none; margin-top:15px;">
-            <h2>⚖️ Text Differences</h2>
+            <h2><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg> Text Differences</h2>
 
             <h3>Original vs Cleaned Comparison</h3>
             <pre id="diffView" class="paste-preview-source"></pre>
@@ -288,13 +288,13 @@ function runDiff() {
 
 
         {% if conf_details %}
-        <h2 class="paste-preview-confidence">🧠 Confidence Analysis — Format Only</h2>
+        <h2 class="paste-preview-confidence"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#brain"></use></svg> Confidence Analysis — Format Only</h2>
         <p class="paste-preview-helper">Structural checks do not verify facts or correct answers and are separate from Learning Intelligence.</p>
         <p class="paste-preview-confidence-summary">
             <b>Total blocks:</b> {{conf_summary.total}}<br>
-            ✅ High: {{conf_summary.high}} &nbsp;
-            ⚠ Medium: {{conf_summary.medium}} &nbsp;
-            ❌ Low: {{conf_summary.low}}
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> High: {{conf_summary.high}} &nbsp;
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#warning"></use></svg> Medium: {{conf_summary.medium}} &nbsp;
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#close"></use></svg> Low: {{conf_summary.low}}
         </p>
 
         <ul class="paste-preview-confidence-list">
@@ -314,7 +314,7 @@ function runDiff() {
 
         <form action="/download_cleaned" method="POST" style="display:inline;">
             <textarea name="clean_text" style="display:none;">{{cleaned}}</textarea>
-            <button type="submit">📥 Download Cleaned Text</button>
+            <button type="submit"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#download"></use></svg> Download Cleaned Text</button>
         </form>
 
         <!-- IMPORTANT: Send CLEANED text forward -->
@@ -324,13 +324,13 @@ function runDiff() {
             <input type="hidden" name="temp_logo_name" value="{{ preview_logo_name }}">
             <textarea name="quiz_text" style="display:none;">{{ cleaned }}</textarea>
 
-            <button type="submit">✅ Yes, Build My Quiz</button>
+            <button type="submit"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Yes, Build My Quiz</button>
         </form>
 
 
         <br>
-        <button onclick="history.back()">⬅ Go Back & Edit</button>
-        <button onclick="location.href='/'">🏠 Return To Dashboard</button>
+        <button onclick="history.back()"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#back"></use></svg> Go Back & Edit</button>
+        <button onclick="location.href='/'"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg> Return To Dashboard</button>
     </div>
 </div>
 <script src="/static/nav-normalize.js"></script>

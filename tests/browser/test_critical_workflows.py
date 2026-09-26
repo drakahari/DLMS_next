@@ -41,6 +41,41 @@ pytestmark = [
 ]
 
 
+def test_local_feature_icons_render_and_follow_each_theme(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/")
+    colors = {}
+    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        _set_theme(browser, theme)
+        browser.navigate(browser_stack.base_url + "/")
+        browser.wait_for_page_ready()
+        snapshot = browser.evaluate("(() => {"
+            "const nav=document.querySelector('.dashboard-nav-item[href=\"/settings\"] .dashboard-nav-icon');"
+            "const card=document.querySelector('.dashboard-action-card[href=\"/settings\"] .dlms-icon');"
+            "const inspect=svg=>({href:svg.querySelector('use').getAttribute('href'),"
+            "painted:svg.querySelector('use').getBBox().width>0,"
+            "hidden:svg.getAttribute('aria-hidden'),color:getComputedStyle(svg).color});"
+            "return {nav:inspect(nav),card:inspect(card),label:nav.parentElement.textContent.trim()};"
+            "})()")
+        assert snapshot["nav"]["href"] == "/static/icons.svg#settings"
+        assert snapshot["card"]["href"] == snapshot["nav"]["href"]
+        assert snapshot["nav"]["painted"] and snapshot["card"]["painted"]
+        assert snapshot["nav"]["hidden"] == snapshot["card"]["hidden"] == "true"
+        assert snapshot["label"] == "Settings"
+        colors[theme] = snapshot["card"]["color"]
+        browser.navigate(browser_stack.base_url + "/settings")
+        browser.wait_for_page_ready()
+        assert browser.evaluate("(() => {"
+            "const heading=document.querySelector('.settings-page-header h1');"
+            "const svg=heading.querySelector('svg');"
+            "return heading.textContent.trim()==='Settings' && "
+            "svg.getAttribute('aria-hidden')==='true' && "
+            "svg.querySelector('use').getAttribute('href')==='/static/icons.svg#settings' && "
+            "svg.querySelector('use').getBBox().width>0;"
+            "})()")
+    assert len(set(colors.values())) >= 2, colors
+
+
 def test_storage_health_themes_and_narrow_layout(browser_stack):
     browser = browser_stack.browser
     base = browser_stack.base_url
@@ -4309,7 +4344,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
             "Your quizzes will remain available.\n\n"
             "Create a backup first if you may need this history later."
         ],
-        "status": "✅ Saved attempt and missed-question history cleared.",
+        "status": "Saved attempt and missed-question history cleared.",
         "role": "status",
         "live": "polite",
     }
@@ -4363,7 +4398,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         assert browser.evaluate(protected_fetch_setup) is True
         browser.click(".resetAction[data-endpoint='/api/reset_all_data']")
         browser.wait_for(
-            "document.getElementById('resetStatus').textContent.startsWith('❌ Reset failed:') && "
+            "document.getElementById('resetStatus').textContent.startsWith('Reset failed:') && "
             "Array.from(document.querySelectorAll('.resetAction')).every(button=>!button.disabled)"
         )
         reset_failure = browser.evaluate(
@@ -4376,7 +4411,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
             {"url": "/api/reset_all_data", "method": "POST", "headers": {}, "body": None}
         ]
         assert reset_failure["confirms"] == [
-            "⚠ DLMS to Fresh State ⚠\n\n"
+            "DLMS to Fresh State\n\n"
             "DLMS will create a safety backup first, then perform this reset.\n\n"
             "Continue?"
         ]
@@ -4396,7 +4431,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
             "disabled:document.getElementById('removeAllDlmsDataBtn').disabled}; })()"
         )
         removal_confirmation = (
-            "☠ PERMANENT DLMS DATA REMOVAL ☠\n\n"
+            "PERMANENT DLMS DATA REMOVAL\n\n"
             "This will delete the entire DLMS application-data directory INCLUDING ALL BACKUPS, then shut DLMS down.\n\n"
             "The executable/source installation will remain.\n\n"
             "This cannot be undone unless you copied a backup somewhere outside DLMS.\n\n"
@@ -4414,7 +4449,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
         ) is True
         browser.click("#removeAllDlmsDataBtn")
         browser.wait_for(
-            "document.getElementById('resetStatus').textContent.startsWith('❌ Permanent removal failed:') && "
+            "document.getElementById('resetStatus').textContent.startsWith('Permanent removal failed:') && "
             "!document.getElementById('removeAllDlmsDataBtn').disabled && "
             "!document.getElementById('removeDlmsConfirmation').disabled"
         )
@@ -6395,7 +6430,7 @@ def test_law_landing_counts_links_navigation_controls_and_metadata_boundaries(br
         "menuControls": "dashboardSidebar",
         "menuExpanded": "false",
         "shutdownType": "button",
-        "shutdownText": "⏻Shutdown DLMS",
+        "shutdownText": "Shutdown DLMS",
         "injected": False,
         "metadataVisible": False,
     }

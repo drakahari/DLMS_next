@@ -125,11 +125,11 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'setOperationStatus(resetStatus,`✅ ${label} reset completed. Safety backup: ${data.backup||"created"}`)',
+            'setOperationStatus(resetStatus,`${label} reset completed. Safety backup: ${data.backup||"created"}`)',
             page,
         )
         self.assertIn(
-            'setOperationStatus(resetStatus,`❌ Reset failed: ${failureMessage}`,true)', page
+            'setOperationStatus(resetStatus,`Reset failed: ${failureMessage}`,true)', page
         )
         self.assertIn(
             'document.querySelectorAll(".resetAction").forEach(b=>b.disabled=false)',
@@ -148,11 +148,11 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
         self.assertIn('clearDBBtn.disabled=true', page)
         self.assertIn('setOperationStatus(clearDBStatus,"Clearing saved history...")', page)
         self.assertIn(
-            'setOperationStatus(clearDBStatus,"✅ Saved attempt and missed-question history cleared.")',
+            'setOperationStatus(clearDBStatus,"Saved attempt and missed-question history cleared.")',
             page,
         )
         self.assertIn(
-            'setOperationStatus(clearDBStatus,`❌ ${failureMessage}`,true)',
+            'setOperationStatus(clearDBStatus,failureMessage,true)',
             page,
         )
         self.assertIn('finally{clearDBBtn.disabled=false}', page)
@@ -171,7 +171,7 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             'if(phrase!=="REMOVE DLMS DATA")return', page
         )
         self.assertIn(
-            "☠ PERMANENT DLMS DATA REMOVAL ☠\\n\\nThis will delete the entire DLMS application-data directory INCLUDING ALL BACKUPS, then shut DLMS down.\\n\\nThe executable/source installation will remain.\\n\\nThis cannot be undone unless you copied a backup somewhere outside DLMS.\\n\\nContinue?",
+            "PERMANENT DLMS DATA REMOVAL\\n\\nThis will delete the entire DLMS application-data directory INCLUDING ALL BACKUPS, then shut DLMS down.\\n\\nThe executable/source installation will remain.\\n\\nThis cannot be undone unless you copied a backup somewhere outside DLMS.\\n\\nContinue?",
             page,
         )
         self.assertIn(
@@ -187,11 +187,11 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'setOperationStatus(resetStatus,"✅ DLMS runtime data removed. DLMS is shutting down. The executable/source installation was preserved.")',
+            'setOperationStatus(resetStatus,"DLMS runtime data removed. DLMS is shutting down. The executable/source installation was preserved.")',
             page,
         )
         self.assertIn(
-            'setOperationStatus(resetStatus,`❌ Permanent removal failed: ${failureMessage}`,true)',
+            'setOperationStatus(resetStatus,`Permanent removal failed: ${failureMessage}`,true)',
             page,
         )
         self.assertIn(

@@ -15,7 +15,7 @@
 
     <main class="dashboard-main medical-main">
         <header class="dashboard-header medical-header">
-            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+            <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div>
                 <div class="medical-eyebrow">MEDICAL STUDY</div>
                 <h1>{{ pack.name }}</h1>
@@ -31,7 +31,7 @@
 
         <section class="medical-section-launch-grid">
             <a class="dashboard-panel medical-section-launch-card" href="/medical/matching">
-                <div class="medical-section-launch-icon">↔</div>
+                <div class="medical-section-launch-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#matching"></use></svg></div>
                 <div class="medical-section-launch-copy">
                     <span class="medical-eyebrow">TEXT STUDY</span>
                     <h2>Terminology &amp; Matching</h2>
@@ -45,7 +45,7 @@
             </a>
 
             <a class="dashboard-panel medical-section-launch-card" href="/medical/anatomy">
-                <div class="medical-section-launch-icon">◎</div>
+                <div class="medical-section-launch-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#image"></use></svg></div>
                 <div class="medical-section-launch-copy">
                     <span class="medical-eyebrow">VISUAL STUDY</span>
                     <h2>Anatomy &amp; Images</h2>
@@ -67,10 +67,10 @@
                 <h2>AI Study Pack Builder</h2>
                 <p>Describe what you want to study and let DLMS build a controlled research prompt that requires source-verified, legally reusable material in the exact DLMS add-on pack format.</p>
                 <div class="medical-ai-builder-points">
-                    <span>✓ authoritative sources</span>
-                    <span>✓ open-license checks</span>
-                    <span>✓ DLMS-ready schema</span>
-                    <span>✓ no invented content</span>
+                    <span><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> authoritative sources</span>
+                    <span><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> open-license checks</span>
+                    <span><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> DLMS-ready schema</span>
+                    <span><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> no invented content</span>
                 </div>
             </div>
             <a class="medical-primary-button medical-ai-builder-open" href="/study-packs/ai-builder?domain=Medical&amp;from=medical">Build Custom Content</a>

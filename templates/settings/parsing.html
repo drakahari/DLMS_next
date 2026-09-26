@@ -15,23 +15,23 @@
 <main class="dashboard-main settings-dashboard-main">
 <div class="settings-page-shell settings-detail-shell">
     <div class="settings-page-header">
-        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
             <span class="settings-eyebrow">SETTINGS / PARSING</span>
-            <h1>🧩 Parsing</h1>
+            <h1><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#puzzle"></use></svg> Parsing</h1>
             <p>Control optional quiz-preview and text-cleanup tools used when preparing imported or pasted question content.</p>
         </div>
         <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
     </div>
 
     {% if request.args.get('saved') == '1' %}
-    <div class="settings-success-banner" role="status" aria-live="polite">✓ Parsing settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Parsing settings saved.</div>
     {% endif %}
 
     <form class="settings-detail-card" action="/settings/parsing/save" method="POST">
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-blue">🧠</div>
+                <div class="settings-section-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#brain"></use></svg></div>
                 <div>
                     <h2>Confidence Analysis</h2>
                     <p>Controls whether the Confidence Analysis panel appears on quiz preview.</p>
@@ -73,7 +73,7 @@
 
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-green">⌫</div>
+                <div class="settings-section-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#erase"></use></svg></div>
                 <div>
                     <h2>Invisible / BOM Cleanup</h2>
                     <p>Automatically removes hidden Unicode characters that can interfere with parsing.</p>
@@ -94,7 +94,7 @@
 
         <section class="settings-form-section">
             <div class="settings-section-heading">
-                <div class="settings-section-icon icon-purple">¶</div>
+                <div class="settings-section-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#paragraph"></use></svg></div>
                 <div>
                     <h2>Show Invisible Characters Tool</h2>
                     <p>Controls whether hidden-character visualization is available during preview.</p>
@@ -114,7 +114,7 @@
         </section>
 
         <div class="settings-form-actions">
-            <button type="submit" class="settings-primary-button">💾 Save Parsing Settings</button>
+            <button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Parsing Settings</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
     </form>

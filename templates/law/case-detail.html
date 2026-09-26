@@ -22,37 +22,37 @@
         <div><div class="dashboard-brand-title">DLMS</div><div class="dashboard-brand-subtitle">Training Center</div></div>
     </div>
     <nav class="dashboard-nav" aria-label="Primary navigation">
-        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
-        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
-        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
-            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
-        <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        <a class="dashboard-nav-item" href="/"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg><span>Study Packs</span></a>
+        <a class="dashboard-nav-item active" href="/law" aria-current="page"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg><span>Law Study</span></a>
         {% if medical_pack_installed %}
-        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        <a class="dashboard-nav-item" href="/medical"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg><span>Medical Study</span></a>
         {% endif %}
-        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
-        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        <a class="dashboard-nav-item" href="/history"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg><span>Analytics</span></a>
             <div class="dashboard-nav-group">
-                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <a class="dashboard-nav-item" href="/anki"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#anki"></use></svg><span>Anki Tools</span></a>
                 <div class="dashboard-nav-submenu">
-                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
-                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><svg class="dlms-icon dashboard-nav-subicon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#branch"></use></svg><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/law"><svg class="dlms-icon dashboard-nav-subicon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#branch"></use></svg><span>Law Study Anki</span></a>
                 </div>
             </div>
     </nav>
     <div class="dashboard-nav-section-label"><span>System</span></div>
     <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
-        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
-        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
-        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
-        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        <a class="dashboard-nav-item" href="/settings"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#content"></use></svg><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/help"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#help"></use></svg><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#maintenance"></use></svg><span>Maintenance</span></a>
     </nav>
-    <button class="dashboard-shutdown" id="shutdownBtn" type="button"><span class="dashboard-shutdown-icon">⏻</span><span>Shutdown DLMS</span></button>
+    <button class="dashboard-shutdown" id="shutdownBtn" type="button"><svg class="dlms-icon dashboard-shutdown-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#power"></use></svg><span>Shutdown DLMS</span></button>
     <div class="dashboard-sidebar-version">Law Study</div>
 </aside>
 <main class="dashboard-main law-subpage-main law-study-view">
     <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div><div class="law-subpage-eyebrow">LAW STUDY · CASE REVIEW</div><h1>{{ case_data.title }}</h1><p>{{ case_data.course or "Uncategorized" }} · Structured case review</p></div>
     </header>
 
@@ -131,7 +131,7 @@
         </div>
 
         <div class="portal-card law-case-section">
-    <h2 style="margin-top:0;">✏️ Edit Case Details</h2>
+    <h2 style="margin-top:0;"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg> Edit Case Details</h2>
 
     <form method="POST" action="{{ url_for('law.law_update_case_review_details', case_id=case_data.id) }}">
         <label for="lawCaseTitle"><strong>Case Title</strong></label><br>
@@ -160,7 +160,7 @@
         <br><br>
 
         <button type="submit" class="law-primary-action">
-            💾 Save Case Details
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Case Details
         </button>
     </form>
 </div>
@@ -183,7 +183,7 @@
 
   {% if case_data.sections.irac_drill %}
     <div class="portal-card law-case-section">
-        <h2 style="margin-top:0;">🧠 IRAC Practice Response</h2>
+        <h2 style="margin-top:0;"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#brain"></use></svg> IRAC Practice Response</h2>
 
         <p style="opacity:.8;">
             Write your own IRAC response before revealing the imported IRAC Drill guidance.
@@ -223,20 +223,20 @@
             <br><br>
 
             <button type="submit" class="law-primary-action">
-                💾 Save IRAC Response
+                <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save IRAC Response
             </button>
         </form>
     </div>
 
     <div class="portal-card law-case-section">
-        <h2 style="margin-top:0;">🔒 IRAC Drill</h2>
+        <h2 style="margin-top:0;"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#lock"></use></svg> IRAC Drill</h2>
 
         <p style="opacity:.8;">
             Hidden by default for active recall. Try writing your own IRAC response first, then reveal the imported drill guidance.
         </p>
 
         <button type="button" class="law-secondary-action" aria-expanded="false" aria-controls="iracDrillBox" onclick="toggleIracDrill(this)">
-            👁 Reveal / Hide IRAC Drill
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#eye"></use></svg> Reveal / Hide IRAC Drill
         </button>
 
         <div id="iracDrillBox" style="display:none; margin-top:14px;">
@@ -264,7 +264,7 @@
         flex-wrap:wrap;
     ">
         <div>
-            <h2 style="margin-top:0;">🎓 Socratic Practice</h2>
+            <h2 style="margin-top:0;"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#learning"></use></svg> Socratic Practice</h2>
 
             <p style="opacity:.8;">
                 Type your own answer before revealing the answer key. Your answers are saved with this case review.
@@ -304,7 +304,7 @@
         <br>
 
         <button type="submit" form="socraticAnswersForm" class="law-primary-action">
-            💾 Save Socratic Answers
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Socratic Answers
         </button>
     </form>
 </div>
@@ -314,14 +314,14 @@
                                                                     
         {% if socratic_answer_key %}
         <div class="portal-card law-case-section">
-            <h2 style="margin-top:0;">🔒 Socratic Answer Key</h2>
+            <h2 style="margin-top:0;"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#lock"></use></svg> Socratic Answer Key</h2>
 
             <p style="opacity:.8;">
                 Hidden by default for active recall. Try answering the Socratic questions first, then reveal the guidance.
             </p>
 
             <button type="button" class="law-secondary-action" aria-expanded="false" aria-controls="socraticAnswerKey" onclick="toggleSocraticAnswerKey(this)">
-                👁 Reveal / Hide Answer Key
+                <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#eye"></use></svg> Reveal / Hide Answer Key
             </button>
 
             <div id="socraticAnswerKey" style="display:none; margin-top:14px;">
@@ -338,7 +338,7 @@
 
         {% if rule_flashcards_content %}
         <div class="portal-card law-case-section">
-            <h2 style="margin-top:0;">🃏 Rule Flashcards</h2>
+            <h2 style="margin-top:0;"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#anki"></use></svg> Rule Flashcards</h2>
 
             <pre class="law-case-readonly" style="
                 white-space:pre-wrap;
@@ -351,7 +351,7 @@
         {% endif %}
                                   
         <div class="portal-card law-case-section">
-            <h2 id="lawStudentNotesHeading" style="margin-top:0;">📝 Student Notes</h2>
+            <h2 id="lawStudentNotesHeading" style="margin-top:0;"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg> Student Notes</h2>
 
             <p style="opacity:.8;">
                 Add your own class notes, professor comments, questions, or reminders here.
@@ -366,7 +366,7 @@
                 <br><br>
 
                 <button type="submit" class="law-primary-action">
-                    💾 Save Student Notes
+                    <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Student Notes
                 </button>
             </form>
         </div>
@@ -374,19 +374,19 @@
         <br>
 
         <button type="button" class="law-primary-action" data-law-navigation-url="{{ url_for('law.law_export_case_review_txt', case_id=case_data.id) }}">
-            ⬇️ Export Case Review
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#download"></use></svg> Export Case Review
         </button>
 
         <button type="button" class="law-secondary-action" onclick="location.href='/law/cases'">
-            ⬅ Back To My Case Reviews
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#back"></use></svg> Back To My Case Reviews
         </button>
 
         <button type="button" class="law-secondary-action" onclick="location.href='/law/imports'">
-            📁 Saved Imports
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#folder"></use></svg> Saved Imports
         </button>
 
         <button type="button" class="law-quiet-action" onclick="location.href='/law'">
-            ⚖️ Law Study Hub
+            <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg> Law Study Hub
         </button>
 
     </section>

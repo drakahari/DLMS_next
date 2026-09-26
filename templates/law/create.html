@@ -24,21 +24,21 @@
     </div>
 
     <nav class="dashboard-nav" aria-label="Primary navigation">
-        <a class="dashboard-nav-item" href="/"><span class="dashboard-nav-icon">⌂</span><span>Dashboard</span></a>
-        <a class="dashboard-nav-item" href="/library"><span class="dashboard-nav-icon">▤</span><span>Quiz Library</span></a>
-        <a class="dashboard-nav-item" href="/upload"><span class="dashboard-nav-icon">✎</span><span>Build Quiz</span></a>
-            <a class="dashboard-nav-item" href="/study-packs"><span class="dashboard-nav-icon">▣</span><span>Study Packs</span></a>
-        <a class="dashboard-nav-item active" href="/law" aria-current="page"><span class="dashboard-nav-icon">⚖</span><span>Law Study</span></a>
+        <a class="dashboard-nav-item" href="/"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg><span>Dashboard</span></a>
+        <a class="dashboard-nav-item" href="/library"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg><span>Quiz Library</span></a>
+        <a class="dashboard-nav-item" href="/upload"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg><span>Build Quiz</span></a>
+            <a class="dashboard-nav-item" href="/study-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg><span>Study Packs</span></a>
+        <a class="dashboard-nav-item active" href="/law" aria-current="page"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg><span>Law Study</span></a>
         {% if medical_pack_installed %}
-        <a class="dashboard-nav-item" href="/medical"><span class="dashboard-nav-icon">✚</span><span>Medical Study</span></a>
+        <a class="dashboard-nav-item" href="/medical"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg><span>Medical Study</span></a>
         {% endif %}
-        <a class="dashboard-nav-item" href="/history"><span class="dashboard-nav-icon">↶</span><span>History</span></a>
-        <a class="dashboard-nav-item" href="/dashboard"><span class="dashboard-nav-icon">▥</span><span>Analytics</span></a>
+        <a class="dashboard-nav-item" href="/history"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg><span>History</span></a>
+        <a class="dashboard-nav-item" href="/dashboard"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg><span>Analytics</span></a>
             <div class="dashboard-nav-group">
-                <a class="dashboard-nav-item" href="/anki"><span class="dashboard-nav-icon">◆</span><span>Anki Tools</span></a>
+                <a class="dashboard-nav-item" href="/anki"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#anki"></use></svg><span>Anki Tools</span></a>
                 <div class="dashboard-nav-submenu">
-                    <a class="dashboard-nav-subitem" href="/anki/custom"><span class="dashboard-nav-subicon">↳</span><span>Custom Deck</span></a>
-                    <a class="dashboard-nav-subitem" href="/anki/law"><span class="dashboard-nav-subicon">↳</span><span>Law Study Anki</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/custom"><svg class="dlms-icon dashboard-nav-subicon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#branch"></use></svg><span>Custom Deck</span></a>
+                    <a class="dashboard-nav-subitem" href="/anki/law"><svg class="dlms-icon dashboard-nav-subicon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#branch"></use></svg><span>Law Study Anki</span></a>
                 </div>
             </div>
     </nav>
@@ -46,14 +46,14 @@
     <div class="dashboard-nav-section-label"><span>System</span></div>
 
     <nav class="dashboard-nav dashboard-nav-system" aria-label="System navigation">
-        <a class="dashboard-nav-item" href="/settings"><span class="dashboard-nav-icon">⚙</span><span>Settings</span></a>
-        <a class="dashboard-nav-item" href="/content-packs"><span class="dashboard-nav-icon">⬡</span><span>Content Packs</span></a>
-        <a class="dashboard-nav-item" href="/help"><span class="dashboard-nav-icon">?</span><span>Help</span></a>
-        <a class="dashboard-nav-item" href="/admin/maintenance"><span class="dashboard-nav-icon">⌘</span><span>Maintenance</span></a>
+        <a class="dashboard-nav-item" href="/settings"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg><span>Settings</span></a>
+        <a class="dashboard-nav-item" href="/content-packs"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#content"></use></svg><span>Content Packs</span></a>
+        <a class="dashboard-nav-item" href="/help"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#help"></use></svg><span>Help</span></a>
+        <a class="dashboard-nav-item" href="/admin/maintenance"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#maintenance"></use></svg><span>Maintenance</span></a>
     </nav>
 
     <button class="dashboard-shutdown" id="shutdownBtn" type="button">
-        <span class="dashboard-shutdown-icon">⏻</span>
+        <svg class="dlms-icon dashboard-shutdown-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#power"></use></svg>
         <span>Shutdown DLMS</span>
     </button>
     <div class="dashboard-sidebar-version">Law Study</div>
@@ -61,7 +61,7 @@
 
 <main class="dashboard-main law-subpage-main">
     <header class="dashboard-header law-subpage-header">
-        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button>
+        <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
             <div class="law-subpage-eyebrow">LAW STUDY</div>
             <h1>Create Case Review</h1>
