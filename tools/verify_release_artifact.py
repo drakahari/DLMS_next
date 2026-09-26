@@ -470,6 +470,7 @@ def _assert_smoke_routes(client: SmokeHttpClient, expected_version: str) -> None
     expected = {
         "/": b"DLMS",
         "/static/style.css": b"body",
+        "/static/icons.svg": b'<symbol id="settings"',
         "/help/": b"Help",
         "/settings": b"Settings",
         "/library": b"Quiz Library",

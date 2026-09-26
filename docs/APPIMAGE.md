@@ -34,7 +34,7 @@ From the repository root, the exact evaluation command is:
 
 ```sh
 .venv-build/bin/python tools/build_appimage.py \
-  --target fedora44-x86_64 --expected-version 3.2.1 --candidate \
+  --target fedora44-x86_64 --expected-version 3.2.2 --candidate \
   --appimagetool build/appimage-tools/appimagetool-x86_64.AppImage \
   --appimagetool-sha256 a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0 \
   --runtime-file build/appimage-tools/runtime-x86_64 \
@@ -77,8 +77,8 @@ Run the additional real HTTP workflow probe against the resulting trusted image:
 
 ```sh
 .venv-build/bin/python tools/verify_appimage_runtime.py \
-  build/appimage-evaluation/fedora44-candidate/DLMS-3.2.1-fedora44-x86_64.AppImage \
-  --expected-version 3.2.1 --lan \
+  build/appimage-evaluation/fedora44-candidate/DLMS-3.2.2-fedora44-x86_64.AppImage \
+  --expected-version 3.2.2 --lan \
   --report build/appimage-evaluation/fedora44-candidate/runtime-uat.json
 ```
 
@@ -129,7 +129,7 @@ its normal bundle/Finder/Dock smoke on a native rebuild.
 As reconciled on September 23, 2026, [DLMS-145 issue #4](https://github.com/drakahari/DLMS_next/issues/4)
 records DLMS-144 implementation, the Omarchy fix and prior cross-distribution
 validation as complete. Do not reopen that work. The matrix below must be
-recorded again against the exact frozen 3.2.1 AppImage if it is offered for
+recorded again against the exact frozen 3.2.2 AppImage if it is offered for
 release; previous candidate results do not accept a future artifact. Retain its
 source commit, image SHA-256, build baseline, per-host results and human review
 in the release handoff outside the frozen source tree.
@@ -173,8 +173,8 @@ exact new bytes to Omarchy and the other three distributions. Images built befor
 the fix do not contain it. With port 9001 free, test the final image on Omarchy:
 
 ```sh
-chmod +x ./DLMS-3.2.1-ubuntu24.04-x86_64.AppImage
-./DLMS-3.2.1-ubuntu24.04-x86_64.AppImage --browser
+chmod +x ./DLMS-3.2.2-ubuntu24.04-x86_64.AppImage
+./DLMS-3.2.2-ubuntu24.04-x86_64.AppImage --browser
 ```
 
 Confirm the actual default browser opens, no shell symbol errors appear, OCR

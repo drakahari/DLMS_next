@@ -10171,7 +10171,7 @@ def test_review_schedule_summary_and_queue_controls_stay_contained(browser_stack
 def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
     browser_stack,
 ):
-    """Rendered 3.2.1 surfaces must keep semantic text contrast in every palette."""
+    """Rendered 3.2.2 surfaces must keep semantic text contrast in every palette."""
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     browser.set_viewport(1280, 1000)

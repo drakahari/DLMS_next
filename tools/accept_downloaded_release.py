@@ -125,7 +125,7 @@ def report(record, evidence):
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--repo", required=True, help="GitHub OWNER/REPO")
-    result.add_argument("--tag", required=True, help="explicit release tag, e.g. v3.2.1")
+    result.add_argument("--tag", required=True, help="explicit release tag, e.g. v3.2.2")
     result.add_argument("--asset", required=True, help="one canonical final package filename")
     result.add_argument("--source-root", type=Path, default=ROOT,
                         help="local repository containing the trusted release tag")
@@ -141,7 +141,7 @@ def main(argv=None):
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*", args.repo):
         argument_parser.error("--repo must be OWNER/REPO on github.com")
     if not re.fullmatch(r"v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?", args.tag):
-        argument_parser.error("--tag must be an explicit version tag such as v3.2.1")
+        argument_parser.error("--tag must be an explicit version tag such as v3.2.2")
     if args.asset not in expected_packages(args.tag[1:]):
         argument_parser.error("--asset must be a supported final package for --tag")
     try:

@@ -58,7 +58,8 @@ def test_smoke_reads_version_from_running_server_header(tool):
         assert verifier._request('/', client=client) == (200, b'DLMS')
     assert client.runtime_version == '3.1.0'
     with mock.patch.object(verifier, '_request', side_effect=[
-            (200, marker) for marker in [b'DLMS', b'body', b'Help', b'Settings', b'Quiz Library']]):
+            (200, marker) for marker in [b'DLMS', b'body', b'<symbol id="settings"',
+                                         b'Help', b'Settings', b'Quiz Library']]):
         with pytest.raises(RuntimeError, match='version mismatch'):
             verifier._assert_smoke_routes(client, '3.2.0')
 

@@ -5,7 +5,7 @@ system. The native package contains the local application and its OCR runtime;
 you do not need Python, a separate database server, or a system Tesseract
 installation.
 
-This chapter documents DLMS 3.2.1. If you are running the source code for
+This chapter documents DLMS 3.2.2. If you are running the source code for
 development or evaluation instead, see [Running from source](#running-from-source)
 near the end of this chapter.
 
@@ -16,12 +16,12 @@ matches your system from the project's Releases page.
 
 | Platform | Package |
 | --- | --- |
-| Fedora 44, x86-64 | `DLMS-3.2.1-fedora44-x86_64.tar.gz` |
-| Ubuntu 24.04, x86-64 | `DLMS-3.2.1-ubuntu24.04-x86_64.tar.gz` |
-| Ubuntu 26.04, x86-64 | `DLMS-3.2.1-ubuntu26.04-x86_64.tar.gz` |
-| Omarchy Quattro, x86-64 | `DLMS-3.2.1-omarchy-quattro-x86_64.tar.gz` |
-| Windows 11, x86-64 | `DLMS-3.2.1-windows11-x86_64.zip` |
-| macOS Apple Silicon, arm64 | `DLMS-3.2.1-macos-arm64.zip` |
+| Fedora 44, x86-64 | `DLMS-3.2.2-fedora44-x86_64.tar.gz` |
+| Ubuntu 24.04, x86-64 | `DLMS-3.2.2-ubuntu24.04-x86_64.tar.gz` |
+| Ubuntu 26.04, x86-64 | `DLMS-3.2.2-ubuntu26.04-x86_64.tar.gz` |
+| Omarchy Quattro, x86-64 | `DLMS-3.2.2-omarchy-quattro-x86_64.tar.gz` |
+| Windows 11, x86-64 | `DLMS-3.2.2-windows11-x86_64.zip` |
+| macOS Apple Silicon, arm64 | `DLMS-3.2.2-macos-arm64.zip` |
 
 The Linux packages are built and tested separately for their named
 distributions; one Linux archive is not a universal build. The documented
@@ -39,7 +39,7 @@ the package between computers.
 3. Run the executable for that package. For example:
 
    ```text
-   ./DLMS-3.2.1-fedora44-x86_64
+   ./DLMS-3.2.2-fedora44-x86_64
    ```
 
 The archive preserves the executable permission. If another transfer method
@@ -50,7 +50,7 @@ try again. Do not substitute a package built for a different Linux target.
 
 1. Extract the ZIP archive; do not run the application from inside the ZIP.
 2. Open the extracted, versioned package folder.
-3. Double-click `DLMS-3.2.1-windows11-x86_64.exe`.
+3. Double-click `DLMS-3.2.2-windows11-x86_64.exe`.
 
 The current Windows package is unsigned. Microsoft Defender SmartScreen may
 therefore warn on first launch. First confirm that the archive came from the
@@ -62,7 +62,7 @@ use **More info** and **Run anyway** if Windows offers those choices.
 The macOS ZIP contains `DLMS.app`, `README.txt`, and `sample_quiz.txt` directly
 at the archive root. There is no extra versioned wrapper around the app.
 
-1. Extract `DLMS-3.2.1-macos-arm64.zip`.
+1. Extract `DLMS-3.2.2-macos-arm64.zip`.
 2. Drag `DLMS.app` into `/Applications`.
 3. In Finder or Applications, Control-click `DLMS.app`, choose **Open**, and
    confirm the first launch.
