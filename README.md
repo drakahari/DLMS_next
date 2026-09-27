@@ -5,9 +5,8 @@ own learning material.**
 
 **Current release: DLMS 3.2.2** · [Download packaged releases](../../releases)
 
-This identifies the current source release target, which is under pre-release
-review. Published package availability is determined by the Releases page;
-3.2.2 native builds and publication have not yet occurred.
+DLMS 3.2.2 is published. Native package and Linux AppImage release acceptance
+is complete. The [Releases page](../../releases) is authoritative for downloads.
 
 DLMS is a single-user learning-management and study application that runs on
 your computer. It combines quiz authoring, document and image import, Study and
@@ -158,9 +157,8 @@ For normal use, download the package for your operating system from the
 [Releases page](../../releases). Every final package contains the native
 application, `README.txt`, and `sample_quiz.txt`.
 
-The following are the planned final 3.2.2 package names. Availability is determined
-by the assets on the Releases page; earlier 3.2.2 builds are not final artifacts.
-All final packages must be rebuilt and validated from the frozen release commit.
+The six published native 3.2.2 packages are listed below. Published checksums
+are available in `SHA256SUMS.txt` on the Releases page.
 See the [3.2.2 release notes](docs/releases/3.2.2.md) for highlights and upgrade guidance.
 
 | Platform | Final DLMS 3.2.2 package name |
@@ -175,6 +173,11 @@ See the [3.2.2 release notes](docs/releases/3.2.2.md) for highlights and upgrade
 Linux packages are distribution-specific; use the package named for your
 distribution. On Linux or Windows, extract the archive and run the DLMS
 executable inside it.
+
+The additional `DLMS-3.2.2-linux-x86_64.AppImage` is a Linux desktop format.
+It passed cross-distribution acceptance on Ubuntu 24.04, Ubuntu 26.04,
+Fedora 44, and Omarchy Quattro. Native Linux `.tar.gz` packages remain the
+supported server and headless artifacts.
 
 ### Optional Omarchy companion
 
@@ -369,7 +372,7 @@ a separately assembled source ZIP.
 
 ## Project status
 
-DLMS 3.2.2 is the current release line represented by this source. The
+DLMS 3.2.2 is the current published release represented by this source. The
 capabilities described above are present in the 3.2.2 source. The Releases page
 is authoritative for packages that have completed native verification and been
 published; unreleased roadmap work is intentionally not presented here as

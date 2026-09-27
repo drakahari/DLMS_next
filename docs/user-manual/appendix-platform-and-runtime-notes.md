@@ -8,7 +8,7 @@ manual.
 
 ## Current native package targets
 
-The DLMS 3.2.2 release process defines user packages for:
+The published DLMS 3.2.2 release includes native packages for:
 
 | Platform | Architecture | Canonical package name |
 | --- | --- | --- |
