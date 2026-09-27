@@ -142,7 +142,12 @@ class ReleaseDocumentationTests(unittest.TestCase):
             with self.subTest(artifact_name=artifact_name):
                 self.assertIn(artifact_name, readme)
                 self.assertIn(artifact_name, procedure)
-        self.assertNotIn("DLMS-3.2.2-linux-x86_64", readme + procedure)
+        appimage_name = "DLMS-3.2.2-linux-x86_64.AppImage"
+        self.assertIn(appimage_name, readme)
+        self.assertEqual(
+            set(re.findall(r"DLMS-3\.2\.2-linux-x86_64[\w.-]*", readme + procedure)),
+            {appimage_name},
+        )
         self.assertNotIn("DLMS-3.2.2-windows-x86_64.exe", readme + procedure)
         self.assertIn("verify_release_package.py --complete-set", procedure)
         self.assertIn('--checksums "$PACKAGE_DIR/SHA256SUMS.txt"', procedure)
