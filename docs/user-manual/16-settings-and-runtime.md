@@ -40,7 +40,12 @@ content. DLMS provides five themes:
 
 The theme applies throughout DLMS. It changes colors and surfaces, not grades,
 question behavior, or learning data. **Purple & Gold** is the default on a new
-installation.
+installation. Ethereal is optional.
+
+![Appearance theme choices: Dark, Light, Purple & Gold, Maroon & Gold, and Ethereal selected](../../static/help_assets/settings-appearance-3.3.0-ethereal.webp)
+
+*DLMS 3.3.0 Appearance with optional Ethereal selected among five themes.
+Purple & Gold remains the default.*
 
 Ethereal pairs midnight-blue surfaces with peach text and lavender accents.
 Reading and form text use system sans-serif fonts; headings and counters use

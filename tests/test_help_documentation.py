@@ -464,7 +464,10 @@ class HelpDocumentationTests(unittest.TestCase):
             "help-study-packs.html": (("ai-workflow", "ai-builder-zip-return.webp"), ("ai-workflow", "study-pack-validation.webp")),
             "help-anki.html": (("anki", "anki-imported-card.png"), ("printable", "anki-print-controls.webp"), ("printable", "anki-print-front.webp"), ("printable", "anki-print-back.webp")),
             "help-study-modules.html": (("law", "law-create-case.webp"), ("law", "law-import-packet.webp")),
-            "help-settings.html": (("navigation", "settings-navigation.webp"),),
+            "help-settings.html": (
+                ("appearance", "settings-appearance-3.3.0-ethereal.webp"),
+                ("navigation", "settings-navigation.webp"),
+            ),
             "help-maintenance.html": (
                 ("tools", "system-tools.webp"),
                 ("backup-restore", "settings-backup_restore.webp"),
