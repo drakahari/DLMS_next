@@ -287,7 +287,7 @@
   const themeQuick = document.createElement('div');
   themeQuick.className = 'dashboard-theme-quick';
   themeQuick.hidden = true;
-  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme"><option value="dark">Dark</option><option value="light">Light</option><option value="purple-gold" selected>Purple & Gold</option><option value="maroon-gold">Maroon & Gold</option></select>`;
+  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme"><option value="dark">Dark</option><option value="light">Light</option><option value="purple-gold" selected>Purple & Gold</option><option value="maroon-gold">Maroon & Gold</option><option value="ethereal">Ethereal</option></select>`;
   const themeAnchor = sidebar.querySelector('.dashboard-sidebar-version');
   if (themeAnchor) themeAnchor.before(themeQuick); else sidebar.appendChild(themeQuick);
   const navigationCustomize = document.createElement('a');

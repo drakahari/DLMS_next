@@ -73,5 +73,18 @@ The focused cases cover:
 - Backup upload, validation and confirmation before mutation, followed by a
   successful restore of the expected quiz snapshot.
 
+The Ethereal selection regression opens a foreground tab and requires native
+document focus. It checks actual screenshot pixels before and after selecting
+text in an input, textarea, number field, question, and study feedback, alongside
+computed colors and keyboard focus. Review PNGs and contrast measurements are
+written to that test's temporary `ethereal-review/` directory. Responsive checks
+include 360, 768, and 1440px widths and 200% CSS zoom; CSS zoom does not certify
+browser-chrome zoom shortcuts or operating-system scaling.
+
+Theme loops cover all five palettes. Key authoring, Study/Exam, recovery,
+restart, Anki, and backup/restore workflows run with both Purple & Gold and
+Ethereal. OCR browser fixtures simulate deterministic engine output; they do
+not certify native OCR recognition or platform packaging.
+
 Lower-level tests remain the source of truth for malformed payload validation,
 all supported question types, drag-and-drop edge cases, and detailed rendering.

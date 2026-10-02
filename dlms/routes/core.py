@@ -226,6 +226,22 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
                 "link": "#ffde7a", "link_hover": "#fff0b8", "shadow": "rgba(0,0,0,.56)"
             }
         }
+        # Ethereal-inspired colors, adapted for readable web controls. Surfaces
+        # are opaque so uploaded backgrounds cannot reduce content contrast.
+        palettes["ethereal"] = {
+            "scheme": "dark", "page": "#ffcead", "muted": "#c9b8a6", "heading": "#ffcead",
+            "body_base": "#060b1e", "body_overlay": "rgba(6,11,30,.86)", "body_overlay_2": "rgba(4,8,22,.94)",
+            "shell": "#040816", "sidebar1": "#060b1e", "sidebar2": "#040816",
+            "main1": "#060b1e", "main2": "#040816",
+            "panel1": "#10172f", "panel2": "#10172f",
+            "surface": "#0c1229", "surface2": "#131a3a",
+            "input_bg": "#060b1e", "input_text": "#ffcead",
+            "border": "#6d7db6", "border_soft": "#6d7db6",
+            "nav_text": "#ffcead", "nav_muted": "#c9b8a6",
+            "accent": "#7d82d9", "accent2": "#7d82d9", "accent3": "#7d82d9",
+            "accent_text": "#c2c4f0", "on_accent": "#060b1e",
+            "link": "#c2c4f0", "link_hover": "#ffcead", "shadow": "rgba(0,0,0,.18)",
+        }
         p = palettes.get(theme, palettes[default_theme])
         vars_css = "\n".join([
             f"  --portal-bg: {css_bg};",
@@ -260,6 +276,25 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
             f"  --theme-link-hover: {p['link_hover']};",
             f"  --theme-shadow: {p['shadow']};"
         ])
+        if theme == "ethereal":
+            # Optional presentation tokens: other themes retain their existing
+            # CSS fallbacks. No theme marker is needed on saved quiz HTML.
+            vars_css += "\n" + "\n".join([
+                '  --theme-body-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;',
+                '  --theme-display-font: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;',
+                "  --theme-control-radius: 6px;",
+                "  --theme-panel-radius: 10px;",
+                "  --theme-panel-padding: 24px;",
+                "  --theme-panel-shadow: 0 4px 12px rgba(0,0,0,.18);",
+                "  --theme-heading-shadow: none;",
+                "  --theme-heading-line-height: 1.15;",
+                "  --theme-control-border: #6d7db6;",
+                "  --theme-legacy-primary-text: #060b1e;",
+                "  --theme-focus-ring: #c2c4f0;",
+                "  --theme-progress-fill: #7d82d9;",
+                "  --theme-selection-bg: #c2c4f0;",
+                "  --theme-selection-text: #060b1e;",
+            ])
         return f":root {{\n{vars_css}\n}}\n", 200, {"Content-Type": "text/css", "Cache-Control": "no-store"}
 
     @blueprint.get("/user-bg/<path:filename>")

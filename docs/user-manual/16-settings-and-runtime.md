@@ -30,16 +30,24 @@ before using them.
 ## Change the appearance
 
 Open **Settings → Appearance** to change presentation without changing study
-content. DLMS provides four themes:
+content. DLMS provides five themes:
 
 - Light;
 - Dark;
-- Purple & Gold; and
-- Maroon & Gold.
+- Purple & Gold;
+- Maroon & Gold; and
+- Ethereal (Omarchy-inspired).
 
 The theme applies throughout DLMS. It changes colors and surfaces, not grades,
 question behavior, or learning data. **Purple & Gold** is the default on a new
 installation.
+
+Ethereal pairs midnight-blue surfaces with peach text and lavender accents.
+Reading and form text use system sans-serif fonts; headings and counters use
+local monospace fonts. A bright lavender selection keeps highlighted text clear
+in questions and form fields. It works offline on every supported platform and
+does not require Omarchy or downloaded fonts. Use the sidebar Theme selector
+for a quick change, or save it here. The selection persists across restarts.
 
 You can also change the title shown on the Dashboard. The title cannot be
 blank. A custom background is optional; leaving the file chooser empty keeps

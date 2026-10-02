@@ -46,7 +46,7 @@ def test_local_feature_icons_render_and_follow_each_theme(browser_stack):
     browser.navigate(browser_stack.base_url + "/settings/appearance")
     browser.wait_for_page_ready()
     exposed_themes = browser.evaluate("[...document.querySelectorAll('input[name=\"theme\"]')].map(input => input.value)")
-    assert set(exposed_themes) == {"light", "dark", "purple-gold", "maroon-gold"}
+    assert set(exposed_themes) == {"light", "dark", "purple-gold", "maroon-gold", "ethereal"}
     browser.navigate(browser_stack.base_url + "/")
     feature_accents = {
         "/": "blue", "/library": "blue", "/study-packs": "blue",
@@ -57,7 +57,7 @@ def test_local_feature_icons_render_and_follow_each_theme(browser_stack):
         "/learning-intelligence": "purple",
     }
     colors = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(browser_stack.base_url + "/")
         browser.wait_for_page_ready()
@@ -182,7 +182,7 @@ def test_storage_health_themes_and_narrow_layout(browser_stack):
     browser = browser_stack.browser
     base = browser_stack.base_url
     browser.navigate(base + "/settings/backup")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(base + "/settings/backup?storage=1")
         browser.wait_for("document.querySelector('#storage-health').textContent.includes('Database size')")
@@ -690,6 +690,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
         },
         "purple-gold": {},
         "maroon-gold": {},
+        "ethereal": {},
     }
 
     def set_theme(theme):
@@ -745,7 +746,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
             "color:recentStyle.color,background:recentStyle.backgroundColor}}; })()"
         )
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         set_theme(theme)
         palette = expected[theme] if theme in {"light", "dark"} else {
             **expected["dark"], **expected[theme],
@@ -856,7 +857,7 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
 def test_library_touch_navigation_and_scroll_gestures_across_themes(browser_stack):
     """Exercise Sortable's real event listeners, without emulating mobile OS physics."""
     browser = browser_stack.browser
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/library")
         _set_theme(browser, theme)
         for width in (1280, 420):
@@ -1096,7 +1097,7 @@ def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
         "input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()"
     )
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")
         browser.wait_for(
@@ -1764,7 +1765,10 @@ def test_navigation_visibility_persists_through_settings_and_page_reload(browser
     )
 
 
-def test_custom_anki_quiz_filter_bulk_and_accordion_state(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_custom_anki_quiz_filter_bulk_and_accordion_state(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/anki/custom")
     browser.wait_for("document.querySelectorAll('.anki-custom-quiz-group').length === 2")
@@ -2122,7 +2126,10 @@ def test_custom_anki_performance_accordion_state_persists(browser_stack):
         browser.evaluate(f"localStorage.removeItem({json.dumps(storage_key)}); true")
 
 
-def test_study_feedback_exam_save_and_history_navigation(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     attempts_before = _database_value(
         browser_stack.data_root / "results.db",
@@ -2170,7 +2177,10 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
 
 
-def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
     browser.navigate(quiz_url)
@@ -2624,7 +2634,7 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.wait_for(
         "document.querySelector('.library-folder-completed-practice .library-folder-toggle-button').getAttribute('aria-expanded') === 'false'"
     )
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(f"{browser_stack.base_url}/library")
         browser.wait_for("document.querySelector('.library-folder-completed-practice') !== null")
@@ -2930,7 +2940,8 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
     browser.evaluate("window.__restoreRecoveryStorage(); true")
 
 
-def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(browser_server):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(browser_server, theme):
     profile = browser_server.work_root / "firefox-recovery-reopen-profile"
     profile.mkdir()
     quiz_url = f"{browser_server.base_url}/quizzes/{browser_server.metadata['critical_html']}"
@@ -2969,6 +2980,8 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
     second_process = second_output = second_browser = None
     try:
         first_process, first_output, first_browser = launch("first")
+        first_browser.navigate(browser_server.base_url + "/settings")
+        _set_theme(first_browser, theme)
         first_browser.navigate(quiz_url)
         first_browser.wait_for("quizRecoveryReady === true")
         first_browser.click(".exam-mode-btn")
@@ -2982,6 +2995,7 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
 
         second_process, second_output, second_browser = launch("second")
         second_browser.navigate(quiz_url)
+        assert second_browser.evaluate("fetch('/api/portal_config').then(response => response.json()).then(config => config.theme)") == theme
         second_browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
         assert "Question 2 of 2" in second_browser.evaluate(
             "document.querySelector('.quiz-recovery-panel p').textContent"
@@ -2995,7 +3009,8 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
             close(second_process, second_output, second_browser)
 
 
-def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path, theme):
     firefox = shutil.which("firefox") or shutil.which("firefox-esr")
     if not firefox:
         pytest.skip("Firefox is not installed")
@@ -3068,6 +3083,8 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
         metadata = json.loads((data_root / "browser_fixture.json").read_text(encoding="utf-8"))
         quiz_url = f"{base_url}/quizzes/{metadata['critical_html']}"
         browser_process, browser_output, browser = start_browser("first")
+        browser.navigate(base_url + "/settings")
+        _set_theme(browser, theme)
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true && window.dlmsBrowserPresence?.enabled === true")
         browser.wait_for("window.dlmsBrowserPresence.heartbeat()")
@@ -3090,6 +3107,7 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
         server_process, server_output = start_server("second")
         browser_process, browser_output, browser = start_browser("second")
         browser.navigate(quiz_url)
+        assert browser.evaluate("fetch('/api/portal_config').then(response => response.json()).then(config => config.theme)") == theme
         browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
         assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     finally:
@@ -3182,7 +3200,10 @@ def test_quiz_recovery_fingerprint_invalidation_tracks_playable_content_not_titl
         artifact.write_bytes(original_bytes)
 
 
-def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     quiz_id = browser_stack.metadata["critical_id"]
     edited_title = "Browser Edited Workflow"
@@ -3214,7 +3235,7 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
 
-    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+    for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         status = browser.evaluate(
@@ -3297,7 +3318,7 @@ def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and
     )
     quiz_url = f"{browser_stack.base_url}/quizzes/{html_name}"
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         _set_theme(browser, theme)
         for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
@@ -3400,7 +3421,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
     base_url = browser_stack.base_url
     quiz_url = f"{base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(base_url + "/settings")
         _set_theme(browser, theme)
         browser.navigate(quiz_url)
@@ -3690,7 +3711,7 @@ def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unav
 def test_quiz_question_tools_wrap_across_themes_and_widths(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         _set_theme(browser, theme)
         browser.navigate(quiz_url)
@@ -3732,7 +3753,7 @@ def test_anki_summary_cards_across_themes_and_widths(browser_stack):
         "document.querySelectorAll('[name=law_cards]').length"
     )
 
-    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+    for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         status = browser.evaluate(
@@ -3796,7 +3817,10 @@ def test_anki_summary_cards_across_themes_and_widths(browser_stack):
             assert all(color == summary["heading"] for color in summary["metricColors"])
 
 
-def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     database = browser_stack.data_root / "results.db"
     before = _database_value(
@@ -3837,8 +3861,14 @@ def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack
     )
 
 
-def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
+    # Create a real backup after choosing the theme, then restore it below.
+    assert browser.evaluate("fetch('/settings/backup/create', {method:'POST'}).then(async response => {await response.arrayBuffer(); return response.status;})") == 200
+    restore_path = max((browser_stack.data_root / "backups").glob("*-manual.zip"), key=lambda path: path.stat().st_mtime)
     quiz_id = browser_stack.metadata["critical_id"]
     original_title = "Browser Critical Workflow"
     changed_title = "Browser Restore Mutation"
@@ -3879,7 +3909,7 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
 
     browser.navigate(f"{browser_stack.base_url}/settings/backup")
     browser.wait_for("document.getElementById('backupFile') !== null")
-    browser.set_files("#backupFile", [browser_stack.metadata["restore_path"]])
+    browser.set_files("#backupFile", [str(restore_path)])
     browser.click("form[action='/settings/backup/restore/stage'] button[type='submit']")
     browser.wait_for_page_ready(
         "document.querySelector('h1')?.textContent.includes('Review backup before restore')"
@@ -3923,6 +3953,8 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     assert browser.evaluate("document.title") == original_title
     assert browser.evaluate("quiz[0].question") == original_question
+
+    assert json.loads((browser_stack.data_root / "config" / "portal.json").read_text())["theme"] == theme
 
 
 def test_cancelled_and_invalid_restore_preserve_quiz_recovery(browser_stack, tmp_path):
@@ -3974,7 +4006,7 @@ def test_manual_quiz_choice_labels_are_readable_across_themes(browser_stack):
         "contrast:(Math.max(lum(foreground),lum(background))+.05)/(Math.min(lum(foreground),lum(background))+.05)};};"
     )
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         assert browser.evaluate(
@@ -4032,7 +4064,7 @@ def test_paste_preview_diff_is_inert_and_fix_preserves_state(browser_stack):
     script = '<script id="preview-injected-script">window.previewInjected=true</script>'
     source = "Page 5\nDROP " + removed + script + "\n1. TOKEN\nA. First\nB. Second\nCorrect Answer: A"
     browser.navigate(base + "/settings")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for width in (1440, 420):
             browser.set_viewport(width, 1100)
@@ -4087,7 +4119,7 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
         path.write_bytes(base64.b64decode(result["data"]))
         assert path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
-    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+    for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken && document.getElementById('dlmsQuickTheme')")
         status = browser.evaluate(
@@ -4266,7 +4298,7 @@ def test_settings_hub_interaction_states_follow_each_theme(browser_stack):
             "}; })()"
         )
 
-    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+    for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken && document.getElementById('dlmsQuickTheme')")
         status = browser.evaluate(
@@ -4609,7 +4641,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
 
 def test_packaged_clear_history_error_guidance_themes(browser_stack):
     browser = browser_stack.browser
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings/reset-remove")
         _set_theme(browser, theme)
         for width in (1280, 420):
@@ -4636,7 +4668,7 @@ def test_backup_limit_guidance_layout_themes(browser_stack):
     with fixture.open("wb") as handle:
         handle.truncate(17 * 1024 * 1024)
     browser = browser_stack.browser
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings/backup")
         _set_theme(browser, theme)
         for width in (1280, 420):
@@ -4654,7 +4686,7 @@ def test_backup_limit_guidance_layout_themes(browser_stack):
 
 def test_restore_failure_guidance_layout_themes(browser_stack):
     browser = browser_stack.browser
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings/backup")
         _set_theme(browser, theme)
         for width in (1280, 420):
@@ -4706,7 +4738,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "imageEditorHref": "/admin/image-editor",
     }
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for width in (1280, 420):
             browser.set_viewport(width, 900)
@@ -5135,7 +5167,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         )
         assert status == 200
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         set_theme(theme)
         # Pack metrics have three text children, unlike icon+copy dashboard
         # cards. Check real layout across the four/two/one-column breakpoints.
@@ -5389,7 +5421,10 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
     set_theme(original_theme)
 
 
-def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     base_url = browser_stack.base_url
 
@@ -6403,7 +6438,7 @@ def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_
     browser.set_viewport(1280, 900)
 
     filter_palettes = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         status = browser.evaluate(
             f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
@@ -6421,7 +6456,7 @@ def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_
         )
         assert filter_palettes[theme]["active"] != filter_palettes[theme]["inactive"]
         assert filter_palettes[theme]["pressed"] == "true"
-    assert len({tuple(value["active"]) for value in filter_palettes.values()}) == 4
+    assert len({tuple(value["active"]) for value in filter_palettes.values()}) == 5
 
     status = browser.evaluate(
         "fetch('/api/theme', {method:'POST', headers:{'Content-Type':'application/json'}, "
@@ -6964,7 +6999,10 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
     )
 
 
-def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     data_root = browser_stack.data_root
@@ -7549,7 +7587,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         })()
     """
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         status = browser.evaluate(
             f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
@@ -7682,7 +7720,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     ) is True
 
     review_url = browser.evaluate("location.href")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         status = browser.evaluate(
             f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
@@ -7911,7 +7949,7 @@ def test_external_ai_matching_review_and_publication(browser_stack):
         "matching bulk help": ".pdf-review-bulk-help summary",
         "matching disabled bulk action": "#questionReviewConfirmSelected",
     }
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(review_url)
         browser.wait_for("document.querySelector('[data-matching-role=pair-row]')")
@@ -8251,7 +8289,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "return {color:getComputedStyle(node).color,background:getComputedStyle(node).backgroundColor,"
         "contrast:(Math.max(lum(foreground),lum(background))+.05)/(Math.min(lum(foreground),lum(background))+.05)};};"
     )
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         status = browser.evaluate(
@@ -8304,7 +8342,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         assert theme_state["bulkFocused"] is True
         assert theme_state["overflow"] is True
         surfaces[theme] = theme_state["source"]
-    assert len(set(surfaces.values())) == 4
+    assert len(set(surfaces.values())) == 5
 
     for width in (420, 390):
         browser.set_viewport(width, 820)
@@ -8406,7 +8444,7 @@ def test_ocr_availability_diagnostics_and_badge_are_responsive(browser_stack):
     unavailable_surfaces = {}
     for width in (1120, 760, 390):
         browser.set_viewport(width, 850)
-        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
             browser.navigate(f"{base_url}/pdf-import")
             set_theme(theme)
             browser.navigate(f"{base_url}/pdf-import")
@@ -8426,7 +8464,7 @@ def test_ocr_availability_diagnostics_and_badge_are_responsive(browser_stack):
     try:
         for width in (1120, 760, 390):
             browser.set_viewport(width, 850)
-            for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
                 browser.navigate(f"{base_url}/pdf-import")
                 browser.wait_for(
                     "document.querySelector('.pdf-ocr-availability').textContent.includes('unavailable')"
@@ -8455,8 +8493,8 @@ def test_ocr_availability_diagnostics_and_badge_are_responsive(browser_stack):
     finally:
         unavailable_executable.rename(executable)
 
-    assert len(set(available_surfaces.values())) == 4
-    assert len(set(unavailable_surfaces.values())) == 4
+    assert len(set(available_surfaces.values())) == 5
+    assert len(set(unavailable_surfaces.values())) == 5
 
 
 def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_stack):
@@ -8494,7 +8532,7 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
 
     offer_url = browser.evaluate("location.href")
     surfaces = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         # Each navigation replaces the fetch wrapper; markup can be ready
         # before nav-normalize has installed CSRF protection on this page.
         browser.wait_for("window.dlmsCsrfToken && typeof window.dlmsProtectForm === 'function'")
@@ -8513,7 +8551,7 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
         assert state["focusable"] is True
         assert state["overflow"] is True
         surfaces[theme] = state["background"]
-    assert len(set(surfaces.values())) == 4
+    assert len(set(surfaces.values())) == 5
 
     browser.set_viewport(390, 820)
     assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
@@ -8614,7 +8652,7 @@ def test_pdf_review_large_bulk_confirmation_status_stays_compact(browser_stack):
     )
 
     detail_surfaces = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         status = browser.evaluate(
@@ -8681,7 +8719,7 @@ def test_pdf_review_large_bulk_confirmation_status_stays_compact(browser_stack):
         )
         assert narrow == {"contained": True, "overflow": True}
         browser.set_viewport(1280, 1000)
-    assert len(set(detail_surfaces.values())) == 4
+    assert len(set(detail_surfaces.values())) == 5
 
 
 def test_law_semantic_surfaces_follow_all_themes(browser_stack):
@@ -8776,7 +8814,7 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
 
     observed_section_backgrounds = {}
     observed_law_summary_backgrounds = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/law/import")
         set_theme(theme)
 
@@ -8881,8 +8919,8 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
             assert case_state["scheme"] == "dark"
             assert max(case_state["section"]["background"]) < .40
 
-    assert len(set(observed_section_backgrounds.values())) == 4
-    assert len(set(observed_law_summary_backgrounds.values())) == 4
+    assert len(set(observed_section_backgrounds.values())) == 5
+    assert len(set(observed_law_summary_backgrounds.values())) == 5
 
     browser.set_viewport(390, 820)
     browser.navigate(f"{base_url}/law/cases/{case_id}")
@@ -9061,7 +9099,7 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
     editor_url = (
         f"{base_url}/admin/image-editor?pack=dlms120_batch2_editor&dataset=visuals&kind=hotspot"
     )
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/pdf-import/review/{draft_id}")
         set_theme(theme)
         browser.navigate(f"{base_url}/pdf-import/review/{draft_id}")
@@ -9230,7 +9268,7 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
             assert pdf_state["scheme"] == "dark"
             assert max(initial_matching["pool"]["background"]) < .45
 
-    assert len(set(surfaces_by_theme.values())) == 4
+    assert len(set(surfaces_by_theme.values())) == 5
 
 
 def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
@@ -9696,7 +9734,7 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
     """
 
     surfaces = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(base_url + "/")
         set_theme(theme)
         browser.navigate(base_url + "/")
@@ -9789,9 +9827,9 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
             "parse": parse_state["action"]["backgroundCss"],
         }
 
-    assert len({state["regex"] for state in surfaces.values()}) == 4
-    assert len({state["rejected"] for state in surfaces.values()}) == 4
-    assert len({state["parse"] for state in surfaces.values()}) == 4
+    assert len({state["regex"] for state in surfaces.values()}) == 5
+    assert len({state["rejected"] for state in surfaces.values()}) == 5
+    assert len({state["parse"] for state in surfaces.values()}) == 5
 
     browser.set_viewport(390, 780)
     for path, ready in (
@@ -9859,7 +9897,7 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
     # action is reachable before and after the user scrolls the metrics. The
     # pinned cells use an opaque theme base beneath their themed overlay so
     # neighboring metric text cannot show through them.
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.set_viewport(1024, 900)
         _set_theme(browser, theme)
         browser.navigate(base_url + "/learning-intelligence")
@@ -9993,7 +10031,7 @@ def test_learning_scope_management_filters_active_recommendations_across_themes_
         "document.body.textContent.includes('2 source quizzes included')"
     ) is True
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(base_url + "/learning-scope")
         browser.wait_for("document.querySelectorAll('.learning-scope-folder').length === 3")
@@ -10045,7 +10083,7 @@ def test_learning_scope_management_filters_active_recommendations_across_themes_
     assert browser.evaluate(
         "fetch('/api/daily-review-plan').then(r=>r.json()).then(x=>x.summary.adaptive_candidates===0)"
     ) is True
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for width in (1440, 1024, 760, 420):
             browser.set_viewport(width, 900)
@@ -10125,7 +10163,7 @@ def test_review_schedule_summary_and_queue_controls_stay_contained(browser_stack
 
     browser.navigate(base_url + "/")
     browser.wait_for("document.querySelector('.dashboard-shell')")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for width in (1440, 1024, 760, 420):
             browser.set_viewport(width, 900)
@@ -10297,7 +10335,7 @@ def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
         ),
     )
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for path, ready, selectors in pages:
             browser.navigate(base_url + path)
@@ -10366,7 +10404,7 @@ def test_mastery_explanation_and_recovery_actions_are_accessible_across_themes(
             }],
         })
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.set_viewport(520, 900)
         browser.navigate(base_url + "/learning-intelligence")
         browser.wait_for("document.getElementById('liLoading').hidden")
@@ -10680,7 +10718,7 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
     browser.click('details.duplicate-question-group summary')
     browser.wait_for("!document.querySelector('details.duplicate-question-group').open")
     browser.click('details.duplicate-question-group summary')
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(duplicate_url)
         browser.wait_for("document.querySelector('.duplicate-question-badge.exact')")
@@ -10877,7 +10915,7 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
     assert "Content Packs" in state["studyPackBoundary"]
 
     browser.wait_for("window.dlmsCsrfToken && typeof window.fetch === 'function'")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         status = browser.evaluate(
             f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
@@ -10947,7 +10985,7 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
         "bundle review cancel": ".portable-bundle-confirm-actions .library-secondary-action",
         "bundle review submit": ".portable-bundle-confirm-actions .library-primary-action",
     }
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(review_url)
         browser.wait_for("document.querySelector('.portable-bundle-confirm-panel')")
@@ -11351,7 +11389,7 @@ def test_core_filter_state_and_repeated_builder_fields_are_accessible(browser_st
         "overflow": True,
     }
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(f"{base_url}/learning-intelligence")
         browser.wait_for("document.getElementById('liLoading').hidden")
@@ -11755,7 +11793,7 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
     # This headless host never gains document focus: Enter/Space does not activate
     # even an independent native button. Keep production native button semantics;
     # use live-element clicks for activation rather than a test-only UI workaround.
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(base_url + "/")
         browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
@@ -11908,3 +11946,157 @@ def test_today_review_clear_does_not_control_or_resurrect_an_active_quiz_tab(bro
         assert browser.evaluate(f"localStorage.getItem({json.dumps(key)}) === null") is True
     finally:
         _close_context_after_pagehide(browser, dashboard_context, quiz_context)
+
+
+def test_ethereal_rendered_selection_focus_and_responsive_typography(browser_stack, tmp_path):
+    """Check painted highlights, not just the root palette or ::selection rules."""
+    import io
+    from PIL import Image
+
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    # Firefox's startup tab can lack native document focus even after activate.
+    # A foreground tab receives real keyboard input and paints native selection;
+    # the fixture owns and closes the entire session, including this tab.
+    browser.context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    screenshots = tmp_path / "ethereal-review"
+    screenshots.mkdir()
+    measurements = {}
+
+    def capture(name):
+        result = browser.command("browsingContext.captureScreenshot", {
+            "context": browser.context, "origin": "viewport",
+        })
+        data = base64.b64decode(result["data"])
+        (screenshots / f"{name}.png").write_bytes(data)
+        return Image.open(io.BytesIO(data)).convert("RGB")
+
+    def contrast(first, second):
+        def luminance(rgb):
+            values = [v / 255 for v in rgb]
+            return sum((v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4) * w
+                       for v, w in zip(values, (.2126, .7152, .0722)))
+        a, b = luminance(first), luminance(second)
+        return (max(a, b) + .05) / (min(a, b) + .05)
+
+    def selection(selector, name, form=False):
+        browser.activate()
+        encoded = json.dumps(selector)
+        browser.evaluate(f"document.querySelector({encoded}).scrollIntoView({{block:'center'}}); true")
+        browser.evaluate("window.getSelection().removeAllRanges(); document.activeElement.blur(); true")
+        # Two animation frames allow scrolling/focus to be painted before capture.
+        browser.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+        before = capture(name + "-before")
+        state = browser.evaluate("""(() => {
+            const node = document.querySelector(SELECTOR);
+            if (FORM) { node.focus(); node.select(); }
+            else {
+                const range = document.createRange(); range.selectNodeContents(node);
+                const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+            }
+            const rect = node.getBoundingClientRect(), style = getComputedStyle(node, '::selection');
+            const normal = getComputedStyle(node);
+            return {color:style.color, background:style.backgroundColor,
+                normal:normal.backgroundColor, outline:normal.outlineStyle,
+                outlineWidth:normal.outlineWidth, outlineColor:normal.outlineColor,
+                text:FORM ? node.value : window.getSelection().toString(),
+                rect:[rect.left,rect.top,rect.right,rect.bottom]};
+        })()""".replace("SELECTOR", encoded).replace("FORM", "true" if form else "false"))
+        assert state["text"].strip(), (name, state)
+        assert state["background"] == "rgb(194, 196, 240)", (name, state)
+        assert state["color"] == "rgb(6, 11, 30)", (name, state)
+        browser.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+        painted = capture(name)
+        box = tuple(round(v) for v in state["rect"])
+        before_colors = dict((rgb, count) for count, rgb in before.crop(box).getcolors(before.width * before.height))
+        after_colors = dict((rgb, count) for count, rgb in painted.crop(box).getcolors(painted.width * painted.height))
+        highlight = (194, 196, 240)
+        ink = (6, 11, 30)
+        painted_highlight = after_colors.get(highlight, 0) - before_colors.get(highlight, 0)
+        assert painted_highlight > 50, (name, painted_highlight, state)
+        new_ink = sum(old != ink and new == ink for old, new in
+                      zip(before.crop(box).get_flattened_data(), painted.crop(box).get_flattened_data()))
+        assert new_ink > 5, (name, new_ink, state)
+        assert contrast(ink, highlight) >= 7
+        # The new highlight also separates clearly from actual unselected pixels.
+        surface = max(before_colors, key=before_colors.get)
+        assert contrast(highlight, surface) >= 3, (name, surface)
+        measurements[name] = {**state, "newHighlightPixels": painted_highlight,
+                              "textContrast": contrast(ink, highlight),
+                              "surfaceContrast": contrast(highlight, surface)}
+        if form:
+            assert state["outline"] == "solid" and state["outlineWidth"] == "3px", state
+
+    browser.set_viewport(1440, 1050)
+    browser.navigate(base_url + "/settings/appearance")
+    browser.activate()
+    browser.wait_for("document.hasFocus()")
+    # Select and save through the real form, then verify the sidebar shortcut.
+    browser.evaluate("document.querySelector('input[value=ethereal]').focus(); true")
+    browser.press_key(" ")
+    browser.click(".settings-form-actions button[type=submit]")
+    browser.wait_for_page_ready("location.search.includes('saved=1') && document.querySelector('.settings-success-banner') && document.querySelector('input[value=ethereal]').checked")
+    portal = browser_stack.data_root / "config" / "portal.json"
+    assert json.loads(portal.read_text())["theme"] == "ethereal"
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'ethereal'")
+    primary = browser.evaluate("""(() => {const style=getComputedStyle(document.querySelector('.settings-primary-button'));
+        return {text:style.color,background:style.backgroundImage};})()""")
+    assert primary["text"] == "rgb(6, 11, 30)" and "rgb(125, 130, 217)" in primary["background"], primary
+    selection("#portalTitle", "appearance-selected-title", form=True)
+    browser.evaluate("document.querySelector('input[value=ethereal]').focus(); true")
+    focus = browser.evaluate("""(() => {const input=document.querySelector('input[value=ethereal]');
+        const style=getComputedStyle(input.nextElementSibling);
+        return {visible:input.matches(':focus-visible'),outline:style.outlineStyle,width:style.outlineWidth};})()""")
+    assert focus == {"visible": True, "outline": "solid", "width": "3px"}
+    capture("appearance-focused-theme")
+
+    browser.navigate(base_url + "/paste")
+    browser.evaluate("document.querySelector('textarea[name=quiz_text]').value = 'A readable selection in the question authoring field.\\nCorrect Answer: A'; true")
+    selection("textarea[name=quiz_text]", "authoring-selected-text", form=True)
+    selection("input[name=exam_minutes]", "authoring-selected-number", form=True)
+
+    quiz_path = browser_stack.data_root / "quizzes" / browser_stack.metadata["critical_html"]
+    # The existing artifact must inherit the theme, not be regenerated to apply it.
+    original_quiz = quiz_path.read_bytes()
+    browser.navigate(base_url + "/quizzes/" + browser_stack.metadata["critical_html"])
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.wait_for("document.querySelector('#qText')?.textContent.includes('Browser question')")
+    selection("#qText", "study-selected-question")
+    browser.evaluate("window.getSelection().removeAllRanges(); true")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("document.querySelector('.choice-study-explanation') !== null")
+    selection(".choice-study-explanation", "study-selected-feedback")
+    assert quiz_path.read_bytes() == original_quiz
+
+    for width in (360, 768, 1440):
+        browser.set_viewport(width, 1050)
+        browser.navigate(base_url + "/settings/appearance")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+        fonts = browser.evaluate("""({body:getComputedStyle(document.body).fontFamily,
+            heading:getComputedStyle(document.querySelector('h1')).fontFamily})""")
+        assert "system-ui" in fonts["body"] and "monospace" in fonts["heading"], fonts
+        capture(f"appearance-{width}")
+        browser.navigate(base_url + "/library")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+        capture(f"library-{width}")
+    # Exercise 200% rendered scaling and reflow. This is CSS zoom, not an
+    # assertion about browser-chrome shortcuts or OS display scaling.
+    browser.navigate(base_url + "/settings/appearance")
+    browser.evaluate("document.documentElement.style.zoom = '2'; true")
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+    capture("appearance-200-percent")
+    browser.navigate(base_url + "/library")
+    # Switching away removes optional typography and selection values too.
+    browser.evaluate("const select=document.querySelector('#dlmsQuickTheme'); select.value='light'; select.dispatchEvent(new Event('change', {bubbles:true})); true")
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'light' && !document.querySelector('#dlmsQuickTheme').disabled")
+    assert browser.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--theme-selection-bg').trim()") == ""
+    browser.evaluate("const select=document.querySelector('#dlmsQuickTheme'); select.value='ethereal'; select.dispatchEvent(new Event('change', {bubbles:true})); true")
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'ethereal' && !document.querySelector('#dlmsQuickTheme').disabled")
+    browser.navigate(base_url + "/")
+    capture("dashboard")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/")
+        capture(f"dashboard-{theme}")
+    (screenshots / "measurements.json").write_text(json.dumps(measurements, indent=2))

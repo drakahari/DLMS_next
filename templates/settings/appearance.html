@@ -34,7 +34,7 @@
                 <div class="settings-section-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#palette"></use></svg></div>
                 <div>
                     <h2>DLMS Theme</h2>
-                    <p>Choose the global color system used throughout DLMS. Purple &amp; Gold is the default for new installations.</p>
+                    <p>Choose the global appearance used throughout DLMS. Purple &amp; Gold is the default for new installations.</p>
                 </div>
             </div>
             <div class="settings-theme-grid">
@@ -54,7 +54,12 @@
                     <input type="radio" name="theme" value="maroon-gold" {% if cfg.theme == 'maroon-gold' %}checked{% endif %}>
                     <span class="settings-theme-swatch theme-maroon-gold"><b>Maroon &amp; Gold</b><small>University of Minnesota-inspired maroon with gold accents</small></span>
                 </label>
+                <label class="settings-theme-choice">
+                    <input type="radio" name="theme" value="ethereal" {% if cfg.theme == 'ethereal' %}checked{% endif %}>
+                    <span class="settings-theme-swatch theme-ethereal"><b>Ethereal</b><small>Omarchy-inspired midnight blue, peach, and lavender</small></span>
+                </label>
             </div>
+            <div class="settings-image-guidance">Ethereal uses local system fonts and works on every supported platform. Omarchy is not required.</div>
             <div class="settings-image-guidance"><strong>Readability first:</strong> status colors remain semantically distinct in every theme; the theme changes presentation, not grading or learning data.</div>
         </section>
 

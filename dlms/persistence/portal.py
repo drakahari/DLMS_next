@@ -171,7 +171,7 @@ def load_portal_config(
     bg = cfg.get("background_image")
     cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
 
-    valid_themes = {"dark", "light", "purple-gold", "maroon-gold"}
+    valid_themes = {"dark", "light", "purple-gold", "maroon-gold", "ethereal"}
     theme = str(cfg.get("theme") or default_theme).strip().lower()
     cfg["theme"] = theme if theme in valid_themes else default_theme
 

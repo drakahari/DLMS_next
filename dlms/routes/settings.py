@@ -10,7 +10,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request
 
 
 Dependency = Callable[..., Any]
-THEMES = {"dark", "light", "purple-gold", "maroon-gold"}
+THEMES = {"dark", "light", "purple-gold", "maroon-gold", "ethereal"}
 AI_PROVIDERS = {"chatgpt", "claude", "gemini", "local"}
 
 

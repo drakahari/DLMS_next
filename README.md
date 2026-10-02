@@ -105,7 +105,7 @@ Learning Intelligence, Packs, Anki, backups, and everyday workflows.
 
 ### Personal, accessible desktop experience
 
-- Choose Light, Dark, Purple & Gold, or Maroon & Gold themes and customize the
+- Choose Light, Dark, Purple & Gold, Maroon & Gold, or Ethereal themes and customize the
   visible study-area navigation.
 - Use semantic controls, visible focus states, keyboard-operable quiz choices,
   and touch/keyboard alternatives for matching activities.
