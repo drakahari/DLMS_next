@@ -15880,3 +15880,53 @@ h1, h2, h3 {
         font-size: 14px;
     }
 }
+
+/* Ethereal landing-page presentation. The catalog's disclosures and tables,
+   navigation, and the Dashboard's content/order retain their existing rules. */
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header {
+    min-height: 80px;
+    padding: 6px 48px var(--theme-page-header-space);
+}
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header > div {
+    min-width: 0;
+    max-width: 100%;
+}
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header h1 {
+    font-size: var(--theme-page-title-size);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header p {
+    margin-top: 8px;
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: normal;
+    overflow-wrap: anywhere;
+}
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) :is(.dashboard-welcome, .dashboard-action-card, .dashboard-activity-panel, .dashboard-overview-panel, .dashboard-stat-card, .dashboard-activity-row) {
+    border-color: var(--theme-quiet-border) !important;
+    box-shadow: none !important;
+}
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) :is(.dashboard-action-icon, .dashboard-stat-icon, .dashboard-welcome-icon) {
+    border-color: transparent;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) .dashboard-welcome-accent {
+    opacity: 0;
+}
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) .dashboard-action-card:is(:hover, :focus-visible) {
+    border-color: var(--theme-accent-text) !important;
+    transform: none;
+}
+@media (max-width: 820px) {
+    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header {
+        min-height: 76px;
+        padding: 8px 0 var(--theme-page-header-space) 54px;
+    }
+}
+@media (max-width: 560px) {
+    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header h1 {
+        font-size: var(--theme-page-title-small);
+    }
+}

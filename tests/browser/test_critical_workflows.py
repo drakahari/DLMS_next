@@ -12173,7 +12173,10 @@ def test_ethereal_sidebar_switching_preserves_navigation_and_content(browser_sta
         browser.evaluate("document.querySelector('.dashboard-sidebar').removeAttribute('data-theme');true")
         baseline = snapshot()
         assert refined['links'] == baseline['links'], path
-        assert refined['content'] == baseline['content'], path
+        # Ethereal now intentionally changes these landing-page headers/cards.
+        # Other pages still keep the content presentation from the sidebar pass.
+        if path not in ('/', '/study-packs', '/study-packs?domain_group=other'):
+            assert refined['content'] == baseline['content'], path
 
 
 def test_ethereal_sidebar_mobile_scroll_long_labels_and_native_keyboard(browser_stack):
@@ -12220,3 +12223,96 @@ def test_ethereal_sidebar_mobile_scroll_long_labels_and_native_keyboard(browser_
         browser.press_key('\ue00c')  # Escape closes it and returns focus to the trigger.
         browser.wait_for("!document.querySelector('.dashboard-sidebar').classList.contains('open')")
         assert browser.evaluate("document.activeElement.matches('.dashboard-menu-button') && document.activeElement.getAttribute('aria-expanded') === 'false'")
+
+
+def test_ethereal_landing_headers_cards_and_catalog_remain_accessible(browser_stack, tmp_path):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings')
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
+    _set_theme(browser, 'ethereal')
+    shots = tmp_path / 'ethereal-presentation'
+    shots.mkdir()
+
+    def capture(name):
+        browser.evaluate('document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true)))))')
+        data = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+        (shots / (name + '.png')).write_bytes(base64.b64decode(data['data']))
+
+    def ready(path):
+        browser.navigate(base + path)
+        browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+
+    browser.set_viewport(1440, 1050)
+    ready('/')
+    browser.wait_for("document.querySelector('.daily-review-action') && !document.querySelector('#recentActivity .dashboard-loading')")
+    browser.wait_for("getComputedStyle(document.querySelector('.dashboard-action-card')).boxShadow === 'none'")
+    hierarchy = browser.evaluate("""(() => {
+        const card=document.querySelector('.dashboard-action-card'),review=document.querySelector('.daily-review-panel');
+        return {cardBorder:getComputedStyle(card).borderColor,reviewBorder:getComputedStyle(review).borderColor,
+            cardShadow:getComputedStyle(card).boxShadow,decoration:getComputedStyle(document.querySelector('.dashboard-welcome-accent')).opacity,
+            titleSize:parseFloat(getComputedStyle(document.querySelector('.dashboard-header h1')).fontSize),
+            subtitleSize:parseFloat(getComputedStyle(document.querySelector('.dashboard-header p')).fontSize)};
+    })()""")
+    assert hierarchy['cardBorder'] != hierarchy['reviewBorder'] and hierarchy['cardShadow'] == 'none'
+    assert hierarchy['decoration'] == '0' and 26 <= hierarchy['titleSize'] <= 36
+    assert hierarchy['subtitleSize'] == 16
+    contrasts = _theme_contrast_snapshot(browser, {'title': '.dashboard-header h1', 'subtitle': '.dashboard-header p', 'action': '.daily-review-action', 'card': '.dashboard-action-copy p'})
+    assert all(value['contrast'] >= 4.5 for value in contrasts.values()), contrasts
+    capture('dashboard-desktop')
+    # The primary action and all nine feature destinations remain available.
+    links = browser.evaluate("[...document.querySelectorAll('.dashboard-action-card')].map(n=>n.getAttribute('href'))")
+    assert links == ['/library','/upload','/study-packs','/it','/law','/medical','/history','/dashboard','/settings']
+    browser.evaluate("document.querySelector('.dashboard-action-card').focus();true")
+    browser.press_key('\ue004')
+    focus = browser.evaluate("({href:document.activeElement.getAttribute('href'),visible:document.activeElement.matches(':focus-visible'),outline:getComputedStyle(document.activeElement).outlineStyle})")
+    assert focus == {'href': '/upload', 'visible': True, 'outline': 'solid'}
+    capture('dashboard-card-focus')
+    # Exercise the real renderer's empty-history presentation without mutating data.
+    browser.evaluate("""(async()=>{const original=window.fetch;window.fetch=(url,...args)=>url==='/api/attempts/overview'?Promise.resolve(new Response(JSON.stringify({total_attempts:0,recent_attempts:[]}))):original(url,...args);try{await loadDashboardData();}finally{window.fetch=original;}return true;})()""")
+    browser.wait_for("document.querySelector('#recentActivity .dashboard-empty-state')")
+    browser.evaluate("document.querySelector('#recentActivity').scrollIntoView({block:'center'});true")
+    capture('dashboard-empty-history')
+
+    # Real empty catalog, followed by a small isolated matching pack.
+    ready('/study-packs')
+    assert browser.evaluate("document.body.textContent.includes('No usable study packs yet')")
+    capture('packs-empty')
+    pack = browser_stack.data_root / 'content_packs/DLMS_Study_ethereal_presentation'
+    (pack / 'data').mkdir(parents=True)
+    (pack / 'manifest.json').write_text(json.dumps({'schema_version':1,'id':'ethereal_presentation','name':'Foundations of Science and Engineering','version':'1.0','content_domain':'Science','description':'Isolated presentation review pack.','datasets':[{'id':'terms','title':'Core terminology','type':'matching','path':'data/terms.json'}]}))
+    (pack / 'data/terms.json').write_text(json.dumps({'schema_version':1,'id':'terms','title':'Core terminology','description':'Review these two definitions.','category':'Foundations','source':{'organization':'DLMS test','license':'CC0'},'terms':[{'term':'Mass','definition':'Quantity of matter.'},{'term':'Force','definition':'Mass times acceleration.'}]}))
+    ready('/study-packs')
+    browser.wait_for("document.querySelector('[data-pack-id=ethereal_presentation]')")
+    browser.evaluate("document.querySelector('[data-pack-id=ethereal_presentation] summary').focus();true")
+    browser.press_key(' ')
+    browser.wait_for("!document.querySelector('[data-pack-id=ethereal_presentation]').open")
+    browser.press_key(' ')
+    browser.wait_for("document.querySelector('[data-pack-id=ethereal_presentation]').open")
+    browser.click('.study-dataset-title-button')
+    browser.wait_for("document.querySelector('.study-dataset-title-button').getAttribute('aria-expanded') === 'true'")
+    # Removing the theme marker changes the header, but the expanded catalog's
+    # own geometry and styles must remain identical relative to its origin.
+    snapshot = """(() => {const pack=document.querySelector('[data-pack-id=ethereal_presentation]'),origin=pack.getBoundingClientRect();return [pack,...pack.querySelectorAll('*')].filter(n=>n.getClientRects().length).map(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return [...[r.x,r.y-origin.y,r.width,r.height].map(v=>Math.round(v*100)/100),s.fontSize,s.color,s.display];});})()"""
+    expanded = browser.evaluate(snapshot)
+    browser.evaluate("document.querySelector('.dashboard-sidebar').removeAttribute('data-theme');true")
+    assert browser.evaluate(snapshot) == expanded
+    browser.evaluate("document.querySelector('.dashboard-sidebar').dataset.theme='ethereal';true")
+    browser.evaluate("document.querySelector('[data-pack-id=ethereal_presentation]').scrollIntoView({block:'center'});true")
+    capture('packs-expanded')
+    ready('/study-packs')
+    assert browser.evaluate("document.querySelector('[data-pack-id=ethereal_presentation]').open")
+
+    for width in (320, 360, 768):
+        browser.set_viewport(width, 1000)
+        for path, name in (('/', 'dashboard'), ('/study-packs', 'packs')):
+            ready(path)
+            assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), (width, path)
+            capture(f'{name}-{width}')
+            # Stress both word wrapping and a title with no natural break.
+            browser.evaluate("document.querySelector('.dashboard-header h1').textContent='Advanced Science and Engineering — ALongUnbrokenLearningCenterTitleForSmallScreens';true")
+            state = browser.evaluate("""(() => {const n=document.querySelector('.dashboard-header h1'),r=n.getBoundingClientRect(),header=n.closest('header');return {inside:r.left>=0&&r.right<=innerWidth&&n.scrollWidth<=n.clientWidth+1,header:header.scrollWidth<=header.clientWidth+1,page:document.documentElement.scrollWidth<=innerWidth+1,text:parseFloat(getComputedStyle(n).fontSize)};})()""")
+            assert state['inside'] and state['header'] and state['page'] and state['text'] >= 24, (width, path, state)
+            capture(f'{name}-long-{width}')
