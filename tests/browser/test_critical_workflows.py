@@ -12316,3 +12316,83 @@ def test_ethereal_landing_headers_cards_and_catalog_remain_accessible(browser_st
             state = browser.evaluate("""(() => {const n=document.querySelector('.dashboard-header h1'),r=n.getBoundingClientRect(),header=n.closest('header');return {inside:r.left>=0&&r.right<=innerWidth&&n.scrollWidth<=n.clientWidth+1,header:header.scrollWidth<=header.clientWidth+1,page:document.documentElement.scrollWidth<=innerWidth+1,text:parseFloat(getComputedStyle(n).fontSize)};})()""")
             assert state['inside'] and state['header'] and state['page'] and state['text'] >= 24, (width, path, state)
             capture(f'{name}-long-{width}')
+
+
+def _dashboard_card_layout_snapshot(browser):
+    """Measure text space and actual word fragmentation, beyond page overflow."""
+    return browser.evaluate("""(() => {
+ const grid=document.querySelector('.dashboard-action-grid');
+ const broken=[];
+ const cards=[...grid.querySelectorAll('.dashboard-action-card')].map(card=>{
+   const copy=card.querySelector('.dashboard-action-copy'), heading=copy.querySelector('h2'), desc=copy.querySelector('p');
+   for(const node of [heading,desc]) {
+     const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
+     while(walker.nextNode()) {
+       const text=walker.currentNode;
+       for(const word of text.textContent.matchAll(/[A-Za-z]+/g)) {
+         if(word[0].length>24)continue;
+         const range=document.createRange();range.setStart(text,word.index);range.setEnd(text,word.index+word[0].length);
+         const lines=new Set([...range.getClientRects()].filter(r=>r.width>0).map(r=>Math.round(r.top)));
+         if(lines.size>1)broken.push({heading:heading.textContent,word:word[0]});
+       }
+     }
+   }
+   const rect=card.getBoundingClientRect(),r=copy.getBoundingClientRect();
+   return {href:card.getAttribute('href'),title:heading.textContent,description:desc.textContent,width:rect.width,copyWidth:r.width,
+     font:parseFloat(getComputedStyle(heading).fontSize),bodyFont:parseFloat(getComputedStyle(desc).fontSize),
+     contained:[card,copy,heading,desc].every(n=>n.scrollWidth<=n.clientWidth+1) && [heading,desc].every(n=>{const range=document.createRange();range.selectNodeContents(n);return [...range.getClientRects()].every(r=>r.left>=rect.left&&r.right<=rect.right+1&&r.top>=rect.top&&r.bottom<=rect.bottom+1)}),
+     visible:[heading,desc,card.querySelector('.dashboard-action-icon'),card.querySelector('.dashboard-action-arrow')].every(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility==='visible'&&s.overflowX!=='hidden'&&s.textOverflow!=='ellipsis'}),
+     copyInside:r.left>=rect.left&&r.right<=rect.right+1};
+ });
+ return {viewport:innerWidth,dpr:devicePixelRatio,gridWidth:grid.getBoundingClientRect().width,columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,broken,cards,pageContained:document.documentElement.scrollWidth<=innerWidth+1};
+})()""")
+
+
+def test_ethereal_dashboard_cards_keep_readable_text_at_intermediate_widths(browser_stack):
+    browser = browser_stack.browser
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(browser_stack.base_url + '/settings')
+    browser.activate()
+    _set_theme(browser, 'ethereal')
+    browser.navigate(browser_stack.base_url + '/')
+    browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+    original = browser.evaluate("[...document.querySelectorAll('.dashboard-action-card')].map(n=>({href:n.getAttribute('href'),title:n.querySelector('h2').textContent,description:n.querySelector('p').textContent}))")
+    assert [card['href'] for card in original] == ['/library','/upload','/study-packs','/it','/law','/medical','/history','/dashboard','/settings']
+
+    # Include both sides of the desktop grid transitions and sidebar collapse.
+    # These tests used to pass an overflow-only check while words broke mid-word.
+    expected_columns = {1920:3, 1600:3, 1440:2, 1280:2, 1200:2, 1180:2,
+                        1140:2, 1120:1, 1100:1, 1024:1, 960:1, 900:1,
+                        840:1, 821:1, 820:1, 768:1, 600:1, 480:1,
+                        432:1, 430:1, 400:1, 390:1, 360:1, 320:1}
+    for width, columns in expected_columns.items():
+        browser.set_viewport(width, 1000)
+        browser.evaluate("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>r(true))))")
+        state = _dashboard_card_layout_snapshot(browser)
+        assert state['columns'] == columns, (width, state)
+        assert state['pageContained'] and not state['broken'], (width, state)
+        assert len(state['cards']) == len(original)
+        for card, saved in zip(state['cards'], original):
+            assert {key:card[key] for key in saved} == saved
+            assert card['copyWidth'] >= 200, (width, card)
+            assert card['contained'] and card['visible'] and card['copyInside'], (width, card)
+            assert card['font'] == (18 if width <= 560 else 21) and card['bodyFont'] == 14
+
+        # Multiword headings and complete descriptions grow the card naturally.
+        browser.evaluate("document.querySelector('.dashboard-action-copy h2').textContent='Professional Certification Preparation and Learning Analytics';document.querySelector('.dashboard-action-copy p').textContent='Comprehensive preparation and practice with complete explanations, question review, and progress tracking.';true")
+        long_state = _dashboard_card_layout_snapshot(browser)
+        assert not long_state['broken'], (width, long_state)
+        assert all(card['contained'] and card['visible'] for card in long_state['cards'])
+        # An exceptional unbroken identifier may wrap, but must remain complete.
+        browser.evaluate("document.querySelector('.dashboard-action-copy h2').textContent='ALongUnbrokenDashboardHeadingForAnIsolatedLayoutRegressionTest';true")
+        assert _dashboard_card_layout_snapshot(browser)['cards'][0]['contained']
+        browser.evaluate("document.querySelector('.dashboard-action-copy h2').textContent=" + json.dumps(original[0]['title']) + ";document.querySelector('.dashboard-action-copy p').textContent=" + json.dumps(original[0]['description']) + ";true")
+
+    # Every destination remains keyboard reachable, with a visible focus outline.
+    browser.set_viewport(1200, 1000)
+    browser.evaluate("document.querySelector('.dashboard-action-card').focus();true")
+    for saved in original[1:]:
+        browser.press_key('\ue004')
+        browser.wait_for("document.activeElement.matches(':focus-visible')")
+        focus = browser.evaluate("({href:document.activeElement.getAttribute('href'),outline:getComputedStyle(document.activeElement).outlineStyle})")
+        assert focus == {'href':saved['href'], 'outline':'solid'}
