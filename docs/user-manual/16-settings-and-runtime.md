@@ -45,8 +45,9 @@ installation.
 Ethereal pairs midnight-blue surfaces with peach text and lavender accents.
 Reading and form text use system sans-serif fonts; headings and counters use
 local monospace fonts. A bright lavender selection keeps highlighted text clear
-in questions and form fields. It works offline on every supported platform and
-does not require Omarchy or downloaded fonts. Use the sidebar Theme selector
+in questions and form fields. It uses offline web styling and local fonts with
+no Omarchy dependency. Cross-platform acceptance for 3.3.0 remains pending in the
+[release review checklist](../releases/3.3.0-RELEASE-CHECKLIST.md). Use the sidebar Theme selector
 for a quick change, or save it here. The selection persists across restarts.
 
 You can also change the title shown on the Dashboard. The title cannot be

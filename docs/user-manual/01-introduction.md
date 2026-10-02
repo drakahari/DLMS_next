@@ -11,8 +11,9 @@ browser connects to that local process. Your quizzes, results, settings, and
 other DLMS data stay in your user account's application-data directory unless
 you deliberately export or share them.
 
-This manual documents DLMS 3.2.2. It is written for people using the
-application; native-build and release-engineering procedures remain in the
+This manual documents the DLMS 3.3.0 development target. The latest published
+release remains 3.2.2; Ethereal is available in the development source.
+It is written for people using the application; native-build and release-engineering procedures remain in the
 repository's maintainer documentation.
 
 ## What you can study with DLMS

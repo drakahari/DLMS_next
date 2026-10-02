@@ -103,12 +103,17 @@ precise authoring easier. Full instructions are in
 
 ## Themes, contrast, and high-contrast modes
 
-DLMS provides four themes:
+The 3.3.0 development source provides five themes:
 
 - Light;
 - Dark;
 - Purple & Gold;
-- Maroon & Gold.
+- Maroon & Gold;
+- Ethereal.
+
+Purple & Gold remains the default. Ethereal is optional and does not require
+Omarchy. Its release validation and outstanding accessibility checks are recorded
+in the [3.3.0 review checklist](../releases/3.3.0-RELEASE-CHECKLIST.md).
 
 Shared semantic styles keep text, controls, focus outlines, badges, notices,
 tables, and surfaces readable across these themes. Choose the theme that is

@@ -18,8 +18,10 @@ class ReleaseDocumentationTests(unittest.TestCase):
 
         version = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
         self.assertIsNotNone(version)
-        self.assertEqual(version.group(1), "3.2.2")
-        self.assertIn(f"Current release: DLMS {version.group(1)}", readme)
+        self.assertEqual(version.group(1), "3.3.0")
+        self.assertIn(f"Development target: DLMS {version.group(1)} (unreleased)", readme)
+        self.assertIn("Latest published release: DLMS 3.2.2", readme)
+        self.assertIn("3.3.0 packages have not been built or accepted", readme)
         self.assertNotIn("DLMS v2.1.0 is now available", readme)
         for setting in ("--browser", "--no-browser", "DLMS_NO_BROWSER"):
             self.assertIn(setting, readme)
@@ -44,8 +46,19 @@ class ReleaseDocumentationTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertNotIn("omarchy-dlms", (ROOT / path).read_text(encoding="utf-8"))
 
+    def test_development_release_review_keeps_publication_and_acceptance_separate(self):
+        notes = (ROOT / "docs/releases/3.3.0.md").read_text(encoding="utf-8")
+        checklist = (ROOT / "docs/releases/3.3.0-RELEASE-CHECKLIST.md").read_text(encoding="utf-8")
+        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        self.assertIn("unreleased development target", notes)
+        self.assertIn("Purple & Gold remains the default", notes)
+        self.assertIn("not ready for publication", checklist)
+        self.assertIn("develop/3.3.0", security)
+        self.assertIn("currently 3.2.2", security)
+        self.assertTrue((ROOT / "docs/releases/3.2.2.md").is_file())
+
     def test_release_metadata_and_help_use_the_final_display_version(self):
-        version = "3.2.2"
+        version = "3.3.0"
         self.assertIn(f"Reproducible DLMS {version} runtime environment.", (ROOT / "requirements-lock.txt").read_text(encoding="utf-8"))
         self.assertIn(f"Canonical DLMS {version} build tools.", (ROOT / "requirements-build.txt").read_text(encoding="utf-8"))
         for path in (ROOT / "static").glob("*.html"):
@@ -54,7 +67,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
                 with self.subTest(page=path.name):
                     self.assertIn(f"Documentation for DLMS {version}.", contents)
 
-    def test_current_release_text_has_no_prerelease_label(self):
+    def test_active_version_text_has_no_obsolete_candidate_label(self):
         prerelease = re.compile(r"(?i)(?:\brc[._ -]?4\b|\bfc4\b)")
         paths = [
             ROOT / "app.py",
@@ -132,12 +145,12 @@ class ReleaseDocumentationTests(unittest.TestCase):
             with self.subTest(target=target):
                 self.assertIn(f"verify_release_artifact.py {target}", procedure)
         for artifact_name in (
-            "DLMS-3.2.2-fedora44-x86_64",
-            "DLMS-3.2.2-ubuntu24.04-x86_64",
-            "DLMS-3.2.2-ubuntu26.04-x86_64",
-            "DLMS-3.2.2-windows11-x86_64.exe",
-            "DLMS-3.2.2-macos-arm64.zip",
-            "DLMS-3.2.2-omarchy-quattro-x86_64",
+            "DLMS-3.3.0-fedora44-x86_64",
+            "DLMS-3.3.0-ubuntu24.04-x86_64",
+            "DLMS-3.3.0-ubuntu26.04-x86_64",
+            "DLMS-3.3.0-windows11-x86_64.exe",
+            "DLMS-3.3.0-macos-arm64.zip",
+            "DLMS-3.3.0-omarchy-quattro-x86_64",
         ):
             with self.subTest(artifact_name=artifact_name):
                 self.assertIn(artifact_name, readme)
@@ -148,7 +161,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
             set(re.findall(r"DLMS-3\.2\.2-linux-x86_64[\w.-]*", readme + procedure)),
             {appimage_name},
         )
-        self.assertNotIn("DLMS-3.2.2-windows-x86_64.exe", readme + procedure)
+        self.assertNotIn("DLMS-3.3.0-windows-x86_64.exe", readme + procedure)
         self.assertIn("verify_release_package.py --complete-set", procedure)
         self.assertIn('--checksums "$PACKAGE_DIR/SHA256SUMS.txt"', procedure)
         self.assertIn("--smoke", procedure)
@@ -166,12 +179,12 @@ class ReleaseDocumentationTests(unittest.TestCase):
         package_verifier = ROOT / "tools" / "verify_release_package.py"
         packager = ROOT / "tools" / "package_release.py"
         final_packages = (
-            "DLMS-3.2.2-fedora44-x86_64.tar.gz",
-            "DLMS-3.2.2-ubuntu24.04-x86_64.tar.gz",
-            "DLMS-3.2.2-ubuntu26.04-x86_64.tar.gz",
-            "DLMS-3.2.2-windows11-x86_64.zip",
-            "DLMS-3.2.2-macos-arm64.zip",
-            "DLMS-3.2.2-omarchy-quattro-x86_64.tar.gz",
+            "DLMS-3.3.0-fedora44-x86_64.tar.gz",
+            "DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz",
+            "DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz",
+            "DLMS-3.3.0-windows11-x86_64.zip",
+            "DLMS-3.3.0-macos-arm64.zip",
+            "DLMS-3.3.0-omarchy-quattro-x86_64.tar.gz",
         )
 
         self.assertTrue(package_verifier.is_file())
@@ -192,7 +205,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
             normalized_procedure,
         )
         self.assertNotIn(
-            "DLMS-3.2.2-macos-arm64.zip\n└── DLMS-3.2.2-macos-arm64/",
+            "DLMS-3.3.0-macos-arm64.zip\n└── DLMS-3.3.0-macos-arm64/",
             procedure,
         )
         self.assertIn(
@@ -204,7 +217,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
             package_readme,
         )
         self.assertIn(
-            "DLMS-3.2.2-macos-arm64.zip\n├── DLMS.app/\n├── README.txt\n└── sample_quiz.txt",
+            "DLMS-3.3.0-macos-arm64.zip\n├── DLMS.app/\n├── README.txt\n└── sample_quiz.txt",
             procedure,
         )
         normalized_package_readme = " ".join(package_readme.split())
@@ -223,7 +236,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
             normalized_package_readme,
         )
         self.assertIn("GitHub automatically supplies repository source", procedure)
-        self.assertIn("Do not\ncreate or upload `DLMS-3.2.2-source.zip`", procedure)
+        self.assertIn("Do not\ncreate or upload `DLMS-3.3.0-source.zip`", procedure)
         self.assertNotRegex(
             package_readme, re.compile(r"(?i)(?:\brc[._ -]?4\b|\bfc4\b)")
         )
@@ -281,7 +294,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("Privacy &amp; Security", getting_started)
         self.assertIn("ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app", readme)
         self.assertIn("Contents/MacOS/DLMS", readme)
-        self.assertNotIn("* macOS: `DLMS-3.2.2-macos-arm64`", readme)
+        self.assertNotIn("* macOS: `DLMS-3.3.0-macos-arm64`", readme)
         self.assertIn("not part of the normal installation", readme)
         self.assertGreater(
             readme.index("xattr -dr com.apple.quarantine /Applications/DLMS.app"),
@@ -296,9 +309,9 @@ class ReleaseDocumentationTests(unittest.TestCase):
         metadata = {"SPEC": str(ROOT / "DLMS.spec")}
         exec(compile(metadata_source, "DLMS.spec metadata", "exec"), metadata)
 
-        self.assertEqual(metadata["app_release_version"], "3.2.2")
-        self.assertEqual(metadata["app_bundle_version"], "3.2.2")
-        self.assertEqual(metadata["app_bundle_build_version"], "3.2.2")
+        self.assertEqual(metadata["app_release_version"], "3.3.0")
+        self.assertEqual(metadata["app_bundle_version"], "3.3.0")
+        self.assertEqual(metadata["app_bundle_build_version"], "3.3.0")
         self.assertIn("version=app_bundle_version", spec)
         self.assertIn('"CFBundleVersion": app_bundle_build_version', spec)
         self.assertIn('bundle_identifier="io.github.drakahari.DLMS"', spec)

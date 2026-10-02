@@ -5,8 +5,9 @@ system. The native package contains the local application and its OCR runtime;
 you do not need Python, a separate database server, or a system Tesseract
 installation.
 
-This chapter documents DLMS 3.2.2. If you are running the source code for
-development or evaluation instead, see [Running from source](#running-from-source)
+The manual targets 3.3.0 development source, but the package names and launch
+examples in this chapter refer to the latest published release, 3.2.2. No 3.3.0
+package has been accepted for release. For source development or evaluation, see [Running from source](#running-from-source)
 near the end of this chapter.
 
 ## Choose the correct package

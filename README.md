@@ -3,7 +3,14 @@
 **A private, local-first workspace for building, studying, and improving your
 own learning material.**
 
-**Current release: DLMS 3.2.2** · [Download packaged releases](../../releases)
+**Development target: DLMS 3.3.0 (unreleased)**
+
+**Latest published release: DLMS 3.2.2** · [Download packaged releases](../../releases)
+
+This branch contains the optional Ethereal theme for 3.3.0. See the
+[draft release notes](docs/releases/3.3.0.md) and
+[release review checklist](docs/releases/3.3.0-RELEASE-CHECKLIST.md).
+3.3.0 packages have not been built or accepted.
 
 DLMS 3.2.2 is published. Native package and Linux AppImage release acceptance
 is complete. The [Releases page](../../releases) is authoritative for downloads.
@@ -270,6 +277,8 @@ Headless/SSH detection affects automatic browser launch, not the network bind.
 
 - [DLMS User Manual](docs/user-manual/README.md) provides the canonical Markdown
   guide; the in-application **Help Center** offers guidance while using DLMS.
+- [3.3.0 release review checklist](docs/releases/3.3.0-RELEASE-CHECKLIST.md) tracks
+  source validation and outstanding platform, packaging, and owner checks.
 - [3.2.2 release checklist](docs/releases/3.2.2-RELEASE-CHECKLIST.md) records the
   source-freeze and native-package gates for maintainers.
 - [OCR setup and frozen packaging](docs/OCR_PACKAGING.md) explains source-mode
@@ -306,7 +315,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the test environment, Firefox
 workflow expectations, fixture privacy rules, and release-impact guidance.
 
 Compatible dependency ranges are recorded in `requirements.txt`; the verified
-3.2.2 environment is pinned in `requirements-lock.txt`. This project is
+3.3.0 environment is pinned in `requirements-lock.txt`. This project is
 available under the [MIT License](LICENSE).
 
 <details>
@@ -318,7 +327,7 @@ Build natively from the reviewed frozen commit using the recommended orchestrato
 
 ```text
 python -m pip install -r requirements-build.txt
-python tools/build_native_release.py --target fedora44-x86_64 --expected-commit FULL_40_CHARACTER_RELEASE_COMMIT --expected-version 3.2.2
+python tools/build_native_release.py --target fedora44-x86_64 --expected-commit FULL_40_CHARACTER_RELEASE_COMMIT --expected-version 3.3.0
 ```
 
 Replace the SHA placeholder and select the actual native target. Prepare a native
@@ -328,20 +337,20 @@ for all six targets and prerequisites. The command creates fresh isolated build
 outputs, runs OCR and version-aware native smoke gates, packages locally, and
 writes checksums and an acceptance summary. It never overwrites earlier packages.
 
-Verified native inputs use these exact names:
+Planned native inputs use these exact names:
 
-- `DLMS-3.2.2-fedora44-x86_64`
-- `DLMS-3.2.2-ubuntu24.04-x86_64`
-- `DLMS-3.2.2-ubuntu26.04-x86_64`
-- `DLMS-3.2.2-omarchy-quattro-x86_64`
-- `DLMS-3.2.2-windows11-x86_64.exe`
-- `DLMS-3.2.2-macos-arm64.zip`
+- `DLMS-3.3.0-fedora44-x86_64`
+- `DLMS-3.3.0-ubuntu24.04-x86_64`
+- `DLMS-3.3.0-ubuntu26.04-x86_64`
+- `DLMS-3.3.0-omarchy-quattro-x86_64`
+- `DLMS-3.3.0-windows11-x86_64.exe`
+- `DLMS-3.3.0-macos-arm64.zip`
 
 The orchestrator performs the following archive step on Apple Silicon. For
 manual diagnosis only, use the freshly built app path in place of `dist/DLMS.app`:
 
 ```bash
-ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.2.2-macos-arm64.zip
+ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.3.0-macos-arm64.zip
 ```
 
 The bundle executable is `DLMS.app/Contents/MacOS/DLMS`. Do not place a wrapper
@@ -349,14 +358,14 @@ directory around the app or include build/runtime data.
 
 ### Final package gate
 
-The six user-facing packages are:
+The six planned user-facing packages are:
 
-- `DLMS-3.2.2-fedora44-x86_64.tar.gz`
-- `DLMS-3.2.2-ubuntu24.04-x86_64.tar.gz`
-- `DLMS-3.2.2-ubuntu26.04-x86_64.tar.gz`
-- `DLMS-3.2.2-omarchy-quattro-x86_64.tar.gz`
-- `DLMS-3.2.2-windows11-x86_64.zip`
-- `DLMS-3.2.2-macos-arm64.zip`
+- `DLMS-3.3.0-fedora44-x86_64.tar.gz`
+- `DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz`
+- `DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz`
+- `DLMS-3.3.0-omarchy-quattro-x86_64.tar.gz`
+- `DLMS-3.3.0-windows11-x86_64.zip`
+- `DLMS-3.3.0-macos-arm64.zip`
 
 Follow [Native Release Verification](docs/RELEASE_VERIFICATION.md) for the exact
 artifact and final-package checks, native smoke tests, UAT, and checksum steps.
@@ -372,8 +381,9 @@ a separately assembled source ZIP.
 
 ## Project status
 
-DLMS 3.2.2 is the current published release represented by this source. The
-capabilities described above are present in the 3.2.2 source. The Releases page
-is authoritative for packages that have completed native verification and been
-published; unreleased roadmap work is intentionally not presented here as
-current functionality.
+This source targets DLMS 3.3.0 for release review; it is not a published release.
+The latest published release is 3.2.2. Ethereal and its presentation refinements
+are available in this development source and are not included in those published
+packages. Source tests alone do not establish native-package readiness. The
+[release review checklist](docs/releases/3.3.0-RELEASE-CHECKLIST.md) records the
+remaining gates; the Releases page remains authoritative for downloads.

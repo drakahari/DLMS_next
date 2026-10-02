@@ -1,6 +1,6 @@
 # DLMS User Manual
 
-The canonical user guide for **DLMS 3.2.2** covers installation, importing your
+The canonical user guide for **DLMS 3.3.0 development source** covers installation, importing your
 material, studying, timed assessments, learning-guided review, and keeping your
 data portable. Start with [Introduction](01-introduction.md), then
 [Installation and First Launch](02-installation-and-first-launch.md), or choose
@@ -238,7 +238,9 @@ GitHub releases or retained in a versioned documentation archive.
 
 ## Release boundary
 
-This manual documents the final 3.2.2 source behavior. Native package publication
-is governed by the [release checklist](../releases/3.2.2-RELEASE-CHECKLIST.md),
+This manual documents the 3.3.0 development source. The latest published release
+is 3.2.2; installation examples for published packages retain that version.
+Native package publication is governed by the
+[release review checklist](../releases/3.3.0-RELEASE-CHECKLIST.md),
 not by the presence of documentation. A PDF remains optional and is not a
 release gate. Historical audit records above retain their original context.
