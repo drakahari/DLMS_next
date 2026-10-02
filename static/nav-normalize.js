@@ -272,6 +272,20 @@
   });
   syncMenuState();
 
+  // Native focus scrolling can leave a partly visible control at the edge.
+  // Keep its full target and focus ring inside Ethereal's mobile drawer.
+  sidebar.addEventListener('focusin', event => {
+    if (sidebar.dataset.theme !== 'ethereal' || !window.matchMedia('(max-width: 820px)').matches) return;
+    const target = event.target;
+    requestAnimationFrame(() => {
+      if (document.activeElement !== target) return;
+      const control = target.getBoundingClientRect();
+      const drawer = sidebar.getBoundingClientRect();
+      if (control.bottom > drawer.bottom - 8) sidebar.scrollTop += control.bottom - drawer.bottom + 8;
+      else if (control.top < drawer.top + 8) sidebar.scrollTop -= drawer.top + 8 - control.top;
+    });
+  });
+
   // The Learning Intelligence parent and Topic Intelligence lead to the
   // same landing page. Once already there, do not reload the page merely for
   // a repeated parent click; the section stays expanded while it is current.
@@ -297,6 +311,8 @@
   themeQuick.after(navigationCustomize);
   const themeSelect = themeQuick.querySelector('select');
   portalConfigPromise.then(cfg => {
+    // Scope optional sidebar presentation without changing the canonical menu.
+    sidebar.dataset.theme = cfg?.theme || '';
     if (cfg?.theme) themeSelect.value = cfg.theme;
     const visibility = normalizeStudyAreaVisibility(cfg?.study_area_visibility);
     applyStudyAreaVisibility(visibility);

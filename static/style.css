@@ -15770,3 +15770,113 @@ h1, h2, h3, .dashboard-brand-title,
 h1, h2, h3 {
     line-height: var(--theme-heading-line-height, normal);
 }
+
+/* Ethereal sidebar only. Keep the shell width and content column untouched;
+   the shared navigation still owns destinations, visibility and active state. */
+.dashboard-sidebar[data-theme="ethereal"] {
+    padding: 18px 14px 14px;
+}
+.dashboard-sidebar[data-theme="ethereal"] > * {
+    flex-shrink: 0;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-brand {
+    gap: 12px;
+    padding: 0 10px 18px;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-brand-mark {
+    width: 40px;
+    height: 44px;
+    box-shadow: none;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-brand-title { font-size: 27px; }
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-brand-subtitle { font-size: 12px; }
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-nav { gap: 2px; }
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-nav-item {
+    min-height: 44px;
+    padding: 8px 12px;
+    gap: 10px;
+    font-size: 15px;
+    line-height: 1.35;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-nav-section-label {
+    margin: 12px 12px 4px;
+    color: var(--theme-nav-muted);
+    font-family: var(--theme-body-font);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    text-transform: none;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-nav-section-label::after { display: none; }
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-nav-submenu {
+    margin: 0 0 4px 24px;
+    padding: 0 0 0 8px;
+    gap: 2px;
+    border-left: 0;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-nav-subitem {
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+.dashboard-sidebar[data-theme="ethereal"] :is(.dashboard-nav-item, .dashboard-nav-subitem) span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.dashboard-sidebar[data-theme="ethereal"] :is(.dashboard-nav-item, .dashboard-nav-subitem) {
+    transition: color .15s ease, background-color .15s ease;
+}
+.dashboard-sidebar[data-theme="ethereal"] :is(.dashboard-nav-item, .dashboard-nav-subitem):hover {
+    transform: none;
+}
+.dashboard-sidebar[data-theme="ethereal"] :is(.dashboard-nav-item, .dashboard-nav-subitem)[aria-current="page"] {
+    background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-sidebar-1)) !important;
+    border-color: transparent !important;
+    box-shadow: inset 3px 0 0 var(--theme-accent-text);
+    color: var(--theme-heading) !important;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-nav-system { margin-bottom: 12px; }
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-shutdown { min-height: 44px; }
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-theme-quick {
+    padding: 8px;
+    border-color: transparent;
+    background: transparent;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-theme-quick label {
+    font-family: var(--theme-body-font);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: normal;
+    text-transform: none;
+}
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-theme-quick select { min-height: 44px; }
+.dashboard-sidebar[data-theme="ethereal"] .dashboard-navigation-customize {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    margin: 0 4px 4px;
+    overflow-wrap: anywhere;
+}
+@media (max-width: 820px) {
+    /* A filtered ancestor makes fixed children scroll with the document.
+       Ethereal's opaque shell needs no backdrop blur; anchor its drawer to
+       the viewport so a scrolled page cannot hide the lower controls. */
+    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) {
+        backdrop-filter: none;
+    }
+    .dashboard-sidebar[data-theme="ethereal"] {
+        box-sizing: border-box;
+        min-height: 0;
+        height: auto;
+        overflow-y: auto;
+        scrollbar-color: var(--theme-border-soft) var(--theme-sidebar-1);
+        overscroll-behavior: contain;
+        scroll-padding-block: 12px;
+    }
+    .dashboard-sidebar[data-theme="ethereal"] .dashboard-nav-subitem {
+        min-height: 44px;
+        font-size: 14px;
+    }
+}

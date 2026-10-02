@@ -1684,8 +1684,11 @@ def test_library_folder_client_state_reconciles_rename_delete_and_legacy_promoti
     assert "Uncategorized" in final_state
 
 
-def test_navigation_visibility_persists_through_settings_and_page_reload(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_navigation_visibility_persists_through_settings_and_page_reload(browser_stack, theme):
     browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser, theme)
     keys = ("it", "law", "medical", "other")
     key_list = json.dumps(keys)
 
@@ -12100,3 +12103,120 @@ def test_ethereal_rendered_selection_focus_and_responsive_typography(browser_sta
         browser.navigate(base_url + "/")
         capture(f"dashboard-{theme}")
     (screenshots / "measurements.json").write_text(json.dumps(measurements, indent=2))
+
+
+def test_ethereal_sidebar_switching_preserves_navigation_and_content(browser_stack):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.set_viewport(1440, 1050)
+    browser.navigate(base + '/settings')
+
+    def snapshot():
+        return browser.evaluate("""(() => {
+            const sidebar=document.querySelector('.dashboard-sidebar');
+            const properties=['color','backgroundColor','backgroundImage','boxShadow','borderColor',
+                'padding','margin','fontFamily','fontSize','fontWeight','lineHeight','gap','display'];
+            const visual=node=>{const s=getComputedStyle(node), r=node.getBoundingClientRect();
+                return {box:[r.x,r.y,r.width,r.height],style:properties.map(p=>s[p])};};
+            return {
+                links:[...sidebar.querySelectorAll('a,button,select')].map(n=>[
+                    n.tagName,n.getAttribute('href'),n.textContent.trim(),n.hidden,
+                    n.getAttribute('aria-current'),n.disabled||false]),
+                sidebar:[sidebar,...sidebar.querySelectorAll('*')].map(visual),
+                content:[...document.querySelectorAll('.dashboard-main header,.dashboard-main header *, .dashboard-action-card,.study-pack-card')].map(visual)
+            };
+        })()""")
+
+    # Both directions through the real quick selector; reload reads portal.json.
+    for original in ('light', 'dark', 'purple-gold', 'maroon-gold'):
+        _set_theme(browser, original)
+        browser.navigate(base + '/study-packs')
+        browser.wait_for(f"document.querySelector('.dashboard-sidebar').dataset.theme === {json.dumps(original)}")
+        before = snapshot()
+        browser.evaluate("document.querySelector('.dashboard-sidebar').removeAttribute('data-theme'); true")
+        assert snapshot() == before  # No sidebar override leaks to another theme.
+        for selected in ('ethereal', original):
+            browser.evaluate(f"const select=document.querySelector('#dlmsQuickTheme'); select.value={json.dumps(selected)};select.dispatchEvent(new Event('change',{{bubbles:true}}));true")
+            browser.wait_for(f"document.querySelector('.dashboard-sidebar')?.dataset.theme === {json.dumps(selected)} && !document.querySelector('#dlmsQuickTheme').disabled")
+            assert json.loads((browser_stack.data_root / 'config/portal.json').read_text())['theme'] == selected
+            assert snapshot()['links'] == before['links']
+        assert snapshot() == before
+
+    _set_theme(browser, 'ethereal')
+    routes = (
+        ('/', '/'), ('/library', '/library'), ('/paste', '/upload'),
+        ('/anki/custom', '/anki/custom'), ('/learning-profile', '/learning-profile'),
+        ('/study-packs', '/study-packs'),
+        ('/study-packs?domain_group=other', '/study-packs?domain_group=other'),
+        ('/settings/navigation', '/settings'), ('/help/settings', '/help'),
+    )
+    for path, current in routes:
+        browser.navigate(base + path)
+        browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+        state = browser.evaluate("""(() => {
+            const sidebar=document.querySelector('.dashboard-sidebar');
+            const current=[...sidebar.querySelectorAll('[aria-current=page]')];
+            const label=sidebar.querySelector('.dashboard-nav-section-label');
+            return {current:current.map(n=>n.getAttribute('href')),
+                marker:current.map(n=>getComputedStyle(n).boxShadow),
+                divider:getComputedStyle(label,'::after').display,
+                labelCase:getComputedStyle(label).textTransform,
+                contexts:[...sidebar.querySelectorAll('.nav-context')].map(n=>getComputedStyle(n).boxShadow),
+                targets:[...sidebar.querySelectorAll('.dashboard-nav-item:not([hidden])')].map(n=>n.getBoundingClientRect().height)};
+        })()""")
+        assert state['current'] == [current], (path, state)
+        assert all('inset' in value and '3px' in value for value in state['marker']), (path, state)
+        assert all(value == 'none' for value in state['contexts']), (path, state)
+        assert state['divider'] == 'none' and state['labelCase'] == 'none'
+        assert all(height >= 44 for height in state['targets'])
+        refined = snapshot()
+        browser.evaluate("document.querySelector('.dashboard-sidebar').removeAttribute('data-theme');true")
+        baseline = snapshot()
+        assert refined['links'] == baseline['links'], path
+        assert refined['content'] == baseline['content'], path
+
+
+def test_ethereal_sidebar_mobile_scroll_long_labels_and_native_keyboard(browser_stack):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings')
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
+    _set_theme(browser, 'ethereal')
+    for width, height in ((360, 640), (320, 480), (768, 600)):
+        browser.set_viewport(width, height)
+        browser.navigate(base + '/anki/custom')
+        browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+        browser.evaluate("document.querySelector('.dashboard-menu-button').focus();true")
+        browser.press_key('\ue007')  # Enter opens the existing mobile menu.
+        browser.wait_for("document.querySelector('.dashboard-sidebar').classList.contains('open') && document.activeElement.closest('.dashboard-sidebar')")
+        browser.evaluate("new Promise(r=>setTimeout(()=>r(true),250))")
+        # An existing long label plus an unbroken synthetic label exercise wrapping.
+        browser.evaluate("document.querySelector('[data-nav-key=learning] span').textContent='Learning Intelligence WithAnUnbrokenLongNavigationLabelForWrapping';true")
+        count = browser.evaluate("[...document.querySelectorAll('.dashboard-sidebar a,.dashboard-sidebar button:not(:disabled),.dashboard-sidebar select')].filter(n=>n.getClientRects().length && !n.hidden).length")
+        seen = []
+        for _ in range(count):
+            browser.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true))))")
+            state = browser.evaluate("""(() => {
+                const n=document.activeElement,s=document.querySelector('.dashboard-sidebar');
+                const r=n.getBoundingClientRect(),box=s.getBoundingClientRect(),style=getComputedStyle(n);
+                    return {inside:s.contains(n),name:n.getAttribute('href')||n.id||n.className,
+                        rect:[r.x,r.y,r.width,r.height],sidebar:[box.x,box.y,box.width,box.height],pageScroll:scrollY,
+                    height:r.height,visible:r.top>=0 && r.bottom<=innerHeight+1 && r.left>=0 && r.right<=innerWidth,
+                    focus:n.matches(':focus-visible'),outline:style.outlineStyle,
+                    contained:s.scrollWidth<=s.clientWidth+1,scroll:s.scrollTop,
+                    pageContained:document.documentElement.scrollWidth<=innerWidth+1};
+            })()""")
+            assert state['inside'] and state['visible'], (width, state)
+            assert state['height'] >= 44, (width, state)
+            assert state['focus'] and state['outline'] == 'solid', (width, state)
+            assert state['contained'] and state['pageContained'], (width, state)
+            seen.append(state['name'])
+            if len(seen) < count:
+                browser.press_key('\ue004')
+        assert '/settings/navigation' in seen and 'dlmsQuickTheme' in seen
+        assert browser.evaluate("document.querySelector('.dashboard-sidebar').scrollTop > 0")
+        browser.press_key('\ue00c')  # Escape closes it and returns focus to the trigger.
+        browser.wait_for("!document.querySelector('.dashboard-sidebar').classList.contains('open')")
+        assert browser.evaluate("document.activeElement.matches('.dashboard-menu-button') && document.activeElement.getAttribute('aria-expanded') === 'false'")
