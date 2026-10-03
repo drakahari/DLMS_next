@@ -80,7 +80,7 @@ class StudyAreaVisibilityTests(unittest.TestCase):
         self.assertEqual(self._visibility(), dlms.load_portal_config()["study_area_visibility"])
 
     def test_navigation_settings_defaults_to_checked_toggles(self):
-        page = self.client.get("/settings/navigation").get_data(as_text=True)
+        page = self.client.get("/settings/navigation", follow_redirects=True).get_data(as_text=True)
 
         self.assertIn('class="dashboard-shell"', page)
         self.assertIn('data-settings-menu', page)
@@ -88,15 +88,15 @@ class StudyAreaVisibilityTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIn(f'name="study_area_{key}" checked', page)
                 self.assertIn(label, page)
-        self.assertIn("removes it from navigation only", page)
+        self.assertIn("These choices are independent", page)
 
     def test_navigation_controls_use_labeled_native_inputs_and_submit_button(self):
-        page = self.client.get("/settings/navigation").get_data(as_text=True)
+        page = self.client.get("/settings/navigation", follow_redirects=True).get_data(as_text=True)
 
-        self.assertEqual(4, page.count('class="settings-toggle-row"'))
+        self.assertEqual(17, page.count('class="settings-toggle-row"'))
         self.assertEqual(4, page.count('type="checkbox" name="study_area_'))
         self.assertIn(
-            '<button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Navigation</button>',
+            '<button type="submit" name="action" value="save" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save layout &amp; navigation</button>',
             page,
         )
         self.assertIn('aria-label="Toggle navigation"', page)
@@ -112,7 +112,7 @@ class StudyAreaVisibilityTests(unittest.TestCase):
 
         response = self._save_visibility(it=True, medical=True)
         self.assertEqual(302, response.status_code)
-        self.assertEqual("/settings/navigation?saved=1", response.headers["Location"])
+        self.assertEqual("/settings/layout?saved=1#study-areas", response.headers["Location"])
 
         cfg = json.loads(Path(dlms.PORTAL_CONFIG).read_text(encoding="utf-8"))
         self.assertEqual("Keep This Title", cfg["title"])
@@ -150,7 +150,7 @@ class StudyAreaVisibilityTests(unittest.TestCase):
         self.assertEqual(302, response.status_code)
 
         redirected = self.client.get(response.headers["Location"]).get_data(as_text=True)
-        self.assertIn("Navigation settings saved.", redirected)
+        self.assertIn("Layout &amp; navigation settings saved.", redirected)
         for key in ("it", "law", "medical", "other"):
             with self.subTest(stage="redirect", key=key):
                 self.assertNotIn(f'name="study_area_{key}" checked', redirected)
@@ -161,13 +161,13 @@ class StudyAreaVisibilityTests(unittest.TestCase):
             persisted["study_area_visibility"],
         )
 
-        reloaded = dlms.app.test_client().get("/settings/navigation").get_data(as_text=True)
+        reloaded = dlms.app.test_client().get("/settings/navigation", follow_redirects=True).get_data(as_text=True)
         for key in ("it", "law", "medical", "other"):
             with self.subTest(stage="reload", key=key):
                 self.assertNotIn(f'name="study_area_{key}" checked', reloaded)
 
         self.assertEqual(302, self._save_visibility(law=True).status_code)
-        reenabling = self.client.get("/settings/navigation").get_data(as_text=True)
+        reenabling = self.client.get("/settings/navigation", follow_redirects=True).get_data(as_text=True)
         self.assertIn('name="study_area_law" checked', reenabling)
         for key in ("it", "medical", "other"):
             with self.subTest(stage="reenabled", key=key):
@@ -205,7 +205,7 @@ class StudyAreaVisibilityTests(unittest.TestCase):
         self.assertIn("const initialStudyAreaVisibility = readCachedStudyAreaVisibility() || defaultStudyAreaVisibility", source)
         self.assertIn("applyStudyAreaVisibility(visibility)", source)
         self.assertNotIn("mountNavigation(normalizeStudyAreaVisibility(cfg?.study_area_visibility))", source)
-        self.assertIn("navigationCustomize.href = '/settings/navigation'", source)
+        self.assertIn("navigationCustomize.href = '/settings/layout#study-areas'", source)
         self.assertIn("dashboard-navigation-customize", source)
         self.assertIn(".dashboard-sidebar.open", css)
 

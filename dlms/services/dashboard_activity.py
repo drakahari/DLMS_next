@@ -39,7 +39,7 @@ def activity_timestamp(value, sqlite_utc=False):
 
 
 def recent_quiz_activity(cur, *, history_context, attempt_summary, quiz_folder, data_folder, quiz_origin):
-    """Return two latest summaries and the established five-attempt list.
+    """Return two latest summaries and up to three other recent attempts.
 
     Each mode's dated summary uses one SQL pass over its records. Windows also
     count undated records without fetching full histories into Python. Zoned
@@ -120,8 +120,12 @@ def recent_quiz_activity(cur, *, history_context, attempt_summary, quiz_folder, 
         row = cur.execute(select_attempts + " WHERE a.id = ?", (exam["id"],)).fetchone()
         exam_entry = attempt(row)
     recent = cur.execute(
-        select_attempts + " ORDER BY a.completed_at DESC, a.id DESC LIMIT 5"
+        select_attempts + " ORDER BY a.completed_at DESC, a.id DESC LIMIT 4"
     ).fetchall()
+    # Compare durable row IDs, never titles or timestamps. Keep a lone featured
+    # attempt in the list when there is no other history to show.
+    alternatives = [row for row in recent if not exam_entry or row["attempt_pk"] != exam["id"]]
+    recent = (alternatives or recent)[:3]
     return {
         "study": {"entry": study_entry, "record_count": study["record_count"] if study else 0,
                   "undated_count": study["undated_count"] if study else 0},

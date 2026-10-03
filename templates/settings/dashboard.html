@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Settings - DLMS</title>
+    <title>Layout &amp; navigation Settings - DLMS</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
@@ -17,42 +17,62 @@
     <div class="settings-page-header">
         <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
         <div>
-            <span class="settings-eyebrow">SETTINGS / DASHBOARD</span>
-            <h1><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg> Dashboard</h1>
-            <p>Choose the panels and quick-access cards on your home dashboard.</p>
+            <span class="settings-eyebrow">SETTINGS / LAYOUT &amp; NAVIGATION</span>
+            <h1><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg> Layout &amp; navigation</h1>
+            <p>Choose where your study areas appear and which dashboard cards you see.</p>
         </div>
         <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
     </div>
 
     {% if request.args.get('saved') %}
-    <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Dashboard settings saved.</div>
+    <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Layout &amp; navigation settings saved.</div>
     {% endif %}
 
-    <form class="settings-detail-card" action="/settings/dashboard/save" method="POST">
-        <p>These preferences affect only dashboard cards. Your sidebar preferences, content, progress, and history are kept.</p>
+    <form class="settings-detail-card" action="/settings/layout/save" method="POST">
+        <p>Choose either location, both, or hide a study area from both. These choices are independent. Hiding an area keeps its content, progress, history, and direct links available.</p>
+        <section class="settings-form-section" id="study-areas" aria-labelledby="studyAreasHeading">
+            <h2 id="studyAreasHeading">Study areas</h2>
+            {% for key, label in [('it', 'IT Study'), ('law', 'Law Study'), ('medical', 'Medical Study')] %}
+            <fieldset class="layout-study-area">
+                <legend>{{ label }}</legend>
+                <label class="settings-toggle-row"><input type="checkbox" name="dashboard_card_{{ key }}" {% if visibility[key] %}checked{% endif %}><span>Show on dashboard</span></label>
+                <label class="settings-toggle-row"><input type="checkbox" name="study_area_{{ key }}" {% if sidebar_visibility[key] %}checked{% endif %}><span>Show in sidebar</span></label>
+                <button type="button" class="settings-secondary-button" data-hide-study-area="{{ key }}" aria-label="Hide from both: {{ label }} dashboard and sidebar">Hide from both</button>
+            </fieldset>
+            {% endfor %}
+            <fieldset class="layout-study-area">
+                <legend>Other Studies</legend>
+                <label class="settings-toggle-row"><input type="checkbox" name="study_area_other" {% if sidebar_visibility.other %}checked{% endif %}><span>Show in sidebar</span></label>
+                <p>Sidebar only; no dashboard card.</p>
+            </fieldset>
+            <p>Medical Study remains available without an installed content pack.</p>
+            <p id="layoutFormStatus" role="status" aria-live="polite"></p>
+        </section>
         {% for heading, cards in groups %}
-        <fieldset class="settings-form-section dashboard-card-options">
-            <legend><h2>{{ heading }}</h2></legend>
-            {% for key, label in cards %}
+        <fieldset class="settings-form-section dashboard-card-options" id="{{ 'dashboard-panels' if loop.first else 'dashboard-shortcuts' }}">
+            <legend><h2>Dashboard {{ heading|lower }}</h2></legend>
+            {% for key, label in cards if key not in ['it', 'law', 'medical'] %}
             <label class="settings-toggle-row">
                 <input type="checkbox" name="dashboard_card_{{ key }}" {% if visibility[key] %}checked{% endif %}>
-                <span><strong>{{ label }}</strong>{% if key == 'medical' %}<small>Medical Study remains available without an installed content pack.</small>{% endif %}</span>
+                <span><strong>{{ label }}</strong></span>
             </label>
             {% endfor %}
         </fieldset>
         {% endfor %}
 
         <div class="settings-form-actions">
-            <button type="submit" name="action" value="save" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Dashboard</button>
-            <button type="submit" name="action" value="defaults" class="settings-secondary-button">Restore defaults</button>
+            <button type="submit" name="action" value="save" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save layout &amp; navigation</button>
+            <button type="submit" name="action" value="dashboard_defaults" class="settings-secondary-button">Restore dashboard defaults</button>
+            <button type="submit" name="action" value="sidebar_defaults" class="settings-secondary-button">Restore sidebar defaults</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
     </form>
 
-    <div class="settings-scope-note">Restore defaults shows all available dashboard cards. You can always use <a href="/">Customize dashboard</a> from the dashboard heading, even with every card hidden.</div>
+    <div class="settings-scope-note">Save applies all visibility choices. Each Restore button immediately restores only its named section to visible, preserving the other section’s saved choices and unrelated settings. Unsaved edits are not applied by Restore. Settings and Customize dashboard remain reachable even with all optional content hidden.</div>
 </div>
 </main>
 </div>
 <script src="/static/nav-normalize.js"></script>
+<script src="/static/layout-settings.js"></script>
 </body>
 </html>

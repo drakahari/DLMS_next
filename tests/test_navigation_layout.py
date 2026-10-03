@@ -71,7 +71,7 @@ class NavigationLayoutTests(unittest.TestCase):
 
     def test_settings_detail_routes_use_external_templates(self):
         cases = (
-            ("/settings/navigation", "settings/navigation.html", ("visibility",)),
+            ("/settings/layout", "settings/dashboard.html", ("visibility", "sidebar_visibility", "groups")),
             ("/settings/appearance", "settings/appearance.html", ("cfg",)),
             (
                 "/settings/ai",
@@ -274,7 +274,7 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("const initialStudyAreaVisibility = readCachedStudyAreaVisibility()", source)
         self.assertIn("data-nav-key=\"${key}\"", source)
         self.assertIn("if (navItem) navItem.hidden = !visible", source)
-        self.assertIn("form[action=\"/settings/navigation/save\"]", source)
+        self.assertNotIn("form[action=\"/settings/navigation/save\"]", source)
 
         configuration_sync = source[source.rindex("portalConfigPromise.then(cfg =>"):source.index("themeSelect.addEventListener('change'")]
         self.assertIn("applyStudyAreaVisibility(visibility)", configuration_sync)

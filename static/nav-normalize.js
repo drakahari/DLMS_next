@@ -306,7 +306,7 @@
   if (themeAnchor) themeAnchor.before(themeQuick); else sidebar.appendChild(themeQuick);
   const navigationCustomize = document.createElement('a');
   navigationCustomize.className = 'dashboard-navigation-customize';
-  navigationCustomize.href = '/settings/navigation';
+  navigationCustomize.href = '/settings/layout#study-areas';
   navigationCustomize.textContent = 'Customize navigation';
   themeQuick.after(navigationCustomize);
   const themeSelect = themeQuick.querySelector('select');
@@ -318,15 +318,6 @@
     applyStudyAreaVisibility(visibility);
     cacheStudyAreaVisibility(visibility);
   }).finally(() => { themeQuick.hidden = false; });
-  document.querySelector('form[action="/settings/navigation/save"]')?.addEventListener('submit', event => {
-    const form = event.currentTarget;
-    cacheStudyAreaVisibility({
-      it: form.elements.study_area_it.checked,
-      law: form.elements.study_area_law.checked,
-      medical: form.elements.study_area_medical.checked,
-      other: form.elements.study_area_other.checked,
-    });
-  });
   themeSelect.addEventListener('change', async () => {
     const previous = themeSelect.dataset.previous || '';
     themeSelect.disabled = true;

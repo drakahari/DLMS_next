@@ -1705,7 +1705,7 @@ def test_navigation_visibility_persists_through_settings_and_page_reload(browser
     ) is True
     browser.click(".settings-primary-button")
     browser.wait_for(
-        "location.pathname === '/settings/navigation' && "
+        "location.pathname === '/settings/layout' && "
         "new URLSearchParams(location.search).get('saved') === '1'"
     )
     assert browser.evaluate(
@@ -1745,7 +1745,7 @@ def test_navigation_visibility_persists_through_settings_and_page_reload(browser
     browser.evaluate("document.querySelector('[name=study_area_law]').checked = true; true")
     browser.click(".settings-primary-button")
     browser.wait_for(
-        "location.pathname === '/settings/navigation' && "
+        "location.pathname === '/settings/layout' && "
         "document.querySelector('[name=study_area_law]').checked"
     )
     browser.navigate(f"{browser_stack.base_url}/library?navigation-reenabled=1")
@@ -1763,7 +1763,7 @@ def test_navigation_visibility_persists_through_settings_and_page_reload(browser
     )
     browser.click(".settings-primary-button")
     browser.wait_for(
-        "location.pathname === '/settings/navigation' && "
+        "location.pathname === '/settings/layout' && "
         "[...document.querySelectorAll('[name^=study_area_]')].every(input => input.checked)"
     )
 
@@ -12220,7 +12220,7 @@ def test_ethereal_sidebar_mobile_scroll_long_labels_and_native_keyboard(browser_
             seen.append(state['name'])
             if len(seen) < count:
                 browser.press_key('\ue004')
-        assert '/settings/navigation' in seen and 'dlmsQuickTheme' in seen
+        assert '/settings/layout#study-areas' in seen and 'dlmsQuickTheme' in seen
         assert browser.evaluate("document.querySelector('.dashboard-sidebar').scrollTop > 0")
         browser.press_key('\ue00c')  # Escape closes it and returns focus to the trigger.
         browser.wait_for("!document.querySelector('.dashboard-sidebar').classList.contains('open')")
@@ -12354,7 +12354,7 @@ def _dashboard_card_layout_snapshot(browser):
    return {href:card.getAttribute('href'),title:heading.textContent,description:desc.textContent,width:rect.width,copyWidth:r.width,
      font:parseFloat(getComputedStyle(heading).fontSize),bodyFont:parseFloat(getComputedStyle(desc).fontSize),
      contained:[card,copy,heading,desc].every(n=>n.scrollWidth<=n.clientWidth+1) && [heading,desc].every(n=>{const range=document.createRange();range.selectNodeContents(n);return [...range.getClientRects()].every(r=>r.left>=rect.left&&r.right<=rect.right+1&&r.top>=rect.top&&r.bottom<=rect.bottom+1)}),
-     visible:[heading,desc,card.querySelector('.dashboard-action-icon'),card.querySelector('.dashboard-action-arrow')].every(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility==='visible'&&s.overflowX!=='hidden'&&s.textOverflow!=='ellipsis'}),
+     visible:[heading,desc,card.querySelector('.dashboard-action-icon')].every(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility==='visible'&&s.overflowX!=='hidden'&&s.textOverflow!=='ellipsis'}),
      copyInside:r.left>=rect.left&&r.right<=rect.right+1};
  });
  return {viewport:innerWidth,dpr:devicePixelRatio,gridWidth:grid.getBoundingClientRect().width,columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,broken,cards,pageContained:document.documentElement.scrollWidth<=innerWidth+1};
@@ -12374,22 +12374,19 @@ def test_ethereal_dashboard_cards_keep_readable_text_at_intermediate_widths(brow
 
     # Include both sides of the desktop grid transitions and sidebar collapse.
     # These tests used to pass an overflow-only check while words broke mid-word.
-    expected_columns = {1920:3, 1600:3, 1440:2, 1280:2, 1200:2, 1180:2,
-                        1140:2, 1120:1, 1100:1, 1024:1, 960:1, 900:1,
-                        840:1, 821:1, 820:1, 768:1, 600:1, 480:1,
-                        432:1, 430:1, 400:1, 390:1, 360:1, 320:1}
-    for width, columns in expected_columns.items():
+    for width in (1920, 1600, 1440, 1280, 1200, 1180, 1140, 1120, 1100, 1024,
+                  960, 900, 840, 821, 820, 768, 600, 480, 432, 430, 400, 390, 360, 320):
         browser.set_viewport(width, 1000)
         browser.evaluate("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>r(true))))")
         state = _dashboard_card_layout_snapshot(browser)
-        assert state['columns'] == columns, (width, state)
+        assert state['columns'] == max(1, int((state['gridWidth'] + 12) // (288 + 12))), (width, state)
         assert state['pageContained'] and not state['broken'], (width, state)
         assert len(state['cards']) == len(original)
         for card, saved in zip(state['cards'], original):
             assert {key:card[key] for key in saved} == saved
             assert card['copyWidth'] >= 200, (width, card)
             assert card['contained'] and card['visible'] and card['copyInside'], (width, card)
-            assert card['font'] == (18 if width <= 560 else 21) and card['bodyFont'] == 14
+            assert card['font'] == 18 and card['bodyFont'] == 14
 
         # Multiword headings and complete descriptions grow the card naturally.
         browser.evaluate("document.querySelector('.dashboard-action-copy h2').textContent='Professional Certification Preparation and Learning Analytics';document.querySelector('.dashboard-action-copy p').textContent='Comprehensive preparation and practice with complete explanations, question review, and progress tracking.';true")
@@ -12424,7 +12421,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     browser.wait_for("document.querySelectorAll('[name^=dashboard_card_]').length === 13")
     assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.labels.length === 1 && input.labels[0].textContent.trim())")
     for name, sample in _theme_contrast_snapshot(browser, {
-        "checkbox_label": ".settings-toggle-row strong", "helper": ".settings-toggle-row small",
+        "checkbox_label": ".settings-toggle-row strong", "helper": ".settings-scope-note",
     }).items():
         assert sample["contrast"] >= 4.5, (theme, name, sample)
     # Native checkbox activation and tab movement must remain usable.
@@ -12452,7 +12449,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     if theme == "ethereal":
         assert browser.evaluate("parseFloat(getComputedStyle(document.querySelector('main h1')).fontSize)") == 24
     browser.click(".dashboard-customize")
-    browser.wait_for("location.pathname === '/settings/dashboard'")
+    browser.wait_for("location.pathname === '/settings/layout'")
     if theme == "ethereal":
         # Hiding Today's Review must keep Ethereal's card and header styling.
         browser.click("[name=dashboard_card_library]")
@@ -12464,8 +12461,8 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
         browser.wait_for("getComputedStyle(document.querySelector('.dashboard-action-card')).boxShadow === 'none'")
         assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
         browser.click(".dashboard-customize")
-        browser.wait_for("location.pathname === '/settings/dashboard'")
-    browser.click("button[value=defaults]")
+        browser.wait_for("location.pathname === '/settings/layout'")
+    browser.click("button[value=dashboard_defaults]")
     browser.wait_for("location.search === '?saved=1'")
     assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.checked)")
     assert browser.evaluate("fetch('/config/portal.json').then(r => r.json()).then(c => c.study_area_visibility)") == sidebar_before
@@ -12474,7 +12471,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     assert browser.evaluate("document.querySelectorAll('.dashboard-action-card').length") == 9
     for name, sample in _theme_contrast_snapshot(browser, {
         "activity_heading": ".dashboard-activity-summary h3",
-        "activity_detail": ".dashboard-activity-detail", "customize": ".dashboard-customize",
+        "activity_detail": ".dashboard-activity-explanation", "customize": ".dashboard-customize",
     }).items():
         assert sample["contrast"] >= 4.5, (theme, name, sample)
     browser.evaluate("document.querySelector('.dashboard-activity-panel').scrollIntoView(); true")
@@ -12541,3 +12538,86 @@ def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
     browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false' && document.querySelector('#recentActivity button') === null")
     browser.click('.dashboard-activity-summary a[href^="/review?attempt="]')
     browser.wait_for("location.pathname === '/review'")
+
+
+@pytest.mark.parametrize("theme", ("light", "dark", "ethereal"))
+def test_unified_layout_and_complete_dashboard_presentation(browser_stack, theme, tmp_path):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    browser.navigate(base + "/settings/layout")
+    browser.activate()
+    _set_theme(browser, theme)
+    browser.navigate(base + "/settings/layout")
+    before = browser.evaluate("fetch('/config/portal.json').then(r=>r.json())")
+    browser.click('[data-hide-study-area="it"]')
+    assert browser.evaluate("!document.querySelector('[name=dashboard_card_it]').checked && !document.querySelector('[name=study_area_it]').checked")
+    assert browser.evaluate("fetch('/config/portal.json').then(r=>r.json())") == before
+    # Keep a deliberate difference in the other direction for Law.
+    browser.click('[name=dashboard_card_law]')
+    browser.click('button[value=save]')
+    browser.wait_for("location.search === '?saved=1'")
+    saved = browser.evaluate("fetch('/config/portal.json').then(r=>r.json())")
+    assert not saved['dashboard_card_visibility']['it'] and not saved['study_area_visibility']['it']
+    assert not saved['dashboard_card_visibility']['law'] and saved['study_area_visibility']['law']
+    browser.click('button[value=sidebar_defaults]')
+    browser.wait_for("[...document.querySelectorAll('[name^=study_area_]')].every(n=>n.checked)")
+    assert browser.evaluate("fetch('/config/portal.json').then(r=>r.json()).then(c=>c.dashboard_card_visibility)") == saved['dashboard_card_visibility']
+    browser.click('button[value=dashboard_defaults]')
+    browser.wait_for("[...document.querySelectorAll('[name^=dashboard_card_]')].every(n=>n.checked)")
+
+    # Isolated durable fixtures exercise dated summaries and deduplication in the
+    # real endpoint/renderer. No production data or running server is touched.
+    connection = sqlite3.connect(browser_stack.data_root / 'results.db')
+    try:
+        quiz_id = browser_stack.metadata['critical_id']
+        connection.execute("INSERT INTO learning_events(event_type, quiz_id, mode, occurred_at) VALUES ('study_answer', ?, 'Study', '2026-10-01 12:00:00')", (quiz_id,))
+        connection.executemany("INSERT INTO attempts(id, quiz_id, score, total, percent, mode, completed_at) VALUES (?, ?, 1, 2, 50, 'Exam', ?)",
+                               [(f'layout-{n}', quiz_id, f'2026-10-01T12:0{n}:00Z') for n in range(5)])
+        connection.commit()
+    finally:
+        connection.close()
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#recentActivity')?.getAttribute('aria-busy') === 'false'")
+    browser.wait_for("document.querySelector('#dailyReviewList .daily-review-action') !== null")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-recent-attempt').length") == 3
+    featured = browser.evaluate("document.querySelector('.dashboard-activity-summary a[href^=\"/review\"]').href")
+    assert featured not in browser.evaluate("[...document.querySelectorAll('.dashboard-recent-attempt a')].map(n=>n.href)")
+    assert browser.evaluate("Boolean(document.querySelector('.dashboard-activity-panel').compareDocumentPosition(document.querySelector('.dashboard-action-grid')) & Node.DOCUMENT_POSITION_FOLLOWING)")
+    shots = tmp_path / 'layout-review'
+    shots.mkdir()
+    for width, name in ((1440, 'desktop'), (390, 'mobile')):
+        browser.set_viewport(width, 1000)
+        browser.evaluate("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true)))))")
+        if width <= 820:
+            browser.wait_for("document.querySelector('.dashboard-sidebar').getBoundingClientRect().right <= 0")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert browser.evaluate("document.querySelector('.dashboard-overview-panel').getBoundingClientRect().height < document.querySelector('.dashboard-activity-panel').getBoundingClientRect().height")
+        for key, value in _theme_contrast_snapshot(browser, {
+            'shortcut': '.dashboard-action-copy p', 'context': '.dashboard-activity-detail',
+            'summary': '.dashboard-activity-summary h3', 'stat': '.dashboard-stat-card span',
+        }).items():
+            assert value['contrast'] >= 4.5, (theme, width, key, value)
+        screenshot = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+        (shots / f'dashboard-{theme}-{name}.png').write_bytes(base64.b64decode(screenshot['data']))
+        browser.evaluate("document.querySelector('.dashboard-activity-summary strong').textContent='Professional Certification Preparation WithAnExceptionallyLongUnbrokenQuizTitleForLayoutChecks'; true")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    browser.evaluate("document.querySelector('.dashboard-activity-summary a').focus();true")
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle !== 'none'")
+
+    # Server-rendered sparse combinations must neither reserve empty grids nor
+    # fetch hidden panels. These saves go through the unified, CSRF-protected form.
+    for cards in (['recent_activity'], ['overview'], ['daily_review'], ['library', 'settings']):
+        browser.navigate(base + '/settings/layout')
+        browser.evaluate("document.querySelectorAll('[name^=dashboard_card_]').forEach(n=>n.checked=" + json.dumps(cards) + ".includes(n.name.replace('dashboard_card_', '')));true")
+        browser.click('button[value=save]')
+        browser.wait_for("location.search === '?saved=1'")
+        browser.navigate(base + '/')
+        browser.wait_for_page_ready()
+        requests = browser.evaluate("performance.getEntriesByType('resource').map(e=>new URL(e.name).pathname)")
+        for card, endpoint in (('recent_activity', '/api/dashboard/quiz-activity'), ('overview', '/api/attempts/overview'), ('daily_review', '/api/daily-review-plan')):
+            if card not in cards:
+                assert endpoint not in requests, (cards, endpoint)
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert browser.evaluate("document.querySelector('.dashboard-action-grid') !== null") == ('library' in cards)

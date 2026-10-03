@@ -77,17 +77,46 @@ def save_lifecycle_settings(dependencies):
     return redirect("/settings/lifecycle?saved=1")
 
 
-def settings_navigation_page(dependencies):
+def _layout_redirect(section, saved=False):
+    saved = saved or request.args.get("saved") == "1"
+    return redirect("/settings/layout" + ("?saved=1" if saved else "") + "#" + section)
+
+
+def settings_navigation_page(_dependencies):
+    return _layout_redirect("study-areas")
+
+
+def settings_dashboard_page(_dependencies):
+    return _layout_redirect("dashboard-panels")
+
+
+def settings_layout_page(dependencies):
     cfg = dependencies.load_portal_config()
-    visibility = cfg["study_area_visibility"]
-    return render_template("settings/navigation.html", visibility=visibility)
-
-
-def settings_dashboard_page(dependencies):
     return render_template(
         "settings/dashboard.html", groups=DASHBOARD_CARD_GROUPS,
-        visibility=dependencies.load_portal_config()["dashboard_card_visibility"],
+        visibility=cfg.get("dashboard_card_visibility", dashboard_card_defaults()),
+        sidebar_visibility=cfg["study_area_visibility"],
     )
+
+
+def save_layout_settings(dependencies):
+    action = request.form.get("action", "save")
+    if action not in {"save", "dashboard_defaults", "sidebar_defaults"}:
+        return "Unknown layout settings action", 400
+    cfg = dependencies.load_portal_config()
+    if action == "dashboard_defaults":
+        cfg["dashboard_card_visibility"] = dashboard_card_defaults()
+    elif action == "sidebar_defaults":
+        cfg["study_area_visibility"] = dict.fromkeys(("it", "law", "medical", "other"), True)
+    else:
+        cfg["dashboard_card_visibility"] = {
+            key: f"dashboard_card_{key}" in request.form for key in dashboard_card_defaults()
+        }
+        cfg["study_area_visibility"] = {
+            key: f"study_area_{key}" in request.form for key in ("it", "law", "medical", "other")
+        }
+    dependencies.write_portal_config(cfg)
+    return redirect("/settings/layout?saved=1")
 
 
 def save_dashboard_settings(dependencies):
@@ -100,7 +129,7 @@ def save_dashboard_settings(dependencies):
         key: f"dashboard_card_{key}" in request.form for key in defaults
     }
     dependencies.write_portal_config(cfg)
-    return redirect("/settings/dashboard?saved=1")
+    return _layout_redirect("dashboard-panels", saved=True)
 
 
 def save_navigation_settings(dependencies):
@@ -112,7 +141,7 @@ def save_navigation_settings(dependencies):
         "other": "study_area_other" in request.form,
     }
     dependencies.write_portal_config(cfg)
-    return redirect("/settings/navigation?saved=1")
+    return _layout_redirect("study-areas", saved=True)
 
 
 def settings_appearance_page(dependencies):
@@ -255,6 +284,8 @@ def api_portal_config(dependencies):
 def create_settings_blueprint(dependencies):
     blueprint = Blueprint("settings", __name__)
     rules = (
+        ("/settings/layout", "settings_layout_page", settings_layout_page, ["GET"]),
+        ("/settings/layout/save", "save_layout_settings", save_layout_settings, ["POST"]),
         ("/settings/dashboard", "settings_dashboard_page", settings_dashboard_page, ["GET"]),
         ("/settings/dashboard/save", "save_dashboard_settings", save_dashboard_settings, ["POST"]),
         ("/settings", "settings_page", settings_page, ["GET"]),

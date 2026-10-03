@@ -117,9 +117,9 @@ class UiIconTests(unittest.TestCase):
                     + r'<use href="' + SPRITE_URL + symbol + r'"></use></svg> '
                     + label + r'</h1>',
                 )
-        navigation = client.get("/settings/navigation").get_data(as_text=True)
+        navigation = client.get("/settings/navigation", follow_redirects=True).get_data(as_text=True)
         self.assertIn('/static/icons.svg#save', navigation)
-        self.assertIn('Save Navigation</button>', navigation)
+        self.assertIn('Save layout &amp; navigation</button>', navigation)
         self.assertNotIn('💾', navigation)
         self.assertNotIn('⚙️', client.get("/settings").get_data(as_text=True))
 

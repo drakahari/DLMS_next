@@ -141,8 +141,8 @@ def test_every_toggle_renders_independently_and_pack_gate_is_preserved(dashboard
         page = dashboard.get("/").get_data(as_text=True)
     assert '<a class="dashboard-action-card" href="/medical">' in page
     assert dlms.load_portal_config()["dashboard_card_visibility"]["medical"] is True
-    page = dashboard.get("/settings/dashboard").get_data(as_text=True)
-    assert page.count('class="settings-toggle-row"') == 13
+    page = dashboard.get("/settings/dashboard", follow_redirects=True).get_data(as_text=True)
+    assert page.count('class="settings-toggle-row"') == 17
     assert "Medical Study remains available without an installed content pack" in page
     from flask import render_template
     with dlms.app.test_request_context("/"):
@@ -319,8 +319,77 @@ def test_activity_query_work_is_bounded_and_reads_do_not_write(dashboard):
         conn.set_trace_callback(None)
         assert registry.call_count == 1
         assert len(statements) == 6  # Column inspection, two summaries, two details, bounded list.
-        assert len(data["recent_attempts"]) == 5
+        assert len(data["recent_attempts"]) == 3
         assert data["study"]["record_count"] == data["exam"]["record_count"] == 1000
         assert list(conn.iterdump()) == before
     finally:
         conn.close()
+
+
+def test_unified_layout_save_preserves_differing_choices_and_scoped_resets(dashboard):
+    config = dlms.load_portal_config()
+    config.update(theme="ethereal", custom_extension={"keep": 1})
+    dlms._write_settings_portal_config(config)
+    token = csrf_token(dashboard, "/settings/layout")
+    form = {"csrf_token": token, "dashboard_card_it": "on", "dashboard_card_history": "on",
+            "study_area_law": "on", "study_area_other": "on"}
+    response = dashboard.post("/settings/layout/save", data=form)
+    assert response.status_code == 302
+    saved = dlms.load_portal_config()
+    assert saved["dashboard_card_visibility"]["it"] and not saved["study_area_visibility"]["it"]
+    assert saved["study_area_visibility"]["law"] and not saved["dashboard_card_visibility"]["law"]
+    assert saved["theme"] == "ethereal" and saved["custom_extension"] == {"keep": 1}
+    page = dashboard.get("/settings/layout").get_data(as_text=True)
+    assert page.count('name="dashboard_card_') == 13
+    assert page.count('name="study_area_') == 4
+    assert 'dashboard_card_other' not in page
+    assert page.count('value="save"') == 1
+    for action, changed, unchanged in (
+        ("sidebar_defaults", "study_area_visibility", "dashboard_card_visibility"),
+        ("dashboard_defaults", "dashboard_card_visibility", "study_area_visibility"),
+    ):
+        before = dlms.load_portal_config()
+        assert dashboard.post("/settings/layout/save", data={"csrf_token": token, "action": action}).status_code == 302
+        after = dlms.load_portal_config()
+        assert all(after[changed].values())
+        assert after[unchanged] == before[unchanged]
+        before.pop(changed)
+        after.pop(changed)
+        assert after == before
+
+
+def test_unified_layout_security_failed_save_retry_and_old_entry_points(dashboard):
+    for old, anchor in (("dashboard", "dashboard-panels"), ("navigation", "study-areas")):
+        response = dashboard.get(f"/settings/{old}?saved=1")
+        assert response.status_code == 302
+        assert response.location == f"/settings/layout?saved=1#{anchor}"
+    assert dashboard.post("/settings/layout/save").status_code == 400
+    token = csrf_token(dashboard)
+    data = {"csrf_token": token, "dashboard_card_it": "on", "study_area_law": "on"}
+    before = Path(dlms.PORTAL_CONFIG).read_bytes()
+    assert dashboard.post("/settings/layout/save", data={**data, "action": "unknown"}).status_code == 400
+    assert dashboard.post("/settings/layout/save", data=data, headers={"Origin": "https://untrusted.example"}).status_code == 403
+    with mock.patch.object(dlms, "_write_settings_portal_config", side_effect=OSError("disk unavailable")):
+        assert dashboard.post("/settings/layout/save", data=data).status_code == 500
+    assert Path(dlms.PORTAL_CONFIG).read_bytes() == before
+    assert dashboard.post("/settings/layout/save", data=data).status_code == 302
+    assert dlms.load_portal_config()["dashboard_card_visibility"]["it"]
+    assert dlms.load_portal_config()["study_area_visibility"]["law"]
+
+
+def test_recent_attempts_bounded_deduplicated_by_identity_and_history_preserved(dashboard):
+    quiz_id, _ = publish("Identical title")
+    headers = csrf_headers(dashboard)
+    for index in range(6):
+        payload = exam_payload(quiz_id, f"attempt-{index}")
+        payload["completedAt"] = f"2026-01-01T12:0{index + 1}:00Z"
+        assert dashboard.post("/record_attempt", json=payload, headers=headers).status_code == 200
+    data = activity(dashboard)
+    assert data["exam"]["entry"]["id"] == "attempt-5"
+    assert [row["id"] for row in data["recent_attempts"]] == ["attempt-4", "attempt-3", "attempt-2"]
+    assert data["exam"]["record_count"] == 6
+    with closing(dlms.get_db()) as conn:
+        assert conn.execute("SELECT count(*) FROM attempts").fetchone()[0] == 6
+    page = dashboard.get("/").get_data(as_text=True)
+    assert page.index('id="dailyReviewList"') < page.index('id="recentActivity"') < page.index('aria-label="Quick access"')
+    assert 'dashboard-lower-grid' not in page

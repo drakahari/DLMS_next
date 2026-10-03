@@ -116,7 +116,7 @@
             <div>
                 <h1>{{ portal_title }}</h1>
                 <p>Build <span>•</span> Study <span>•</span> Test <span>•</span> Improve</p>
-                <a class="dashboard-customize" href="/settings/dashboard">Customize dashboard</a>
+                <a class="dashboard-customize" href="/settings/layout#dashboard-panels">Customize dashboard</a>
             </div>
         </header>
 
@@ -125,7 +125,7 @@
             <div class="dashboard-welcome-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#welcome"></use></svg></div>
             <div class="dashboard-welcome-copy">
                 <h2>Welcome back!</h2>
-                <p>Launch quizzes, create content, study, and track your progress from one place.</p>
+                <p>Pick up your studies or start something new.</p>
             </div>
             <div class="dashboard-welcome-accent" aria-hidden="true"></div>
         </section>
@@ -143,8 +143,8 @@
                 </div>
                 <strong id="dailyReviewCount" class="daily-review-count" role="status" aria-live="polite">Loading…</strong>
             </div>
-            <p class="daily-review-intro">Not sure what to study right now? Start here. DLMS combines your highest-priority due questions, topic needs, unfinished work, and existing study options into one short plan.</p>
-            <p class="daily-review-intro"><a href="/learning-scope">Manage Learning Scope</a> to choose which folders inform automatic recommendations. Saved Resume cards stay available.</p>
+            <p class="daily-review-intro">Due questions, topic needs, and unfinished work for your next study session.</p>
+            <p class="daily-review-intro"><a href="/learning-scope">Manage Learning Scope</a> to choose recommendation folders. Saved Resume cards stay available.</p>
             <div id="dailyReviewList" class="daily-review-list" aria-live="polite">
                 <div class="dashboard-loading">Building today’s local review plan…</div>
             </div>
@@ -164,111 +164,6 @@
         </section>
         {% endif %}
 
-        {% if visibility.library or visibility.build or visibility.study_packs or visibility.it or visibility.law or visibility.history or visibility.analytics or visibility.settings or (visibility.medical and medical_pack_installed) %}
-        <section class="dashboard-action-grid" aria-label="Quick access">
-            {% if visibility.library %}
-            <a class="dashboard-action-card" href="/library">
-                <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>Quiz Library</h2>
-                    <p>Browse and launch available quizzes.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-
-            {% if visibility.build %}
-            <a class="dashboard-action-card" href="/upload">
-                <div class="dashboard-action-icon icon-orange" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>Build Quiz</h2>
-                    <p>Create, paste, or import a new quiz.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-            {% if visibility.study_packs %}
-            <a class="dashboard-action-card" href="/study-packs">
-                <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>Study Packs</h2>
-                    <p>Create and launch subject-based study packs, image quizzes, and AI-generated content.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-
-            {% if visibility.it %}
-            <a class="dashboard-action-card" href="/it">
-                <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#it"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>IT Study</h2>
-                    <p>Practice concepts, matching, diagrams, and images from installed IT and cybersecurity Study Packs.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-
-            {% if visibility.law %}
-            <a class="dashboard-action-card" href="/law">
-                <div class="dashboard-action-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>Law Study</h2>
-                    <p>Case briefs, Socratic review, IRAC drills, and flashcards.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-            {% if medical_pack_installed %}
-            {% if visibility.medical %}
-            <a class="dashboard-action-card" href="/medical">
-                <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>Medical Study</h2>
-                    <p>Generate practice from installed medical terminology and anatomy packs.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-            {% endif %}
-
-            {% if visibility.history %}
-            <a class="dashboard-action-card" href="/history">
-                <div class="dashboard-action-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>History</h2>
-                    <p>Review completed attempts and results.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-
-            {% if visibility.analytics %}
-            <a class="dashboard-action-card" href="/dashboard">
-                <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>Analytics</h2>
-                    <p>See trends, insights, and performance data.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-
-            {% if visibility.settings %}
-            <a class="dashboard-action-card" href="/settings">
-                <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>Settings</h2>
-                    <p>Customize your dashboard and preferences.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-        </section>
-        {% endif %}
-
-        {% if visibility.recent_activity or visibility.overview %}
-        <section class="dashboard-lower-grid">
             {% if visibility.recent_activity %}
             <div class="dashboard-panel dashboard-activity-panel">
                 <div class="dashboard-panel-heading">
@@ -276,7 +171,7 @@
                         <span class="dashboard-heading-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#activity"></use></svg></span>
                         <h2>Recent quiz activity</h2>
                     </div>
-                    <a href="/history">View all</a>
+                    <a href="/history">View all history</a>
                 </div>
 
                 <div id="recentActivity" class="dashboard-activity-list" aria-live="polite" aria-busy="true">
@@ -333,8 +228,109 @@
                 </div>
             </div>
             {% endif %}
-        </section>
 
+
+        {% if visibility.library or visibility.build or visibility.study_packs or visibility.it or visibility.law or visibility.history or visibility.analytics or visibility.settings or (visibility.medical and medical_pack_installed) %}
+        <section class="dashboard-action-grid" aria-label="Quick access">
+            {% if visibility.library %}
+            <a class="dashboard-action-card" href="/library">
+                <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Quiz Library</h2>
+                    <p>Browse and launch quizzes.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+
+            {% if visibility.build %}
+            <a class="dashboard-action-card" href="/upload">
+                <div class="dashboard-action-icon icon-orange" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Build Quiz</h2>
+                    <p>Create or import a quiz.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+            {% if visibility.study_packs %}
+            <a class="dashboard-action-card" href="/study-packs">
+                <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Study Packs</h2>
+                    <p>Create and explore study packs.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+
+            {% if visibility.it %}
+            <a class="dashboard-action-card" href="/it">
+                <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#it"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>IT Study</h2>
+                    <p>IT and cybersecurity practice.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+
+            {% if visibility.law %}
+            <a class="dashboard-action-card" href="/law">
+                <div class="dashboard-action-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Law Study</h2>
+                    <p>Cases, drills, and flashcards.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+            {% if medical_pack_installed %}
+            {% if visibility.medical %}
+            <a class="dashboard-action-card" href="/medical">
+                <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Medical Study</h2>
+                    <p>Terminology and anatomy practice.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+            {% endif %}
+
+            {% if visibility.history %}
+            <a class="dashboard-action-card" href="/history">
+                <div class="dashboard-action-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>History</h2>
+                    <p>Review saved attempts.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+
+            {% if visibility.analytics %}
+            <a class="dashboard-action-card" href="/dashboard">
+                <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Analytics</h2>
+                    <p>Explore learning trends.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+
+            {% if visibility.settings %}
+            <a class="dashboard-action-card" href="/settings">
+                <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Settings</h2>
+                    <p>Adjust your preferences.</p>
+                </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
+        </section>
         {% endif %}
 
         <footer class="dashboard-footer">DLMS v{{ app_version }}</footer>
