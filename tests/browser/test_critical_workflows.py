@@ -12194,7 +12194,9 @@ def test_ethereal_sidebar_mobile_scroll_long_labels_and_native_keyboard(browser_
         browser.evaluate("document.querySelector('.dashboard-menu-button').focus();true")
         browser.press_key('\ue007')  # Enter opens the existing mobile menu.
         browser.wait_for("document.querySelector('.dashboard-sidebar').classList.contains('open') && document.activeElement.closest('.dashboard-sidebar')")
-        browser.evaluate("new Promise(r=>setTimeout(()=>r(true),250))")
+        # Firefox may start the drawer animation after the class changes. Wait
+        # for its actual position before asserting every focused target is visible.
+        browser.wait_for("(() => {const r=document.querySelector('.dashboard-sidebar').getBoundingClientRect();return r.left >= 0 && r.right <= innerWidth;})()")
         # An existing long label plus an unbroken synthetic label exercise wrapping.
         browser.evaluate("document.querySelector('[data-nav-key=learning] span').textContent='Learning Intelligence WithAnUnbrokenLongNavigationLabelForWrapping';true")
         count = browser.evaluate("[...document.querySelectorAll('.dashboard-sidebar a,.dashboard-sidebar button:not(:disabled),.dashboard-sidebar select')].filter(n=>n.getClientRects().length && !n.hidden).length")
@@ -12271,8 +12273,19 @@ def test_ethereal_landing_headers_cards_and_catalog_remain_accessible(browser_st
     assert focus == {'href': '/upload', 'visible': True, 'outline': 'solid'}
     capture('dashboard-card-focus')
     # Exercise the real renderer's empty-history presentation without mutating data.
-    browser.evaluate("""(async()=>{const original=window.fetch;window.fetch=(url,...args)=>url==='/api/attempts/overview'?Promise.resolve(new Response(JSON.stringify({total_attempts:0,recent_attempts:[]}))):original(url,...args);try{await loadDashboardData();}finally{window.fetch=original;}return true;})()""")
-    browser.wait_for("document.querySelector('#recentActivity .dashboard-empty-state')")
+    browser.evaluate("""(() => {
+        const original = window.fetch;
+        window.fetch = (url, ...args) => {
+            if (url !== '/api/dashboard/quiz-activity') return original(url, ...args);
+            window.fetch = original;
+            const empty = {entry: null, record_count: 0, undated_count: 0};
+            return Promise.resolve(new Response(JSON.stringify({study: empty, exam: empty, recent_attempts: []})));
+        };
+        const script = document.createElement('script');
+        script.src = '/static/dashboard-activity.js'; document.body.append(script);
+        return true;
+    })()""")
+    browser.wait_for("document.querySelector('#recentActivity').textContent.includes('No saved Study responses yet.') && document.querySelector('#recentActivity').textContent.includes('No saved Exam completions yet.')")
     browser.evaluate("document.querySelector('#recentActivity').scrollIntoView({block:'center'});true")
     capture('dashboard-empty-history')
 
@@ -12396,3 +12409,135 @@ def test_ethereal_dashboard_cards_keep_readable_text_at_intermediate_widths(brow
         browser.wait_for("document.activeElement.matches(':focus-visible')")
         focus = browser.evaluate("({href:document.activeElement.getAttribute('href'),outline:getComputedStyle(document.activeElement).outlineStyle})")
         assert focus == {'href':saved['href'], 'outline':'solid'}
+
+
+@pytest.mark.parametrize("theme", ("light", "dark", "ethereal"))
+def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, theme, tmp_path):
+    browser = browser_stack.browser
+    # Use the established foreground-tab pattern for native Firefox keyboard focus.
+    browser.context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    browser.navigate(browser_stack.base_url + "/settings/dashboard")
+    _set_theme(browser, theme)
+    browser.navigate(browser_stack.base_url + "/settings/dashboard")
+    browser.activate()
+    browser.set_viewport(390, 844)
+    browser.wait_for("document.querySelectorAll('[name^=dashboard_card_]').length === 13")
+    assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.labels.length === 1 && input.labels[0].textContent.trim())")
+    for name, sample in _theme_contrast_snapshot(browser, {
+        "checkbox_label": ".settings-toggle-row strong", "helper": ".settings-toggle-row small",
+    }).items():
+        assert sample["contrast"] >= 4.5, (theme, name, sample)
+    # Native checkbox activation and tab movement must remain usable.
+    browser.click("[name=dashboard_card_welcome]")
+    browser.evaluate("window.focus(); document.querySelector('[name=dashboard_card_welcome]').focus(); true")
+    browser.press_key(" ")
+    assert browser.evaluate("document.querySelector('[name=dashboard_card_welcome]').checked") is True
+    browser.press_key("\ue004")
+    assert browser.evaluate("document.activeElement.name") == "dashboard_card_daily_review"
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    browser.evaluate("document.querySelectorAll('[name^=dashboard_card_]').forEach(input => input.checked = false); true")
+    browser.click("button[value=save]")
+    browser.wait_for("location.search === '?saved=1'")
+    assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => !input.checked)")
+    sidebar_before = browser.evaluate("fetch('/config/portal.json').then(r => r.json()).then(c => c.study_area_visibility)")
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for_page_ready("document.querySelector('.dashboard-nav-normalized') !== null")
+    assert browser.evaluate("document.querySelector('main h1') !== null && document.querySelector('.dashboard-customize') !== null")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-action-card, .dashboard-lower-grid, .dashboard-action-grid, .daily-review-panel, .dashboard-welcome').length") == 0
+    requests = browser.evaluate("performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname)")
+    assert "/api/dashboard/quiz-activity" not in requests
+    assert "/api/attempts/overview" not in requests
+    assert "/api/daily-review-plan" not in requests
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    if theme == "ethereal":
+        assert browser.evaluate("parseFloat(getComputedStyle(document.querySelector('main h1')).fontSize)") == 24
+    browser.click(".dashboard-customize")
+    browser.wait_for("location.pathname === '/settings/dashboard'")
+    if theme == "ethereal":
+        # Hiding Today's Review must keep Ethereal's card and header styling.
+        browser.click("[name=dashboard_card_library]")
+        browser.click("button[value=save]")
+        browser.wait_for("location.search === '?saved=1'")
+        browser.navigate(browser_stack.base_url + "/")
+        browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+        assert browser.evaluate("document.querySelector('.daily-review-panel') === null")
+        browser.wait_for("getComputedStyle(document.querySelector('.dashboard-action-card')).boxShadow === 'none'")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        browser.click(".dashboard-customize")
+        browser.wait_for("location.pathname === '/settings/dashboard'")
+    browser.click("button[value=defaults]")
+    browser.wait_for("location.search === '?saved=1'")
+    assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.checked)")
+    assert browser.evaluate("fetch('/config/portal.json').then(r => r.json()).then(c => c.study_area_visibility)") == sidebar_before
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false'")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-action-card').length") == 9
+    for name, sample in _theme_contrast_snapshot(browser, {
+        "activity_heading": ".dashboard-activity-summary h3",
+        "activity_detail": ".dashboard-activity-detail", "customize": ".dashboard-customize",
+    }).items():
+        assert sample["contrast"] >= 4.5, (theme, name, sample)
+    browser.evaluate("document.querySelector('.dashboard-activity-panel').scrollIntoView(); true")
+    screenshot = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "viewport"})
+    (tmp_path / f"dashboard-activity-{theme}.png").write_bytes(base64.b64decode(screenshot["data"]))
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    browser.click(".study-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    # Leave this two-question Study session after only one response.
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false'")
+    text = browser.evaluate("document.getElementById('recentActivity').textContent")
+    assert "Last studied" in text and "Last response saved" in text
+    assert "does not indicate quiz completion" in text
+    assert "completion times cannot be determined" in text  # Seeded legacy Exam has no zone.
+    assert "Find undated attempts in History" in text
+    assert browser.evaluate("document.querySelector('.dashboard-activity-summary time').dateTime.endsWith('+00:00')")
+    browser.navigate(quiz_url)
+    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    browser.click(".exam-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.evaluate("window.confirm = () => true; true")
+    browser.click("#submitBtn")
+    browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false'")
+    text = browser.evaluate("document.getElementById('recentActivity').textContent")
+    assert "Latest Exam completed" in text and "2 / 2 (100%)" in text
+    assert "Latest shown uses reliably dated records" in text
+    assert "current content" in text
+    browser.set_viewport(390, 844)
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-activity-summary a[href^=\"/review?attempt=\"]').length") == 1
+    # Reload only this widget to exercise loading, network failure, and retry.
+    browser.evaluate("""(() => {
+        const original = window.fetch.bind(window);
+        window.fetch = (...args) => {
+            if (String(args[0]) === '/api/dashboard/quiz-activity') {
+                window.fetch = original;
+                return new Promise((_resolve, reject) => { window.failActivity = () => reject(new Error('test failure')); });
+            }
+            return original(...args);
+        };
+        const script = document.createElement('script');
+        script.src = '/static/dashboard-activity.js'; document.body.append(script);
+        return true;
+    })()""")
+    browser.wait_for("typeof window.failActivity === 'function'")
+    assert browser.evaluate("document.getElementById('recentActivity').getAttribute('aria-busy')") == "true"
+    browser.evaluate("window.failActivity(); true")
+    browser.wait_for("document.querySelector('#recentActivity button') !== null")
+    assert "Couldn’t load" in browser.evaluate("document.getElementById('recentActivity').textContent")
+    browser.click("#recentActivity button")
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false' && document.querySelector('#recentActivity button') === null")
+    browser.click('.dashboard-activity-summary a[href^="/review?attempt="]')
+    browser.wait_for("location.pathname === '/review'")

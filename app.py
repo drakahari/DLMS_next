@@ -52,6 +52,7 @@ from dlms.services import content_packs as _content_pack_service
 from dlms.services import content_pack_mutations as _content_pack_mutation_service
 from dlms.services import external_ai_structured as _external_ai_structured_service
 from dlms.services import history as _history_service
+from dlms.services.dashboard_activity import recent_quiz_activity
 from dlms.services import learning as _learning_service
 from dlms.services import learning_scope as _learning_scope_service
 from dlms.services import generated_practice_lifecycle as _generated_practice_lifecycle
@@ -6146,6 +6147,11 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
 
 
 app.register_blueprint(create_history_blueprint(HistoryRouteDependencies(
+    recent_quiz_activity=lambda cur: recent_quiz_activity(
+        cur, history_context=_attempt_history_context,
+        attempt_summary=_attempt_summary_from_row, quiz_folder=QUIZ_FOLDER,
+        quiz_origin=_quiz_history_origin, data_folder=DATA_FOLDER,
+    ),
     static_folder=lambda: app.static_folder,
     get_db=lambda: get_db(),
     parse_attempt_pagination=lambda: _parse_attempt_pagination(),

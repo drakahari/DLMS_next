@@ -6,6 +6,21 @@ import os
 from dlms.persistence import json_files
 
 
+DASHBOARD_CARD_GROUPS = (
+    ("Panels", (("welcome", "Welcome"), ("daily_review", "Today’s Review"),
+                ("recent_activity", "Recent quiz activity"), ("overview", "Overview"))),
+    ("Quick access", (("library", "Quiz Library"), ("build", "Build Quiz"),
+                      ("study_packs", "Study Packs"), ("it", "IT Study"),
+                      ("law", "Law Study"), ("medical", "Medical Study"),
+                      ("history", "History"), ("analytics", "Analytics"),
+                      ("settings", "Settings"))),
+)
+
+
+def dashboard_card_defaults():
+    return {key: True for _, cards in DASHBOARD_CARD_GROUPS for key, _ in cards}
+
+
 def _portal_defaults(
     *,
     default_theme,
@@ -16,6 +31,7 @@ def _portal_defaults(
 ):
     return {
         "title": "Training & Practice Center",
+        "dashboard_card_visibility": dashboard_card_defaults(),
         "show_confidence": True,
         "enable_regex_replace": False,
         "background_image": None,
@@ -127,11 +143,16 @@ def load_portal_config(
         "study_area_visibility" in data
         and not isinstance(data["study_area_visibility"], dict)
     )
+    malformed_dashboard_visibility = (
+        "dashboard_card_visibility" in data
+        and not isinstance(data["dashboard_card_visibility"], dict)
+    )
     if (
         malformed_quiz_folders
         or malformed_hidden_quiz_folders
         or malformed_excluded_learning_folders
         or malformed_study_area_visibility
+        or malformed_dashboard_visibility
     ):
         preserve_malformed_json(portal_path)
 
@@ -199,6 +220,13 @@ def load_portal_config(
         for key in ("it", "law", "medical", "other")
     }
 
+    raw_dashboard = cfg.get("dashboard_card_visibility")
+    if not isinstance(raw_dashboard, dict):
+        raw_dashboard = {}
+    cfg["dashboard_card_visibility"] = {
+        key: raw_dashboard[key] if isinstance(raw_dashboard.get(key), bool) else default
+        for key, default in dashboard_card_defaults().items()
+    }
     return cfg
 
 

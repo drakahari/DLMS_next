@@ -28,6 +28,8 @@ MAINTENANCE_PATH = ROOT / "dlms" / "routes" / "maintenance.py"
 
 class SettingsMaintenanceBlueprintTests(unittest.TestCase):
     EXPECTED_RULES = {
+        ("settings.settings_dashboard_page", "/settings/dashboard", frozenset({"GET"})),
+        ("settings.save_dashboard_settings", "/settings/dashboard/save", frozenset({"POST"})),
         ("settings.settings_page", "/settings", frozenset({"GET"})),
         (
             "settings.settings_lifecycle_page",
@@ -268,7 +270,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
             for rule in rules
         }
         self.assertEqual(self.EXPECTED_RULES, actual)
-        self.assertEqual(35, len(rules))
+        self.assertEqual(37, len(rules))
         for rule in rules:
             with self.subTest(endpoint=rule.endpoint, rule=rule.rule):
                 self.assertTrue(rule.strict_slashes)

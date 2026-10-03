@@ -109,16 +109,18 @@
     <!-- =========================
          MAIN DASHBOARD
     ========================== -->
-    <main class="dashboard-main">
+    <main class="dashboard-main" data-home-dashboard>
 
         <header class="dashboard-header">
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div>
                 <h1>{{ portal_title }}</h1>
                 <p>Build <span>•</span> Study <span>•</span> Test <span>•</span> Improve</p>
+                <a class="dashboard-customize" href="/settings/dashboard">Customize dashboard</a>
             </div>
         </header>
 
+        {% if visibility.welcome %}
         <section class="dashboard-welcome dashboard-panel">
             <div class="dashboard-welcome-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#welcome"></use></svg></div>
             <div class="dashboard-welcome-copy">
@@ -127,7 +129,9 @@
             </div>
             <div class="dashboard-welcome-accent" aria-hidden="true"></div>
         </section>
+        {% endif %}
 
+        {% if visibility.daily_review %}
         <section class="dashboard-panel daily-review-panel" aria-labelledby="dailyReviewHeading">
             <div class="dashboard-panel-heading daily-review-heading">
                 <div>
@@ -158,8 +162,11 @@
                 </form>
             </dialog>
         </section>
+        {% endif %}
 
+        {% if visibility.library or visibility.build or visibility.study_packs or visibility.it or visibility.law or visibility.history or visibility.analytics or visibility.settings or (visibility.medical and medical_pack_installed) %}
         <section class="dashboard-action-grid" aria-label="Quick access">
+            {% if visibility.library %}
             <a class="dashboard-action-card" href="/library">
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -168,7 +175,9 @@
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
+            {% endif %}
 
+            {% if visibility.build %}
             <a class="dashboard-action-card" href="/upload">
                 <div class="dashboard-action-icon icon-orange" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -177,6 +186,8 @@
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
+            {% endif %}
+            {% if visibility.study_packs %}
             <a class="dashboard-action-card" href="/study-packs">
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -185,7 +196,9 @@
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
+            {% endif %}
 
+            {% if visibility.it %}
             <a class="dashboard-action-card" href="/it">
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#it"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -194,7 +207,9 @@
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
+            {% endif %}
 
+            {% if visibility.law %}
             <a class="dashboard-action-card" href="/law">
                 <div class="dashboard-action-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -203,7 +218,9 @@
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
+            {% endif %}
             {% if medical_pack_installed %}
+            {% if visibility.medical %}
             <a class="dashboard-action-card" href="/medical">
                 <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -213,7 +230,9 @@
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
             {% endif %}
+            {% endif %}
 
+            {% if visibility.history %}
             <a class="dashboard-action-card" href="/history">
                 <div class="dashboard-action-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -222,7 +241,9 @@
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
+            {% endif %}
 
+            {% if visibility.analytics %}
             <a class="dashboard-action-card" href="/dashboard">
                 <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -231,7 +252,9 @@
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
+            {% endif %}
 
+            {% if visibility.settings %}
             <a class="dashboard-action-card" href="/settings">
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg></div>
                 <div class="dashboard-action-copy">
@@ -240,23 +263,29 @@
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
+            {% endif %}
         </section>
+        {% endif %}
 
+        {% if visibility.recent_activity or visibility.overview %}
         <section class="dashboard-lower-grid">
+            {% if visibility.recent_activity %}
             <div class="dashboard-panel dashboard-activity-panel">
                 <div class="dashboard-panel-heading">
                     <div>
                         <span class="dashboard-heading-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#activity"></use></svg></span>
-                        <h2>Recent Activity</h2>
+                        <h2>Recent quiz activity</h2>
                     </div>
                     <a href="/history">View all</a>
                 </div>
 
-                <div id="recentActivity" class="dashboard-activity-list">
+                <div id="recentActivity" class="dashboard-activity-list" aria-live="polite" aria-busy="true">
                     <div class="dashboard-loading">Loading recent activity…</div>
                 </div>
             </div>
 
+            {% endif %}
+            {% if visibility.overview %}
             <div class="dashboard-panel dashboard-overview-panel">
                 <div class="dashboard-panel-heading">
                     <div>
@@ -303,102 +332,28 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
         </section>
+
+        {% endif %}
 
         <footer class="dashboard-footer">DLMS v{{ app_version }}</footer>
     </main>
 </div>
 
 <script>
-function escapeHtml(value) {
-    return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-function scoreClass(percent) {
-    const p = Number(percent || 0);
-    if (p >= 80) return "score-good";
-    if (p >= 70) return "score-warn";
-    return "score-bad";
-}
-
-function formatDate(value) {
-    if (!value) return "";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return value;
-    return parsed.toLocaleString([], {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit"
-    });
-}
-
 async function loadDashboardData() {
-    const activity = document.getElementById("recentActivity");
-
+    if (!document.getElementById("statAttempts")) return;
     try {
-        const res = await fetch("/api/attempts/overview", { cache: "no-store" });
-        if (!res.ok) throw new Error("Unable to load attempts");
-
+        const res = await fetch("/api/attempts/overview", {cache: "no-store"});
+        if (!res.ok) throw new Error("Unable to load overview");
         const data = await res.json();
-        const attempts = data.recent_attempts || [];
-
-        if (!data.total_attempts) {
-            activity.innerHTML = `
-                <div class="dashboard-empty-state">
-                    <strong>No quiz attempts yet.</strong>
-                    <span>Launch a quiz from the library to start building your history.</span>
-                </div>`;
-            document.getElementById("statAttempts").textContent = "0";
-            document.getElementById("statAverage").textContent = "—";
-            document.getElementById("statBest").textContent = "—";
-            document.getElementById("statLatest").textContent = "—";
-            return;
-        }
-
-        const average = Math.round(Number(data.average_percent || 0));
-        const best = Math.round(Number(data.best_percent || 0));
-        const latest = Number((data.latest_attempt || {}).percent || 0);
-
         document.getElementById("statAttempts").textContent = data.total_attempts;
-        document.getElementById("statAverage").textContent = `${average}%`;
-        document.getElementById("statBest").textContent = `${best}%`;
-        document.getElementById("statLatest").textContent = `${latest}%`;
-
-        activity.innerHTML = attempts.map(a => {
-            const id = a.id || a.attemptId || "";
-            const href = id ? `/review?attempt=${encodeURIComponent(id)}` : "/history";
-            const title = escapeHtml(a.quiz_title || "Unknown Quiz");
-            const mode = escapeHtml(a.mode || "Quiz");
-            const percent = Number(a.percent || 0);
-            const date = escapeHtml(formatDate(a.completed_at || ""));
-
-            return `
-                <a class="dashboard-activity-row" href="${href}">
-                    <div class="dashboard-activity-status">✓</div>
-                    <div class="dashboard-activity-copy">
-                        <strong>${title}</strong>
-                        <span>${mode} attempt completed</span>
-                    </div>
-                    <span class="dashboard-score ${scoreClass(percent)}">${percent}%</span>
-                    <span class="dashboard-activity-date">${date}</span>
-                    <span class="dashboard-activity-arrow">›</span>
-                </a>`;
-        }).join("");
-
-    } catch (err) {
-        console.error("Dashboard data failed:", err);
-        activity.innerHTML = `
-            <div class="dashboard-empty-state dashboard-error-state">
-                <strong>Unable to load recent activity.</strong>
-                <span>The rest of DLMS is still available from the navigation above.</span>
-            </div>`;
+        document.getElementById("statAverage").textContent = data.total_attempts ? `${Math.round(data.average_percent)}%` : "—";
+        document.getElementById("statBest").textContent = data.total_attempts ? `${Math.round(data.best_percent)}%` : "—";
+        document.getElementById("statLatest").textContent = data.latest_attempt ? `${data.latest_attempt.percent}%` : "—";
+    } catch (_error) {
+        document.getElementById("statAttempts").textContent = "Unavailable";
     }
 }
 
@@ -441,6 +396,7 @@ loadDashboardData();
 
 <script src="/static/quiz-recovery.js"></script>
 <script src="/static/nav-normalize.js"></script>
-<script src="/static/daily-review.js"></script>
+{% if visibility.daily_review %}<script src="/static/daily-review.js"></script>{% endif %}
+{% if visibility.recent_activity %}<script src="/static/dashboard-activity.js"></script>{% endif %}
 </body>
 </html>

@@ -2191,6 +2191,25 @@ body.dashboard-home {
     gap: 16px;
 }
 
+.dashboard-lower-grid > :only-child { grid-column: 1 / -1; }
+.dashboard-customize { display:inline-block; margin-top:10px; }
+.dashboard-card-options { border:0; min-width:0; padding:0; }
+.dashboard-card-options legend { padding:0; }
+.dashboard-activity-summary { padding:16px; border-bottom:1px solid var(--theme-border-soft); }
+.dashboard-activity-summary > p { font-size:14px; line-height:1.5; }
+.dashboard-activity-summary h3, .dashboard-activity-list > h3 { color:var(--theme-heading); font-size:16px; margin:0 0 12px; }
+.dashboard-activity-list > h3 { margin:20px 12px 12px; }
+.dashboard-activity-list > p { margin:12px; }
+.dashboard-activity-summary strong, .dashboard-activity-detail { overflow-wrap:anywhere; }
+.dashboard-activity-detail { color:var(--theme-muted-text); font-size:13px; line-height:1.5; margin:8px 0; }
+.dashboard-activity-actions { display:flex; flex-wrap:wrap; gap:10px 18px; margin:10px 0; font-size:14px; }
+.dashboard-activity-actions span { color:var(--theme-muted-text); }
+.dashboard-activity-actions a, .dashboard-customize { color:var(--theme-link); }
+.dashboard-activity-actions a:focus-visible, .dashboard-customize:focus-visible { outline:2px solid var(--theme-accent); outline-offset:3px; }
+.dashboard-activity-row.dashboard-recent-attempt { display:flex; flex-wrap:wrap; align-items:flex-start; }
+.dashboard-recent-attempt .dashboard-activity-copy { flex:1 1 180px; }
+.dashboard-recent-attempt .dashboard-score { flex:0 0 auto; }
+
 .dashboard-activity-panel,
 .dashboard-overview-panel {
     min-height: 292px;
@@ -15883,39 +15902,39 @@ h1, h2, h3 {
 
 /* Ethereal landing-page presentation. The catalog's disclosures and tables,
    navigation, and the Dashboard's content/order retain their existing rules. */
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main[data-home-dashboard]) > .dashboard-header {
     min-height: 80px;
     padding: 6px 48px var(--theme-page-header-space);
 }
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header > div {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main[data-home-dashboard]) > .dashboard-header > div {
     min-width: 0;
     max-width: 100%;
 }
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header h1 {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main[data-home-dashboard]) > .dashboard-header h1 {
     font-size: var(--theme-page-title-size);
     line-height: 1.2;
     overflow-wrap: anywhere;
 }
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header p {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main[data-home-dashboard]) > .dashboard-header p {
     margin-top: 8px;
     font-size: 16px;
     line-height: 1.5;
     letter-spacing: normal;
     overflow-wrap: anywhere;
 }
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) :is(.dashboard-welcome, .dashboard-action-card, .dashboard-activity-panel, .dashboard-overview-panel, .dashboard-stat-card, .dashboard-activity-row) {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main[data-home-dashboard] :is(.dashboard-welcome, .dashboard-action-card, .dashboard-activity-panel, .dashboard-overview-panel, .dashboard-stat-card, .dashboard-activity-row) {
     border-color: var(--theme-quiet-border) !important;
     box-shadow: none !important;
 }
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) :is(.dashboard-action-icon, .dashboard-stat-icon, .dashboard-welcome-icon) {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main[data-home-dashboard] :is(.dashboard-action-icon, .dashboard-stat-icon, .dashboard-welcome-icon) {
     border-color: transparent;
     background: transparent !important;
     box-shadow: none !important;
 }
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) .dashboard-welcome-accent {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main[data-home-dashboard] .dashboard-welcome-accent {
     opacity: 0;
 }
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) .dashboard-action-card:is(:hover, :focus-visible) {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main[data-home-dashboard] .dashboard-action-card:is(:hover, :focus-visible) {
     border-color: var(--theme-accent-text) !important;
     transform: none;
 }
@@ -15923,34 +15942,34 @@ h1, h2, h3 {
 /* Size Ethereal quick-access cards from the space left after the sidebar.
    A 24rem card leaves over 200px for copy beside its icon and arrow at the
    default font size. Wide screens retain the existing three-column layout. */
-.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) > .dashboard-action-grid {
+.dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main[data-home-dashboard] > .dashboard-action-grid {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
 }
 
 @container (max-width: 400px) {
     /* At narrow content widths, give text its own full-width row instead of
        squeezing it between decorations. Keep the whole card as one link. */
-    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) .dashboard-action-card {
+    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main[data-home-dashboard] .dashboard-action-card {
         grid-template-columns: minmax(0, 1fr) 22px;
         gap: 12px;
     }
-    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) .dashboard-action-copy {
+    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main[data-home-dashboard] .dashboard-action-copy {
         grid-column: 1 / -1;
         grid-row: 2;
     }
-    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main:has(> .daily-review-panel) .dashboard-action-arrow {
+    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > .dashboard-main[data-home-dashboard] .dashboard-action-arrow {
         grid-column: 2;
         grid-row: 1;
     }
 }
 @media (max-width: 820px) {
-    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header {
+    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main[data-home-dashboard]) > .dashboard-header {
         min-height: 76px;
         padding: 8px 0 var(--theme-page-header-space) 54px;
     }
 }
 @media (max-width: 560px) {
-    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main:has(> .daily-review-panel)) > .dashboard-header h1 {
+    .dashboard-shell:has(> .dashboard-sidebar[data-theme="ethereal"]) > :is(.study-packs-main, .dashboard-main[data-home-dashboard]) > .dashboard-header h1 {
         font-size: var(--theme-page-title-small);
     }
 }

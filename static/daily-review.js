@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  if (!document.getElementById("dailyReviewList")) return;
+
   let serverPlan = null;
 
   const escapeHtml = value => String(value ?? "").replace(

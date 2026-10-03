@@ -147,7 +147,10 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
         self.assertIn(str(escape(marker)), body)
         self.assertNotIn('id="dashboard-injection"', body)
         self.assertIn("/api/attempts/overview", body)
-        self.assertIn("function escapeHtml(value)", body)
+        self.assertIn('src="/static/dashboard-activity.js"', body)
+        activity_script = (ROOT / "static/dashboard-activity.js").read_text()
+        self.assertIn("node.textContent = text", activity_script)
+        self.assertNotIn("innerHTML", activity_script)
         self.assertIn('fetch("/api/shutdown", { method: "POST" })', body)
         self.assertIn('aria-label="Primary navigation"', body)
 
@@ -162,6 +165,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
             portal_title="Portal",
             app_version=dlms.APP_VERSION,
             installed_content_packs=packs,
+            visibility=dlms.load_portal_config()["dashboard_card_visibility"],
         )
 
     def test_library_template_preserves_forms_states_javascript_and_escaping(self):

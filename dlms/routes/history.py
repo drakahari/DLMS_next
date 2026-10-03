@@ -20,6 +20,7 @@ class HistoryRouteDependencies:
     parse_attempt_pagination: Dependency
     attempt_page: Dependency
     attempt_overview: Dependency
+    recent_quiz_activity: Dependency
     attempt_analytics: Dependency
     attempt_summary: Dependency
     missed_questions: Dependency
@@ -72,6 +73,18 @@ def api_attempts_overview(dependencies):
     conn = dependencies.get_db()
     try:
         return jsonify(dependencies.attempt_overview(conn.cursor()))
+    finally:
+        conn.close()
+
+
+def api_recent_quiz_activity(dependencies):
+    conn = dependencies.get_db()
+    try:
+        # Keep the selected latest IDs and their details in one read snapshot.
+        conn.execute("BEGIN")
+        response = jsonify(dependencies.recent_quiz_activity(conn.cursor()))
+        response.headers["Cache-Control"] = "no-store"
+        return response
     finally:
         conn.close()
 
@@ -148,6 +161,7 @@ def create_history_blueprint(dependencies):
         ("/dashboard", "dashboard", dashboard, ["GET"]),
         ("/dashboard.html", "dashboard", dashboard, ["GET"]),
         ("/api/attempts", "api_attempts", api_attempts, ["GET"]),
+        ("/api/dashboard/quiz-activity", "api_recent_quiz_activity", api_recent_quiz_activity, ["GET"]),
         (
             "/api/attempts/overview",
             "api_attempts_overview",

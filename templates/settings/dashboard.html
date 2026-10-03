@@ -1,0 +1,58 @@
+{% from "shared/_settings-sidebar.html" import settings_shell_sidebar -%}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Settings - DLMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="dashboard-home settings-detail-page settings-dashboard-page">
+<div class="dashboard-shell">
+{{ settings_shell_sidebar("Settings")|safe }}
+<main class="dashboard-main settings-dashboard-main">
+<div class="settings-page-shell settings-detail-shell">
+    <div class="settings-page-header">
+        <button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
+        <div>
+            <span class="settings-eyebrow">SETTINGS / DASHBOARD</span>
+            <h1><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg> Dashboard</h1>
+            <p>Choose the panels and quick-access cards on your home dashboard.</p>
+        </div>
+        <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
+    </div>
+
+    {% if request.args.get('saved') %}
+    <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Dashboard settings saved.</div>
+    {% endif %}
+
+    <form class="settings-detail-card" action="/settings/dashboard/save" method="POST">
+        <p>These preferences affect only dashboard cards. Your sidebar preferences, content, progress, and history are kept.</p>
+        {% for heading, cards in groups %}
+        <fieldset class="settings-form-section dashboard-card-options">
+            <legend><h2>{{ heading }}</h2></legend>
+            {% for key, label in cards %}
+            <label class="settings-toggle-row">
+                <input type="checkbox" name="dashboard_card_{{ key }}" {% if visibility[key] %}checked{% endif %}>
+                <span><strong>{{ label }}</strong>{% if key == 'medical' %}<small>Medical Study remains available without an installed content pack.</small>{% endif %}</span>
+            </label>
+            {% endfor %}
+        </fieldset>
+        {% endfor %}
+
+        <div class="settings-form-actions">
+            <button type="submit" name="action" value="save" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save Dashboard</button>
+            <button type="submit" name="action" value="defaults" class="settings-secondary-button">Restore defaults</button>
+            <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
+        </div>
+    </form>
+
+    <div class="settings-scope-note">Restore defaults shows all available dashboard cards. You can always use <a href="/">Customize dashboard</a> from the dashboard heading, even with every card hidden.</div>
+</div>
+</main>
+</div>
+<script src="/static/nav-normalize.js"></script>
+</body>
+</html>

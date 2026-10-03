@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from flask import Blueprint, jsonify, render_template, request, send_from_directory
+from dlms.persistence.portal import dashboard_card_defaults
 
 
 @dataclass(frozen=True)
@@ -321,6 +322,7 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
 
         return render_template(
             "dashboard/index.html",
+            visibility=dependencies.load_portal_config().get("dashboard_card_visibility", dashboard_card_defaults()),
             portal_title=portal_title,
             app_version=dependencies.app_version(),
             installed_content_packs=dependencies.content_pack_summary(),

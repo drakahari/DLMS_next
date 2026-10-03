@@ -171,8 +171,8 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
         self.assertEqual(TEMPLATE_ROOT.resolve(), Path(dlms.app.template_folder).resolve())
 
         templates = sorted(TEMPLATE_ROOT.rglob("*.html"))
-        # DLMS-148 adds one included storage fragment, not a new routed page.
-        self.assertEqual(71, len(templates))
+        # Dashboard customization adds one routed settings page.
+        self.assertEqual(72, len(templates))
         self.assertTrue((TEMPLATE_ROOT / "dashboard/index.html").is_file())
         self.assertFalse((ROOT / "static/index.html").exists())
         self.assertNotIn("static/index.html", self.app_source)

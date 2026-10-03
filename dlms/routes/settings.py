@@ -7,6 +7,7 @@ from functools import wraps
 from typing import Any
 
 from flask import Blueprint, jsonify, redirect, render_template, request
+from dlms.persistence.portal import DASHBOARD_CARD_GROUPS, dashboard_card_defaults
 
 
 Dependency = Callable[..., Any]
@@ -80,6 +81,26 @@ def settings_navigation_page(dependencies):
     cfg = dependencies.load_portal_config()
     visibility = cfg["study_area_visibility"]
     return render_template("settings/navigation.html", visibility=visibility)
+
+
+def settings_dashboard_page(dependencies):
+    return render_template(
+        "settings/dashboard.html", groups=DASHBOARD_CARD_GROUPS,
+        visibility=dependencies.load_portal_config()["dashboard_card_visibility"],
+    )
+
+
+def save_dashboard_settings(dependencies):
+    action = request.form.get("action", "save")
+    if action not in {"save", "defaults"}:
+        return "Unknown dashboard settings action", 400
+    cfg = dependencies.load_portal_config()
+    defaults = dashboard_card_defaults()
+    cfg["dashboard_card_visibility"] = defaults if action == "defaults" else {
+        key: f"dashboard_card_{key}" in request.form for key in defaults
+    }
+    dependencies.write_portal_config(cfg)
+    return redirect("/settings/dashboard?saved=1")
 
 
 def save_navigation_settings(dependencies):
@@ -234,6 +255,8 @@ def api_portal_config(dependencies):
 def create_settings_blueprint(dependencies):
     blueprint = Blueprint("settings", __name__)
     rules = (
+        ("/settings/dashboard", "settings_dashboard_page", settings_dashboard_page, ["GET"]),
+        ("/settings/dashboard/save", "save_dashboard_settings", save_dashboard_settings, ["POST"]),
         ("/settings", "settings_page", settings_page, ["GET"]),
         (
             "/settings/lifecycle",
