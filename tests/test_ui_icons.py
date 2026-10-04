@@ -126,10 +126,11 @@ class UiIconTests(unittest.TestCase):
     def test_icon_colors_follow_theme_variables(self):
         css = (ROOT / "static" / "style.css").read_text()
         self.assertIn("--icon-blue: var(--theme-accent-text", css)
-        self.assertIn("--icon-green: light-dark(", css)
-        self.assertIn("--icon-orange: light-dark(", css)
-        self.assertIn("--icon-purple: light-dark(", css)
-        self.assertIn("--icon-cyan: light-dark(", css)
+        # New themes may supply chart/icon hues; preserve both original branches.
+        self.assertIn("--icon-green: var(--theme-chart-6, light-dark(#176c4e, #70e7b4))", css)
+        self.assertIn("--icon-orange: var(--theme-chart-4, light-dark(#975815, #ffbf68))", css)
+        self.assertIn("--icon-purple: var(--theme-chart-1, light-dark(#704ab6, #c3a5ff))", css)
+        self.assertIn("--icon-cyan: var(--theme-chart-7, light-dark(#086d82, #6fe3ff))", css)
         self.assertIn(".dashboard-nav-icon { color:var(--nav-icon-accent,var(--theme-nav-muted", css)
         self.assertNotRegex(css, r"\.dashboard-nav-item(?:\.active|:hover) \.dashboard-nav-icon\s*\{\s*color:")
 

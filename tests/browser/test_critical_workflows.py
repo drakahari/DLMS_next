@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from dlms.rendering.quiz_artifacts import build_quiz_html
+from dlms.themes import THEME_IDS, THEME_REGISTRY
 from tests.browser._bidi import FirefoxBidi
 
 
@@ -41,12 +42,184 @@ pytestmark = [
 ]
 
 
+@pytest.mark.parametrize('theme', sorted(THEME_IDS))
+def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack, theme, tmp_path):
+    """All entries use real selectors, pages, answers, and narrow layouts."""
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.set_viewport(1440, 1000)
+    browser.navigate(base + '/settings/appearance')
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('#appearanceTheme').focus();true")
+    browser.press_key('\ue011')  # Home, then Down: native selector keyboard navigation.
+    browser.press_key('\ue015')
+    assert browser.evaluate("document.querySelector('#appearanceTheme').value") == 'light'
+    browser.evaluate("document.querySelector('#appearanceTheme').value=" + json.dumps(theme) + ';true')
+    browser.click('.settings-form-actions button[type=submit]')
+    browser.wait_for_page_ready("location.search.includes('saved=1')")
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value===" + json.dumps(theme))
+    assert browser.evaluate("document.querySelector('#appearanceTheme').value") == theme
+    assert browser.evaluate("document.querySelector('#dlmsQuickTheme').options.length") == 26
+    assert browser.evaluate("document.querySelector('#appearanceTheme').options.length") == 26
+    assert browser.evaluate("[...document.querySelector('#appearanceTheme').labels].some(l=>l.textContent.includes('Color theme'))")
+    browser.evaluate("document.querySelector('#appearanceTheme').focus();true")
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle==='solid'")
+
+    # The seed page was generated before selecting this theme. Generate another
+    # quiz after saving it, using the same shared renderer and isolated artifacts.
+    new_html = 'manual-theme-new.html'
+    build_quiz_html(new_html, browser_stack.metadata['recovery_json'],
+                    str(browser_stack.data_root / 'quizzes' / new_html), 'DLMS',
+                    'New generated theme fixture', None, 'browser-recovery-mixed', 5,
+                    normalize_exam_minutes=lambda value: value)
+    for html in (browser_stack.metadata['critical_html'], new_html):
+        for mode in ('.study-mode-btn', '.exam-mode-btn'):
+            browser.navigate(base + '/quizzes/' + html)
+            mode_contrast = _theme_contrast_snapshot(browser, {'study': '.study-mode-btn', 'exam': '.exam-mode-btn'}, include_gradients=True)
+            for role, value in mode_contrast.items():
+                if theme.startswith('omarchy-'):
+                    assert value['contrast'] >= 4.5, (theme, role, value)
+            if not theme.startswith('omarchy-'):
+                baseline_path = Path(os.environ.get('DLMS_THEME_REVIEW_DIR', str(tmp_path / 'manual-theme-review')))
+                baseline_path.mkdir(parents=True, exist_ok=True)
+                (baseline_path / f'baseline-mode-buttons-{theme}.json').write_text(json.dumps(mode_contrast, indent=2))
+            browser.click(mode)
+            browser.wait_for("document.querySelectorAll('#choices .choice').length>=2")
+            assert browser.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--theme-body-base').trim()") == THEME_REGISTRY[theme]['colors']['body_base']
+            browser.click("#choices .choice[data-index='1']")
+            if mode == '.study-mode-btn':
+                browser.wait_for("document.querySelector('#choices .wrong-choice')")
+                assert 'Not quite' in browser.evaluate("document.querySelector('.choice-study-explanation').textContent")
+                selectors = {'question': '#qText',
+                             'incorrect': '#choices .wrong-choice', 'feedback': '.choice-study-explanation'}
+            else:
+                selectors = {'question': '#qText', 'selected': '#choices .selected', 'next': '#nextBtn'}
+            for role, value in _theme_contrast_snapshot(browser, selectors, include_gradients=True).items():
+                assert value['contrast'] >= 4.5, (theme, html, mode, role, value)
+            if mode == '.study-mode-btn':
+                browser.click("#choices .choice[data-index='0']")
+                browser.wait_for("document.querySelector('#choices .correct-choice')")
+                correct = _theme_contrast_snapshot(browser, {'correct': '#choices .correct-choice'}, include_gradients=True)
+                assert correct['correct']['contrast'] >= 4.5, (theme, correct)
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            # End the test's checkpoint before loading another quiz/mode.
+            browser.evaluate('localStorage.clear();true')
+
+    representative = {'light', 'dark', 'ethereal', 'omarchy-catppuccin-latte',
+                      'omarchy-tokyo-night', 'omarchy-miasma', 'omarchy-white'}
+    shots = Path(os.environ.get('DLMS_THEME_REVIEW_DIR', str(tmp_path / 'manual-theme-review')))
+    if theme in representative:
+        shots.mkdir(parents=True, exist_ok=True)
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        for route, selectors in (
+            ('/', {'shortcut': '.dashboard-action-copy p', 'stat': '.dashboard-stat-card span',
+                   'welcome': '.dashboard-welcome p'}),
+            ('/settings/appearance', {'helper': '#themeGuidance', 'select': '#appearanceTheme', 'input': '#portalTitle'}),
+            ('/settings/backup?storage=1', {'legend': '.storage-usage-list li', 'note': '#storageChartNote'}),
+            ('/settings/reset-remove', {'warning': '.settings-warning-panel span',
+                                        'danger': '.settings-danger-button'}),
+            ('/history', {'heading': 'h1', 'table': '.history-quiz-cell strong',
+                          'score': '.history-score-badge', 'date': '.history-date-cell'}),
+        ):
+            browser.navigate(base + route)
+            browser.wait_for_page_ready()
+            if route == '/history':
+                browser.wait_for("document.querySelector('.history-quiz-cell strong')")
+            for role, value in _theme_contrast_snapshot(browser, selectors, include_gradients=True).items():
+                assert value['contrast'] >= 4.5, (theme, width, route, role, value)
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'), (theme, width, route)
+            if theme in representative and route in ('/', '/settings/appearance'):
+                screenshot = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+                name = 'dashboard' if route == '/' else 'appearance'
+                (shots / f'{theme}-{name}-{width}.png').write_bytes(base64.b64decode(screenshot['data']))
+    browser.navigate(base + '/help/build-quiz')
+    browser.wait_for("document.querySelector('.help-shot a') && document.querySelector('.help-lightbox')")
+    browser.click('.help-shot a')
+    browser.wait_for("!document.querySelector('.help-lightbox').hidden")
+    assert browser.evaluate("document.activeElement.matches('.help-lightbox-close')")
+    for value in _theme_contrast_snapshot(browser, {'caption': '.help-lightbox-caption'}, include_gradients=True).values():
+        assert value['contrast'] >= 4.5, (theme, value)
+    browser.press_key('\ue00c')
+    assert browser.evaluate("document.querySelector('.help-lightbox').hidden")
+
+
+def test_manual_theme_sidebar_failure_then_retry(browser_stack):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value==='purple-gold'")
+    portal = browser_stack.data_root / 'config/portal.json'
+    original = portal.read_text()
+    browser.evaluate("""(() => {
+        window.themeTestFetch = window.fetch;
+        window.fetch = (input, init) => String(input)==='/api/theme'
+            ? Promise.resolve(new Response('{}', {status:503})) : window.themeTestFetch(input, init);
+        window.alert = message => {window.themeTestError = message;};
+        const select=document.querySelector('#dlmsQuickTheme');
+        select.value='omarchy-white'; select.dispatchEvent(new Event('change'));
+        return true;
+    })()""")
+    browser.wait_for("window.themeTestError && !document.querySelector('#dlmsQuickTheme').disabled")
+    assert browser.evaluate("document.querySelector('#dlmsQuickTheme').value") == 'purple-gold'
+    assert portal.read_text() == original
+    browser.evaluate("""(() => {
+        window.fetch=window.themeTestFetch;
+        const select=document.querySelector('#dlmsQuickTheme');
+        select.value='omarchy-white'; select.dispatchEvent(new Event('change'));
+        return true;
+    })()""")
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value==='omarchy-white' && !document.querySelector('#dlmsQuickTheme').disabled")
+    assert json.loads(portal.read_text())['theme'] == 'omarchy-white'
+
+
+@pytest.mark.parametrize('theme', ('omarchy-catppuccin-latte', 'omarchy-tokyo-night', 'omarchy-miasma', 'omarchy-white'))
+def test_manual_theme_painted_selection_and_keyboard_focus(browser_stack, theme, tmp_path):
+    import io
+    from PIL import Image
+
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.set_viewport(1440, 1000)
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    browser.navigate(base + '/settings/appearance')
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('#portalTitle').scrollIntoView({block:'center'});true")
+    frames = 'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true))))'
+    browser.evaluate(frames)
+    before = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+    state = browser.evaluate("""(() => {
+        const node=document.querySelector('#portalTitle');node.focus();node.select();
+        const rect=node.getBoundingClientRect(), style=getComputedStyle(node);
+        return {rect:[rect.left,rect.top,rect.right,rect.bottom], focus:node.matches(':focus-visible'),
+                outline:style.outlineStyle,width:style.outlineWidth};
+    })()""")
+    browser.evaluate(frames)
+    after = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+    box = tuple(round(value) for value in state['rect'])
+    first = Image.open(io.BytesIO(base64.b64decode(before['data']))).convert('RGB').crop(box)
+    second = Image.open(io.BytesIO(base64.b64decode(after['data']))).convert('RGB').crop(box)
+    extra = THEME_REGISTRY[theme]['extra_tokens']
+    rgb = lambda color: tuple(int(color[index:index + 2], 16) for index in (1, 3, 5))
+    highlight, ink = rgb(extra['--theme-selection-bg']), rgb(extra['--theme-selection-text'])
+    changed_highlight = sum(a != highlight and b == highlight for a, b in zip(first.get_flattened_data(), second.get_flattened_data()))
+    changed_ink = sum(a != ink and b == ink for a, b in zip(first.get_flattened_data(), second.get_flattened_data()))
+    assert changed_highlight > 50 and changed_ink > 5, (theme, changed_highlight, changed_ink)
+    assert state['focus'] and state['outline'] == 'solid' and state['width'] == '3px'
+    shots = Path(os.environ.get('DLMS_THEME_REVIEW_DIR', str(tmp_path / 'manual-theme-review')))
+    shots.mkdir(parents=True, exist_ok=True)
+    (shots / f'{theme}-painted-selection.png').write_bytes(base64.b64decode(after['data']))
+
+
 def test_local_feature_icons_render_and_follow_each_theme(browser_stack):
     browser = browser_stack.browser
     browser.navigate(browser_stack.base_url + "/settings/appearance")
     browser.wait_for_page_ready()
-    exposed_themes = browser.evaluate("[...document.querySelectorAll('input[name=\"theme\"]')].map(input => input.value)")
-    assert set(exposed_themes) == {"light", "dark", "purple-gold", "maroon-gold", "ethereal"}
+    exposed_themes = browser.evaluate("[...document.querySelectorAll('select[name=\"theme\"] option')].map(input => input.value)")
+    assert set(exposed_themes) == THEME_IDS
     browser.navigate(browser_stack.base_url + "/")
     feature_accents = {
         "/": "blue", "/library": "blue", "/study-packs": "blue",
@@ -255,13 +428,14 @@ def _set_theme(browser, theme):
     assert status == 200
 
 
-def _theme_contrast_snapshot(browser, selectors):
+def _theme_contrast_snapshot(browser, selectors, *, include_gradients=False):
     """Measure rendered text contrast against each element's effective background."""
     # Contrast has no meaning until blocking stylesheets have loaded.
     browser.wait_for_page_ready()
     return browser.evaluate(
         "(() => {"
         "const selectors=" + json.dumps(selectors) + ";"
+        "const includeGradients=" + json.dumps(include_gradients) + ";"
         "const parseColor=value=>{"
         "const rgb=value.match(/^rgba?\\(([^)]+)\\)$/);"
         "if(rgb){const parts=rgb[1].split(/[, ]+/).filter(Boolean).map(Number);"
@@ -282,13 +456,19 @@ def _theme_contrast_snapshot(browser, selectors):
         "const root=getComputedStyle(document.documentElement);"
         "const base=resolveColor(root.getPropertyValue('--theme-body-base')).slice(0,3);"
         "const effectiveBackground=node=>{const layers=[];"
-        "for(let item=node;item;item=item.parentElement){layers.push(parseColor(getComputedStyle(item).backgroundColor));}"
-        "return layers.reverse().reduce((background,layer)=>composite(layer,background),base);};"
+        "for(let item=node;item;item=item.parentElement){const style=getComputedStyle(item);"
+        "layers.push({color:parseColor(style.backgroundColor),image:style.backgroundImage});}"
+        "return layers.reverse().reduce((backgrounds,layer)=>{"
+        "const colors=backgrounds.map(background=>composite(layer.color,background));"
+        "if(!includeGradients||!layer.image.includes('gradient'))return colors;"
+        "const stops=layer.image.match(/rgba?\\([^)]*\\)|color\\(srgb[^)]*\\)/g)||[];"
+        "return stops.length?colors.flatMap(background=>stops.map(stop=>composite(parseColor(stop),background))):colors;"
+        "},[base]);};"
         "const measure=(name,selector)=>{const node=document.querySelector(selector);"
         "if(!node)throw new Error('Missing contrast target '+name+': '+selector);"
-        "const style=getComputedStyle(node),background=effectiveBackground(node);"
-        "const color=parseColor(style.color),foreground=composite(color,background);"
-        "return [name,{contrast:contrast(foreground,background),color:style.color,"
+        "const style=getComputedStyle(node),backgrounds=effectiveBackground(node);"
+        "const color=parseColor(style.color);"
+        "return [name,{contrast:Math.min(...backgrounds.map(background=>contrast(composite(color,background),background))),color:style.color,"
         "background:style.backgroundColor,borderColor:style.borderColor,"
         "borderStyle:style.borderStyle,outlineStyle:style.outlineStyle,"
         "opacity:style.opacity,cursor:style.cursor,text:node.textContent.trim()}];};"
@@ -2129,7 +2309,7 @@ def test_custom_anki_performance_accordion_state_persists(browser_stack):
         browser.evaluate(f"localStorage.removeItem({json.dumps(storage_key)}); true")
 
 
-@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal", "omarchy-catppuccin-latte", "omarchy-tokyo-night", "omarchy-miasma", "omarchy-white"))
 def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
     browser_stack.browser.navigate(browser_stack.base_url + "/settings")
     _set_theme(browser_stack.browser, theme)
@@ -2180,7 +2360,7 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
     browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
 
 
-@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal", "omarchy-catppuccin-latte", "omarchy-tokyo-night", "omarchy-miasma", "omarchy-white"))
 def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(browser_stack, theme):
     browser_stack.browser.navigate(browser_stack.base_url + "/settings")
     _set_theme(browser_stack.browser, theme)
@@ -12035,10 +12215,10 @@ def test_ethereal_rendered_selection_focus_and_responsive_typography(browser_sta
     browser.activate()
     browser.wait_for("document.hasFocus()")
     # Select and save through the real form, then verify the sidebar shortcut.
-    browser.evaluate("document.querySelector('input[value=ethereal]').focus(); true")
-    browser.press_key(" ")
+    browser.evaluate("document.querySelector('#appearanceTheme').focus(); true")
+    browser.evaluate("document.querySelector('#appearanceTheme').value = 'ethereal'; true")
     browser.click(".settings-form-actions button[type=submit]")
-    browser.wait_for_page_ready("location.search.includes('saved=1') && document.querySelector('.settings-success-banner') && document.querySelector('input[value=ethereal]').checked")
+    browser.wait_for_page_ready("location.search.includes('saved=1') && document.querySelector('.settings-success-banner') && document.querySelector('#appearanceTheme').value === 'ethereal'")
     portal = browser_stack.data_root / "config" / "portal.json"
     assert json.loads(portal.read_text())["theme"] == "ethereal"
     browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'ethereal'")
@@ -12046,9 +12226,9 @@ def test_ethereal_rendered_selection_focus_and_responsive_typography(browser_sta
         return {text:style.color,background:style.backgroundImage};})()""")
     assert primary["text"] == "rgb(6, 11, 30)" and "rgb(125, 130, 217)" in primary["background"], primary
     selection("#portalTitle", "appearance-selected-title", form=True)
-    browser.evaluate("document.querySelector('input[value=ethereal]').focus(); true")
-    focus = browser.evaluate("""(() => {const input=document.querySelector('input[value=ethereal]');
-        const style=getComputedStyle(input.nextElementSibling);
+    browser.evaluate("document.querySelector('#appearanceTheme').focus(); true")
+    focus = browser.evaluate("""(() => {const input=document.querySelector('#appearanceTheme');
+        const style=getComputedStyle(input);
         return {visible:input.matches(':focus-visible'),outline:style.outlineStyle,width:style.outlineWidth};})()""")
     assert focus == {"visible": True, "outline": "solid", "width": "3px"}
     capture("appearance-focused-theme")

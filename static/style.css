@@ -36,10 +36,10 @@
     --page-text: var(--theme-page-text, #eaf2ff);
     --muted-text: var(--theme-muted-text, #b8c2cc);
     --icon-blue: var(--theme-accent-text, #78bfff);
-    --icon-orange: light-dark(#975815, #ffbf68);
-    --icon-green: light-dark(#176c4e, #70e7b4);
-    --icon-purple: light-dark(#704ab6, #c3a5ff);
-    --icon-cyan: light-dark(#086d82, #6fe3ff);
+    --icon-orange: var(--theme-chart-4, light-dark(#975815, #ffbf68));
+    --icon-green: var(--theme-chart-6, light-dark(#176c4e, #70e7b4));
+    --icon-purple: var(--theme-chart-1, light-dark(#704ab6, #c3a5ff));
+    --icon-cyan: var(--theme-chart-7, light-dark(#086d82, #6fe3ff));
     --icon-red: var(--semantic-error-text);
     --panel-bg: linear-gradient(180deg, var(--theme-panel-1, rgba(6,18,40,.82)), var(--theme-panel-2, rgba(8,18,34,.72)));
     --panel-bg-strong: linear-gradient(180deg, var(--theme-panel-1, rgba(5,16,36,.86)), var(--theme-panel-2, rgba(5,16,36,.72)));
@@ -57,29 +57,29 @@
 
     /* Dashboard semantic states. The dark branches preserve the established
        Dark, Purple & Gold, and Maroon & Gold component treatments. */
-    --dashboard-destructive-text: light-dark(#8f2435, #ff6262);
-    --dashboard-destructive-surface-1: light-dark(#f8e7ea, rgba(86,15,22,.32));
-    --dashboard-destructive-surface-2: light-dark(#f4dde1, rgba(50,10,16,.24));
-    --dashboard-destructive-border: light-dark(#d6959e, rgba(255,65,65,.68));
-    --dashboard-success-text: light-dark(#105f3d, #4ed98a);
-    --dashboard-success-emphasis: light-dark(#12613f, #5af08d);
-    --dashboard-success-heading: light-dark(#16784f, #55e48f);
-    --dashboard-success-surface: light-dark(#d3eadf, rgba(15,98,55,.22));
-    --dashboard-success-badge-surface: light-dark(#d5eadf, rgba(18,112,56,.20));
-    --dashboard-success-border: light-dark(#78aa91, rgba(52,196,112,.36));
+    --dashboard-destructive-text: var(--theme-semantic-error-text, light-dark(#8f2435, #ff6262));
+    --dashboard-destructive-surface-1: var(--theme-semantic-error-surface, light-dark(#f8e7ea, rgba(86,15,22,.32)));
+    --dashboard-destructive-surface-2: var(--theme-semantic-error-surface, light-dark(#f4dde1, rgba(50,10,16,.24)));
+    --dashboard-destructive-border: var(--theme-semantic-error-border, light-dark(#d6959e, rgba(255,65,65,.68)));
+    --dashboard-success-text: var(--theme-semantic-success-text, light-dark(#105f3d, #4ed98a));
+    --dashboard-success-emphasis: var(--theme-semantic-success-text, light-dark(#12613f, #5af08d));
+    --dashboard-success-heading: var(--theme-semantic-success-text, light-dark(#16784f, #55e48f));
+    --dashboard-success-surface: var(--theme-semantic-success-surface, light-dark(#d3eadf, rgba(15,98,55,.22)));
+    --dashboard-success-badge-surface: var(--theme-semantic-success-surface, light-dark(#d5eadf, rgba(18,112,56,.20)));
+    --dashboard-success-border: var(--theme-semantic-success-border, light-dark(#78aa91, rgba(52,196,112,.36)));
 
     /* Shared semantic component surfaces. These follow the live color-scheme
        and palette variables supplied by /dynamic.css; no theme marker is
        required. */
-    --semantic-success-text: light-dark(#105f3d, #86e8bb);
-    --semantic-success-surface: color-mix(in srgb, #2f9b6d 11%, var(--theme-surface, rgba(5,18,39,.58)));
-    --semantic-success-border: color-mix(in srgb, #2f9b6d 45%, var(--theme-border-soft, rgba(98,155,255,.24)));
-    --semantic-warning-text: light-dark(#765511, #f4cf72);
-    --semantic-warning-surface: color-mix(in srgb, #d69b21 11%, var(--theme-surface, rgba(5,18,39,.58)));
-    --semantic-warning-border: color-mix(in srgb, #c58b19 45%, var(--theme-border-soft, rgba(98,155,255,.24)));
-    --semantic-error-text: light-dark(#8f2435, #ff9eaa);
-    --semantic-error-surface: color-mix(in srgb, #c63f52 10%, var(--theme-surface, rgba(5,18,39,.58)));
-    --semantic-error-border: color-mix(in srgb, #c63f52 44%, var(--theme-border-soft, rgba(98,155,255,.24)));
+    --semantic-success-text: var(--theme-semantic-success-text, light-dark(#105f3d, #86e8bb));
+    --semantic-success-surface: var(--theme-semantic-success-surface, color-mix(in srgb, #2f9b6d 11%, var(--theme-surface, rgba(5,18,39,.58))));
+    --semantic-success-border: var(--theme-semantic-success-border, color-mix(in srgb, #2f9b6d 45%, var(--theme-border-soft, rgba(98,155,255,.24))));
+    --semantic-warning-text: var(--theme-semantic-warning-text, light-dark(#765511, #f4cf72));
+    --semantic-warning-surface: var(--theme-semantic-warning-surface, color-mix(in srgb, #d69b21 11%, var(--theme-surface, rgba(5,18,39,.58))));
+    --semantic-warning-border: var(--theme-semantic-warning-border, color-mix(in srgb, #c58b19 45%, var(--theme-border-soft, rgba(98,155,255,.24))));
+    --semantic-error-text: var(--theme-semantic-error-text, light-dark(#8f2435, #ff9eaa));
+    --semantic-error-surface: var(--theme-semantic-error-surface, color-mix(in srgb, #c63f52 10%, var(--theme-surface, rgba(5,18,39,.58))));
+    --semantic-error-border: var(--theme-semantic-error-border, color-mix(in srgb, #c63f52 44%, var(--theme-border-soft, rgba(98,155,255,.24))));
     --semantic-info-text: var(--theme-accent-text, #78bfff);
     --semantic-info-surface: color-mix(in srgb, var(--theme-accent, #1b9ff2) 10%, var(--theme-surface, rgba(5,18,39,.58)));
     --semantic-info-border: color-mix(in srgb, var(--theme-accent, #1b9ff2) 40%, var(--theme-border-soft, rgba(98,155,255,.24)));
@@ -99,15 +99,15 @@
     --semantic-inset-border: var(--theme-border-soft, rgba(98,155,255,.24));
 
     /* Shared score-pill semantics for Dashboard activity and History. */
-    --score-pill-good-text: light-dark(#16784f, #86e8bb);
-    --score-pill-good-surface: light-dark(rgba(34,155,98,.10), rgba(27,114,81,.18));
-    --score-pill-good-border: light-dark(rgba(34,155,98,.27), rgba(75,212,154,.28));
-    --score-pill-warn-text: light-dark(#8a6300, #edd681);
-    --score-pill-warn-surface: light-dark(rgba(204,155,33,.12), rgba(112,87,20,.18));
-    --score-pill-warn-border: light-dark(rgba(204,155,33,.28), rgba(226,189,88,.28));
-    --score-pill-bad-text: light-dark(#b93d52, #ff9da3);
-    --score-pill-bad-surface: light-dark(rgba(198,63,82,.10), rgba(123,41,48,.20));
-    --score-pill-bad-border: light-dark(rgba(198,63,82,.28), rgba(239,119,127,.28));
+    --score-pill-good-text: var(--theme-semantic-success-text, light-dark(#16784f, #86e8bb));
+    --score-pill-good-surface: var(--theme-semantic-success-surface, light-dark(rgba(34,155,98,.10), rgba(27,114,81,.18)));
+    --score-pill-good-border: var(--theme-semantic-success-border, light-dark(rgba(34,155,98,.27), rgba(75,212,154,.28)));
+    --score-pill-warn-text: var(--theme-semantic-warning-text, light-dark(#8a6300, #edd681));
+    --score-pill-warn-surface: var(--theme-semantic-warning-surface, light-dark(rgba(204,155,33,.12), rgba(112,87,20,.18)));
+    --score-pill-warn-border: var(--theme-semantic-warning-border, light-dark(rgba(204,155,33,.28), rgba(226,189,88,.28)));
+    --score-pill-bad-text: var(--theme-semantic-error-text, light-dark(#b93d52, #ff9da3));
+    --score-pill-bad-surface: var(--theme-semantic-error-surface, light-dark(rgba(198,63,82,.10), rgba(123,41,48,.20)));
+    --score-pill-bad-border: var(--theme-semantic-error-border, light-dark(rgba(198,63,82,.28), rgba(239,119,127,.28)));
 
     /* Shared content-spacing scale used by modern DLMS pages. */
     --dlms-space-xs: 6px;
@@ -704,22 +704,22 @@ body.home .quiz-card img {
     font-size: 15px;
     font-weight: 700;
     border: 1px solid rgba(100,180,255,0.28);
-    background: linear-gradient(135deg, #1565d8, #1c8cf0);
+    background: var(--theme-primary-action-bg, linear-gradient(135deg, #1565d8, #1c8cf0));
     box-shadow: 0 4px 14px rgba(0,100,255,0.20);
 }
 
 .mode-center button:hover,
 #studyModeBtn:hover,
 #examModeBtn:hover {
-    background: linear-gradient(135deg, #1f7cff, #2cb5ff);
+    background: var(--theme-primary-action-bg, linear-gradient(135deg, #1f7cff, #2cb5ff));
 }
 
 .study-mode-btn {
-    background: linear-gradient(135deg, #176de0, #1f9cff);
+    background: var(--theme-primary-action-bg, linear-gradient(135deg, #176de0, #1f9cff));
 }
 
 .exam-mode-btn {
-    background: linear-gradient(135deg, #087f9f, #12b6d0);
+    background: var(--theme-primary-action-bg, linear-gradient(135deg, #087f9f, #12b6d0));
 }
 
 .quiz-recovery-panel {
@@ -5009,7 +5009,7 @@ a.settings-hub-card:active {
     margin: 2px 0 0;
     padding: 0 20px;
     border-radius: var(--theme-control-radius, 10px);
-    background: linear-gradient(135deg, #237df0, #1b65dc);
+    background: var(--theme-primary-action-bg, linear-gradient(135deg, #237df0, #1b65dc));
     border-color: rgba(107,181,255,.50);
     box-shadow: 0 8px 20px rgba(19,91,205,.24);
 }
@@ -7345,7 +7345,7 @@ a.settings-hub-card:active {
 }
 
 .anki-export-button {
-    background: linear-gradient(135deg, #176de0, #1f9cff);
+    background: var(--theme-primary-action-bg, linear-gradient(135deg, #176de0, #1f9cff));
     border: 1px solid rgba(98, 178, 255, 0.34);
 }
 
@@ -11850,7 +11850,7 @@ input:not([type="checkbox"]):not([type="radio"]),select,textarea,
     caret-color:var(--theme-input-text,#eaf3ff);
     color-scheme:var(--theme-color-scheme,dark);
 }
-input::placeholder,textarea::placeholder { color:color-mix(in srgb,var(--theme-muted-text,#b8c2cc) 78%,transparent); opacity:1; }
+input::placeholder,textarea::placeholder { color:var(--theme-placeholder,color-mix(in srgb,var(--theme-muted-text,#b8c2cc) 78%,transparent)); opacity:1; }
 .settings-field-label,.settings-current-value strong { color:var(--theme-page-text,#eaf2ff); }
 .settings-current-value,.settings-image-guidance { color:var(--theme-muted-text,#b8c2cc); }
 button:not(.settings-danger-button):not(.dashboard-shutdown):not(.build-icon-danger) {
@@ -12020,7 +12020,7 @@ h1,h2,h3,
     border-color:var(--theme-border-soft,rgba(98,155,255,.24))!important;
 }
 .library-page .library-primary-action {
-    color:#fff!important;
+    color:var(--theme-primary-action-text,#fff)!important;
 }
 
 /* Generated quiz runtime: all ordinary quiz chrome now uses semantic surfaces. */
@@ -12109,7 +12109,7 @@ h1,h2,h3,
 .library-page .library-primary-action,
 .mode-btn,.mode-center button:not(.quiz-recovery-start-over),#studyModeBtn,#examModeBtn,
 .ai-review-button,.printable-flashcard-button {
-    color:#fff!important;
+    color:var(--theme-primary-action-text,#fff)!important;
 }
 
 /* Keep print output independent of app theme. */
@@ -12345,7 +12345,7 @@ h1,h2,h3,
 .build-primary-button,
 .pdf-import-page .build-primary-button,
 .image-builder-main .build-primary-button {
-    color:#fff!important;
+    color:var(--theme-primary-action-text,#fff)!important;
 }
 
 /* Light theme should feel genuinely light, rather than white shell + dark islands.
@@ -16002,3 +16002,9 @@ h1, h2, h3 {
 @container (max-width: 380px) {
     .dashboard-main[data-home-dashboard] .dashboard-action-card { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
+
+/* Compact native selectors keep all manual themes accessible on narrow pages. */
+#appearanceTheme { width: 100%; max-width: 30rem; min-width: 0; font: inherit; }
+.dashboard-theme-quick { min-width: 0; }
+.dashboard-theme-quick select { min-width: 0; max-width: 100%; font: inherit; }
+.settings-error-banner { color: var(--semantic-error-text); background: var(--semantic-error-surface); border: 1px solid var(--semantic-error-border); padding: 12px; margin-block: 12px; border-radius: 8px; }

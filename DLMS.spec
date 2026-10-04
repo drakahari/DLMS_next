@@ -40,6 +40,7 @@ else:
 bundle_data = [
     (str(project_root / "static"), "static"),
     (str(project_root / "templates"), "templates"),
+    (str(project_root / "dlms" / "theme_sources"), "dlms/theme_sources"),
     (str(project_root / "init.sql"), "."),
 ]
 ocr_binaries, ocr_data = collect_tesseract_bundle()

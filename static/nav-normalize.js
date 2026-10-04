@@ -301,7 +301,7 @@
   const themeQuick = document.createElement('div');
   themeQuick.className = 'dashboard-theme-quick';
   themeQuick.hidden = true;
-  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme"><option value="dark">Dark</option><option value="light">Light</option><option value="purple-gold" selected>Purple & Gold</option><option value="maroon-gold">Maroon & Gold</option><option value="ethereal">Ethereal</option></select>`;
+  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme" disabled></select>`;
   const themeAnchor = sidebar.querySelector('.dashboard-sidebar-version');
   if (themeAnchor) themeAnchor.before(themeQuick); else sidebar.appendChild(themeQuick);
   const navigationCustomize = document.createElement('a');
@@ -313,7 +313,23 @@
   portalConfigPromise.then(cfg => {
     // Scope optional sidebar presentation without changing the canonical menu.
     sidebar.dataset.theme = cfg?.theme || '';
-    if (cfg?.theme) themeSelect.value = cfg.theme;
+    for (const group of cfg?.theme_groups || []) {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      for (const item of group.options) optgroup.appendChild(new Option(item.name, item.id));
+      themeSelect.appendChild(optgroup);
+    }
+    if (themeSelect.options.length) {
+      themeSelect.value = cfg.theme;
+      themeSelect.dataset.previous = themeSelect.value;
+      themeSelect.disabled = false;
+    } else {
+      themeSelect.appendChild(new Option('Themes unavailable', ''));
+      const appearanceLink = document.createElement('a');
+      appearanceLink.href = '/settings/appearance';
+      appearanceLink.textContent = 'Open Appearance settings';
+      themeQuick.appendChild(appearanceLink);
+    }
     const visibility = normalizeStudyAreaVisibility(cfg?.study_area_visibility);
     applyStudyAreaVisibility(visibility);
     cacheStudyAreaVisibility(visibility);

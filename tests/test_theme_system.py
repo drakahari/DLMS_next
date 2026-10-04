@@ -108,7 +108,7 @@ class ThemeSystemTests(unittest.TestCase):
                 self.assertEqual(second_load["theme"], theme)
                 self.assertRegex(
                     appearance,
-                    rf'name="theme" value="{re.escape(theme)}" checked',
+                    rf'<option value="{re.escape(theme)}" selected>',
                 )
                 with open(portal, "r", encoding="utf-8") as config_file:
                     self.assertEqual(json.load(config_file)["theme"], theme)
@@ -359,7 +359,11 @@ class ThemeSystemTests(unittest.TestCase):
         }
         for name, value in expected_tokens.items():
             with self.subTest(token=name):
-                self.assertEqual(variables.get(name), value)
+                # New themes may override a semantic role. The original five
+                # still resolve to exactly this unchanged light/dark fallback.
+                actual = variables.get(name)
+                self.assertTrue(actual.startswith("var(--theme-semantic-"), actual)
+                self.assertTrue(actual.endswith(", " + value + ")"), actual)
 
         shutdown_rules = {
             ".dashboard-shutdown": (

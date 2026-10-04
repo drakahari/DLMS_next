@@ -37,28 +37,18 @@
                     <p>Choose the global appearance used throughout DLMS. Purple &amp; Gold is the default for new installations.</p>
                 </div>
             </div>
-            <div class="settings-theme-grid">
-                <label class="settings-theme-choice">
-                    <input type="radio" name="theme" value="dark" {% if cfg.theme == 'dark' %}checked{% endif %}>
-                    <span class="settings-theme-swatch theme-dark"><b>Dark</b><small>Current DLMS look</small></span>
-                </label>
-                <label class="settings-theme-choice">
-                    <input type="radio" name="theme" value="light" {% if cfg.theme == 'light' %}checked{% endif %}>
-                    <span class="settings-theme-swatch theme-light"><b>Light</b><small>High-contrast light surfaces</small></span>
-                </label>
-                <label class="settings-theme-choice">
-                    <input type="radio" name="theme" value="purple-gold" {% if cfg.theme == 'purple-gold' %}checked{% endif %}>
-                    <span class="settings-theme-swatch theme-purple-gold"><b>Purple &amp; Gold</b><small>Deep purple with gold accents</small></span>
-                </label>
-                <label class="settings-theme-choice">
-                    <input type="radio" name="theme" value="maroon-gold" {% if cfg.theme == 'maroon-gold' %}checked{% endif %}>
-                    <span class="settings-theme-swatch theme-maroon-gold"><b>Maroon &amp; Gold</b><small>University of Minnesota-inspired maroon with gold accents</small></span>
-                </label>
-                <label class="settings-theme-choice">
-                    <input type="radio" name="theme" value="ethereal" {% if cfg.theme == 'ethereal' %}checked{% endif %}>
-                    <span class="settings-theme-swatch theme-ethereal"><b>Ethereal</b><small>Omarchy-inspired midnight blue, peach, and lavender</small></span>
-                </label>
-            </div>
+            <label class="settings-field-label" for="appearanceTheme">Color theme</label>
+            <select id="appearanceTheme" name="theme" class="settings-select-input" aria-describedby="themeGuidance">
+                {% for group in theme_groups %}
+                <optgroup label="{{ group.label }}">
+                    {% for theme in group.options %}
+                    <option value="{{ theme.id }}" {% if cfg.theme == theme.id %}selected{% endif %}>{{ theme.name }}</option>
+                    {% endfor %}
+                </optgroup>
+                {% endfor %}
+            </select>
+            <p id="themeGuidance" class="settings-image-guidance">Choose a theme, then Save. The Omarchy palettes are adapted for readable web controls and feedback. No Omarchy installation is needed.</p>
+            {% if theme_error %}<div class="settings-error-banner" role="alert">{{ theme_error }}</div>{% endif %}
             <div class="settings-image-guidance">Ethereal uses local system fonts and works on every supported platform. Omarchy is not required.</div>
             <div class="settings-image-guidance"><strong>Readability first:</strong> status colors remain semantically distinct in every theme; the theme changes presentation, not grading or learning data.</div>
         </section>

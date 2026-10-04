@@ -211,7 +211,8 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
             for item in bundle_assignment.value.elts
             if isinstance(item, ast.Tuple) and len(item.elts) == 2
         }
-        self.assertEqual({".", "static", "templates"}, destinations)
+        self.assertEqual({".", "static", "templates", "dlms/theme_sources"}, destinations)
+        self.assertIn("str(project_root / 'dlms' / 'theme_sources')", source_expressions)
         self.assertIn("str(project_root / 'templates')", source_expressions)
         self.assertIn("str(project_root / 'static')", source_expressions)
 

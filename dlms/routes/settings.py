@@ -8,10 +8,11 @@ from typing import Any
 
 from flask import Blueprint, jsonify, redirect, render_template, request
 from dlms.persistence.portal import DASHBOARD_CARD_GROUPS, dashboard_card_defaults
+from dlms.themes import THEME_IDS, theme_groups
 
 
 Dependency = Callable[..., Any]
-THEMES = {"dark", "light", "purple-gold", "maroon-gold", "ethereal"}
+THEMES = THEME_IDS
 AI_PROVIDERS = {"chatgpt", "claude", "gemini", "local"}
 
 
@@ -146,7 +147,7 @@ def save_navigation_settings(dependencies):
 
 def settings_appearance_page(dependencies):
     cfg = dependencies.load_portal_config()
-    return render_template("settings/appearance.html", cfg=cfg)
+    return render_template("settings/appearance.html", cfg=cfg, theme_groups=theme_groups())
 
 
 def save_appearance_settings(dependencies):
@@ -156,7 +157,10 @@ def save_appearance_settings(dependencies):
     requested_theme = str(
         request.form.get("theme") or cfg.get("theme") or default_theme
     ).strip().lower()
-    cfg["theme"] = requested_theme if requested_theme in THEMES else default_theme
+    if requested_theme not in THEMES:
+        return render_template("settings/appearance.html", cfg=cfg, theme_groups=theme_groups(),
+                               theme_error="Choose a supported theme. Settings were not saved."), 400
+    cfg["theme"] = requested_theme
 
     title = request.form.get("portal_title", "").strip()
     if title:
@@ -169,18 +173,28 @@ def save_appearance_settings(dependencies):
         except ValueError as exc:
             return f"Invalid background image: {html.escape(str(exc))}", 400
 
-    dependencies.write_portal_config(cfg)
+    try:
+        dependencies.write_portal_config(cfg)
+    except OSError:
+        return render_template("settings/appearance.html", cfg=cfg, theme_groups=theme_groups(),
+                               theme_error="DLMS could not save settings. Your saved choice is unchanged. Try saving again."), 503
     return redirect("/settings/appearance?saved=1")
 
 
 def api_set_theme(dependencies):
-    cfg = dependencies.load_portal_config()
-    payload = request.get_json(silent=True) or request.form
-    requested = str(payload.get("theme") or "").strip().lower()
+    payload = request.get_json(silent=True) if request.is_json else request.form
+    value = payload.get("theme") if hasattr(payload, "get") else None
+    requested = value.strip().lower() if isinstance(value, str) else ""
     if requested not in THEMES:
         return jsonify({"ok": False, "error": "Unsupported theme"}), 400
+    # Reject invalid submissions before loading/recovering configuration, so
+    # even a missing or malformed settings file cannot be changed by this call.
+    cfg = dependencies.load_portal_config()
     cfg["theme"] = requested
-    dependencies.write_portal_config(cfg)
+    try:
+        dependencies.write_portal_config(cfg)
+    except OSError:
+        return jsonify({"ok": False, "error": "Could not save theme. Your saved choice is unchanged."}), 503
     return jsonify({"ok": True, "theme": requested})
 
 

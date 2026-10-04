@@ -4,6 +4,7 @@ import json
 import os
 
 from dlms.persistence import json_files
+from dlms.themes import normalize_theme
 
 
 DASHBOARD_CARD_GROUPS = (
@@ -192,9 +193,7 @@ def load_portal_config(
     bg = cfg.get("background_image")
     cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
 
-    valid_themes = {"dark", "light", "purple-gold", "maroon-gold", "ethereal"}
-    theme = str(cfg.get("theme") or default_theme).strip().lower()
-    cfg["theme"] = theme if theme in valid_themes else default_theme
+    cfg["theme"] = normalize_theme(cfg.get("theme"), default_theme)
 
     cfg["ai_helper_enabled"] = bool(cfg.get("ai_helper_enabled", False))
     cfg["ai_auto_copy_prompt"] = bool(cfg.get("ai_auto_copy_prompt", True))
