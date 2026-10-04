@@ -28,6 +28,7 @@ import pytest
 from dlms.rendering.quiz_artifacts import build_quiz_html
 from dlms.themes import THEME_IDS, THEME_REGISTRY
 from tests.browser._bidi import FirefoxBidi
+from tests.browser._help_screenshots import HELP_SCREENSHOTS, capture_help_screenshots
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -40,6 +41,68 @@ pytestmark = [
         reason="set DLMS_RUN_BROWSER_TESTS=1 to run isolated Firefox regressions",
     ),
 ]
+
+
+def test_help_screenshot_capture_controls(browser_stack):
+    """The refresh uses the same isolated app/Firefox lifecycle as the browser gate."""
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, 'light')
+    browser.navigate(base + '/settings/layout')
+    # A saved example demonstrates that the two locations can differ.
+    browser.evaluate("document.querySelector('[name=study_area_it]').checked=false;document.querySelector('[name=dashboard_card_law]').checked=false;true")
+    browser.click('button[value=save]')
+    browser.wait_for_page_ready("location.search.includes('saved=1')")
+    assert browser.evaluate("document.querySelector('[name=dashboard_card_it]').checked && !document.querySelector('[name=study_area_it]').checked && !document.querySelector('[name=dashboard_card_law]').checked && document.querySelector('[name=study_area_law]').checked")
+    browser.navigate(base + '/settings/appearance')
+    assert browser.evaluate("document.querySelector('#appearanceTheme').options.length") == 26
+    assert browser.evaluate("document.querySelector('.settings-form-actions button').textContent.trim()") == 'Save Appearance'
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'light'")
+    assert browser.evaluate("document.querySelector('.dashboard-theme-quick label').textContent") == 'Theme'
+    output = os.environ.get('DLMS_HELP_CAPTURE_DIR')
+    if output:
+        capture_help_screenshots(browser, base, output)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'omarchy-white'))
+def test_help_instruction_images_mobile_and_keyboard(browser_stack, theme):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        browser.navigate(base + '/help/settings')
+        browser.activate()
+        browser.wait_for('document.hasFocus()')
+        for filename in HELP_SCREENSHOTS:
+            selector = '.help-shot-controls a[href="/static/help_assets/' + filename + '"]'
+            browser.evaluate('document.querySelector(' + json.dumps(selector) + ').scrollIntoView({block:"center"});true')
+            browser.wait_for('document.querySelector(' + json.dumps(selector + ' img') + ').complete && document.querySelector(' + json.dumps(selector + ' img') + ').naturalWidth > 0')
+            assert browser.evaluate('(() => {const img=document.querySelector(' + json.dumps(selector + ' img') + ');const w=img.getBoundingClientRect().width;return img.naturalWidth===Number(img.getAttribute("width")) && img.naturalHeight===Number(img.getAttribute("height")) && w>=img.naturalWidth*.75 && w<=img.naturalWidth;})()'), (theme, width, filename)
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            review = os.environ.get('DLMS_HELP_IMAGE_REVIEW_DIR')
+            if review and filename in ('settings-appearance-theme.webp', 'settings-layout-study-areas.webp', 'settings-layout-restore.webp'):
+                directory = Path(review)
+                directory.mkdir(parents=True, exist_ok=True)
+                capture = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+                (directory / f'{Path(filename).stem}-{theme}-{width}.png').write_bytes(base64.b64decode(capture['data']))
+            browser.evaluate('document.querySelector(' + json.dumps(selector) + ').focus();true')
+            browser.press_key('\ue007')  # Enter activates the real image link.
+            browser.wait_for('!document.querySelector(".help-lightbox").hidden && document.querySelector(".help-lightbox-image").complete')
+            assert browser.evaluate('document.activeElement===document.querySelector(".help-lightbox-close")')
+            assert browser.evaluate('document.querySelector(".help-lightbox-image").alt===document.querySelector(' + json.dumps(selector + ' img') + ').alt')
+            browser.press_key('\ue004')
+            assert browser.evaluate('document.activeElement.matches(".help-lightbox-close:focus-visible")')
+            assert browser.evaluate('getComputedStyle(document.activeElement).outlineStyle!=="none"')
+            browser.press_key('\ue00c')  # Escape restores focus to the image link.
+            assert browser.evaluate('document.querySelector(".help-lightbox").hidden && document.activeElement===document.querySelector(' + json.dumps(selector) + ')')
+        for role, value in _theme_contrast_snapshot(browser, {
+            'appearance-caption': '#appearance .help-shot figcaption',
+            'navigation-caption': '#navigation .help-shot figcaption',
+        }, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
 
 
 @pytest.mark.parametrize('theme', ('light', 'dark'))

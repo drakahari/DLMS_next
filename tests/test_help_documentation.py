@@ -1,9 +1,11 @@
+import ast
 import glob
 import os
 import re
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
+from PIL import Image
 
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
@@ -456,8 +458,36 @@ class HelpDocumentationTests(unittest.TestCase):
                         local_path = os.path.join(dlms.STATIC_ROOT, asset.removeprefix("/static/"))
                         self.assertTrue(os.path.isfile(local_path), local_path)
 
+    def test_focused_settings_images_dimensions_and_package_inclusion(self):
+        page = self._static('help-settings.html')
+        images = re.findall(r'<img src="/static/help_assets/([^"]+)"[^>]*width="(\d+)" height="(\d+)"', page)
+        self.assertEqual(len(images), 5)
+        for filename, width, height in images:
+            with self.subTest(image=filename), Image.open(Path(dlms.STATIC_ROOT, 'help_assets', filename)) as image:
+                self.assertEqual(image.format, 'WEBP')
+                self.assertEqual(image.size, (int(width), int(height)))
+                self.assertLessEqual(image.width, 390)
+        # The native specification includes the entire static tree, not a
+        # frozen list of old Help images. Check its input without building.
+        tree = ast.parse(Path(dlms.__file__).with_name('DLMS.spec').read_text())
+        bundle = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == 'bundle_data' for target in node.targets))
+        static_entry = ast.parse('(str(project_root / "static"), "static")', mode='eval').body
+        self.assertIn(ast.dump(static_entry), [ast.dump(entry) for entry in bundle.elts])
+        analysis = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                        and any(isinstance(target, ast.Name) and target.id == 'analysis' for target in node.targets))
+        self.assertTrue(any(keyword.arg == 'datas' and isinstance(keyword.value, ast.Name)
+                            and keyword.value.id == 'bundle_data' for keyword in analysis.keywords))
+
     def test_visual_guides_have_required_screenshots_alt_text_and_captions(self):
         expected_assets = {
+            "help-settings.html": (
+                ("appearance", "settings-appearance-theme.webp"),
+                ("appearance", "settings-appearance-save.webp"),
+                ("appearance", "sidebar-theme-selector.webp"),
+                ("navigation", "settings-layout-study-areas.webp"),
+                ("navigation", "settings-layout-restore.webp"),
+            ),
             "help-learning-intelligence.html": (
                 ("mastery", "learning-topics.webp"),
                 ("reviews", "learning-review-schedule.webp"),
