@@ -319,6 +319,15 @@
 .help-version { margin-top: 12px; color: var(--theme-muted-text, #b8c2cc); font-size: 11px; }
 .help-anchor { scroll-margin-top: 20px; }
 
+/* A compact registry reference, usable without JavaScript or a wide table. */
+.help-theme-reference { margin-block: 12px; }
+.help-theme-reference summary { cursor: pointer; color: var(--theme-link, #62b5ff); }
+.help-theme-reference summary:focus-visible {
+    outline: 3px solid var(--theme-focus-ring, var(--theme-accent-text, #78bfff));
+    outline-offset: 3px;
+}
+.help-theme-reference p { overflow-wrap: anywhere; }
+
 /* Help screenshot lightbox */
 .help-lightbox[hidden] { display: none !important; }
 .help-lightbox {

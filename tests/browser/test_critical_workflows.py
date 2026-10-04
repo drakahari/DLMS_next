@@ -42,6 +42,97 @@ pytestmark = [
 ]
 
 
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_navigation_help_current_links_and_keyboard(browser_stack, theme, tmp_path):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/layout')
+    _set_theme(browser, theme)
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        browser.navigate(base + '/help/settings#navigation')
+        browser.activate()
+        browser.wait_for('document.hasFocus()')
+        browser.wait_for("document.querySelector('.help-toc a[href=\"#navigation\"]')")
+        guide = browser.evaluate("document.querySelector('#navigation').innerText")
+        for label in ('Show on dashboard', 'Show in sidebar', 'Hide from both',
+                      'Save layout & navigation', 'Restore dashboard defaults', 'Restore sidebar defaults'):
+            assert label in guide
+        for role, value in _theme_contrast_snapshot(browser, {
+            'heading': '#navigation h2', 'link': '#navigation p a',
+            'step': '#navigation li', 'restore': '#navigation ul li',
+        }, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        shots = Path(os.environ.get('DLMS_NAVIGATION_HELP_REVIEW_DIR', str(tmp_path / 'navigation-help-review')))
+        shots.mkdir(parents=True, exist_ok=True)
+        capture = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+        (shots / f'navigation-help-{theme}-{width}.png').write_bytes(base64.b64decode(capture['data']))
+        # Tab between the actual Help links, then follow Customize navigation.
+        browser.evaluate("document.querySelector('#navigation p a').focus();true")
+        browser.press_key('\ue004')
+        assert browser.evaluate("document.activeElement.textContent==='Customize navigation' && document.activeElement.matches(':focus-visible')")
+        assert browser.evaluate("getComputedStyle(document.activeElement).outlineStyle==='solid'")
+        browser.press_key('\ue007')
+        browser.wait_for_page_ready("location.pathname==='/settings/layout' && location.hash==='#study-areas'")
+        for label in ('Show on dashboard', 'Show in sidebar', 'Hide from both',
+                      'Save layout & navigation', 'Restore dashboard defaults', 'Restore sidebar defaults'):
+            assert label in browser.evaluate("document.querySelector('.settings-detail-card').innerText")
+        browser.navigate(base + '/help/getting-started#navigation')
+        browser.click('#navigation a[href="/help/settings#navigation"]')
+        browser.wait_for_page_ready("location.pathname==='/help/settings' && location.hash==='#navigation'")
+        browser.navigate(base + '/help/troubleshooting#navigation')
+        browser.click('#navigation a[href="/settings/layout#dashboard-shortcuts"]')
+        browser.wait_for_page_ready("location.pathname==='/settings/layout' && location.hash==='#dashboard-shortcuts'")
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'omarchy-white'))
+def test_appearance_help_readability_reference_and_keyboard(browser_stack, theme, tmp_path):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        browser.navigate(base + '/help/settings')
+        browser.activate()
+        browser.wait_for('document.hasFocus()')
+        browser.wait_for("document.querySelector('.help-toc a[href=\"#theme-reference\"]')")
+        assert set(browser.evaluate("[...document.querySelectorAll('[data-help-theme]')].map(n=>n.dataset.helpTheme)")) == THEME_IDS
+        assert browser.evaluate("document.querySelectorAll('.help-theme-reference').length") == 3
+        browser.click('.help-toc a[href="#theme-reference"]')
+        assert browser.evaluate('location.hash') == '#theme-reference'
+        browser.evaluate("document.querySelector('#appearance a[href=\"#theme-troubleshooting\"]').focus();true")
+        browser.press_key('\ue004')  # Tab into the reference in document order.
+        assert browser.evaluate("document.activeElement===document.querySelector('.help-theme-reference summary')")
+        browser.press_key('\ue007')  # Enter expands the native details element.
+        assert browser.evaluate("document.querySelector('.help-theme-reference').open")
+        assert browser.evaluate("document.activeElement.matches('summary:focus-visible') && getComputedStyle(document.activeElement).outlineStyle==='solid'")
+        browser.press_key('\ue004')
+        assert browser.evaluate("document.activeElement===document.querySelectorAll('.help-theme-reference summary')[1]")
+        browser.press_key('\ue007')
+        browser.press_key('\ue004')
+        browser.press_key('\ue007')
+        assert browser.evaluate("[...document.querySelectorAll('.help-theme-reference')].every(n=>n.open)")
+        for role, value in _theme_contrast_snapshot(browser, {
+            'body': '#appearance p', 'step': '#appearance li', 'reference': '.help-theme-reference p',
+            'summary': '.help-theme-reference summary', 'heading': '#theme-readability h2',
+            'troubleshooting': '#theme-troubleshooting li', 'link': '#appearance p a',
+        }, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'), (theme, width)
+        assert browser.evaluate("[...document.querySelectorAll('.help-panel')].every(n=>n.getBoundingClientRect().right<=innerWidth+1)"), (theme, width)
+        shots = Path(os.environ.get('DLMS_APPEARANCE_HELP_REVIEW_DIR', str(tmp_path / 'appearance-help-review')))
+        shots.mkdir(parents=True, exist_ok=True)
+        capture = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+        (shots / f'help-{theme}-{width}.png').write_bytes(base64.b64decode(capture['data']))
+        # Follow the real settings link with the keyboard, rather than constructing its URL.
+        browser.evaluate("document.querySelector('#appearance p a').focus();true")
+        browser.press_key('\ue007')
+        browser.wait_for_page_ready("location.pathname==='/settings/appearance'")
+        assert browser.evaluate("document.querySelector('#appearanceTheme').value") == theme
+
+
 @pytest.mark.parametrize('theme', sorted(THEME_IDS))
 def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack, theme, tmp_path):
     """All entries use real selectors, pages, answers, and narrow layouts."""
