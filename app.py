@@ -1796,7 +1796,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables):
@@ -5240,7 +5240,7 @@ def _daily_review_plan(cur, now=None):
     with registry_lock:
         registry = load_registry()
         scope = _current_learning_scope(cur, registry=registry)
-    return _learning_service._daily_review_plan(
+    plan = _learning_service._daily_review_plan(
         cur,
         registry=registry,
         installed_content_packs=content_pack_summary(),
@@ -5250,6 +5250,8 @@ def _daily_review_plan(cur, now=None):
         adaptive_study_candidates=_adaptive_study_candidates,
         scope=scope,
     )
+    plan["regular_study"] = _study_service.regular_continuity(cur, registry, data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names)
+    return plan
 
 
 
@@ -6080,6 +6082,35 @@ app.register_blueprint(create_anki_blueprint(AnkiRouteDependencies(
 )))
 
 
+from dlms.services import study_sessions as _study_service
+from dlms.routes.study import create_study_blueprint, StudyRouteDependencies
+
+
+def _study_artifact_options():
+    return dict(registry=load_registry(), data_folder=DATA_FOLDER, artifact_names=_quiz_artifact_names)
+
+
+def _persist_study_response(conn, cur, data):
+    if isinstance(data, dict) and data.get("contract") == 2:
+        return _study_service.save_response(conn, data, record_learning_event=_record_learning_event, **_study_artifact_options())
+    if isinstance(data, dict) and ("contract" in data or (data.get("sessionId") and cur.execute("SELECT 1 FROM study_sessions WHERE id = ?", (data.get("sessionId"),)).fetchone())):
+        raise LearningPayloadError("This session requires the current Study response contract. Reload before continuing.")
+    return _attempt_service.persist_study_learning_event(
+        conn, cur, data, learning_integer=_learning_integer,
+        optional_learning_identifier=_optional_learning_identifier,
+        question_response_context_by_ordinal=_question_response_context_by_ordinal,
+        validate_question_response=_validate_question_response,
+        record_learning_event=_record_learning_event, json_module=json,
+    )
+
+
+app.register_blueprint(create_study_blueprint(StudyRouteDependencies(
+    get_db=lambda: get_db(), artifact_options=_study_artifact_options,
+    run_delete=lambda: _run_reset_with_backup("study-history", lambda: _restore_service.delete_study_history_core(DB_PATH)),
+    operation_error=lambda exc, operation: _destructive_operation_error(exc, operation),
+)))
+
+
 app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
     static_folder=lambda: app.static_folder,
     static_root=lambda: STATIC_ROOT,
@@ -6097,17 +6128,7 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
         json_module=json,
         print_message=print,
     ),
-    persist_study_learning_event=lambda conn, cur, data: _attempt_service.persist_study_learning_event(
-        conn,
-        cur,
-        data,
-        learning_integer=_learning_integer,
-        optional_learning_identifier=_optional_learning_identifier,
-        question_response_context_by_ordinal=_question_response_context_by_ordinal,
-        validate_question_response=_validate_question_response,
-        record_learning_event=_record_learning_event,
-        json_module=json,
-    ),
+    persist_study_learning_event=_persist_study_response,
     generated_practice_status=lambda cur, quiz_id: _generated_practice_lifecycle.generated_practice_status(
         cur, quiz_id, load_registry(),
     ),

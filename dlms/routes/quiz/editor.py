@@ -1,9 +1,11 @@
 """Quiz asset serving, editor, mutation, deletion, and rebuild routes."""
 
 from functools import wraps
+from html.parser import HTMLParser
 import os
 import sqlite3
 import time
+from urllib.parse import urljoin, urlsplit
 
 from flask import (
     Blueprint,
@@ -36,12 +38,46 @@ def serve_data(dependencies, filename):
         return "Unsupported data file", 415
     return send_from_directory(DATA_FOLDER, filename)
 
+class _QuizRuntimeMarkup(HTMLParser):
+    """Inspect actual markup without treating comments as script references."""
+
+    def __init__(self, source):
+        super().__init__()
+        self.source = source
+        self.shared = False
+        self.body_end = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "body" and not self.body_end:
+            line, column = self.getpos()
+            self.body_end = sum(len(line) for line in self.source.splitlines(keepends=True)[:line - 1]) + column + len(self.get_starttag_text())
+        if tag == "script":
+            src = dict(attrs).get("src")
+            if src:
+                url = urlsplit(urljoin(request.url, src))
+                self.shared |= url.netloc == request.host and url.path == "/static/script.js"
+
+
 def serve_quiz(dependencies, filename):
     QUIZ_FOLDER = dependencies.quiz_folder()
 
     if os.path.splitext(str(filename or ""))[1].lower() != ".html":
         return "Unsupported quiz file", 415
-    return send_from_directory(QUIZ_FOLDER, filename)
+    response = send_from_directory(QUIZ_FOLDER, filename, conditional=False)
+    response.direct_passthrough = False
+    # Preserve legacy encodings byte-for-byte; inspection needs only HTML tags.
+    source = response.get_data().decode("utf-8", errors="surrogateescape")
+    markup = _QuizRuntimeMarkup(source)
+    markup.feed(source)
+    if markup.shared:
+        return response.make_conditional(request)
+    # Presentation only: never rewrite or automatically regenerate user artifacts.
+    notice = render_template("quiz/_legacy-study-notice.html")
+    response.set_data((source[:markup.body_end] + notice + source[markup.body_end:]).encode("utf-8", errors="surrogateescape"))
+    response.headers.pop("ETag", None)
+    response.headers.pop("Last-Modified", None)
+    response.cache_control.no_store = True
+    return response
 
 def edit_quiz(dependencies, quiz_id):
     APP_VERSION = dependencies.app_version()

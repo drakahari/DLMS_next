@@ -172,7 +172,7 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
 
         templates = sorted(TEMPLATE_ROOT.rglob("*.html"))
         # Includes the registry-derived Help theme reference partial.
-        self.assertEqual(72, len(templates))
+        self.assertEqual(74, len(templates))
         self.assertTrue((TEMPLATE_ROOT / "dashboard/index.html").is_file())
         self.assertFalse((ROOT / "static/index.html").exists())
         self.assertNotIn("static/index.html", self.app_source)

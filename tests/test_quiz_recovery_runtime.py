@@ -131,11 +131,10 @@ def test_study_and_exam_identities_survive_recovery_without_automatic_retry():
     assert "studyLearningEventSaves.set(record.eventId, record)" in SCRIPT
 
 
-def test_ordinary_completed_study_is_pruned_but_generated_review_waits_for_finish():
-    assert "isCompleted: record => (" in SCRIPT
+def test_all_study_reviews_require_explicit_finish_before_recovery_is_pruned():
+    assert "isCompleted: () => false" in SCRIPT
     assert "generatedPracticeStatus?.is_transient === true" in SCRIPT
-    assert "studyRecoveryRecordIsComplete(record, rawQuiz)" in SCRIPT
-    assert "generatedPracticeStatus?.is_transient !== false" in SCRIPT
+    assert 'studyRequest("/api/study/finish"' in SCRIPT
     assert "async function finishGeneratedPracticeReview()" in SCRIPT
     assert "function studyRecoveryRecordIsComplete" in SCRIPT
     assert 'record?.session?.mode !== "Study"' in SCRIPT

@@ -1,0 +1,26 @@
+{% from "shared/_settings-sidebar.html" import settings_shell_sidebar %}
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Study History — DLMS</title><link rel="stylesheet" href="/static/style.css"><script src="/static/local-time.js" defer></script></head>
+<body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Study History") }}
+<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
+<div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><h1>Study History</h1><p>Historical coverage and completed reviews. These facts are separate from current Learning Intelligence estimates.</p></div></div>
+<nav aria-label="History navigation"><a href="/">Dashboard</a> · <a href="/history">Exam and saved attempts</a> · <a href="/library">Quiz Library</a> · <a href="/static/help-quizzes.html#study-history">Study Help</a></nav>
+<div class="settings-detail-card">
+{% if reset_at %}<p>Learning estimates were reset <time data-local-instant="{{ reset_at }}">{{ reset_at }}</time>. Earlier Study history remains here and does not rebuild those estimates.</p>{% endif %}
+<p>First outcome means the first complete graded answer. Partial selections may expose feedback. External-tool actions show what DLMS opened or copied; they do not prove that an outside answer was read. Older Study activity has no verified session completion.</p>
+{% for session in sessions %}
+<article class="study-history-row">
+<h2>{{ session.title }}</h2>
+<p>{{ 'Focused session' if session.purpose == 'focused' else 'Full quiz review' }} · {{ 'Finished' if session.completed_at else 'Partial / not finished' }} · {{ session.reviewed }} / {{ session.total }} reviewed</p>
+<p>Last response saved: <time data-local-instant="{{ session.last_activity_at }}">{{ session.last_activity_at }}</time>{% if session.completed_at %}<br>Finished: <time data-local-instant="{{ session.completed_at }}">{{ session.completed_at }}</time>{% endif %}</p>
+{% if not session.sequence_complete %}<p>Earlier saves are missing. First outcomes are not yet established; use Retry in the original tab.</p>{% endif %}
+<details><summary>First outcomes, corrections and observable actions</summary>
+<ul>{% for key, observation in session.observations.items() %}<li>Question {{ key|int + 1 }}:
+{% if observation.first %}first graded answer {{ 'correct' if observation.first.correct else 'incorrect' }}{% if observation.first.prior_feedback_or_action %}, after feedback or a recorded tool action (independent success not established){% endif %}; latest graded answer {{ 'correct' if observation.latest else 'incorrect' }}{% else %}no complete graded answer{% endif %}.
+{% if 'ai_open' in observation.actions %}External AI open requested; opening and use unknown.{% endif %}{% if 'prompt_copy' in observation.actions %}Prompt copied; use unknown.{% endif %}</li>{% endfor %}</ul>
+</details></article>
+{% else %}<p>No saved Study sessions yet. Legacy responses do not establish completed reviews. Open a quiz in Study Mode to begin recording a session.</p>{% endfor %}
+{% if legacy %}<h2>Legacy saved responses</h2><p>These are original saved facts. First attempts, assistance and session completion cannot be determined.</p><ul>{% for row in legacy %}<li>{{ row.title or 'Unavailable quiz' }} — {{ 'correct response' if row.was_correct == 1 else 'incorrect response' if row.was_correct == 0 else 'incomplete / ungraded response' }}. Saved <time data-local-instant="{{ row.occurred_at or '' }}" data-sqlite-utc="true">{{ row.occurred_at or 'Time unavailable' }}</time></li>{% endfor %}</ul>{% endif %}
+<nav aria-label="Study history pages">{% if page > 1 %}<a href="?page={{ page - 1 }}">Previous</a>{% endif %} {% if more %}<a href="?page={{ page + 1 }}">Next</a>{% endif %}</nav>
+</div></div></main></div><script src="/static/nav-normalize.js"></script></body></html>

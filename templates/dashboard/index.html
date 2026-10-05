@@ -6,6 +6,7 @@
 <title>{{ portal_title }}</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/favicon.ico">
+<script src="/static/local-time.js"></script>
 </head>
 
 <body class="dashboard-home">
@@ -145,6 +146,8 @@
             </div>
             <p class="daily-review-intro">Due questions, topic needs, and unfinished work for your next study session.</p>
             <p class="daily-review-intro"><a href="/learning-scope">Manage Learning Scope</a> to choose recommendation folders. Saved Resume cards stay available.</p>
+            <div id="regularStudyContinuity" hidden></div>
+            <p><a href="/study-history">Study history</a> · Suggested actions below use your current Learning Intelligence evidence.</p>
             <div id="dailyReviewList" class="daily-review-list" aria-live="polite">
                 <div class="dashboard-loading">Building today’s local review plan…</div>
             </div>

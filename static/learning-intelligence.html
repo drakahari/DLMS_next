@@ -39,7 +39,7 @@
 <main class="dashboard-main">
 <header class="dashboard-header learning-intelligence-header">
   <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
-  <div><div class="build-eyebrow">LEARNING INTELLIGENCE · CROSS-QUIZ TOPICS</div><h1>Topics, Mastery &amp; Weak Areas</h1><p>Concept-level insight across quizzes, Study Packs, and recorded learning activity.</p></div>
+  <div><div class="build-eyebrow">LEARNING INTELLIGENCE · CROSS-QUIZ TOPICS</div><h1>Topics, Mastery &amp; Weak Areas</h1><p class="study-evidence-note">New Study estimates distinguish independent first success from corrections and prior feedback or tool actions. <a href="/help/quizzes#study-history">How Study evidence works</a> · <a href="/study-history">Historical Study coverage</a></p><p>Concept-level insight across quizzes, Study Packs, and recorded learning activity.</p></div>
 </header>
 
 <section class="learning-scope-summary" aria-label="Learning Scope">
@@ -187,8 +187,8 @@ fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
   <p class="li-mastery-intro"><strong>Mastery is a 0–100 study signal for one concept.</strong> It combines how accurately you have answered, how you are doing lately, how much evidence DLMS has, and how recently you practiced. It is a guide for choosing what to study—not a course grade.</p>
   <h3>Your score combines four things</h3>
   <ol class="li-mastery-factors">
-   <li><strong><span>55%</span> Overall performance</strong><p>Your correct and incorrect answers for this concept. Repeated saves of the same response count once.</p></li>
-   <li><strong><span>20%</span> Recent performance</strong><p>Accuracy across up to your five most recent counted answers.</p></li>
+   <li><strong><span>55%</span> Overall performance</strong><p>New Study sessions contribute independent first success to mastery; corrections and prior feedback/tool actions do not establish it. Exam and legacy evidence keep their existing interpretation. Repeated saves count once.</p></li>
+   <li><strong><span>20%</span> Recent performance</strong><p>The same mastery rule applied to up to five recent counted answers. The table’s accuracy retains actual first correctness, including assisted correct answers.</p></li>
    <li><strong><span>15%</span> Evidence</strong><p>More responses make the signal more trustworthy. Full evidence credit is reached at eight responses.</p></li>
    <li><strong><span>10%</span> Recency</strong><p>Recent practice receives more credit than older practice.</p></li>
   </ol>

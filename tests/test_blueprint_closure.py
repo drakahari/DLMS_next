@@ -48,6 +48,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "quiz": 40,
         "settings": 19,
         "study_packs": 9,
+        "study": 6,
     }
     EXPECTED_FACTORY_NAMES = {
         "create_admin_images_blueprint",
@@ -66,6 +67,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "create_quiz_blueprint",
         "create_settings_blueprint",
         "create_study_packs_blueprint",
+        "create_study_blueprint",
     }
     EXPECTED_DEPENDENCY_TYPES = {
         "dlms.routes.admin_images.AdminImageRouteDependencies": 6,
@@ -86,9 +88,10 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 21,
         "dlms.routes.settings.SettingsRouteDependencies": 12,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
+        "dlms.routes.study.StudyRouteDependencies": 4,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "f4de1f9d4f9d420e7e19f9e4288cedcd4c97dea06b4922802ecffc993dc36590"
+        "f6366645515b476dda616efb7d38809e27de1d90a72fd6e9170ebfd2fb01ff90"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
@@ -141,11 +144,11 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_entire_explicit_url_map_matches_the_226_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(226, len(rules))
+        self.assertEqual(232, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(225, len(blueprint_rules))
+        self.assertEqual(231, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -231,7 +234,7 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_route_modules_have_frozen_family_dependencies_and_no_app_import(self):
         route_paths = sorted(ROUTE_ROOT.rglob("*.py"))
-        self.assertEqual(22, len(route_paths))
+        self.assertEqual(23, len(route_paths))
         for path in route_paths:
             with self.subTest(route_module=path.relative_to(ROOT)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))

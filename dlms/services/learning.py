@@ -19,21 +19,11 @@ from .question_identity import (
 
 
 def _parse_learning_datetime(value):
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError:
-        try:
-            parsed = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").replace(
-                tzinfo=timezone.utc
-            )
-        except ValueError:
-            return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    # This column's SQLite timestamp format is known UTC. Date-only and other
+    # naive legacy strings cannot establish a scheduling instant.
+    from .dashboard_activity import activity_timestamp
+    normalized = activity_timestamp(value, sqlite_utc=True)
+    return datetime.fromisoformat(normalized) if normalized else None
 
 
 def _is_generated_review_source(source_file, title=""):
@@ -44,28 +34,72 @@ def _is_generated_review_source(source_file, title=""):
 
 
 def _deduplicated_learning_answer_events(cur):
-    """Return the canonical Study/Exam evidence rows used by learning analytics."""
+    """Legacy final outcomes; new Study first difficulty with explicit assistance.
+
+    Only learning_events feed estimates. Factual Study history is never replayed
+    after a reset. Assessment edits exclude stale new-contract estimates.
+    """
+    from .study_sessions import assessment_revision, question_revision
     rows = cur.execute("""
         SELECT id, event_type, quiz_id, question_id, attempt_id, session_id,
                mode, was_correct, response_json, occurred_at
         FROM learning_events
-        WHERE event_type IN ('study_answer', 'exam_answer')
-          AND question_id IS NOT NULL
-          AND was_correct IS NOT NULL
-        ORDER BY occurred_at ASC, id ASC
+        WHERE event_type IN ('study_answer', 'study_action', 'exam_answer')
+          AND question_id IS NOT NULL ORDER BY occurred_at, id
     """).fetchall()
-    deduplicated = {}
-    for row in rows:
-        if row["event_type"] == "exam_answer":
-            scope = row["attempt_id"] or f"exam-event-{row['id']}"
-        else:
-            scope = row["session_id"] or f"study-event-{row['id']}"
-        key = (row["event_type"], scope, row["question_id"])
+    deduplicated, ordered, revisions, source_revisions = {}, {}, {}, {}
+    for record in rows:
+        row = dict(record)
+        try:
+            payload = json.loads(row["response_json"] or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        scope = (row["attempt_id"] if row["event_type"] == "exam_answer" else row["session_id"]) or f"event-{row['id']}"
+        key = ("exam_answer" if row["event_type"] == "exam_answer" else "study_answer", scope, row["question_id"])
+        if payload.get("contract") == 2:
+            ordered.setdefault(key, []).append((payload.get("sequence", 0), row, payload))
+        elif row["was_correct"] is not None and row["event_type"] != "study_action":
+            deduplicated[key] = row
+    factual = cur.execute("""SELECT session_id, question_id, sequence, kind, payload_json FROM study_responses
+                            WHERE session_id IN (SELECT DISTINCT session_id FROM learning_events WHERE event_type IN ('study_answer', 'study_action'))
+                            ORDER BY session_id, sequence""").fetchall() if ordered else []
+    contiguous, feedback_before = {}, {}
+    for fact in factual:
+        session_id = fact["session_id"]
+        previous = contiguous.get(session_id, 0)
+        if fact["sequence"] == previous + 1:
+            contiguous[session_id] = fact["sequence"]
+        payload = json.loads(fact["payload_json"])
+        if fact["kind"] != "response" or payload.get("selected"):
+            feedback_before.setdefault((session_id, fact["question_id"]), fact["sequence"])
+    for key, entries in ordered.items():
+        entries.sort(key=lambda item: item[0])
+        graded = [entry for entry in entries if entry[1]["was_correct"] is not None and entry[0] <= contiguous.get(entry[1]["session_id"], 0)]
+        if not graded:
+            continue
+        sequence, row, payload = graded[0]
+        quiz_id = row["quiz_id"]
+        if quiz_id not in revisions:
+            revisions[quiz_id] = assessment_revision(cur, quiz_id)
+        if payload.get("assessment_revision") != revisions[quiz_id]:
+            continue
+        source_id = payload.get("source_id")
+        if source_id:
+            if source_id not in source_revisions:
+                source_revisions[source_id] = question_revision(cur, source_id)
+            if payload.get("source_revision") != source_revisions[source_id]:
+                continue
+        # Prior observable feedback/actions can survive an LI reset as facts,
+        # but cannot restore the old answer's difficulty or count as new evidence.
+        prior = feedback_before.get((row["session_id"], row["question_id"]), sequence) < sequence
+        independent = bool(row["was_correct"]) and not prior
+        row.update(independent_success=independent, study_contract=2,
+                   first_correct=bool(row["was_correct"]), assisted=bool(prior),
+                   latest_correct=bool(graded[-1][1]["was_correct"]))
         deduplicated[key] = row
-    return sorted(
-        deduplicated.values(),
-        key=lambda row: (str(row["occurred_at"] or ""), int(row["id"])),
-    )
+    return sorted(deduplicated.values(), key=lambda row: (str(row["occurred_at"] or ""), int(row["id"])))
 
 
 def _canonical_question_identity(question_type, question_text, question_id=None):
@@ -260,11 +294,13 @@ def _learning_intelligence_topics(cur, now=None, *, scope=None, answer_events=No
         else:
             recency_score = 45.0
 
+        mastery_accuracy = (sum(bool(event.get("independent_success", event["was_correct"])) for event in events) / evidence * 100) if evidence else 0
+        mastery_recent_accuracy = (sum(bool(event.get("independent_success", event["was_correct"])) for event in recent) / len(recent) * 100) if recent else 0
         evidence_score = min(100.0, evidence * 12.5)
         if evidence:
             raw_mastery = (
-                (accuracy or 0.0) * 0.55
-                + (recent_accuracy or 0.0) * 0.20
+                mastery_accuracy * 0.55
+                + mastery_recent_accuracy * 0.20
                 + evidence_score * 0.15
                 + recency_score * 0.10
             )
@@ -431,7 +467,10 @@ def _native_question_schedule_entry(events, *, now):
     intervals. An incorrect answer resets the next interval to one day. The
     values are deliberately small and explainable; this is not an FSRS model.
     """
-    if not events:
+    has_native_study = any(isinstance(event, dict) and event.get("study_contract") == 2 for event in events)
+    unknown_study_time = any(isinstance(event, dict) and event.get("study_contract") == 2
+                             and _parse_learning_datetime(event["occurred_at"]) is None for event in events)
+    if not events or unknown_study_time:
         return {
             "schedule_state": "unscheduled",
             "schedule_state_label": "Not yet scheduled",
@@ -443,9 +482,33 @@ def _native_question_schedule_entry(events, *, now):
             "is_upcoming": False,
             "correct_streak": 0,
             "last_result": None,
-            "schedule_reason": "No recorded answers yet.",
+            "schedule_reason": ("Study evidence has an unknown or invalid time; its elapsed review interval cannot be determined."
+                                if unknown_study_time else "No recorded answers yet."),
         }
 
+    if has_native_study:
+        # SQLite UTC and aware ISO timestamps can sort differently as text.
+        # Compare instants for the elapsed-time rule; keep undated legacy
+        # evidence last so the existing unknown-date fallback remains honest.
+        events = sorted(events, key=lambda event: (_parse_learning_datetime(event["occurred_at"]) or datetime.max.replace(tzinfo=timezone.utc), int(event["id"])))
+    events = [dict(event, was_correct=int(event.get("independent_success", event["was_correct"]))) if isinstance(event, dict) and event.get("study_contract") == 2 else event for event in events]
+    # New independent Study successes qualify only after the previous interval.
+    # Exam and legacy evidence preserve their established interpretation.
+    qualified = []
+    streak = 0
+    anchor = None
+    interval = 1
+    for event in events:
+        stamp = _parse_learning_datetime(event["occurred_at"])
+        if (isinstance(event, dict) and event.get("study_contract") == 2 and event["was_correct"]
+                and anchor is not None and stamp is not None
+                and stamp < anchor + timedelta(days=interval)):
+            continue
+        qualified.append(event)
+        streak = streak + 1 if event["was_correct"] else 0
+        interval = (1, 3, 7, 14, 30)[min(max(streak, 1), 5) - 1]
+        anchor = stamp
+    events = qualified
     last_event = events[-1]
     last_correct = bool(last_event["was_correct"])
     correct_streak = 0
@@ -503,7 +566,9 @@ def _native_question_schedule_entry(events, *, now):
             f"review after {interval_days} day{'s' if interval_days != 1 else ''}."
         )
     else:
-        reason = "The latest response was incorrect; review again after 1 day."
+        reason = ("The first graded Study response needed correction or followed feedback/tool actions; review again after 1 day."
+                  if isinstance(last_event, dict) and last_event.get("study_contract") == 2
+                  else "The latest response was incorrect; review again after 1 day.")
     return {
         "schedule_state": state,
         "schedule_state_label": state_label,
@@ -1227,6 +1292,9 @@ def _adaptive_study_candidates(
             components["review_recency"] = 8
             reasons.append("Concept review is due soon")
 
+        if any(event.get("assisted") and event.get("first_correct") for event in events):
+            components["assisted_review"] = 20
+            reasons.append("A correct Study answer followed feedback or a tool action; independent success is not established")
         if last_miss is not None:
             if days_since_miss is not None and days_since_miss <= 14:
                 components["recent_miss"] = 35

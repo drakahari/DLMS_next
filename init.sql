@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 3);
+VALUES (1, 4);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)
@@ -253,3 +253,33 @@ CREATE INDEX IF NOT EXISTS idx_learning_events_question ON learning_events(quest
 CREATE INDEX IF NOT EXISTS idx_learning_events_attempt ON learning_events(attempt_id);
 CREATE INDEX IF NOT EXISTS idx_learning_events_session ON learning_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_learning_events_occurred ON learning_events(occurred_at);
+
+/* Durable Study history (schema 4). */
+CREATE TABLE IF NOT EXISTS study_legacy_responses (
+        id INTEGER PRIMARY KEY, quiz_id INTEGER, question_id INTEGER,
+        attempt_id TEXT, session_id TEXT, mode TEXT, was_correct INTEGER,
+        response_json TEXT, occurred_at TEXT,
+        FOREIGN KEY(quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
+        FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_study_legacy_event ON study_legacy_responses(attempt_id);
+CREATE TABLE IF NOT EXISTS study_state (
+        id INTEGER PRIMARY KEY CHECK(id = 1), generation TEXT NOT NULL,
+        learning_reset_at TEXT);
+INSERT OR IGNORE INTO study_state(id, generation) VALUES (1, lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS study_sessions (
+        id TEXT PRIMARY KEY, quiz_id INTEGER NOT NULL, purpose TEXT NOT NULL,
+        fingerprint TEXT NOT NULL, assessment_revision TEXT NOT NULL,
+        manifest_json TEXT NOT NULL, owner TEXT NOT NULL, generation TEXT NOT NULL,
+        started_at TEXT NOT NULL, last_activity_at TEXT, completed_at TEXT,
+        position INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS study_responses (
+        event_id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK(sequence > 0), question_id INTEGER NOT NULL,
+        ordinal INTEGER NOT NULL, kind TEXT NOT NULL, was_correct INTEGER,
+        payload_json TEXT NOT NULL, saved_at TEXT NOT NULL,
+        UNIQUE(session_id, sequence),
+        FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_quiz ON study_sessions(quiz_id, last_activity_at);
+CREATE INDEX IF NOT EXISTS idx_study_responses_question ON study_responses(question_id, session_id, sequence);

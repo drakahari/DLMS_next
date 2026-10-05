@@ -1,6 +1,7 @@
 """Restore, crash recovery, reset, and runtime-data removal services."""
 
 import json
+from dlms.persistence.study_schema import invalidate_queues, preserve_legacy
 import os
 import re
 import shutil
@@ -183,6 +184,8 @@ def prepare_staged_restore_database(
     database_path = staged_database_path(staged_data_root)
     try:
         bootstrap_result = bootstrap_database(database_path)
+        with sqlite3.connect(database_path) as restored_conn:
+            invalidate_queues(restored_conn)
         validation = validate_current_restored_database(database_path)
         quiz_html = regenerate_staged_quiz_html(staged_data_root, database_path)
     except unsupported_schema_error as exc:
@@ -849,6 +852,9 @@ def reset_quiz_library_core(
     conn.execute("PRAGMA foreign_keys = OFF")
     cur = conn.cursor()
     cur.executescript("""
+        DELETE FROM study_responses;
+        DELETE FROM study_sessions;
+        DELETE FROM study_legacy_responses;
         DELETE FROM learning_events;
         DELETE FROM question_concepts;
         DELETE FROM concepts;
@@ -860,6 +866,7 @@ def reset_quiz_library_core(
         DELETE FROM quizzes;
         DELETE FROM sqlite_sequence;
     """)
+    invalidate_queues(conn)
     conn.commit()
     conn.execute("PRAGMA foreign_keys = ON")
     conn.close()
@@ -873,7 +880,22 @@ def reset_learning_intelligence_core(db_path, *, sqlite_module=sqlite3):
     conn = sqlite_module.connect(db_path)
     try:
         with conn:
+            preserve_legacy(conn)
             conn.execute("DELETE FROM learning_events")
+            invalidate_queues(conn, reset=True)
+    finally:
+        conn.close()
+
+
+def delete_study_history_core(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        with conn:
+            conn.execute("DELETE FROM study_sessions")
+            conn.execute("DELETE FROM study_legacy_responses")
+            conn.execute("DELETE FROM learning_events WHERE event_type IN ('study_answer', 'study_action')")
+            invalidate_queues(conn)
     finally:
         conn.close()
 

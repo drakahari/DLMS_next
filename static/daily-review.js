@@ -32,7 +32,7 @@
       const updated = new Date(record.updatedAt);
       const updatedText = Number.isNaN(updated.getTime())
         ? "recently"
-        : updated.toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+        : window.DLMSLocalTime.format(updated.toISOString());
       return [{
         id: `unfinished-${record.quizId}`,
         kind: "unfinished",
@@ -88,6 +88,16 @@
   }
 
   function renderDailyReview(plan) {
+    const regular = document.getElementById("regularStudyContinuity");
+    if (regular) {
+      const saved = plan.regular_study;
+      regular.hidden = !saved;
+      if (saved) {
+        const state = !saved.unchanged ? "Content changed; previous coverage is historical" : saved.completed_at ? "Review finished" : "Review not finished";
+        const action = saved.completed_at || !saved.unchanged ? "Open current quiz" : "Continue regular quiz";
+        regular.innerHTML = `<article class="daily-review-item"><div class="daily-review-copy"><h3>Last regular quiz: ${escapeHtml(saved.title)}</h3><p>${escapeHtml(state)} · ${saved.reviewed} / ${saved.total} reviewed</p><p>Last response saved: ${escapeHtml(window.DLMSLocalTime.format(saved.saved_at))}</p></div><div class="daily-review-item-action">${saved.url ? `<a class="daily-review-action" href="${escapeHtml(saved.url)}">${action}</a>` : "Quiz unavailable"}</div></article>`;
+      }
+    }
     const list = document.getElementById("dailyReviewList");
     const empty = document.getElementById("dailyReviewEmpty");
     const count = document.getElementById("dailyReviewCount");

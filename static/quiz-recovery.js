@@ -203,7 +203,13 @@
       if (!["saving", "failed"].includes(record.state)) return false;
       const payload = record.payload;
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
-      if (!exactKeys(payload, ["eventId", "questionOrdinal", "questionType", "quizId", "selected", "sessionId", "wasCorrect"])) return false;
+      const keys = ["eventId", "questionOrdinal", "questionType", "quizId", "selected", "sessionId", "wasCorrect"];
+      if (payload.contract === 2) {
+        keys.push("contract", "kind", "sequence", "owner", "generation", "assessmentRevision");
+        if (!finiteInteger(payload.sequence, 1, 1000000) || !["response", "ai_open", "prompt_copy"].includes(payload.kind)
+            || !boundedString(payload.owner, 128) || !boundedString(payload.generation, 128) || !boundedString(payload.assessmentRevision, 128)) return false;
+      }
+      if (!exactKeys(payload, keys)) return false;
       if (!(String(payload.quizId) === String(quizId)
         && payload.sessionId === sessionId
         && payload.eventId === record.eventId
@@ -213,6 +219,7 @@
       if (record.questionKey !== `${sessionId}:${payload.questionOrdinal}`) return false;
       const descriptor = descriptors[payload.questionOrdinal - 1];
       if (payload.questionType !== descriptor.type) return false;
+      if (payload.contract === 2 && payload.kind !== "response") return payload.selected === null && payload.wasCorrect === null;
       if (descriptor.type === "choice") {
         if (!Array.isArray(payload.selected) || payload.selected.length > descriptor.choiceCount) return false;
         if (!payload.selected.every(value => typeof value === "string" && /^[A-Z]$/.test(value))) return false;
@@ -675,14 +682,21 @@
       if (recoveryPanel) recoveryPanel.hidden = true;
     }
 
-    function resumeSaved() {
+    async function resumeSaved() {
+      const button = recoveryPanel?.querySelector(".quiz-recovery-resume");
+      if (button?.disabled) return;
       const record = readStored();
       if (!record) { hidePanel(); return; }
       const claimed = claimStored(record);
       if (!claimed) return;
-      options.restore(claimed);
-      hidePanel();
-      writeSnapshot();
+      if (button) button.disabled = true;
+      try {
+        if (await options.restore(claimed) === false) return;
+        hidePanel();
+        writeSnapshot();
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
 
     function finishSavedSubmission() {
@@ -729,7 +743,8 @@
       const resume = document.createElement("button");
       resume.type = "button";
       resume.className = "quiz-recovery-resume";
-      resume.textContent = record.session.phase === "submitting" ? "Finish Saving Submitted Attempt" : "Resume";
+      resume.textContent = record.session.phase === "submitting" ? "Finish Saving Submitted Attempt"
+        : record.unacknowledgedStudyEvents.length ? "Resume and retry saves" : "Resume";
       resume.addEventListener("click", record.session.phase === "submitting" ? finishSavedSubmission : resumeSaved);
       actions.appendChild(resume);
       const reset = document.createElement("button");

@@ -310,7 +310,7 @@ class DatabaseBootstrapTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            {"status": "migrated", "version": 3, "from_version": 2}, result
+            {"status": "migrated", "version": dlms.DLMS_SCHEMA_VERSION, "from_version": 2}, result
         )
         conn = sqlite3.connect(self.db_path)
         try:

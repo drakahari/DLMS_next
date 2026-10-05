@@ -102,7 +102,7 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
                 self.assertIn(f'data-label="{label}"', page)
 
         self.assertIn(
-            'data-confirm-text="Reset Learning Intelligence?&#10;&#10;This clears the answer evidence used for mastery, recommendations, diagnostics, and scheduled review. Your quizzes, concepts/tags, Study Packs, settings, saved attempts, and missed-question history will remain.&#10;&#10;DLMS will create a safety backup first. Continue?"',
+            'data-confirm-text="Reset Learning Intelligence?&#10;&#10;This clears the answer evidence used for mastery, recommendations, diagnostics, and scheduled review. Your quizzes, concepts/tags, Study Packs, settings, saved attempts, missed-question history, and factual Study sessions/completions will remain. Retained Study history does not rebuild reset learning estimates. Reload open Study tabs before resuming.&#10;&#10;DLMS will create a safety backup first. Continue?"',
             page,
         )
         self.assertIn(
@@ -114,7 +114,7 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            'fetch(btn.dataset.endpoint,{method:"POST"})', page
+            'fetch(btn.dataset.endpoint,{method:"POST",headers:btn.dataset.confirmation?{"Content-Type":"application/json"}:undefined,body:btn.dataset.confirmation?JSON.stringify({confirmation:btn.dataset.confirmation}):undefined})', page
         )
         self.assertIn(
             'document.querySelectorAll(".resetAction").forEach(b=>b.disabled=true)',

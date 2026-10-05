@@ -43,6 +43,205 @@ pytestmark = [
 ]
 
 
+@pytest.mark.parametrize("browser_stack", ["UTC", "America/New_York", "Asia/Kolkata"], indirect=True)
+def test_study_local_instants_dst_and_ambiguous_dates(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/history")
+    browser.wait_for("typeof window.DLMSLocalTime === 'object'")
+    result = browser.evaluate("({zone:Intl.DateTimeFormat().resolvedOptions().timeZone, before:DLMSLocalTime.format('2026-03-08T06:59:00Z'), after:DLMSLocalTime.format('2026-03-08T07:01:00Z'), fallBefore:DLMSLocalTime.format('2026-11-01T05:59:00Z'), fallAfter:DLMSLocalTime.format('2026-11-01T06:01:00Z'), date:DLMSLocalTime.format('2026-03-08'), ambiguous:DLMSLocalTime.format('2026-03-08 06:59:00'), sqlite:DLMSLocalTime.format('2026-03-08 06:59:00',{sqliteUTC:true}), invalid:DLMSLocalTime.format('2026-02-30T12:00:00Z')})")
+    assert result["date"] == "2026-03-08 (date only)"
+    assert "timezone unknown" in result["ambiguous"]
+    assert result["sqlite"] == result["before"]
+    assert "invalid timestamp" in result["invalid"]
+    for invalid in ("2026-02-30", "2026-03-08T24:00:00Z", "2026-03-08T07:60:00Z"):
+        assert "invalid timestamp" in browser.evaluate(f"DLMSLocalTime.format({json.dumps(invalid)})")
+    if result["zone"] == "America/New_York":
+        assert "1:59" in result["before"] and "3:01" in result["after"]
+        assert "1:59" in result["fallBefore"] and "1:01" in result["fallAfter"]
+        assert result["fallBefore"].split()[-1] != result["fallAfter"].split()[-1]
+    elif result["zone"] in {"Asia/Kolkata", "Asia/Calcutta"}:
+        assert "12:29" in result["before"] and "12:31" in result["after"]
+    else:
+        assert result["zone"] == "UTC"
+        assert "6:59" in result["before"] and "7:01" in result["after"]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark", "ethereal"])
+def test_durable_study_resume_takeover_history_and_dashboard(browser_stack, theme):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base + "/settings/appearance")
+    _set_theme(browser, theme)
+    url = base + "/quizzes/" + browser_stack.metadata["critical_html"]
+    browser.navigate(url)
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    session_id = browser.evaluate("learningSessionId")
+    first_context = browser.context
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    # Server resume remains available without browser-local recovery.
+    browser.evaluate("localStorage.removeItem(quizRecoveryController.storageKey);true")
+    second_context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    browser.context = second_context
+    browser.navigate(url)
+    browser.wait_for("document.querySelector('#durableStudyResume button') !== null")
+    browser.click("#durableStudyResume button")
+    browser.wait_for("durableStudySession !== null && index === 1 && document.querySelector('#choices .choice') !== null")
+    assert browser.evaluate("learningSessionId") == session_id
+    assert browser.evaluate("userAnswers.q0") == [0]
+    browser.context = first_context
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('another tab')")
+    browser.context = second_context
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    capture_dir = os.environ.get("DLMS_STUDY_CAPTURE_DIR")
+    if capture_dir:
+        directory = Path(capture_dir); directory.mkdir(parents=True, exist_ok=True)
+        for width in (1440, 360):
+            browser.set_viewport(width, 1000)
+            capture = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "document"})
+            (directory / f"study-finish-{theme}-{width}.png").write_bytes(base64.b64decode(capture["data"]))
+    browser.evaluate("document.getElementById('finishReviewBtn').focus();true")
+    browser.press_key("\ue007")
+    browser.wait_for("durableStudySession.completed_at !== null")
+    output = os.environ.get("DLMS_STUDY_CAPTURE_DIR")
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        for path, label in ((url, "resume"), ("/study-history", "history"), ("/", "dashboard"), ("/help/quizzes#study-history", "help")):
+            browser.navigate(path if path.startswith("http") else base + path)
+            if label == "dashboard":
+                browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
+            if label == "history":
+                browser.wait_for("document.body.textContent.includes('first graded answer')")
+                assert "first graded answer incorrect" in browser.evaluate("document.body.textContent")
+                browser.click(".study-history-row summary")
+                assert browser.evaluate("document.querySelector('.study-history-row details').open")
+            assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), (theme, width, label)
+            if output:
+                directory = Path(output); directory.mkdir(parents=True, exist_ok=True)
+                browser.evaluate("window.scrollTo(0,0);true")
+                capture = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "document"})
+                (directory / f"study-{label}-{theme}-{width}.png").write_bytes(base64.b64decode(capture["data"]))
+
+
+@pytest.mark.parametrize("pending", ["none", "lost_ack", "conflict"])
+def test_study_browser_resume_reconciles_newer_server_answers(browser_stack, pending):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    url = base + "/quizzes/" + browser_stack.metadata["critical_html"]
+    browser.navigate(url)
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    if pending != "none":
+        browser.evaluate("window.realReviewFetch=window.fetch;window.fetch=async (url,opts)=>{if(String(url).includes('/study-response')) {" +
+                         ("await realReviewFetch(url,opts);" if pending == "lost_ack" else "") +
+                         "throw new Error('Interrupted acknowledgement');}return realReviewFetch(url,opts);};true")
+        browser.click("#choices .choice[data-index='0']")
+        browser.wait_for("Array.from(studyLearningEventSaves.values()).some(r=>r.state==='failed')")
+        browser.evaluate("window.fetch=window.realReviewFetch;true")
+    # A second browser/profile can update the server without this local checkpoint.
+    sequence = 3 if pending == "lost_ack" else 2
+    browser.evaluate("""(async()=>{
+        const creds={...studyCredentials(),owner:'other-browser'};
+        await studyRequest('/api/study/session',{...creds,fingerprint:quizContentFingerprint,variants:{},takeover:true});
+        await studyRequest('/api/learning-events/study-response',{...creds,contract:2,eventId:'other-browser-answer',sequence:%d,
+          questionOrdinal:1,questionType:'choice',kind:'response',selected:['A'],wasCorrect:true});
+        await studyRequest('/api/study/position',{...creds,position:1});return true;
+    })()""" % sequence)
+    browser.navigate(url)
+    browser.wait_for("quizRecoveryReady && document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    if pending == "conflict":
+        browser.wait_for("document.body.textContent.includes('sequence is already used')")
+        assert browser.evaluate("!document.querySelector('.quiz-recovery-panel').hidden && document.getElementById('quiz').classList.contains('hidden')")
+        assert browser.evaluate("JSON.parse(localStorage.getItem(quizRecoveryController.storageKey)).unacknowledgedStudyEvents.length") == 1
+    else:
+        browser.wait_for("index === 1 && !document.getElementById('quiz').classList.contains('hidden')")
+        assert browser.evaluate("userAnswers.q0") == [0]
+        assert browser.evaluate("studyLearningEventSaves.size") == 0
+        assert browser.evaluate("JSON.parse(localStorage.getItem(quizRecoveryController.storageKey)).answers['0'].selected") == [0]
+        assert browser.evaluate("durableStudySession.observations['0'].first.correct") is False
+
+
+def test_study_navigation_saves_stay_in_order(browser_stack):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base + "/quizzes/" + browser_stack.metadata["critical_html"])
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.evaluate("window.positionCalls=0;window.originalPositionFetch=fetch;window.fetch=async(url,opts)=>{if(String(url).endsWith('/study/position')){positionCalls++;if(positionCalls===1)await new Promise(resolve=>window.releasePosition=resolve);}return originalPositionFetch(url,opts);};true")
+    browser.click("#nextBtn")
+    browser.wait_for("positionCalls === 1")
+    browser.click("#prevBtn")
+    assert browser.evaluate("index === 0 && positionCalls === 1")
+    browser.evaluate("releasePosition();true")
+    browser.wait_for("positionCalls === 2")
+    browser.evaluate("durableStudyPositionSave.then(()=>true)")
+    result = browser.evaluate("fetch('/api/study/quiz/'+window.QUIZ_ID).then(r=>r.json())")
+    assert result["session"]["position"] == 0
+
+
+def test_legacy_quiz_notice_is_served_without_rewriting(browser_stack):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    path = browser_stack.data_root / "quizzes" / "legacy-study.html"
+    source = '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><h1>Legacy sample quiz</h1></body></html>'
+    path.write_text(source)
+    browser.set_viewport(360, 900)
+    browser.navigate(base + "/quizzes/legacy-study.html")
+    assert browser.evaluate("document.getElementById('legacyStudyNotice').textContent.includes('do not create durable Study sessions')")
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+    browser.activate()
+    browser.evaluate("document.querySelector('#legacyStudyNotice a').focus();true")
+    browser.press_key("\ue004")
+    assert browser.evaluate("document.activeElement.getAttribute('href')") == "/help/quizzes#study-history"
+    assert path.read_text() == source
+    if os.environ.get("DLMS_STUDY_CAPTURE_DIR"):
+        capture = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "document"})
+        (Path(os.environ["DLMS_STUDY_CAPTURE_DIR"]) / "legacy-study-notice-360.png").write_bytes(base64.b64decode(capture["data"]))
+
+
+def test_hotspot_keyboard_positions_without_supplying_target(browser_stack):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    quiz_id = browser_stack.metadata["companion_id"]
+    html = browser_stack.metadata["companion_html"]
+    artifact = browser_stack.data_root / "data" / Path(html).with_suffix(".json").name
+    target = {"number":1,"type":"hotspot","question":"Locate the centre", "image_url":"/static/favicon.ico", "image_alt":"Test positioning image", "target":{"type":"circle","x":.5,"y":.5,"radius":.2}}
+    artifact.write_text(json.dumps([target]), encoding="utf-8")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        conn.execute("UPDATE questions SET question_text='Locate the centre [Image hotspot]' WHERE quiz_id=?", (quiz_id,))
+    browser.navigate(base + "/quizzes/" + html)
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('.hotspot-image-wrap') !== null")
+    browser.wait_for("document.querySelector('.hotspot-image-wrap') !== null")
+    browser.activate()
+    browser.wait_for("document.hasFocus()")
+    browser.evaluate("document.getElementById('qText').tabIndex=-1;document.getElementById('qText').focus();true")
+    browser.press_key("\ue004")  # Real Tab navigation into the image control.
+    # The target is in the centre. Move genuinely outside it before submitting.
+    for _ in range(30):
+        browser.press_key("\ue014")  # ArrowRight, 1% per press.
+    assert browser.evaluate("userAnswers.q0 === undefined && studyLearningEventSaves.size === 0")
+    assert browser.evaluate("document.activeElement.matches('.hotspot-image-wrap:focus-visible')"), browser.evaluate("({focus:document.hasFocus(), active:document.activeElement.outerHTML, cursor:hotspotCursors[index]})")
+    browser.press_key("\ue007")
+    browser.wait_for("studyLearningEventSaves.size === 0 && userAnswers.q0 !== undefined")
+    assert browser.evaluate("userAnswers.q0.x > .79 && userAnswers.q0.y === .5")
+    assert browser.evaluate("document.querySelector('.hotspot-click-marker').classList.contains('wrong')")
+    browser.press_key("\ue015")  # ArrowDown: does not submit another response.
+    assert browser.evaluate("studyLearningEventSequence") == 1
+
+
 def test_help_screenshot_capture_controls(browser_stack):
     """The refresh uses the same isolated app/Firefox lifecycle as the browser gate."""
     browser, base = browser_stack.browser, browser_stack.base_url
@@ -231,6 +430,7 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
     for html in (browser_stack.metadata['critical_html'], new_html):
         for mode in ('.study-mode-btn', '.exam-mode-btn'):
             browser.navigate(base + '/quizzes/' + html)
+            browser.wait_for("quizRecoveryReady && !document.querySelector('.study-mode-btn').disabled")
             mode_contrast = _theme_contrast_snapshot(browser, {'study': '.study-mode-btn', 'exam': '.exam-mode-btn'}, include_gradients=True)
             for role, value in mode_contrast.items():
                 if theme.startswith('omarchy-'):
@@ -240,7 +440,10 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
                 baseline_path.mkdir(parents=True, exist_ok=True)
                 (baseline_path / f'baseline-mode-buttons-{theme}.json').write_text(json.dumps(mode_contrast, indent=2))
             browser.click(mode)
-            browser.wait_for("document.querySelectorAll('#choices .choice').length>=2")
+            try:
+                browser.wait_for("document.querySelectorAll('#choices .choice').length>=2")
+            except TimeoutError:
+                pytest.fail(str((html, mode, browser.evaluate("({supported:durableStudySupported, id:window.QUIZ_ID, ready:quizRecoveryReady, generation:durableStudyGeneration, notice:document.getElementById('quizRecoveryNotice')?.textContent, body:document.body.textContent.slice(-1200)})"))))
             assert browser.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--theme-body-base').trim()") == THEME_REGISTRY[theme]['colors']['body_base']
             browser.click("#choices .choice[data-index='1']")
             if mode == '.study-mode-btn':
@@ -840,7 +1043,10 @@ def browser_server(tmp_path_factory):
 
 
 @pytest.fixture
-def browser_stack(browser_server):
+def browser_stack(browser_server, request):
+    browser_env = dict(browser_server.env)
+    if getattr(request, "param", None):
+        browser_env["TZ"] = request.param
     browser_port = _free_loopback_port()
     session_root = browser_server.work_root / f"firefox-session-{browser_port}"
     profile = session_root / "profile"
@@ -860,9 +1066,9 @@ def browser_stack(browser_server):
     try:
         with browser_log.open("w", encoding="utf-8") as browser_output:
             browser_process = subprocess.Popen(
-                _firefox_command(browser_server.firefox, profile, browser_port, browser_server.env),
+                _firefox_command(browser_server.firefox, profile, browser_port, browser_env),
                 cwd=ROOT,
-                env=browser_server.env,
+                env=browser_env,
                 stdout=browser_output,
                 stderr=subprocess.STDOUT,
                 **browser_server.process_options,
@@ -1390,6 +1596,7 @@ def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
     browser.navigate(f"{base_url}/quizzes/{critical_html}")
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
 
@@ -2477,6 +2684,7 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
 
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
     browser.click("#choices .choice[data-index='1']")
     browser.wait_for("document.querySelector('#choices .wrong-choice') !== null")
@@ -2577,6 +2785,7 @@ def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(b
         f"JSON.parse(localStorage.getItem({json.dumps(storage_key)})).timer.remainingSeconds"
     ) == saved_remaining
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("index === 3 && document.querySelector('.hotspot-click-marker') !== null")
     browser.evaluate("prev(); true")
     browser.wait_for("index === 2 && document.querySelector('.matching-select') !== null")
@@ -2600,12 +2809,13 @@ def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(b
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("paused === true && document.getElementById('pauseOverlay').classList.contains('show')")
     browser.evaluate("resumeExam(); true")
     browser.wait_for("paused === false && !document.getElementById('pauseOverlay').classList.contains('show')")
 
 
-def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retry(browser_stack):
+def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_resume_retry(browser_stack):
     browser = browser_stack.browser
     quiz_id = browser_stack.metadata["critical_id"]
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
@@ -2622,6 +2832,7 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retr
         " ? Promise.reject(new Error('simulated lost acknowledgement')) : window.__recoveryFetch(...args); true"
     ) is True
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#studyAnkiBtn")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
@@ -2637,17 +2848,17 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retr
 
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume').textContent") == "Resume and retry saves"
+    assert _database_value(
+        browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'", (quiz_id,),
+    ) == before_count
     browser.click(".quiz-recovery-resume")
-    browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+    browser.wait_for("studyLearningEventSaves.size === 0")
     browser.wait_for("document.querySelector('#choices .correct-choice') !== null")
     assert browser.evaluate("studyAnkiSelections.has(0)") is True
     assert browser.evaluate("learningSessionId") == session_id
-    assert _database_value(
-        browser_stack.data_root / "results.db",
-        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'",
-        (quiz_id,),
-    ) == before_count
-    browser.click(".study-learning-save-retry")
     _wait_for_database_value(
         browser_stack.data_root / "results.db",
         f"SELECT COUNT(*) FROM learning_events WHERE quiz_id = {int(quiz_id)} AND event_type = 'study_answer'",
@@ -2663,20 +2874,21 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retr
     )
 
 
-def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
+def test_study_recovery_clears_only_after_acknowledged_explicit_finish(browser_stack):
     browser = browser_stack.browser
     quiz_id = browser_stack.metadata["critical_id"]
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
 
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     browser.click("#nextBtn")
     browser.wait_for("index === 1")
-    assert browser.evaluate("document.getElementById('finishReviewBtn') === null") is True
+    assert browser.evaluate("document.getElementById('finishReviewBtn') !== null") is True
     assert browser.evaluate(
         f"localStorage.getItem({json.dumps(recovery_key)}) !== null"
     ) is True
@@ -2692,6 +2904,9 @@ def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
         f"SELECT COUNT(*) FROM learning_events WHERE quiz_id = {int(quiz_id)} AND event_type = 'study_answer'",
         before + 1,
     )
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
+    browser.click("#finishReviewBtn")
     browser.wait_for(
         f"localStorage.getItem({json.dumps(recovery_key)}) === null && "
         "quizRecoveryController.ownsState === false"
@@ -2732,6 +2947,7 @@ def test_adaptive_study_completion_survives_late_partial_multiselect_save(browse
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
@@ -2782,6 +2998,7 @@ def test_adaptive_study_completion_survives_late_partial_multiselect_save(browse
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("index === 1 && document.getElementById('finishReviewBtn')?.style.display !== 'none'")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     browser.click("#finishReviewBtn")
@@ -2808,6 +3025,7 @@ def test_generated_finish_review_waits_for_save_and_requires_earlier_answers(bro
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#nextBtn")
     browser.wait_for("index === 1 && document.getElementById('finishReviewBtn') !== null")
@@ -2834,6 +3052,9 @@ def test_generated_finish_review_waits_for_save_and_requires_earlier_answers(bro
     assert browser.evaluate(
         f"document.getElementById('finishReviewBtn').disabled && localStorage.getItem({json.dumps(recovery_key)}) !== null"
     ) is True
+    before_finish_answers = browser.evaluate("JSON.stringify(userAnswers)")
+    browser.click("#choices .choice[data-index='0']")
+    assert browser.evaluate("JSON.stringify(userAnswers)") == before_finish_answers
     browser.evaluate("window.releaseFinalStudySave(); true")
     browser.wait_for(
         "studyCompletionInProgress === false && "
@@ -2862,6 +3083,7 @@ def test_generated_finish_review_retries_failed_browser_checkpoint_clear(browser
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
@@ -2923,6 +3145,7 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
         "{status:503,headers:{'Content-Type':'application/json'}})); } return original(...args); }; return true; })()"
     ) is True
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
@@ -2997,6 +3220,7 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     assert browser.evaluate("quizRecoveryController.ownsState") is True
@@ -3015,7 +3239,8 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
     browser.click(".quiz-recovery-resume")
-    browser.wait_for("index === 1 && generatedPracticeStatus.completed === true")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+    browser.wait_for("index === 1 && generatedPracticeStatus.completed === true && document.getElementById('finishReviewBtn') !== null")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     browser.click("#finishReviewBtn")
     browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
@@ -3072,6 +3297,7 @@ def test_final_study_answer_save_failure_keeps_recovery(browser_stack):
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
@@ -3187,6 +3413,7 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
         browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
         assert browser.evaluate("quizRecoveryController.ownsState") is False
         browser.click(".quiz-recovery-resume")
+        browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         browser.wait_for("quizRecoveryController.ownsState === true")
         browser.context = first_context
         browser.wait_for("quizRecoveryController.ownsState === false")
@@ -3255,6 +3482,7 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
     assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
 
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-start-over') !== null")
@@ -3271,6 +3499,7 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
         "window.__restoreRecoveryStorage = () => { Storage.prototype.setItem = original; }; return true; })()"
     ) is True
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     assert browser.evaluate("index === 0 && userAnswers.q0[0] === 0") is True
     assert "recovery is unavailable" in browser.evaluate("document.getElementById('quizRecoveryNotice').textContent")
@@ -3338,6 +3567,7 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
             "document.querySelector('.quiz-recovery-panel p').textContent"
         )
         second_browser.click(".quiz-recovery-resume")
+        second_browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         second_browser.wait_for("index === 1 && userAnswers.q0[0] === 1")
     finally:
         if first_browser is not None:
@@ -3426,6 +3656,7 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path, t
         browser.wait_for("quizRecoveryReady === true && window.dlmsBrowserPresence?.enabled === true")
         browser.wait_for("window.dlmsBrowserPresence.heartbeat()")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.click("#choices .choice[data-index='0']")
         recovery_key = browser.evaluate("quizRecoveryController.storageKey")
         browser.navigate(f"{base_url}/library")
@@ -3460,6 +3691,7 @@ def test_quiz_recovery_library_prunes_only_expired_malformed_and_orphaned_record
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     current_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.navigate(f"{browser_stack.base_url}/")
@@ -3523,6 +3755,7 @@ def test_quiz_recovery_fingerprint_invalidation_tracks_playable_content_not_titl
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.click("#choices .choice[data-index='0']")
         storage_key = browser.evaluate("quizRecoveryController.storageKey")
         browser.navigate(f"{browser_stack.base_url}/")
@@ -3650,7 +3883,7 @@ def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and
     build_quiz_html(
         html_name, browser_stack.metadata["recovery_json"], str(quiz_folder / html_name),
         "Mike's Training & Practice Center", title, "header-test.png",
-        browser_stack.metadata["critical_id"], 5,
+        "browser-recovery-mixed", 5,
         normalize_exam_minutes=lambda value: int(value),
     )
     quiz_url = f"{browser_stack.base_url}/quizzes/{html_name}"
@@ -3716,7 +3949,7 @@ def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and
     build_quiz_html(
         no_logo_name, browser_stack.metadata["recovery_json"],
         str(quiz_folder / no_logo_name), "DLMS", no_logo_title, None,
-        browser_stack.metadata["critical_id"], 5,
+        "browser-recovery-mixed", 5,
         normalize_exam_minutes=lambda value: int(value),
     )
     for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
@@ -3766,6 +3999,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
         if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
             browser.click(".quiz-recovery-start-over")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.wait_for("document.getElementById('studySessionIntro') !== null")
 
         contrast = _theme_contrast_snapshot(browser, {
@@ -3820,7 +4054,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
         build_quiz_html(
             filename, browser_stack.metadata["recovery_json"],
             str(quiz_folder / filename), "DLMS", title, None,
-            browser_stack.metadata["critical_id"], 5,
+            "browser-recovery-mixed", 5,
             normalize_exam_minutes=lambda value: int(value),
         )
         browser.set_viewport(420, 900)
@@ -3829,6 +4063,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
         if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
             browser.click(".quiz-recovery-start-over")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         assert browser.evaluate(
             "document.querySelector('.active-quiz-title').textContent.trim()==="
             + json.dumps(title) + "&& !document.getElementById('studySessionIntro').hidden"
@@ -3840,6 +4075,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
     if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
         browser.click(".quiz-recovery-start-over")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#nextBtn")
     browser.wait_for("index === 1")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
@@ -3849,6 +4085,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for(
         "index===1 && !document.getElementById('studySessionIntro').hidden && "
         "!document.getElementById('studyModeBadge').hidden"
@@ -3896,6 +4133,7 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.getElementById('studyCopyBtn').offsetParent !== null")
     browser.evaluate(
         "studyAIConfig={ai_helper_enabled:true,ai_provider:'chatgpt'};"
@@ -3975,12 +4213,50 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
     assert browser.evaluate("(() => {try {buildCurrentQuestionAIPrompt();return false}catch(error){return true}})()") is True
 
 
+def test_delayed_prompt_copy_keeps_original_question_and_order(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.evaluate("Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>new Promise(resolve=>{window.releaseClipboard=resolve})}});true")
+    browser.click("#studyCopyBtn")
+    browser.wait_for("typeof window.releaseClipboard === 'function'")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.evaluate("window.releaseClipboard();true")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard' && studyLearningEventSaves.size === 0")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        assert conn.execute("SELECT ordinal,kind FROM study_responses ORDER BY sequence").fetchall() == [(2, "response"), (1, "prompt_copy")]
+    browser.click("#prevBtn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    observations = browser.evaluate("fetch(`/api/study/quiz/${window.QUIZ_ID}`).then(r=>r.json()).then(d=>d.session.observations)")
+    assert observations["0"]["first"]["prior_feedback_or_action"] is True
+    assert observations["1"]["first"]["prior_feedback_or_action"] is False
+    # Finish freezes acknowledged coverage even if an earlier clipboard promise
+    # resolves while the completion request is in flight.
+    browser.click("#studyCopyBtn")
+    browser.click("#nextBtn")
+    browser.evaluate("window.originalStudyFetch=window.fetch.bind(window);window.fetch=(...args)=>String(args[0]).includes('/api/study/finish')?new Promise(resolve=>{window.releaseFinish=()=>resolve(window.originalStudyFetch(...args))}):window.originalStudyFetch(...args);true")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("typeof window.releaseFinish === 'function'")
+    browser.evaluate("window.releaseClipboard();true")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    assert browser.evaluate("studyLearningEventSequence") == 3
+    assert browser.evaluate("studyLearningEventSaves.size") == 0
+    browser.evaluate("window.releaseFinish();true")
+    browser.wait_for("durableStudySession.completed_at !== null")
+
+
 def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unavailable(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.evaluate(
         "Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined});"
         "window.__fallbackAttempts=0;window.__copiedSelection=null;window.__opens=0;"
@@ -4016,9 +4292,15 @@ def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unav
     assert copied["selection"] == review_prompt == before["prompt"]
     assert copied["attempts"] == 1
     assert copied["opens"] == 0
-    assert {key: copied[key] for key in before if key != "prompt"} == {
-        key: before[key] for key in before if key != "prompt"
+    assert {key: copied[key] for key in before if key not in {"prompt", "recovery"}} == {
+        key: before[key] for key in before if key not in {"prompt", "recovery"}
     }
+    # Copy is now an observable action. Answer state is unchanged; its ordered
+    # evidence save can briefly change the browser's pending queue.
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert _database_value(browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM study_responses WHERE session_id=? AND kind='prompt_copy'",
+        (browser.evaluate("learningSessionId"),)) == 2
 
     browser.evaluate(
         "Object.defineProperty(navigator,'clipboard',{configurable:true,"
@@ -4054,6 +4336,7 @@ def test_quiz_question_tools_wrap_across_themes_and_widths(browser_stack):
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.evaluate("quiz[0].question='Long question '+ 'W'.repeat(180);renderQuestion();true")
         for width in (1440, 1024, 760, 420):
             browser.set_viewport(width, 900)
@@ -4178,6 +4461,7 @@ def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack
     ) is True
 
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for(
@@ -4216,6 +4500,7 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack,
     browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
@@ -8216,6 +8501,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     browser.navigate(f"{base_url}/quizzes/{entry['html']}")
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 3")
     assert browser.evaluate(
         "document.getElementById('qText').textContent.includes('neutral browser option')"
@@ -9351,7 +9637,7 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
         "DLMS",
         "DLMS-120 Matching Theme",
         None,
-        browser_stack.metadata["critical_id"],
+        "dlms120-matching-preview",
         5,
         normalize_exam_minutes=lambda value: int(value),
     )
@@ -9472,6 +9758,7 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true && quiz.length === 1")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.wait_for("document.querySelector('.matching-answer-chip')")
         initial_matching = browser.evaluate(
             "(() => {" + probe_helpers
@@ -9821,6 +10108,7 @@ def test_quiz_deletion_prunes_only_deleted_progress_and_stops_former_owner(brows
     browser.navigate(critical_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     critical_key = browser.evaluate("quizRecoveryController.storageKey")
     first_context = browser.context
@@ -9831,6 +10119,7 @@ def test_quiz_deletion_prunes_only_deleted_progress_and_stops_former_owner(brows
         browser.navigate(companion_url)
         browser.wait_for("quizRecoveryReady === true")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         companion_key = browser.evaluate("quizRecoveryController.storageKey")
 
         browser.context = first_context
@@ -10393,6 +10682,7 @@ def test_learning_scope_management_filters_active_recommendations_across_themes_
     browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata['critical_html']}")
     browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     browser.click("#nextBtn")
@@ -11800,6 +12090,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
     browser.navigate(critical_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for(
         "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
@@ -11814,7 +12105,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
     )
     plan = browser.evaluate(
         "(() => ({"
-        "kinds:[...document.querySelectorAll('.daily-review-item')].map(item => "
+        "kinds:[...document.querySelectorAll('#dailyReviewList .daily-review-item')].map(item => "
         "[...item.classList].find(name => name.startsWith('daily-review-') && "
         "name !== 'daily-review-item').replace('daily-review-', '')) ,"
         "dueText:document.querySelector('.daily-review-native_due').textContent,"
@@ -11859,6 +12150,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
 
     browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for(
         "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
         + json.dumps(str(generated[1]))
@@ -12001,6 +12293,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         browser.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_')")
         browser.wait_for("quizRecoveryReady === true && quiz.length === 1")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         recovery_key = browser.evaluate("quizRecoveryController.storageKey")
         browser.click("#choices .choice[data-index='0']")
         browser.wait_for("studyLearningEventSaves.size === 0")
@@ -12026,6 +12319,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         )
         first.wait_for("quizRecoveryReady === true")
         first.click(".study-mode-btn")
+        first.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         first_recovery_key = first.evaluate("quizRecoveryController.storageKey")
 
         second.navigate(
@@ -12033,6 +12327,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         )
         second.wait_for("quizRecoveryReady === true")
         second.click(".study-mode-btn")
+        second.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         second_recovery_key = second.evaluate("quizRecoveryController.storageKey")
 
         first_state = dashboard_state(first, 2)
@@ -12116,6 +12411,7 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
         browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata[name + '_html']}")
         browser.wait_for("quizRecoveryReady === true")
         browser.click(f".{mode}-mode-btn")
+        browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         keys.append(browser.evaluate("quizRecoveryController.storageKey"))
     # Rename and move after checkpoint creation: recovery still targets quiz ID.
     registry[-1].update({
@@ -12240,6 +12536,7 @@ def test_today_review_clear_protects_failed_study_and_submitted_exam_saves(brows
             + json.dumps(endpoint) + ")?Promise.reject(new Error('simulated save failure')):window.__originalFetch(...args); true"
         )
         browser.click(f".{mode}-mode-btn")
+        browser.wait_for("!document.getElementById('quiz').classList.contains('hidden') && document.querySelector('#choices .choice') !== null")
         browser.click("#choices .choice[data-index='0']")
         if mode == "exam":
             browser.evaluate("window.confirm=()=>true; true")
@@ -12263,6 +12560,7 @@ def test_today_review_clear_does_not_control_or_resurrect_an_active_quiz_tab(bro
     browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     key = browser.evaluate("quizRecoveryController.storageKey")
     quiz_context = browser.context
     dashboard_context = browser.command("browsingContext.create", {"type": "tab"})["context"]
@@ -12398,6 +12696,7 @@ def test_ethereal_rendered_selection_focus_and_responsive_typography(browser_sta
     browser.navigate(base_url + "/quizzes/" + browser_stack.metadata["critical_html"])
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.querySelector('#qText')?.textContent.includes('Browser question')")
     selection("#qText", "study-selected-question")
     browser.evaluate("window.getSelection().removeAllRanges(); true")
@@ -12820,6 +13119,7 @@ def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
     browser.navigate(quiz_url)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     # Leave this two-question Study session after only one response.

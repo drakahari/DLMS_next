@@ -138,7 +138,7 @@ def _verify_artifact(entry, quiz_id, fingerprint, *, data_folder, quiz_artifact_
     if not isinstance(fingerprint, str) or len(fingerprint) != 71 or not fingerprint.startswith("sha256:"):
         raise ValueError("The quiz page identity is missing. Reload the quiz and retry.")
     _html_name, json_name = quiz_artifact_names(entry)
-    raw = (Path(data_folder) / json_name).read_text(encoding="utf-8")
+    raw = (Path(data_folder) / json_name).read_bytes().decode("utf-8")
     identity = "\0".join((
         "quiz-recovery-v1", "1", str(quiz_id), f"/data/{json_name}",
         str(entry.get("exam_minutes") or 90), raw,
@@ -190,7 +190,12 @@ def complete_generated_practice(
             data_folder=data_folder, quiz_artifact_names=quiz_artifact_names,
         )
         if mode == "Study":
-            _verify_study(cur, quiz_id, reference, questions, data.get("answers"))
+            session = cur.execute("SELECT completed_at FROM study_sessions WHERE id = ? AND quiz_id = ?", (reference, quiz_id)).fetchone()
+            if session:
+                if not session["completed_at"]:
+                    raise ValueError("Finish and save this Study session before marking the generated review complete.")
+            else:
+                _verify_study(cur, quiz_id, reference, questions, data.get("answers"))
         else:
             _verify_exam(cur, quiz_id, reference, questions)
         kind = quiz_generation_kind(

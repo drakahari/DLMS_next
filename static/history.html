@@ -6,7 +6,7 @@
 <title>Quiz History</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/favicon.ico">
-</head>
+<script src="/static/local-time.js"></script></head>
 <body class="dashboard-home history-table-page">
 <div class="dashboard-shell">
 
@@ -62,7 +62,8 @@
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div>
                 <div class="history-eyebrow">QUIZ HISTORY</div>
-                <h1>Attempts &amp; Review</h1>
+                <p><a href="/study-history">Study history and completed reviews</a></p>
+<h1>Attempts &amp; Review</h1>
                 <p>Review completed quizzes and revisit past results.</p>
             </div>
         </header>
@@ -127,18 +128,7 @@ function asNumber(value, fallback = 0) {
     return Number.isFinite(n) ? n : fallback;
 }
 
-function formatDate(value) {
-    if (!value) return "Date unavailable";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString([], {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit"
-    });
-}
+function formatDate(value) { return window.DLMSLocalTime.format(value); }
 
 function scoreClass(percent) {
     const p = asNumber(percent);

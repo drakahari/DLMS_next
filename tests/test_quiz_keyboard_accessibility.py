@@ -74,7 +74,7 @@ def test_matching_keeps_its_existing_native_keyboard_path_and_hotspot_uses_one_n
     assert 'type="button" class="matching-drop-target' in matching
     assert '<button type="button" class="hotspot-image-wrap"' in hotspot
     assert 'onclick="selectHotspot(event)"' in hotspot
-    assert 'aria-label="Select the requested structure on the image"' in hotspot
+    assert 'aria-label="Position and submit image answer"' in hotspot
     assert 'aria-describedby="hotspot-instructions-${key}"' in hotspot
     assert hotspot.count('onclick="selectHotspot(event)"') == 1
     # Native buttons synthesize exactly one click for Enter/Space, so no
@@ -85,16 +85,19 @@ def test_matching_keeps_its_existing_native_keyboard_path_and_hotspot_uses_one_n
 
 def test_hotspot_keyboard_activation_uses_the_existing_answer_and_scoring_path():
     selection = _function_block(SCRIPT, "selectHotspot")
-    keyboard_point = _function_block(SCRIPT, "hotspotKeyboardPoint")
+    keyboard_point = _function_block(SCRIPT, "moveHotspotCursor")
 
     assert "event.detail === 0" in selection
-    assert "({x, y} = hotspotKeyboardPoint(q.target));" in selection
+    assert "hotspotCursors[index] || {x: 0.5, y: 0.5}" in selection
+    assert "hotspotKeyboardPoint" not in SCRIPT
     assert "event.clientX - rect.left" in selection
     assert "event.clientY - rect.top" in selection
     assert "void recordStudyLearningEvent(q, pointInHotspot(x, y, q.target), {x, y});" in selection
     assert "renderQuestion()" in selection
-    assert "pointInHotspot(center.x, center.y, shape)" in keyboard_point
-    assert "pointInHotspot(point.x, point.y, shape)" in keyboard_point
+    assert "event.preventDefault()" in keyboard_point
+    assert "ArrowLeft" in keyboard_point
+    assert "q.target" not in keyboard_point
+    assert "recordStudyLearningEvent" not in keyboard_point
 
 
 def test_hotspot_button_preserves_image_layout_and_uses_the_shared_theme_focus_indicator():

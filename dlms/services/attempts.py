@@ -985,8 +985,8 @@ def persist_study_learning_event(
             """
             SELECT quiz_id, question_id, session_id, mode,
                    was_correct, response_json
-            FROM learning_events
-            WHERE event_type = 'study_answer' AND attempt_id = ?
+            FROM study_legacy_responses
+            WHERE attempt_id = ?
             ORDER BY id
             """,
             (event_id,),
@@ -1036,6 +1036,8 @@ def persist_study_learning_event(
         was_correct=detail["wasCorrect"],
         response=event_response,
     )
+    from dlms.persistence.study_schema import preserve_legacy
+    preserve_legacy(conn, cur.lastrowid)
     conn.commit()
     acknowledgement = {"ok": True}
     if event_id:

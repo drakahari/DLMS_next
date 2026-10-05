@@ -93,6 +93,15 @@ def recent_quiz_activity(cur, *, history_context, attempt_summary, quiz_folder, 
             WITH dated AS MATERIALIZED (
                 SELECT id, quiz_id, dashboard_time(occurred_at, 1) AS saved_at
                 FROM learning_events WHERE event_type = 'study_answer' AND mode = 'Study'
+                UNION ALL
+                SELECT r.rowid, s.quiz_id, dashboard_time(r.saved_at, 0)
+                FROM study_responses r JOIN study_sessions s ON s.id = r.session_id
+                WHERE r.kind = 'response' AND NOT EXISTS (
+                    SELECT 1 FROM learning_events e WHERE e.attempt_id = r.event_id AND e.event_type = 'study_answer')
+                UNION ALL
+                SELECT r.id, r.quiz_id, dashboard_time(r.occurred_at, 1)
+                FROM study_legacy_responses r WHERE NOT EXISTS (
+                    SELECT 1 FROM learning_events e WHERE e.id = r.id AND e.event_type = 'study_answer')
             )
             SELECT *, COUNT(*) OVER () AS record_count,
                    SUM(saved_at IS NULL) OVER () AS undated_count

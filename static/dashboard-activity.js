@@ -22,7 +22,7 @@
             wrapper.append("Time cannot be determined");
             return wrapper;
         }
-        const time = element("time", new Date(value).toLocaleString());
+        const time = element("time", window.DLMSLocalTime.format(value));
         time.dateTime = value;
         wrapper.append(time);
         return wrapper;

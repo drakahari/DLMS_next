@@ -6,7 +6,7 @@
 <title>Review Missed Questions</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/favicon.ico">
-</head>
+<script src="/static/local-time.js"></script></head>
 
 <body class="dashboard-home review-modern-page">
 <div class="dashboard-shell">
@@ -139,18 +139,7 @@ function escapeHtml(value) {
         .replace(/'/g, "&#039;");
 }
 
-function formatReviewDate(value) {
-    if (!value) return "Date unavailable";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString([], {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit"
-    });
-}
+function formatReviewDate(value) { return window.DLMSLocalTime.format(value); }
 
 async function loadAIConfig() {
     try {

@@ -109,7 +109,7 @@ class BrowserHarnessStructureTests(unittest.TestCase):
             ), mock.patch.object(browser_workflows, "_free_loopback_port", return_value=1234), mock.patch.object(
                 browser_workflows, "_terminate_process_tree"
             ) as terminate:
-                fixture = browser_workflows.browser_stack.__wrapped__(server)
+                fixture = browser_workflows.browser_stack.__wrapped__(server, SimpleNamespace())
                 with self.assertRaisesRegex(RuntimeError, "startup failed"):
                     next(fixture)
                 terminate.assert_called_once_with(process)
