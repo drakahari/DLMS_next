@@ -14,7 +14,7 @@ frozendict==2.4.7
 genanki==0.13.1
 itsdangerous==2.2.0
 Jinja2==3.1.6
-MarkupSafe==3.0.3
+MarkupSafe==3.0.4
 Pillow==12.3.0
 pypdf==6.16.2
 pypdfium2==5.13.0
