@@ -132,7 +132,9 @@ def test_study_and_exam_identities_survive_recovery_without_automatic_retry():
 
 
 def test_all_study_reviews_require_explicit_finish_before_recovery_is_pruned():
-    assert "isCompleted: () => false" in SCRIPT
+    assert 'record.session.mode === "Study" && completedStudy.has(record.learningSessionId)' in SCRIPT
+    assert "data?.session?.id !== record.learningSessionId" in RECOVERY
+    assert "!data.session.completed_at" in RECOVERY
     assert "generatedPracticeStatus?.is_transient === true" in SCRIPT
     assert 'studyRequest("/api/study/finish"' in SCRIPT
     assert "async function finishGeneratedPracticeReview()" in SCRIPT

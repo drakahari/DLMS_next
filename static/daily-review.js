@@ -4,6 +4,7 @@
   if (!document.getElementById("dailyReviewList")) return;
 
   let serverPlan = null;
+  let completedStudySessions = new Set();
 
   const escapeHtml = value => String(value ?? "").replace(
     /[&<>"']/g,
@@ -25,7 +26,7 @@
     recovery.pruneStoredRecords({activeQuizIds});
     const listed = recovery.listStoredRecords({activeQuizIds});
     if (!listed.available) return [];
-    return listed.records.slice(0, 2).flatMap(record => {
+    return listed.records.filter(record => record.mode !== "Study" || !completedStudySessions.has(record.learningSessionId)).slice(0, 2).flatMap(record => {
       const quiz = quizIndex.get(String(record.quizId));
       if (!quiz) return [];
       const finishSaving = record.phase === "submitting";
@@ -95,7 +96,7 @@
       if (saved) {
         const state = !saved.unchanged ? "Content changed; previous coverage is historical" : saved.completed_at ? "Review finished" : "Review not finished";
         const action = saved.completed_at || !saved.unchanged ? "Open current quiz" : "Continue regular quiz";
-        regular.innerHTML = `<article class="daily-review-item"><div class="daily-review-copy"><h3>Last regular quiz: ${escapeHtml(saved.title)}</h3><p>${escapeHtml(state)} · ${saved.reviewed} / ${saved.total} reviewed</p><p>Last response saved: ${escapeHtml(window.DLMSLocalTime.format(saved.saved_at))}</p></div><div class="daily-review-item-action">${saved.url ? `<a class="daily-review-action" href="${escapeHtml(saved.url)}">${action}</a>` : "Quiz unavailable"}</div></article>`;
+        regular.innerHTML = `<article class="daily-review-item"><div class="daily-review-copy"><h3>Last regular quiz: ${escapeHtml(saved.title)}</h3><p>${escapeHtml(state)} · ${saved.reviewed} / ${saved.total} questions reviewed</p><p>Last response saved: ${escapeHtml(window.DLMSLocalTime.format(saved.saved_at))}</p>${!saved.completed_at && saved.unchanged ? '<p>Finish Review has not been saved.</p>' : ''}</div><div class="daily-review-item-action">${saved.url ? `<a class="daily-review-action" href="${escapeHtml(saved.url)}">${action}</a>` : "Quiz unavailable"}</div></article>`;
       }
     }
     const list = document.getElementById("dailyReviewList");
@@ -176,6 +177,7 @@
       const response = await fetch("/api/daily-review-plan", {cache: "no-store"});
       if (!response.ok) throw new Error("Daily review plan was unavailable");
       serverPlan = await response.json();
+      completedStudySessions = await window.DLMSQuizRecovery?.reconcileCompletedStudy?.({activeQuizIds: (serverPlan.quiz_index || []).map(quiz => quiz.id)}) || new Set();
       renderDailyReview(mergeBrowserSessions(serverPlan));
       return true;
     } catch (error) {

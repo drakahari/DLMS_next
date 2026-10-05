@@ -12052,12 +12052,12 @@ h1,h2,h3,
     background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 18%,var(--theme-surface-2,rgba(17,31,56,.78)))!important;
     border-color:var(--theme-accent,#1b9ff2)!important;
 }
-.correct-choice {
+.choice.correct-choice {
     color:#082414!important;
     background:#bcefcf!important;
     border-color:#1c9c53!important;
 }
-.wrong-choice {
+.choice.wrong-choice {
     color:#351015!important;
     background:#f7c5cb!important;
     border-color:#cf3c4b!important;

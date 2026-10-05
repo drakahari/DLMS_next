@@ -491,6 +491,7 @@
           records.push({
             quizId,
             sessionId: record.session.id,
+            learningSessionId: record.learningSessionId,
             revision: record.session.revision,
             ownerToken: record.session.ownerToken,
             mode: record.session.mode,
@@ -510,6 +511,45 @@
     } catch (_error) {
       return {available: false, records: []};
     }
+  }
+
+  async function reconcileCompletedStudy({quizId = null, activeQuizIds = null, limit = 2} = {}) {
+    const completed = new Set();
+    let unfinished = 0;
+    for (const listed of listStoredRecords({activeQuizIds}).records) {
+      if (quizId !== null && String(quizId) !== listed.quizId) continue;
+      if (unfinished >= limit) break;
+      const key = `${STORAGE_PREFIX}${encodeURIComponent(listed.quizId)}`;
+      try {
+        const raw = localStorage.getItem(key);
+        const record = JSON.parse(raw);
+        if (!validateRecordEnvelope(record) || record.session.mode !== "Study"
+            || record.unacknowledgedStudyEvents.length || !/^[1-9]\d*$/.test(listed.quizId)) {
+          unfinished++; continue;
+        }
+        const response = await fetch(`/api/study/quiz/${listed.quizId}?sessionId=${encodeURIComponent(record.learningSessionId)}`, {cache: "no-store"});
+        const data = response.ok ? await response.json() : null;
+        if (data?.session?.id !== record.learningSessionId || String(data.session.quiz_id) !== listed.quizId
+            || !data.session.completed_at || localStorage.getItem(key) !== raw) {
+          unfinished++; continue;
+        }
+        if (data.session.purpose === "focused") {
+          // Generated reviews also save a Library completion marker. Preserve
+          // its retry path if that second acknowledgement is still missing.
+          const statusResponse = await fetch(`/api/generated-practice/status/${listed.quizId}`, {cache: "no-store"});
+          const status = statusResponse.ok ? await statusResponse.json() : null;
+          if (!status || (status.is_transient && !status.completed)
+              || localStorage.getItem(key) !== raw) { unfinished++; continue; }
+        }
+        // Clear only this unchanged, acknowledged session. Another tab may have
+        // started a new review while the completion lookup was in flight.
+        completed.add(record.learningSessionId);
+        try { localStorage.removeItem(key); } catch (_error) { /* Hide confirmed completion even if cleanup is unavailable. */ }
+      } catch (_error) {
+        unfinished++; // Offline/failed lookups never discard recoverable work.
+      }
+    }
+    return completed;
   }
 
   function createController(options) {
@@ -783,7 +823,13 @@
     }
 
     function complete() {
-      if (owned && !removeStored()) return false;
+      if (owned) {
+        const current = readStored({discardInvalid: false});
+        const snapshot = options.capture();
+        if (current && current.session.ownerToken === ownerToken && current.session.revision === revision
+            && current.session.id === snapshot.recoverySessionId && current.learningSessionId === snapshot.learningSessionId
+            && !removeStored()) return false;
+      }
       owned = false;
       savedRecord = null;
       return true;
@@ -814,6 +860,7 @@
     validateRecordEnvelope,
     pruneStoredRecords,
     listStoredRecords,
+    reconcileCompletedStudy,
     removeStoredQuiz,
     clearUnfinishedQuiz,
     clearAllStoredRecords,

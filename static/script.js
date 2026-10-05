@@ -176,7 +176,7 @@ function createLearningSessionId() {
 
 function createStudyLearningEventId() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    studyLearningEventSequence += 1;
+    // IDs are opaque. Only response creation may allocate a sequence number.
     return `${learningSessionId || "study"}-${Date.now()}-${studyLearningEventSequence}-${Math.random().toString(16).slice(2)}`;
 }
 
@@ -460,6 +460,9 @@ async function loadQuiz() {
                 examMinutes: examDurationMinutes,
             });
             quizContentFingerprint = fingerprint;
+            const completedStudy = durableStudySupported
+                ? await recovery.reconcileCompletedStudy({quizId: window.QUIZ_ID, limit: 1}) : new Set();
+            if (completedStudy.size) showQuizRecoveryNotice("This Study review is already finished. Select Study Mode to start a new review.");
             try { await loadDurableStudy(); } catch (error) { showQuizRecoveryNotice(error.message); }
             quizRecoveryController = recovery.createController({
                 quizId: window.QUIZ_ID,
@@ -469,7 +472,7 @@ async function loadQuiz() {
                 rawQuiz,
                 capture: captureQuizRecoveryState,
                 restore: restoreQuizRecoveryState,
-                isCompleted: () => false,
+                isCompleted: record => record.session.mode === "Study" && completedStudy.has(record.learningSessionId),
                 finishSubmission: recoveredAttempt => { void submitQuiz(true, recoveredAttempt); },
                 startOver: () => {},
                 notify: showQuizRecoveryNotice,

@@ -43,6 +43,237 @@ pytestmark = [
 ]
 
 
+def _new_four_question_study_quiz(stack):
+    browser = stack.browser
+    browser.navigate(stack.base_url + "/create_short_quiz?count=4")
+    browser.wait_for("document.querySelector('[name=question_4]') !== null && window.dlmsCsrfToken")
+    browser.evaluate("""document.querySelector('[name=quiz_title]').value='Completion regression';
+      for(let n=1;n<=4;n++){
+        document.querySelector(`[name=question_${n}]`).value=`Completion question ${n}?`;
+        for(const letter of ['A','B','C','D'])document.querySelector(`[name=choice_${n}_${letter}]`).value=`Option ${letter}`;
+        document.querySelector(`[name=correct_${n}_A]`).checked=true;
+      }true""")
+    browser.click("#create-short-quiz-form button[type=submit]")
+    browser.wait_for("location.pathname.startsWith('/edit_quiz/')")
+    quiz_id = int(browser.evaluate("location.pathname.split('/').pop()"))
+    registry = json.loads((stack.data_root / "config/quizzes.json").read_text())
+    entry = next(item for item in registry if item["id"] == quiz_id)
+    browser.navigate(stack.base_url + "/quizzes/" + entry["html"])
+    browser.wait_for("quizRecoveryReady && quiz.length === 4")
+    return quiz_id, entry["html"]
+
+
+@pytest.mark.parametrize("uuid_available", [True, False])
+@pytest.mark.parametrize("outcomes", ["all_wrong", "all_correct", "mixed", "corrected"])
+def test_new_regular_study_answers_complete(browser_stack, uuid_available, outcomes):
+    browser = browser_stack.browser
+    quiz_id, html = _new_four_question_study_quiz(browser_stack)
+    if not uuid_available:
+        browser.evaluate("Object.defineProperty(crypto,'randomUUID',{configurable:true,value:undefined});true")
+    browser.evaluate("""window.completionTrace=[];window.completionFetch=window.fetch.bind(window);
+      window.fetch=async(url,options)=>{
+        const row={url:String(url),request:options?.body?JSON.parse(options.body):null};
+        if(options?.method==='POST'&&String(url).includes('/study')){
+          completionTrace.push(row);const response=await completionFetch(url,options);
+          row.status=response.status;row.ack=await response.clone().json();return response;
+        }return completionFetch(url,options);
+      };true""")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    for number in range(4):
+        choice = 0 if outcomes == "all_correct" or (outcomes == "mixed" and number % 2) else 1
+        browser.click(f"#choices .choice[data-index='{choice}']")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        if outcomes == "corrected":
+            browser.click("#choices .choice[data-index='0']")
+            browser.wait_for("studyLearningEventSaves.size === 0")
+        if number < 3:
+            browser.click("#nextBtn")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("completionTrace.some(r=>r.url==='/api/study/finish' && r.status)")
+    session_id = browser.evaluate("learningSessionId")
+    trace = browser.evaluate("completionTrace")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        conn.row_factory = sqlite3.Row
+        session = dict(conn.execute("SELECT * FROM study_sessions WHERE id=?", (session_id,)).fetchone())
+        responses = [dict(row) for row in conn.execute("SELECT * FROM study_responses WHERE session_id=? ORDER BY sequence", (session_id,))]
+    output = os.environ.get("DLMS_COMPLETION_CAPTURE_DIR")
+    if output:
+        directory = Path(output); directory.mkdir(parents=True, exist_ok=True)
+        name = "uuid" if uuid_available else "fallback"
+        (directory / f"{outcomes}-{name}.json").write_text(json.dumps({"requests": trace, "session": session, "responses": responses}, indent=2))
+        shot = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "document"})
+        (directory / f"{outcomes}-{name}.png").write_bytes(base64.b64decode(shot["data"]))
+    expected = {"all_wrong": [0]*4, "all_correct": [1]*4, "mixed": [0,1,0,1], "corrected": [0,1]*4}[outcomes]
+    assert [row["was_correct"] for row in responses] == expected
+    assert session["completed_at"], trace
+    assert [row["sequence"] for row in responses] == list(range(1, len(expected)+1))
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
+    # The visible control can be retried without creating another completion.
+    browser.click("#finishReviewBtn")
+    browser.wait_for("!studyCompletionInProgress")
+    assert browser.evaluate("durableStudySession.completed_at") == session["completed_at"]
+    if outcomes in {"all_wrong", "corrected"}:
+        plan = browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json())")
+        assert "Missed within the last 14 days" in json.dumps(plan)
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
+    assert not browser.evaluate("document.querySelector('.daily-review-unfinished')?.textContent.includes('Completion regression')")
+    browser.navigate(browser_stack.base_url + "/quizzes/" + html)
+    browser.wait_for("quizRecoveryReady")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume') === null && document.querySelector('#durableStudyResume') === null")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null")
+    assert browser.evaluate("learningSessionId") != session_id
+
+
+@pytest.mark.parametrize("interruption", ["delayed", "failed_save", "lost_save_ack", "lost_finish_ack", "lost_finish_ack_quiz", "lost_finish_ack_retry"])
+def test_regular_study_interrupted_saves_and_finish(browser_stack, interruption):
+    browser = browser_stack.browser
+    quiz_id, html = _new_four_question_study_quiz(browser_stack)
+    browser.evaluate("""window.realCompletionFetch=window.fetch.bind(window);window.saveAttempts=[];
+      window.finishPosts=0;window.interruption=""" + json.dumps(interruption) + """;
+      window.fetch=async(url,options)=>{
+        if(String(url).includes('/study-response')){
+          const payload=JSON.parse(options.body);saveAttempts.push(payload);
+          if(payload.sequence===1 && saveAttempts.filter(p=>p.sequence===1).length===1){
+            if(interruption==='delayed')await new Promise(resolve=>window.releaseFirstSave=resolve);
+            if(interruption==='failed_save')throw new Error('Disconnected before save');
+            if(interruption==='lost_save_ack'){
+              await realCompletionFetch(url,options);throw new Error('Lost response acknowledgement');
+            }
+          }
+        }
+        if(String(url)==='/api/study/finish'){
+          finishPosts++;
+          if(interruption.startsWith('lost_finish_ack')&&finishPosts===1){
+            await realCompletionFetch(url,options);throw new Error('Lost completion acknowledgement');
+          }
+        }
+        return realCompletionFetch(url,options);
+      };true""")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    session_id = browser.evaluate("learningSessionId")
+    # Intentionally navigate and finish without waiting for any save acknowledgement.
+    for number in range(4):
+        browser.click("#choices .choice[data-index='1']")
+        if number < 3:
+            browser.click("#nextBtn")
+    browser.click("#finishReviewBtn")
+    if interruption == "delayed":
+        browser.wait_for("studyCompletionInProgress && studyLearningEventSaves.size === 1")
+        assert browser.evaluate("finishPosts") == 0
+        with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+            assert conn.execute("SELECT sequence FROM study_responses WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall() == [(2,), (3,), (4,)]
+        browser.evaluate("releaseFirstSave();true")
+    elif interruption in {"failed_save", "lost_save_ack"}:
+        browser.wait_for("!studyCompletionInProgress && studyCompletionMessage.includes('Retry the failed Study save')")
+        assert browser.evaluate("finishPosts") == 0
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
+        browser.click(".study-learning-save-retry")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        attempts = browser.evaluate("saveAttempts.filter(p=>p.sequence===1)")
+        assert len(attempts) == 2 and attempts[0] == attempts[1]
+        browser.click("#finishReviewBtn")
+    else:
+        browser.wait_for("studyCompletionFailed && !studyCompletionInProgress")
+        assert not browser.evaluate("studyCompletionMessage.includes('Review completed')")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
+        # Preserve unrelated browser data while reconciling the exact completed session.
+        browser.evaluate("localStorage.setItem('completion-test-unrelated','keep');true")
+        if interruption == "lost_finish_ack_retry":
+            browser.click(".study-learning-save-retry")
+            browser.wait_for("studyCompletionMessage.includes('Review completed') && !studyCompletionInProgress")
+        elif interruption == "lost_finish_ack_quiz":
+            browser.navigate(browser_stack.base_url + "/quizzes/" + html)
+            browser.wait_for("quizRecoveryReady")
+        else:
+            browser.navigate(browser_stack.base_url + "/")
+            browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
+        browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
+        assert browser.evaluate("localStorage.getItem('completion-test-unrelated')") == "keep"
+        assert not browser.evaluate("document.querySelector('.daily-review-unfinished')?.textContent.includes('Completion regression')")
+    if not interruption.startswith("lost_finish_ack"):
+        browser.wait_for("studyCompletionMessage.includes('Review completed') && !studyCompletionInProgress")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        assert conn.execute("SELECT completed_at FROM study_sessions WHERE id=?", (session_id,)).fetchone()[0]
+        assert conn.execute("SELECT sequence, was_correct FROM study_responses WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall() == [(1,0),(2,0),(3,0),(4,0)]
+    browser.navigate(browser_stack.base_url + "/quizzes/" + html)
+    browser.wait_for("quizRecoveryReady")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume') === null && document.querySelector('#durableStudyResume') === null")
+
+
+def test_regular_study_genuine_sequence_gap_keeps_resume(browser_stack):
+    browser = browser_stack.browser
+    quiz_id, html = _new_four_question_study_quiz(browser_stack)
+    # Reproduce an already-affected client's sequence allocator, without editing DB facts.
+    browser.evaluate("window.originalEventId=createStudyLearningEventId;createStudyLearningEventId=()=>{studyLearningEventSequence++;return originalEventId();};true")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    for number in range(4):
+        browser.click("#choices .choice[data-index='1']")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        if number < 3:
+            browser.click("#nextBtn")
+    key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("studyCompletionFailed && studyCompletionMessage.includes('sequence is incomplete')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(key)}) !== null")
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('4 / 4 questions reviewed')")
+    text = browser.evaluate("document.getElementById('regularStudyContinuity').textContent")
+    assert "Review not finished" in text and "Finish Review has not been saved" in text
+    browser.navigate(browser_stack.base_url + "/quizzes/" + html)
+    browser.wait_for("quizRecoveryReady")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume') !== null")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        assert conn.execute("SELECT completed_at FROM study_sessions WHERE quiz_id=?", (quiz_id,)).fetchone() == (None,)
+        assert conn.execute("SELECT sequence FROM study_responses WHERE session_id IN (SELECT id FROM study_sessions WHERE quiz_id=?) ORDER BY sequence", (quiz_id,)).fetchall() == [(2,), (4,), (6,), (8,)]
+
+
+def test_study_completion_lookup_preserves_other_and_changed_recovery(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/quizzes/" + browser_stack.metadata["companion_html"])
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    other_key = browser.evaluate("quizRecoveryController.storageKey")
+    quiz_id, _html = _new_four_question_study_quiz(browser_stack)
+    other_raw = browser.evaluate(f"localStorage.getItem({json.dumps(other_key)})")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    for number in range(4):
+        browser.click("#choices .choice[data-index='1']")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        if number < 3:
+            browser.click("#nextBtn")
+    browser.evaluate("window.completedKey=quizRecoveryController.storageKey;window.completedRaw=localStorage.getItem(completedKey);true")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("studyCompletionMessage.includes('Review completed')")
+    # A failed status lookup cannot clear an otherwise valid recovery envelope.
+    browser.evaluate("localStorage.setItem(completedKey,completedRaw);window.lookupFetch=window.fetch.bind(window);window.fetch=async()=>new Response('{}',{status:503});true")
+    assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 0
+    assert browser.evaluate("localStorage.getItem(completedKey)===completedRaw")
+    # Another tab writes a newer review while the exact-session lookup is in flight.
+    browser.evaluate("""window.fetch=async(...args)=>{
+      const response=await lookupFetch(...args);const newer=JSON.parse(completedRaw);
+      newer.learningSessionId='different-new-review';newer.session.id='different-recovery';
+      newer.session.ownerToken='another-tab';window.newerRaw=JSON.stringify(newer);
+      localStorage.setItem(completedKey,newerRaw);return response;};true""")
+    assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 0
+    assert browser.evaluate("localStorage.getItem(completedKey)===newerRaw")
+    # With the original unchanged checkpoint, authoritative completion clears only it.
+    browser.evaluate("window.fetch=lookupFetch;localStorage.setItem(completedKey,completedRaw);true")
+    assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 1
+    assert browser.evaluate("localStorage.getItem(completedKey)===null")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(other_key)})") == other_raw
+
+
 @pytest.mark.parametrize("browser_stack", ["UTC", "America/New_York", "Asia/Kolkata"], indirect=True)
 def test_study_local_instants_dst_and_ambiguous_dates(browser_stack):
     browser = browser_stack.browser
@@ -240,6 +471,10 @@ def test_hotspot_keyboard_positions_without_supplying_target(browser_stack):
     assert browser.evaluate("document.querySelector('.hotspot-click-marker').classList.contains('wrong')")
     browser.press_key("\ue015")  # ArrowDown: does not submit another response.
     assert browser.evaluate("studyLearningEventSequence") == 1
+    browser.click("#finishReviewBtn")
+    browser.wait_for("studyCompletionMessage.includes('Review completed')")
+    assert browser.evaluate("durableStudySession.reviewed") == 1
+    assert browser.evaluate("durableStudySession.observations['0'].first.correct") is False
 
 
 def test_help_screenshot_capture_controls(browser_stack):
@@ -787,8 +1022,24 @@ def _set_theme(browser, theme):
 
 def _theme_contrast_snapshot(browser, selectors, *, include_gradients=False):
     """Measure rendered text contrast against each element's effective background."""
-    # Contrast has no meaning until blocking stylesheets have loaded.
+    # Measure the requested rendered state, after stylesheets and CSS transitions.
+    # A correctness class is set before the 120 ms background transition ends;
+    # sampling that interpolation makes this steady-state check timing-dependent.
     browser.wait_for_page_ready()
+    # Let newly replaced answer nodes receive their first style/hover update.
+    browser.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))")
+    browser.wait_for("""(() => {
+      const nodes=new Set();
+      for(const selector of """ + json.dumps(list(selectors.values())) + """) {
+        for(let node=document.querySelector(selector);node;node=node.parentElement)nodes.add(node);
+      }
+      return [...nodes].every(node=>{
+        // Flush pending style changes before asking Firefox for transitions.
+        getComputedStyle(node).backgroundColor;
+        return node.getAnimations().every(animation=>
+          !(animation instanceof CSSTransition) || animation.playState !== 'running');
+      });
+    })()""")
     return browser.evaluate(
         "(() => {"
         "const selectors=" + json.dumps(selectors) + ";"
@@ -3166,6 +3417,8 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     assert browser.evaluate("document.querySelector('.study-learning-save-message').textContent") == (
         "forced completion failure"
     )
+    assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 0
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
     browser.click("#finishReviewBtn")
     browser.wait_for(
         f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"

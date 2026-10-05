@@ -47,6 +47,11 @@ def create_study_blueprint(dependencies):
         conn = get_db()
         try:
             cur = conn.cursor()
+            session_id = request.args.get("sessionId")
+            if session_id is not None:
+                # Exact-session completion lookup; no history scan or answer load.
+                row = cur.execute("SELECT id, quiz_id, purpose, completed_at FROM study_sessions WHERE id = ? AND quiz_id = ?", (session_id, quiz_id)).fetchone()
+                return jsonify(session=dict(row) if row else None)
             row = cur.execute("SELECT * FROM study_sessions WHERE quiz_id = ? AND last_activity_at IS NOT NULL ORDER BY last_activity_at DESC, rowid DESC LIMIT 1", (quiz_id,)).fetchone()
             return jsonify(generation=study.generation(cur), session=study.public_session(cur, row))
         finally:

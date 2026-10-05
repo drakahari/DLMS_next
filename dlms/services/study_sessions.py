@@ -267,7 +267,7 @@ def finish(conn, data, **artifact_options):
     session = public_session(cur, row)
     count = cur.execute("SELECT COUNT(*) FROM study_responses WHERE session_id = ?", (row["id"],)).fetchone()[0]
     if data.get("sequence") != session["sequence"] or count != session["sequence"]:
-        raise StudyConflict("Some response saves are missing. Retry them before finishing.")
+        raise StudyConflict("The saved response sequence is incomplete or differs from this tab. Retry pending saves in the original tab, then select Finish Review. If no saves remain to retry, start a new review; saved history is retained.")
     if session["reviewed"] != session["total"]:
         raise LearningPayloadError("Every question needs a complete saved answer before Finish Review.")
     if not row["completed_at"]:

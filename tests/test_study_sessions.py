@@ -83,6 +83,27 @@ class StudySessionTests(unittest.TestCase):
         self.assertEqual(self.save(self.payload(3)).status_code, 409)
         self.assertEqual(self.save(wrong).status_code, 200)
 
+    def test_exact_completion_lookup_does_not_substitute_latest_session(self):
+        self.save(self.payload(1, correct=False))
+        completed = self.finish(1).json["session"]["completed_at"]
+        exact = self.client.get(f"/api/study/quiz/{self.quiz_id}?sessionId=session-one").json
+        self.assertEqual(exact["session"], {"id": "session-one", "quiz_id": self.quiz_id, "purpose": "regular", "completed_at": completed})
+        self.assertIsNone(self.client.get(f"/api/study/quiz/{self.quiz_id}?sessionId=missing").json["session"])
+        self.assertIsNone(self.client.get(f"/api/study/quiz/{self.quiz_id+1}?sessionId=session-one").json["session"])
+
+    def test_gapped_complete_wrong_answers_cannot_be_repaired_by_finish(self):
+        self.save(self.payload(2, correct=False))
+        self.assertEqual(self.facts()["reviewed"], 1)
+        for _ in range(2):
+            response = self.finish(2)
+            self.assertEqual(response.status_code, 409)
+            self.assertIn("sequence is incomplete", response.json["error"])
+            self.assertIn("saved history is retained", response.json["error"])
+        self.assertIsNone(self.facts()["completed_at"])
+        with dlms.get_db() as conn:
+            self.assertEqual(conn.execute("SELECT sequence FROM study_responses WHERE session_id='session-one'").fetchall()[0][0], 2)
+        self.assertEqual(self.evidence(), [])
+
     def test_conflicting_duplicate_and_takeover(self):
         self.assertEqual(self.save(self.payload(1)).status_code, 200)
         self.assertEqual(self.save(self.payload(1, correct=False)).status_code, 400)
@@ -209,6 +230,22 @@ class StudySessionTests(unittest.TestCase):
                 result = self.client.post("/api/study/finish", json={**first, "sequence": 3}, headers=self.headers)
                 self.assertEqual(result.status_code, 400)
                 # Keep the next disposable iteration's ID distinct.
+                with dlms.get_db() as conn:
+                    conn.execute("DELETE FROM study_sessions WHERE id = 'replacement'")
+
+    def test_complete_wrong_multiple_answer_and_matching_can_finish(self):
+        for question, selected, variants in (
+            (self.choice(multi=True), ["A", "C"], {}),
+            (self.matching(), {"0": 1, "1": 0}, {"0": {"sourcePairIndexes": [0, 1], "direction": "term_to_definition"}}),
+        ):
+            with self.subTest(question=question["type"]):
+                self.replace_quiz([question], variants=variants)
+                payload = {**self.payload(1, correct=False, selected=selected), "eventId": f"wrong-{self.quiz_id}", "sessionId": "replacement", "questionType": question["type"]}
+                self.assertEqual(self.save(payload).status_code, 200)
+                result = self.client.post("/api/study/finish", json=payload, headers=self.headers)
+                self.assertEqual(result.status_code, 200, result.json)
+                self.assertEqual(result.json["session"]["reviewed"], 1)
+                self.assertFalse(result.json["session"]["observations"]["0"]["first"]["correct"])
                 with dlms.get_db() as conn:
                     conn.execute("DELETE FROM study_sessions WHERE id = 'replacement'")
 
