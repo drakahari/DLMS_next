@@ -115,3 +115,26 @@ isolated excluded folder. The state test also captures complete ready, future,
 allowance-used, paused, missing/excluded/unavailable and exam-date states. Keep
 those QA PNGs outside the repository. Recheck the image dimensions and Help text
 when refreshing; selecting a plan must not silently resume or override layout.
+
+
+## Compact Study History and planner presentation
+
+Baseline: `6327b738c049522ad15ba5ed4be9a85aa19619cc`. Refresh disposable captures with:
+
+```sh
+DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
+DLMS_PRESENTATION_CAPTURE_DIR=/tmp/dlms-history-plan-captures \
+DLMS_EXAM_PLAN_CAPTURE_DIR=/tmp/dlms-history-plan-captures \
+.venv/bin/python -m pytest -q -p no:cacheprovider -m browser \
+tests/browser/test_critical_workflows.py \
+-k "compact_study_history or plan_selected_breakdown or exam_plan_setup"
+```
+
+Inspect the actual screenshots, including responsive transitions settling. Copy
+`study-history-row.webp`, `exam-plan-workload.webp` and the refreshed
+`exam-plan-dashboard.webp` into `static/help_assets`; update their Help image
+width/height attributes. The expanded-history and complete-page QA captures stay
+outside Git. Fixtures create repeated titles, separate sessions, known UTC dates,
+missing-save warnings, excluded/unavailable material and a real practice launch.
+No personal history or running server is used. Retain captions, alt text and the
+existing keyboard image enlargement.

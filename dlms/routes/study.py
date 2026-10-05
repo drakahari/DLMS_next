@@ -3,9 +3,10 @@
 from dataclasses import dataclass
 from collections.abc import Callable
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, abort, url_for
 
 from dlms.services import study_sessions as study
+from dlms.services import study_history as history_view
 
 
 @dataclass(frozen=True)
@@ -81,14 +82,37 @@ def create_study_blueprint(dependencies):
     def history():
         conn = get_db()
         try:
-            page = max(1, request.args.get("page", 1, type=int))
             cur = conn.cursor()
-            rows = cur.execute("""SELECT s.*, q.title FROM study_sessions s JOIN quizzes q ON q.id = s.quiz_id
-                                  WHERE last_activity_at IS NOT NULL ORDER BY last_activity_at DESC, s.rowid DESC LIMIT 51 OFFSET ?""", ((page - 1) * 50,)).fetchall()
-            sessions = [study.public_session(cur, row) for row in rows[:50]]
-            reset_at = cur.execute("SELECT learning_reset_at FROM study_state WHERE id = 1").fetchone()[0]
-            legacy = cur.execute("SELECT r.*, q.title FROM study_legacy_responses r LEFT JOIN quizzes q ON q.id=r.quiz_id ORDER BY r.id DESC LIMIT 51 OFFSET ?", ((page - 1) * 50,)).fetchall()
-            return render_template("study/history.html", sessions=sessions, legacy=legacy[:50], page=page, more=len(rows) > 50 or len(legacy) > 50, reset_at=reset_at)
+            args = {key: history_view.positive(request.args.get(key)) for key in ('sessions_before', 'sessions_after', 'legacy_before', 'legacy_after')}
+            old_page = max(1, history_view.positive(request.args.get('page'), 1))
+            sessions = history_view.page_rows(cur, before=args['sessions_before'], after=args['sessions_after'], old_page=old_page)
+            history_view.session_summaries(cur, sessions['rows'])
+            legacy = history_view.page_rows(cur, legacy=True, before=args['legacy_before'], after=args['legacy_after'])
+            def page_url(section, direction=None, value=None):
+                updated = {key: val for key,val in args.items() if val and not key.startswith(section+'_')}
+                if section == 'legacy' and old_page > 1:
+                    updated['page'] = old_page
+                if direction:
+                    updated[section+'_'+direction] = value
+                if section == 'legacy':
+                    updated['legacy_open'] = 1
+                return url_for('study.history', **updated) + ('#legacyHistory' if section=='legacy' else '#studySessions')
+            state = cur.execute('SELECT generation,learning_reset_at FROM study_state WHERE id=1').fetchone()
+            return render_template('study/history.html', sessions=sessions, legacy=legacy, page_url=page_url,
+                                   reset_at=state['learning_reset_at'], history_generation=state['generation'],
+                                   legacy_open=request.args.get('legacy_open') == '1')
+        finally:
+            conn.close()
+
+    @bp.get('/study-history/session/<session_id>')
+    def history_session(session_id):
+        conn = get_db()
+        try:
+            result = history_view.session_detail(conn.cursor(), session_id, request.args.get('page', 1))
+            if result is None:
+                abort(404)
+            template = 'study/_session-detail.html' if request.args.get('fragment') == '1' else 'study/session.html'
+            return render_template(template, **result)
         finally:
             conn.close()
 

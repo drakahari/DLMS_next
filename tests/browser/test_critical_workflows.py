@@ -353,9 +353,10 @@ def test_durable_study_resume_takeover_history_and_dashboard(browser_stack, them
             if label == "dashboard":
                 browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
             if label == "history":
-                browser.wait_for("document.body.textContent.includes('first graded answer')")
+                if not browser.evaluate("document.querySelector('.study-history-row details').open"):
+                    browser.click(".study-history-row summary")
+                browser.wait_for("document.body.textContent.includes('first graded answer incorrect')")
                 assert "first graded answer incorrect" in browser.evaluate("document.body.textContent")
-                browser.click(".study-history-row summary")
                 assert browser.evaluate("document.querySelector('.study-history-row details').open")
             assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), (theme, width, label)
             if output:
@@ -4043,8 +4044,12 @@ def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack, theme):
         f"document.querySelector('.question-text').value = {json.dumps(edited_question)}; "
         "return true; })()"
     ) is True
+    # The URL and edited input values already match before submission. Wait for
+    # the redirected document so navigation cannot race the save/rebuild.
+    browser.evaluate("window.__dlmsEditorBeforeSave = true")
     browser.click("#edit-quiz-form .build-primary-button")
     browser.wait_for(
+        "window.__dlmsEditorBeforeSave !== true && "
         f"location.pathname === '/edit_quiz/{quiz_id}' && "
         f"document.querySelector('[name=quiz_title]').value === {json.dumps(edited_title)}"
     )
@@ -13615,12 +13620,14 @@ def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
     assert browser.evaluate("document.querySelector('#exam-plans').textContent.includes('first-pass')")
     for width in (1440,390):
         browser.set_viewport(width,1000)
+        browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
         assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'),(theme,width,'Help')
         browser.evaluate("document.querySelector('#exam-plans').scrollIntoView();true")
         if output:
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'viewport'})
             (Path(output)/f'plan-help-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
-    for filename in ('exam-plan-setup.webp','exam-plan-availability.webp','exam-plan-dashboard.webp','exam-plan-selection.webp','exam-plan-excluded.webp'):
+    for filename in ('exam-plan-setup.webp','exam-plan-availability.webp','exam-plan-dashboard.webp','exam-plan-selection.webp','exam-plan-excluded.webp','exam-plan-workload.webp'):
         selector = '#exam-plans a[href="/static/help_assets/' + filename + '"]'
         browser.evaluate('document.querySelector(' + json.dumps(selector) + ').scrollIntoView({block:"center"});true')
         browser.wait_for('document.querySelector(' + json.dumps(selector + ' img') + ').naturalWidth > 0')
@@ -13742,6 +13749,16 @@ def test_exam_plan_fifty_question_study_workflow(browser_stack):
     browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
     assert browser.evaluate("document.querySelector('#regularStudyContinuity a').getAttribute('href')") == '/quizzes/'+html
     assert browser.evaluate("document.querySelector('#regularStudyContinuity').textContent.includes('50 / 50')")
+    # Expand this exact full review, not the newer generated focused session.
+    browser.navigate(base+'/study-history')
+    row='[data-session-id="'+session_id+'"]'
+    browser.click(row+' summary')
+    browser.wait_for("document.querySelectorAll('"+row+" .study-history-observations li').length===25")
+    browser.click(row+' [data-session-page]')
+    browser.wait_for("document.querySelector('"+row+" .study-history-observations li').value===26")
+    browser.navigate(base+'/study-history')
+    browser.wait_for("document.querySelector('"+row+" .study-history-observations li')?.value===26")
+    assert browser.evaluate("document.querySelector('"+row+" details').open")
 
 
 @pytest.mark.parametrize('theme', ('light','dark','ethereal'))
@@ -13857,3 +13874,191 @@ def test_exam_plan_no_work_states_and_switching(browser_stack, theme):
         assert conn.execute('SELECT active_plan_id FROM exam_plan_state').fetchone()[0]==second.rsplit('/',1)[-1]
     browser.navigate(base+'/exam-plans')
     assert browser.evaluate("document.querySelectorAll('.plan-list-card a').length") == 2
+
+
+@pytest.mark.parametrize('theme,browser_stack', [('light','America/New_York'),('dark','Asia/Kolkata'),('ethereal','UTC')], indirect=['browser_stack'])
+def test_compact_study_history_pagination_and_recovery(browser_stack, theme):
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    qid,html=_new_regular_study_quiz(browser_stack,4)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+    for n in range(4):
+        browser.click("#choices .choice[data-index='0']");browser.wait_for('studyLearningEventSaves.size===0')
+        if n<3:browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at !== null')
+    original=browser.evaluate('learningSessionId')
+    other,_=_new_regular_study_quiz(browser_stack,4)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+    root=browser_stack.data_root
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.row_factory=sqlite3.Row
+        row=dict(conn.execute('SELECT * FROM study_sessions WHERE id=?',(original,)).fetchone())
+        responses=[dict(r) for r in conn.execute('SELECT * FROM study_responses WHERE session_id=?',(original,))]
+        for n in range(56):
+            session={**row,'id':f'fixture-history-{n:03}','purpose':'focused' if n%2 else 'regular','completed_at':'2026-03-08T07:02:00Z' if n%3==0 else None,'started_at':'2026-03-08T06:59:00Z','last_activity_at':'2026-03-08T07:01:00Z'}
+            conn.execute('INSERT INTO study_sessions('+','.join(session)+') VALUES('+','.join('?' for _ in session)+')',tuple(session.values()))
+            for record in responses:
+                item={**record,'session_id':session['id'],'event_id':f'fixture-history-{n}-{record["sequence"]}'}
+                conn.execute('INSERT INTO study_responses('+','.join(item)+') VALUES('+','.join('?' for _ in item)+')',tuple(item.values()))
+        conn.execute("DELETE FROM study_responses WHERE session_id='fixture-history-055' AND sequence=1")
+        for n in range(63):
+            conn.execute('INSERT INTO study_legacy_responses(quiz_id,was_correct,occurred_at) VALUES(?,?,?)',(qid,n%2,'2026-03-08 06:59:00'))
+    browser.navigate(base+'/study-history');browser.wait_for_page_ready()
+    assert browser.evaluate("document.querySelectorAll('.study-history-row').length") == 20
+    assert not browser.evaluate("document.getElementById('legacyHistory').open")
+    assert not browser.evaluate("performance.getEntriesByType('resource').some(e=>e.name.includes('/study-history/session/'))")
+    assert browser.evaluate("document.querySelector('.study-history-row summary').textContent.includes('Earlier saves missing')")
+    ids=browser.evaluate("[...document.querySelectorAll('[data-session-id]')].map(n=>n.dataset.sessionId)")
+    browser.activate();browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('.study-history-row summary').focus();true");browser.press_key('\ue007')
+    browser.wait_for("document.querySelector('.study-history-detail').textContent.includes('First outcome unverified')")
+    assert browser.evaluate("document.querySelector('.study-history-row details').open")
+    assert browser.evaluate("document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle!=='none'")
+    requests=browser.evaluate("performance.getEntriesByType('resource').filter(e=>e.name.includes('/study-history/session/')).length")
+    browser.press_key(' ');browser.wait_for("!document.querySelector('.study-history-row details').open")
+    browser.press_key(' ');browser.wait_for("document.querySelector('.study-history-row details').open")
+    assert browser.evaluate("performance.getEntriesByType('resource').filter(e=>e.name.includes('/study-history/session/')).length")==requests
+    for role,value in _theme_contrast_snapshot(browser,{'summary':'.study-history-title','warning':'.study-history-warning'},include_gradients=True).items():
+        assert value['contrast']>=4.5,(theme,role,value)
+    # Lazy failure is actionable and never changes facts or invents a repair.
+    browser.evaluate("window.historyFetch=fetch;window.historyFail=true;window.fetch=(...args)=>{if(historyFail && String(args[0]).includes('/study-history/session/')){historyFail=false;return Promise.resolve(new Response('fixture unavailable',{status:503}));}return historyFetch(...args)};true")
+    second='.study-history-row:nth-of-type(2)'
+    browser.click(second+' summary');browser.wait_for("document.querySelector('"+second+"').textContent.includes('Retry session details')")
+    browser.click(second+' button');browser.wait_for("document.querySelector('"+second+"').textContent.includes('A later correct answer was saved')")
+    assert browser.evaluate("document.activeElement.matches('[data-detail-heading]')")
+    browser.evaluate('window.fetch=historyFetch;true')
+    output=os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width)
+        assert browser.evaluate("document.querySelector('.study-history-row time').textContent===DLMSLocalTime.format('2026-03-08T07:01:00Z')")
+        if output:
+            folder=Path(output);folder.mkdir(parents=True,exist_ok=True)
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (folder/f'history-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+        if theme=='light' and width==390 and output:
+            from tests.browser._help_screenshots import capture_control
+            # Capture a real expanded row and a real compact row independently.
+            capture_control(browser,Path(output)/'study-history-expanded.webp',second)
+            capture_control(browser,Path(output)/'study-history-row.webp','.study-history-row:nth-of-type(3)')
+    browser.click('[aria-label="Study session pages"] a:last-child')
+    browser.wait_for("location.search.includes('sessions_before')")
+    next_ids=browser.evaluate("[...document.querySelectorAll('[data-session-id]')].map(n=>n.dataset.sessionId)")
+    assert not set(ids)&set(next_ids)
+    browser.click('#legacyHistory summary');browser.click('[aria-label="Legacy response pages"] a:last-child')
+    browser.wait_for("location.search.includes('legacy_before')")
+    assert browser.evaluate('document.getElementById("legacyHistory").open')
+    assert browser.evaluate("[...document.querySelectorAll('[data-session-id]')].map(n=>n.dataset.sessionId)")==next_ids
+    assert browser.evaluate("document.querySelectorAll('[data-legacy-id]').length")==25
+    browser.click('[aria-label="Study session pages"] a:first-child')
+    browser.wait_for("document.querySelector('.study-history-row').dataset.sessionId==="+json.dumps(ids[0]))
+    browser.wait_for("document.querySelector('"+second+"').textContent.includes('A later correct answer was saved')")
+    assert browser.evaluate("document.querySelector('"+second+" details').open")
+    browser.navigate(base+'/study-history?page=999')
+    assert browser.evaluate("document.body.textContent.includes('No Study sessions on this page')")
+    assert not browser.evaluate("document.body.textContent.includes('No saved Study sessions yet')")
+    # Same title is retained for two actual quizzes; no title-based merge.
+    with sqlite3.connect(root/'results.db') as conn:
+        assert conn.execute('SELECT count(DISTINCT quiz_id) FROM study_sessions WHERE quiz_id IN (?,?)',(qid,other)).fetchone()[0]==2
+        assert conn.execute('SELECT count(*) FROM study_sessions').fetchone()[0]==58
+    browser.navigate(base+'/help/quizzes#browse-study-history')
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        browser.evaluate("document.getElementById('browse-study-history').scrollIntoView();true")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'viewport'})
+            (Path(output)/f'history-help-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    selector='a[href="/static/help_assets/study-history-row.webp"]'
+    browser.evaluate('document.querySelector('+json.dumps(selector)+').scrollIntoView({block:"center"});true')
+    browser.wait_for('document.querySelector('+json.dumps(selector+' img')+').naturalWidth>0')
+    browser.evaluate('document.querySelector('+json.dumps(selector)+').focus();true');browser.press_key('\ue007')
+    browser.wait_for('!document.querySelector(".help-lightbox").hidden && document.querySelector(".help-lightbox-image").complete')
+    browser.press_key('\ue00c');browser.wait_for('document.querySelector(".help-lightbox").hidden')
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_plan_selected_breakdown_risk_and_included_coverage(browser_stack, theme):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    regular,regular_html=_new_regular_study_quiz(browser_stack,4)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession !== null')
+    for n in range(4):
+        browser.click("#choices .choice[data-index='0']");browser.wait_for('studyLearningEventSaves.size===0')
+        if n<3:browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at !== null')
+    source,_=_new_regular_study_quiz(browser_stack,4)
+    missing,missing_html=_new_regular_study_quiz(browser_stack,1)
+    root=browser_stack.data_root
+    registry_path=root/'config/quizzes.json'
+    registry=json.loads(registry_path.read_text())
+    registry=[r for r in registry if r['id'] in (regular,source,missing)]
+    for entry in registry:entry['folder']='Excluded' if entry['id']==regular else 'Unavailable' if entry['id']==missing else 'Uncategorized'
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('DELETE FROM quizzes WHERE id NOT IN (?,?,?)',(regular,source,missing))
+    portal=root/'config/portal.json';cfg=json.loads(portal.read_text());cfg['excluded_learning_folders']=['excluded'];portal.write_text(json.dumps(cfg))
+    artifact=root/'quizzes'/missing_html;moved=artifact.with_suffix('.fixture-unavailable');artifact.rename(moved)
+    try:
+        browser.navigate(base+'/exam-plans/new');browser.wait_for('window.dlmsCsrfToken')
+        exam=(datetime.now(ZoneInfo('America/Chicago')).date()+timedelta(days=1)).isoformat()
+        browser.evaluate("""document.querySelector('[name=name]').value='CISM — budget and material example';
+          document.querySelector('[name=exam_date]').value="""+json.dumps(exam)+""";
+          document.querySelector('[name=calendar_timezone]').value='America/Chicago';
+          document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+          document.querySelectorAll('[name=folders]').forEach(n=>n.checked=['uncategorized','excluded','unavailable'].includes(n.value));
+          document.querySelector('[name=minutes]').value=5;
+          document.querySelector('[name=use_dashboard]').checked=true;true""")
+        browser.click('#examPlanForm button[type=submit]');browser.wait_for("document.getElementById('planProgress') !== null")
+        path=browser.evaluate('location.pathname')
+        assert browser.evaluate("document.getElementById('planProgress').textContent.includes('0 / 5')")
+        assert browser.evaluate("document.getElementById('planEvidence').textContent.includes('9 questions — 5 included and 4 excluded')")
+        assert browser.evaluate("document.getElementById('planProgress').textContent.includes('1 included but unavailable')")
+        assert browser.evaluate("document.querySelector('.plan-breakdown').textContent.trim()")=='2 no recorded answer'
+        output=os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+        for width in (1440,390):
+            browser.set_viewport(width,1000);browser.navigate(base+'/')
+            browser.wait_for("document.getElementById('activeExamPlan')?.textContent.includes('CISM')")
+            browser.wait_for_page_ready()
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            assert browser.evaluate("document.querySelector('#activeExamPlan .plan-workload-warning').textContent.includes('about 5 minutes')")
+            assert browser.evaluate("document.querySelector('#activeExamPlan .plan-workload-warning a').getAttribute('href')") == path+'/edit'
+            assert browser.evaluate("document.querySelector('#activeExamPlan .plan-breakdown').textContent") == '2 no recorded answer'
+            assert browser.evaluate("document.querySelector('#regularStudyContinuity a').classList.contains('daily-review-secondary')")
+            assert browser.evaluate("Boolean(document.getElementById('activeExamPlan').compareDocumentPosition(document.getElementById('regularStudyContinuity')) & Node.DOCUMENT_POSITION_FOLLOWING)")
+            assert browser.evaluate("document.querySelector('#regularStudyContinuity a').getAttribute('href')")=='/quizzes/'+regular_html
+            assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan a')].filter(a=>a.pathname==='/learning-scope').length")==1
+            browser.activate();browser.wait_for('document.hasFocus()')
+            browser.evaluate("document.querySelector('#activeExamPlan [data-practice]').focus();true");browser.press_key('\ue004')
+            assert browser.evaluate("document.activeElement.matches(':focus-visible')")
+            if output:
+                folder=Path(output);folder.mkdir(parents=True,exist_ok=True)
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (folder/f'planner-risk-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                if theme=='light' and width==390:
+                    from tests.browser._help_screenshots import capture_control
+                    capture_control(browser,folder/'exam-plan-workload.webp','#activeExamPlan')
+        # Start the advertised selection through its real publisher, preserving count/lineage.
+        browser.click('#activeExamPlan [data-practice=suggested]')
+        browser.wait_for("location.pathname.startsWith('/quizzes/') && quizRecoveryReady")
+        assert browser.evaluate('quiz.length')==2
+        generated=int(browser.evaluate('window.QUIZ_ID'))
+        with sqlite3.connect(root/'results.db') as conn:
+            source_uid={r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?',(source,))}
+            lineage={r[0] for r in conn.execute('SELECT source_question_uid FROM questions WHERE quiz_id=?',(generated,))}
+            assert len(lineage)==2 and lineage<=source_uid
+        browser.navigate(base+path);browser.wait_for_page_ready()
+        # Generation alone earns no quota or coverage credit.
+        assert browser.evaluate("document.querySelector('.plan-breakdown').textContent.trim()")=='2 no recorded answer'
+        assert browser.evaluate("document.getElementById('planProgress').textContent.includes('0 / 5')")
+    finally: moved.rename(artifact)

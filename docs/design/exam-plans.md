@@ -116,3 +116,23 @@ Detailed evidence and estimate assumptions remain available through disclosures.
 Empty/excluded/unavailable plans show an unavailable workload estimate, not a
 reassuring zero-work fit claim. This is presentation; the underlying budget,
 evidence, completion, source lineage, scope and reset contracts are unchanged.
+
+
+## Presentation of selected work and coverage
+
+The selected IDs, order, budget and native intervals are unchanged. Display-only
+breakdown precedence is coverage needs (split into no identifiable recorded answer
+and previously answered coverage/fresh-evidence needs), then mistakes, due reviews,
+and other practice. Each selected source occupies exactly one group. Historical
+answer presence uses exact question IDs or explicit generated lineage from factual
+Study, legacy responses and attempt answers. It labels history only; it never
+recreates reset learning evidence, completion or assistance. "No recorded answer"
+is deliberately narrower than a claim the learner has never seen a question.
+
+Primary coverage is reviewed current source questions intersected with included
+material, divided by all included source questions. Included-but-unavailable
+questions remain in that denominator; excluded history remains in detailed totals.
+Positive shortfalls stay visible even when practice is ready. Headlines round to
+about five-minute increments (whole minutes below five); details retain the exact
+calculation and assumptions. The review-due date and selected study day keep their
+separate meanings and saved calendar. No persistence migration is required.

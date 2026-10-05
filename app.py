@@ -5262,7 +5262,7 @@ def _daily_review_plan(cur, now=None):
         if saved_plan.get("config", {}).get("visible"):
             try:
                 plan_report = _exam_plans.summary(cur, saved_plan, **_exam_plan_options(cur), now=now)
-                plan["exam_plan"] = {key: plan_report[key] for key in ("plan", "calendar", "stats", "target", "remaining_slots", "shortfall", "estimated_batch", "changes", "missing_folders", "work_state", "estimate_available", "fingerprint", "generation")}
+                plan["exam_plan"] = {key: plan_report[key] for key in ("plan", "calendar", "stats", "target", "remaining_slots", "shortfall", "estimated_batch", "changes", "missing_folders", "work_state", "estimate_available", "fingerprint", "generation", "breakdown", "shortfall_rounded")}
                 plan["exam_plan"]["selected_count"] = len(plan_report["selected"])
                 if not saved_plan["config"]["paused"]:
                     plan["items"] = []

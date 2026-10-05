@@ -381,6 +381,38 @@ def coverage(cur, members, revisions, now):
                 first_mistake=len(first_mistake), corrected=len(corrected)), reviewed, before, contiguous
 
 
+def recorded_answer_sources(cur, members):
+    """Historical answer presence for labels only; never feeds learning estimates.
+
+    Exact rows or explicit generated lineage only. No identical-text inference,
+    completion backfill or replay of facts excluded by a learning reset.
+    """
+    by_uid = {item['uid']: int(qid) for qid,item in members.items() if item['uid']}
+    result = set()
+    for row in cur.execute("""SELECT q.id,q.is_generated_copy,q.source_question_uid
+        FROM questions q JOIN (
+          SELECT question_id FROM study_responses WHERE kind='response'
+          UNION SELECT question_id FROM study_legacy_responses
+          UNION SELECT question_id FROM attempt_answers
+        ) f ON f.question_id=q.id"""):
+        if not row['is_generated_copy'] and str(row['id']) in members:
+            result.add(row['id'])
+        elif row['is_generated_copy'] and row['source_question_uid'] in by_uid:
+            result.add(by_uid[row['source_question_uid']])
+    return result
+
+
+def selected_breakdown(selected, *, needs, recorded, missed, due):
+    """Exclusive labels after selection; coverage, then mistakes, due, other."""
+    groups = [('new', 'No recorded answer'), ('refresh', 'Coverage / fresh evidence'),
+              ('mistakes', 'Mistakes'), ('due', 'Due reviews'), ('other', 'Other practice')]
+    counts = dict.fromkeys((key for key,_ in groups), 0)
+    for qid in {c['question_id'] for c in selected}:
+        key = ('refresh' if qid in recorded else 'new') if qid in needs else 'mistakes' if qid in missed else 'due' if qid in due else 'other'
+        counts[key] += 1
+    return [dict(key=key, label=label, count=counts[key]) for key,label in groups if counts[key]]
+
+
 def summary(cur, plan, *, registry, folders, excluded, data_folder, quiz_folder, artifact_names, media_available=lambda value: True, dashboard_panel_visible=True, now=None):
     if plan.get('error'):
         raise ValueError(plan['error'])
@@ -500,7 +532,8 @@ def summary(cur, plan, *, registry, folders, excluded, data_folder, quiz_folder,
     fit = ('Even the low estimate exceeds capacity.' if len(outstanding)*config['pace_low']*factor > capacity else
            'The estimate range crosses available capacity; fit is uncertain.' if len(outstanding)*config['pace_high']*factor > capacity else
            'Known work fits the current estimate range; future work can add to it.')
-    stats.update(total=len(members), eligible=len(eligible), blocked=blocked, unavailable=len(unavailable), independent=len(independent), fresh=len(needs & reviewed), today=len(today & ids))
+    included_ids = {int(key) for key,member in members.items() if not member['excluded']}
+    stats.update(total=len(members), included=len(included_ids), included_reviewed=len(reviewed & included_ids), eligible=len(eligible), blocked=blocked, unavailable=len(included_ids-ids), independent=len(independent), fresh=len(needs & reviewed), today=len(today & ids))
     fingerprint = digest(dict(members=members, excluded=sorted(excluded), generation=state(cur)['generation'], revision=plan['revision']))
     result = dict(plan=plan, calendar=cal, stats=stats, changes=changes, missing_folders=sorted(set(config['folders'])-known),
                 snapshot=members, fingerprint=fingerprint, generation=state(cur)['generation'], quizzes=list(quizzes.values()),
@@ -509,6 +542,8 @@ def summary(cur, plan, *, registry, folders, excluded, data_folder, quiz_folder,
                 fit=fit, outstanding=len(outstanding), workload=round(workload,1), low=round(len(outstanding)*config['pace_low']*factor,1),
                 high=round(len(outstanding)*config['pace_high']*factor,1), capacity=round(capacity,1), shortfall=round(max(0,workload-capacity),1),
                 coverage_shortfall=max(0,len(needs)*config['pace']*factor-capacity), estimated_batch=round(len(selected)*config['pace']*factor,1))
+    result['breakdown'] = selected_breakdown(selected, needs=needs, recorded=recorded_answer_sources(cur, members) if selected else set(), missed=missed, due=due)
+    result['shortfall_rounded'] = (max(5, round(result['shortfall']/5)*5) if result['shortfall'] >= 5 else math.ceil(result['shortfall']))
     result['estimate_available'] = bool(ids)
     if not ids:
         result['fit'] = 'A useful workload estimate needs included, available study material.'

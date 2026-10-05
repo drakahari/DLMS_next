@@ -786,3 +786,76 @@ class ExamPlanTests(unittest.TestCase):
                 plans.control(conn,first,'activate',1,shown_state['generation'],expected_dashboard=rendered)
             conn.rollback()
             self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
+
+    def test_selected_breakdown_is_exclusive_and_does_not_rank(self):
+        selected=[{'question_id':n} for n in range(1,7)]
+        before=copy.deepcopy(selected)
+        result=plans.selected_breakdown(selected,needs={1,2},recorded={2,3,4,5,6},missed={2,3,4},due={1,3,4,5})
+        self.assertEqual({r['key']:r['count'] for r in result},{'new':1,'refresh':1,'mistakes':2,'due':1,'other':1})
+        self.assertEqual(sum(r['count'] for r in result),len(selected))
+        self.assertEqual(selected,before)
+
+    def test_included_coverage_keeps_unavailable_and_separates_excluded(self):
+        available,_=self.publish(title='Included bank',questions=[{**self.choice(),'number':n,'question':f'Included {n}'} for n in range(1,4)],kind=None)
+        blocked,_=self.publish(title='Excluded bank',questions=[{**self.choice(),'number':n,'question':f'Excluded {n}'} for n in range(1,140)],kind=None)
+        registry=dlms.load_registry()
+        for entry in registry:
+            if entry['id']==blocked:entry['folder']='Excluded'
+        dlms.save_registry(registry)
+        self.study_questions(self.quiz_id,count=1,prefix='coverage-one')
+        self.study_questions(available,count=3,prefix='coverage-three')
+        pid=self.create()
+        with dlms.get_db() as conn:
+            plan=plans.get(conn.cursor(),pid);plan['config']['folders']=['uncategorized','excluded']
+            opts=dlms._exam_plan_options(conn.cursor())
+            result=plans.summary(conn.cursor(),plan,**{**opts,'excluded':['excluded']},now=datetime(2026,10,17,18,tzinfo=timezone.utc))
+            self.assertEqual((result['stats']['total'],result['stats']['included'],result['stats']['included_reviewed'],result['stats']['blocked']),(143,4,4,139))
+            missing=plans.summary(conn.cursor(),plan,**{**opts,'excluded':['excluded'],'media_available':lambda value:False},now=datetime(2026,10,17,18,tzinfo=timezone.utc))
+            self.assertEqual((missing['stats']['included'],missing['stats']['included_reviewed'],missing['stats']['unavailable']),(4,4,4))
+            self.assertEqual(missing['selected'],[])
+
+    def test_reset_breakdown_uses_facts_only_for_labels_and_keeps_selection(self):
+        now=datetime(2026,10,19,18,tzinfo=timezone.utc)
+        self.publish(title='New material',kind=None)
+        self.study_questions(self.quiz_id,count=1,wrong=(1,),prefix='known-mistake')
+        pid=self.create()
+        before=self.report(pid,now)
+        self.assertEqual(sum(r['count'] for r in before['breakdown']),len(before['selected']))
+        restore.reset_learning_intelligence_core(dlms.DB_PATH)
+        report=self.report(pid,now)
+        self.assertEqual({r['key']:r['count'] for r in report['breakdown']},{'new':1,'refresh':1})
+        self.assertEqual(report['stats']['included_reviewed'],1)
+        self.assertEqual(report['missed'],[]);self.assertEqual(report['due'],[])
+        # Presentation annotations cannot change candidate ranking, budget or scheduling.
+        with mock.patch.object(plans,'selected_breakdown',return_value=[]):
+            without=self.report(pid,now)
+        for key in ('selected','target','remaining_slots','capacity','workload','shortfall','stats','fingerprint'):
+            self.assertEqual(report[key],without[key],key)
+
+    def test_shortfall_headline_rounding_and_zero(self):
+        self.publish(title='Risk bank',questions=[{**self.choice(),'number':n,'question':f'Risk {n}'} for n in range(1,99)],kind=None)
+        pid=self.create(exam_date='2026-10-17',weekdays=list(range(7)))
+        result=self.report(pid,datetime(2026,10,16,18,tzinfo=timezone.utc))
+        self.assertEqual(result['shortfall'],217.5)
+        self.assertEqual(result['shortfall_rounded'],220)
+        self.assertTrue(result['selected'])
+        other=self.create(minutes=1440,weekdays=list(range(7)))
+        self.assertEqual(self.report(other,datetime(2026,10,16,18,tzinfo=timezone.utc))['shortfall_rounded'],0)
+
+    def test_breakdown_historical_lineage_does_not_merge_identical_sources(self):
+        pid=self.create()
+        published=self.client.post(f'/api/exam-plans/{pid}/generate',json=self.request_data(pid),headers=self.headers)
+        self.assertEqual(published.status_code,200)
+        with dlms.get_db() as conn:
+            generated=conn.execute('SELECT id FROM quizzes WHERE generation_kind=\'adaptive_study\'').fetchone()[0]
+        other,_=self.publish(title='Independent identical wording',kind=None)
+        self.study_questions(generated,count=1,wrong=(1,),prefix='lineage-label')
+        restore.reset_learning_intelligence_core(dlms.DB_PATH)
+        report=self.report(pid,datetime(2026,10,19,18,tzinfo=timezone.utc))
+        self.assertEqual({item['key']:item['count'] for item in report['breakdown']},{'new':1,'refresh':1})
+        self.assertEqual(report['missed'],[])
+        with dlms.get_db() as conn:
+            recorded=plans.recorded_answer_sources(conn.cursor(),report['snapshot'])
+            source=conn.execute('SELECT id FROM questions WHERE quiz_id=?',(self.quiz_id,)).fetchone()[0]
+            independent=conn.execute('SELECT id FROM questions WHERE quiz_id=?',(other,)).fetchone()[0]
+        self.assertIn(source,recorded);self.assertNotIn(independent,recorded)

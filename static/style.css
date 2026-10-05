@@ -16016,3 +16016,21 @@ h1, h2, h3 {
 .study-history-row {padding:1rem 0; border-bottom:1px solid var(--panel-border); overflow-wrap:anywhere;}
 .study-history-row dl {display:grid; grid-template-columns:repeat(auto-fit,minmax(10rem,1fr)); gap:.6rem;}
 .study-history-row dd {margin:0;}
+
+/* Compact factual history; native disclosures retain keyboard semantics. */
+#studyHistory .study-history-row {padding:.35rem 0;}
+.study-history-row > details > summary {padding:.7rem .4rem; cursor:pointer; line-height:1.5;}
+.study-history-row > details > summary > span, .study-history-row > details > summary > strong {display:block; margin-inline-start:1.2rem;}
+.study-history-row > details > summary > .study-history-title {display:inline; margin-inline-start:.2rem; font-weight:700; color:var(--theme-heading);}
+.study-history-meta {color:var(--theme-muted-text); font-size:.95em;}
+.study-history-detail {padding:.4rem 1.2rem 1rem;}
+.study-history-warning {color:var(--semantic-warning-text);}
+.study-history-pages {display:flex; flex-wrap:wrap; align-items:center; gap:1rem; margin-block:1rem;}
+#legacyHistory, #historyExplanation {margin-block:1rem;}
+#legacyHistory li {margin-block:.7rem; overflow-wrap:anywhere;}
+#legacyHistory small {display:block;}
+.study-history-observations li {margin-block:.7rem;}
+#studyHistory summary:focus-visible {outline:2px solid var(--theme-accent); outline-offset:3px;}
+#regularStudyContinuity .daily-review-secondary {display:inline-block; padding:.4rem 0; color:var(--theme-accent-text);}
+#activeExamPlan .plan-workload-warning {margin-block:.7rem; padding:.65rem; border-inline-start:3px solid var(--theme-accent); background:var(--semantic-section-surface); color:var(--theme-page-text);}
+#activeExamPlan .plan-breakdown {margin-block:.4rem;}
