@@ -23,6 +23,12 @@ def create_exam_plan_blueprint(dependencies):
     def report(cur, plan):
         return plans.summary(cur, plan, **options(cur))
 
+    def context(cur, opts):
+        saved = plans.state(cur)
+        selected = plans.get(cur, saved['active_plan_id']) if saved['active_plan_id'] else None
+        return dict(state=saved, selected_plan=selected, dashboard_token=plans.dashboard_selection(cur, saved=saved, selected=selected),
+                    dashboard_panel_visible=opts.get('dashboard_panel_visible', True))
+
     def form_data():
         if request.is_json:
             return request.get_json()
@@ -34,7 +40,7 @@ def create_exam_plan_blueprint(dependencies):
             except ValueError:
                 return raw
         data.update(weekdays=[int(v) if v.isdigit() else v for v in request.form.getlist('weekdays')], minutes=number('minutes', int),
-                    folders=request.form.getlist('folders'), paused=request.form.get('paused') == 'on', visible=request.form.get('visible') == 'on')
+                    folders=request.form.getlist('folders'), paused=request.form.get('paused') == 'on')
         for key in ('pace', 'pace_low', 'pace_high', 'reserve'):
             data[key] = number(key, float)
         return data
@@ -43,7 +49,11 @@ def create_exam_plan_blueprint(dependencies):
     def index():
         conn = get_db()
         try:
-            return render_template('learning/exam_plans.html', page='list', plans=plans.list_plans(conn.cursor()), state=plans.state(conn.cursor()))
+            cur = conn.cursor()
+            opts = options(cur)
+            saved = plans.list_plans(cur)
+            reports = {item['id']: plans.summary(cur, item, **opts) for item in saved if not item.get('error')}
+            return render_template('learning/exam_plans.html', page='list', plans=saved, reports=reports, **context(cur, opts))
         finally:
             conn.close()
 
@@ -59,12 +69,15 @@ def create_exam_plan_blueprint(dependencies):
             status, error = 200, None
             if request.method == 'POST':
                 try:
+                    if 'active' in request.form or 'visible' in request.form:
+                        raise plans.PlanConflict('The dashboard controls changed. Reload this form before saving your selection.')
                     config = form_data()
                     revision = int(request.form.get('revision', '0'))
                     validated = plans.validate(config)
                     preview = plans.summary(cur, dict(config=validated, revision=revision, snapshot={}), **opts)
                     saved = plans.save(conn, validated, plan_id=plan_id, revision=revision, generation=request.form.get('generation'),
-                                       active=request.form.get('active') == 'on', known_folders=[f['key'] for f in opts['folders']], snapshot=preview['snapshot'])
+                                       active=request.form.get('use_dashboard') == 'on', expected_dashboard=request.form.get('dashboard_token'),
+                                       known_folders=[f['key'] for f in opts['folders']], snapshot=preview['snapshot'])
                     return redirect('/exam-plans/' + saved)
                 except (ValueError, sqlite3.Error, OSError) as exc:
                     conn.rollback()
@@ -72,7 +85,9 @@ def create_exam_plan_blueprint(dependencies):
                         status, error = (409 if isinstance(exc, plans.PlanConflict) else 400), str(exc)
                     else:
                         status, error = 503, 'The plan could not be saved. Your previous saved choices are retained. Retry this form.'
-            return render_template('learning/exam_plans.html', page='form', plan=plan, config=config, folders=opts['folders'], state=plans.state(cur), error=error), status
+            return render_template('learning/exam_plans.html', page='form', plan=plan, config=config, folders=opts['folders'],
+                                   choose_dashboard=request.form.get('use_dashboard') == 'on' if request.method=='POST' else False,
+                                   error=error, **context(cur, opts)), status
         finally:
             conn.close()
 
@@ -82,7 +97,8 @@ def create_exam_plan_blueprint(dependencies):
         try:
             plan = plans.get(conn.cursor(), plan_id)
             result = None if plan.get('error') else report(conn.cursor(), plan)
-            return render_template('learning/exam_plans.html', page='detail', plan=plan, report=result, state=plans.state(conn.cursor()), request_id=uuid.uuid4().hex)
+            return render_template('learning/exam_plans.html', page='detail', plan=plan, report=result, request_id=uuid.uuid4().hex,
+                                   **context(conn.cursor(), options(conn.cursor())))
         finally:
             conn.close()
 
@@ -91,7 +107,7 @@ def create_exam_plan_blueprint(dependencies):
         conn = get_db()
         try:
             result = report(conn.cursor(), dict(config=plans.validate(request.get_json()), revision=0, snapshot={}))
-            return jsonify({key: result[key] for key in ('calendar', 'stats', 'workload', 'low', 'high', 'capacity', 'shortfall', 'target', 'slots', 'missing_folders')})
+            return jsonify({key: result[key] for key in ('calendar', 'stats', 'workload', 'low', 'high', 'capacity', 'shortfall', 'target', 'slots', 'missing_folders', 'work_state', 'estimate_available')})
         finally:
             conn.close()
 
@@ -101,7 +117,8 @@ def create_exam_plan_blueprint(dependencies):
         try:
             name = request.form.get('action')
             snapshot = report(conn.cursor(), plans.get(conn.cursor(), plan_id))['snapshot'] if name == 'acknowledge' else None
-            plans.control(conn, plan_id, name, int(request.form.get('revision', '0')), request.form.get('generation'), snapshot=snapshot)
+            plans.control(conn, plan_id, name, int(request.form.get('revision', '0')), request.form.get('generation'), snapshot=snapshot,
+                          expected_dashboard=request.form.get('dashboard_token'))
             return redirect('/exam-plans' if name == 'delete' else '/exam-plans/' + plan_id)
         except ValueError:
             conn.rollback()

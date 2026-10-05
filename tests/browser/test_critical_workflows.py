@@ -13536,7 +13536,7 @@ def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
       document.querySelector('[name=calendar_timezone]').value='America/Chicago';
       document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
       document.querySelectorAll('[name=folders]').forEach(n=>n.checked=true);
-      document.querySelector('[name=active]').checked=true;true""")
+      document.querySelector('[name=use_dashboard]').checked=true;true""")
     browser.click('#previewPlan')
     browser.wait_for("document.getElementById('planPreview').textContent.includes('base shortfall')")
     output = os.environ.get('DLMS_EXAM_PLAN_CAPTURE_DIR')
@@ -13546,6 +13546,7 @@ def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
         from tests.browser._help_screenshots import capture_control
         capture_control(browser, Path(output) / 'exam-plan-setup.webp', '#planExamFields')
         capture_control(browser, Path(output) / 'exam-plan-availability.webp', '#planAvailability')
+        capture_control(browser, Path(output) / 'exam-plan-selection.webp', '#planDashboardChoice')
     browser.click('#examPlanForm button[type=submit]')
     browser.wait_for("document.getElementById('planSummary') !== null")
     detail_path = browser.evaluate('location.pathname')
@@ -13593,14 +13594,13 @@ def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
             assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
             (Path(output)/f'plan-dashboard-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
-    browser.navigate(base + detail_path)
-    browser.evaluate("document.querySelector('#other-practice').open=true;true")
+    assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan a')].filter(a=>a.pathname==="+json.dumps(detail_path)+").map(a=>a.textContent)") == ['View plan']
     # Simulate a lost acknowledgement after the real publication commits.
     browser.evaluate("""window.planFetch=window.fetch.bind(window);window.planLostAck=false;
       window.fetch=async(url,options)=>{const r=await planFetch(url,options);
         if(String(url).endsWith('/generate')&&!planLostAck){planLostAck=true;throw Error('Lost publication acknowledgement');}
         return r;};true""")
-    browser.click('[data-practice="focused"]')
+    browser.click('#activeExamPlan [data-practice="suggested"]')
     browser.wait_for("!document.getElementById('retryPlanPractice').hidden")
     assert browser.evaluate("document.getElementById('planPracticeStatus').textContent.includes('Lost publication acknowledgement')")
     browser.click('#retryPlanPractice')
@@ -13613,7 +13613,14 @@ def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
     browser.navigate(base + '/help/learning-intelligence#exam-plans')
     assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
     assert browser.evaluate("document.querySelector('#exam-plans').textContent.includes('first-pass')")
-    for filename in ('exam-plan-setup.webp','exam-plan-availability.webp','exam-plan-dashboard.webp'):
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'),(theme,width,'Help')
+        browser.evaluate("document.querySelector('#exam-plans').scrollIntoView();true")
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'viewport'})
+            (Path(output)/f'plan-help-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    for filename in ('exam-plan-setup.webp','exam-plan-availability.webp','exam-plan-dashboard.webp','exam-plan-selection.webp','exam-plan-excluded.webp'):
         selector = '#exam-plans a[href="/static/help_assets/' + filename + '"]'
         browser.evaluate('document.querySelector(' + json.dumps(selector) + ').scrollIntoView({block:"center"});true')
         browser.wait_for('document.querySelector(' + json.dumps(selector + ' img') + ').naturalWidth > 0')
@@ -13624,22 +13631,27 @@ def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
         browser.wait_for('document.querySelector(".help-lightbox").hidden')
     # Exercise actual form controls and dashboard states, not only JSON APIs.
     browser.navigate(base + detail_path)
+    browser.click('#planPlacement summary')
     browser.click('button[value=pause]')
-    browser.wait_for("document.querySelector('#planSummary').textContent.includes('Paused')")
+    browser.wait_for("document.querySelector('#planSummary').textContent.includes('Suggestions paused')")
     browser.navigate(base + '/')
-    browser.wait_for("document.querySelector('#activeExamPlan')?.textContent.includes('Suggestions paused')")
+    browser.wait_for("document.querySelector('#activeExamPlan')?.textContent.includes('Suggestions are paused')")
     assert not browser.evaluate("document.querySelector('#activeExamPlan').textContent.includes('Start suggested work')")
     browser.navigate(base + detail_path)
-    browser.click('button[value=visibility]')
-    browser.wait_for("document.querySelector('#planSummary').textContent.includes('Hidden on dashboard')")
+    browser.click('#planPlacement summary')
+    browser.click('button[value=hide]')
+    browser.wait_for("document.querySelector('#planSummary').textContent.includes('Hidden from dashboard')")
     browser.navigate(base + '/')
     browser.wait_for("document.querySelector('#activeExamPlan')?.hidden === true")
     browser.navigate(base + detail_path)
-    browser.click('button[value=visibility]')
-    browser.wait_for("!document.querySelector('#planSummary').textContent.includes('Hidden on dashboard')")
+    browser.click('#planPlacement summary')
+    browser.click('button[value=activate]')
+    browser.wait_for("!document.querySelector('#planSummary').textContent.includes('Hidden from dashboard')")
+    browser.click('#planPlacement summary')
     browser.click('button[value=pause]')
-    browser.wait_for("!document.querySelector('#planSummary').textContent.includes('Paused')")
+    browser.wait_for("!document.querySelector('#planSummary').textContent.includes('Suggestions paused')")
     # Confirm only the isolated plan is deleted; browser confirmation is explicit.
+    browser.click('#planPlacement summary')
     browser.evaluate("window.confirm=()=>true;true")
     browser.click('button[value=delete]')
     browser.wait_for("location.pathname==='/exam-plans' && document.body.textContent.includes('No exam plans yet')")
@@ -13688,7 +13700,7 @@ def test_exam_plan_fifty_question_study_workflow(browser_stack):
     browser.evaluate("""document.querySelector('[name=name]').value='CISM — 50-question review';
       document.querySelector('[name=exam_date]').value="""+json.dumps(exam)+""";
       document.querySelectorAll('[name=folders],[name=weekdays]').forEach(n=>n.checked=true);
-      document.querySelector('[name=active]').checked=true;true""")
+      document.querySelector('[name=use_dashboard]').checked=true;true""")
     browser.click('#examPlanForm button[type=submit]')
     browser.wait_for('document.getElementById("planProgress") !== null')
     detail_path = browser.evaluate('location.pathname')
@@ -13696,7 +13708,7 @@ def test_exam_plan_fifty_question_study_workflow(browser_stack):
         return browser.evaluate("Array.from(document.querySelectorAll('#planProgress .plan-grid p')).find(n=>n.textContent.includes("+json.dumps(label)+")).querySelector('strong').textContent")
     assert count('first-response mistake') == '25'
     assert count('later corrected') == '25'
-    assert count('full quiz reviews finished') == '1'
+    assert count('Quizzes with a current full review finished') == '1'
     assert count('independent Study success') == '25'
     browser.set_viewport(390,1000)
     browser.navigate(base+detail_path)
@@ -13721,7 +13733,7 @@ def test_exam_plan_fifty_question_study_workflow(browser_stack):
     browser.click('#finishReviewBtn')
     browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
     browser.navigate(base+detail_path)
-    assert count('full quiz reviews finished') == '1'
+    assert count('Quizzes with a current full review finished') == '1'
     assert count('Focused sessions finished') == '1'
     assert count('first-response mistake') == '25'
     with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
@@ -13730,3 +13742,118 @@ def test_exam_plan_fifty_question_study_workflow(browser_stack):
     browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
     assert browser.evaluate("document.querySelector('#regularStudyContinuity a').getAttribute('href')") == '/quizzes/'+html
     assert browser.evaluate("document.querySelector('#regularStudyContinuity').textContent.includes('50 / 50')")
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_exam_plan_no_work_states_and_switching(browser_stack, theme):
+    """Real service responses over disposable source quizzes and saved plans."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/settings/appearance'); _set_theme(browser,theme)
+    qid, html = _new_regular_study_quiz(browser_stack,4)
+    extra, _ = _new_regular_study_quiz(browser_stack,1)
+    root=browser_stack.data_root
+    registry_path=root/'config/quizzes.json'
+    registry=[r for r in json.loads(registry_path.read_text()) if r['id'] in (qid,extra)]
+    for entry in registry: entry['folder']='Uncategorized' if entry['id']==qid else 'Extra'
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('DELETE FROM quizzes WHERE id NOT IN (?,?)',(qid,extra))
+    today=datetime.now(ZoneInfo('America/Chicago')).date()
+    exam=(today+timedelta(days=21)).isoformat()
+    def create(name,choose=False):
+        browser.navigate(base+'/exam-plans/new')
+        browser.wait_for("document.getElementById('examPlanForm') && window.dlmsCsrfToken")
+        browser.evaluate("""document.querySelector('[name=name]').value="""+json.dumps(name)+""";
+          document.querySelector('[name=exam_date]').value="""+json.dumps(exam)+""";
+          document.querySelector('[name=calendar_timezone]').value='America/Chicago';
+          document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+          document.querySelectorAll('[name=folders]').forEach(n=>n.checked=n.value==='uncategorized');
+          document.querySelector('[name=use_dashboard]').checked="""+json.dumps(choose)+";true")
+        browser.click('#examPlanForm button[type=submit]')
+        browser.wait_for("document.getElementById('planSummary') !== null")
+        return browser.evaluate('location.pathname')
+    path=create('CISM — four questions',True)
+    pid=path.rsplit('/',1)[-1]
+    with sqlite3.connect(root/'results.db') as conn:
+        original=json.loads(conn.execute('SELECT config_json FROM exam_plans WHERE id=?',(pid,)).fetchone()[0])
+    portal=root/'config/portal.json'
+    output=os.environ.get('DLMS_EXAM_PLAN_CAPTURE_DIR')
+    def fixture(**changes):
+        excluded=changes.pop('excluded',[])
+        cfg=json.loads(portal.read_text());cfg['excluded_learning_folders']=excluded;portal.write_text(json.dumps(cfg))
+        with sqlite3.connect(root/'results.db') as conn:
+            conn.execute('UPDATE exam_plans SET config_json=?,revision=revision+1 WHERE id=?',(json.dumps({**original,**changes}),pid))
+    def check(code, label):
+        for width in (1440,390):
+            browser.set_viewport(width,1000);browser.navigate(base+path);browser.wait_for_page_ready()
+            assert browser.evaluate("document.getElementById('planWorkStatus').textContent") == label
+            assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'),(theme,width,code)
+            if label!='Ready to study':
+                assert not browser.evaluate("!!document.querySelector('[data-practice=suggested]')")
+            assert not browser.evaluate("document.body.textContent.includes('allowance is used, or')")
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'state-{code}-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+        browser.navigate(base+'/')
+        browser.wait_for("document.getElementById('activeExamPlan') !== null")
+        if code=='hidden':
+            browser.wait_for("document.getElementById('activeExamPlan').hidden")
+        else:
+            browser.wait_for("document.getElementById('activeExamPlan').textContent.includes("+json.dumps(label)+")")
+            assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan a')].filter(a=>a.pathname==="+json.dumps(path)+").map(a=>a.textContent)") == ['View plan']
+    check('ready','Ready to study')
+    browser.navigate(base+'/quizzes/'+html);browser.wait_for('quizRecoveryReady');browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    for n in range(4):
+        browser.click("#choices .choice[data-index='0']");browser.wait_for('studyLearningEventSaves.size===0')
+        if n<3: browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
+    check('future_reviews','Today’s questions have saved answers; reviews come later')
+    browser.navigate(base+path)
+    assert browser.evaluate("document.getElementById('planEstimate').textContent.includes('10.0 estimated minutes')")
+    cases=[('allowance_used',{'minutes':10},'Today’s estimated allowance is used'),
+           ('non_study_day',{'weekdays':[(today.weekday()+1)%7]},'Today is not a selected study day'),
+           ('paused',{'paused':True},'Suggestions are paused'),
+           ('excluded',{'excluded':['uncategorized']},'No study material is included'),
+           ('partial_exclusion',{'folders':['uncategorized','extra'],'excluded':['uncategorized']},'Ready to study'),
+           ('no_material',{'folders':['Deleted folder']},'Choose study material'),
+           ('exam_today',{'exam_date':today.isoformat()},'Exam is today'),
+           ('exam_passed',{'exam_date':(today-timedelta(days=1)).isoformat()},'Exam date has passed')]
+    for code,changes,label in cases:
+        fixture(**changes)
+        check(code,label)
+        if code=='excluded':
+            browser.navigate(base+path)
+            assert not browser.evaluate("document.body.textContent.includes('Known work fits')")
+            browser.navigate(base+path+'/edit')
+            browser.wait_for("document.getElementById('planFolderWarning').textContent.includes('All selected folders are excluded')")
+            browser.click('#previewPlan')
+            browser.wait_for("document.getElementById('planPreview').textContent.includes('4 questions are excluded')")
+            if output and theme=='light':
+                from tests.browser._help_screenshots import capture_control
+                capture_control(browser,Path(output)/'exam-plan-excluded.webp','#planMaterial')
+    fixture()
+    artifact=root/'quizzes'/html; moved=artifact.with_suffix('.unavailable-fixture')
+    artifact.rename(moved)
+    try: check('unavailable','Included material is unavailable')
+    finally: moved.rename(artifact)
+    fixture(visible=False)
+    check('hidden','Today’s questions have saved answers; reviews come later')
+    fixture()
+    second=create('Second certification',False)
+    with sqlite3.connect(root/'results.db') as conn:
+        assert conn.execute('SELECT active_plan_id FROM exam_plan_state').fetchone()[0]==pid
+    browser.click('#planPlacement summary')
+    assert browser.evaluate("document.getElementById('planPlacement').textContent.includes('CISM — four questions')")
+    browser.click('button[value=activate]');browser.wait_for("document.querySelector('#planSummary').textContent.includes('On dashboard')")
+    browser.navigate(base+path+'/edit')
+    assert not browser.evaluate("document.querySelector('[name=use_dashboard]').checked")
+    browser.click('#examPlanForm button[type=submit]');browser.wait_for('location.pathname==='+json.dumps(path))
+    with sqlite3.connect(root/'results.db') as conn:
+        assert conn.execute('SELECT active_plan_id FROM exam_plan_state').fetchone()[0]==second.rsplit('/',1)[-1]
+    browser.navigate(base+'/exam-plans')
+    assert browser.evaluate("document.querySelectorAll('.plan-list-card a').length") == 2

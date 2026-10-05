@@ -17,3 +17,10 @@
 
 .exam-plans button {color: var(--semantic-secondary-control-text);}
 .exam-plans .dashboard-panel {background: var(--semantic-section-surface); color: var(--page-text);}
+.plan-statuses {display: flex; flex-wrap: wrap; gap: .6rem; margin-block: .8rem;}
+.plan-badge {border: 1px solid var(--semantic-secondary-control-border); border-radius: .4rem; padding: .3rem .6rem; font-weight: 600;}
+.exam-plans .plan-primary {display: inline-block; font: inherit; font-weight: 700; padding: .75rem 1rem; border: 2px solid var(--theme-accent); border-radius: .4rem; color: var(--semantic-secondary-control-text); background: var(--semantic-secondary-control-surface); text-decoration: none;}
+#planWork {border-inline-start: 4px solid var(--theme-accent);}
+#planWork h3 {margin-top: .5rem;}
+#planEvidence .plan-grid p {margin-block: .5rem;}
+.exam-plans [hidden] {display: none;}

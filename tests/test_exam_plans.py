@@ -36,7 +36,8 @@ class ExamPlanTests(unittest.TestCase):
             config = self.config(**changes)
             preview = plans.summary(conn.cursor(), dict(config=config, revision=0, snapshot={}), **opts)
             return plans.save(conn, config, generation=plans.state(conn.cursor())['generation'],
-                              known_folders=['uncategorized'], snapshot=preview['snapshot'], active=True)
+                              known_folders=['uncategorized'], snapshot=preview['snapshot'], active=True,
+                              expected_dashboard=plans.dashboard_selection(conn.cursor()))
 
     def report(self, pid, now=None):
         with dlms.get_db() as conn:
@@ -339,7 +340,7 @@ class ExamPlanTests(unittest.TestCase):
         with dlms.get_db() as conn:
             generation=plans.state(conn.cursor())['generation']
             self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
-            plans.control(conn,first,'activate',1,generation)
+            plans.control(conn,first,'activate',1,generation,expected_dashboard=plans.dashboard_selection(conn.cursor()))
             plans.control(conn,first,'visibility',2,generation)
             plans.control(conn,first,'pause',3,generation)
             self.assertEqual(plans.state(conn.cursor())['active_plan_id'],first)
@@ -347,7 +348,7 @@ class ExamPlanTests(unittest.TestCase):
             self.assertFalse(plans.get(conn.cursor(),second)['config']['paused'])
             config=plans.get(conn.cursor(),first)['config']
             plans.save(conn,config,plan_id=first,revision=4,generation=generation,active=False,known_folders=['uncategorized'])
-            self.assertIsNone(plans.state(conn.cursor())['active_plan_id'])
+            self.assertEqual(plans.state(conn.cursor())['active_plan_id'],first)
 
     def test_unavailable_pack_and_unsupported_question_are_not_published(self):
         pid=self.create()
@@ -636,3 +637,152 @@ class ExamPlanTests(unittest.TestCase):
         deleted = self.report(pid)
         self.assertEqual(deleted['stats']['total'],0)
         self.assertTrue(deleted['changes']['removed'])
+
+    def form_values(self, pid=None, **changes):
+        with dlms.get_db() as conn:
+            plan = plans.get(conn.cursor(),pid) if pid else None
+            config = dict(plan['config']) if plan else self.config()
+            data = {**config, 'generation':plans.state(conn.cursor())['generation'],
+                    'revision':plan['revision'] if plan else 0,'dashboard_token':plans.dashboard_selection(conn.cursor())}
+        data.pop('visible',None)
+        if data.pop('paused'): data['paused']='on'
+        data.update(changes)
+        return data
+
+    def test_dashboard_choice_is_positive_atomic_and_preserves_pause(self):
+        first = self.create(); second = self.create(name='Second',paused=True)
+        with dlms.get_db() as conn:
+            generation=plans.state(conn.cursor())['generation']
+            plans.control(conn,second,'hide',1,generation)
+        ordinary=self.form_values(second,name='Second edited')
+        self.assertEqual(self.client.post(f'/exam-plans/{second}/edit',data=ordinary,headers=self.headers).status_code,302)
+        with dlms.get_db() as conn:
+            self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
+            self.assertFalse(plans.get(conn.cursor(),second)['config']['visible'])
+            self.assertTrue(plans.get(conn.cursor(),second)['config']['paused'])
+        stale=self.form_values(first,use_dashboard='on')
+        show=self.form_values(second,use_dashboard='on')
+        self.assertEqual(self.client.post(f'/exam-plans/{second}/edit',data=show,headers=self.headers).status_code,302)
+        self.assertEqual(self.client.post(f'/exam-plans/{first}/edit',data=stale,headers=self.headers).status_code,409)
+        with dlms.get_db() as conn:
+            self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
+            self.assertTrue(plans.get(conn.cursor(),second)['config']['visible'])
+            self.assertTrue(plans.get(conn.cursor(),second)['config']['paused'])
+        # An unchecked new plan does not replace it; nor does editing another plan.
+        self.assertEqual(self.client.post('/exam-plans/new',data=self.form_values(name='Unselected'),headers=self.headers).status_code,302)
+        self.assertEqual(self.client.post(f'/exam-plans/{first}/edit',data=self.form_values(first,name='First edited'),headers=self.headers).status_code,302)
+        dlms.bootstrap_database(dlms.DB_PATH)
+        with dlms.get_db() as conn:
+            self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
+            self.assertEqual(conn.execute('SELECT count(*) FROM exam_plans').fetchone()[0],3)
+        html=self.client.get('/exam-plans/'+second).get_data(as_text=True)
+        self.assertIn('On dashboard',html)
+        self.assertNotIn('value="activate"',html)
+        self.assertNotIn('name="visible"',self.client.get('/exam-plans/'+second+'/edit').get_data(as_text=True))
+
+    def test_concurrent_dashboard_switches_and_aba_conflict(self):
+        first=self.create(); second=self.create(name='Second'); third=self.create(name='Third')
+        with dlms.get_db() as conn:
+            token=plans.dashboard_selection(conn.cursor()); generation=plans.state(conn.cursor())['generation']
+        barrier=threading.Barrier(2)
+        def choose(pid):
+            client=dlms.app.test_client(); headers=csrf_headers(client); barrier.wait(timeout=5)
+            return client.post(f'/exam-plans/{pid}/action',data=dict(action='activate',revision=1,generation=generation,dashboard_token=token),headers=headers).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            result=list(pool.map(choose,(first,second)))
+        self.assertEqual(sorted(result),[302,409])
+        with dlms.get_db() as conn:
+            active=plans.state(conn.cursor())['active_plan_id']
+            original=plans.dashboard_selection(conn.cursor())
+            revision=plans.get(conn.cursor(),active)['revision']
+            plans.control(conn,third,'activate',1,generation,expected_dashboard=original)
+            plans.control(conn,active,'activate',revision,generation,expected_dashboard=plans.dashboard_selection(conn.cursor()))
+            with self.assertRaises(plans.PlanConflict):
+                plans.control(conn,third,'activate',2,generation,expected_dashboard=original)
+            conn.rollback()
+            self.assertEqual(plans.state(conn.cursor())['active_plan_id'],active)
+
+    def test_four_future_reviews_are_workload_not_an_exhausted_allowance(self):
+        other,_=self.publish(title='Three more',questions=[{**self.choice(),'number':n,'question':f'Future {n}'} for n in range(1,4)],kind=None)
+        self.study_questions(self.quiz_id,count=1,prefix='future-one')
+        self.study_questions(other,count=3,prefix='future-three')
+        pid=self.create()
+        result=self.report(pid,datetime(2026,10,16,18,tzinfo=timezone.utc))
+        self.assertEqual((result['outstanding'],result['workload'],result['remaining_slots']),(4,10,8))
+        self.assertEqual(result['selected'],[])
+        self.assertEqual(result['work_state']['code'],'future_reviews')
+        self.assertEqual(result['work_state']['next_review_date'],'2026-10-17')
+        self.assertEqual(result['work_state']['next_study_date'],'2026-10-19')
+
+    def test_next_study_date_does_not_wait_for_a_later_review_interval(self):
+        self.study_questions(self.quiz_id,count=1,stamp='2026-10-14T15:00:00+00:00',prefix='interval-first')
+        self.study_questions(self.quiz_id,count=1,prefix='interval-second')
+        pid=self.create(weekdays=list(range(7)))
+        result=self.report(pid,datetime(2026,10,16,18,tzinfo=timezone.utc))
+        self.assertEqual(result['work_state']['code'],'future_reviews')
+        self.assertEqual(result['work_state']['next_review_date'],'2026-10-19')
+        self.assertEqual(result['work_state']['next_study_date'],'2026-10-17')
+
+    def test_work_state_precedence_empty_excluded_unavailable_and_calendar(self):
+        extra=[{**self.choice(),'number':n,'question':f'Excluded {n}'} for n in range(1,139)]
+        self.publish(title='Excluded bank',questions=extra,kind=None)
+        pid=self.create()
+        now=datetime(2026,10,16,18,tzinfo=timezone.utc)
+        with dlms.get_db() as conn:
+            opts=dlms._exam_plan_options(conn.cursor()); plan=plans.get(conn.cursor(),pid)
+            all_excluded=plans.summary(conn.cursor(),plan,**{**opts,'excluded':['uncategorized']},now=now)
+            self.assertEqual(all_excluded['work_state']['code'],'excluded')
+            self.assertIn('139 questions',all_excluded['work_state']['reason'])
+            self.assertFalse(all_excluded['estimate_available'])
+            self.assertNotIn('Known work fits',all_excluded['fit'])
+            cases=[({'folders':['gone']},'no_material'),({'exam_date':'2026-10-16','paused':True},'exam_today'),
+                   ({'exam_date':'2026-10-15'},'exam_passed'),({'paused':True},'paused'),
+                   ({'weekdays':[1]},'non_study_day'),({'weekdays':[1],'exam_date':'2026-10-17'},'no_dates'),
+                   ({'minutes':1},'budget_too_small'),({},'ready')]
+            for changes,code in cases:
+                with self.subTest(code=code):
+                    changed={**plan,'config':{**plan['config'],**changes}}
+                    result=plans.summary(conn.cursor(),changed,**opts,now=now)
+                    self.assertEqual(result['work_state']['code'],code)
+            unavailable=plans.summary(conn.cursor(),plan,**{**opts,'media_available':lambda value:False},now=now)
+            self.assertEqual(unavailable['work_state']['code'],'unavailable')
+            self.assertFalse(unavailable['work_state']['optional_practice'])
+        with mock.patch.object(dlms,'get_excluded_learning_folders',return_value=['uncategorized']):
+            html=self.client.get('/exam-plans/'+pid).get_data(as_text=True)
+            self.assertIn('139 questions are excluded',html)
+            self.assertNotIn('Known work fits',html)
+            self.assertNotIn('data-practice="suggested"',html)
+            self.assertNotIn('id="other-practice"',html)
+
+    def test_panel_notice_and_failed_selection_preserve_settings(self):
+        pid=self.create()
+        cfg=dlms.load_portal_config(); cfg['dashboard_card_visibility']['daily_review']=False
+        dlms._write_settings_portal_config(cfg)
+        html=self.client.get('/exam-plans/'+pid).get_data(as_text=True)
+        self.assertIn('/settings/layout#dashboard-panels',html)
+        self.assertNotIn('value="acknowledge"',html)
+        values=self.form_values(name='Must not switch',use_dashboard='on')
+        with dlms.get_db() as conn:
+            conn.execute("CREATE TRIGGER fail_dashboard BEFORE UPDATE ON exam_plan_state BEGIN SELECT RAISE(ABORT,'fixture failure'); END")
+        response=self.client.post('/exam-plans/new',data=values,headers=self.headers)
+        self.assertEqual(response.status_code,503)
+        with dlms.get_db() as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM exam_plans').fetchone()[0],1)
+            self.assertEqual(plans.state(conn.cursor())['active_plan_id'],pid)
+        self.assertEqual(dlms.load_portal_config(),cfg)
+
+    def test_dashboard_token_describes_the_displayed_selection(self):
+        first=self.create()
+        with dlms.get_db() as conn:
+            shown_state=plans.state(conn.cursor())
+            shown_plan=plans.get(conn.cursor(),first)
+            original=plans.dashboard_selection(conn.cursor())
+        second=self.create(name='Replacement')
+        with dlms.get_db() as conn:
+            rendered=plans.dashboard_selection(conn.cursor(),saved=shown_state,selected=shown_plan)
+            self.assertEqual(rendered,original)
+            self.assertNotEqual(rendered,plans.dashboard_selection(conn.cursor()))
+            with self.assertRaises(plans.PlanConflict):
+                plans.control(conn,first,'activate',1,shown_state['generation'],expected_dashboard=rendered)
+            conn.rollback()
+            self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)

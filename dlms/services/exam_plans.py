@@ -66,6 +66,20 @@ def state(cur):
     return dict(cur.execute('SELECT * FROM exam_plan_state WHERE id=1').fetchone())
 
 
+def dashboard_selection(cur, *, saved=None, selected=None):
+    """Bind the token to the selection actually displayed, without a migration."""
+    if saved is None:
+        saved = state(cur)
+        selected = cur.execute('SELECT revision FROM exam_plans WHERE id=?', (saved['active_plan_id'],)).fetchone()
+    return digest(dict(generation=saved['generation'], active=saved['active_plan_id'],
+                       revision=selected['revision'] if selected else None))
+
+
+def require_dashboard_selection(cur, expected):
+    if expected != dashboard_selection(cur):
+        raise PlanConflict('The dashboard plan changed in another tab. Reload and check which plan you would replace.')
+
+
 def read_plan(row):
     if row is None:
         raise PlanConflict('This plan no longer exists. Return to Exam Plans.')
@@ -97,13 +111,19 @@ def require_version(cur, plan_id, revision, generation):
     return plan
 
 
-def save(conn, data, *, plan_id=None, revision=None, generation, active=False, known_folders=(), snapshot=None):
+def save(conn, data, *, plan_id=None, revision=None, generation, active=False, known_folders=(), snapshot=None, expected_dashboard=None):
     config = validate(data)
     conn.execute('BEGIN IMMEDIATE')
     cur = conn.cursor()
     if generation != state(cur)['generation']:
         raise PlanConflict('Data was restored. Reload before saving.')
     old = require_version(cur, plan_id, revision, generation) if plan_id else None
+    if active:
+        require_dashboard_selection(cur, expected_dashboard)
+        config['visible'] = True
+    elif old:
+        # Ordinary editing never changes visibility or the shared selection.
+        config['visible'] = old.get('config', {}).get('visible', True)
     old_keys = set(old.get('config', {}).get('folders', [])) if old else set()
     if set(config['folders']) - set(known_folders) - old_keys:
         raise ValueError('A selected folder is no longer available. Review the folder choices.')
@@ -115,25 +135,29 @@ def save(conn, data, *, plan_id=None, revision=None, generation, active=False, k
         conn.execute('INSERT INTO exam_plans(id,config_json,scope_json,created_at,updated_at) VALUES(?,?,?,?,?)', (plan_id, study.encode(config), study.encode(snapshot or {}), now, now))
     if active:
         conn.execute('UPDATE exam_plan_state SET active_plan_id=? WHERE id=1', (plan_id,))
-    elif old:
-        conn.execute('UPDATE exam_plan_state SET active_plan_id=NULL WHERE id=1 AND active_plan_id=?', (plan_id,))
     conn.commit()
     return plan_id
 
 
-def control(conn, plan_id, action, revision, generation, *, snapshot=None):
+def control(conn, plan_id, action, revision, generation, *, snapshot=None, expected_dashboard=None):
     conn.execute('BEGIN IMMEDIATE')
     plan = require_version(conn.cursor(), plan_id, revision, generation)
     if action == 'delete':
         conn.execute('DELETE FROM exam_plans WHERE id=?', (plan_id,))
     elif action == 'activate':
+        require_dashboard_selection(conn.cursor(), expected_dashboard)
+        config = plan['config']
+        config['visible'] = True
+        conn.execute('UPDATE exam_plans SET config_json=? WHERE id=?', (study.encode(config), plan_id))
         conn.execute('UPDATE exam_plan_state SET active_plan_id=? WHERE id=1', (plan_id,))
     elif action == 'acknowledge':
         conn.execute('UPDATE exam_plans SET scope_json=? WHERE id=?', (study.encode(snapshot), plan_id))
-    elif action in {'pause', 'visibility'} and 'config' in plan:
+    elif action in {'pause', 'hide', 'visibility'} and 'config' in plan:
         config = plan['config']
         key = 'paused' if action == 'pause' else 'visible'
-        config[key] = not config[key]
+        if action == 'visibility' and not config['visible']:
+            raise PlanConflict('Use this plan on your dashboard to show it. Reload the plan for the current controls.')
+        config[key] = not config[key] if action == 'pause' else False
         conn.execute('UPDATE exam_plans SET config_json=? WHERE id=?', (study.encode(config), plan_id))
     else:
         raise ValueError('Unknown plan action.')
@@ -151,6 +175,98 @@ def calendar(config, now):
     days = weeks * len(config['weekdays']) + sum((today.weekday()+n) % 7 in config['weekdays'] for n in range(remainder))
     return dict(today=today.isoformat(), days=days, study_today=today.weekday() in config['weekdays'] and today < exam,
                 potential_minutes=days*config['minutes'], date_state='passed' if exam < today else 'today' if exam == today else 'future')
+
+
+def next_study_date(config, start):
+    """Calendar date only; never convert this value as a UTC instant."""
+    exam = date.fromisoformat(config['exam_date'])
+    for offset in range(7):
+        day = start + timedelta(days=offset)
+        if day >= exam:
+            break
+        if day.weekday() in config['weekdays']:
+            return day.isoformat()
+    return None
+
+
+def work_state(report, *, schedules, eligible_ids, today_ids, now):
+    """Explain the existing selection. This function never selects or schedules work."""
+    config, cal, stats = report['plan']['config'], report['calendar'], report['stats']
+    base = '/exam-plans/' + report['plan']['id'] if report['plan'].get('id') else '/exam-plans/new'
+    edit = base + '/edit' if report['plan'].get('id') else base
+    zone = ZoneInfo(config['calendar_timezone'])
+    dates = []
+    for item in schedules:
+        stamp = learning._parse_learning_datetime(item['next_review'])
+        if stamp and stamp > now and set(item['source_question_ids']) & eligible_ids:
+            dates.append(stamp.astimezone(zone).date())
+    review_date = min(dates) if dates else None
+    tomorrow = date.fromisoformat(cal['today']) + timedelta(days=1)
+    next_day = next_study_date(config, tomorrow)
+    if stats['total'] == 0:
+        code, label = 'no_material', 'Choose study material'
+        reason = ('The selected folders are missing. Remap them explicitly.' if report['missing_folders'] else
+                  'No source questions are in the selected folders. Choose folders containing regular quizzes.')
+        action, url = 'Edit study material', edit
+    elif stats['blocked'] == stats['total']:
+        code, label = 'excluded', 'No study material is included'
+        reason = f"No study material is included: {stats['blocked']} questions are excluded by Learning Scope. Exclusions have not been changed."
+        action, url = 'Review Learning Scope', '/learning-scope'
+    elif not eligible_ids:
+        code, label = 'unavailable', 'Included material is unavailable'
+        reason = f"{stats['unavailable']} included questions cannot be used. Check missing quiz files, required content packs or unsupported question types."
+        action, url = 'Review study material', edit
+    elif cal['date_state'] != 'future':
+        code, label = 'exam_' + cal['date_state'], 'Exam is today' if cal['date_state'] == 'today' else 'Exam date has passed'
+        reason = 'Pre-exam study time ends the day before the exam. Change the date only if your exam has changed; optional practice remains available.'
+        action, url = 'Edit exam date', edit
+    elif config['paused']:
+        code, label = 'paused', 'Suggestions are paused'
+        reason = 'Resume suggestions when you are ready. Showing this plan on the dashboard does not unpause it.'
+        action, url = None, None
+    elif not cal['days']:
+        code, label = 'no_dates', 'No study dates remain before the exam'
+        reason = 'Your selected weekdays leave no pre-exam study dates. Review availability; the exam date will not move automatically.'
+        action, url = 'Edit study availability', edit
+    elif not cal['study_today']:
+        code, label = 'non_study_day', 'Today is not a selected study day'
+        reason = 'Suggestions follow the weekdays in your saved plan calendar. Optional practice is available today.'
+        action, url = None, None
+    elif report['slots'] == 0:
+        code, label = 'budget_too_small', 'One question exceeds the daily estimate'
+        reason = 'The expected pace plus review allowance does not fit one question in your daily minutes. Review those assumptions or choose optional practice.'
+        action, url = 'Edit pace and availability', edit
+    elif report['remaining_slots'] == 0:
+        code, label = 'allowance_used', 'Today’s estimated allowance is used'
+        reason = f"{stats['today']} distinct questions answered today use the estimated allowance. Extra practice does not consume future days’ time."
+        action, url = None, None
+    elif report['selected']:
+        code, label = 'ready', 'Ready to study'
+        reason = 'Coverage needs come first, followed by ranked mistakes, due reviews and other practice within today’s allowance.'
+        action, url = None, None
+    elif review_date and not report['due'] and not (eligible_ids - today_ids):
+        code, label = 'future_reviews', 'Today’s questions have saved answers; reviews come later'
+        reason = 'All included, available questions have a saved response today. Remaining estimated work includes future reviews; those reviews are not due yet.'
+        action, url = None, None
+    else:
+        code, label = 'reviewed_today', 'Today’s included questions have saved answers'
+        reason = 'No additional distinct questions remain in today’s selection. This is reviewed coverage, not mastery. You can choose optional practice.'
+        action, url = None, None
+    warnings = []
+    if stats['blocked'] and code != 'excluded':
+        warnings.append(f"{stats['blocked']} questions are excluded by Learning Scope.")
+    if stats['unavailable'] and code != 'unavailable':
+        warnings.append(f"{stats['unavailable']} included questions are unavailable.")
+    if config['paused'] and code != 'paused':
+        warnings.append('Suggestions are also paused.')
+    if cal['date_state'] != 'future' and not code.startswith('exam_'):
+        warnings.append('No pre-exam study time remains: the exam is today.' if cal['date_state']=='today' else 'No pre-exam study time remains: the exam date has passed.')
+    if code == 'reviewed_today' and report['due']:
+        warnings.append(f"{len(report['due'])} questions remain due in the existing review schedule. A correction today does not automatically advance an interval.")
+    return dict(code=code, label=label, reason=reason, action_label=action, action_url=url,
+                next_study_date=next_day if eligible_ids and cal['date_state']=='future' else None,
+                next_review_date=review_date.isoformat() if review_date else None,
+                optional_practice=bool(eligible_ids), warnings=warnings)
 
 
 def valid_link(entry, *, data_folder, quiz_folder, artifact_names):
@@ -265,7 +381,7 @@ def coverage(cur, members, revisions, now):
                 first_mistake=len(first_mistake), corrected=len(corrected)), reviewed, before, contiguous
 
 
-def summary(cur, plan, *, registry, folders, excluded, data_folder, quiz_folder, artifact_names, media_available=lambda value: True, now=None):
+def summary(cur, plan, *, registry, folders, excluded, data_folder, quiz_folder, artifact_names, media_available=lambda value: True, dashboard_panel_visible=True, now=None):
     if plan.get('error'):
         raise ValueError(plan['error'])
     now = now or datetime.now(timezone.utc)
@@ -386,13 +502,19 @@ def summary(cur, plan, *, registry, folders, excluded, data_folder, quiz_folder,
            'Known work fits the current estimate range; future work can add to it.')
     stats.update(total=len(members), eligible=len(eligible), blocked=blocked, unavailable=len(unavailable), independent=len(independent), fresh=len(needs & reviewed), today=len(today & ids))
     fingerprint = digest(dict(members=members, excluded=sorted(excluded), generation=state(cur)['generation'], revision=plan['revision']))
-    return dict(plan=plan, calendar=cal, stats=stats, changes=changes, missing_folders=sorted(set(config['folders'])-known),
+    result = dict(plan=plan, calendar=cal, stats=stats, changes=changes, missing_folders=sorted(set(config['folders'])-known),
                 snapshot=members, fingerprint=fingerprint, generation=state(cur)['generation'], quizzes=list(quizzes.values()),
                 candidates=eligible, missed=sorted(missed & ids), due=sorted(due & ids), selected=selected,
                 target=target, slots=slots, remaining_slots=remaining_slots if automatic else 0,
                 fit=fit, outstanding=len(outstanding), workload=round(workload,1), low=round(len(outstanding)*config['pace_low']*factor,1),
                 high=round(len(outstanding)*config['pace_high']*factor,1), capacity=round(capacity,1), shortfall=round(max(0,workload-capacity),1),
                 coverage_shortfall=max(0,len(needs)*config['pace']*factor-capacity), estimated_batch=round(len(selected)*config['pace']*factor,1))
+    result['estimate_available'] = bool(ids)
+    if not ids:
+        result['fit'] = 'A useful workload estimate needs included, available study material.'
+    result['dashboard_panel_visible'] = dashboard_panel_visible
+    result['work_state'] = work_state(result, schedules=schedules, eligible_ids=ids, today_ids=today, now=now)
+    return result
 
 
 def validate_request_id(token):

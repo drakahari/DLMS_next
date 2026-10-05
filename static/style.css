@@ -2256,6 +2256,7 @@ body.dashboard-home {
 .daily-review-intro{margin:0 0 14px;color:var(--theme-muted-text,#b8c2cc);line-height:1.5;}
 .daily-review-list{display:grid;gap:10px;}
 .daily-review-list[hidden]{display:none;}
+#activeExamPlan h4{margin:.5rem 0;}
 .daily-review-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:13px;align-items:center;padding:14px;border:1px solid var(--theme-border-soft,rgba(98,155,255,.24));border-radius:12px;background:var(--theme-surface,rgba(5,18,39,.58));}
 .daily-review-rank{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:color-mix(in srgb,var(--theme-accent,#1b9ff2) 18%,var(--theme-surface-2));color:var(--theme-heading,#fff);font-weight:800;}
 .daily-review-copy{min-width:0;}

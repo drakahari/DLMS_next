@@ -5262,7 +5262,7 @@ def _daily_review_plan(cur, now=None):
         if saved_plan.get("config", {}).get("visible"):
             try:
                 plan_report = _exam_plans.summary(cur, saved_plan, **_exam_plan_options(cur), now=now)
-                plan["exam_plan"] = {key: plan_report[key] for key in ("plan", "calendar", "stats", "target", "remaining_slots", "shortfall", "estimated_batch", "changes", "missing_folders")}
+                plan["exam_plan"] = {key: plan_report[key] for key in ("plan", "calendar", "stats", "target", "remaining_slots", "shortfall", "estimated_batch", "changes", "missing_folders", "work_state", "estimate_available", "fingerprint", "generation")}
                 plan["exam_plan"]["selected_count"] = len(plan_report["selected"])
                 if not saved_plan["config"]["paused"]:
                     plan["items"] = []
@@ -6168,7 +6168,8 @@ def _exam_plan_options(cur):
         excluded = get_excluded_learning_folders()
         catalog = _learning_scope_service.learning_scope_summary(cur, registry, folders, excluded, get_hidden_quiz_folders(folders))
     packs = {}
-    return dict(media_available=lambda value: _exam_plan_media_available(value, packs), registry=registry, folders=catalog["folders"], excluded=[_quiz_mutation_service.quiz_folder_identity_key(f) for f in excluded],
+    return dict(dashboard_panel_visible=load_portal_config().get('dashboard_card_visibility', {}).get('daily_review', True),
+                media_available=lambda value: _exam_plan_media_available(value, packs), registry=registry, folders=catalog["folders"], excluded=[_quiz_mutation_service.quiz_folder_identity_key(f) for f in excluded],
                 data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names)
 
 

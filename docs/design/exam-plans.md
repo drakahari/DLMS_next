@@ -83,3 +83,36 @@ Exam October 20: 2 dates, target 40, 12 slots, 140-minute base shortfall.
 After 5 distinct first-pass responses today: remaining targets 9/35 and 7 slots.
 Generating or refreshing alone changes none of these credits. Autumn's repeated
 hour is one calendar date; repeated answers to the same source consume one slot.
+
+## Usability and selection contract
+
+Use this plan on my dashboard is an explicit positive action: one transaction
+makes the plan selected and visible, preserving pause. Unchecked on create saves
+an unselected plan. Unchecked on edit leaves the existing selection and visibility
+unchanged. Hide changes only visibility; pause changes only recommendations.
+Ordinary saves cannot implicitly hide or steal the dashboard selection. Old forms
+with the former active/visible controls are rejected with reload guidance.
+
+A compare token combines restore generation, current selected ID and that plan's
+revision. Selection checks it under BEGIN IMMEDIATE as well as the target revision;
+concurrent switches and A→B→A changes cannot silently overwrite the reviewed choice.
+No schema or backup format change is needed. All old active/visible/paused values
+remain readable. The Today’s Review visibility preference is never overridden.
+
+One work-state explanation is shared by detail, list, preview and dashboard.
+Precedence: no material / fully excluded / unavailable, exam today or past, pause,
+no remaining study dates, non-study day, pace cannot fit one question, allowance
+used, ready work, future reviews after today's answers, other material answered
+today. Additional restrictions remain warnings. Explanation code never selects
+questions or changes native intervals. Future reviews remain in workload estimates;
+after all four included questions have responses today, four future reviews can
+mean ten estimated minutes of outstanding work and zero new suggestions, even
+with eight daily slots unused. Dates use the saved plan calendar, not the browser
+zone. Unknown review dates are not invented.
+
+The dashboard has one View plan link. Its optional primary button starts practice
+through the existing retry-safe publisher, or links to distinct setup/settings.
+Detailed evidence and estimate assumptions remain available through disclosures.
+Empty/excluded/unavailable plans show an unavailable workload estimate, not a
+reassuring zero-work fit claim. This is presentation; the underlying budget,
+evidence, completion, source lineage, scope and reset contracts are unchanged.

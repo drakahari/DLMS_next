@@ -94,16 +94,24 @@ Firefox form and a synthetic CISM plan. Refresh them with:
 DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
 DLMS_EXAM_PLAN_CAPTURE_DIR=/tmp/dlms-exam-plan-refresh \
 .venv/bin/python -m pytest -q -p no:cacheprovider \
-tests/browser/test_critical_workflows.py -k test_exam_plan_setup
+tests/browser/test_critical_workflows.py -k "exam_plan_setup or exam_plan_no_work"
 ```
 
 `test_exam_plan_setup_dashboard_practice_and_help` creates the plan through the
 actual form; `capture_control` crops DOM bounds from unmodified screenshots.
 The setup/availability crops use a 390px viewport. The dashboard crop also uses
 390px. The same test checks light, dark and Ethereal at desktop/narrow widths
-and can save whole-page detail screenshots for review. Only the three WebP
+and can save whole-page detail screenshots for review. Only the five WebP
 instructional crops belong in `static/help_assets`; full-page QA captures stay
 outside the repository. After inspecting new crops, copy those WebP files and
 update their width/height attributes in `static/help-learning-intelligence.html`.
 The exact sample date advances with the capture date; Help's arithmetic example
 is explicitly hypothetical. No personal plans or running app are used.
+
+Usability refresh: baseline HEAD `b9763a05cdba94cae03a42b8215c3520f20ef4a7`
+plus this working-tree revision. `exam-plan-selection.webp` crops the form's
+`#planDashboardChoice`; `exam-plan-excluded.webp` crops `#planMaterial` with an
+isolated excluded folder. The state test also captures complete ready, future,
+allowance-used, paused, missing/excluded/unavailable and exam-date states. Keep
+those QA PNGs outside the repository. Recheck the image dimensions and Help text
+when refreshing; selecting a plan must not silently resume or override layout.
