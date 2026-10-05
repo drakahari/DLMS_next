@@ -1371,13 +1371,18 @@ def _adaptive_study_candidates(
     return candidates
 
 
-def _adaptive_study_select_candidates(candidates, requested):
+def _adaptive_study_select_candidates(candidates, requested, *, previous=()):
     """Select deterministically while spreading concepts and source quizzes."""
     requested = max(1, int(requested or 1))
     remaining = list(enumerate(candidates))
     selected = []
     concept_uses = {}
     quiz_uses = {}
+    for candidate in previous:
+        for concept_id in candidate.get("concept_ids") or []:
+            concept_uses[concept_id] = concept_uses.get(concept_id, 0) + 1
+        quiz_id = candidate.get("quiz_id")
+        quiz_uses[quiz_id] = quiz_uses.get(quiz_id, 0) + 1
     while remaining and len(selected) < requested:
         ranked = []
         for original_index, candidate in remaining:

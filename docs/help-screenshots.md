@@ -83,3 +83,27 @@ need no separate resource entry. Regression coverage checks that specification,
 HTTP image paths/types, dimensions, captions/alt text, rendered mobile sizing
 and keyboard image-viewer operation. No package build is needed for a Help-only
 refresh. Existing manual screenshot assets and application behavior are unchanged.
+
+
+## Exam Plan screenshots
+
+The Exam Plan setup, availability and dashboard images use the current isolated
+Firefox form and a synthetic CISM plan. Refresh them with:
+
+```sh
+DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
+DLMS_EXAM_PLAN_CAPTURE_DIR=/tmp/dlms-exam-plan-refresh \
+.venv/bin/python -m pytest -q -p no:cacheprovider \
+tests/browser/test_critical_workflows.py -k test_exam_plan_setup
+```
+
+`test_exam_plan_setup_dashboard_practice_and_help` creates the plan through the
+actual form; `capture_control` crops DOM bounds from unmodified screenshots.
+The setup/availability crops use a 390px viewport. The dashboard crop also uses
+390px. The same test checks light, dark and Ethereal at desktop/narrow widths
+and can save whole-page detail screenshots for review. Only the three WebP
+instructional crops belong in `static/help_assets`; full-page QA captures stay
+outside the repository. After inspecting new crops, copy those WebP files and
+update their width/height attributes in `static/help-learning-intelligence.html`.
+The exact sample date advances with the capture date; Help's arithmetic example
+is explicitly hypothetical. No personal plans or running app are used.

@@ -123,7 +123,7 @@
     if (key === 'other') return otherStudies || otherBuilder;
     if (key === 'history') return path === '/history' || path.startsWith('/review');
     if (key === 'analytics') return path === '/dashboard';
-    if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile' || path === '/review-schedule' || path === '/learning-diagnostics';
+    if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile' || path === '/review-schedule' || path === '/learning-diagnostics' || path.startsWith('/exam-plans');
     if (key === 'anki') return path === '/anki' || path.startsWith('/anki/');
     if (key === 'settings') return path === '/settings' || path.startsWith('/settings/') || path === '/admin/maintenance';
     if (key === 'content') return path === '/content-packs' || path.startsWith('/content-packs/');
@@ -189,6 +189,9 @@
     // script can replace the one-link template seed. Keep that stable DOM.
     const canonicalSeed = sidebar.querySelector(':scope > .dashboard-nav-normalized[data-navigation-seed="canonical"]');
     if (canonicalSeed) {
+      if (!canonicalSeed.querySelector('a[href="/exam-plans"]')) {
+        canonicalSeed.querySelector('a[href="/learning-profile"]')?.insertAdjacentHTML('beforebegin', sub('/exam-plans','branch','Exam Plans', false));
+      }
       applyStudyAreaVisibility(studyAreaVisibility);
       return;
     }
@@ -212,7 +215,7 @@
       primarySection('Progress & tools'),
       item('history','/history','history','History'),
       item('analytics','/dashboard','analytics','Analytics'),
-      `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','learning','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','branch','Topic Intelligence', path === '/learning-intelligence')}${sub('/learning-profile','branch','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','branch','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','branch','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
+      `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','learning','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','branch','Topic Intelligence', path === '/learning-intelligence')}${sub('/exam-plans','branch','Exam Plans', path.startsWith('/exam-plans'))}${sub('/learning-profile','branch','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','branch','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','branch','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
       `<div class="dashboard-nav-group">${item('anki','/anki','anki','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','branch','Custom Deck & Printable Cards', path === '/anki/custom')}${sub('/anki/law','branch','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
     ].join('');
 

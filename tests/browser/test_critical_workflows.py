@@ -44,11 +44,15 @@ pytestmark = [
 
 
 def _new_four_question_study_quiz(stack):
+    return _new_regular_study_quiz(stack, 4)
+
+
+def _new_regular_study_quiz(stack, count):
     browser = stack.browser
-    browser.navigate(stack.base_url + "/create_short_quiz?count=4")
-    browser.wait_for("document.querySelector('[name=question_4]') !== null && window.dlmsCsrfToken")
+    browser.navigate(stack.base_url + f"/create_short_quiz?count={count}")
+    browser.wait_for(f"document.querySelector('[name=question_{count}]') !== null && window.dlmsCsrfToken")
     browser.evaluate("""document.querySelector('[name=quiz_title]').value='Completion regression';
-      for(let n=1;n<=4;n++){
+      for(let n=1;n<=""" + str(count) + """;n++){
         document.querySelector(`[name=question_${n}]`).value=`Completion question ${n}?`;
         for(const letter of ['A','B','C','D'])document.querySelector(`[name=choice_${n}_${letter}]`).value=`Option ${letter}`;
         document.querySelector(`[name=correct_${n}_A]`).checked=true;
@@ -59,7 +63,7 @@ def _new_four_question_study_quiz(stack):
     registry = json.loads((stack.data_root / "config/quizzes.json").read_text())
     entry = next(item for item in registry if item["id"] == quiz_id)
     browser.navigate(stack.base_url + "/quizzes/" + entry["html"])
-    browser.wait_for("quizRecoveryReady && quiz.length === 4")
+    browser.wait_for(f"quizRecoveryReady && quiz.length === {count}")
     return quiz_id, entry["html"]
 
 
@@ -13508,3 +13512,221 @@ def test_unified_layout_and_complete_dashboard_presentation(browser_stack, theme
                 assert endpoint not in requests, (cards, endpoint)
         assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
         assert browser.evaluate("document.querySelector('.dashboard-action-grid') !== null") == ('library' in cards)
+
+
+@pytest.mark.parametrize('browser_stack', ('America/Los_Angeles', 'Asia/Tokyo'), indirect=True)
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
+    """Real plan forms and generated Study pages, isolated from owner data."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type':'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    browser.navigate(base + '/learning-intelligence')
+    browser.wait_for("document.querySelector('.dashboard-nav a[href=\"/exam-plans\"]') !== null")
+    browser.click('.dashboard-nav a[href="/exam-plans"]')
+    browser.wait_for("location.pathname === '/exam-plans'")
+    browser.click('a[href="/exam-plans/new"]')
+    browser.wait_for("document.getElementById('examPlanForm') !== null && window.dlmsCsrfToken")
+    assert browser.evaluate("document.querySelector('[name=calendar_timezone]').value === Intl.DateTimeFormat().resolvedOptions().timeZone")
+    exam = (datetime.now(timezone.utc).date() + timedelta(days=21)).isoformat()
+    browser.evaluate("""document.querySelector('[name=name]').value='CISM certification — sample plan';
+      document.querySelector('[name=exam_date]').value=""" + json.dumps(exam) + """;
+      document.querySelector('[name=calendar_timezone]').value='America/Chicago';
+      document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+      document.querySelectorAll('[name=folders]').forEach(n=>n.checked=true);
+      document.querySelector('[name=active]').checked=true;true""")
+    browser.click('#previewPlan')
+    browser.wait_for("document.getElementById('planPreview').textContent.includes('base shortfall')")
+    output = os.environ.get('DLMS_EXAM_PLAN_CAPTURE_DIR')
+    if output and theme == 'light':
+        # Capture a current filled form without navigation/resetting its values.
+        browser.set_viewport(390, 1000)
+        from tests.browser._help_screenshots import capture_control
+        capture_control(browser, Path(output) / 'exam-plan-setup.webp', '#planExamFields')
+        capture_control(browser, Path(output) / 'exam-plan-availability.webp', '#planAvailability')
+    browser.click('#examPlanForm button[type=submit]')
+    browser.wait_for("document.getElementById('planSummary') !== null")
+    detail_path = browser.evaluate('location.pathname')
+    assert browser.evaluate("document.querySelector('#planSummary').textContent.includes('America/Chicago')")
+    for width in (1440, 390):
+        browser.set_viewport(width, 1000)
+        browser.navigate(base + detail_path)
+        browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'), (theme,width)
+        browser.activate()
+        browser.wait_for('document.hasFocus()')
+        if width == 390:
+            browser.evaluate("document.getElementById('menuButton').focus();true")
+            browser.press_key('\ue007')
+            browser.wait_for("document.getElementById('dashboardSidebar').classList.contains('open')")
+            browser.press_key('\ue00c')
+            browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open') && document.activeElement.id==='menuButton'")
+        assert browser.evaluate("(() => {const t=document.querySelector('#planSummary time');return t.textContent===DLMSLocalTime.format(t.dataset.localInstant);})()")
+        browser.evaluate("document.querySelector('#planWhy summary').scrollIntoView({block:'center'});document.querySelector('#planWhy summary').focus();true")
+        browser.press_key('\ue007')
+        browser.wait_for("document.querySelector('#planWhy').open")
+        browser.press_key('\ue004')
+        assert browser.evaluate("document.activeElement.matches(':focus-visible')")
+        for role,value in _theme_contrast_snapshot(browser, {'body':'#planSummary p','action':'[data-practice="suggested"]','disclosure':'#planWhy summary'}, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme,width,role,value)
+        if output:
+            target = Path(output); target.mkdir(parents=True,exist_ok=True)
+            shot = browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
+            (target/f'plan-detail-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+        browser.navigate(base + '/exam-plans/new')
+        assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'), (theme,width,'form')
+    browser.navigate(base + '/')
+    browser.wait_for("document.getElementById('activeExamPlan')?.textContent.includes('CISM certification')")
+    assert browser.evaluate("document.querySelector('#activeExamPlan summary').textContent") == 'Why this?'
+    assert browser.evaluate("getComputedStyle(document.getElementById('dailyReviewList')).display === 'none'")
+    if output and theme == 'light':
+        from tests.browser._help_screenshots import capture_control
+        capture_control(browser, Path(output) / 'exam-plan-dashboard.webp', '#activeExamPlan')
+    if output:
+        for width in (1440,390):
+            browser.set_viewport(width,1000)
+            browser.navigate(base+'/')
+            browser.wait_for("document.getElementById('activeExamPlan')?.textContent.includes('CISM certification')")
+            browser.wait_for_page_ready()
+            assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'plan-dashboard-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    browser.navigate(base + detail_path)
+    browser.evaluate("document.querySelector('#other-practice').open=true;true")
+    # Simulate a lost acknowledgement after the real publication commits.
+    browser.evaluate("""window.planFetch=window.fetch.bind(window);window.planLostAck=false;
+      window.fetch=async(url,options)=>{const r=await planFetch(url,options);
+        if(String(url).endsWith('/generate')&&!planLostAck){planLostAck=true;throw Error('Lost publication acknowledgement');}
+        return r;};true""")
+    browser.click('[data-practice="focused"]')
+    browser.wait_for("!document.getElementById('retryPlanPractice').hidden")
+    assert browser.evaluate("document.getElementById('planPracticeStatus').textContent.includes('Lost publication acknowledgement')")
+    browser.click('#retryPlanPractice')
+    browser.wait_for("location.pathname.startsWith('/quizzes/') && quizRecoveryReady")
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    assert browser.evaluate('durableStudySession.purpose') == 'focused'
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM exam_plan_actions WHERE quiz_id IS NOT NULL').fetchone()[0] == 1
+    browser.navigate(base + '/help/learning-intelligence#exam-plans')
+    assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    assert browser.evaluate("document.querySelector('#exam-plans').textContent.includes('first-pass')")
+    for filename in ('exam-plan-setup.webp','exam-plan-availability.webp','exam-plan-dashboard.webp'):
+        selector = '#exam-plans a[href="/static/help_assets/' + filename + '"]'
+        browser.evaluate('document.querySelector(' + json.dumps(selector) + ').scrollIntoView({block:"center"});true')
+        browser.wait_for('document.querySelector(' + json.dumps(selector + ' img') + ').naturalWidth > 0')
+        browser.evaluate('document.querySelector(' + json.dumps(selector) + ').focus();true')
+        browser.press_key('\ue007')
+        browser.wait_for('!document.querySelector(".help-lightbox").hidden && document.querySelector(".help-lightbox-image").complete')
+        browser.press_key('\ue00c')
+        browser.wait_for('document.querySelector(".help-lightbox").hidden')
+    # Exercise actual form controls and dashboard states, not only JSON APIs.
+    browser.navigate(base + detail_path)
+    browser.click('button[value=pause]')
+    browser.wait_for("document.querySelector('#planSummary').textContent.includes('Paused')")
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#activeExamPlan')?.textContent.includes('Suggestions paused')")
+    assert not browser.evaluate("document.querySelector('#activeExamPlan').textContent.includes('Start suggested work')")
+    browser.navigate(base + detail_path)
+    browser.click('button[value=visibility]')
+    browser.wait_for("document.querySelector('#planSummary').textContent.includes('Hidden on dashboard')")
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#activeExamPlan')?.hidden === true")
+    browser.navigate(base + detail_path)
+    browser.click('button[value=visibility]')
+    browser.wait_for("!document.querySelector('#planSummary').textContent.includes('Hidden on dashboard')")
+    browser.click('button[value=pause]')
+    browser.wait_for("!document.querySelector('#planSummary').textContent.includes('Paused')")
+    # Confirm only the isolated plan is deleted; browser confirmation is explicit.
+    browser.evaluate("window.confirm=()=>true;true")
+    browser.click('button[value=delete]')
+    browser.wait_for("location.pathname==='/exam-plans' && document.body.textContent.includes('No exam plans yet')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM study_sessions').fetchone()[0] > 0
+        assert conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='adaptive_study'").fetchone()[0] == 1
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#activeExamPlan')?.hidden === true")
+    browser.navigate(base + '/settings/layout')
+    browser.wait_for("document.querySelector('[name=dashboard_card_daily_review]') !== null")
+    browser.evaluate("document.querySelector('[name=dashboard_card_daily_review]').checked=false;true")
+    browser.click('button[value=save]')
+    browser.wait_for("location.search.includes('saved=1')")
+    browser.navigate(base + '/')
+    browser.wait_for_page_ready()
+    assert browser.evaluate("document.getElementById('dailyReviewList') === null")
+    assert '/api/daily-review-plan' not in browser.evaluate("performance.getEntriesByType('resource').map(e=>new URL(e.name).pathname)")
+
+
+def test_exam_plan_fifty_question_study_workflow(browser_stack):
+    """Owner's regular Study workflow through newly built HTML and Plan UI."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base+'/settings/appearance')
+    _set_theme(browser,'light')
+    qid, html = _new_regular_study_quiz(browser_stack, 50)
+    browser.click('.study-mode-btn')
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    for number in range(50):
+        if number < 25:
+            browser.click("#choices .choice[data-index='1']")
+            browser.wait_for('studyLearningEventSaves.size === 0')
+        browser.click("#choices .choice[data-index='0']")
+        browser.wait_for('studyLearningEventSaves.size === 0')
+        if number < 49:
+            browser.click('#nextBtn')
+    session_id = browser.evaluate('learningSessionId')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT completed_at FROM study_sessions WHERE id=?',(session_id,)).fetchone()[0] is None
+        assert conn.execute('SELECT count(*) FROM study_responses WHERE session_id=?',(session_id,)).fetchone()[0] == 75
+    browser.click('#finishReviewBtn')
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
+    browser.navigate(base + '/exam-plans/new')
+    browser.wait_for('window.dlmsCsrfToken && document.getElementById("examPlanForm")')
+    exam = (datetime.now(timezone.utc).date()+timedelta(days=21)).isoformat()
+    browser.evaluate("""document.querySelector('[name=name]').value='CISM — 50-question review';
+      document.querySelector('[name=exam_date]').value="""+json.dumps(exam)+""";
+      document.querySelectorAll('[name=folders],[name=weekdays]').forEach(n=>n.checked=true);
+      document.querySelector('[name=active]').checked=true;true""")
+    browser.click('#examPlanForm button[type=submit]')
+    browser.wait_for('document.getElementById("planProgress") !== null')
+    detail_path = browser.evaluate('location.pathname')
+    def count(label):
+        return browser.evaluate("Array.from(document.querySelectorAll('#planProgress .plan-grid p')).find(n=>n.textContent.includes("+json.dumps(label)+")).querySelector('strong').textContent")
+    assert count('first-response mistake') == '25'
+    assert count('later corrected') == '25'
+    assert count('full quiz reviews finished') == '1'
+    assert count('independent Study success') == '25'
+    browser.set_viewport(390,1000)
+    browser.navigate(base+detail_path)
+    browser.wait_for_page_ready()
+    assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    output = os.environ.get('DLMS_EXAM_PLAN_CAPTURE_DIR')
+    if output:
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        (Path(output)/'plan-fifty-question-review.png').write_bytes(base64.b64decode(shot['data']))
+    browser.evaluate("document.querySelector('#other-practice').open=true;document.getElementById('practiceCount').value='10';true")
+    browser.click('[data-practice=missed]')
+    browser.wait_for("location.pathname.startsWith('/quizzes/') && quizRecoveryReady")
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    assert browser.evaluate('durableStudySession.purpose') == 'focused'
+    assert browser.evaluate('quiz.length') == 10
+    for number in range(10):
+        browser.click("#choices .choice[data-index='0']")
+        browser.wait_for('studyLearningEventSaves.size === 0')
+        if number < 9:
+            browser.click('#nextBtn')
+    browser.click('#finishReviewBtn')
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
+    browser.navigate(base+detail_path)
+    assert count('full quiz reviews finished') == '1'
+    assert count('Focused sessions finished') == '1'
+    assert count('first-response mistake') == '25'
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM questions g JOIN questions s ON g.source_question_uid=s.question_uid WHERE g.is_generated_copy=1 AND s.quiz_id=? AND s.question_number<=25',(qid,)).fetchone()[0] == 10
+    browser.navigate(base+'/')
+    browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
+    assert browser.evaluate("document.querySelector('#regularStudyContinuity a').getAttribute('href')") == '/quizzes/'+html
+    assert browser.evaluate("document.querySelector('#regularStudyContinuity').textContent.includes('50 / 50')")

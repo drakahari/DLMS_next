@@ -1,0 +1,19 @@
+.exam-plans {max-width: 1200px; min-width: 0;}
+.exam-plans .dashboard-panel {margin-block: 1rem; padding: clamp(1rem, 3vw, 1.5rem); overflow-wrap: anywhere;}
+.exam-plans p {line-height: 1.6;}
+.plan-grid {display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,230px),1fr)); gap: 1rem;}
+.exam-plans label:not(.plan-check) {display: grid; gap: .4rem; margin-block: .8rem;}
+.exam-plans input:not([type=checkbox]) {width: 100%; max-width: 30rem; min-width: 0; padding: .65rem; color: var(--page-text); background: var(--semantic-section-surface); border: 1px solid var(--semantic-secondary-control-border); border-radius: .4rem; font: inherit;}
+.exam-plans button {font: inherit; padding: .65rem .9rem; border-radius: .4rem; cursor: pointer; color: var(--page-text); background: var(--semantic-secondary-control-surface); border: 1px solid var(--semantic-secondary-control-border);}
+.exam-plans button:disabled {opacity: .65; cursor: default;}
+.exam-plans :focus-visible {outline: 3px solid var(--theme-accent); outline-offset: 3px;}
+.plan-links, .plan-weekdays {display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin-block: 1rem;}
+.plan-check {display: flex; align-items: baseline; gap: .6rem; padding: .4rem 0;}
+.plan-check input {flex-shrink: 0;}
+.exam-plans fieldset {min-width: 0; border: 1px solid var(--semantic-secondary-control-border); padding: 1rem;}
+.exam-plans details {margin-block: 1rem;}
+.exam-plans summary {cursor: pointer; padding-block: .5rem; font-weight: 600;}
+.plan-notice {border-inline-start: 4px solid var(--theme-accent); padding: .8rem;}
+
+.exam-plans button {color: var(--semantic-secondary-control-text);}
+.exam-plans .dashboard-panel {background: var(--semantic-section-surface); color: var(--page-text);}

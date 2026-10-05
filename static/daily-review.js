@@ -103,10 +103,21 @@
     const empty = document.getElementById("dailyReviewEmpty");
     const count = document.getElementById("dailyReviewCount");
     if (!list || !empty || !count) return;
+    let planCard = document.getElementById("activeExamPlan");
+    if (!planCard) {planCard = document.createElement("div"); planCard.id = "activeExamPlan"; list.before(planCard);}
+    const exam = plan.exam_plan;
+    planCard.hidden = !exam && !plan.exam_plan_error;
+    if (exam) {
+      const config = exam.plan.config, url = `/exam-plans/${encodeURIComponent(exam.plan.id)}`;
+      const suggestionState = config.paused ? "Suggestions paused; optional practice is available." : !exam.calendar.study_today ? "No automatic target today; optional practice is available." : !exam.selected_count ? "No suggested work remains within today’s estimated allowance." : "";
+      const changes = Object.values(exam.changes).some(values => values.length) || exam.missing_folders.length;
+      planCard.innerHTML = `<article class="daily-review-item"><div class="daily-review-copy"><h3>${escapeHtml(config.name)} · Exam ${escapeHtml(config.exam_date)}</h3><p>${exam.stats.reviewed} / ${exam.stats.total} questions reviewed · ${exam.calendar.days} study dates left${config.paused ? " · Paused" : ""}</p><p>${exam.selected_count} suggested questions · approximately ${exam.estimated_batch} minutes</p>${suggestionState ? `<p>${suggestionState}</p>` : ""}<details><summary>Why this?</summary><p>${exam.stats.today} distinct questions answered today reduce the budget. First-pass/fresh-evidence target: ${exam.target}; remaining capacity goes to unique mistakes and due reviews. Calendar: ${escapeHtml(config.calendar_timezone)}. Base shortfall: ${exam.shortfall} estimated minutes.${changes ? " Scope changed; inspect Plan details." : ""} Estimates are uncertain.</p></details><div class="daily-review-item-action"><a class="daily-review-action" href="${url}#planWork">${exam.selected_count ? "Start suggested work" : "Review plan options"}</a><a href="${url}#other-practice">Other practice</a><a href="${url}">Plan details</a></div></div></article>`;
+    } else if (plan.exam_plan_error) {planCard.textContent = plan.exam_plan_error;}
     const items = plan.items || [];
-    count.textContent = `${items.length} action${items.length === 1 ? "" : "s"}`;
+    count.textContent = exam ? `${exam.selected_count} plan questions${items.length ? ` · ${items.length} other actions` : ""}` : `${items.length} action${items.length === 1 ? "" : "s"}`;
     list.hidden = items.length === 0;
-    empty.hidden = items.length !== 0;
+    empty.hidden = items.length !== 0 || Boolean(exam);
+    if (!items.length && exam) return;
     if (!items.length) {
       const state = plan.empty_state || {};
       empty.innerHTML = `<strong>${escapeHtml(state.title || "Nothing needs immediate attention")}</strong><span>${escapeHtml(state.detail || "Keep studying to build recommendations.")}</span>${actionMarkup(state.action)}`;
@@ -190,6 +201,10 @@
       if (empty) {
         empty.hidden = false;
         empty.innerHTML = "<strong>Today’s Review could not be loaded.</strong><span>The rest of DLMS remains available below.</span>";
+      }
+      if (empty) {
+        const retry = document.createElement("button"); retry.type = "button"; retry.textContent = "Retry Today’s Review";
+        retry.addEventListener("click", () => loadDailyReview()); empty.append(retry);
       }
       console.error("Daily review plan failed:", error);
       return false;

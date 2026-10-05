@@ -36,6 +36,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "anki": 12,
         "content_packs": 8,
         "core": 8,
+        "exam_plans": 7,
         "external_ai": 6,
         "help": 7,
         "history": 14,
@@ -55,6 +56,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "create_anki_blueprint",
         "create_content_packs_blueprint",
         "create_core_blueprint",
+        "create_exam_plan_blueprint",
         "create_external_ai_blueprint",
         "create_help_blueprint",
         "create_history_blueprint",
@@ -74,6 +76,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.anki.AnkiRouteDependencies": 22,
         "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
         "dlms.routes.core.CoreRouteDependencies": 16,
+        "dlms.routes.exam_plans.ExamPlanDependencies": 4,
         "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
         "dlms.routes.history.HistoryRouteDependencies": 10,
         "dlms.routes.it.ITStudyDependencies": 5,
@@ -91,9 +94,10 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study.StudyRouteDependencies": 4,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "f6366645515b476dda616efb7d38809e27de1d90a72fd6e9170ebfd2fb01ff90"
+        "78c0d1bec02ae022244725d7fcd53cf3d557cbf59cf269df40cd66cf7a16a72b"
     )
     EXPECTED_CANONICAL_ALIASES = {
+        "exam_plans.edit": ("/exam-plans/new", {}),
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
         "admin_images.admin_hotspot_save": ("/admin/hotspots/save", {}),
         "help.regex_help": ("/regex-help/", {}),
@@ -144,11 +148,11 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_entire_explicit_url_map_matches_the_226_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(232, len(rules))
+        self.assertEqual(239, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(231, len(blueprint_rules))
+        self.assertEqual(238, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -234,7 +238,7 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_route_modules_have_frozen_family_dependencies_and_no_app_import(self):
         route_paths = sorted(ROUTE_ROOT.rglob("*.py"))
-        self.assertEqual(23, len(route_paths))
+        self.assertEqual(24, len(route_paths))
         for path in route_paths:
             with self.subTest(route_module=path.relative_to(ROOT)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))

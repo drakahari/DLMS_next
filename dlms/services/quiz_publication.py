@@ -675,6 +675,8 @@ def publish_quiz(
     snapshot_existing_assets=False,
     rollback_logo_filename=None,
     generation_kind=None,
+    publication_record=None,
+    publication_rollback=None,
     generated_artifact_names,
     staging_root,
     normalize_ordinals,
@@ -833,6 +835,8 @@ def publish_quiz(
             logo_filename,
             generation_kind,
         )
+        if publication_record is not None:
+            publication_record(conn, quiz_id, html_name)
         journal["quiz"]["id"] = quiz_id
         update_journal(journal_path, journal, state="db_commit_pending")
 
@@ -961,6 +965,6 @@ def publish_quiz(
             if safe_logo == rollback_logo_filename and safe_logo == logo_filename:
                 cleanup_ok = remove_path(join_path(logo_folder, safe_logo)) and cleanup_ok
         cleanup_ok = remove_path(stage_dir) and cleanup_ok
-        if cleanup_ok:
-            remove_journal(journal_path)
+        if cleanup_ok and remove_journal(journal_path) and publication_rollback is not None:
+            publication_rollback()
         raise

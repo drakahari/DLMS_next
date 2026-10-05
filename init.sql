@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 4);
+VALUES (1, 5);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)
@@ -283,3 +283,17 @@ CREATE TABLE IF NOT EXISTS study_responses (
         FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE);
 CREATE INDEX IF NOT EXISTS idx_study_sessions_quiz ON study_sessions(quiz_id, last_activity_at);
 CREATE INDEX IF NOT EXISTS idx_study_responses_question ON study_responses(question_id, session_id, sequence);
+
+CREATE TABLE IF NOT EXISTS exam_plans (
+        id TEXT PRIMARY KEY, config_json TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+        scope_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS exam_plan_state (
+        id INTEGER PRIMARY KEY CHECK(id=1), active_plan_id TEXT,
+        generation TEXT NOT NULL,
+        FOREIGN KEY(active_plan_id) REFERENCES exam_plans(id) ON DELETE SET NULL);
+INSERT OR IGNORE INTO exam_plan_state(id,generation) VALUES(1,lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS exam_plan_actions (
+        request_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, generation TEXT NOT NULL,
+        input_hash TEXT NOT NULL, quiz_id INTEGER, html TEXT, state TEXT NOT NULL,
+        FOREIGN KEY(plan_id) REFERENCES exam_plans(id) ON DELETE CASCADE,
+        FOREIGN KEY(quiz_id) REFERENCES quizzes(id) ON DELETE SET NULL);

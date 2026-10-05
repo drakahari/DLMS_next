@@ -2,6 +2,7 @@
 
 import json
 from dlms.persistence.study_schema import invalidate_queues, preserve_legacy
+from dlms.persistence.exam_plan_schema import invalidate as invalidate_plans
 import os
 import re
 import shutil
@@ -70,6 +71,8 @@ def validate_current_restored_database(
                 f"Migrated results.db schema version {version!r} is not {schema_version}"
             )
         validate_current_database_schema(conn)
+        from .exam_plans import validate_restored_plans
+        validate_restored_plans(conn)
     except (RuntimeError, sqlite_module.DatabaseError) as exc:
         raise ValueError("Migrated results.db failed current-schema validation") from exc
     finally:
@@ -186,6 +189,7 @@ def prepare_staged_restore_database(
         bootstrap_result = bootstrap_database(database_path)
         with sqlite3.connect(database_path) as restored_conn:
             invalidate_queues(restored_conn)
+            invalidate_plans(restored_conn)
         validation = validate_current_restored_database(database_path)
         quiz_html = regenerate_staged_quiz_html(staged_data_root, database_path)
     except unsupported_schema_error as exc:
@@ -852,6 +856,7 @@ def reset_quiz_library_core(
     conn.execute("PRAGMA foreign_keys = OFF")
     cur = conn.cursor()
     cur.executescript("""
+        UPDATE exam_plan_actions SET quiz_id=NULL;
         DELETE FROM study_responses;
         DELETE FROM study_sessions;
         DELETE FROM study_legacy_responses;
@@ -867,6 +872,7 @@ def reset_quiz_library_core(
         DELETE FROM sqlite_sequence;
     """)
     invalidate_queues(conn)
+    invalidate_plans(conn)
     conn.commit()
     conn.execute("PRAGMA foreign_keys = ON")
     conn.close()

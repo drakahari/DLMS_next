@@ -15,7 +15,7 @@ from pathlib import Path
 project_root = Path(SPEC).resolve().parent
 sys.path.insert(0, str(project_root))
 from tools.pyinstaller_ocr import collect_tesseract_bundle
-from PyInstaller.utils.hooks import copy_metadata
+from PyInstaller.utils.hooks import copy_metadata, collect_data_files
 app_source = (project_root / "app.py").read_text(encoding="utf-8")
 app_version_match = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
 if app_version_match is None:
@@ -46,13 +46,15 @@ bundle_data = [
 ocr_binaries, ocr_data = collect_tesseract_bundle()
 bundle_data.extend(ocr_data)
 bundle_data.extend(copy_metadata("pypdfium2"))
+bundle_data.extend(collect_data_files("tzdata"))
+bundle_data.extend(copy_metadata("tzdata"))
 
 analysis = Analysis(
     [str(project_root / "app.py")],
     pathex=[str(project_root)],
     binaries=ocr_binaries,
     datas=bundle_data,
-    hiddenimports=["dlms.services.ocr", "pypdfium2", "pypdfium2_raw"],
+    hiddenimports=["dlms.services.ocr", "pypdfium2", "pypdfium2_raw", "tzdata"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -73,6 +73,8 @@ from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
 from dlms.routes.it import ITStudyDependencies, create_it_blueprint
 from dlms.routes.law import LawRouteDependencies, create_law_blueprint
+from dlms.routes.exam_plans import ExamPlanDependencies, create_exam_plan_blueprint
+from dlms.services import exam_plans as _exam_plans
 from dlms.routes.learning import LearningRouteDependencies, create_learning_blueprint
 from dlms.routes.history import HistoryRouteDependencies, create_history_blueprint
 from dlms.routes.anki import AnkiRouteDependencies, create_anki_blueprint
@@ -1313,6 +1315,8 @@ def _publish_quiz(
     snapshot_existing_assets=False,
     rollback_logo_filename=None,
     generation_kind=None,
+    publication_record=None,
+    publication_rollback=None,
 ):
     generation_kind = _question_identity_service.validate_generation_kind(
         generation_kind
@@ -1334,6 +1338,8 @@ def _publish_quiz(
         snapshot_existing_assets=snapshot_existing_assets,
         rollback_logo_filename=rollback_logo_filename,
         generation_kind=generation_kind,
+        publication_record=publication_record,
+        publication_rollback=publication_rollback,
         generated_artifact_names=_generated_quiz_artifact_names,
         staging_root=_quiz_publication_staging_root,
         normalize_ordinals=_normalize_quiz_question_ordinals,
@@ -1796,7 +1802,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables):
@@ -5250,6 +5256,18 @@ def _daily_review_plan(cur, now=None):
         adaptive_study_candidates=_adaptive_study_candidates,
         scope=scope,
     )
+    active = _exam_plans.state(cur)["active_plan_id"]
+    if active:
+        saved_plan = _exam_plans.get(cur, active)
+        if saved_plan.get("config", {}).get("visible"):
+            try:
+                plan_report = _exam_plans.summary(cur, saved_plan, **_exam_plan_options(cur), now=now)
+                plan["exam_plan"] = {key: plan_report[key] for key in ("plan", "calendar", "stats", "target", "remaining_slots", "shortfall", "estimated_batch", "changes", "missing_folders")}
+                plan["exam_plan"]["selected_count"] = len(plan_report["selected"])
+                if not saved_plan["config"]["paused"]:
+                    plan["items"] = []
+            except ValueError as exc:
+                plan["exam_plan_error"] = str(exc)
     plan["regular_study"] = _study_service.regular_continuity(cur, registry, data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names)
     return plan
 
@@ -6108,6 +6126,55 @@ app.register_blueprint(create_study_blueprint(StudyRouteDependencies(
     get_db=lambda: get_db(), artifact_options=_study_artifact_options,
     run_delete=lambda: _run_reset_with_backup("study-history", lambda: _restore_service.delete_study_history_core(DB_PATH)),
     operation_error=lambda exc, operation: _destructive_operation_error(exc, operation),
+)))
+
+
+def _exam_plan_media_available(value, packs):
+    """Read-only preflight; publication still performs its existing asset validation."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, TypeError):
+            return False
+    def check(node):
+        if isinstance(node, dict):
+            return all(check(v) for v in node.values())
+        if isinstance(node, list):
+            return all(check(v) for v in node)
+        if not isinstance(node, str):
+            return True
+        try:
+            if node.startswith("/quiz-assets/"):
+                return os.path.isfile(_safe_pack_child(QUIZ_ASSET_FOLDER, node[len("/quiz-assets/"):]))
+            if node.startswith("/content-packs/"):
+                parts = node.split("/", 4)
+                if len(parts) != 5 or parts[3] != "assets":
+                    return False
+                pack_id = parts[2]
+                if pack_id not in packs:
+                    packs[pack_id] = get_content_pack(pack_id)
+                pack = packs[pack_id]
+                return bool(pack and os.path.isfile(_safe_pack_child(pack["_root"], parts[4])))
+        except (ValueError, OSError):
+            return False
+        return True
+    return check(value)
+
+
+def _exam_plan_options(cur):
+    with registry_lock:
+        registry = load_registry()
+        folders = get_quiz_folders()
+        excluded = get_excluded_learning_folders()
+        catalog = _learning_scope_service.learning_scope_summary(cur, registry, folders, excluded, get_hidden_quiz_folders(folders))
+    packs = {}
+    return dict(media_available=lambda value: _exam_plan_media_available(value, packs), registry=registry, folders=catalog["folders"], excluded=[_quiz_mutation_service.quiz_folder_identity_key(f) for f in excluded],
+                data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names)
+
+
+app.register_blueprint(create_exam_plan_blueprint(ExamPlanDependencies(
+    get_db=lambda: get_db(), options=_exam_plan_options,
+    publish=lambda *args, **kwargs: _publish_quiz(*args, **kwargs), registry_lock=registry_lock,
 )))
 
 
