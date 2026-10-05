@@ -24,3 +24,10 @@
 #planWork h3 {margin-top: .5rem;}
 #planEvidence .plan-grid p {margin-block: .5rem;}
 .exam-plans [hidden] {display: none;}
+.marked-question { border-top: 1px solid var(--semantic-secondary-control-border); padding: 1rem 0; overflow-wrap: anywhere; }
+.marked-question .plan-check { align-items: start; }
+.marked-question p { margin: .5rem 0; }
+
+#markedQuestions .plan-links button { width: auto; min-height: 44px; margin: 0; box-shadow: none; }
+#markedQuestions #practiceMarks { font-weight: 700; border: 2px solid var(--theme-accent); }
+#markedQuestions .marked-question .plan-links { margin-block: .5rem; }

@@ -563,7 +563,7 @@ class ExamPlanTests(unittest.TestCase):
             self.assertEqual(conn.execute('SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL').fetchone()[0],1)
         dlms.bootstrap_database(dlms.DB_PATH)
         with dlms.get_db() as conn:
-            self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],5)
+            self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],dlms.DLMS_SCHEMA_VERSION)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_responses').fetchone()[0],1)
 
     def test_plan_midnight_credit_and_dst_calendar_days(self):
@@ -859,3 +859,40 @@ class ExamPlanTests(unittest.TestCase):
             source=conn.execute('SELECT id FROM questions WHERE quiz_id=?',(self.quiz_id,)).fetchone()[0]
             independent=conn.execute('SELECT id FROM questions WHERE quiz_id=?',(other,)).fetchone()[0]
         self.assertIn(source,recorded);self.assertNotIn(independent,recorded)
+
+    def test_change_groups_bound_pages_same_titles_and_snapshot_ack(self):
+        pid=self.create()
+        for n in range(12):
+            qs=[{**self.choice(),'number':i+1,'question':f'Change {n} question {i}'} for i in range(45)]
+            self.publish(title='Same title',questions=qs,kind=None)
+        r=self.report(pid)
+        p=plans.change_page(r,r['plan'])
+        self.assertEqual(p['total'],12);self.assertEqual(len(p['groups']),10)
+        self.assertEqual(len(p['groups'][0]['questions']),20)
+        ids=[g['quiz_id'] for g in p['groups']]
+        second=plans.change_page(r,r['plan'],page=2)
+        self.assertEqual(len(second['groups']),2)
+        self.assertFalse(set(ids)&{g['quiz_id'] for g in second['groups']})
+        qid=ids[0]
+        last=plans.change_page(r,r['plan'],quiz=qid,question_page=3)
+        self.assertEqual(len(last['groups'][0]['questions']),5)
+        question_ids=[q['id'] for page in range(1,4)
+                      for q in plans.change_page(r,r['plan'],quiz=qid,question_page=page)['groups'][0]['questions']]
+        expected={key for key in r['changes']['added'] if r['snapshot'][key]['quiz_id']==qid}
+        self.assertEqual(len(question_ids),45)
+        self.assertEqual(set(question_ids),expected)
+        d=dict(action='acknowledge',revision=r['plan']['revision'],generation=r['generation'],snapshot_token=p['snapshot_token'])
+        self.publish(title='Arrived after page opened',questions=[self.choice()],kind=None)
+        rejected=self.client.post('/exam-plans/'+pid+'/action',data=d,headers=self.headers)
+        self.assertEqual(rejected.status_code,409)
+        self.assertEqual(plans.digest(self.report(pid)['plan']['snapshot']),plans.digest(r['plan']['snapshot']))
+        current=self.report(pid);d['snapshot_token']=plans.digest(current['snapshot'])
+        ok=self.client.post('/exam-plans/'+pid+'/action',data=d,headers=self.headers)
+        self.assertEqual(ok.status_code,302)
+        self.assertEqual(self.report(pid)['changes'],dict(added=[],removed=[],changed=[]))
+        self.assertEqual(self.report(pid)['stats']['reviewed'],0)
+        # Another tab cannot reuse the old acknowledgement after newer changes.
+        self.publish(title='New after acknowledgement',questions=[self.choice()],kind=None)
+        self.assertEqual(self.client.post('/exam-plans/'+pid+'/action',data=d,headers=self.headers).status_code,409)
+        self.assertEqual(len(self.report(pid)['changes']['added']),1)
+        self.assertEqual(self.report(pid)['stats']['reviewed'],0)

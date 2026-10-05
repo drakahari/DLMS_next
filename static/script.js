@@ -49,7 +49,11 @@ const durableStudyOwner = createLearningSessionId();
 async function studyRequest(url, payload) {
     const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok !== true) throw new Error(data.error || "Study progress could not be saved. Retry without leaving this page.");
+    if (!response.ok || data.ok !== true) {
+        const error=new Error(data.error || "Study progress could not be saved. Retry without leaving this page.");
+        error.status=response.status;
+        throw error;
+    }
     return data;
 }
 
@@ -1394,102 +1398,91 @@ function applyStudyFeedback() {
 
 
 
+let reviewMarkContext = null;
+let reviewMarkLoad = null;
+let reviewMarkPending = null;
+let legacyReviewMarksAdopted = false;
+const reviewMarkPendingKey = `dlms.reviewMarkPending.${window.QUIZ_ID}`;
+try { reviewMarkPending=JSON.parse(localStorage.getItem(reviewMarkPendingKey) || 'null'); } catch (_) { /* Keep unreadable storage untouched. */ }
+
+function reviewMarkStatus(message) {
+    let node = document.getElementById("reviewMarkStatus");
+    if (!node) {
+        node = document.createElement("p"); node.id="reviewMarkStatus"; node.setAttribute("role","status");
+        document.getElementById("questionTools")?.append(node);
+    }
+    node.textContent=message;
+}
+async function loadReviewMarks() {
+    if (!quizContentFingerprint || !durableStudySupported) return null;
+    const data=await studyRequest('/api/review-marks/context',{quiz_id:Number(window.QUIZ_ID),fingerprint:quizContentFingerprint});
+    reviewMarkContext=data;
+    if (reviewMarkPending) reviewMarkStatus('A mark request is awaiting confirmation. Select the mark button to retry it; your previous browser marks are retained.');
+    return data;
+}
+function offerLegacyReviewMarks() {
+    // Recovery validation already checked the fingerprint before restoring this set.
+    // Adoption is explicit and never removes the local recovery record on failure.
+    if (legacyReviewMarksAdopted || !studyAnkiSelections.size || document.getElementById('adoptLegacyMarks')) return;
+    const button=document.createElement('button'); button.id='adoptLegacyMarks'; button.type='button';
+    button.textContent='Save previous browser marks to DLMS';
+    button.onclick=()=>saveReviewMarkIndexes([...studyAnkiSelections],true,button);
+    document.getElementById('questionTools')?.append(button);
+}
+async function saveReviewMarkIndexes(indexes, marked, adoptedButton=null) {
+    const button=document.getElementById('studyAnkiBtn'); if (button) button.disabled=true;
+    try {
+        if (!reviewMarkContext) await loadReviewMarks();
+        if (!reviewMarkContext) throw new Error('This quiz page cannot verify its source. Open a registered current quiz, or regenerate an older saved quiz, before saving marks. Existing browser marks are retained.');
+        if (!reviewMarkPending) reviewMarkPending={action:'mark',request_id:createLearningSessionId(),quiz_id:Number(window.QUIZ_ID),fingerprint:quizContentFingerprint,
+            generation:reviewMarkContext.generation,revision:reviewMarkContext.revision,assessment_revision:reviewMarkContext.assessment_revision,indexes,marked,legacy:Boolean(adoptedButton)};
+        localStorage.setItem(reviewMarkPendingKey,JSON.stringify(reviewMarkPending));
+        await studyRequest('/api/review-marks/save',reviewMarkPending);
+        localStorage.removeItem(reviewMarkPendingKey);
+        reviewMarkPending=null;
+        await loadReviewMarks();
+        if (adoptedButton) { legacyReviewMarksAdopted=true; adoptedButton.remove(); }
+        reviewMarkStatus('Review marks saved in DLMS. Marked questions offers Anki export and focused practice.');
+    } catch (error) {
+        reviewMarkStatus(error.message+' Select the mark button to retry the same request.');
+        if ([400,409].includes(error.status) && !document.getElementById('refreshRejectedMark')) {
+            const reset=document.createElement('button'); reset.type='button'; reset.id='refreshRejectedMark';
+            reset.textContent='Keep old browser request and reload current marks';
+            reset.onclick=async()=>{
+                // Retain the rejected transfer as well as the original recovery record.
+                // A rejected source/version is never adopted into the new question set.
+                if (reviewMarkPending) localStorage.setItem(`dlms.reviewMarkRejected.${reviewMarkPending.request_id}`,JSON.stringify(reviewMarkPending));
+                localStorage.removeItem(reviewMarkPendingKey); reviewMarkPending=null; reviewMarkContext=null;
+                try { await loadReviewMarks(); reset.remove(); updateStudyAnkiButton(); reviewMarkStatus('Current marks reloaded. The rejected browser request is retained separately and has not been transferred.'); }
+                catch (problem) { reviewMarkStatus(problem.message); }
+            };
+            document.getElementById('questionTools')?.append(reset);
+        }
+    }
+    finally { if (button) button.disabled=false; updateStudyAnkiButton(); }
+}
 function toggleCurrentQuestionForAnki() {
     if (examMode) return;
-
-    if (studyAnkiSelections.has(index)) {
-        studyAnkiSelections.delete(index);
-    } else {
-        studyAnkiSelections.add(index);
-    }
-
-    updateStudyAnkiButton();
-    updateStudyAnkiExportButton();
-    checkpointQuizRecovery();
+    saveReviewMarkIndexes([index],!reviewMarkContext?.indexes.includes(index));
 }
-
 function updateStudyAnkiButton() {
-    const btn = document.getElementById("studyAnkiBtn");
-    if (!btn) return;
-
-    if (examMode) {
-        btn.style.display = "none";
-        return;
+    const btn=document.getElementById('studyAnkiBtn'); if (!btn) return;
+    btn.style.display=examMode?'none':'inline-block';
+    const marked=reviewMarkContext?.indexes.includes(index) || false;
+    btn.textContent=reviewMarkPending ? (reviewMarkPending.indexes.length===1 ? `Retry mark for question ${reviewMarkPending.indexes[0]+1}` : `Retry saving ${reviewMarkPending.indexes.length} marks`) : marked?'✓ Marked for review':'☆ Mark for review';
+    if (reviewMarkPending) btn.removeAttribute('aria-pressed'); else btn.setAttribute('aria-pressed',String(marked));
+    if (!examMode && quizContentFingerprint && !reviewMarkLoad) {
+        reviewMarkLoad=loadReviewMarks().then(()=>updateStudyAnkiButton()).catch(error=>reviewMarkStatus(error.message));
     }
-
-    btn.style.display = "inline-block";
-
-    if (studyAnkiSelections.has(index)) {
-        btn.innerHTML = '<svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Marked for Anki';
-    } else {
-        btn.innerHTML = '<svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#star"></use></svg> Mark for Anki';
-    }
+    if (!examMode) offerLegacyReviewMarks();
 }
-
 function updateStudyAnkiExportButton() {
-    const btn = document.getElementById("studyAnkiExportBtn");
-    if (!btn) return;
-
-    const isLastQuestion = (index === quiz.length - 1);
-    const selectedCount = studyAnkiSelections.size;
-
-    if (!examMode && isLastQuestion && selectedCount > 0) {
-        btn.style.display = "inline-block";
-        btn.innerHTML = `<svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#content"></use></svg> Export ${selectedCount} Selected to Anki`;
-    } else {
-        btn.style.display = "none";
-    }
+    const btn=document.getElementById('studyAnkiExportBtn'); if (!btn) return;
+    btn.style.display=examMode?'none':'inline-block'; btn.textContent='Marked questions';
 }
-
-async function exportStudyAnkiSelections() {
-    if (examMode) return;
-
-    const selectedIndexes = Array.from(studyAnkiSelections).sort((a, b) => a - b);
-
-    if (selectedIndexes.length === 0) {
-        alert("No questions are marked for Anki.");
-        return;
-    }
-
-    const questionNumbers = selectedIndexes.map(i => i + 1);
-
-    try {
-        const response = await fetch("/export/anki/study", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                quiz_id: window.QUIZ_ID,
-                question_numbers: questionNumbers
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText || "Anki export failed");
-        }
-
-        const blob = await response.blob();
-
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.href = url;
-        link.download = `study_selected_${window.QUIZ_ID}.apkg`;
-
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-
-        URL.revokeObjectURL(url);
-
-    } catch (err) {
-        console.error("Study Anki export failed:", err);
-        alert("Unable to export the selected questions to Anki.");
-    }
+function exportStudyAnkiSelections() {
+    if (!examMode) window.location.href=`/marked-questions?quiz=${encodeURIComponent(window.QUIZ_ID)}`;
 }
-
 
 /* =====================================================
    PROGRESS BAR

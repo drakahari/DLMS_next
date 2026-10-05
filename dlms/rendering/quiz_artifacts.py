@@ -486,7 +486,7 @@ def build_quiz_html(
                             type="button"
                             class="hidden"
                             onclick="toggleCurrentQuestionForAnki()">
-                        ⭐ Mark for Anki
+                        ⭐ Mark for review
                     </button>
 
                     <button id="studyCopyBtn"
@@ -500,7 +500,7 @@ def build_quiz_html(
                             type="button"
                             class="hidden"
                             onclick="exportStudyAnkiSelections()">
-                        📦 Export Selected to Anki
+                        Marked questions
                     </button>
                 </div>
                 <p id="questionCopyStatus" class="quiz-question-copy-status" role="status" aria-live="polite"></p>

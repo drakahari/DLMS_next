@@ -108,8 +108,8 @@ the final question does not count as completion.
 
 ### Optional learning actions
 
-Supported choice questions in Study Mode show **Question Tools** below the
-Previous and Next controls. **Review with AI** copies an AI-ready prompt and
+Study Mode shows **Question Tools** below Previous and Next. **Mark for review**
+supports every question type. **Review with AI** copies an AI-ready prompt and
 opens the configured provider workflow. **Copy Question** copies the same
 AI-ready prompt to your clipboard, keeps you on the quiz page, and lets you
 paste it into any AI conversation you choose. The prompt can include the
@@ -117,12 +117,12 @@ question, answer choices, available answer or correctness context, and visible
 explanation text, depending on the current question state. Clicking
 **Copy Question** does not send the prompt to an AI provider. **Review with AI**
 and **Copy Question** are unavailable for matching and hotspot questions and
-are hidden in Exam Mode. **Mark for Anki** adds the current question to a
-temporary session selection, with an `.apkg` export action available at the
-end when questions are marked. The External AI and Anki chapters explain these
+are hidden in Exam Mode. **Mark for review** adds the current question to a
+durable list in **Marked questions**. Export supported text choice questions to
+Anki or start focused practice independently; neither action removes marks. The External AI and Anki chapters explain these
 optional workflows.
 
-![Study Mode showing an incorrect answer, navigation, and Question Tools](images/UM-07-study-mode-feedback.png)
+![Study Mode showing an incorrect answer, navigation, and Question Tools](../../static/help_assets/quiz_study_mode_incorrect.webp)
 
 ## Use Exam Mode for a test-like attempt
 

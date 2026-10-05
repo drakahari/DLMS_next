@@ -138,3 +138,34 @@ outside Git. Fixtures create repeated titles, separate sessions, known UTC dates
 missing-save warnings, excluded/unavailable material and a real practice launch.
 No personal history or running server is used. Retain captions, alt text and the
 existing keyboard image enlargement.
+
+## Marked questions and learner-oriented plans (pre-build batch)
+
+Checkpoint: `aa53bf0eb185c62bd21c557a51c2aea2a288789f`. The current fixtures create
+synthetic CISM questions and exercise real controls before taking screenshots.
+Use a disposable test environment with the canonical requirements, then run:
+
+```sh
+DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
+DLMS_PREBUILD_CAPTURE_DIR=/tmp/dlms-prebuild-captures \
+DLMS_EXAM_PLAN_CAPTURE_DIR=/tmp/dlms-prebuild-captures \
+DLMS_PRESENTATION_CAPTURE_DIR=/tmp/dlms-prebuild-captures \
+.venv/bin/python -m pytest -q -p no:cacheprovider -m browser \
+tests/browser/test_critical_workflows.py \
+-k "marked_questions_practice_export_and_compact_changes or exam_plan_setup or exam_plan_no_work or plan_selected_breakdown"
+```
+
+The marked-question capture selects two eligible questions and waits for the live
+selection check so both action counts are visible. The mixed-type regression
+`test_marked_selection_type_counts_and_preview_retry` also retains a separate
+QA capture of image/hotspot exclusions when the capture directory is set.
+
+Inspect all three themes at desktop/narrow widths. Copy only the reviewed Light
+WebP crops: `marked-questions`, `exam-plan-changes`, `quiz_study_mode_correct`,
+`quiz_study_mode_incorrect`, and the six existing `exam-plan-*` instructional
+images. Update dimensions in Help, retain concise captions/alt text, and test
+keyboard enlargement. Keep full-page QA PNGs and baseline images outside Git.
+The old Study screenshots contained the obsolete Mark for Anki label; their
+replacements show the current actual app, with no personal data or desktop chrome.
+`DLMS.spec` already includes all static assets and templates. No production
+package is built by this documentation/capture workflow.

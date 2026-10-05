@@ -1802,7 +1802,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables):
@@ -6172,6 +6172,13 @@ def _exam_plan_options(cur):
                 media_available=lambda value: _exam_plan_media_available(value, packs), registry=registry, folders=catalog["folders"], excluded=[_quiz_mutation_service.quiz_folder_identity_key(f) for f in excluded],
                 data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names)
 
+
+from dlms.routes.review_marks import ReviewMarkDependencies, create_review_mark_blueprint
+app.register_blueprint(create_review_mark_blueprint(ReviewMarkDependencies(
+    get_db=lambda: get_db(), options=_exam_plan_options,
+    publish=lambda *args, **kwargs: _publish_quiz(*args, **kwargs), registry_lock=registry_lock,
+    export=lambda *args: export_quiz_to_apkg(*args), send_package=lambda *args: _send_temp_anki_package(*args),
+)))
 
 app.register_blueprint(create_exam_plan_blueprint(ExamPlanDependencies(
     get_db=lambda: get_db(), options=_exam_plan_options,

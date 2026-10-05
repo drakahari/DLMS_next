@@ -4,9 +4,9 @@ import os
 import sqlite3
 
 
-from . import study_schema, exam_plan_schema
+from . import study_schema, exam_plan_schema, review_mark_schema
 
-DLMS_SCHEMA_VERSION = 5
+DLMS_SCHEMA_VERSION = 6
 DLMS_LEGACY_SCHEMA_VERSION = 1
 
 DLMS_SCHEMA_COLUMNS = {
@@ -302,8 +302,9 @@ def _migrate_schema_to_v3(conn, *, database_column_info=None):
 
 DLMS_SCHEMA_COLUMNS.update(study_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(exam_plan_schema.COLUMNS)
+DLMS_SCHEMA_COLUMNS.update(review_mark_schema.COLUMNS)
 DLMS_SCHEMA_INDEXES.update(study_schema.INDEXES)
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables, *, database_column_info=None):
@@ -355,6 +356,8 @@ def _validate_current_database_schema(
     missing_indexes = sorted(schema_indexes - indexes)
     if missing_indexes:
         raise RuntimeError("DLMS database is missing required indexes: " + ", ".join(missing_indexes))
+    if 'review_mark_state' in schema_columns:
+        review_mark_schema.validate_state(conn)
 
 
 def bootstrap_database(

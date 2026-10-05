@@ -97,7 +97,8 @@ def create_exam_plan_blueprint(dependencies):
         try:
             plan = plans.get(conn.cursor(), plan_id)
             result = None if plan.get('error') else report(conn.cursor(), plan)
-            return render_template('learning/exam_plans.html', page='detail', plan=plan, report=result, request_id=uuid.uuid4().hex,
+            changes_page = plans.change_page(result, plan, page=request.args.get('changes_page', 1, type=int), quiz=request.args.get('change_quiz', type=int), question_page=request.args.get('question_page', 1, type=int)) if result else None
+            return render_template('learning/exam_plans.html', page='detail', plan=plan, report=result, changes_page=changes_page, request_id=uuid.uuid4().hex,
                                    **context(conn.cursor(), options(conn.cursor())))
         finally:
             conn.close()
@@ -116,9 +117,13 @@ def create_exam_plan_blueprint(dependencies):
         conn = get_db()
         try:
             name = request.form.get('action')
-            snapshot = report(conn.cursor(), plans.get(conn.cursor(), plan_id))['snapshot'] if name == 'acknowledge' else None
-            plans.control(conn, plan_id, name, int(request.form.get('revision', '0')), request.form.get('generation'), snapshot=snapshot,
-                          expected_dashboard=request.form.get('dashboard_token'))
+            with registry_lock:
+                conn.execute('BEGIN IMMEDIATE')
+                snapshot = report(conn.cursor(), plans.get(conn.cursor(), plan_id))['snapshot'] if name == 'acknowledge' else None
+                if name == 'acknowledge' and request.form.get('snapshot_token') != plans.digest(snapshot):
+                    raise plans.PlanConflict('Study material changed after this page opened. Reload and inspect the new changes; nothing was marked as seen.')
+                plans.control(conn, plan_id, name, int(request.form.get('revision', '0')), request.form.get('generation'), snapshot=snapshot,
+                              expected_dashboard=request.form.get('dashboard_token'))
             return redirect('/exam-plans' if name == 'delete' else '/exam-plans/' + plan_id)
         except ValueError:
             conn.rollback()

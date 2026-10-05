@@ -65,14 +65,14 @@ class BrowserHarnessStructureTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 browser_workflows._require_private_xvfb(env)
 
-    def test_all_five_browser_launch_sites_use_the_guarded_command_and_child_env(self):
+    def test_all_six_browser_launch_sites_use_the_guarded_command_and_child_env(self):
         import ast
         module = ast.parse(inspect.getsource(browser_workflows))
         launches = [node for node in ast.walk(module) if isinstance(node, ast.Call)
                     and isinstance(node.func, ast.Attribute) and node.func.attr == "Popen"
                     and node.args and isinstance(node.args[0], ast.Call)
                     and isinstance(node.args[0].func, ast.Name) and node.args[0].func.id == "_firefox_command"]
-        self.assertEqual(len(launches), 5)
+        self.assertEqual(len(launches), 6)
         for launch in launches:
             child_env = next(keyword.value for keyword in launch.keywords if keyword.arg == "env")
             self.assertEqual(ast.dump(launch.args[0].args[-1]), ast.dump(child_env))

@@ -3090,6 +3090,7 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_resu
     browser.click(".study-mode-btn")
     browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#studyAnkiBtn")
+    browser.wait_for("reviewMarkContext?.indexes.includes(0) === true && reviewMarkPending === null")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
     storage_key = browser.evaluate("quizRecoveryController.storageKey")
@@ -3113,7 +3114,7 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_resu
     browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("studyLearningEventSaves.size === 0")
     browser.wait_for("document.querySelector('#choices .correct-choice') !== null")
-    assert browser.evaluate("studyAnkiSelections.has(0)") is True
+    browser.wait_for("reviewMarkContext?.indexes.includes(0) === true")
     assert browser.evaluate("learningSessionId") == session_id
     _wait_for_database_value(
         browser_stack.data_root / "results.db",
@@ -4407,7 +4408,15 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
         "Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__toolCalls.copies.push(text)}}});"
         "window.__toolFetch=window.fetch;window.fetch=(...args)=>{window.__toolCalls.requests.push(String(args[0]));return window.__toolFetch(...args)};true"
     )
+    # This intentionally unregistered preview cannot claim durable source marks.
+    # Existing browser-local intent must survive both a rejected transfer and tools.
+    assert browser.evaluate("durableStudySupported") is False
+    browser.evaluate("studyAnkiSelections=new Set([0]);checkpointQuizRecovery();true")
     browser.click("#studyAnkiBtn")
+    browser.wait_for("document.getElementById('reviewMarkStatus')?.textContent.includes('cannot verify its source')")
+    assert browser.evaluate("[...studyAnkiSelections]") == [0]
+    assert browser.evaluate("reviewMarkContext === null && reviewMarkPending === null")
+    assert _database_value(browser_stack.data_root / 'results.db', 'SELECT count(*) FROM review_marks') == 0
     browser.click("#choices .choice[data-index='1']")
     browser.wait_for("[...studyLearningEventSaves.values()].every(record => record.state === 'failed')")
     browser.evaluate("window.__toolCalls.requests=[];true")
@@ -14062,3 +14071,203 @@ def test_plan_selected_breakdown_risk_and_included_coverage(browser_stack, theme
         assert browser.evaluate("document.querySelector('.plan-breakdown').textContent.trim()")=='2 no recorded answer'
         assert browser.evaluate("document.getElementById('planProgress').textContent.includes('0 / 5')")
     finally: moved.rename(artifact)
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_marked_questions_practice_export_and_compact_changes(browser_stack, theme):
+    from datetime import timedelta
+    from dlms.services import exam_plans as plans
+    from tests.browser._help_screenshots import capture_control
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create', {'type':'tab'})['context']
+    browser.navigate(base+'/settings/appearance')
+    _set_theme(browser,theme)
+    browser.navigate(base+'/create_short_quiz?count=4')
+    browser.wait_for("document.querySelector('[name=question_4]') !== null && window.dlmsCsrfToken")
+    browser.evaluate("""document.querySelector('[name=quiz_title]').value='CISM — Information risk';
+      const questions=['What should guide an information security strategy?','Who should accept the remaining business risk?','When should a risk assessment be updated?','What is the purpose of a security metric?'];
+      const choices=[['Business objectives','The newest tool','Vendor preference','Available licenses'],['The accountable business owner','The firewall vendor','An external auditor','Any administrator'],['After a material business change','Only after an incident','Only once','Never'],['Support informed decisions','Count all alerts equally','Replace risk assessment','Guarantee exam readiness']];
+      for(let n=1;n<=4;n++){document.querySelector(`[name=question_${n}]`).value=questions[n-1];for(let i=0;i<4;i++)document.querySelector(`[name=choice_${n}_${'ABCD'[i]}]`).value=choices[n-1][i];document.querySelector(`[name=correct_${n}_A]`).checked=true;}true""")
+    browser.click('#create-short-quiz-form button[type=submit]');browser.wait_for("location.pathname.startsWith('/edit_quiz/')")
+    quiz_id=int(browser.evaluate("location.pathname.split('/').pop()"))
+    entry=next(e for e in json.loads((browser_stack.data_root/'config/quizzes.json').read_text()) if e['id']==quiz_id)
+    html=entry['html'];browser.navigate(base+'/quizzes/'+html);browser.wait_for('quizRecoveryReady')
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null && reviewMarkContext !== null')
+    browser.click('#studyAnkiBtn')
+    browser.wait_for('reviewMarkContext.indexes.includes(0) && reviewMarkPending === null')
+    assert browser.evaluate("document.getElementById('studyAnkiBtn').getAttribute('aria-pressed')")=='true'
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for('studyLearningEventSaves.size === 0')
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output and theme=='light':
+        browser.set_viewport(780,1000)
+        capture_control(browser,Path(output)/'quiz_study_mode_incorrect.webp','#quiz')
+        browser.click("#choices .choice[data-index='0']");browser.wait_for('studyLearningEventSaves.size===0')
+        capture_control(browser,Path(output)/'quiz_study_mode_correct.webp','#quiz')
+    browser.click('#nextBtn');browser.click('#studyAnkiBtn')
+    browser.wait_for('reviewMarkContext.indexes.includes(1) && reviewMarkPending === null')
+    browser.click('#studyAnkiExportBtn')
+    browser.wait_for("location.pathname==='/marked-questions' && document.querySelectorAll('[data-mark-id]').length===2")
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    for width in (1440,390):
+        browser.set_viewport(width,1000);browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        browser.activate();browser.wait_for("document.hasFocus()")
+        browser.evaluate("document.getElementById('unmarkSelected').focus();true")
+        browser.press_key('\ue004')
+        browser.wait_for("document.activeElement.matches('[data-mark-id]')")
+        focus_before=browser.evaluate("({focused:document.hasFocus(),active:document.activeElement.outerHTML,visible:document.activeElement.matches(':focus-visible')})")
+        browser.press_key('\ue00d')
+        focus_after=browser.evaluate("({focused:document.hasFocus(),active:document.activeElement.outerHTML,visible:document.activeElement.matches(':focus-visible'),outline:getComputedStyle(document.activeElement).outline})")
+        assert focus_after['visible'], (focus_before,focus_after)
+        browser.wait_for("!document.getElementById('markEligibility').textContent.includes('Checking') && document.getElementById('retryMarkPreview').hidden")
+        if output:
+            path=Path(output);path.mkdir(exist_ok=True,parents=True)
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (path/f'marked-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    browser.click('#markedQuestions details summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=practice]')
+    browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    assert browser.evaluate("document.getElementById('markEligibility').textContent.includes('Practice: 2 included · 0 excluded.')")
+    if output and theme=='light':
+        capture_control(browser,Path(output)/'marked-questions.webp','.dashboard-panel')
+    # Export the actual selected cards before practice, without clearing either mark.
+    assert browser.evaluate("""(async()=>{const r=await fetch('/api/review-marks/anki',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('[name=csrf-token]').content},body:JSON.stringify({generation:document.getElementById('markedQuestions').dataset.generation,revision:Number(document.getElementById('markedQuestions').dataset.revision),ids:[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)})});return {status:r.status,size:(await r.blob()).size};})()""")['status']==200
+    browser.evaluate("""window.markFetch=fetch.bind(window);window.dropMarkAck=true;window.fetch=async(...args)=>{const r=await markFetch(...args);if(String(args[0]).endsWith('/review-marks/generate')&&dropMarkAck&&r.ok){dropMarkAck=false;throw new Error('Simulated lost acknowledgement');}return r;};true""")
+    browser.click('#practiceMarks')
+    browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    browser.navigate(base+f'/marked-questions?quiz={quiz_id}')
+    browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    browser.click('#retryMarkAction');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    assert browser.evaluate("document.querySelectorAll('[data-mark-id]').length")==2
+    browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady && quiz.length===2')
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null')
+    assert browser.evaluate('durableStudySession.purpose')=='focused'
+    for i in range(2):
+        browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+        if i==0:browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at!==null')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.row_factory=sqlite3.Row
+        assert conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='marked_practice'").fetchone()[0]==1
+        assert conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0]==2
+        assert conn.execute('SELECT completed_at FROM study_sessions WHERE quiz_id=?',(quiz_id,)).fetchone()[0] is None
+        config={**plans.DEFAULTS,'name':'CISM — study and review','exam_date':(datetime.now(timezone.utc).date()+timedelta(days=30)).isoformat(),'calendar_timezone':'America/Chicago','folders':['uncategorized']}
+        pid=plans.save(conn,config,generation=plans.state(conn.cursor())['generation'],known_folders=['uncategorized'],snapshot={})
+    browser.navigate(base+'/')
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy')==='false'")
+    assert browser.evaluate("document.body.textContent.includes('CISM — Information risk')")
+    browser.navigate(base+'/exam-plans/'+pid)
+    browser.wait_for("document.querySelector('#planChanges details')!==null")
+    for width in (1440,390):
+        browser.set_viewport(width,1000);browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        summary='#planChanges details:last-of-type summary'
+        browser.evaluate('document.querySelector('+json.dumps(summary)+').focus();true');browser.press_key('\ue007')
+        assert browser.evaluate("document.activeElement.matches(':focus-visible')")
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'changes-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light' and width==390:capture_control(browser,Path(output)/'exam-plan-changes.webp','#planChanges')
+    # Mark acknowledgement is presentation only; stored Study answers survive.
+    before=_database_value(browser_stack.data_root/'results.db','SELECT count(*) FROM study_responses')
+    browser.click('button[value=acknowledge]')
+    browser.wait_for("document.getElementById('planChanges').textContent.includes('No changes to study material')")
+    assert _database_value(browser_stack.data_root/'results.db','SELECT count(*) FROM study_responses')==before
+
+
+def test_review_marks_legacy_retry_and_separate_browser_profile(browser_server):
+    """Legacy transfer failures retain local state; durable marks cross profiles."""
+    launched=[]
+    def launch(label):
+        port=_free_loopback_port();root=browser_server.work_root/('review-marks-'+label);profile=root/'profile';profile.mkdir(parents=True)
+        log_path=root/'firefox.log';output=log_path.open('w')
+        process=subprocess.Popen(_firefox_command(browser_server.firefox,profile,port,browser_server.env),cwd=ROOT,env=browser_server.env,stdout=output,stderr=subprocess.STDOUT,**browser_server.process_options)
+        try: browser=_connect_firefox(port,process,log_path)
+        except Exception: _terminate_process_tree(process);output.close();raise
+        launched.append((browser,process,output));return browser
+    try:
+        first=launch('first')
+        stack=BrowserStack(first,browser_server.base_url,browser_server.data_root,browser_server.metadata)
+        qid,html=_new_four_question_study_quiz(stack)
+        first.click('.study-mode-btn');first.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+        # Construct only the legacy browser selection, using the existing recovery writer.
+        first.evaluate('studyAnkiSelections=new Set([0,2]);checkpointQuizRecovery();true')
+        key=first.evaluate('quizRecoveryController.storageKey')
+        first.navigate(browser_server.base_url+'/quizzes/'+html)
+        first.wait_for("document.querySelector('.quiz-recovery-resume')!==null")
+        first.click('.quiz-recovery-resume');first.wait_for("document.getElementById('adoptLegacyMarks')!==null && reviewMarkContext!==null")
+        first.evaluate("""window.realMarkFetch=fetch.bind(window);window.failTransfer=true;window.fetch=(...args)=>failTransfer&&String(args[0])==='/api/review-marks/save'?Promise.resolve(new Response(JSON.stringify({error:'Simulated save failure'}),{status:503,headers:{'Content-Type':'application/json'}})):realMarkFetch(...args);true""")
+        first.click('#adoptLegacyMarks');first.wait_for("document.getElementById('reviewMarkStatus').textContent.includes('Simulated save failure')")
+        assert first.evaluate(f"JSON.parse(localStorage.getItem({json.dumps(key)})).view.ankiQuestionIndexes")==[0,2]
+        assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==0
+        first.evaluate('failTransfer=false;true');first.click('#adoptLegacyMarks')
+        first.wait_for('reviewMarkContext.indexes.length===2 && reviewMarkPending===null')
+        second=launch('second');second.navigate(browser_server.base_url+f'/marked-questions?quiz={qid}')
+        second.wait_for("document.querySelectorAll('[data-mark-id]').length===2")
+        assert second.evaluate("Object.keys(localStorage).filter(k=>k.includes('quiz-recovery')).length")==0
+        second.navigate(browser_server.base_url+'/marked-questions')
+        second.wait_for("document.querySelectorAll('[data-mark-id]').length===2")
+        second.evaluate('window.confirm=()=>true;true');second.click('[data-unmark]')
+        second.wait_for("document.querySelectorAll('[data-mark-id]').length===1")
+        first.navigate(browser_server.base_url+'/marked-questions');first.wait_for("document.querySelectorAll('[data-mark-id]').length===1")
+        assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM learning_events')==0
+    finally:
+        for browser,process,output in reversed(launched):
+            browser.close();_terminate_process_tree(process);output.close()
+
+
+def test_marked_selection_type_counts_and_preview_retry(browser_stack):
+    """Actual choice/matching/image/hotspot marks, before either independent action."""
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    # Seed only the isolated server's profile via the normal publisher.
+    script="""import app,json
+choice={'number':1,'type':'choice','question':'Who accepts business risk?','choices':[{'label':'A','text':'Business owner','is_correct':True},{'label':'B','text':'Vendor','is_correct':False}]}
+matching={'number':2,'type':'matching','question':'Match each risk role','pairs':[{'left':'Owner','right':'Accept risk'},{'left':'Auditor','right':'Assess controls'}]}
+hotspot={'number':3,'type':'hotspot','question':'Locate the control','image_url':'/static/favicon.ico','image_alt':'Isolated test image','target':{'type':'circle','x':.5,'y':.5,'radius':.2}}
+image={**choice,'number':4,'question':'Review the illustrated control','image_url':'/static/favicon.ico'}
+qid,html=app._publish_quiz('CISM — Mark types',[choice,matching,hotspot,image],filename_prefix='mark_types')
+print(json.dumps({'id':qid,'html':html}))
+"""
+    seeded=subprocess.run([sys.executable,'-c',script],cwd=ROOT,env={**os.environ,'QUIZAPP_DATA_DIR':str(browser_stack.data_root),'DLMS_NO_BROWSER':'1','PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=20)
+    assert seeded.returncode==0,seeded.stderr
+    entry=json.loads(seeded.stdout.splitlines()[-1])
+    browser.navigate(base+'/quizzes/'+entry['html']);browser.wait_for('quizRecoveryReady')
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+    for index in range(4):
+        # The new question's image loads after navigation; wait for its actual
+        # layout before scrolling to the controls below it.
+        browser.wait_for("[...document.querySelectorAll('#choices img')].every(img=>img.complete && img.naturalWidth>0)")
+        browser.click('#studyAnkiBtn');browser.wait_for(f'reviewMarkContext.indexes.includes({index}) && reviewMarkPending===null')
+        if index<3:browser.click('#nextBtn')
+    browser.click('#studyAnkiExportBtn');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===4")
+    browser.set_viewport(390,1000)
+    browser.evaluate("window.realPreviewFetch=fetch.bind(window);window.failMarkPreview=true;window.fetch=(...args)=>failMarkPreview&&String(args[0]).endsWith('/review-marks/preview')?Promise.resolve(new Response(JSON.stringify({error:'Simulated selection check failure'}),{status:503,headers:{'Content-Type':'application/json'}})):realPreviewFetch(...args);document.querySelectorAll('[data-mark-id]').forEach(n=>{n.checked=true;n.dispatchEvent(new Event('change'))});true")
+    browser.wait_for("!document.getElementById('retryMarkPreview').hidden")
+    assert browser.evaluate("document.getElementById('practiceMarks').disabled && document.getElementById('exportMarks').disabled")
+    browser.evaluate('failMarkPreview=false;true');browser.click('#retryMarkPreview')
+    browser.wait_for("document.getElementById('markEligibility').textContent.includes('Practice: 2 included · 2 excluded.')")
+    assert browser.evaluate("document.getElementById('markEligibility').textContent.includes('Anki: 1 included · 3 excluded.')")
+    assert browser.evaluate("document.getElementById('practiceMarks').disabled && document.getElementById('exportMarks').disabled")
+    assert browser.evaluate("document.querySelectorAll('.marked-question a').length")==4
+    browser.evaluate("document.querySelector('#markEligibility summary').focus();true");browser.press_key('\ue007')
+    assert browser.evaluate("document.querySelector('#markEligibility details').open")
+    assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output:
+        from tests.browser._help_screenshots import capture_control
+        capture_control(browser,Path(output)/'marked-type-boundaries.webp','#markedQuestions')
+    browser.click('#markedQuestions details summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=anki]')
+    browser.wait_for("!document.getElementById('exportMarks').disabled")
+    browser.click('#exportMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('Anki package exported')")
+    assert _database_value(browser_stack.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==4
+    browser.click('#clearMarkSelection');browser.click('[data-select-marks=practice]')
+    browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    browser.click('#practiceMarks');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady && quiz.length===2')
+    assert browser.evaluate("quiz.map(q=>q.type||'choice').sort()") == ['choice','matching']
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0]==4
+        assert conn.execute('SELECT count(*) FROM learning_events').fetchone()[0]==0
+        assert conn.execute("SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL").fetchone()[0]==0

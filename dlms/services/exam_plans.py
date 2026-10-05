@@ -51,7 +51,7 @@ def validate(data):
         raise ValueError('Minutes must be a whole number; pace must be between the low and high estimates.')
     days = result['weekdays']
     if not isinstance(days, list) or not days or any(type(day) is not int or day not in range(7) for day in days) or len(days) != len(set(days)):
-        raise ValueError('Choose at least one distinct study weekday.')
+        raise ValueError('Choose at least one study day.')
     folders = result['folders']
     if not isinstance(folders, list) or not folders or any(not isinstance(key, str) or not key.strip() or len(key) > 240 for key in folders):
         raise ValueError('Choose at least one exact folder.')
@@ -140,7 +140,8 @@ def save(conn, data, *, plan_id=None, revision=None, generation, active=False, k
 
 
 def control(conn, plan_id, action, revision, generation, *, snapshot=None, expected_dashboard=None):
-    conn.execute('BEGIN IMMEDIATE')
+    if not conn.in_transaction:
+        conn.execute('BEGIN IMMEDIATE')
     plan = require_version(conn.cursor(), plan_id, revision, generation)
     if action == 'delete':
         conn.execute('DELETE FROM exam_plans WHERE id=?', (plan_id,))
@@ -606,3 +607,25 @@ def validate_restored_plans(conn):
         raise ValueError('Backup contains invalid Exam Plan state.')
     if saved[0]['active_plan_id'] and not conn.execute('SELECT 1 FROM exam_plans WHERE id=?', (saved[0]['active_plan_id'],)).fetchone():
         raise ValueError('Backup contains a missing active Exam Plan.')
+
+
+def change_page(report, plan, *, page=1, quiz=None, question_page=1):
+    """Bounded presentation only; preserve all change identities and exact counts."""
+    groups={}
+    for category in ('added','removed','changed'):
+        for key in report['changes'][category]:
+            member=report['snapshot'].get(key) or plan['snapshot'].get(key)
+            qid=member['quiz_id']
+            group=groups.setdefault(qid,dict(quiz_id=qid,title=member['title'],folder=member['folder'],added=0,removed=0,changed=0,questions=[]))
+            group[category]+=1
+            group['questions'].append(dict(id=key,category=category))
+    ordered=sorted(groups.values(),key=lambda g:(g['title'].casefold(),g['quiz_id']))
+    pages=max(1,(len(ordered)+9)//10); page=min(max(1,page),pages)
+    visible=ordered[(page-1)*10:page*10]
+    for group in visible:
+        group['questions'].sort(key=lambda q:(q['category'],int(q['id'])))
+        group['pages']=max(1,(len(group['questions'])+19)//20)
+        group['page']=min(max(1,question_page),group['pages']) if quiz==group['quiz_id'] else 1
+        start=(group['page']-1)*20
+        group['questions']=group['questions'][start:start+20]
+    return dict(groups=visible,page=page,pages=pages,total=len(ordered),open_quiz=quiz,snapshot_token=digest(report['snapshot']))

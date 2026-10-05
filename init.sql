@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 5);
+VALUES (1, 6);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)
@@ -297,3 +297,16 @@ CREATE TABLE IF NOT EXISTS exam_plan_actions (
         input_hash TEXT NOT NULL, quiz_id INTEGER, html TEXT, state TEXT NOT NULL,
         FOREIGN KEY(plan_id) REFERENCES exam_plans(id) ON DELETE CASCADE,
         FOREIGN KEY(quiz_id) REFERENCES quizzes(id) ON DELETE SET NULL);
+
+-- Durable marked-question intent (schema 6).
+CREATE TABLE IF NOT EXISTS review_mark_state (
+        id INTEGER PRIMARY KEY CHECK(id=1), generation TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0);
+INSERT OR IGNORE INTO review_mark_state(id,generation) VALUES(1,lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS review_marks (
+        id TEXT PRIMARY KEY, question_uid TEXT NOT NULL, question_revision TEXT NOT NULL,
+        quiz_id INTEGER NOT NULL, question_number INTEGER NOT NULL, title TEXT NOT NULL,
+        question_text TEXT NOT NULL, created_at TEXT NOT NULL, marked INTEGER NOT NULL DEFAULT 1,
+        UNIQUE(question_uid,question_revision));
+CREATE TABLE IF NOT EXISTS review_mark_actions (
+        request_id TEXT PRIMARY KEY, generation TEXT NOT NULL, input_hash TEXT NOT NULL,
+        state TEXT NOT NULL, result_json TEXT, quiz_id INTEGER, html TEXT);

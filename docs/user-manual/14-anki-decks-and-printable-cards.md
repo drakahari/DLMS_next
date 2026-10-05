@@ -16,7 +16,7 @@ or Learning Intelligence.
 | A whole quiz as text front/back cards | **Anki Tools → Quiz → Anki** |
 | Questions missed across completed attempts | **Anki Tools → Missed Questions → Anki** |
 | A hand-picked mix of quiz, history, and Law cards | **Anki Tools → Custom Deck & Printable Cards** |
-| Questions marked while studying one quiz | **Mark for Anki** in Study Mode |
+| Questions marked while studying one quiz | **Mark for review** in Study Mode |
 | Misses from one completed attempt | The attempt's Review page |
 | Rule cards from saved Law Case Reviews | **Anki Tools → Law Study Anki** |
 | Physical 3 × 5 cards | **Custom Deck & Printable Cards** |
@@ -74,17 +74,18 @@ for the attempt workflow.
 
 ## Mark questions during Study Mode
 
-When **Mark for Anki** is available in Study Mode, use it to collect supported
-questions from the current session:
+In Study Mode, choose **Mark for review**, then **Marked questions** for that
+quiz or **All marked quizzes**. Select questions and choose **Export to Anki**
+for supported text choice questions. **Start focused quiz** is a separate action
+that respects Learning Scope. Either or both may be used without clearing marks.
+Use explicit Unmark controls to remove reminders. Marks persist in the DLMS
+profile and its backups; they are not wrong-answer evidence.
 
-1. choose **Mark for Anki** on each question you want to keep;
-2. continue to the final question; and
-3. choose the **Export Selected to Anki** action when it appears; the label
-   shows how many questions you selected.
-
-The selection belongs to that quiz session and is retained with its browser
-recovery checkpoint if the session is interrupted. It is not a permanent deck
-list until you export it. Exam Mode does not present this immediate study aid.
+Older browser recovery marks require **Save previous browser marks to DLMS**
+after resuming the matching quiz. Failed transfers retain the local record.
+Changed, deleted and unsupported questions have explanations on the list; no
+revised question is silently substituted. Older self-contained quiz HTML may
+retain the old controls until regenerated manually.
 
 ## Build a custom deck
 

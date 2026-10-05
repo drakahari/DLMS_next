@@ -37,6 +37,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "content_packs": 8,
         "core": 8,
         "exam_plans": 7,
+        "review_marks": 6,
         "external_ai": 6,
         "help": 7,
         "history": 14,
@@ -57,6 +58,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "create_content_packs_blueprint",
         "create_core_blueprint",
         "create_exam_plan_blueprint",
+        "create_review_mark_blueprint",
         "create_external_ai_blueprint",
         "create_help_blueprint",
         "create_history_blueprint",
@@ -77,6 +79,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
         "dlms.routes.core.CoreRouteDependencies": 16,
         "dlms.routes.exam_plans.ExamPlanDependencies": 4,
+        "dlms.routes.review_marks.ReviewMarkDependencies": 6,
         "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
         "dlms.routes.history.HistoryRouteDependencies": 10,
         "dlms.routes.it.ITStudyDependencies": 5,
@@ -94,7 +97,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study.StudyRouteDependencies": 4,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "85ecb22df11def8aa5926c4555abab19b9a5f79467540e006c5ad5d0b9867648"
+        "5608cb2767df1fd2d3ae1eb845a36243fd3f5cb930c4d0c84e502bc1539126d1"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "exam_plans.edit": ("/exam-plans/new", {}),
@@ -148,11 +151,11 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_entire_explicit_url_map_matches_the_226_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(240, len(rules))
+        self.assertEqual(246, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(239, len(blueprint_rules))
+        self.assertEqual(245, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -238,7 +241,7 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_route_modules_have_frozen_family_dependencies_and_no_app_import(self):
         route_paths = sorted(ROUTE_ROOT.rglob("*.py"))
-        self.assertEqual(24, len(route_paths))
+        self.assertEqual(25, len(route_paths))
         for path in route_paths:
             with self.subTest(route_module=path.relative_to(ROOT)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))

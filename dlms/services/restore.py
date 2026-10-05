@@ -3,6 +3,7 @@
 import json
 from dlms.persistence.study_schema import invalidate_queues, preserve_legacy
 from dlms.persistence.exam_plan_schema import invalidate as invalidate_plans
+from dlms.persistence.review_mark_schema import invalidate as invalidate_marks
 import os
 import re
 import shutil
@@ -73,6 +74,8 @@ def validate_current_restored_database(
         validate_current_database_schema(conn)
         from .exam_plans import validate_restored_plans
         validate_restored_plans(conn)
+        from .review_marks import validate_restored_marks
+        validate_restored_marks(conn)
     except (RuntimeError, sqlite_module.DatabaseError) as exc:
         raise ValueError("Migrated results.db failed current-schema validation") from exc
     finally:
@@ -190,6 +193,7 @@ def prepare_staged_restore_database(
         with sqlite3.connect(database_path) as restored_conn:
             invalidate_queues(restored_conn)
             invalidate_plans(restored_conn)
+            invalidate_marks(restored_conn)
         validation = validate_current_restored_database(database_path)
         quiz_html = regenerate_staged_quiz_html(staged_data_root, database_path)
     except unsupported_schema_error as exc:
@@ -873,6 +877,7 @@ def reset_quiz_library_core(
     """)
     invalidate_queues(conn)
     invalidate_plans(conn)
+    invalidate_marks(conn)
     conn.commit()
     conn.execute("PRAGMA foreign_keys = ON")
     conn.close()
