@@ -169,3 +169,22 @@ The old Study screenshots contained the obsolete Mark for Anki label; their
 replacements show the current actual app, with no personal data or desktop chrome.
 `DLMS.spec` already includes all static assets and templates. No production
 package is built by this documentation/capture workflow.
+
+### Marked-question HTTP checks and visible selection controls
+
+The current marked-question screenshot shows **Select all on this page**,
+**Deselect all (across pages)** and the exact action counts. Basic selection is
+always visible; support details and action-specific helpers stay collapsed.
+The existing three-theme capture test uses synthetic CISM material and refreshes
+`marked-questions.webp`; copy the inspected crop and update its Help dimensions.
+
+`test_marked_http_*` adds ordinary non-localhost HTTP coverage, actual APKG
+downloads and request traces. Its `.test` name resolves to the isolated loopback
+server only inside the disposable Firefox profile. This changes test DNS, not
+secure-context rules. Captured packages and full-page QA screenshots belong
+in the temporary evidence directory, not in Help or the release assets.
+For an explicit LAN test only, set `DLMS_BROWSER_TEST_BIND_HOST=0.0.0.0` and
+`DLMS_MARKS_TEST_ORIGIN_HOST` to the test machine's own LAN address. The harness
+chooses an ephemeral port and disposable data; never point it at the owner's
+running application. Restore the default loopback test configuration afterward
+by omitting those environment variables.

@@ -1158,7 +1158,7 @@ def _firefox_command(firefox, profile, port, env):
     ]
 
 
-def _connect_firefox(port, process, log_path, timeout=30.0):
+def _connect_firefox(port, process, log_path, timeout=30.0, capabilities=None):
     # Hosted cold starts can spend the old 12-second budget before the listener
     # or initial content process is ready. Share this startup-only deadline with
     # session creation; ordinary browser command/condition budgets stay unchanged.
@@ -1175,7 +1175,9 @@ def _connect_firefox(port, process, log_path, timeout=30.0):
                 "127.0.0.1", port, timeout=min(0.5, max(0.05, deadline - time.monotonic()))
             )
             stage = "session initialization"
-            client.start_session(timeout=max(0.05, deadline - time.monotonic()))
+            session_options={'timeout':max(0.05, deadline-time.monotonic())}
+            if capabilities is not None:session_options['capabilities']=capabilities
+            client.start_session(**session_options)
             return client
         except Exception as exc:
             last_error = exc
@@ -1301,17 +1303,28 @@ def browser_server(tmp_path_factory):
 @pytest.fixture
 def browser_stack(browser_server, request):
     browser_env = dict(browser_server.env)
-    if getattr(request, "param", None):
+    capabilities = request.param if isinstance(getattr(request, "param", None), dict) else None
+    if getattr(request, "param", None) and capabilities is None:
         browser_env["TZ"] = request.param
     browser_port = _free_loopback_port()
     session_root = browser_server.work_root / f"firefox-session-{browser_port}"
     profile = session_root / "profile"
     profile.mkdir(parents=True)
+    downloads = session_root / "downloads"
+    downloads.mkdir()
     (profile / "user.js").write_text(
         '\n'.join([
             'user_pref("datareporting.healthreport.uploadEnabled", false);',
             'user_pref("toolkit.telemetry.enabled", false);',
             'user_pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);',
+            # Test-only DNS to the isolated loopback server. This is an ordinary
+            # HTTP .test origin, not a secure-context/security override.
+            'user_pref("network.dns.localDomains", "dlms-http.test");',
+            'user_pref("browser.download.folderList", 2);',
+            'user_pref("browser.download.dir", ' + json.dumps(str(downloads)) + ');',
+            'user_pref("browser.download.useDownloadDir", true);',
+            'user_pref("browser.helperApps.neverAsk.saveToDisk", "application/octet-stream,application/zip,application/apkg");',
+            'user_pref("browser.download.always_ask_before_handling_new_types", false);',
         ]),
         encoding="utf-8",
     )
@@ -1329,7 +1342,7 @@ def browser_stack(browser_server, request):
                 stderr=subprocess.STDOUT,
                 **browser_server.process_options,
             )
-            browser = _connect_firefox(browser_port, browser_process, browser_log)
+            browser = _connect_firefox(browser_port, browser_process, browser_log, capabilities=capabilities)
             yield BrowserStack(
                 browser,
                 browser_server.base_url,
@@ -14126,10 +14139,11 @@ def test_marked_questions_practice_export_and_compact_changes(browser_stack, the
             path=Path(output);path.mkdir(exist_ok=True,parents=True)
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
             (path/f'marked-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
-    browser.click('#markedQuestions details summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=practice]')
+    browser.click('#eligibleMarkTools summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=practice]')
     browser.wait_for("!document.getElementById('practiceMarks').disabled")
     assert browser.evaluate("document.getElementById('markEligibility').textContent.includes('Practice: 2 included · 0 excluded.')")
     if output and theme=='light':
+        browser.click('#eligibleMarkTools summary')
         capture_control(browser,Path(output)/'marked-questions.webp','.dashboard-panel')
     # Export the actual selected cards before practice, without clearing either mark.
     assert browser.evaluate("""(async()=>{const r=await fetch('/api/review-marks/anki',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('[name=csrf-token]').content},body:JSON.stringify({generation:document.getElementById('markedQuestions').dataset.generation,revision:Number(document.getElementById('markedQuestions').dataset.revision),ids:[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)})});return {status:r.status,size:(await r.blob()).size};})()""")['status']==200
@@ -14219,7 +14233,7 @@ def test_review_marks_legacy_retry_and_separate_browser_profile(browser_server):
 
 def test_marked_selection_type_counts_and_preview_retry(browser_stack):
     """Actual choice/matching/image/hotspot marks, before either independent action."""
-    browser,base=browser_stack.browser,browser_stack.base_url
+    browser,base=browser_stack.browser,_marked_http_base(browser_stack)
     browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
     # Seed only the isolated server's profile via the normal publisher.
     script="""import app,json
@@ -14243,7 +14257,8 @@ print(json.dumps({'id':qid,'html':html}))
         if index<3:browser.click('#nextBtn')
     browser.click('#studyAnkiExportBtn');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===4")
     browser.set_viewport(390,1000)
-    browser.evaluate("window.realPreviewFetch=fetch.bind(window);window.failMarkPreview=true;window.fetch=(...args)=>failMarkPreview&&String(args[0]).endsWith('/review-marks/preview')?Promise.resolve(new Response(JSON.stringify({error:'Simulated selection check failure'}),{status:503,headers:{'Content-Type':'application/json'}})):realPreviewFetch(...args);document.querySelectorAll('[data-mark-id]').forEach(n=>{n.checked=true;n.dispatchEvent(new Event('change'))});true")
+    browser.evaluate("window.realPreviewFetch=fetch.bind(window);window.failMarkPreview=true;window.fetch=(...args)=>failMarkPreview&&String(args[0]).endsWith('/review-marks/preview')?Promise.resolve(new Response(JSON.stringify({error:'Simulated selection check failure'}),{status:503,headers:{'Content-Type':'application/json'}})):realPreviewFetch(...args);true")
+    browser.click('#selectPageMarks')
     browser.wait_for("!document.getElementById('retryMarkPreview').hidden")
     assert browser.evaluate("document.getElementById('practiceMarks').disabled && document.getElementById('exportMarks').disabled")
     browser.evaluate('failMarkPreview=false;true');browser.click('#retryMarkPreview')
@@ -14258,7 +14273,7 @@ print(json.dumps({'id':qid,'html':html}))
     if output:
         from tests.browser._help_screenshots import capture_control
         capture_control(browser,Path(output)/'marked-type-boundaries.webp','#markedQuestions')
-    browser.click('#markedQuestions details summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=anki]')
+    browser.click('#eligibleMarkTools summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=anki]')
     browser.wait_for("!document.getElementById('exportMarks').disabled")
     browser.click('#exportMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('Anki package exported')")
     assert _database_value(browser_stack.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==4
@@ -14271,3 +14286,260 @@ print(json.dumps({'id':qid,'html':html}))
         assert conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0]==4
         assert conn.execute('SELECT count(*) FROM learning_events').fetchone()[0]==0
         assert conn.execute("SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL").fetchone()[0]==0
+
+
+def _marked_http_base(stack):
+    # Local DNS in the isolated Firefox profile resolves .test to loopback.
+    # An explicit LAN run uses the machine's actual address and a disposable
+    # server bound there; neither route changes secure-context browser policy.
+    return stack.base_url.replace('127.0.0.1', os.environ.get('DLMS_MARKS_TEST_ORIGIN_HOST', 'dlms-http.test'))
+
+
+def _trace_mark_actions(browser):
+    browser.evaluate("""window.markHttpTrace={errors:[],requests:[]};
+      addEventListener('error',e=>markHttpTrace.errors.push({message:e.message,stack:e.error?.stack}));
+      addEventListener('unhandledrejection',e=>markHttpTrace.errors.push({message:String(e.reason)}));
+      window.markHttpFetch=fetch.bind(window);window.fetch=async(...args)=>{
+        if(!String(args[0]).startsWith('/api/review-marks/'))return markHttpFetch(...args);
+        const row={url:String(args[0]),body:JSON.parse(args[1].body)};markHttpTrace.requests.push(row);
+        if(window.holdMarkRequest && row.url.endsWith('/generate'))await new Promise(resolve=>window.releaseMarkRequest=resolve);
+        const response=await markHttpFetch(...args);row.status=response.status;
+        row.contentType=response.headers.get('content-type');
+        if(row.contentType?.includes('json'))row.response=await response.clone().json();
+        if(window.loseMarkAck && row.url.endsWith('/generate') && response.ok){loseMarkAck=false;throw new Error('Lost acknowledgement after server saved the focused quiz');}
+        return response;
+      };true""")
+
+
+def _downloaded_anki_notes(browser_server):
+    deadline=time.monotonic()+6
+    last=None
+    while time.monotonic()<deadline:
+        files=list(browser_server.work_root.glob('firefox-session-*/downloads/*.apkg'))
+        for path in files:
+            try:
+                with zipfile.ZipFile(path) as package:
+                    assert package.testzip() is None
+                    database=browser_server.work_root/'downloaded-anki.db'
+                    database.write_bytes(package.read('collection.anki2'))
+                with sqlite3.connect(database) as conn:
+                    return path,[row[0] for row in conn.execute('SELECT flds FROM notes')]
+            except (OSError,zipfile.BadZipFile,sqlite3.Error) as exc:last=exc
+        time.sleep(.05)
+    raise AssertionError(f'No completed browser Anki download: {last}; files={files}')
+
+
+@pytest.mark.parametrize('count,view,theme', [(1,'current','light'),(2,'all','dark'),(4,'current','ethereal')])
+def test_marked_http_real_actions_and_download(browser_stack,browser_server,count,view,theme):
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    stack=BrowserStack(browser,base,browser_stack.data_root,browser_stack.metadata)
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    qid,html=_new_four_question_study_quiz(stack)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+    # Marking itself is not progress. One real first miss establishes regular
+    # continuity so subsequent focused completion must preserve it.
+    browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+    for index in range(4):
+        browser.click('#studyAnkiBtn');browser.wait_for(f'reviewMarkContext.indexes.includes({index}) && reviewMarkPending===null')
+        if index<3:browser.click('#nextBtn')
+    browser.click('#studyAnkiExportBtn');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===4")
+    if view=='all':
+        browser.click('nav a[href="/marked-questions"]')
+        browser.wait_for_page_ready("document.getElementById('markedQuestions')?.dataset.scope==='all' && location.search===''")
+    assert browser.evaluate('isSecureContext') is False
+    assert browser.evaluate('typeof crypto.randomUUID')=='undefined'
+    assert browser.evaluate('typeof crypto.getRandomValues')=='function'
+    assert browser.evaluate('document.getElementById("practiceMarks").disabled && document.getElementById("exportMarks").disabled')
+    _trace_mark_actions(browser)
+    browser.click('#unmarkSelected')
+    assert browser.evaluate("document.getElementById('markActionStatus').textContent")=='Select at least one question.'
+    for index in range(count):
+        browser.click(f'.marked-question:nth-of-type({index+1}) input')
+        browser.wait_for(f"document.querySelector('.marked-question:nth-of-type({index+1}) input').checked && document.getElementById('markEligibility').textContent.includes('Practice: {index+1} included · 0 excluded.')")
+    browser.wait_for(f"document.getElementById('markEligibility').textContent.includes('Practice: {count} included · 0 excluded.') && !document.getElementById('exportMarks').disabled")
+    ids=browser.evaluate("[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)")
+    assert browser.evaluate("document.getElementById('markActionStatus').textContent")!='Select at least one question.'
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output:
+        from tests.browser._help_screenshots import capture_control
+        path=Path(output);path.mkdir(parents=True,exist_ok=True)
+        for width in (1440,390):
+            browser.set_viewport(width,1000)
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            browser.activate();browser.wait_for('document.hasFocus()');browser.evaluate("document.getElementById('selectPageMarks').focus();true");browser.press_key('\ue004')
+            browser.wait_for("document.activeElement.id==='clearMarkSelection' && document.activeElement.matches(':focus-visible')")
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (path/f'http-marks-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light' and width==390:capture_control(browser,path/'http-marked-questions.webp','.dashboard-panel')
+    browser.click('#exportMarks');browser.wait_for("document.querySelector('#markExportResult a')!==null")
+    package,notes=_downloaded_anki_notes(browser_server)
+    assert len(notes)==count
+    assert all(f'Completion question {number}?' in notes[number-1] for number in range(1,count+1))
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==4
+    browser.evaluate('holdMarkRequest=true;loseMarkAck=true;true')
+    browser.click('#practiceMarks');browser.wait_for('typeof releaseMarkRequest===\'function\'')
+    browser.click('#practiceMarks')  # A real repeated click while the first runs.
+    assert browser.evaluate("markHttpTrace.requests.filter(r=>r.url.endsWith('/generate')).length")==1
+    browser.evaluate('holdMarkRequest=false;releaseMarkRequest();true')
+    browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    original=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/generate')).body")
+    assert original['ids']==ids
+    browser.click('#retryMarkAction');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    trace=browser.evaluate('markHttpTrace')
+    assert trace['errors']==[]
+    sends=[r for r in trace['requests'] if r['url'].endswith('/generate')]
+    assert len(sends)==2 and sends[0]['body']==sends[1]['body'] and all(r['status']==200 for r in sends)
+    assert next(r for r in trace['requests'] if r['url'].endswith('/anki'))['body']['ids']==ids
+    if output:
+        (Path(output)/f'http-actions-{count}-{view}.json').write_text(json.dumps(dict(origin=base,secure=False,user_agent=browser.evaluate('navigator.userAgent'),selected=ids,trace=trace,download_sha256=hashlib.sha256(package.read_bytes()).hexdigest(),notes=notes),indent=2))
+        shutil.copyfile(package,Path(output)/f'http-actual-download-{count}-{view}.apkg')
+    browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady')
+    assert browser.evaluate('quiz.map(q=>q.question)')==[f'Completion question {n}?' for n in range(1,count+1)]
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null')
+    assert browser.evaluate('durableStudySession.purpose')=='focused'
+    for index in range(count):
+        browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+        if index<count-1:browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at!==null')
+    browser.navigate(base+'/');browser.wait_for("document.getElementById('regularStudyContinuity')!==null")
+    summary=browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json()).then(r=>r.regular_study)")
+    assert int(summary['quiz_id'])==qid
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0]==4
+        assert conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='marked_practice'").fetchone()[0]==1
+        assert conn.execute('SELECT completed_at FROM study_sessions WHERE quiz_id=?',(qid,)).fetchone()[0] is None
+        source={r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?',(qid,))}
+        lineage={r[0] for r in conn.execute("SELECT q.source_question_uid FROM questions q JOIN quizzes z ON z.id=q.quiz_id WHERE z.generation_kind='marked_practice'")}
+        assert len(lineage)==count and lineage<=source
+
+
+def _seed_marked_http_pages(browser_server):
+    """Publish and mark only synthetic questions in the isolated server profile."""
+    script="""import app,json,hashlib,uuid
+from pathlib import Path
+client=app.app.test_client();client.get('/');headers={'X-CSRFToken':client.get_cookie('dlms_csrf_token').value}
+result=[]
+for title,count in [('Risk',26),('Governance',2)]:
+ questions=[{'number':i+1,'type':'choice','question':title+' question '+str(i+1)+'?','choices':[{'label':'A','text':'Accountable owner','is_correct':True},{'label':'B','text':'Vendor','is_correct':False}]} for i in range(count)]
+ qid,html=app._publish_quiz(title,questions,filename_prefix='marked_http')
+ entry=next(e for e in app.load_registry() if e['id']==qid);_,name=app._quiz_artifact_names(entry);raw=Path(app.DATA_FOLDER,name).read_text()
+ identity='\\0'.join(('quiz-recovery-v1','1',str(qid),'/data/'+name,str(entry.get('exam_minutes') or 90),raw))
+ fingerprint='sha256:'+hashlib.sha256(identity.encode()).hexdigest()
+ context=client.post('/api/review-marks/context',json={'quiz_id':qid,'fingerprint':fingerprint},headers=headers);assert context.status_code==200,context.json
+ d=context.json
+ reply=client.post('/api/review-marks/save',json=dict(action='mark',request_id=uuid.uuid4().hex,quiz_id=qid,fingerprint=fingerprint,generation=d['generation'],revision=d['revision'],assessment_revision=d['assessment_revision'],indexes=list(range(count)),marked=True),headers=headers);assert reply.status_code==200,reply.json
+ result.append(dict(id=qid,html=html,title=title,count=count))
+print(json.dumps(result))
+"""
+    seeded=subprocess.run([sys.executable,'-c',script],cwd=ROOT,env={**os.environ,'QUIZAPP_DATA_DIR':str(browser_server.data_root),'DLMS_NO_BROWSER':'1','PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=20)
+    assert seeded.returncode==0,seeded.stdout+seeded.stderr
+    return json.loads(seeded.stdout.splitlines()[-1])
+
+
+def test_marked_http_paging_selection_and_full_download(browser_stack,browser_server):
+    _seed_marked_http_pages(browser_server)
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/marked-questions');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===25")
+    assert browser.evaluate('isSecureContext') is False
+    assert browser.evaluate("document.getElementById('selectPageMarks').textContent")=='Select all on this page (25)'
+    browser.click('#selectPageMarks');browser.wait_for("document.getElementById('markSelectionCount').textContent.startsWith('25 questions selected')")
+    first=browser.evaluate("[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)")
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===3")
+    assert browser.evaluate("document.getElementById('markSelectionCount').textContent")=='25 questions selected across pages · 0 on this page.'
+    browser.click('#selectPageMarks');browser.wait_for("document.getElementById('markEligibility').textContent.includes('Anki: 28 included · 0 excluded.')")
+    second=browser.evaluate("[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)")
+    _trace_mark_actions(browser);browser.click('#exportMarks');browser.wait_for("document.querySelector('#markExportResult a')!==null")
+    package,notes=_downloaded_anki_notes(browser_server)
+    assert len(notes)==28
+    expected={f'Risk question {n}?' for n in range(1,27)}|{f'Governance question {n}?' for n in range(1,3)}
+    assert {note.split('<br>')[0] for note in notes}==expected
+    sent=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/anki')).body.ids")
+    assert set(sent)==set(first+second) and len(sent)==28
+    browser.click('#clearMarkSelection');browser.wait_for("document.getElementById('markSelectionCount').textContent.startsWith('0 questions selected')")
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===25")
+    assert browser.evaluate("document.querySelectorAll('[data-mark-id]:checked').length")==0
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===3")
+    browser.click('#selectPageMarks');browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    browser.click('#practiceMarks');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady')
+    assert set(browser.evaluate('quiz.map(q=>q.question)'))=={'Risk question 26?','Governance question 1?','Governance question 2?'}
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==28
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM learning_events')==0
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output:
+        Path(output).mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(package,Path(output)/'http-actual-download-28-across-pages.apkg')
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch':{'unhandledPromptBehavior':'ignore'}}], indirect=True)
+def test_marked_http_preparation_errors_cancel_and_server_retry(browser_stack,browser_server):
+    _seed_marked_http_pages(browser_server)
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/marked-questions');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===25")
+    browser.click('.marked-question input');browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    _trace_mark_actions(browser)
+    # No cryptographic API: visible preflight error and no request, not Math.random.
+    browser.evaluate("window.savedGetRandom=crypto.getRandomValues.bind(crypto);Object.defineProperty(crypto,'getRandomValues',{configurable:true,value:undefined});true")
+    browser.click('#practiceMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('No request was sent')")
+    assert browser.evaluate("markHttpTrace.requests.length")==0
+    browser.evaluate("Object.defineProperty(crypto,'getRandomValues',{configurable:true,value:savedGetRandom});window.savedStorageSet=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k.startsWith('dlms.markAction.'))throw new Error('Browser storage is unavailable');return savedStorageSet.call(this,k,v);};true")
+    browser.click('#exportMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('Browser storage is unavailable')")
+    assert browser.evaluate("markHttpTrace.requests.length")==0
+    browser.evaluate('Storage.prototype.setItem=savedStorageSet;true')
+    # This session leaves native prompts open so the actual dialog can be
+    # cancelled and accepted through Firefox, without replacing window.confirm.
+    prompts=browser.click_with_prompt('#unmarkSelected',accept=False)
+    assert len(prompts)==1 and prompts[0]['type']=='confirm' and 'Unmark exactly 1 selected question?' in prompts[0]['message']
+    assert browser.evaluate('markHttpTrace.requests.length')==0
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==28
+    # A genuine server write failure retains marks and the exact pending request.
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:
+        conn.execute("CREATE TRIGGER fail_http_unmark BEFORE UPDATE ON review_marks BEGIN SELECT RAISE(ABORT,'isolated failed unmark'); END")
+    prompts=browser.click_with_prompt('#unmarkSelected',accept=True)
+    assert len(prompts)==1 and prompts[0]['type']=='confirm'
+    browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    first=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/save'))")
+    assert first['status']==503 and len(first['body']['ids'])==1
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==28
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:conn.execute('DROP TRIGGER fail_http_unmark')
+    # Capture a server-acknowledged save before the UI reloads.
+    browser.evaluate("window.saveAckFetch=fetch.bind(window);window.fetch=async(...args)=>{const r=await saveAckFetch(...args);if(String(args[0]).endsWith('/save')&&r.ok){sessionStorage.setItem('unmark-ack-trace',JSON.stringify(markHttpTrace));}return r;};true")
+    browser.click('#retryMarkAction');browser.wait_for("document.querySelector('h2').textContent.includes('27 questions')")
+    trace=browser.evaluate("JSON.parse(sessionStorage.getItem('unmark-ack-trace'))")
+    saves=[r for r in trace['requests'] if r['url'].endswith('/save')]
+    assert len(saves)==2 and saves[0]['body']==saves[1]['body'] and saves[1]['status']==200
+    assert trace['errors']==[]
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==27
+    browser.wait_for_page_ready();browser.click('.marked-question input');browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    _trace_mark_actions(browser)
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:
+        conn.execute("CREATE TRIGGER fail_http_practice BEFORE INSERT ON quizzes WHEN NEW.generation_kind='marked_practice' BEGIN SELECT RAISE(ABORT,'isolated failed publication'); END")
+    browser.click('#practiceMarks');browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    failed=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/generate'))")
+    assert failed['status']==503
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:conn.execute('DROP TRIGGER fail_http_practice')
+    browser.click('#retryMarkAction');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    sends=browser.evaluate("markHttpTrace.requests.filter(r=>r.url.endsWith('/generate'))")
+    assert len(sends)==2 and sends[0]['body']==sends[1]['body'] and sends[1]['status']==200
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==27
+
+
+def test_marked_http_existing_anki_workflow(browser_stack,browser_server):
+    entries=_seed_marked_http_pages(browser_server)
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/anki')
+    browser.wait_for("document.querySelector('form[action=\"/anki/export/quiz\"] select')!==null")
+    browser.evaluate("document.querySelector('form[action=\"/anki/export/quiz\"] select').value="+json.dumps(str(entries[0]['id']))+";true")
+    browser.click('form[action="/anki/export/quiz"] button[type=submit]')
+    package,notes=_downloaded_anki_notes(browser_server)
+    assert len(notes)==26
+    assert {note.split('<br>')[0] for note in notes}=={f'Risk question {n}?' for n in range(1,27)}
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==28
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output:
+        Path(output).mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(package,Path(output)/'http-legacy-quiz-anki-download.apkg')

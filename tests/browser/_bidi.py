@@ -69,7 +69,7 @@ class FirefoxBidi:
             sock.close()
             raise
 
-    def start_session(self, timeout: float = 8.0) -> None:
+    def start_session(self, timeout: float = 8.0, capabilities: dict | None = None) -> None:
         deadline = time.monotonic() + timeout
 
         def startup_command(method, params):
@@ -78,7 +78,7 @@ class FirefoxBidi:
                 raise TimeoutError("Timed out starting Firefox BiDi session")
             return self.command(method, params, timeout=remaining)
 
-        startup_command("session.new", {"capabilities": {}})
+        startup_command("session.new", {"capabilities": capabilities or {}})
         tree = startup_command("browsingContext.getTree", {})
         contexts = tree.get("contexts") or []
         if not contexts:
@@ -105,6 +105,15 @@ class FirefoxBidi:
         while time.monotonic() < deadline:
             self._socket.settimeout(max(0.05, deadline - time.monotonic()))
             message = json.loads(self._receive_text())
+            if (message.get("method") == "browsingContext.userPromptOpened"
+                    and getattr(self, "_prompt_answer", None) is not None):
+                # A real modal prompt can block input.performActions. Respond
+                # on the same connection while preserving its pending reply.
+                self._observed_prompts.append(message["params"])
+                reply_id = self._next_id
+                self._next_id += 1
+                self._send_json({"id": reply_id, "method": "browsingContext.handleUserPrompt",
+                                 "params": {"context": self.context, "accept": self._prompt_answer}})
             if message.get("id") != command_id:
                 continue
             if message.get("type") == "error" or "error" in message:
@@ -112,6 +121,19 @@ class FirefoxBidi:
                 raise BidiError(f"{method} failed: {detail}")
             return message.get("result") or {}
         raise TimeoutError(f"Timed out waiting for Firefox command {method}")
+
+    def click_with_prompt(self, selector: str, *, accept: bool) -> list[dict]:
+        """Click and answer the actual native dialog in an ignore-prompt session."""
+        subscription = self.command("session.subscribe", {
+            "events": ["browsingContext.userPromptOpened"], "contexts": [self.context]})
+        self._prompt_answer = accept
+        self._observed_prompts = []
+        try:
+            self.click(selector)
+            return list(self._observed_prompts)
+        finally:
+            self._prompt_answer = None
+            self.command("session.unsubscribe", {"subscriptions": [subscription["subscription"]]})
 
     def navigate(self, url: str) -> None:
         # Firefox can sporadically withhold navigation-completion responses on

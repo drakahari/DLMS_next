@@ -12,6 +12,16 @@
   const eligibility = document.getElementById('markEligibility');
   const retryPreview = document.getElementById('retryMarkPreview');
   let preview = null, previewIds = '', previewSequence = 0;
+  function requestId() {
+    if (typeof window.crypto?.randomUUID === 'function') return window.crypto.randomUUID();
+    // Ordinary HTTP on a LAN does not expose randomUUID. getRandomValues is
+    // available there without changing the browser's secure-context rules.
+    if (typeof window.crypto?.getRandomValues === 'function') {
+      const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+      return 'mark-' + [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+    }
+    throw new Error('This browser cannot create a safe request ID. Use a browser with cryptographic random-number support.');
+  }
   async function checkSelection() {
     const sequence=++previewSequence, ids=[...selected];
     preview=null; retryPreview.hidden=true;
@@ -45,15 +55,24 @@
   retryPreview.onclick=checkSelection;
   function render() {
     boxes.forEach(box => { box.checked = selected.has(box.dataset.markId); });
-    count.textContent = `${selected.size} ${selected.size === 1 ? 'question' : 'questions'} selected across pages.`;
+    const onPage = boxes.filter(box => box.checked).length;
+    count.textContent = `${selected.size} ${selected.size === 1 ? 'question' : 'questions'} selected across pages · ${onPage} on this page.`;
+    if (selected.size && status.textContent === 'Select at least one question.') status.textContent = '';
     try { sessionStorage.setItem(key, JSON.stringify([...selected])); } catch (_) { status.textContent = 'This browser cannot retain selections across pages. Keep this page open while using the selected questions.'; }
     checkSelection();
   }
   boxes.forEach(box => box.addEventListener('change', () => { if (box.checked) selected.add(box.dataset.markId); else selected.delete(box.dataset.markId); render(); }));
-  root.querySelectorAll('[data-select-marks]').forEach(button => button.addEventListener('click', () => { boxes.filter(box => box.dataset[button.dataset.selectMarks] === 'yes').forEach(box => selected.add(box.dataset.markId)); render(); }));
+  document.getElementById('selectPageMarks').onclick = () => { boxes.forEach(box => selected.add(box.dataset.markId)); render(); };
+  root.querySelectorAll('[data-select-marks]').forEach(button => button.addEventListener('click', () => {
+    boxes.forEach(box => selected.delete(box.dataset.markId));
+    boxes.filter(box => box.dataset[button.dataset.selectMarks] === 'yes').forEach(box => selected.add(box.dataset.markId));
+    render();
+  }));
   document.getElementById('clearMarkSelection').onclick = () => { selected.clear(); render(); };
   const pendingKey = `dlms.markAction.${root.dataset.generation}.${root.dataset.scope}`;
   let pending = null, busy = false;
+  let exportUrl = null;
+  window.addEventListener('pagehide', event => { if (!event.persisted && exportUrl) URL.revokeObjectURL(exportUrl); });
   try { pending=JSON.parse(sessionStorage.getItem(pendingKey) || 'null'); } catch (_) { /* Preserve existing storage. */ }
   if (pending) { retry.hidden=false; status.textContent='A previous request needs confirmation. Retry the same request before starting another quiz.'; }
   async function run() {
@@ -63,8 +82,13 @@
       const response = await fetch(`/api/review-marks/${pending.action}`, {method: 'POST', headers: {'Content-Type':'application/json','X-CSRFToken':document.querySelector('[name=csrf-token]').content}, body:JSON.stringify(pending.data)});
       if (!response.ok) { const error = await response.json(); document.getElementById('uncertainMarkHelp').hidden=!error.uncertain; if (response.status < 500 && !error.uncertain) { pending=null; sessionStorage.removeItem(pendingKey); } throw new Error(error.error || 'The request failed. Your marks are retained.'); }
       if (pending.action === 'anki') {
-        const url = URL.createObjectURL(await response.blob()), link = document.createElement('a'); link.href=url; link.download='dlms_marked_questions.apkg'; link.click(); URL.revokeObjectURL(url);
-        status.textContent='Anki package exported. Your marks remain saved.';
+        const blob = await response.blob();
+        if (exportUrl) URL.revokeObjectURL(exportUrl);
+        exportUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a'); link.href=exportUrl; link.download='dlms_marked_questions.apkg'; link.textContent='Download Anki package';
+        document.getElementById('markExportResult').replaceChildren(link);
+        link.click();
+        status.textContent='Anki package exported. Save it if your browser asks, or use Download Anki package. Your marks remain saved.';
       } else {
         const result = await response.json();
         if (pending.action === 'save') { sessionStorage.removeItem(key); sessionStorage.removeItem(pendingKey); location.reload(); return; }
@@ -74,7 +98,7 @@
         status.textContent='Focused quiz ready. Your marks remain saved. Finish Review covers only this practice set.';
       }
       pending=null; sessionStorage.removeItem(pendingKey);
-    } catch (error) { status.textContent=error.message; retry.hidden=!pending; }
+    } catch (error) { status.textContent=error.message+(pending ? ` Retry the same ${pending.data.ids.length}-question request; changing checkboxes does not change that retry.` : ''); retry.hidden=!pending; }
     finally { busy=false; }
   }
   function start(action, ids=[...selected]) {
@@ -84,7 +108,16 @@
     const operation=action==='generate'?'practice':action;
     if (action!=='save' && (!preview || previewIds!==JSON.stringify(ids) || preview[operation].excluded)) {status.textContent='Check the selection and deselect excluded questions before continuing.';return;}
     if (action==='save' && !confirm(`Unmark exactly ${ids.length} selected ${ids.length===1?'question':'questions'}? Answers, history and other marks remain saved.`)) return;
-    pending={action,data:{request_id:crypto.randomUUID(),generation:root.dataset.generation,revision:Number(root.dataset.revision),ids,...(action==='save'?{action:'unmark'}:{})}}; sessionStorage.setItem(pendingKey,JSON.stringify(pending)); run();
+    try {
+      const prepared={action,data:{request_id:requestId(),generation:root.dataset.generation,revision:Number(root.dataset.revision),ids,...(action==='save'?{action:'unmark'}:{})}};
+      // Persist before sending. If storage fails, do not send an action whose
+      // identity could be lost on reload and accidentally repeated.
+      sessionStorage.setItem(pendingKey,JSON.stringify(prepared));
+      pending=prepared;
+      run();
+    } catch (error) {
+      status.textContent='Could not prepare this request: '+error.message+' No request was sent. Your selections and saved marks are retained.';
+    }
   }
   document.getElementById('separateMarkRequest').onclick=()=>{
     if (busy || !pending || !confirm('Start a separate request only after checking Generated Practice and allowing interrupted work to recover at normal startup. The earlier quiz may already exist. Continue?')) return;

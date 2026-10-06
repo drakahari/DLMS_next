@@ -12,8 +12,10 @@ when a question is marked, exported or used to create practice.
   The list is paginated in groups of 25. A live selection check shows exact
   practice and Anki included/excluded counts and reasons across all selected pages.
   An action requires an eligible whole selection; it never drops excluded questions.
-  Selections persist across pages in the
-  same tab. Opening the list never changes marks.
+  Visible **Select all on this page** adds only that page; **Deselect all (across
+  pages)** clears checkboxes without unmarking. Optional supported-question
+  helpers replace only the current page’s selection. Selections persist across
+  pages in the same tab. Opening the list never changes marks.
 - **Export to Anki** and **Start focused quiz** are independent actions. Neither
   removes marks. Individual and selected bulk unmarking are explicit and confirmed.
 - `dlms/services/review_marks.py` validates source identity, question revision,
@@ -168,3 +170,26 @@ Light captures and copy only the reviewed WebP crops into `static/help_assets`.
 Full desktop/narrow Light, Dark and Ethereal captures remain review evidence.
 Use existing `capture_control` crops, concise captions, meaningful alt text and
 Help's keyboard-accessible enlargement; do not replace written steps with images.
+
+## Ordinary HTTP and request preparation
+
+The LAN failure was reproduced before this fix on ordinary non-localhost HTTP
+in Firefox 157. Eligible selections of one, two and four questions returned
+successful previews. Each practice/export click then threw
+`TypeError: crypto.randomUUID is not a function` before any action request left
+the browser. The confirmation for Unmark happened before that same failing call;
+a confirmation alone did not establish a successful unmark.
+
+Request creation now checks API availability and uses 128 bits from
+`crypto.getRandomValues` when `randomUUID` is unavailable on ordinary HTTP.
+This does not relax browser security or require HTTPS for these local actions.
+The request is stored before sending; preparation/storage failures show an
+explicit message and send nothing. Retries retain the original ID and question
+selection. Anki also retains a visible download link while the page is open.
+
+Regression coverage uses an ordinary `.test` HTTP origin resolved only inside
+the isolated Firefox profile, plus an explicit real-LAN run on the test host.
+No trusted-origin override is used. Browser tests inspect actual downloaded
+APKG contents, focused quiz contents and source lineage, cross-page selection,
+real server write failures, cancelled/accepted unmarking and lost acknowledgements.
+The owner’s running service and personal records are not used by these checks.

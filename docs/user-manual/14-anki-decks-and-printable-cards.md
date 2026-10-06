@@ -75,10 +75,14 @@ for the attempt workflow.
 ## Mark questions during Study Mode
 
 In Study Mode, choose **Mark for review**, then **Marked questions** for that
-quiz or **All marked quizzes**. Select questions and choose **Export to Anki**
+quiz or **All marked quizzes**. **Select all on this page** adds the visible
+questions; visit each page to include more. **Deselect all (across pages)** clears
+checkboxes without removing saved marks. Check the included/excluded counts,
+then choose **Export to Anki**
 for supported text choice questions. **Start focused quiz** is a separate action
 that respects Learning Scope. Either or both may be used without clearing marks.
-Use explicit Unmark controls to remove reminders. Marks persist in the DLMS
+Save the download if your browser asks, or use **Download Anki package**.
+Use **Open focused quiz** after generation. Use explicit Unmark controls to remove reminders. Marks persist in the DLMS
 profile and its backups; they are not wrong-answer evidence.
 
 Older browser recovery marks require **Save previous browser marks to DLMS**
