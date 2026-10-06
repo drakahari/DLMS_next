@@ -8,12 +8,12 @@ from dlms.themes import normalize_theme
 
 
 DASHBOARD_CARD_GROUPS = (
-    ("Panels", (("welcome", "Welcome"), ("daily_review", "Today’s Review"),
-                ("recent_activity", "Recent quiz activity"), ("overview", "Overview"))),
+    ("Panels", (("welcome", "Welcome"), ("daily_review", "Study next & Continue studying"),
+                ("recent_activity", "Recent quiz activity"), ("overview", "Results overview"))),
     ("Quick access", (("library", "Quiz Library"), ("build", "Build Quiz"),
                       ("study_packs", "Study Packs"), ("it", "IT Study"),
                       ("law", "Law Study"), ("medical", "Medical Study"),
-                      ("history", "History"), ("analytics", "Analytics"),
+                      ("study_history", "Study History"), ("history", "Exam History"), ("analytics", "Analytics"),
                       ("settings", "Settings"))),
 )
 
@@ -222,9 +222,12 @@ def load_portal_config(
     raw_dashboard = cfg.get("dashboard_card_visibility")
     if not isinstance(raw_dashboard, dict):
         raw_dashboard = {}
+    defaults = dashboard_card_defaults()
+    # An added shortcut must not reappear for someone who hid History.
+    defaults["study_history"] = raw_dashboard.get("history") if isinstance(raw_dashboard.get("history"), bool) else True
     cfg["dashboard_card_visibility"] = {
         key: raw_dashboard[key] if isinstance(raw_dashboard.get(key), bool) else default
-        for key, default in dashboard_card_defaults().items()
+        for key, default in defaults.items()
     }
     return cfg
 

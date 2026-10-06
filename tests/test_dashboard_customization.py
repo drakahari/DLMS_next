@@ -119,7 +119,7 @@ def test_all_hidden_restore_and_sidebar_are_independent(dashboard):
 
 def test_every_toggle_renders_independently_and_pack_gate_is_preserved(dashboard):
     shortcuts = {"library": "/library", "build": "/upload", "study_packs": "/study-packs",
-                 "it": "/it", "law": "/law", "medical": "/medical", "history": "/history",
+                 "it": "/it", "law": "/law", "medical": "/medical", "history": "/history", "study_history": "/study-history",
                  "analytics": "/dashboard", "settings": "/settings"}
     for key in dashboard_card_defaults():
         assert save_cards(dashboard, [key]).status_code == 302
@@ -130,7 +130,7 @@ def test_every_toggle_renders_independently_and_pack_gate_is_preserved(dashboard
             assert f'class="dashboard-action-card" href="{shortcuts[key]}"' in page
         else:
             assert 'class="dashboard-action-card"' not in page
-        assert ('class="dashboard-welcome dashboard-panel"' in page) == (key == "welcome")
+        assert ('class="dashboard-welcome"' in page) == (key == "welcome")
         assert ('id="dailyReviewList"' in page) == (key == "daily_review")
         if key == "recent_activity":
             assert 'id="recentActivity"' in page and 'id="statAttempts"' not in page
@@ -142,7 +142,7 @@ def test_every_toggle_renders_independently_and_pack_gate_is_preserved(dashboard
     assert '<a class="dashboard-action-card" href="/medical">' in page
     assert dlms.load_portal_config()["dashboard_card_visibility"]["medical"] is True
     page = dashboard.get("/settings/dashboard", follow_redirects=True).get_data(as_text=True)
-    assert page.count('class="settings-toggle-row"') == 17
+    assert page.count('class="settings-toggle-row"') == 18
     assert "Medical Study remains available without an installed content pack" in page
     from flask import render_template
     with dlms.app.test_request_context("/"):
@@ -340,7 +340,7 @@ def test_unified_layout_save_preserves_differing_choices_and_scoped_resets(dashb
     assert saved["study_area_visibility"]["law"] and not saved["dashboard_card_visibility"]["law"]
     assert saved["theme"] == "ethereal" and saved["custom_extension"] == {"keep": 1}
     page = dashboard.get("/settings/layout").get_data(as_text=True)
-    assert page.count('name="dashboard_card_') == 13
+    assert page.count('name="dashboard_card_') == 14
     assert page.count('name="study_area_') == 4
     assert 'dashboard_card_other' not in page
     assert page.count('value="save"') == 1
@@ -393,3 +393,22 @@ def test_recent_attempts_bounded_deduplicated_by_identity_and_history_preserved(
     page = dashboard.get("/").get_data(as_text=True)
     assert page.index('id="dailyReviewList"') < page.index('id="recentActivity"') < page.index('aria-label="Quick access"')
     assert 'dashboard-lower-grid' not in page
+
+
+@pytest.mark.parametrize('history', [True, False])
+def test_new_study_history_inherits_without_rewriting_then_saves_independently(dashboard, history):
+    cfg = dlms.load_portal_config()
+    cfg['dashboard_card_visibility'] = {'history': history, 'daily_review': False}
+    dlms._write_settings_portal_config(cfg)
+    before = Path(dlms.PORTAL_CONFIG).read_bytes()
+    assert dlms.load_portal_config()['dashboard_card_visibility']['study_history'] is history
+    assert Path(dlms.PORTAL_CONFIG).read_bytes() == before
+    # Explicit choices win over inheritance, including a false value.
+    for selected in (['study_history'], ['history']):
+        assert save_cards(dashboard, selected).status_code == 302
+        saved = dlms.load_portal_config()['dashboard_card_visibility']
+        assert saved['study_history'] is ('study_history' in selected)
+        assert saved['history'] is ('history' in selected)
+        page = dashboard.get('/').get_data(as_text=True)
+        assert ('class="dashboard-action-card" href="/study-history"' in page) is saved['study_history']
+        assert ('class="dashboard-action-card" href="/history"' in page) is saved['history']

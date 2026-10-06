@@ -37,7 +37,7 @@
                 <a class="dashboard-nav-subitem" href="/medical/ai-builder"><svg class="dlms-icon dashboard-nav-subicon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#branch"></use></svg><span>AI Content Pack Builder</span></a>
             </div>
 
-            <a class="dashboard-nav-item active" href="/history" aria-current="page"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg><span>History</span></a>
+            <a class="dashboard-nav-item active" href="/history" aria-current="page"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg><span>Exam History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg><span>Analytics</span></a>
             <a class="dashboard-nav-item" href="/anki"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#anki"></use></svg><span>Anki Tools</span></a>
         </nav>
@@ -61,10 +61,9 @@
         <header class="dashboard-header history-table-header">
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div>
-                <div class="history-eyebrow">QUIZ HISTORY</div>
-                <p><a href="/study-history">Study history and completed reviews</a></p>
-<h1>Attempts &amp; Review</h1>
-                <p>Review completed quizzes and revisit past results.</p>
+                <h1>Exam History</h1>
+                <p>Exam results and older saved attempts. Legacy Study results stay labeled below; durable Study reviews have their own history.</p>
+                <p><a href="/study-history">Study History — finished reviews and partial work</a></p>
             </div>
         </header>
 
@@ -90,7 +89,7 @@
             <div class="history-table-heading">
                 <div>
                     <span class="history-eyebrow">SAVED ATTEMPTS</span>
-                    <h2>Quiz history</h2>
+                    <h2>Saved quiz results</h2>
                 </div>
                 <span class="history-table-count" id="historyAttemptCount">Loading…</span>
             </div>
@@ -237,7 +236,7 @@ function renderAttempts() {
         const modeCell = document.createElement("td");
         const modeBadge = document.createElement("span");
         modeBadge.className = "history-mode-badge";
-        modeBadge.textContent = String(a.mode || "Unknown");
+        modeBadge.textContent = String(a.mode || "").trim().toLowerCase() === "study" ? "Study — legacy saved result" : String(a.mode || "Mode unavailable");
         modeCell.appendChild(modeBadge);
 
         const reviewCell = document.createElement("td");

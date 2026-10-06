@@ -188,3 +188,31 @@ For an explicit LAN test only, set `DLMS_BROWSER_TEST_BIND_HOST=0.0.0.0` and
 chooses an ephemeral port and disposable data; never point it at the owner's
 running application. Restore the default loopback test configuration afterward
 by omitting those environment variables.
+
+## Calmer dashboard and separate histories
+
+Source baseline: `ce44530cc843f360b507d36055abb05ceaa99b88` plus the reviewed
+calmer-dashboard working tree. Use disposable data; never capture personal quizzes.
+
+```sh
+DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
+DLMS_PRESENTATION_CAPTURE_DIR=/tmp/dlms-calm-help \
+python -m pytest -q -p no:cacheprovider -m browser \
+tests/browser/test_critical_workflows.py \
+-k 'calm_dashboard or plan_selected_breakdown_risk'
+```
+
+The first test saves an actual wrong Study response, creates an active sample
+Exam Plan, and checks that the durable session and its exact browser checkpoint
+share one compact continuation. It captures the entire dashboard in Light, Dark
+and Ethereal at desktop and narrow widths, plus sparse states. The workload test
+captures the visible shortfall warning. Capture files remain outside the repo.
+Inspect the actual images before replacing `dashboard.webp`,
+`exam-plan-dashboard.webp`, `exam-plan-workload.webp`, and `history.webp` in
+`static/help_assets/`. Update image dimensions if needed. The History capture
+shows the real Exam History page and its Study History link; it must not suggest
+that legacy saved Study results prove a completed durable review.
+
+Keep Help links around images for the existing keyboard-accessible enlargement.
+No separate gallery or synthetic control labels are needed. The normal gates
+validate links and UI behavior; they do not automatically overwrite Help assets.

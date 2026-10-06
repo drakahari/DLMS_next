@@ -51,7 +51,7 @@ class UiIconTests(unittest.TestCase):
             ("/upload", "Build Quiz", "build"),
             ("/study-packs", "Study Packs", "study"),
             ("/law", "Law Study", "law"),
-            ("/history", "History", "history"),
+            ("/history", "Exam History", "history"),
             ("/dashboard", "Analytics", "analytics"),
             ("/anki", "Anki Tools", "anki"),
             ("/settings", "Settings", "settings"),

@@ -213,7 +213,7 @@
       item('medical','/medical','medical','Medical Study'),
       item('other','/study-packs?domain_group=other','other','Other Studies'),
       primarySection('Progress & tools'),
-      item('history','/history','history','History'),
+      item('history','/history','history','Exam History'),
       item('analytics','/dashboard','analytics','Analytics'),
       `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','learning','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','branch','Topic Intelligence', path === '/learning-intelligence')}${sub('/exam-plans','branch','Exam Plans', path.startsWith('/exam-plans'))}${sub('/learning-profile','branch','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','branch','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','branch','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
       `<div class="dashboard-nav-group">${item('anki','/anki','anki','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','branch','Custom Deck & Printable Cards', path === '/anki/custom')}${sub('/anki/law','branch','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`

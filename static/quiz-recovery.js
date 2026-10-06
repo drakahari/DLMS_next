@@ -492,6 +492,8 @@
             quizId,
             sessionId: record.session.id,
             learningSessionId: record.learningSessionId,
+            fingerprint: record.quiz.fingerprint,
+            pendingStudyCount: record.unacknowledgedStudyEvents.length,
             revision: record.session.revision,
             ownerToken: record.session.ownerToken,
             mode: record.session.mode,

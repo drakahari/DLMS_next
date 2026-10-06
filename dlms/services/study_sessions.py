@@ -302,6 +302,11 @@ def regular_continuity(cur, registry, *, data_folder, quiz_folder, artifact_name
             artifact(cur, row["quiz_id"], row["fingerprint"], registry=registry, data_folder=data_folder, artifact_names=artifact_names)
         except StudyConflict:
             unchanged = False
-    return {"quiz_id": row["quiz_id"], "title": (entry or {}).get("title") or row["title"],
-            "reviewed": session["reviewed"], "total": session["total"], "completed_at": row["completed_at"],
+    # Factual display must not let a legacy completion marker conceal gaps.
+    reviewed = sum(answer["was_correct"] is not None for answer in session["answers"].values())
+    return {"session_id": row["id"], "fingerprint": row["fingerprint"],
+            "sequence_complete": session["sequence_complete"],
+            "coverage_incomplete": bool(row["completed_at"] and reviewed < session["total"]),
+            "quiz_id": row["quiz_id"], "title": (entry or {}).get("title") or row["title"],
+            "reviewed": reviewed, "total": session["total"], "completed_at": row["completed_at"],
             "saved_at": row["last_activity_at"], "url": url, "unchanged": unchanged}

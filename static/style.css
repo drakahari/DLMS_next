@@ -16034,3 +16034,62 @@ h1, h2, h3 {
 #regularStudyContinuity .daily-review-secondary {display:inline-block; padding:.4rem 0; color:var(--theme-accent-text);}
 #activeExamPlan .plan-workload-warning {margin-block:.7rem; padding:.65rem; border-inline-start:3px solid var(--theme-accent); background:var(--semantic-section-surface); color:var(--theme-page-text);}
 #activeExamPlan .plan-breakdown {margin-block:.4rem;}
+
+/* Dashboard hierarchy: one prominent study action, compact secondary facts. */
+.dashboard-main[data-home-dashboard] .dashboard-header {margin-bottom:16px; text-align:left; justify-content:flex-start;}
+.dashboard-main[data-home-dashboard] .dashboard-header > div {display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px 24px; width:100%;}
+.dashboard-main[data-home-dashboard] .dashboard-header h1 {font-size:clamp(1.35rem, 2.5vw, 1.8rem); margin:0;}
+.dashboard-main[data-home-dashboard] .dashboard-welcome {padding:0; margin:0 0 16px; background:none; border:0; box-shadow:none; color:var(--theme-muted-text);}
+.dashboard-study-layout {display:grid; grid-template-columns:minmax(0, 1.9fr) minmax(0, 1fr); gap:28px; align-items:start;}
+.dashboard-study-layout:not(:has(#continueStudyPanel:not([hidden]))) {grid-template-columns:minmax(0,1fr);}
+.dashboard-study-layout > * {min-width:0;}
+.dashboard-study-next > h2 {font-size:1.5rem; margin:0 0 16px;}
+.dashboard-study-next .daily-review-item {display:block; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none;}
+.dashboard-study-next .daily-review-copy h3 {font-size:1.2rem; margin:0 0 8px;}
+.dashboard-study-next .daily-review-copy :is(p,h4) {font-size:1rem; line-height:1.5;}
+.dashboard-study-next .daily-review-copy h4 {margin:8px 0;}
+.dashboard-study-next .daily-review-item-action {max-width:none; justify-items:start; margin-top:14px;}
+.dashboard-study-next details {margin-top:12px;}
+.dashboard-study-options {color:var(--theme-muted-text);}
+.dashboard-study-next .dashboard-other-options .daily-review-item {margin-top:16px;}
+.dashboard-study-layout summary {cursor:pointer; color:var(--theme-link);}
+.dashboard-study-layout summary:focus-visible {outline:2px solid var(--theme-accent); outline-offset:4px;}
+.dashboard-update-status:empty, .daily-review-status:empty {display:none;}
+#continueStudyPanel {border-inline-start:1px solid var(--theme-border-soft); padding-inline-start:24px; align-self:start;}
+#continueStudyPanel > h2 {font-size:1.1rem; margin:0 0 12px;}
+#continueStudyPanel .daily-review-item {display:block; border:0; border-radius:0; padding:0 0 14px; margin-bottom:14px; background:transparent; box-shadow:none; border-bottom:1px solid var(--theme-border-soft);}
+#continueStudyPanel .daily-review-copy h3 {font-size:1rem; line-height:1.4; margin:4px 0; overflow-wrap:anywhere;}
+#continueStudyPanel .daily-review-copy p {font-size:.9375rem; line-height:1.45; margin:6px 0;}
+#continueStudyPanel .daily-review-item-action {max-width:none; justify-items:start; margin-top:8px;}
+#continueStudyPanel .daily-review-copy > span {font-size:.875rem; color:var(--theme-muted-text);}
+.dashboard-study-layout .daily-review-action {background:transparent; color:var(--theme-link)!important; font-size:1rem; font-weight:600; white-space:normal; text-align:left;}
+.dashboard-study-layout .daily-review-action:hover {background:var(--theme-surface-2);}
+.dashboard-study-layout [data-dashboard-primary] {background:var(--theme-accent-2); color:var(--semantic-primary-control-text)!important; font-weight:700;}
+.dashboard-study-layout [data-dashboard-primary]:hover {background:var(--theme-accent);}
+.dashboard-study-layout .daily-review-action:focus-visible {outline:2px solid var(--theme-accent); outline-offset:3px;}
+.dashboard-save-warning {color:var(--theme-page-text); font-weight:700;}
+.dashboard-main[data-home-dashboard] .daily-review-empty {border:0; padding:0; background:transparent;}
+.dashboard-main[data-home-dashboard] .dashboard-activity-list {border:0; background:transparent; border-radius:0;}
+.dashboard-main[data-home-dashboard] .dashboard-activity-summary {padding:0 16px 0 0; border:0; background:transparent;}
+.dashboard-main[data-home-dashboard] .dashboard-activity-summary + .dashboard-activity-summary {padding-inline-start:16px; border-inline-start:1px solid var(--theme-border-soft);}
+.dashboard-main[data-home-dashboard] .dashboard-activity-summary h3 {font-size:1rem;}
+.dashboard-main[data-home-dashboard] .dashboard-activity-explanation {margin:12px 0 0;}
+.dashboard-main[data-home-dashboard] .dashboard-action-grid {grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));}
+.dashboard-main[data-home-dashboard] .dashboard-action-card {box-shadow:none; padding:14px; grid-template-columns:32px minmax(0,1fr);}
+.dashboard-main[data-home-dashboard] .dashboard-action-copy h2 {font-size:1rem;}
+.dashboard-main[data-home-dashboard] .dashboard-action-copy p {font-size:1rem; line-height:1.45;}
+.dashboard-main[data-home-dashboard] .dashboard-overview-panel {margin-top:16px; box-shadow:none;}
+.dashboard-main[data-home-dashboard] .dashboard-stat-grid[hidden] {display:none;}
+.dashboard-main[data-home-dashboard] .dashboard-stat-card {border:0; padding:0; box-shadow:none; background:transparent; display:block;}
+.dashboard-main[data-home-dashboard] .dashboard-stat-icon {display:none;}
+.dashboard-main[data-home-dashboard] .dashboard-stat-card strong {font-size:1.5rem;}
+.dashboard-main[data-home-dashboard] #overviewExplanation {margin-top:12px;}
+@media(max-width:1100px) {
+  .dashboard-study-layout {grid-template-columns:minmax(0,1fr); gap:20px;}
+  #continueStudyPanel {padding:16px 0 0; border-inline-start:0; border-top:1px solid var(--theme-border-soft);}
+}
+@media(max-width:600px) {
+  .dashboard-main[data-home-dashboard] .dashboard-activity-summary + .dashboard-activity-summary {padding:16px 0 0; border-inline-start:0; border-top:1px solid var(--theme-border-soft); margin-top:16px;}
+  .dashboard-main[data-home-dashboard] .dashboard-stat-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .dashboard-study-layout .daily-review-item-action {justify-items:stretch;}
+}

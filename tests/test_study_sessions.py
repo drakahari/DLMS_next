@@ -102,6 +102,13 @@ class StudySessionTests(unittest.TestCase):
         self.assertIsNone(self.facts()["completed_at"])
         with dlms.get_db() as conn:
             self.assertEqual(conn.execute("SELECT sequence FROM study_responses WHERE session_id='session-one'").fetchall()[0][0], 2)
+            before = list(conn.iterdump())
+            continuity = study.regular_continuity(conn.cursor(), dlms.load_registry(), data_folder=dlms.DATA_FOLDER,
+                quiz_folder=dlms.QUIZ_FOLDER, artifact_names=dlms._quiz_artifact_names)
+            self.assertEqual(continuity['session_id'], self.claim_data['sessionId'])
+            self.assertEqual(continuity['fingerprint'], self.claim_data['fingerprint'])
+            self.assertFalse(continuity['sequence_complete'])
+            self.assertEqual(list(conn.iterdump()), before)
         self.assertEqual(self.evidence(), [])
 
     def test_conflicting_duplicate_and_takeover(self):

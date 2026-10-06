@@ -227,9 +227,10 @@ def test_regular_study_genuine_sequence_gap_keeps_resume(browser_stack):
     browser.wait_for("studyCompletionFailed && studyCompletionMessage.includes('sequence is incomplete')")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(key)}) !== null")
     browser.navigate(browser_stack.base_url + "/")
-    browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('4 / 4 questions reviewed')")
+    browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('4 / 4 reviewed')")
     text = browser.evaluate("document.getElementById('regularStudyContinuity').textContent")
-    assert "Review not finished" in text and "Finish Review has not been saved" in text
+    assert "Saved review needs attention" in text and "Earlier saves or complete answers are missing" in text
+    assert "saved records have not been repaired" in text
     browser.navigate(browser_stack.base_url + "/quizzes/" + html)
     browser.wait_for("quizRecoveryReady")
     assert browser.evaluate("document.querySelector('.quiz-recovery-resume') !== null")
@@ -713,7 +714,7 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
         browser.set_viewport(width, 1000)
         for route, selectors in (
             ('/', {'shortcut': '.dashboard-action-copy p', 'stat': '.dashboard-stat-card span',
-                   'welcome': '.dashboard-welcome p'}),
+                   'welcome': '.dashboard-welcome'}),
             ('/settings/appearance', {'helper': '#themeGuidance', 'select': '#appearanceTheme', 'input': '#portalTitle'}),
             ('/settings/backup?storage=1', {'legend': '.storage-usage-list li', 'note': '#storageChartNote'}),
             ('/settings/reset-remove', {'warning': '.settings-warning-panel span',
@@ -1460,6 +1461,10 @@ def test_fresh_profile_defaults_to_purple_gold_and_theme_selection_persists(brow
 def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_stack):
     browser = browser_stack.browser
     browser.set_viewport(1400, 1000)
+    # The removed attempt list is replaced by the reliably dated Exam summary.
+    # Seed an explicit UTC fixture; do not reinterpret the undated legacy result.
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute("INSERT INTO attempts(id,quiz_id,score,total,percent,mode,completed_at) VALUES ('color-exam',?,0,2,0,'Exam','2026-10-01T12:00:00Z')", (browser_stack.metadata['critical_id'],))
     expected = {
         "light": {
             "normal": "rgb(143, 36, 53)",
@@ -1512,7 +1517,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
         assert status == 200
         browser.navigate(f"{browser_stack.base_url}/")
         browser.wait_for("document.querySelector('.dashboard-shutdown') !== null")
-        browser.wait_for("document.querySelector('.dashboard-activity-row .dashboard-score') !== null")
+        browser.wait_for("document.querySelector('.dashboard-activity-summary .dashboard-score') !== null")
         assert browser.evaluate(
             "(() => {"
             "const source = document.querySelector('.dashboard-shutdown');"
@@ -1542,7 +1547,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
             "const status = getComputedStyle(document.getElementById('activityStatusProbe'));"
             "const styles = id => { const value = getComputedStyle(document.getElementById(id));"
             "return {color:value.color,background:value.backgroundColor}; };"
-            "const recent = document.querySelector('.dashboard-activity-row .dashboard-score');"
+            "const recent = document.querySelector('.dashboard-activity-summary .dashboard-score');"
             "const recentStyle = getComputedStyle(recent);"
             "return {buttonColor:button.color,buttonBackground:button.backgroundImage,"
             "headingColor:heading.color,"
@@ -1570,7 +1575,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
         for state, (color, background) in palette["scores"].items():
             assert normal["dashboardScores"][state] == {"color": color, "background": background}
             assert normal["historyScores"][state] == normal["dashboardScores"][state]
-        assert normal["recentScore"]["text"] == "0%"
+        assert normal["recentScore"]["text"] == "0 / 2 (0%)"
         assert "score-bad" in normal["recentScore"]["className"]
         assert normal["recentScore"]["color"] == palette["scores"]["bad"][0]
         assert normal["recentScore"]["background"] == palette["scores"]["bad"][1]
@@ -10656,7 +10661,7 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
         dashboard = browser.evaluate(
             "(() => {" + probe_helpers
             + "return {scheme:root.getPropertyValue('--theme-color-scheme').trim(),"
-            "panel:measure(document.querySelector('.dashboard-welcome'))};})()"
+            "panel:measure(document.querySelector('.daily-review-panel'))};})()"
         )
 
         browser.navigate(base_url + "/regex-help")
@@ -11132,8 +11137,8 @@ def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
             "/",
             "document.querySelector('.daily-review-action')",
             {
-                "daily intro": ".daily-review-intro",
-                "daily count": ".daily-review-count",
+                "study heading": "#dailyReviewHeading",
+                "suggestion disclosure": ".dashboard-study-options summary",
                 "daily explanation": ".daily-review-copy p",
                 "daily action": ".daily-review-action",
             },
@@ -12398,7 +12403,8 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
         "'.daily-review-native_due form input[name=csrf_token]'))"
         "}))()"
     )
-    assert plan["kinds"][:2] == ["native_due", "unfinished"]
+    assert plan["kinds"][0] == "native_due"
+    assert browser.evaluate("document.querySelector('#continueStudyPanel .daily-review-unfinished') !== null")
     assert "due" in plan["dueText"].lower()
     assert "Browser Critical Workflow" in plan["resumeText"]
     assert plan["csrf"] is True
@@ -12459,15 +12465,16 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
     assert browser.evaluate(
         "document.querySelector('.daily-review-native_due') === null"
     ) is True
+    generated_card = f'.daily-review-unfinished:has([data-clear-recovery="unfinished-{generated[1]}"])'
     assert "Spaced Review — Due Questions" in browser.evaluate(
-        "document.querySelector('.daily-review-unfinished').textContent"
+        "document.querySelector(" + json.dumps(generated_card) + ").textContent"
     )
 
     # Abandoning generated recovery restores its valid server recommendation,
     # without deleting the generated quiz, lineage, saved activity or schedule.
     with sqlite3.connect(database_path) as connection:
         before_clear = list(connection.iterdump())
-    browser.click(".daily-review-unfinished .daily-review-remove")
+    browser.click(generated_card + " .daily-review-remove")
     browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
     browser.click("#dailyReviewClearDialog button[value='clear']")
     browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
@@ -12704,7 +12711,7 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
     })
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
     browser.navigate(base_url + "/")
-    browser.wait_for("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+    browser.wait_for("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length === 2")
 
     # Exercise real Tab order, modal focus, contrast and geometry across palettes.
     # This headless host never gains document focus: Enter/Space does not activate
@@ -12713,7 +12720,7 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
     for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(base_url + "/")
-        browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
+        browser.wait_for("document.querySelector('#continueStudyPanel .daily-review-remove')")
         for width in (1440, 1024, 760, 420):
             browser.set_viewport(width, 1000)
             browser.wait_for_page_ready()
@@ -12787,7 +12794,7 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
             browser.click(target)
             browser.click("#dailyReviewClearDialog button[value='clear']")
             browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('could not be cleared')")
-            assert browser.evaluate("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+            assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length === 2")
         finally:
             browser.evaluate(f"Storage.prototype.{method}=window.__storageMethod; true")
 
@@ -12799,7 +12806,7 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
     browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(changed_key)}) === null") is True
     assert browser.evaluate(f"{json.dumps(keys[:2])}.every(key=>localStorage.getItem(key)!==null)") is True
-    assert "Browser Critical Workflow" in browser.evaluate("document.getElementById('dailyReviewList').textContent")
+    assert "Browser Critical Workflow" in browser.evaluate("document.querySelector('.daily-review-panel').textContent")
     # The remaining ordinary Exam checkpoint can also be abandoned.
     browser.click(".daily-review-unfinished:has(a[href*='browser_companion']) .daily-review-remove")
     browser.click("#dailyReviewClearDialog button[value='clear']")
@@ -12829,13 +12836,19 @@ def test_today_review_clear_protects_failed_study_and_submitted_exam_saves(brows
         else:
             browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])')")
     browser.navigate(base_url + "/")
-    browser.wait_for("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+    browser.wait_for("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length === 2")
+    assert browser.evaluate("document.querySelectorAll('[data-dashboard-primary]').length") == 1
+    assert browser.evaluate("document.querySelector('[data-dashboard-primary]').closest('[data-needs-save]') !== null")
+    if os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR'):
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        target=Path(os.environ['DLMS_PRESENTATION_CAPTURE_DIR']);target.mkdir(parents=True,exist_ok=True)
+        (target/'calm-pending-saves.png').write_bytes(base64.b64decode(shot['data']))
     before = browser.evaluate("DLMSQuizRecovery.listStoredRecords().records.map(r=>localStorage.getItem(DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId)))")
-    for name, message in (("companion", "Use Finish Saving"), ("critical", "Study answers waiting")):
+    for name, message in (("companion", "Use Finish saving Exam"), ("critical", "Study answers waiting")):
         browser.click(f".daily-review-unfinished:has(a[href*='browser_{name}']) .daily-review-remove")
         browser.click("#dailyReviewClearDialog button[value='clear']")
         browser.wait_for(f"document.getElementById('dailyReviewStatus').textContent.includes({json.dumps(message)})")
-        assert browser.evaluate("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+        assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length === 2")
     assert browser.evaluate("DLMSQuizRecovery.listStoredRecords().records.map(r=>localStorage.getItem(DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId)))") == before
 
 
@@ -12851,7 +12864,7 @@ def test_today_review_clear_does_not_control_or_resurrect_an_active_quiz_tab(bro
     try:
         browser.context = dashboard_context
         browser.navigate(browser_stack.base_url + "/")
-        browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
+        browser.wait_for("document.querySelector('#continueStudyPanel .daily-review-remove')")
         browser.click(".daily-review-remove")
         browser.click("#dailyReviewClearDialog button[value='clear']")
         browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
@@ -13171,23 +13184,23 @@ def test_ethereal_landing_headers_cards_and_catalog_remain_accessible(browser_st
     hierarchy = browser.evaluate("""(() => {
         const card=document.querySelector('.dashboard-action-card'),review=document.querySelector('.daily-review-panel');
         return {cardBorder:getComputedStyle(card).borderColor,reviewBorder:getComputedStyle(review).borderColor,
-            cardShadow:getComputedStyle(card).boxShadow,decoration:getComputedStyle(document.querySelector('.dashboard-welcome-accent')).opacity,
+            cardShadow:getComputedStyle(card).boxShadow,decoration:String(document.querySelector('.dashboard-welcome-accent') === null),
             titleSize:parseFloat(getComputedStyle(document.querySelector('.dashboard-header h1')).fontSize),
-            subtitleSize:parseFloat(getComputedStyle(document.querySelector('.dashboard-header p')).fontSize)};
+            subtitleSize:parseFloat(getComputedStyle(document.querySelector('.dashboard-welcome')).fontSize)};
     })()""")
     assert hierarchy['cardBorder'] != hierarchy['reviewBorder'] and hierarchy['cardShadow'] == 'none'
-    assert hierarchy['decoration'] == '0' and 26 <= hierarchy['titleSize'] <= 36
+    assert hierarchy['decoration'] == 'true' and 26 <= hierarchy['titleSize'] <= 36
     assert hierarchy['subtitleSize'] == 16
-    contrasts = _theme_contrast_snapshot(browser, {'title': '.dashboard-header h1', 'subtitle': '.dashboard-header p', 'action': '.daily-review-action', 'card': '.dashboard-action-copy p'})
+    contrasts = _theme_contrast_snapshot(browser, {'title': '.dashboard-header h1', 'subtitle': '.dashboard-welcome', 'action': '.daily-review-action', 'card': '.dashboard-action-copy p'})
     assert all(value['contrast'] >= 4.5 for value in contrasts.values()), contrasts
     capture('dashboard-desktop')
     # The primary action and all nine feature destinations remain available.
     links = browser.evaluate("[...document.querySelectorAll('.dashboard-action-card')].map(n=>n.getAttribute('href'))")
-    assert links == ['/library','/upload','/study-packs','/it','/law','/medical','/history','/dashboard','/settings']
+    assert links == ['/study-history','/history','/library','/upload','/study-packs','/it','/law','/medical','/dashboard','/settings']
     browser.evaluate("document.querySelector('.dashboard-action-card').focus();true")
     browser.press_key('\ue004')
     focus = browser.evaluate("({href:document.activeElement.getAttribute('href'),visible:document.activeElement.matches(':focus-visible'),outline:getComputedStyle(document.activeElement).outlineStyle})")
-    assert focus == {'href': '/upload', 'visible': True, 'outline': 'solid'}
+    assert focus == {'href': '/history', 'visible': True, 'outline': 'solid'}
     capture('dashboard-card-focus')
     # Exercise the real renderer's empty-history presentation without mutating data.
     browser.evaluate("""(() => {
@@ -13274,7 +13287,7 @@ def _dashboard_card_layout_snapshot(browser):
      visible:[heading,desc,card.querySelector('.dashboard-action-icon')].every(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility==='visible'&&s.overflowX!=='hidden'&&s.textOverflow!=='ellipsis'}),
      copyInside:r.left>=rect.left&&r.right<=rect.right+1};
  });
- return {viewport:innerWidth,dpr:devicePixelRatio,gridWidth:grid.getBoundingClientRect().width,columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,broken,cards,pageContained:document.documentElement.scrollWidth<=innerWidth+1};
+ return {viewport:innerWidth,dpr:devicePixelRatio,rootFont:parseFloat(getComputedStyle(document.documentElement).fontSize),gridWidth:grid.getBoundingClientRect().width,columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,broken,cards,pageContained:document.documentElement.scrollWidth<=innerWidth+1};
 })()""")
 
 
@@ -13287,7 +13300,7 @@ def test_ethereal_dashboard_cards_keep_readable_text_at_intermediate_widths(brow
     browser.navigate(browser_stack.base_url + '/')
     browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
     original = browser.evaluate("[...document.querySelectorAll('.dashboard-action-card')].map(n=>({href:n.getAttribute('href'),title:n.querySelector('h2').textContent,description:n.querySelector('p').textContent}))")
-    assert [card['href'] for card in original] == ['/library','/upload','/study-packs','/it','/law','/medical','/history','/dashboard','/settings']
+    assert [card['href'] for card in original] == ['/study-history','/history','/library','/upload','/study-packs','/it','/law','/medical','/dashboard','/settings']
 
     # Include both sides of the desktop grid transitions and sidebar collapse.
     # These tests used to pass an overflow-only check while words broke mid-word.
@@ -13296,14 +13309,14 @@ def test_ethereal_dashboard_cards_keep_readable_text_at_intermediate_widths(brow
         browser.set_viewport(width, 1000)
         browser.evaluate("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>r(true))))")
         state = _dashboard_card_layout_snapshot(browser)
-        assert state['columns'] == max(1, int((state['gridWidth'] + 12) // (288 + 12))), (width, state)
+        assert state['columns'] == max(1, int((state['gridWidth'] + 12) // (15 * state['rootFont'] + 12))), (width, state)
         assert state['pageContained'] and not state['broken'], (width, state)
         assert len(state['cards']) == len(original)
         for card, saved in zip(state['cards'], original):
             assert {key:card[key] for key in saved} == saved
-            assert card['copyWidth'] >= 200, (width, card)
+            assert card['copyWidth'] >= 160, (width, card)
             assert card['contained'] and card['visible'] and card['copyInside'], (width, card)
-            assert card['font'] == 18 and card['bodyFont'] == 14
+            assert card['font'] == card['bodyFont'] == state['rootFont'] and state['rootFont'] >= 16, (width, card)
 
         # Multiword headings and complete descriptions grow the card naturally.
         browser.evaluate("document.querySelector('.dashboard-action-copy h2').textContent='Professional Certification Preparation and Learning Analytics';document.querySelector('.dashboard-action-copy p').textContent='Comprehensive preparation and practice with complete explanations, question review, and progress tracking.';true")
@@ -13335,7 +13348,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     browser.navigate(browser_stack.base_url + "/settings/dashboard")
     browser.activate()
     browser.set_viewport(390, 844)
-    browser.wait_for("document.querySelectorAll('[name^=dashboard_card_]').length === 13")
+    browser.wait_for("document.querySelectorAll('[name^=dashboard_card_]').length === 14")
     assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.labels.length === 1 && input.labels[0].textContent.trim())")
     for name, sample in _theme_contrast_snapshot(browser, {
         "checkbox_label": ".settings-toggle-row strong", "helper": ".settings-scope-note",
@@ -13385,7 +13398,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     assert browser.evaluate("fetch('/config/portal.json').then(r => r.json()).then(c => c.study_area_visibility)") == sidebar_before
     browser.navigate(browser_stack.base_url + "/")
     browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false'")
-    assert browser.evaluate("document.querySelectorAll('.dashboard-action-card').length") == 9
+    assert browser.evaluate("document.querySelectorAll('.dashboard-action-card').length") == 10
     for name, sample in _theme_contrast_snapshot(browser, {
         "activity_heading": ".dashboard-activity-summary h3",
         "activity_detail": ".dashboard-activity-explanation", "customize": ".dashboard-customize",
@@ -13413,7 +13426,7 @@ def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
     assert "Last studied" in text and "Last response saved" in text
     assert "does not indicate quiz completion" in text
     assert "completion times cannot be determined" in text  # Seeded legacy Exam has no zone.
-    assert "Find undated attempts in History" in text
+    assert "View undated results in Exam History" in text
     assert browser.evaluate("document.querySelector('.dashboard-activity-summary time').dateTime.endsWith('+00:00')")
     browser.navigate(quiz_url)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
@@ -13429,7 +13442,7 @@ def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
     text = browser.evaluate("document.getElementById('recentActivity').textContent")
     assert "Latest Exam completed" in text and "2 / 2 (100%)" in text
     assert "Latest shown uses reliably dated records" in text
-    assert "current content" in text
+    assert "today’s content" in text
     browser.set_viewport(390, 844)
     assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert browser.evaluate("document.querySelectorAll('.dashboard-activity-summary a[href^=\"/review?attempt=\"]').length") == 1
@@ -13498,7 +13511,7 @@ def test_unified_layout_and_complete_dashboard_presentation(browser_stack, theme
     browser.navigate(base + '/')
     browser.wait_for("document.querySelector('#recentActivity')?.getAttribute('aria-busy') === 'false'")
     browser.wait_for("document.querySelector('#dailyReviewList .daily-review-action') !== null")
-    assert browser.evaluate("document.querySelectorAll('.dashboard-recent-attempt').length") == 3
+    assert browser.evaluate("document.querySelectorAll('.dashboard-recent-attempt').length") == 0
     featured = browser.evaluate("document.querySelector('.dashboard-activity-summary a[href^=\"/review\"]').href")
     assert featured not in browser.evaluate("[...document.querySelectorAll('.dashboard-recent-attempt a')].map(n=>n.href)")
     assert browser.evaluate("Boolean(document.querySelector('.dashboard-activity-panel').compareDocumentPosition(document.querySelector('.dashboard-action-grid')) & Node.DOCUMENT_POSITION_FOLLOWING)")
@@ -13838,7 +13851,7 @@ def test_exam_plan_no_work_states_and_switching(browser_stack, theme):
                 shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
                 (Path(output)/f'state-{code}-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
         browser.navigate(base+'/')
-        browser.wait_for("document.getElementById('activeExamPlan') !== null")
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
         if code=='hidden':
             browser.wait_for("document.getElementById('activeExamPlan').hidden")
         else:
@@ -14543,3 +14556,137 @@ def test_marked_http_existing_anki_workflow(browser_stack,browser_server):
     if output:
         Path(output).mkdir(parents=True,exist_ok=True)
         shutil.copyfile(package,Path(output)/'http-legacy-quiz-anki-download.apkg')
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_calm_dashboard_identity_priority_empty_results_and_help(browser_stack, theme):
+    """Actual durable response + browser checkpoint, with no title-based merge."""
+    from datetime import timedelta
+    from tests.browser._help_screenshots import capture_control
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance'); _set_theme(browser, theme)
+    qid, html = _new_regular_study_quiz(browser_stack, 4)
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for('studyLearningEventSaves.size===0')
+    title = 'CISM — Information Security Governance and Enterprise Risk Management: review of responsibilities'
+    registry_path = browser_stack.data_root / 'config/quizzes.json'
+    registry = json.loads(registry_path.read_text())
+    for item in registry:
+        if item['id'] == qid: item['title'] = title
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute('DELETE FROM attempts')
+        conn.execute('UPDATE quizzes SET title=? WHERE id=?', (title, qid))
+    browser.navigate(base + '/exam-plans/new')
+    browser.wait_for('window.dlmsCsrfToken && document.getElementById("examPlanForm")')
+    exam = (datetime.now(timezone.utc).date() + timedelta(days=21)).isoformat()
+    browser.evaluate("document.querySelector('[name=name]').value='CISM certification';document.querySelector('[name=exam_date]').value=" + json.dumps(exam) + ";document.querySelector('[name=calendar_timezone]').value='America/Chicago';document.querySelectorAll('[name=weekdays], [name=folders]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
+    browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary") !== null')
+    browser.navigate(base + '/')
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…' && document.getElementById('overviewStatus').textContent.includes('No saved quiz results')")
+    assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-item').length") == 1
+    assert browser.evaluate("document.querySelector('#regularStudyContinuity').textContent.includes('1 / 4 reviewed')")
+    assert browser.evaluate("document.querySelectorAll('[data-dashboard-primary]').length") == 1
+    assert browser.evaluate("document.querySelector('[data-dashboard-primary]').textContent") == 'Start suggested work'
+    assert browser.evaluate("document.getElementById('overviewStats').hidden")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-recent-attempt').length") == 0
+    assert browser.evaluate("[...document.querySelectorAll('.dashboard-action-grid a')].slice(0,2).map(a=>a.pathname)") == ['/study-history', '/history']
+    assert browser.evaluate("""(async()=>{const p=await fetch('/api/daily-review-plan').then(r=>r.json());
+        const i=DLMSDailyReview.mergeBrowserSessions(p).items.find(n=>n.kind==='unfinished');
+        return DLMSDailyReview.matchingContinuation(p.regular_study,i) &&
+          [{mode:'Exam'},{quizId:'other'},{learningSessionId:'other'},{fingerprint:'other'}].every(change=>
+            !DLMSDailyReview.matchingContinuation(p.regular_study,{...i,recovery:{...i.recovery,...change}})) &&
+          !DLMSDailyReview.matchingContinuation({...p.regular_study,completed_at:'2026-01-01T00:00:00Z'},i) &&
+          !DLMSDailyReview.matchingContinuation({...p.regular_study,unchanged:false},i);})()""")
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    for width in (1440, 390):
+        browser.set_viewport(width, 1000)
+        browser.evaluate('document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))')
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'), (theme, width)
+        if width == 1440:
+            assert browser.evaluate("document.getElementById('studyNext').getBoundingClientRect().width > 1.5*document.getElementById('continueStudyPanel').getBoundingClientRect().width")
+            assert browser.evaluate("Math.abs(document.getElementById('studyNext').getBoundingClientRect().top-document.getElementById('continueStudyPanel').getBoundingClientRect().top)<2")
+        for role, value in _theme_contrast_snapshot(browser, {'next':'#studyNext h2','continue':'#continueStudyPanel p','action':'[data-dashboard-primary]'}, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+        if output:
+            target=Path(output);target.mkdir(parents=True,exist_ok=True)
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (target/f'calm-populated-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light':
+                capture_control(browser,target/('dashboard.webp' if width==1440 else 'exam-plan-dashboard.webp'),'.dashboard-main' if width==1440 else '#activeExamPlan')
+    browser.activate(); browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('#studyNext details summary').focus();true")
+    browser.press_key('\ue007')
+    assert browser.evaluate("document.querySelector('#studyNext details').open && document.activeElement.matches(':focus-visible')")
+    browser.click('#continueStudyPanel .daily-review-remove')
+    browser.click('#dailyReviewClearDialog button[value=clear]')
+    browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('Saved Study progress remains')")
+    assert title in browser.evaluate("document.getElementById('dailyReviewStatus').textContent")
+    assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length") == 0
+    assert browser.evaluate("document.querySelector('#regularStudyContinuity a').textContent") == 'Resume Study review'
+    # Results overview exposes a genuine failure and retries without false zeros.
+    browser.evaluate("window.overviewFetch=fetch;window.failOverview=true;window.fetch=(...args)=>failOverview && String(args[0]).includes('/api/attempts/overview') ? Promise.resolve(new Response('',{status:503})):overviewFetch(...args);loadDashboardData();true")
+    browser.wait_for("!document.getElementById('retryOverview').hidden")
+    assert browser.evaluate("document.getElementById('overviewStats').hidden")
+    browser.evaluate('window.failOverview=false;true');browser.click('#retryOverview')
+    browser.wait_for("document.getElementById('overviewStatus').textContent==='No saved quiz results yet.'")
+    assert browser.evaluate("document.activeElement.id")=='overviewHeading'
+    browser.evaluate('window.fetch=overviewFetch;true')
+    # Actual Exam submission, with an explicitly legacy Study fixture alongside.
+    browser.navigate(base+'/quizzes/'+html);browser.wait_for('quizRecoveryReady')
+    browser.click('.exam-mode-btn');browser.click("#choices .choice[data-index='0']")
+    browser.evaluate('window.confirm=()=>true;true');browser.click('#submitBtn')
+    browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute("INSERT INTO attempts(id,quiz_id,score,total,percent,mode,completed_at) VALUES ('legacy-study-example',?,1,4,25,'Study','2026-09-30T12:00:00Z')", (qid,))
+    browser.navigate(base + '/history');browser.wait_for_page_ready()
+    browser.wait_for("document.body.textContent.includes('Study — legacy saved result')")
+    assert browser.evaluate("document.querySelector('h1').textContent.includes('Exam History')")
+    if output and theme=='light':
+        browser.set_viewport(1440,1000)
+        capture_control(browser,Path(output)/'history.webp','.dashboard-main')
+        # Trim only unused page space below the real results panel.
+        from PIL import Image
+        bottom = browser.evaluate("Math.ceil(document.querySelector('.history-table-panel').getBoundingClientRect().bottom-document.querySelector('.dashboard-main').getBoundingClientRect().top+16)")
+        with Image.open(Path(output)/'history.webp') as image:
+            image.crop((0,0,image.width,min(image.height,bottom))).save(Path(output)/'history.webp',format='WEBP',lossless=True)
+        browser.set_viewport(390,1000)
+    for route in ('/help/getting-started#dashboard','/help/history-analytics#history'):
+        browser.navigate(base+route);browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        assert browser.evaluate("[...document.querySelectorAll('.help-doc a[href^=\"/static/help_assets/\"] img')].every(i=>!i.complete||i.naturalWidth>0)")
+    # Empty/no-plan and sparse combinations use only disposable fixtures/settings.
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute('DELETE FROM study_responses');conn.execute('DELETE FROM study_sessions')
+        conn.execute('UPDATE exam_plan_state SET active_plan_id=NULL')
+    browser.navigate(base+'/settings/layout')
+    browser.evaluate("document.querySelectorAll('[name^=dashboard_card_]').forEach(n=>n.checked=['daily_review','overview','study_history','settings'].includes(n.name.replace('dashboard_card_','')));true")
+    browser.click('button[value=save]');browser.wait_for("location.search==='?saved=1'")
+    browser.navigate(base+'/');browser.wait_for("document.getElementById('dailyReviewCount').textContent!=='Loading…'")
+    assert browser.evaluate("document.getElementById('continueStudyPanel').hidden")
+    assert browser.evaluate("!performance.getEntriesByType('resource').some(e=>e.name.includes('/api/dashboard/quiz-activity'))")
+    if output:
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        (Path(output)/f'calm-sparse-{theme}-390.png').write_bytes(base64.b64decode(shot['data']))
+
+    # A genuinely empty profile has one short result state and no continuation.
+    registry_path.write_text('[]')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('DELETE FROM quizzes')
+        conn.execute('DELETE FROM learning_events')
+    browser.navigate(base+'/settings/layout');browser.click('button[value=dashboard_defaults]')
+    browser.wait_for("location.search==='?saved=1'")
+    browser.navigate(base+'/');browser.wait_for("document.getElementById('dailyReviewCount').textContent!=='Loading…' && document.getElementById('recentActivity').getAttribute('aria-busy')==='false'")
+    assert browser.evaluate("document.getElementById('continueStudyPanel').hidden && document.getElementById('overviewStats').hidden")
+    assert browser.evaluate("document.getElementById('overviewStatus').textContent")=='No saved quiz results yet.'
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'calm-empty-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))

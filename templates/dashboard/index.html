@@ -59,7 +59,7 @@
             {% endif %}
             <a class="dashboard-nav-item" href="/history">
                 <svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg>
-                <span>History</span>
+                <span>Exam History</span>
             </a>
             <a class="dashboard-nav-item" href="/dashboard">
                 <svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg>
@@ -116,51 +116,40 @@
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div>
                 <h1>{{ portal_title }}</h1>
-                <p>Build <span>•</span> Study <span>•</span> Test <span>•</span> Improve</p>
                 <a class="dashboard-customize" href="/settings/layout#dashboard-panels">Customize dashboard</a>
             </div>
         </header>
 
         {% if visibility.welcome %}
-        <section class="dashboard-welcome dashboard-panel">
-            <div class="dashboard-welcome-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#welcome"></use></svg></div>
-            <div class="dashboard-welcome-copy">
-                <h2>Welcome back!</h2>
-                <p>Pick up your studies or start something new.</p>
-            </div>
-            <div class="dashboard-welcome-accent" aria-hidden="true"></div>
-        </section>
+        <p class="dashboard-welcome">Welcome back.</p>
         {% endif %}
 
         {% if visibility.daily_review %}
         <section class="dashboard-panel daily-review-panel" aria-labelledby="dailyReviewHeading">
-            <div class="dashboard-panel-heading daily-review-heading">
-                <div>
-                    <span class="dashboard-heading-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#review"></use></svg></span>
-                    <div>
-                        <span class="daily-review-eyebrow">RECOMMENDED DAILY START</span>
-                        <h2 id="dailyReviewHeading" tabindex="-1">Today’s Review</h2>
-                    </div>
+            <div class="dashboard-study-layout">
+                <div class="dashboard-study-next" id="studyNext">
+                    <h2 id="dailyReviewHeading" tabindex="-1">Study next</h2>
+                    <span id="dailyReviewCount" class="dashboard-update-status" role="status">Loading…</span>
+                    <div id="activeExamPlan" hidden></div>
+                    <div id="dailyReviewList" class="daily-review-list" aria-live="polite"><p>Loading your next study action…</p></div>
+                    <div id="dailyReviewEmpty" class="daily-review-empty" hidden></div>
+                    <details class="dashboard-study-options"><summary>About suggestions</summary><p>Suggestions use existing Learning Intelligence evidence and your selected plan. <a href="/learning-scope">Manage Learning Scope</a> to choose included material. Browser resume points are separate from recommendations.</p><a href="/exam-plans">Exam Plans</a></details>
                 </div>
-                <strong id="dailyReviewCount" class="daily-review-count" role="status" aria-live="polite">Loading…</strong>
+                <aside id="continueStudyPanel" aria-labelledby="continueStudyHeading" hidden>
+                    <h2 id="continueStudyHeading">Continue studying</h2>
+                    <div id="regularStudyContinuity" hidden></div>
+                    <div id="continuationList"></div>
+                </aside>
             </div>
-            <p class="daily-review-intro">Due questions, topic needs, and unfinished work for your next study session.</p>
-            <p class="daily-review-intro"><a href="/learning-scope">Manage Learning Scope</a> to choose recommendation folders. Saved Resume cards stay available.</p>
-            <div id="regularStudyContinuity" hidden></div>
-            <p><a href="/study-history">Study history</a> · Suggested actions below use your current Learning Intelligence evidence.</p>
-            <div id="dailyReviewList" class="daily-review-list" aria-live="polite">
-                <div class="dashboard-loading">Building today’s local review plan…</div>
-            </div>
-            <div id="dailyReviewEmpty" class="daily-review-empty" hidden></div>
-            <div id="dailyReviewStatus" class="daily-review-status" role="status" aria-live="polite" aria-atomic="true"></div>
+            <p id="dailyReviewStatus" class="daily-review-status" role="status" aria-live="polite" aria-atomic="true"></p>
             <dialog id="dailyReviewClearDialog" class="daily-review-clear-dialog" aria-labelledby="dailyReviewClearTitle" aria-describedby="dailyReviewClearDescription dailyReviewClearQuiz">
                 <form method="dialog">
-                    <h2 id="dailyReviewClearTitle">Clear this unfinished session?</h2>
+                    <h2 id="dailyReviewClearTitle">Clear this browser resume point?</h2>
                     <p id="dailyReviewClearQuiz"></p>
-                    <p id="dailyReviewClearDescription">This removes the saved resume point in this browser, including unfinished answers saved only there. The quiz, completed history, scores, and activity already saved to DLMS are kept. You will not be able to resume this saved session afterward.</p>
+                    <p id="dailyReviewClearDescription">This removes the saved resume point in this browser, including unfinished answers saved only there. The quiz, completed history, scores, and activity already saved to DLMS are kept. Saved Study responses remain available from DLMS; this browser-only checkpoint will be removed.</p>
                     <div class="daily-review-confirm-actions">
                         <button class="daily-review-remove" value="cancel" autofocus>Cancel</button>
-                        <button class="daily-review-action" value="clear">Clear Saved Resume Point</button>
+                        <button class="daily-review-action" value="clear">Clear browser resume point</button>
                     </div>
                 </form>
             </dialog>
@@ -172,9 +161,8 @@
                 <div class="dashboard-panel-heading">
                     <div>
                         <span class="dashboard-heading-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#activity"></use></svg></span>
-                        <h2>Recent quiz activity</h2>
+                        <h2>Recent activity</h2>
                     </div>
-                    <a href="/history">View all history</a>
                 </div>
 
                 <div id="recentActivity" class="dashboard-activity-list" aria-live="polite" aria-busy="true">
@@ -183,58 +171,31 @@
             </div>
 
             {% endif %}
-            {% if visibility.overview %}
-            <div class="dashboard-panel dashboard-overview-panel">
-                <div class="dashboard-panel-heading">
-                    <div>
-                        <span class="dashboard-heading-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#overview"></use></svg></span>
-                        <h2>Overview</h2>
-                    </div>
+        {% if visibility.library or visibility.build or visibility.study_packs or visibility.it or visibility.law or visibility.study_history or visibility.history or visibility.analytics or visibility.settings or (visibility.medical and medical_pack_installed) %}
+        <section class="dashboard-action-grid" aria-label="Quick access">
+            {% if visibility.study_history %}
+            <a class="dashboard-action-card" href="/study-history">
+                <div class="dashboard-action-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Study History</h2>
+                    <p>Finished reviews and partial Study sessions.</p>
                 </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
+            {% endif %}
 
-                <div class="dashboard-stat-grid">
-                    <div class="dashboard-stat-card">
-                        <div class="dashboard-stat-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
-                        <div>
-                            <span>Total Attempts</span>
-                            <strong id="statAttempts">—</strong>
-                            <small>Saved quiz attempts</small>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-stat-card">
-                        <div class="dashboard-stat-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#image"></use></svg></div>
-                        <div>
-                            <span>Average Score</span>
-                            <strong id="statAverage">—</strong>
-                            <small>Across all attempts</small>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-stat-card">
-                        <div class="dashboard-stat-icon icon-orange" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#star"></use></svg></div>
-                        <div>
-                            <span>Best Score</span>
-                            <strong id="statBest">—</strong>
-                            <small>Highest recorded score</small>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-stat-card">
-                        <div class="dashboard-stat-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg></div>
-                        <div>
-                            <span>Latest Score</span>
-                            <strong id="statLatest">—</strong>
-                            <small>Most recent attempt</small>
-                        </div>
-                    </div>
+            {% if visibility.history %}
+            <a class="dashboard-action-card" href="/history">
+                <div class="dashboard-action-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg></div>
+                <div class="dashboard-action-copy">
+                    <h2>Exam History</h2>
+                    <p>Exam results and older saved attempts.</p>
                 </div>
-            </div>
+                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
+            </a>
             {% endif %}
 
 
-        {% if visibility.library or visibility.build or visibility.study_packs or visibility.it or visibility.law or visibility.history or visibility.analytics or visibility.settings or (visibility.medical and medical_pack_installed) %}
-        <section class="dashboard-action-grid" aria-label="Quick access">
             {% if visibility.library %}
             <a class="dashboard-action-card" href="/library">
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
@@ -301,17 +262,6 @@
             {% endif %}
             {% endif %}
 
-            {% if visibility.history %}
-            <a class="dashboard-action-card" href="/history">
-                <div class="dashboard-action-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg></div>
-                <div class="dashboard-action-copy">
-                    <h2>History</h2>
-                    <p>Review saved attempts.</p>
-                </div>
-                <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
-            </a>
-            {% endif %}
-
             {% if visibility.analytics %}
             <a class="dashboard-action-card" href="/dashboard">
                 <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg></div>
@@ -336,25 +286,84 @@
         </section>
         {% endif %}
 
+            {% if visibility.overview %}
+            <div class="dashboard-panel dashboard-overview-panel">
+                <div class="dashboard-panel-heading">
+                    <div>
+                        <span class="dashboard-heading-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#overview"></use></svg></span>
+                        <h2 id="overviewHeading" tabindex="-1">Results overview</h2>
+                    </div>
+                </div>
+
+                <p id="overviewStatus" role="status">Loading saved results…</p><button type="button" id="retryOverview" hidden>Retry results</button>
+                <div class="dashboard-stat-grid" id="overviewStats" hidden>
+                    <div class="dashboard-stat-card">
+                        <div class="dashboard-stat-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
+                        <div>
+                            <span>Saved results</span>
+                            <strong id="statAttempts">—</strong>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-stat-card">
+                        <div class="dashboard-stat-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#image"></use></svg></div>
+                        <div>
+                            <span>Average score</span>
+                            <strong id="statAverage">—</strong>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-stat-card">
+                        <div class="dashboard-stat-icon icon-orange" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#star"></use></svg></div>
+                        <div>
+                            <span>Best score</span>
+                            <strong id="statBest">—</strong>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-stat-card">
+                        <div class="dashboard-stat-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg></div>
+                        <div>
+                            <span>Latest listed score</span>
+                            <strong id="statLatest">—</strong>
+                        </div>
+                    </div>
+                </div>
+                <details id="overviewExplanation" hidden><summary>About these results</summary><p>Saved Exam and legacy results, including older Study results. These scores do not count durable Study reviews or establish mastery. Latest listed score follows History’s existing ordering; ambiguous old dates cannot establish the latest completion.</p></details>
+            </div>
+            {% endif %}
+
+
         <footer class="dashboard-footer">DLMS v{{ app_version }}</footer>
     </main>
 </div>
 
 <script>
-async function loadDashboardData() {
-    if (!document.getElementById("statAttempts")) return;
+async function loadDashboardData(restoreFocus = false) {
+    const status = document.getElementById("overviewStatus");
+    if (!status) return;
+    const stats = document.getElementById("overviewStats"), retry = document.getElementById("retryOverview"), detail = document.getElementById("overviewExplanation");
+    stats.hidden = detail.hidden = true; retry.hidden = true;
+    status.hidden = false; status.textContent = "Loading saved results…";
     try {
         const res = await fetch("/api/attempts/overview", {cache: "no-store"});
         if (!res.ok) throw new Error("Unable to load overview");
         const data = await res.json();
-        document.getElementById("statAttempts").textContent = data.total_attempts;
-        document.getElementById("statAverage").textContent = data.total_attempts ? `${Math.round(data.average_percent)}%` : "—";
-        document.getElementById("statBest").textContent = data.total_attempts ? `${Math.round(data.best_percent)}%` : "—";
-        document.getElementById("statLatest").textContent = data.latest_attempt ? `${data.latest_attempt.percent}%` : "—";
+        status.textContent = "No saved quiz results yet.";
+        if (data.total_attempts) {
+            document.getElementById("statAttempts").textContent = data.total_attempts;
+            document.getElementById("statAverage").textContent = `${Math.round(data.average_percent)}%`;
+            document.getElementById("statBest").textContent = `${Math.round(data.best_percent)}%`;
+            document.getElementById("statLatest").textContent = data.latest_attempt ? `${data.latest_attempt.percent}%` : "—";
+            status.hidden = true; stats.hidden = detail.hidden = false;
+        }
     } catch (_error) {
-        document.getElementById("statAttempts").textContent = "Unavailable";
+        status.textContent = "Saved results could not be loaded."; retry.hidden = false;
+    } finally {
+        if (restoreFocus) document.getElementById("overviewHeading").focus();
     }
 }
+document.getElementById("retryOverview")?.addEventListener("click", () => loadDashboardData(true));
 
 document.getElementById("shutdownBtn").addEventListener("click", async () => {
     if (!confirm(

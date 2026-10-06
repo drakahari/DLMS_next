@@ -320,16 +320,30 @@ class HelpDocumentationTests(unittest.TestCase):
             with self.subTest(page="troubleshooting", wording=wording):
                 self.assertIn(wording, troubleshooting)
 
+    def test_dashboard_help_distinguishes_sessions_results_and_browser_recovery(self):
+        guide = self._static("help-getting-started.html")
+        for wording in ("Study next", "Continue studying", "Resolve Study saves", "Finish saving Exam", "Clear browser resume point", "Last response", "Results overview"):
+            # The activity timestamp label is described without claiming completion.
+            if wording == "Last response":
+                self.assertIn("last-response-saved time", guide)
+            else:
+                self.assertIn(wording, guide)
+        history = self._static("help-history-analytics.html")
+        self.assertIn('href="/study-history"', history)
+        self.assertIn('href="/history"', history)
+        self.assertIn("Study — legacy saved result", history)
+        self.assertIn("without inferring a durable completed review", history)
+
     def test_help_makes_todays_review_the_default_and_distinguishes_review_options(self):
         getting_started = self._static("help-getting-started.html")
         learning = self._static("help-learning-intelligence.html")
 
         self.assertIn("What should I study right now?", getting_started)
-        self.assertIn("Start with <strong>Today’s Review</strong>", getting_started)
+        self.assertIn("Start with <strong>Study next</strong>", getting_started)
         self.assertIn('id="which-review"', learning)
         for wording in (
             "Recommended starting point:",
-            "Today’s Review",
+            "Study next",
             "Adaptive Study",
             "Smart Review",
             "Concept Review",

@@ -37,11 +37,11 @@
     function actions(entry, container, review = false) {
         const row = element("div", null, "dashboard-activity-actions");
         if (review) row.append(link("Review attempt", `/review?attempt=${encodeURIComponent(entry.id)}`));
-        if (entry.quiz_url) {
-            const open = link("Open quiz", entry.quiz_url);
+        if (entry.quiz_url && !review) {
+            const open = link("Open current quiz", entry.quiz_url);
             open.title = "Open the current quiz; its content may have changed since this activity.";
             row.append(open);
-        } else {
+        } else if (!entry.quiz_url) {
             row.append(element("span", entry.availability || "Quiz unavailable"));
         }
         container.append(row);
@@ -73,7 +73,7 @@
         if (data.entry && data.undated_count) {
             section.append(element("p", `${data.undated_count} ${study ? "Study response" : "Exam attempt"} record(s) have times that cannot be determined. Latest shown uses reliably dated records.`, "dashboard-activity-detail"));
         }
-        if (!study && data.undated_count) section.append(link("Find undated attempts in History", "/history"));
+        if (!study && data.undated_count) section.append(link("View undated results in Exam History", "/history"));
         return section;
     }
 
@@ -81,28 +81,9 @@
         const summaries = element("div", null, "dashboard-activity-summaries");
         summaries.append(summary("study", data.study), summary("exam", data.exam));
         activity.replaceChildren(summaries);
-        activity.append(element("h3", "Recent saved attempts"));
-        if (!data.recent_attempts.length) activity.append(element("p", "No saved quiz attempts yet."));
-        for (const entry of data.recent_attempts.slice(0, 3)) {
-            const row = element("div", null, "dashboard-activity-row dashboard-recent-attempt");
-            const copy = element("div", null, "dashboard-activity-copy");
-            copy.append(element("strong", entry.quiz_title));
-            const mode = String(entry.mode || "").trim().toLowerCase();
-            const label = mode === "exam" ? (entry.completed_at ? "Exam completed" : "Exam — saved attempt")
-                : mode === "study" ? "Study — saved attempt" : "Saved attempt — mode unavailable";
-            copy.append(element("span", label));
-            copy.append(timeLabel(mode === "exam" ? "Completed" : "Recorded time", entry.completed_at));
-            const rowActions = element("div", null, "dashboard-activity-actions");
-            rowActions.append(link("Review attempt", `/review?attempt=${encodeURIComponent(entry.id)}`));
-            copy.append(rowActions);
-            const context = [entry.origin, entry.folder, entry.availability].filter(Boolean).join(" · ");
-            if (context) copy.append(element("p", context, "dashboard-activity-detail dashboard-attempt-context"));
-            row.append(copy, score(entry, false));
-            activity.append(row);
-        }
         const detail = element("details", null, "dashboard-activity-explanation");
         detail.append(element("summary", "About this activity"));
-        detail.append(element("p", "A saved Study response does not indicate quiz completion. Latest Exam completed uses reliably dated saved attempts. Undated attempts remain in History. Open quiz opens the current content, which may differ from the version used for this activity."));
+        detail.append(element("p", "A saved Study response does not indicate quiz completion. Latest Exam completed uses reliably dated saved attempts. Undated attempts remain in History. Open current quiz opens today’s content, which may differ from the version used for this activity."));
         activity.append(detail);
     }
 

@@ -5,7 +5,7 @@
 <main class="dashboard-main exam-plans">
 <header class="dashboard-header"><button type="button" id="menuButton" class="dashboard-menu-button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><p>Learning Intelligence</p><h1>{{ 'Create exam plan' if page == 'form' and not plan else 'Edit exam plan' if page == 'form' else 'Exam Plans' }}</h1><p>Choose what to study next. Estimates are not a prediction of passing.</p></div></header>
 <nav class="plan-links" aria-label="Exam Plan navigation"><a href="/exam-plans">All plans</a><a href="/exam-plans/new">New exam plan</a><a href="/help/learning-intelligence#exam-plans">Exam Plan Help</a></nav>
-{% if dashboard_panel_visible is defined and not dashboard_panel_visible %}<p class="plan-notice" id="planPanelHidden">Today’s Review is hidden in Layout &amp; navigation. Your selected plan will appear when you enable that panel. <a href="/settings/layout#dashboard-panels">Open dashboard visibility settings</a>. This does not change your saved dashboard preferences.</p>{% endif %}
+{% if dashboard_panel_visible is defined and not dashboard_panel_visible %}<p class="plan-notice" id="planPanelHidden">Study next &amp; Continue studying is hidden in Layout &amp; navigation. Your selected plan will appear when you enable that panel. <a href="/settings/layout#dashboard-panels">Open dashboard visibility settings</a>. This does not change your saved dashboard preferences.</p>{% endif %}
 {% if error %}<p class="plan-notice" role="alert">{{ error }}</p>{% endif %}
 {% macro control(action, label) %}
 <form method="post" action="/exam-plans/{{ plan.id }}/action"{% if action == 'delete' %} data-delete-plan{% endif %}>
