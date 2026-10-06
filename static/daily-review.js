@@ -4,6 +4,7 @@
   if (!document.getElementById("dailyReviewList")) return;
 
   let serverPlan = null;
+  let latestReviewRequest = 0;
   let completedStudySessions = new Set();
 
   const escapeHtml = value => String(value ?? "").replace(
@@ -40,7 +41,6 @@
         kind: "unfinished",
         quizTitle: quiz.title,
         needsSave: finishSaving || pendingStudy,
-        replaces: quiz.generated_kind || null,
         priority: quiz.generated_kind === "native_due"
           ? 10
           : quiz.generated_kind === "concept_review" ? 20 : 30,
@@ -65,20 +65,16 @@
 
   function mergeBrowserSessions(plan) {
     const unfinished = unfinishedReviewItems(plan);
-    const replacedKinds = new Set(
-      unfinished.map(item => item.replaces).filter(Boolean),
-    );
-    const items = (plan.items || []).filter(
-      item => !replacedKinds.has(item.kind),
-    );
-    items.push(...unfinished);
+    // Recovery belongs to this browser. It must not suppress shared server
+    // recommendations: one unfinished batch does not cover the full due queue.
+    const items = [...(plan.items || []), ...unfinished];
     items.sort((left, right) => (
       Number(left.priority || 999) - Number(right.priority || 999)
       || String(left.id).localeCompare(String(right.id))
     ));
     return {
       ...plan,
-      items: items.slice(0, 5),
+      items,
       summary: {...(plan.summary || {}), unfinished_sessions: unfinished.length},
     };
   }
@@ -213,7 +209,7 @@
       announce("The saved resume point could not be cleared in this browser. Nothing was removed. Check browser storage permissions and try again.");
       return;
     }
-    // Remerge the original server plan, never an already merged/suppressed plan.
+    // Remerge the original server plan, never an already merged plan.
     if (serverPlan) renderDailyReview(mergeBrowserSessions(serverPlan));
     const refreshed = await loadDailyReview({keepCurrent: true});
     announce(result.status === "removed"
@@ -225,14 +221,23 @@
   }
 
   async function loadDailyReview({keepCurrent = false} = {}) {
+    const requestId = ++latestReviewRequest;
     try {
       const response = await fetch("/api/daily-review-plan", {cache: "no-store"});
       if (!response.ok) throw new Error("Daily review plan was unavailable");
-      serverPlan = await response.json();
-      completedStudySessions = await window.DLMSQuizRecovery?.reconcileCompletedStudy?.({activeQuizIds: (serverPlan.quiz_index || []).map(quiz => quiz.id)}) || new Set();
+      const nextPlan = await response.json();
+      if (requestId !== latestReviewRequest) return false;
+      if (!nextPlan || !Array.isArray(nextPlan.items) || !Array.isArray(nextPlan.quiz_index)) {
+        throw new Error("Daily review plan returned an invalid response");
+      }
+      const completed = await window.DLMSQuizRecovery?.reconcileCompletedStudy?.({activeQuizIds: nextPlan.quiz_index.map(quiz => quiz.id)}) || new Set();
+      if (requestId !== latestReviewRequest) return false;
+      serverPlan = nextPlan;
+      completedStudySessions = completed;
       renderDailyReview(mergeBrowserSessions(serverPlan));
       return true;
     } catch (error) {
+      if (requestId !== latestReviewRequest) return false;
       if (keepCurrent) return false;
       const list = document.getElementById("dailyReviewList");
       const empty = document.getElementById("dailyReviewEmpty");

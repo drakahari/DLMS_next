@@ -435,7 +435,6 @@ class DailyReviewPlanTests(unittest.TestCase):
         self.assertIn('/static/daily-review.js', page)
         self.assertIn('fetch("/api/daily-review-plan"', script)
         self.assertIn("listStoredRecords", script)
-        self.assertIn("replacedKinds", script)
         self.assertIn('scope: "This browser"', script)
         self.assertIn("window.dlmsProtectForm?.(form)", script)
         for route in (

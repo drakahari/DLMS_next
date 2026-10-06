@@ -12463,15 +12463,15 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
         "document.querySelector('.daily-review-unfinished')"
     )
     assert browser.evaluate(
-        "document.querySelector('.daily-review-native_due') === null"
+        "document.querySelector('.daily-review-native_due') !== null"
     ) is True
     generated_card = f'.daily-review-unfinished:has([data-clear-recovery="unfinished-{generated[1]}"])'
     assert "Spaced Review — Due Questions" in browser.evaluate(
         "document.querySelector(" + json.dumps(generated_card) + ").textContent"
     )
 
-    # Abandoning generated recovery restores its valid server recommendation,
-    # without deleting the generated quiz, lineage, saved activity or schedule.
+    # Clearing only the local checkpoint keeps the shared recommendation and
+    # does not delete the generated quiz, lineage, saved activity or schedule.
     with sqlite3.connect(database_path) as connection:
         before_clear = list(connection.iterdump())
     browser.click(generated_card + " .daily-review-remove")
@@ -14820,6 +14820,8 @@ def test_dashboard_more_review_options_with_exam_plans(browser_stack, theme):
         browser.navigate(base + '/')
         browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
         assert not browser.evaluate("!document.getElementById('regularStudyContinuity').hidden")
+        # A local generated checkpoint never consumes a shared recommendation.
+        assert browser.evaluate(f"document.querySelector('.daily-review-{kind} button') !== null")
         button = f'[data-clear-recovery="unfinished-{generated[0]}"]'
         browser.click(button); browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
         browser.click('#dailyReviewClearDialog button[value=clear]')
@@ -14842,3 +14844,137 @@ def test_dashboard_more_review_options_with_exam_plans(browser_stack, theme):
     assert browser.evaluate("document.getElementById('activeExamPlan').textContent.includes('excluded by Learning Scope')")
     evidence.append({'state':'excluded', 'response':empty})
     if output: (Path(output) / f'api-{theme}.json').write_text(json.dumps(evidence, indent=2))
+
+
+def test_review_options_shared_eligibility_with_local_generated_resume(browser_stack, browser_server):
+    """One server, two isolated Firefox profiles, one real generated checkpoint."""
+    from datetime import timedelta
+    first, base = browser_stack.browser, browser_stack.base_url
+    root = browser_stack.data_root
+    _new_regular_study_quiz(browser_stack, 4)
+    with sqlite3.connect(root/'results.db') as conn:
+        source = conn.execute("INSERT INTO quizzes(title,source_file) VALUES ('Shared overdue source','shared-overdue-source.html')").lastrowid
+        for n in range(104):
+            q = conn.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type,explanation,media_json) VALUES (?, ?, ?, 'choice', 'Fixture explanation', '{}')", (source,n+1,f'Shared due question {n+1}?')).lastrowid
+            conn.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES (?,?,?,?)',[(q,'A','Expected',1),(q,'B','Alternative',0)])
+            conn.execute("INSERT INTO learning_events(event_type,quiz_id,question_id,attempt_id,mode,was_correct,response_json,occurred_at) VALUES ('exam_answer',?,?,?,'Exam',0,'{}','2020-01-01T00:00:00+00:00')",(source,q,f'shared-overdue-{n}'))
+    first.navigate(base+'/exam-plans/new')
+    first.wait_for("document.getElementById('examPlanForm') && window.dlmsCsrfToken")
+    first.evaluate("""document.querySelector('[name=name]').value='CISM';
+      document.querySelector('[name=exam_date]').value="""+json.dumps((datetime.now(timezone.utc)+timedelta(days=21)).date().isoformat())+""";
+      document.querySelector('[name=calendar_timezone]').value='UTC';
+      document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+      document.querySelectorAll('[name=folders]').forEach(n=>n.checked=true);
+      document.querySelector('[name=use_dashboard]').checked=true;true""")
+    first.click('#examPlanForm button[type=submit]')
+    first.wait_for("document.getElementById('planSummary') !== null")
+    first.navigate(base+'/')
+    first.wait_for("document.querySelector('.daily-review-native_due button')")
+    first.click('.dashboard-other-options summary')
+    first.click('.daily-review-native_due button')
+    first.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_') && typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady")
+    generated_url = first.evaluate('location.pathname')
+    assert first.evaluate('quiz.length') == 20
+    first.click('.study-mode-btn')
+    first.wait_for('durableStudySession !== null')
+    key = first.evaluate('quizRecoveryController.storageKey')
+    # Capture after the quiz's normal pagehide checkpoint write.
+    first.navigate(base+'/')
+    first.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    record = first.evaluate('localStorage.getItem('+json.dumps(key)+')')
+    assert record is not None
+
+    env = dict(browser_server.env, TZ='Asia/Tokyo')
+    profile = browser_server.work_root/'comparison-profile'
+    profile.mkdir()
+    port = _free_loopback_port()
+    process = None
+    second = None
+    evidence = []
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    try:
+        with (browser_server.work_root/'comparison-firefox.log').open('w') as log:
+            process = subprocess.Popen(_firefox_command(browser_server.firefox,profile,port,env),cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+            second = _connect_firefox(port,process,browser_server.work_root/'comparison-firefox.log')
+            for label,browser in [('with-resume',first),('without-resume',second)]:
+                browser.navigate(base+'/')
+                browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+                result = browser.evaluate("""(async()=>{const r=await fetch('/api/daily-review-plan',{cache:'no-store'});const p=await r.json();
+                  const merged=DLMSDailyReview.mergeBrowserSessions(p);
+                  const asset=await fetch('/static/daily-review.js',{cache:'no-store'});
+                  const bytes=await asset.arrayBuffer();const hash=await crypto.subtle.digest('SHA-256',bytes);
+                  return {status:r.status,cache:r.headers.get('cache-control'),url:r.url,plan:p,
+                    mergedKinds:merged.items.map(i=>i.kind),timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    assetHash:[...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join(''),
+                    due:document.querySelector('.daily-review-native_due')?.textContent||'',
+                    resume:document.querySelectorAll('.daily-review-unfinished').length,
+                    empty:document.getElementById('dailyReviewList').textContent};})()""")
+                evidence.append({'profile':label,**result})
+                assert result['status'] == 200 and result['cache'] == 'no-store'
+                assert result['plan']['summary']['due_questions'] == 104
+                assert result['plan']['summary']['overdue_questions'] == 104
+                assert result['plan']['items'][0]['action']['fields']['question_count'] == '20'
+                if label == 'with-resume':
+                    assert result['resume'] == 1
+                    assert browser.evaluate('localStorage.getItem('+json.dumps(key)+')') == record
+                else:
+                    assert result['resume'] == 0
+                    assert browser.evaluate('localStorage.getItem('+json.dumps(key)+')') is None
+                assert '104 source questions are due now. 104 are overdue.' in result['due']
+                assert 'up to 20 questions' in result['due']
+                browser.click('.dashboard-other-options summary')
+                if output:
+                    shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                    (Path(output)/f'comparison-{label}.png').write_bytes(base64.b64decode(shot['data']))
+            assert evidence[0]['plan']['items'] == evidence[1]['plan']['items']
+            assert evidence[0]['plan']['summary'] == evidence[1]['plan']['summary']
+            assert evidence[0]['plan']['exam_plan']['stats'] == evidence[1]['plan']['exam_plan']['stats']
+            assert evidence[0]['assetHash'] == evidence[1]['assetHash']
+            # Opening another browser did not discard the first browser's checkpoint.
+            assert first.evaluate('localStorage.getItem('+json.dumps(key)+')') == record
+            first.click('.daily-review-unfinished a')
+            first.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+            assert first.evaluate('location.pathname') == generated_url
+    finally:
+        if output: (Path(output)/'comparison.json').write_text(json.dumps(evidence,indent=2))
+        if second:
+            try: second.close()
+            except Exception: pass
+        _terminate_process_tree(process)
+
+
+@pytest.mark.parametrize('fault', ['http', 'malformed', 'stale_success', 'stale_failure'])
+def test_daily_review_request_failures_and_ordering(browser_stack, fault):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base+'/')
+    browser.wait_for("window.DLMSDailyReview && document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    browser.evaluate("""(async()=>{window.actualReviewFetch=window.fetch.bind(window);
+      window.reviewFixture=await (await actualReviewFetch('/api/daily-review-plan')).json();
+      window.reviewFetches=[];window.fetch=(url,options)=>String(url)==='/api/daily-review-plan'
+        ?new Promise((resolve,reject)=>reviewFetches.push({resolve,reject})):actualReviewFetch(url,options);return true;})()""")
+    assert browser.evaluate('reviewFixture.items.length') > 0
+    browser.evaluate('window.olderReview=DLMSDailyReview.loadDailyReview();true')
+    browser.wait_for('reviewFetches.length===1')
+    if fault in ('http', 'malformed'):
+        response = "new Response('{}',{status:503})" if fault == 'http' else "new Response(JSON.stringify({...reviewFixture,items:null}),{status:200})"
+        browser.evaluate('reviewFetches[0].resolve('+response+');true')
+        browser.evaluate('olderReview')
+        assert browser.evaluate("document.getElementById('dailyReviewCount').textContent") == 'Unavailable'
+        assert browser.evaluate("document.getElementById('dailyReviewEmpty').textContent.includes('Study next could not be loaded')")
+        assert browser.evaluate("document.getElementById('dailyReviewList').hidden")
+        browser.evaluate('window.fetch=actualReviewFetch;true')
+        browser.click('#dailyReviewEmpty button')
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent === '' && !document.getElementById('dailyReviewList').hidden")
+    else:
+        browser.evaluate('window.newerReview=DLMSDailyReview.loadDailyReview();true')
+        browser.wait_for('reviewFetches.length===2')
+        browser.evaluate("reviewFetches[1].resolve(new Response(JSON.stringify({...reviewFixture,items:reviewFixture.items.map(i=>({...i,title:'Current recommendation'}))}),{status:200}));true")
+        browser.evaluate('newerReview')
+        if fault == 'stale_failure':
+            browser.evaluate("reviewFetches[0].reject(new Error('Earlier request failed'));true")
+        else:
+            browser.evaluate("reviewFetches[0].resolve(new Response(JSON.stringify({...reviewFixture,items:reviewFixture.items.map(i=>({...i,title:'Older recommendation'}))}),{status:200}));true")
+        browser.evaluate('olderReview')
+        assert browser.evaluate("document.getElementById('dailyReviewCount').textContent") == ''
+        assert browser.evaluate("document.querySelector('#dailyReviewList h3').textContent") == 'Current recommendation'
+        assert not browser.evaluate("document.getElementById('dailyReviewList').hidden")
