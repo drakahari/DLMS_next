@@ -13621,7 +13621,10 @@ def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
     browser.navigate(base + '/')
     browser.wait_for("document.getElementById('activeExamPlan')?.textContent.includes('CISM certification')")
     assert browser.evaluate("document.querySelector('#activeExamPlan summary').textContent") == 'Why this?'
-    assert browser.evaluate("getComputedStyle(document.getElementById('dailyReviewList')).display === 'none'")
+    # A plan owns visual priority; eligible ordinary review remains discoverable.
+    assert browser.evaluate("document.querySelector('.dashboard-other-options summary').textContent") == 'More review options'
+    assert not browser.evaluate("document.querySelector('.dashboard-other-options').open")
+    assert browser.evaluate("document.querySelector('[data-dashboard-primary]').matches('#activeExamPlan [data-practice=suggested]')")
     if output and theme == 'light':
         from tests.browser._help_screenshots import capture_control
         capture_control(browser, Path(output) / 'exam-plan-dashboard.webp', '#activeExamPlan')
@@ -13857,6 +13860,13 @@ def test_exam_plan_no_work_states_and_switching(browser_stack, theme):
         else:
             browser.wait_for("document.getElementById('activeExamPlan').textContent.includes("+json.dumps(label)+")")
             assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan a')].filter(a=>a.pathname==="+json.dumps(path)+").map(a=>a.textContent)") == ['View plan']
+        if code == 'allowance_used':
+            # The plan's allowance is exhausted, but the separate unreviewed
+            # source still qualifies for optional canonical Adaptive Study.
+            payload = browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json())")
+            assert payload['exam_plan']['selected_count'] == 0
+            assert [item['kind'] for item in payload['items']] == ['adaptive']
+            assert browser.evaluate("document.querySelector('.dashboard-other-options summary').textContent") == 'More review options'
     check('ready','Ready to study')
     browser.navigate(base+'/quizzes/'+html);browser.wait_for('quizRecoveryReady');browser.click('.study-mode-btn')
     browser.wait_for('durableStudySession !== null')
@@ -14690,3 +14700,145 @@ def test_calm_dashboard_identity_priority_empty_results_and_help(browser_stack, 
         if output:
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
             (Path(output)/f'calm-empty-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark', 'ethereal'])
+def test_dashboard_more_review_options_with_exam_plans(browser_stack, theme):
+    """Real canonical signals, saved plan states, and all three generation forms."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type':'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    qid, _ = _new_regular_study_quiz(browser_stack, 6)
+    root = browser_stack.data_root
+    database = root / 'results.db'
+    registry_path = root / 'config/quizzes.json'
+    registry = [r for r in json.loads(registry_path.read_text()) if r['id'] == qid]
+    registry_path.write_text(json.dumps(registry))
+    now = datetime.now(timezone.utc)
+    with sqlite3.connect(database) as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('DELETE FROM quizzes WHERE id != ?', (qid,))
+        ids = [r[0] for r in conn.execute('SELECT id FROM questions WHERE quiz_id=? ORDER BY question_number', (qid,))]
+        concept = conn.execute("INSERT INTO concepts(name) VALUES ('Access decisions')").lastrowid
+        for question in ids[:3]:
+            conn.execute('INSERT INTO question_concepts(question_id,concept_id) VALUES (?,?)', (question, concept))
+        for index, question in enumerate(ids):
+            stamp = now if index < 3 else now - timedelta(days=10)
+            conn.execute("""INSERT INTO learning_events(event_type,quiz_id,question_id,attempt_id,mode,
+                was_correct,response_json,occurred_at) VALUES ('exam_answer',?,?,?,'Exam',0,'{}',?)""",
+                (qid, question, f'fixture-{index}', stamp.isoformat()))
+    browser.navigate(base + '/exam-plans/new')
+    browser.wait_for("document.getElementById('examPlanForm') && window.dlmsCsrfToken")
+    browser.evaluate("""document.querySelector('[name=name]').value='CISM certification preparation';
+      document.querySelector('[name=exam_date]').value=""" + json.dumps((now + timedelta(days=21)).date().isoformat()) + """;
+      document.querySelector('[name=calendar_timezone]').value='UTC';
+      document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+      document.querySelectorAll('[name=folders]').forEach(n=>n.checked=true);
+      document.querySelector('[name=use_dashboard]').checked=true;true""")
+    browser.click('#examPlanForm button[type=submit]')
+    browser.wait_for("document.getElementById('planSummary') !== null")
+    pid = browser.evaluate("location.pathname.split('/').pop()")
+    with sqlite3.connect(database) as conn:
+        config = json.loads(conn.execute('SELECT config_json FROM exam_plans WHERE id=?', (pid,)).fetchone()[0])
+
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    evidence = []
+    def dashboard(state, changes, expected):
+        with sqlite3.connect(database) as conn:
+            conn.execute('UPDATE exam_plans SET config_json=?,revision=revision+1 WHERE id=?',
+                         (json.dumps({**config, **changes}), pid))
+            conn.execute('UPDATE exam_plan_state SET active_plan_id=?', (None if state == 'absent' else pid,))
+        browser.navigate(base + '/')
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+        payload = browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json())")
+        evidence.append({'state': state, 'response': payload})
+        assert payload['summary']['adaptive_candidates'] == 6
+        assert [item['kind'] for item in payload['items']] == expected
+        return payload
+
+    for state, changes in [('active', {}), ('paused', {'paused':True}),
+                           ('exhausted', {'exam_date':now.date().isoformat()}), ('absent', {})]:
+        payload = dashboard(state, changes, ['native_due', 'weak_concept'])
+        assert payload['summary']['due_questions'] == 3
+        assert payload['summary']['weak_or_developing_concepts'] == 1
+        assert browser.evaluate("document.querySelector('.dashboard-other-options summary').textContent") == 'More review options'
+        if state != 'absent':
+            assert browser.evaluate("document.querySelectorAll('#dailyReviewList > .daily-review-item').length") == 0
+        if state in ('paused', 'exhausted'):
+            assert payload['exam_plan']['selected_count'] == 0
+        if state == 'active':
+            assert browser.evaluate("document.querySelector('[data-dashboard-primary]').dataset.practice") == 'suggested'
+        browser.activate()
+        browser.wait_for("document.hasFocus()")
+        browser.evaluate("document.querySelector('.dashboard-other-options summary').focus();true")
+        browser.press_key('\ue007')
+        assert browser.evaluate("document.querySelector('.dashboard-other-options').open")
+        assert browser.evaluate("[...document.querySelectorAll('#dailyReviewList form')].every(f=>f.querySelector('[name=csrf_token]'))")
+        if state == 'active':
+            for width in (1440, 390):
+                browser.set_viewport(width, 1000)
+                browser.wait_for("innerWidth > 900 || document.getElementById('dashboardSidebar').getBoundingClientRect().right <= 0")
+                browser.evaluate('document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))')
+                assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                if output:
+                    shot = browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
+                    (Path(output) / f'expanded-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                    browser.click('.dashboard-other-options summary')
+                    shot = browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
+                    (Path(output) / f'after-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                    browser.click('.dashboard-other-options summary')
+
+    # Use each actual POST action. Merely generating does not create Study evidence.
+    for kind, generation in [('native_due','native_spaced_review'), ('weak_concept','concept_review'), ('adaptive','adaptive_study')]:
+        if kind == 'adaptive':
+            with sqlite3.connect(database) as conn:
+                conn.execute('DELETE FROM learning_events')  # Disposable baseline-only fixture.
+        expected = ['adaptive'] if kind == 'adaptive' else ['native_due','weak_concept']
+        dashboard('active', {}, expected)
+        assert browser.evaluate("document.querySelector('.dashboard-other-options summary').textContent") == 'More review options'
+        browser.click('.dashboard-other-options summary')
+        browser.click(f'.daily-review-{kind} button')
+        browser.wait_for("location.pathname.startsWith('/quizzes/') && typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady")
+        with sqlite3.connect(database) as conn:
+            generated = conn.execute('SELECT id FROM quizzes WHERE generation_kind=? ORDER BY id DESC LIMIT 1', (generation,)).fetchone()
+            assert generated is not None
+            copies = conn.execute('SELECT source_question_uid,is_generated_copy FROM questions WHERE quiz_id=?', generated).fetchall()
+            source_uids = {r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?', (qid,))}
+            expected_uids = {r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE id IN (' + ','.join('?'*len(ids)) + ')', ids)}
+            if kind != 'adaptive':
+                subset = ids[3:] if kind == 'native_due' else ids[:3]
+                expected_uids = {r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE id IN (?,?,?)', subset)}
+            assert {r[0] for r in copies} == expected_uids
+            assert all(uid in source_uids and generated_copy == 1 for uid, generated_copy in copies)
+            assert conn.execute('SELECT count(*) FROM study_sessions WHERE quiz_id=?', generated).fetchone()[0] == 0
+        browser.click('.study-mode-btn')
+        browser.wait_for('durableStudySession !== null')
+        assert browser.evaluate('durableStudySession.purpose') == 'focused'
+        # Clear only this test's unanswered browser checkpoint through its normal UI.
+        browser.navigate(base + '/')
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+        assert not browser.evaluate("!document.getElementById('regularStudyContinuity').hidden")
+        button = f'[data-clear-recovery="unfinished-{generated[0]}"]'
+        browser.click(button); browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
+        browser.click('#dailyReviewClearDialog button[value=clear]')
+        browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+        # Sessions opened here remain unfinished; generation does not finish source work.
+        with sqlite3.connect(database) as conn:
+            assert conn.execute('SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL').fetchone()[0] == 0
+    # Exclusion leaves no eligible ordinary action: no dead disclosure, and the
+    # plan's own specific no-material explanation stays visible.
+    portal = root / 'config/portal.json'
+    settings = json.loads(portal.read_text())
+    settings['excluded_learning_folders'] = ['uncategorized']
+    portal.write_text(json.dumps(settings))
+    browser.navigate(base + '/')
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    empty = browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json())")
+    assert empty['items'] == []
+    assert not browser.evaluate("!!document.querySelector('.dashboard-other-options')")
+    assert browser.evaluate("document.getElementById('dailyReviewList').textContent.includes('No additional review suggestions')")
+    assert browser.evaluate("document.getElementById('activeExamPlan').textContent.includes('excluded by Learning Scope')")
+    evidence.append({'state':'excluded', 'response':empty})
+    if output: (Path(output) / f'api-{theme}.json').write_text(json.dumps(evidence, indent=2))

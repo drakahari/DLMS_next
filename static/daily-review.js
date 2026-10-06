@@ -166,14 +166,19 @@
     } else if (plan.exam_plan_error) {planCard.textContent = plan.exam_plan_error;}
     const items = (plan.items || []).filter(item => item.kind !== "unfinished");
     count.textContent = "";
-    list.hidden = items.length === 0;
+    list.hidden = items.length === 0 && !exam;
     empty.hidden = items.length !== 0 || Boolean(exam);
     if (!items.length && !exam) {
       const state = plan.empty_state || {};
       empty.innerHTML = `<strong>${escapeHtml(state.title || "Nothing needs immediate attention")}</strong><span>${escapeHtml(state.detail || "Keep studying to build recommendations.")}</span>${actionMarkup(state.action)}`;
     }
-    const itemMarkup = item => `<article class="daily-review-item daily-review-${escapeHtml(item.kind)}"><div class="daily-review-copy">${exam?.plan.config.paused ? '<span>Outside your paused plan</span>' : ''}<h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.reason)}</p></div><div class="daily-review-item-action">${actionMarkup(item.action)}</div></article>`;
-    list.innerHTML = items.length ? itemMarkup(items[0]) + (items.length > 1 ? `<details class="dashboard-other-options"><summary>Other study options</summary>${items.slice(1).map(itemMarkup).join('')}</details>` : '') : '';
+    const itemMarkup = item => `<article class="daily-review-item daily-review-${escapeHtml(item.kind)}"><div class="daily-review-copy"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.reason)}</p></div><div class="daily-review-item-action">${actionMarkup(item.action)}</div></article>`;
+    // A dashboard plan takes visual priority, not ownership of other eligible
+    // recommendations. Keep canonical actions and browser-recovery filtering.
+    const secondary = exam ? items : items.slice(1);
+    list.innerHTML = (!exam && items.length ? itemMarkup(items[0]) : '')
+      + (secondary.length ? `<details class="dashboard-other-options"><summary>More review options</summary>${exam ? '<p>Optional review across your Learning Scope, including material outside this plan.</p>' : ''}${secondary.map(itemMarkup).join('')}</details>` : '')
+      + (exam && !items.length ? '<p>No additional review suggestions are available right now.</p>' : '');
     list.querySelectorAll("form").forEach(form => window.dlmsProtectForm?.(form));
     emphasizeNextAction();
   }

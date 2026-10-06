@@ -1,6 +1,7 @@
 """Isolated Exam Plan persistence, calendar, evidence, scope and retry contracts."""
 import copy
 import json
+import json
 import sqlite3
 import threading
 import unittest
@@ -46,6 +47,33 @@ class ExamPlanTests(unittest.TestCase):
     def request_data(self, pid, **changes):
         r = self.report(pid)
         return dict(request_id='request-plan-00000001', revision=r['plan']['revision'], generation=r['generation'], fingerprint=r['fingerprint'], mode='focused', count=1, **changes)
+
+    def test_dashboard_plan_preserves_canonical_review_recommendations(self):
+        """Visibility/pace of an Exam Plan never removes eligible ordinary review."""
+        now = datetime(2026, 10, 16, 18, tzinfo=timezone.utc)
+        pid = self.create(visible=True, weekdays=list(range(7)))
+        with dlms.get_db() as conn:
+            original = plans.get(conn.cursor(), pid)['config']
+            for changes in ({}, {'paused': True}, {'exam_date': '2026-10-16'}, {'visible': False}):
+                with self.subTest(changes=changes):
+                    config = {**original, **changes}
+                    conn.execute('UPDATE exam_plans SET config_json=? WHERE id=?', (json.dumps(config), pid))
+                    conn.commit()
+                    cur = conn.cursor()
+                    registry = dlms.load_registry()
+                    canonical = dlms._learning_service._daily_review_plan(
+                        cur, registry=registry, installed_content_packs=dlms.content_pack_summary(),
+                        now=now, review_schedule_payload=dlms._review_schedule_payload,
+                        learning_intelligence_payload=dlms._learning_intelligence_payload,
+                        adaptive_study_candidates=dlms._adaptive_study_candidates,
+                        scope=dlms._current_learning_scope(cur, registry=registry))
+                    before = list(conn.iterdump())
+                    dashboard = dlms._daily_review_plan(cur, now=now)
+                    self.assertTrue(canonical['items'])
+                    for field in ('items', 'summary', 'model'):
+                        self.assertEqual(dashboard[field], canonical[field])
+                    self.assertEqual('exam_plan' in dashboard, config['visible'])
+                    self.assertEqual(list(conn.iterdump()), before)
 
     def test_calendar_dst_travel_and_zero_capacity(self):
         config = self.config()
