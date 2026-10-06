@@ -429,7 +429,7 @@ def _sanitize_header_value_for_log(value, limit=160):
 
 @app.before_request
 def validate_unsafe_request_origin():
-    if request.method not in app.config["WTF_CSRF_METHODS"]:
+    if request.method not in app.config["WTF_CSRF_METHODS"] and request.path != "/api/csrf-token":
         return None
     if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
         return _csrf_failure("Cross-site requests are not allowed.", 403)
@@ -508,7 +508,14 @@ csrf.init_app(app)
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(_error):
-    return _csrf_failure("The security token is missing or invalid. Refresh the page and try again.", 400)
+    message = "The security token is missing or invalid. Refresh the page and try again."
+    if _is_json_request():
+        # This discriminator means CSRFProtect rejected the request before its
+        # handler ran. Clients may renew the token and retry the identical save.
+        if request.path in {"/api/study/session", "/api/study/position", "/api/study/finish", "/api/learning-events/study-response"}:
+            message = "Security verification expired or failed. Retry without leaving this page."
+        return jsonify(error=message, code="csrf_failed"), 400
+    return _csrf_failure(message, 400)
 
 
 @app.after_request
@@ -529,7 +536,9 @@ def deliver_csrf_token(response):
         or request.path.startswith("/settings/reset")
     ):
         response.headers.setdefault("Cache-Control", "no-store")
-    if request.method == "GET" and response.status_code < 400 and response.mimetype == "text/html":
+    if request.method == "GET" and response.status_code < 400 and (
+        response.mimetype == "text/html" or request.endpoint == "core.refresh_csrf_token"
+    ):
         response.set_cookie(
             "dlms_csrf_token", generate_csrf(), secure=request.is_secure,
             httponly=False, samesite="Strict", path="/",

@@ -67,6 +67,191 @@ def _new_regular_study_quiz(stack, count):
     return quiz_id, entry["html"]
 
 
+@pytest.mark.parametrize("failure", ["answer", "finish", "refresh_failed", "finish_refresh_failed", "lost_ack", "lost_finish_ack", "resume", "other_tab", "two_hours"])
+def test_fifty_question_study_csrf_expiry(browser_stack, failure):
+    """A fresh LAN HTTP quiz outlives the real one-hour CSRF lifetime."""
+    browser = browser_stack.browser
+    browser_stack.base_url = browser_stack.base_url.replace('127.0.0.1', 'dlms-http.test')
+    quiz_id, html = _new_regular_study_quiz(browser_stack, 50)
+    assert browser.evaluate('window.isSecureContext') is False
+    theme = {'refresh_failed':'light', 'finish_refresh_failed':'dark', 'resume':'ethereal'}.get(failure)
+    if theme:
+        assert browser.evaluate("fetch('/api/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:"+json.dumps(theme)+"})}).then(r=>r.ok)")
+        browser.navigate(browser_stack.base_url+'/quizzes/'+html)
+        browser.wait_for('quizRecoveryReady')
+        browser.command('browsingContext.setViewport', {'context':browser.context,'viewport':{'width':390,'height':844}})
+    browser.evaluate("""window.csrfTrace=[];window.realStudyFetch=window.fetch.bind(window);
+      window.csrfTestFailure=""" + json.dumps(failure) + """;
+      window.blockRenewal=['refresh_failed','finish_refresh_failed','resume'].includes(csrfTestFailure);
+      window.fetch=async(url,options)=>{
+        const path=String(url);const tracked=path.includes('/study')||path==='/api/csrf-token';
+        const row={path,request:options?.body?JSON.parse(options.body):null};
+        if(tracked)csrfTrace.push(row);
+        if(path==='/api/csrf-token'&&blockRenewal){
+          row.failure='connection unavailable';throw new Error('Connection unavailable');
+        }
+        const response=await realStudyFetch(url,options);
+        if(tracked){row.status=response.status;const data=await response.clone().json().catch(()=>({}));
+          row.code=data.code;row.error=data.error;row.eventId=data.event_id;
+          row.completed=Boolean(data.session?.completed_at);}
+        if(path.includes('/study-response')&&row.request?.sequence===75&&response.ok&&csrfTestFailure==='lost_ack'){
+          csrfTestFailure='lost_ack_done';throw new Error('Lost acknowledgement after commit');
+        }
+        if(path==='/api/study/finish'&&response.ok&&csrfTestFailure==='lost_finish_ack'){
+          csrfTestFailure='lost_finish_ack_done';throw new Error('Lost completion acknowledgement');
+        }
+        return response;
+      };true""")
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    session_id = browser.evaluate('learningSessionId')
+    key = browser.evaluate('quizRecoveryController.storageKey')
+    clock = browser_stack.data_root/'browser-signing-clock.txt'
+    output = os.environ.get('DLMS_CSRF_CAPTURE_DIR')
+    trace_before_reload = []
+    try:
+        for number in range(49):
+            browser.click("#choices .choice[data-index='" + ('1' if number < 25 else '0') + "']")
+            browser.wait_for('studyLearningEventSaves.size === 0')
+            if number < 25:
+                browser.click("#choices .choice[data-index='0']")
+                browser.wait_for('studyLearningEventSaves.size === 0')
+            if number == 24 and failure == 'two_hours':
+                clock.write_text('3601')
+            if number < 48:
+                browser.click('#nextBtn')
+        with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+            assert conn.execute('SELECT COUNT(*) FROM study_responses WHERE session_id=?',(session_id,)).fetchone()[0] == 74
+        if failure not in ('finish', 'finish_refresh_failed'):
+            clock.write_text('7202' if failure == 'two_hours' else '3601')
+        if failure == 'other_tab':
+            # A fresh second tab renews the shared cookie, but must not take over Study.
+            original = browser.context
+            other = browser.command('browsingContext.create', {'type':'tab'})['context']
+            try:
+                browser.context = other
+                browser.navigate(browser_stack.base_url+'/study-history')
+            finally:
+                browser.context = original
+                browser.command('browsingContext.close', {'context':other})
+        browser.click('#nextBtn')
+        browser.click("#choices .choice[data-index='0']")
+        if failure in ('finish', 'finish_refresh_failed'):
+            browser.wait_for('studyLearningEventSaves.size === 0')
+            browser.evaluate('durableStudyPositionSave.then(()=>true)')
+            clock.write_text('3601')
+        browser.click('#finishReviewBtn')
+        if failure in ('refresh_failed', 'lost_ack', 'resume'):
+            browser.wait_for('!studyCompletionInProgress && studyLearningEventSaves.size === 1 && [...studyLearningEventSaves.values()][0].state === "failed"')
+            assert browser.evaluate('index') == 49
+            pending = browser.evaluate('[...studyLearningEventSaves.values()].map(r=>r.payload)')
+            local = browser.evaluate('JSON.parse(localStorage.getItem('+json.dumps(key)+'))')
+            assert local['learningSessionId'] == session_id and local['view']['questionIndex'] == 49
+            assert [r['payload'] for r in local['unacknowledgedStudyEvents']] == pending
+            assert not browser.evaluate("csrfTrace.some(r=>r.path==='/api/study/finish')")
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'pending-{failure}.png').write_bytes(base64.b64decode(shot['data']))
+            with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+                assert conn.execute('SELECT COUNT(*) FROM study_responses WHERE session_id=?',(session_id,)).fetchone()[0] == (75 if failure == 'lost_ack' else 74)
+            if failure == 'resume':
+                # Only after proving the whole queue is retained: reload obtains
+                # a fresh token and Resume reuses the saved identities/position.
+                trace_before_reload = browser.evaluate('csrfTrace')
+                browser.navigate(browser_stack.base_url+'/quizzes/'+html)
+                browser.wait_for('quizRecoveryReady && document.querySelector(".quiz-recovery-resume")')
+                browser.click('.quiz-recovery-resume')
+                browser.wait_for('index === 49 && studyLearningEventSaves.size === 0 && durableStudySession !== null')
+                assert browser.evaluate('learningSessionId') == session_id
+            else:
+                browser.evaluate('blockRenewal=false;true')
+                browser.click('.study-learning-save-retry')
+                browser.wait_for('studyLearningEventSaves.size === 0')
+                saves = browser.evaluate("csrfTrace.filter(r=>r.path.includes('/study-response')&&r.request.sequence===75).map(r=>r.request)")
+                assert all(payload == pending[0] for payload in saves)
+            browser.click('#finishReviewBtn')
+        elif failure in ('lost_finish_ack', 'finish_refresh_failed'):
+            browser.wait_for('studyCompletionFailed && !studyCompletionInProgress')
+            assert browser.evaluate("studyCompletionMessage.includes('Finish Review was not confirmed')")
+            assert browser.evaluate('localStorage.getItem('+json.dumps(key)+') !== null')
+            assert browser.evaluate('studyLearningEventSaves.size') == 0
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'pending-{failure}.png').write_bytes(base64.b64decode(shot['data']))
+            browser.evaluate('blockRenewal=false;true')
+            browser.click('.study-learning-save-retry')
+        browser.wait_for("studyCompletionMessage.includes('Review completed') && !studyCompletionInProgress")
+        browser.evaluate('durableStudyPositionSave.then(()=>true)')
+        completed_at = browser.evaluate('durableStudySession.completed_at')
+        browser.click('#finishReviewBtn')
+        browser.wait_for('!studyCompletionInProgress')
+        assert browser.evaluate('durableStudySession.completed_at') == completed_at
+        if failure != 'resume':
+            trace = browser.evaluate('csrfTrace')
+            payloads = {}
+            for row in trace:
+                if row['path'] == '/api/learning-events/study-response':
+                    identity = row['request']['eventId']
+                    assert payloads.setdefault(identity, row['request']) == row['request']
+            if failure == 'other_tab':
+                assert not any(row.get('status') == 400 for row in trace)
+            if failure == 'two_hours':
+                assert sum(row['path'] == '/api/csrf-token' and row.get('status') == 200 for row in trace) >= 2
+        with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+            rows = conn.execute('SELECT sequence,ordinal,was_correct FROM study_responses WHERE session_id=? ORDER BY sequence',(session_id,)).fetchall()
+            assert len(rows) == 75 and [r[0] for r in rows] == list(range(1,76))
+            first = {}
+            for _,ordinal,correct in rows:
+                first.setdefault(ordinal,correct)
+            assert list(first.values()) == [0]*25+[1]*25
+            if failure == 'resume':
+                assert conn.execute('SELECT event_id FROM study_responses WHERE session_id=? AND sequence=75',(session_id,)).fetchone()[0] == pending[0]['eventId']
+            assert conn.execute('SELECT completed_at FROM study_sessions WHERE id=?',(session_id,)).fetchone()[0]
+            if failure == 'resume':
+                assert conn.execute('SELECT position FROM study_sessions WHERE id=?',(session_id,)).fetchone()[0] == 49
+        assert browser.evaluate('localStorage.getItem('+json.dumps(key)+') === null')
+    finally:
+        if output:
+            directory=Path(output);directory.mkdir(parents=True,exist_ok=True)
+            (directory/f'csrf-{failure}.json').write_text(json.dumps(trace_before_reload + browser.evaluate('typeof csrfTrace === "undefined" ? [] : csrfTrace'),indent=2))
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (directory/f'csrf-{failure}.png').write_bytes(base64.b64decode(shot['data']))
+
+
+@pytest.mark.parametrize('rejection', ['origin', 'invalid_twice', 'renewal_http'])
+def test_study_security_retries_are_bounded(browser_stack, rejection):
+    browser = browser_stack.browser
+    _new_four_question_study_quiz(browser_stack)
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    browser.evaluate("""window.securityPosts=0;window.securityRenewals=0;
+      window.beforeSecurityTest=window.fetch.bind(window);window.rejection="""+json.dumps(rejection)+""";
+      window.fetch=(url,options)=>{
+        if(String(url)==='/api/csrf-token'){
+          securityRenewals++;
+          if(rejection==='renewal_http')return Promise.resolve(new Response('{}',{status:503}));
+        }
+        if(String(url)==='/api/learning-events/study-response'){
+          securityPosts++;
+          options={...options,headers:{...options.headers,'X-CSRFToken':'invalid'}};
+          if(rejection==='origin')return Promise.resolve(new Response(JSON.stringify({error:'Cross-site requests are not allowed.'}),{status:403}));
+        }
+        return beforeSecurityTest(url,options);
+      };true""")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for('[...studyLearningEventSaves.values()].some(r=>r.state === "failed")')
+    assert browser.evaluate('securityPosts') == (2 if rejection == 'invalid_twice' else 1)
+    assert browser.evaluate('securityRenewals') == (0 if rejection == 'origin' else 1)
+    assert browser.evaluate("document.querySelector('.study-learning-save-message').textContent.includes('awaiting save confirmation')")
+    assert _database_value(browser_stack.data_root/'results.db','SELECT COUNT(*) FROM study_responses') == 0
+    assert browser.evaluate('studyLearningEventSaves.size') == 1
+    # A visible user retry recovers the same response once the real failure clears.
+    browser.evaluate('window.fetch=beforeSecurityTest;true')
+    browser.click('.study-learning-save-retry')
+    browser.wait_for('studyLearningEventSaves.size === 0')
+    assert _database_value(browser_stack.data_root/'results.db','SELECT COUNT(*) FROM study_responses') == 1
+
+
 @pytest.mark.parametrize("uuid_available", [True, False])
 @pytest.mark.parametrize("outcomes", ["all_wrong", "all_correct", "mixed", "corrected"])
 def test_new_regular_study_answers_complete(browser_stack, uuid_available, outcomes):
@@ -3426,7 +3611,7 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.wait_for("studyLearningEventSaves.size === 0")
     browser.click("#nextBtn")
     browser.click("#choices .choice[data-index='1']")
-    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent === 'Learning progress was not saved.'")
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent === '1 Study response awaiting save confirmation. forced Study save failure'")
     browser.click("#finishReviewBtn")
     browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Retry the failed Study save')")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
@@ -3439,7 +3624,7 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.wait_for("studyCompletionFailed === true")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     assert browser.evaluate("document.querySelector('.study-learning-save-message').textContent") == (
-        "forced completion failure"
+        "Finish Review was not confirmed. forced completion failure"
     )
     assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 0
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
@@ -4755,7 +4940,7 @@ def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for(
         "!document.getElementById('studyLearningEventStatus').hidden && "
-        "document.querySelector('.study-learning-save-message').textContent.includes('not saved')"
+        "document.querySelector('.study-learning-save-message').textContent === '1 Study response awaiting save confirmation. forced browser regression failure'"
     )
     assert _database_value(
         database,

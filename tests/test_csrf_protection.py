@@ -19,6 +19,57 @@ class CsrfProtectionTests(unittest.TestCase):
     def setUp(self):
         self.client = dlms.app.test_client()
 
+    def test_expiry_and_same_origin_renewal_keep_csrf_validation(self):
+        from itsdangerous import TimestampSigner
+        now = TimestampSigner.get_timestamp(TimestampSigner('fixture'))
+        with mock.patch.object(TimestampSigner, 'get_timestamp', return_value=now):
+            old = csrf_token(self.client)
+        with mock.patch.object(TimestampSigner, 'get_timestamp', return_value=now+3600):
+            boundary = self.client.post('/api/study/finish', json={}, headers={'X-CSRFToken':old})
+            self.assertNotEqual(boundary.json.get('code'), 'csrf_failed')
+        with mock.patch.object(TimestampSigner, 'get_timestamp', return_value=now+3601):
+            failed = self.client.post('/api/study/finish', json={}, headers={'X-CSRFToken':old})
+            self.assertEqual(failed.status_code, 400)
+            self.assertEqual(failed.json['code'], 'csrf_failed')
+            renewed = self.client.get('/api/csrf-token', headers={'X-DLMS-CSRF-Refresh':'1'})
+            self.assertEqual(renewed.status_code, 200)
+            self.assertEqual(renewed.headers['Cache-Control'], 'no-store')
+            fresh = renewed.json['csrf_token']
+            self.assertNotEqual(fresh, old)
+            self.assertEqual(self.client.get_cookie('dlms_csrf_token').value, fresh)
+            # Renewing never makes the expired token acceptable again.
+            self.assertEqual(self.client.post('/api/study/finish', json={}, headers={'X-CSRFToken':old}).json['code'], 'csrf_failed')
+            valid = self.client.post('/api/study/finish', json={}, headers={'X-CSRFToken':fresh})
+            self.assertNotEqual(valid.json.get('code'), 'csrf_failed')
+            self.assertNotEqual(valid.status_code, 200)  # no invented completion
+            other = dlms.app.test_client()
+            self.assertEqual(other.post('/api/study/finish', json={}, headers={'X-CSRFToken':fresh}).json['code'], 'csrf_failed')
+
+    def test_renewal_requires_custom_header_and_same_origin_without_cors(self):
+        origin = 'http://192.168.1.245:9001'
+        for headers in ({}, {'X-DLMS-CSRF-Refresh':'1','Origin':'https://attacker.example'},
+                        {'X-DLMS-CSRF-Refresh':'1','Sec-Fetch-Site':'cross-site'},
+                        {'X-DLMS-CSRF-Refresh':'1','Referer':'https://attacker.example/'}):
+            response = self.client.get('/api/csrf-token', base_url=origin, headers=headers)
+            self.assertEqual(response.status_code, 403)
+            self.assertNotIn('csrf_token', response.json)
+            self.assertNotIn('Access-Control-Allow-Origin', response.headers)
+        response = self.client.get('/api/csrf-token', base_url=origin,
+                                   headers={'X-DLMS-CSRF-Refresh':'1','Origin':origin})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('Access-Control-Allow-Origin', response.headers)
+        preflight = self.client.options('/api/csrf-token', base_url=origin,
+                                       headers={'Origin':'https://attacker.example','Access-Control-Request-Headers':'X-DLMS-CSRF-Refresh'})
+        self.assertNotIn('Access-Control-Allow-Origin', preflight.headers)
+
+    def test_study_rejection_guidance_is_scoped_to_study_requests(self):
+        for path in ('/api/study/session', '/api/study/position', '/api/study/finish', '/api/learning-events/study-response'):
+            rejected = self.client.post(path, json={})
+            self.assertEqual(rejected.json['code'], 'csrf_failed')
+            self.assertNotIn('Refresh', rejected.json['error'])
+        other = self.client.post('/api/theme', json={'theme':'light'})
+        self.assertEqual(other.json['error'], 'The security token is missing or invalid. Refresh the page and try again.')
+
     def test_html_get_delivers_strict_session_token_and_read_only_get_works(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)

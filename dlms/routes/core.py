@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from flask import Blueprint, jsonify, render_template, request, send_from_directory
+from flask_wtf.csrf import generate_csrf
 from dlms.persistence.portal import dashboard_card_defaults
 from dlms.themes import get_theme, theme_groups
 
@@ -36,6 +37,14 @@ class CoreRouteDependencies:
 def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
     """Create platform shell and safe asset-serving routes."""
     blueprint = Blueprint("core", __name__)
+
+    @blueprint.get("/api/csrf-token")
+    def refresh_csrf_token():
+        # A custom header requires a cross-origin preflight; no CORS access is
+        # granted. The app's same-origin guard also applies to this GET endpoint.
+        if request.headers.get("X-DLMS-CSRF-Refresh") != "1":
+            return jsonify(error="Same-origin security renewal is required."), 403
+        return jsonify(csrf_token=generate_csrf())
 
     @blueprint.get("/content-packs/<pack_id>/assets/<path:asset_path>")
     def content_pack_asset(pack_id, asset_path):

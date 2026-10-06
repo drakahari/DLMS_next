@@ -46,8 +46,24 @@ let durableStudyReady = Promise.resolve();
 let durableStudyPositionSave = Promise.resolve();
 const durableStudyOwner = createLearningSessionId();
 
+async function studyFetch(url, options) {
+    const response = await fetch(url, options);
+    if (response.status !== 400) return response;
+    const rejection = await response.clone().json().catch(() => ({}));
+    if (rejection.code !== "csrf_failed") return response;
+    try {
+        if (!window.dlmsRefreshCsrfToken) throw new Error("Security renewal is unavailable");
+        await window.dlmsRefreshCsrfToken();
+    } catch (_error) {
+        throw new Error("Security verification could not be renewed. Keep this tab open and select Retry. No responses were discarded.");
+    }
+    // CSRF rejection happens before the handler. Retry once with exactly the
+    // same identity, sequence and body; never replay an uncertain network save.
+    return fetch(url, options);
+}
+
 async function studyRequest(url, payload) {
-    const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
+    const response = await studyFetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.ok !== true) {
         const error=new Error(data.error || "Study progress could not be saved. Retry without leaving this page.");
@@ -147,7 +163,7 @@ function saveDurableStudyPosition() {
     // Keep rapid Next/Previous writes in navigation order, independently of
     // concurrent answer saves. Capture the claim before another review starts.
     durableStudyPositionSave = durableStudyPositionSave.then(() => studyRequest("/api/study/position", payload)).catch(error => {
-        showQuizRecoveryNotice(error.message);
+        showQuizRecoveryNotice(`Navigation position was not saved. ${error.message}`);
     });
 }
 
@@ -240,7 +256,8 @@ function updateStudyLearningEventStatus() {
     status.classList.toggle("is-retrying", (retrying || studyCompletionInProgress) && !failed.length);
     if (message) {
         if (failed.length) {
-            message.textContent = studyCompletionMessage || "Learning progress was not saved.";
+            const detail = failed.find(record => record.error)?.error || "Select Retry without leaving this page.";
+            message.textContent = `${failed.length} Study response${failed.length === 1 ? "" : "s"} awaiting save confirmation. ${detail}${studyCompletionMessage ? " " + studyCompletionMessage : ""}`;
         } else if (studyCompletionInProgress) {
             message.textContent = studyLearningEventSaves.size
                 ? "Waiting for learning progress to save…"
@@ -273,7 +290,7 @@ async function saveStudyLearningEvent(record, retrying = false) {
     checkpointQuizRecovery();
     try {
         await durableStudyReady;
-        const response = await fetch("/api/learning-events/study-response", {
+        const response = await studyFetch("/api/learning-events/study-response", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(record.payload)
@@ -308,6 +325,7 @@ async function saveStudyLearningEvent(record, retrying = false) {
         if (latest && latest.eventId === record.eventId) {
             record.state = "failed";
             record.retrying = false;
+            record.error = error.message;
             studyCompletionMessage = error.conflict ? error.message : "";
             updateStudyLearningEventStatus();
             checkpointQuizRecovery();
@@ -1661,7 +1679,7 @@ async function finishGeneratedPracticeReview() {
         return true;
     } catch (error) {
         studyCompletionFailed = true;
-        studyCompletionMessage = error.message || "Review completion was not saved. Select Finish Review to retry.";
+        studyCompletionMessage = `Finish Review was not confirmed. ${error.message || "Select Finish Review to retry without leaving this page."}`;
         console.warn("Generated Practice completion save failed:", error);
         checkpointQuizRecovery();
         return false;
@@ -1803,7 +1821,14 @@ async function restoreQuizRecoveryState(record) {
             Object.entries(current.answers).forEach(([i, answer]) => {
                 userAnswers[`q${i}`] = answer.type === "choice" ? answer.selected.map(value => value.charCodeAt(0) - 65) : answer.selected;
             });
-            index = current.position;
+            // A failed position write must not undo the latest recovered answer's
+            // navigation. Preserve server precedence if another browser saved
+            // newer responses than this queue (or this queue was empty).
+            const recoveredLatest = record.unacknowledgedStudyEvents.some(
+                saved => saved.payload.sequence === current.sequence,
+            );
+            index = recoveredLatest ? record.view.questionIndex : current.position;
+            if (recoveredLatest) saveDurableStudyPosition();
         } catch (error) {
             studyCompletionMessage = error.message;
             updateStudyLearningEventStatus();

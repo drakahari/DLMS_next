@@ -23,7 +23,7 @@ def test_study_save_requires_the_matching_server_acknowledgement():
     save = _function_block(source, "saveStudyLearningEvent")
 
     assert "async function saveStudyLearningEvent" in save
-    assert 'await fetch("/api/learning-events/study-response"' in save
+    assert 'await studyFetch("/api/learning-events/study-response"' in save
     assert "!response.ok" in save
     assert "data.ok !== true" in save
     assert 'String(data.event_id || "") !== record.eventId' in save
@@ -42,7 +42,7 @@ def test_network_http_and_malformed_acknowledgement_failures_show_one_retry_stat
     assert '"Waiting for learning progress to save…"' in update_status
     assert '"Saving review completion…"' in update_status
     assert 'studyCompletionMessage' in update_status
-    assert '"Learning progress was not saved."' in update_status
+    assert 'awaiting save confirmation.' in update_status
     assert 'retry.textContent = "Retry"' in ensure_status
     assert 'record.state = "failed"' in save
     assert "return false" in save

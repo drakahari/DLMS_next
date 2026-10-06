@@ -4,13 +4,18 @@
     const match = document.cookie.split(';').map(value => value.trim()).find(value => value.startsWith(prefix));
     return match ? decodeURIComponent(match.slice(prefix.length)) : '';
   };
-  const csrfToken = readCookie('dlms_csrf_token');
+  const currentCsrfToken = () => {
+    const token = readCookie('dlms_csrf_token');
+    window.dlmsCsrfToken = token;
+    return token;
+  };
   const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   const isSameOrigin = (value) => {
     try { return new URL(value || window.location.href, window.location.href).origin === window.location.origin; }
     catch (_error) { return false; }
   };
   const protectForm = (form) => {
+    const csrfToken = currentCsrfToken();
     const method = (form.getAttribute('method') || 'GET').toUpperCase();
     if (!csrfToken || !unsafeMethods.has(method) || !isSameOrigin(form.getAttribute('action'))) return form;
     let field = form.querySelector('input[name="csrf_token"]');
@@ -23,18 +28,35 @@
     field.value = csrfToken;
     return form;
   };
-  window.dlmsCsrfToken = csrfToken;
+  currentCsrfToken();
   window.dlmsProtectForm = protectForm;
   document.querySelectorAll('form').forEach(protectForm);
 
   const originalFetch = window.fetch.bind(window);
   window.fetch = (input, init = {}) => {
+    const csrfToken = currentCsrfToken();
     const requestUrl = typeof input === 'string' || input instanceof URL ? input : input.url;
     const method = String(init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
     if (!csrfToken || !unsafeMethods.has(method) || !isSameOrigin(requestUrl)) return originalFetch(input, init);
     const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
     if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken);
     return originalFetch(input, {...init, headers});
+  };
+
+  let csrfRenewal = null;
+  window.dlmsRefreshCsrfToken = () => {
+    if (!csrfRenewal) {
+      csrfRenewal = window.fetch('/api/csrf-token', {
+        cache: 'no-store', credentials: 'same-origin',
+        headers: {'X-DLMS-CSRF-Refresh': '1'}
+      }).then(async response => {
+        const data = await response.json();
+        if (!response.ok || typeof data.csrf_token !== 'string' || !data.csrf_token || !currentCsrfToken()) {
+          throw new Error('Security verification could not be renewed.');
+        }
+      }).finally(() => { csrfRenewal = null; });
+    }
+    return csrfRenewal;
   };
 
   const portalConfigPromise = fetch('/config/portal.json', {cache:'no-store'})

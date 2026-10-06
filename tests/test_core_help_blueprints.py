@@ -27,6 +27,7 @@ class CoreHelpBlueprintTests(unittest.TestCase):
     EXPECTED_RULES = {
         "/": "core.home",
         "/api/browser-presence": "core.browser_presence",
+        "/api/csrf-token": "core.refresh_csrf_token",
         "/config/portal.json": "core.serve_portal_config",
         "/content-packs/<pack_id>/assets/<path:asset_path>": "core.content_pack_asset",
         "/dynamic.css": "core.dynamic_css",
