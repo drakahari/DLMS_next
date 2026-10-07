@@ -864,6 +864,7 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
         for mode in ('.study-mode-btn', '.exam-mode-btn'):
             browser.navigate(base + '/quizzes/' + html)
             browser.wait_for("quizRecoveryReady && !document.querySelector('.study-mode-btn').disabled")
+            assert not browser.evaluate("document.querySelector('link[href=\"/static/action-controls.css\"]')")
             mode_contrast = _theme_contrast_snapshot(browser, {'study': '.study-mode-btn', 'exam': '.exam-mode-btn'}, include_gradients=True)
             for role, value in mode_contrast.items():
                 if theme.startswith('omarchy-'):
@@ -914,11 +915,16 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
                                         'danger': '.settings-danger-button'}),
             ('/history', {'heading': 'h1', 'table': '.history-quiz-cell strong',
                           'score': '.history-score-badge', 'date': '.history-date-cell'}),
+            ('/study-history', {'navigation': '[aria-label="History navigation"] .dlms-action-control',
+                                'disclosure': '#historyExplanation summary'}),
         ):
             browser.navigate(base + route)
             browser.wait_for_page_ready()
             if route == '/history':
                 browser.wait_for("document.querySelector('.history-quiz-cell strong')")
+            if route == '/study-history':
+                browser.wait_for("document.querySelectorAll('[aria-label=\"History navigation\"] .dlms-action-control').length===4")
+                assert browser.evaluate("[...document.querySelectorAll('[aria-label=\"History navigation\"] a')].every(n=>n.getBoundingClientRect().height>=44 && n.querySelector('svg[aria-hidden=true][focusable=false]'))")
             for role, value in _theme_contrast_snapshot(browser, selectors, include_gradients=True).items():
                 assert value['contrast'] >= 4.5, (theme, width, route, role, value)
             assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'), (theme, width, route)
@@ -12932,7 +12938,7 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
             browser.press_key("\ue007")
             assert browser.evaluate("document.querySelector('.daily-review-unfinished details').open")
             browser.press_key("\ue004")
-            assert browser.evaluate("document.activeElement.className") == "daily-review-remove"
+            assert browser.evaluate("document.activeElement.matches('button.daily-review-remove.dlms-action-control:focus-visible') && document.activeElement.hasAttribute('data-clear-recovery') && document.activeElement.closest('details.dashboard-resume-management')?.open")
             browser.press_key("\ue007")
             browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
             geometry = browser.evaluate(
@@ -15450,3 +15456,106 @@ def test_daily_review_request_failures_and_ordering(browser_stack, fault):
         assert browser.evaluate("document.getElementById('dailyReviewCount').textContent") == ''
         assert browser.evaluate("document.querySelector('#dailyReviewList h3').textContent") == 'Current recommendation'
         assert not browser.evaluate("document.getElementById('dailyReviewList').hidden")
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_dashboard_and_study_history_action_controls(browser_stack, theme):
+    """Scoped icon controls preserve native navigation and lazy disclosures."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base+'/settings/appearance'); _set_theme(browser, theme)
+    qid, html = _new_regular_study_quiz(browser_stack, 4)
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']"); browser.wait_for('studyLearningEventSaves.size===0')
+    for position in range(4):
+        browser.click("#choices .choice[data-index='0']"); browser.wait_for('studyLearningEventSaves.size===0')
+        if position < 3: browser.click('#nextBtn')
+    browser.click('#finishReviewBtn'); browser.wait_for('durableStudySession.completed_at !== null')
+    _new_regular_study_quiz(browser_stack, 1)
+    browser.navigate(base+'/exam-plans/new')
+    browser.wait_for('window.dlmsCsrfToken && document.getElementById("examPlanForm")')
+    exam=(datetime.now(timezone.utc)+timedelta(days=21)).date().isoformat()
+    browser.evaluate("document.querySelector('[name=name]').value='CISM — Information Security Governance and Risk Management';document.querySelector('[name=exam_date]').value="+json.dumps(exam)+";document.querySelector('[name=calendar_timezone]').value='UTC';document.querySelectorAll('[name=weekdays],[name=folders]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
+    browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary")!==null')
+    browser.navigate(base+'/')
+    browser.wait_for("document.querySelector('.dashboard-plan-actions > a.dlms-action-control') && document.querySelector('.dashboard-sequence-link.dlms-action-control')")
+    view='.dashboard-plan-actions > a'
+    assert browser.evaluate("document.querySelector('[data-dashboard-primary]').textContent") == 'Start suggested work'
+    assert browser.evaluate("getComputedStyle(document.querySelector('#retryPlanPractice')).display") == 'none'
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: before=list(conn.iterdump())
+    routes=browser.evaluate("[...document.querySelectorAll('[data-home-dashboard] .dlms-action-control')].map(n=>({label:n.textContent,tag:n.tagName,href:n.getAttribute('href'),action:n.closest('form')?.getAttribute('action')}))")
+    output=os.environ.get('DLMS_ACTION_CAPTURE_DIR')
+    def capture(name):
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
+            (Path(output)/(name+'-'+theme+'.png')).write_bytes(base64.b64decode(shot['data']))
+    for width in (1440,390,320):
+        browser.set_viewport(width,1000)
+        browser.activate(); browser.wait_for('document.hasFocus()')
+        browser.evaluate("document.querySelector("+json.dumps(view)+").focus();true")
+        browser.press_key('\ue004')  # Focus ring after real keyboard input.
+        browser.evaluate("document.querySelector("+json.dumps(view)+").focus();true")
+        browser.wait_for("[...document.querySelectorAll('[role=tooltip]')].some(n=>!n.hidden)")
+        assert browser.evaluate("document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle==='solid'")
+        assert browser.evaluate("(()=>{const n=document.querySelector('[role=tooltip]:not([hidden])'), r=n.getBoundingClientRect();return r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight && document.activeElement.getAttribute('aria-describedby').split(' ').includes(n.id)})()")
+        assert browser.evaluate("(()=>{const r=document.querySelector('[role=tooltip]:not([hidden])').getBoundingClientRect();return [...document.querySelectorAll('[data-home-dashboard] .dlms-action-control')].filter(n=>n!==document.activeElement).every(n=>{const b=n.getBoundingClientRect();return !b.width || !b.height || b.right<=r.left || b.left>=r.right || b.bottom<=r.top || b.top>=r.bottom})})()")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        for role,value in _theme_contrast_snapshot(browser, {'primary':'[data-dashboard-primary]', 'secondary':view, 'tooltip':'[role=tooltip]:not([hidden])'},include_gradients=True).items():
+            assert value['contrast']>=4.5,(theme,width,role,value)
+        capture('dashboard-focus-'+str(width))
+        browser.press_key('\ue00c')
+        assert browser.evaluate("[...document.querySelectorAll('[role=tooltip]')].every(n=>n.hidden)")
+        # The unchanged native disclosure opens with Enter and closes with Space.
+        browser.evaluate("document.querySelector('.dashboard-plan-explanation summary').focus();true")
+        browser.press_key('\ue007'); assert browser.evaluate("document.querySelector('.dashboard-plan-explanation').open")
+        browser.press_key(' '); assert not browser.evaluate("document.querySelector('.dashboard-plan-explanation').open")
+    browser.set_viewport(1440,1000)
+    browser.evaluate("document.activeElement.blur();document.querySelector("+json.dumps(view)+").scrollIntoView({block:'center'});true")
+    point=browser.evaluate("(()=>{const r=document.querySelector("+json.dumps(view)+").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+    browser.command('input.performActions', {'context':browser.context,'actions':[{'type':'pointer','id':'mouse','parameters':{'pointerType':'mouse'},'actions':[{'type':'pointerMove','x':round(point['x']),'y':round(point['y'])}]}]})
+    browser.wait_for("document.querySelector('[role=tooltip]:not([hidden])')")
+    capture('dashboard-hover')
+    tooltip=browser.evaluate("(()=>{const r=document.querySelector('[role=tooltip]:not([hidden])').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+    browser.command('input.performActions', {'context':browser.context,'actions':[{'type':'pointer','id':'mouse','parameters':{'pointerType':'mouse'},'actions':[{'type':'pointerMove','x':round(tooltip['x']),'y':round(tooltip['y'])}]}]})
+    assert browser.evaluate("document.querySelector('[role=tooltip]:not([hidden])').matches(':hover')")
+    browser.press_key('\ue00c'); assert not browser.evaluate("document.querySelector('[role=tooltip]:not([hidden])')")
+    # A widget may rerender after a dismissed tooltip's leave event. Its timer
+    # must tolerate removal without a console error or stale body tooltip.
+    assert browser.evaluate("""(async()=>{
+      const errors=[], listener=e=>errors.push(e.message);
+      window.addEventListener('error',listener);
+      const node=document.querySelector('.dashboard-plan-actions > a');
+      node.blur(); node.focus();
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+      node.dispatchEvent(new PointerEvent('pointerleave'));
+      node.remove();
+      await new Promise(resolve=>setTimeout(resolve,200)); // Observe the 150ms leave timer.
+      window.removeEventListener('error',listener);
+      const plan=await fetch('/api/daily-review-plan').then(r=>r.json());
+      DLMSDailyReview.renderDailyReview(DLMSDailyReview.mergeBrowserSessions(plan));
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+      return {errors,stale:[...document.querySelectorAll('[role=tooltip]')].some(t=>![...document.querySelectorAll('[aria-describedby]')].some(n=>n.getAttribute('aria-describedby').split(' ').includes(t.id)))};
+    })()""") == {'errors':[], 'stale':False}
+    browser.wait_for("document.querySelector('.dashboard-plan-actions > a.dlms-action-control')")
+    # Native real link activation; presentation does not award evidence.
+    destination=browser.evaluate('document.querySelector('+json.dumps(view)+').getAttribute("href")')
+    browser.evaluate('document.querySelector('+json.dumps(view)+').focus();true'); browser.press_key('\ue007')
+    browser.wait_for('location.pathname==='+json.dumps(destination))
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: assert list(conn.iterdump())==before
+    browser.navigate(base+'/study-history'); browser.wait_for("document.querySelectorAll('[aria-label=\"History navigation\"] .dlms-action-control').length===4")
+    assert browser.evaluate("[...document.querySelectorAll('[aria-label=\"History navigation\"] a')].map(n=>[n.textContent,n.getAttribute('href')])") == [['Dashboard','/'],['Exam History','/history'],['Quiz Library','/library'],['Study Help','/help/quizzes#study-history']]
+    assert not browser.evaluate("performance.getEntriesByType('resource').some(e=>e.name.includes('/study-history/session/'))")
+    for width in (1440,390,320):
+        browser.set_viewport(width,1000)
+        browser.evaluate("document.querySelector('.study-history-row summary').focus();true")
+        browser.press_key('\ue007'); browser.wait_for("document.querySelector('.study-history-detail').textContent.includes('A later correct answer was saved')")
+        assert browser.evaluate("document.activeElement.matches(':focus-visible')")
+        capture('history-expanded-'+str(width))
+        browser.press_key(' '); assert not browser.evaluate("document.querySelector('.study-history-row details').open")
+        capture('history-'+str(width))
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    browser.click('.study-history-row summary'); browser.wait_for("document.querySelector('.study-history-row details').open")
+    browser.navigate(base+'/study-history'); browser.wait_for("document.querySelector('.study-history-row details').open && document.querySelector('.study-history-detail').textContent.includes('A later correct answer was saved')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: assert list(conn.iterdump())==before
+    if output: (Path(output)/('action-inventory-'+theme+'.json')).write_text(json.dumps(routes,indent=2))

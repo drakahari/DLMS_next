@@ -1,0 +1,106 @@
+/* Loaded only by Dashboard and Study History. Prose links and quiz feedback
+   retain the shared stylesheet's appearance. */
+:is([data-home-dashboard], #studyHistory) .dlms-action-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .55rem;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 100%;
+    width: auto;
+    margin: 0;
+    padding: .6rem .85rem;
+    border: 1px solid var(--semantic-secondary-control-border);
+    border-radius: var(--theme-control-radius, 9px);
+    background: var(--semantic-secondary-control-surface);
+    color: var(--semantic-secondary-control-text) !important;
+    font: 600 1rem/1.4 var(--theme-body-font, Arial, Helvetica, sans-serif);
+    text-align: start;
+    text-decoration: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    box-shadow: none;
+    /* Immediate feedback also avoids suspended transitions inside closed details. */
+    transition: none;
+}
+:is([data-home-dashboard], #studyHistory) .dlms-action-control:not(:disabled):hover {
+    background: var(--semantic-secondary-control-hover);
+    border-color: var(--theme-accent-text);
+}
+:is([data-home-dashboard], #studyHistory) .dlms-action-control[data-dashboard-primary] {
+    background: var(--theme-accent-2);
+    color: var(--semantic-primary-control-text) !important;
+    border-color: var(--theme-accent-2);
+    font-weight: 700;
+}
+:is([data-home-dashboard], #studyHistory) .dlms-action-control[data-dashboard-primary]:not(:disabled):hover {
+    background: var(--theme-accent);
+    border-color: var(--theme-accent);
+}
+:is([data-home-dashboard], #studyHistory) .dlms-action-control:disabled {
+    cursor: default;
+}
+:is([data-home-dashboard], #studyHistory) .dlms-action-control[hidden] { display: none !important; }
+:is([data-home-dashboard], #studyHistory) .dlms-action-control > .dlms-icon {
+    width: 1.2rem;
+    height: 1.2rem;
+    flex: 0 0 1.2rem;
+    color: inherit;
+}
+#studyHistory .dlms-action-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+    margin-block: 1rem;
+}
+:is([data-home-dashboard], #studyHistory) details > summary {
+    position: relative;
+    min-height: 44px;
+    padding: .6rem .65rem .6rem 1.8rem;
+    border-radius: var(--theme-control-radius, 9px);
+    list-style: none;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    transition: none;
+}
+:is([data-home-dashboard], #studyHistory) details > summary::-webkit-details-marker { display: none; }
+:is([data-home-dashboard], #studyHistory) details > summary::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: .65rem;
+    top: 1.05rem;
+    width: .4rem;
+    height: .4rem;
+    border-inline-end: 2px solid currentColor;
+    border-block-start: 2px solid currentColor;
+    transform: rotate(45deg);
+}
+:is([data-home-dashboard], #studyHistory) details[open] > summary::before { transform: rotate(135deg); }
+:is([data-home-dashboard], #studyHistory) details > summary:hover { background: var(--semantic-secondary-control-hover); }
+:is([data-home-dashboard], #studyHistory) :is(.dlms-action-control, details > summary):focus-visible {
+    outline: 3px solid var(--theme-focus-ring, var(--theme-accent-text));
+    outline-offset: 3px;
+}
+#studyHistory .study-history-row > details > summary > :is(span, strong) { margin-inline-start: 0; }
+/* Portaled to body so card overflow and narrow columns cannot clip the tip. */
+.dlms-action-tooltip {
+    position: fixed;
+    z-index: 10000;
+    width: max-content;
+    max-width: min(20rem, calc(100vw - 24px));
+    box-sizing: border-box;
+    padding: .55rem .7rem;
+    border: 1px solid var(--theme-border);
+    border-radius: var(--theme-control-radius, 9px);
+    background: var(--theme-panel-1);
+    color: var(--theme-page-text);
+    font: 400 1rem/1.4 var(--theme-body-font, Arial, Helvetica, sans-serif);
+    overflow-wrap: anywhere;
+    box-shadow: 0 3px 12px var(--theme-shadow);
+}
+.dlms-action-tooltip[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+    :is([data-home-dashboard], #studyHistory) :is(.dlms-action-control, details > summary) { transition: none; }
+}
