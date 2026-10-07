@@ -328,6 +328,14 @@ class HelpDocumentationTests(unittest.TestCase):
                 self.assertIn("last-response-saved time", guide)
             else:
                 self.assertIn(wording, guide)
+        for wording in ("Last regular quiz", "Open current quiz", "Study activity details", "What is counted?", "legacy Study"):
+            self.assertIn(wording, guide)
+        self.assertNotIn("Customize dashboard", guide)
+        self.assertNotIn("Customize dashboard", self._static("help-settings.html"))
+        self.assertIn('href="/settings/layout#study-areas"', guide)
+        learning = self._static("help-learning-intelligence.html")
+        for wording in ("No saved answer", "Answered before", "Mistakes to revisit", "Due for review", "Extra practice", "Time is rounded naturally"):
+            self.assertIn(wording, learning)
         history = self._static("help-history-analytics.html")
         self.assertIn('href="/study-history"', history)
         self.assertIn('href="/history"', history)
@@ -655,8 +663,10 @@ class HelpDocumentationTests(unittest.TestCase):
                 self.assertEqual(302, response.status_code)
                 self.assertEqual(f"/settings/layout#{anchor}", response.location)
         self.assertIn("navigationCustomize.href = '/settings/layout#study-areas'", self._static("nav-normalize.js"))
-        self.assertIn('href="/settings/layout#dashboard-panels"',
-                      Path(dlms.TEMPLATE_ROOT, "dashboard/index.html").read_text())
+        self.assertNotIn('class="dashboard-customize"',
+                         Path(dlms.TEMPLATE_ROOT, "dashboard/index.html").read_text())
+        self.assertIn('href="/settings"', self.client.get("/").get_data(as_text=True))
+        self.assertIn('href="/settings/layout"', self.client.get("/settings").get_data(as_text=True))
 
     def test_numbered_procedures_keep_inline_emphasis_inside_normal_text_flow(self):
         affected_pages = (

@@ -98,8 +98,11 @@ def test_all_hidden_restore_and_sidebar_are_independent(dashboard):
                   title="Keep title", excluded_learning_folders=["Keep scope"], custom_extension=7)
     dlms._write_settings_portal_config(config)
     assert save_cards(dashboard).status_code == 302
-    page = dashboard.get("/").get_data(as_text=True).split('<main class="dashboard-main"')[1]
-    assert "Keep title" in page and "Customize dashboard" in page
+    full_page = dashboard.get("/").get_data(as_text=True)
+    page = full_page.split('<main class="dashboard-main"')[1]
+    assert "Keep title" in page and "Customize dashboard" not in page
+    assert 'href="/settings"' in full_page.split('<main class="dashboard-main"')[0]
+    assert 'href="/settings/layout"' in dashboard.get("/settings").get_data(as_text=True)
     for absent in ('class="dashboard-action-card"', 'class="dashboard-lower-grid"',
                    'class="dashboard-action-grid"', 'id="recentActivity"', 'id="dailyReviewList"',
                    'src="/static/dashboard-activity.js"', 'src="/static/daily-review.js"'):
@@ -173,7 +176,8 @@ def test_focus_desk_groups_keep_independent_visibility(dashboard, keys):
     history = re.search(r'<section class="dashboard-history-grid"[^>]*>(.*?)</section>', main, re.S)
     assert re.findall(r'<a[^>]*href="([^"]+)"', history.group(1) if history else '') == [
         url for key, url in (("study_history", "/study-history"), ("history", "/history")) if key in keys]
-    assert 'class="dashboard-customize" href="/settings/layout#dashboard-panels"' in main
+    assert 'class="dashboard-customize"' not in main
+    assert 'href="/settings"' in dashboard.get("/").get_data(as_text=True).split('<main class="dashboard-main"')[0]
 
 
 

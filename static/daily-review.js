@@ -98,8 +98,8 @@
       && saved.session_id === record.learningSessionId && saved.fingerprint === record.fingerprint);
   }
 
-  function recoveryControls(item) {
-    return `${actionMarkup(item.action)}<details class="dashboard-resume-management"><summary aria-label="Manage browser resume point for ${escapeHtml(item.quizTitle)}">Manage browser resume point</summary><button class="daily-review-remove" type="button" data-clear-recovery="${escapeHtml(item.id)}" aria-label="Clear browser resume point for ${escapeHtml(item.quizTitle)}">Clear browser resume point</button></details>`;
+  function recoveryControls(item, savedTime = "") {
+    return `${actionMarkup(item.action)}<details class="dashboard-resume-management"><summary aria-label="Manage browser resume point for ${escapeHtml(item.quizTitle)}">Manage browser resume point</summary>${savedTime}<p>${escapeHtml(item.reason)} This browser.</p><button class="daily-review-remove" type="button" data-clear-recovery="${escapeHtml(item.id)}" aria-label="Clear browser resume point for ${escapeHtml(item.quizTitle)}">Clear browser resume point</button></details>`;
   }
 
   function renderContinuations(plan) {
@@ -108,17 +108,20 @@
     const saved = plan.regular_study;
     const matched = unfinished.find(item => matchingContinuation(saved, item));
     panel.hidden = !saved && !unfinished.length;
+    const continuing = unfinished.length || (saved && !saved.completed_at && saved.unchanged);
+    document.getElementById("continueStudyHeading").textContent = continuing ? "Continue studying" : "Last regular quiz";
     regular.hidden = !saved;
     regular.replaceChildren();
     if (saved) {
       const integrity = saved.sequence_complete === false || saved.coverage_incomplete;
       const state = integrity ? "Saved review needs attention" : !saved.unchanged ? "Content changed; previous coverage is historical" : saved.completed_at ? "Review finished" : "Review not finished";
       const action = saved.completed_at || !saved.unchanged ? "Open current quiz" : "Resume Study review";
-      const controls = matched ? recoveryControls(matched) : saved.url
+      const savedTime = `<p>Last response saved: ${escapeHtml(window.DLMSLocalTime.format(saved.saved_at))}</p>`;
+      const controls = matched ? recoveryControls(matched, savedTime) : saved.url
         ? `<a class="daily-review-action${saved.completed_at || !saved.unchanged ? ' daily-review-secondary' : ''}" href="${escapeHtml(saved.url)}">${action}</a>` : "Quiz unavailable";
-      regular.innerHTML = `<article class="daily-review-item${matched ? ' daily-review-unfinished' : ''}" ${matched?.needsSave ? 'data-needs-save' : ''} ${!saved.completed_at && saved.unchanged ? 'data-unfinished-study' : ''}><div class="daily-review-copy"><span>Last regular quiz</span><h3>${escapeHtml(saved.title)}</h3><p>${escapeHtml(state)} · ${saved.reviewed} / ${saved.total} reviewed</p><p>Last response saved: ${escapeHtml(window.DLMSLocalTime.format(saved.saved_at))}</p>${integrity ? '<p class="dashboard-save-warning">Earlier saves or complete answers are missing. Check Study History; saved records have not been repaired.</p>' : ''}${matched ? `<p ${matched.needsSave ? 'class="dashboard-save-warning"' : ''}>${escapeHtml(matched.reason)} This browser.</p>` : ''}</div><div class="daily-review-item-action">${controls}</div></article>`;
+      regular.innerHTML = `<article data-quiz-id="${escapeHtml(saved.quiz_id)}" class="daily-review-item${matched ? ' daily-review-unfinished' : ''}" ${matched?.needsSave ? 'data-needs-save' : ''} ${!saved.completed_at && saved.unchanged ? 'data-unfinished-study' : ''}><div class="daily-review-copy">${continuing ? '<span>Last regular quiz</span>' : ''}<h3>${escapeHtml(saved.title)}</h3><p>${escapeHtml(state)} · ${saved.reviewed} / ${saved.total} reviewed</p>${integrity ? '<p class="dashboard-save-warning">Earlier saves or complete answers are missing. Check Study History; saved records have not been repaired.</p>' : ''}${matched?.needsSave ? `<p class="dashboard-save-warning">${escapeHtml(matched.reason)} This browser.</p>` : ''}</div><div class="daily-review-item-action">${controls}${!matched ? `<details class="dashboard-study-detail"><summary>Study details</summary>${savedTime}${saved.completed_at ? `<p>Review finished: ${escapeHtml(window.DLMSLocalTime.format(saved.completed_at))}</p>` : ''}</details>` : ''}</div></article>`;
     }
-    document.getElementById("continuationList").innerHTML = unfinished.filter(item => item !== matched).map(item => `<article class="daily-review-item daily-review-unfinished" ${item.needsSave ? 'data-needs-save' : ''}><div class="daily-review-copy"><span>This browser</span><h3>${escapeHtml(item.quizTitle)}</h3><p ${item.needsSave ? 'class="dashboard-save-warning"' : ''}>${escapeHtml(item.reason)}</p></div><div class="daily-review-item-action">${recoveryControls(item)}</div></article>`).join('');
+    document.getElementById("continuationList").innerHTML = unfinished.filter(item => item !== matched).map(item => `<article data-quiz-id="${escapeHtml(item.recovery.quizId)}" class="daily-review-item daily-review-unfinished" ${item.needsSave ? 'data-needs-save' : ''}><div class="daily-review-copy"><span>This browser · ${escapeHtml(item.recovery.mode)}</span><h3>${escapeHtml(item.quizTitle)}</h3>${item.needsSave ? `<p class="dashboard-save-warning">${escapeHtml(item.reason)}</p>` : ''}</div><div class="daily-review-item-action">${recoveryControls(item)}</div></article>`).join('');
     panel.querySelectorAll('[data-clear-recovery]').forEach(button => {
       button.addEventListener('click', () => clearUnfinishedItem(unfinished.find(item => item.id === button.dataset.clearRecovery)));
     });
@@ -152,10 +155,12 @@
       const config = exam.plan.config, url = `/exam-plans/${encodeURIComponent(exam.plan.id)}`;
       const work = exam.work_state;
       const changes = Object.values(exam.changes).some(values => values.length) || exam.missing_folders.length;
-      const breakdown = (exam.breakdown || []).map(item => `${item.count} ${item.label.toLowerCase()}`).join(' · ');
+      const labels = {new: 'with no saved answer', refresh: 'answered before', mistakes: 'mistakes to revisit', due: 'due for review', other: 'extra practice'};
+      const breakdown = (exam.breakdown || []).map(item => `${item.count} ${labels[item.key] || item.label.toLowerCase()}`).join(' · ');
+      const minutes = Math.max(1, Math.round(exam.estimated_batch));
       const risk = exam.shortfall > 0 ? `<p class="plan-workload-warning"><strong>Estimated workload exceeds available study time by about ${exam.shortfall_rounded} minutes.</strong> Practice can be ready while the overall budget is short.${work.action_url !== url + '/edit' ? ` <a href="${url}/edit">Edit plan</a>.` : ''}</p>` : '';
       const material = `<div class="dashboard-plan-coverage"><p>${exam.stats.included_reviewed} / ${exam.stats.included} included questions reviewed.</p>${exam.stats.included > 0 ? `<progress aria-label="Included questions reviewed" value="${exam.stats.included_reviewed}" max="${exam.stats.included}"></progress>` : ''}</div>`;
-      const warnings = `${exam.stats.unavailable ? `<p class="dashboard-material-warning">${exam.stats.unavailable} included but unavailable.</p>` : ''}${exam.stats.blocked ? `<p class="dashboard-material-warning">${exam.stats.blocked} questions excluded by Learning Scope. <a href="/learning-scope">Review exclusions</a>.</p>` : ''}${work.warnings.filter(message=>!message.includes('excluded by Learning Scope')).map(message=>`<p class="dashboard-material-warning">${escapeHtml(message)}</p>`).join('')}${changes ? `<p class="dashboard-material-warning">Study material changed; inspect the plan.</p>` : ''}`;
+      const warnings = `${exam.stats.unavailable ? `<p class="dashboard-material-warning">${exam.stats.unavailable} included but unavailable.</p>` : ''}${exam.stats.blocked ? `<p class="dashboard-material-warning">${exam.stats.blocked} questions excluded by Learning Scope. <a href="/learning-scope">Review exclusions</a>.</p>` : ''}${work.warnings.filter(message=>!message.includes('excluded by Learning Scope') && message !== `${exam.stats.unavailable} included questions are unavailable.`).map(message=>`<p class="dashboard-material-warning">${escapeHtml(message)}</p>`).join('')}${changes ? `<p class="dashboard-material-warning">Study material has changed. Use <strong>View plan</strong> to check what changed.</p>` : ''}`;
       const requestId = crypto.randomUUID?.() || ('plan-' + Date.now().toString(16) + Math.random().toString(16).slice(2));
       const primary = exam.selected_count ? `<div id="planPractice" data-plan-id="${escapeHtml(exam.plan.id)}" data-revision="${exam.plan.revision}" data-generation="${escapeHtml(exam.generation)}" data-fingerprint="${escapeHtml(exam.fingerprint)}" data-request-id="${escapeHtml(requestId)}"><button class="daily-review-action" type="button" data-practice="suggested" data-count="${exam.selected_count}">Start suggested work</button><p id="planPracticeStatus" role="status"></p><button id="retryPlanPractice" type="button" hidden>Retry same request</button></div>` :
         work.action_url && work.action_url !== url && work.action_url !== '/learning-scope' ? `<a class="daily-review-action" href="${escapeHtml(work.action_url)}">${escapeHtml(work.action_label)}</a>` : '';
@@ -163,16 +168,16 @@
         <h3 class="dashboard-plan-eyebrow">Your exam plan</h3>
         <h4>${escapeHtml(config.name)} · Exam ${escapeHtml(config.exam_date)}</h4>
         <p class="dashboard-plan-state"><strong>${escapeHtml(work.label)}</strong></p>
-        ${exam.selected_count ? `<p class="dashboard-batch-size"><strong>${exam.selected_count}</strong> questions <span>· about ${exam.estimated_batch} estimated minutes</span></p><p class="plan-breakdown">${escapeHtml(breakdown)}</p>` : `<p>${escapeHtml(work.reason)}</p>`}
+        ${exam.selected_count ? `<p class="dashboard-batch-size"><strong>${exam.selected_count}</strong> ${exam.selected_count === 1 ? 'question' : 'questions'} <span>· about ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}</span></p><p class="plan-breakdown">${escapeHtml(breakdown)}</p>` : `<p>${escapeHtml(work.reason)}</p>`}
         ${risk}${warnings}
         ${!exam.selected_count && work.next_study_date ? `<p>${config.paused ? 'Next study date if resumed' : 'Next study date'}: ${escapeHtml(work.next_study_date)} · ${escapeHtml(config.calendar_timezone)}.</p>` : ''}
         <div class="daily-review-item-action dashboard-plan-actions">${primary}<a href="${url}">View plan</a></div>
         ${material}
         <details class="dashboard-plan-explanation"><summary>Why this suggestion?</summary>
           ${exam.selected_count ? `<p>${escapeHtml(work.reason)}</p>` : ''}
-          <p>Breakdown counts each selected question once: coverage needs first, then mistakes, due reviews and other practice. “No recorded answer” means no identifiable saved answer, not proof it was never seen. Coverage / fresh evidence includes previously answered material needing current Study coverage or post-reset evidence.</p>
-          <p>${exam.stats.total} selected questions in total; ${exam.stats.reviewed} reviewed across included and excluded material. Exclusions do not imply completion. Unavailable included questions stay in the coverage denominator and can add estimated work when restored.</p>
-          <p>${exam.stats.today} distinct questions answered today reduce the budget. First-pass/fresh-evidence target: ${exam.target}. Calendar: ${escapeHtml(config.calendar_timezone)}.${exam.estimate_available ? ` Base shortfall: ${exam.shortfall} estimated minutes.` : ' A useful workload estimate needs included, available material.'} Estimates are uncertain.</p>
+          <p>Each question is counted once. “No saved answer” means DLMS cannot identify a saved answer for it, not that you have never seen it. “Answered before” means saved answers exist but the plan needs a current Study response or fresh learning evidence. Questions can return after content changes, incomplete current reviews or a Learning Intelligence reset; your factual history is kept. For tracked Study reviews, corrections keep the original first-answer difficulty.</p>
+          <p>${exam.stats.total} selected questions in total; ${exam.stats.reviewed} reviewed across included and excluded material. Excluded questions are not counted as finished. Included but unavailable questions stay in the total and can add work when restored.</p>
+          <p>${exam.stats.today} different questions answered today reduce today’s allowance. Today’s coverage target: ${exam.target}. Plan timezone: ${escapeHtml(config.calendar_timezone)}.${exam.estimate_available ? ` Estimated time shortfall: ${exam.shortfall} minutes.` : ' A useful workload estimate needs included, available material.'} Practice time is rounded for display and estimated from your plan’s pace and review allowance, not measured study time.</p>
           ${exam.selected_count && work.next_study_date ? `<p>${config.paused ? 'Next study date if resumed' : 'Next study date'}: ${escapeHtml(work.next_study_date)}.</p>` : ''}
           ${work.next_review_date ? `<p>Next scheduled review: ${escapeHtml(work.next_review_date)}.</p>` : ''}
           ${work.next_review_date && work.next_study_date && work.next_review_date !== work.next_study_date ? '<p>The review date comes from spaced review; the study date comes from your chosen Study days. Neither date changes the other.</p>' : ''}
@@ -189,7 +194,12 @@
       const state = plan.empty_state || {};
       empty.innerHTML = `<strong>${escapeHtml(state.title || "Nothing needs immediate attention")}</strong><span>${escapeHtml(state.detail || "Keep studying to build recommendations.")}</span>${actionMarkup(state.action)}`;
     }
-    const itemMarkup = item => `<article class="daily-review-item daily-review-${escapeHtml(item.kind)}"><div class="daily-review-copy"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.reason)}</p></div><div class="daily-review-item-action">${actionMarkup(item.action)}</div></article>`;
+    const itemMarkup = item => {
+      const baseline = item.kind === 'adaptive' && item.title === 'Build your learning baseline';
+      const title = baseline ? 'Start with a practice set' : item.title;
+      const reason = baseline ? 'DLMS needs fresh practice to guide this suggestion. Try a balanced Adaptive Study set. Saved history is kept.' : String(item.reason).replace("Adaptive Study's highest remaining signal is: ", 'Suggested because: ').replace('Not studied yet', 'Fresh practice can guide future suggestions');
+      return `<article class="daily-review-item daily-review-${escapeHtml(item.kind)}"><div class="daily-review-copy"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(reason)}</p></div><div class="daily-review-item-action">${actionMarkup(item.action)}</div></article>`;
+    };
     // A dashboard plan takes visual priority, not ownership of other eligible
     // recommendations. Keep canonical actions and browser-recovery filtering.
     const secondary = exam ? items : items.slice(1);

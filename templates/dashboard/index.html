@@ -116,7 +116,6 @@
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div>
                 <h1>{{ portal_title }}</h1>
-                <a class="dashboard-customize" href="/settings/layout#dashboard-panels">Customize dashboard</a>
             </div>
         </header>
 
@@ -133,7 +132,7 @@
                     <div id="activeExamPlan" hidden></div>
                     <div id="dailyReviewList" class="daily-review-list" aria-live="polite"><p>Loading your next study action…</p></div>
                     <div id="dailyReviewEmpty" class="daily-review-empty" hidden></div>
-                    <details id="reviewSuggestionsExplanation" class="dashboard-study-options"><summary>Why this suggestion?</summary><p>Suggestions use existing Learning Intelligence evidence. <a href="/learning-scope">Manage Learning Scope</a> to choose included material. Browser resume points are separate from recommendations.</p><a href="/exam-plans">Exam Plans</a></details>
+                    <details id="reviewSuggestionsExplanation" class="dashboard-study-options"><summary>Why this suggestion?</summary><p>Suggestions use available study material, saved learning activity and review schedules. Questions can return when due, after content changes or when fresh practice is needed. Saved history is kept. <a href="/learning-scope">Manage Learning Scope</a> to choose included material. Browser resume points are separate from recommendations.</p><a href="/exam-plans">Exam Plans</a></details>
                 </div>
                 <aside id="continueStudyPanel" aria-labelledby="continueStudyHeading" hidden>
                     <h2 id="continueStudyHeading">Continue studying</h2>
@@ -206,7 +205,7 @@
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
                 <div class="dashboard-action-copy">
                     <h2>Quiz Library</h2>
-                    <p>Browse and launch quizzes.</p>
+                    <p>Open quizzes.</p>
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
@@ -217,7 +216,7 @@
                 <div class="dashboard-action-icon icon-orange" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg></div>
                 <div class="dashboard-action-copy">
                     <h2>Build Quiz</h2>
-                    <p>Create or import a quiz.</p>
+                    <p>Create or import.</p>
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
@@ -227,7 +226,7 @@
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#study"></use></svg></div>
                 <div class="dashboard-action-copy">
                     <h2>Study Packs</h2>
-                    <p>Create and explore study packs.</p>
+                    <p>Open study packs.</p>
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
@@ -238,7 +237,7 @@
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#it"></use></svg></div>
                 <div class="dashboard-action-copy">
                     <h2>IT Study</h2>
-                    <p>IT and cybersecurity practice.</p>
+                    <p>IT and cybersecurity.</p>
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
@@ -249,7 +248,7 @@
                 <div class="dashboard-action-icon icon-green" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#law"></use></svg></div>
                 <div class="dashboard-action-copy">
                     <h2>Law Study</h2>
-                    <p>Cases, drills, and flashcards.</p>
+                    <p>Cases and flashcards.</p>
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
@@ -260,7 +259,7 @@
                 <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#medical"></use></svg></div>
                 <div class="dashboard-action-copy">
                     <h2>Medical Study</h2>
-                    <p>Terminology and anatomy practice.</p>
+                    <p>Medical practice.</p>
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
@@ -272,7 +271,7 @@
                 <div class="dashboard-action-icon icon-cyan" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg></div>
                 <div class="dashboard-action-copy">
                     <h2>Analytics</h2>
-                    <p>Explore learning trends.</p>
+                    <p>Learning patterns.</p>
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
@@ -283,7 +282,7 @@
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#settings"></use></svg></div>
                 <div class="dashboard-action-copy">
                     <h2>Settings</h2>
-                    <p>Adjust your preferences.</p>
+                    <p>Preferences.</p>
                 </div>
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
@@ -306,7 +305,7 @@
                     <div class="dashboard-stat-card">
                         <div class="dashboard-stat-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
                         <div>
-                            <span>Saved results</span>
+                            <span>Exam/legacy results</span>
                             <strong id="statAttempts">—</strong>
                         </div>
                     </div>
@@ -335,7 +334,7 @@
                         </div>
                     </div>
                 </div>
-                <details id="overviewExplanation" hidden><summary>About these results</summary><p>Saved Exam and legacy results, including older Study results. These scores do not count durable Study reviews or establish mastery. Latest listed score follows History’s existing ordering; ambiguous old dates cannot establish the latest completion.</p></details>
+                <details id="overviewExplanation"><summary>What is counted?</summary><p>Saved Exam and legacy results, including older Study results in <a href="/history">Exam History</a>. Finished reviews and partial Study sessions are in <a href="/study-history">Study History</a> and are not included in these scores. Reviewed does not mean mastered. Latest listed score follows History’s existing ordering; ambiguous old dates cannot establish the latest completion.</p></details>
             </div>
             {% endif %}
 
@@ -349,13 +348,13 @@ async function loadDashboardData(restoreFocus = false) {
     const status = document.getElementById("overviewStatus");
     if (!status) return;
     const stats = document.getElementById("overviewStats"), retry = document.getElementById("retryOverview"), detail = document.getElementById("overviewExplanation");
-    stats.hidden = detail.hidden = true; retry.hidden = true;
+    stats.hidden = true; retry.hidden = true;
     status.hidden = false; status.textContent = "Loading saved results…";
     try {
         const res = await fetch("/api/attempts/overview", {cache: "no-store"});
         if (!res.ok) throw new Error("Unable to load overview");
         const data = await res.json();
-        status.textContent = "No saved quiz results yet.";
+        status.textContent = "No saved Exam or legacy Study results yet. Finished Study reviews are recorded separately in Study History.";
         if (data.total_attempts) {
             document.getElementById("statAttempts").textContent = data.total_attempts;
             document.getElementById("statAverage").textContent = `${Math.round(data.average_percent)}%`;

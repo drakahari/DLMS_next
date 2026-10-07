@@ -4734,8 +4734,12 @@ def test_delayed_prompt_copy_keeps_original_question_and_order(browser_stack):
 
 def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unavailable(browser_stack):
     browser = browser_stack.browser
+    # Native focus checks need a foreground tab, as in the other keyboard tests.
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
     browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
@@ -4794,17 +4798,19 @@ def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unav
     assert browser.evaluate("window.__copiedSelection") == before["prompt"]
     assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
 
-    browser.evaluate("document.execCommand=()=>false;true")
+    # Each error assertion must observe this click, rather than the previous
+    # identical error message. Keep the native pointer and focus assertions.
+    browser.evaluate("window.__rejectedCopies=0;document.execCommand=()=>{window.__rejectedCopies++;return false};true")
     browser.click("#studyCopyBtn")
-    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    browser.wait_for("window.__rejectedCopies===1 && document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
     assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
     assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
     assert browser.evaluate("window.__opens") == 0
     assert browser.evaluate("JSON.stringify(userAnswers)") == before["answers"]
 
-    browser.evaluate("document.execCommand=()=>{throw new Error('blocked')};true")
+    browser.evaluate("window.__rejectedCopies=0;document.execCommand=()=>{window.__rejectedCopies++;throw new Error('blocked')};true")
     browser.click("#studyCopyBtn")
-    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    browser.wait_for("window.__rejectedCopies===1 && document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
     assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
     assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
 
@@ -13418,7 +13424,7 @@ def test_ethereal_landing_headers_cards_and_catalog_remain_accessible(browser_st
         script.src = '/static/dashboard-activity.js'; document.body.append(script);
         return true;
     })()""")
-    browser.wait_for("document.querySelector('#recentActivity').textContent.includes('No saved Study responses yet.') && document.querySelector('#recentActivity').textContent.includes('No saved Exam completions yet.')")
+    browser.wait_for("document.querySelector('#recentActivity').textContent.includes('No saved Study responses yet.') && document.querySelector('#recentActivity').textContent.includes('No completed Exam attempts yet.')")
     browser.evaluate("document.querySelector('#recentActivity').scrollIntoView({block:'center'});true")
     capture('dashboard-empty-history')
 
@@ -13542,6 +13548,85 @@ def test_ethereal_dashboard_cards_keep_readable_text_at_intermediate_widths(brow
         assert focus == {'href':saved['href'], 'outline':'solid'}
 
 
+def _open_dashboard_layout_from_settings(browser):
+    if browser.evaluate("innerWidth<=820 && !document.getElementById('dashboardSidebar').classList.contains('open')"):
+        browser.click('#menuButton')
+    browser.activate()
+    browser.evaluate("document.querySelector('.dashboard-sidebar a[href=\"/settings\"]').focus();true")
+    browser.press_key('\ue007')
+    browser.wait_for("location.pathname==='/settings'")
+    browser.click('main a[href="/settings/layout"]')
+    browser.wait_for("location.pathname==='/settings/layout'")
+
+
+def test_dashboard_activity_consolidation_order_identity_and_error(browser_stack):
+    """Only matching visible destinations share an action; errors stay errors."""
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    _new_regular_study_quiz(browser_stack, 2)
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    for index in range(2):
+        browser.click("#choices .choice[data-index='1']")
+        browser.wait_for('studyLearningEventSaves.size===0')
+        if not index: browser.click('#nextBtn')
+    browser.click('#finishReviewBtn'); browser.wait_for('durableStudySession.completed_at !== null')
+    paths = ['/api/daily-review-plan', '/api/dashboard/quiz-activity']
+    for first in (0, 1):
+        preload = browser.command('script.addPreloadScript', {'contexts': [browser.context], 'functionDeclaration': """() => {
+            const original=fetch.bind(window); window.releaseDashboard={}; window.dashboardRequests=[];
+            window.fetch=(...args)=>{const path=String(args[0]);dashboardRequests.push(path);
+                if (!['/api/daily-review-plan','/api/dashboard/quiz-activity'].includes(path)) return original(...args);
+                return original(...args).then(response=>new Promise(resolve=>{releaseDashboard[path]=()=>resolve(response);}));};
+        }"""})['script']
+        try:
+            browser.navigate(base+'/')
+            browser.wait_for('Object.keys(releaseDashboard).length===2')
+            browser.evaluate('releaseDashboard['+json.dumps(paths[first])+']();true')
+            if first == 1:
+                browser.wait_for("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')!==null")
+            browser.evaluate('releaseDashboard['+json.dumps(paths[1-first])+']();true')
+            browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context')!==null")
+            assert browser.evaluate("document.getElementById('continueStudyHeading').textContent") == 'Last regular quiz'
+            assert browser.evaluate("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
+            assert browser.evaluate("document.querySelector('#regularStudyContinuity a').textContent") == 'Open current quiz'
+            assert browser.evaluate("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')===null")
+            assert browser.evaluate("document.querySelector('#recentActivity time')!==null")
+            # Preserve open disclosures when an unrelated mutation does not change association.
+            browser.activate(); browser.click('#recentActivity .dashboard-activity-context summary')
+            browser.evaluate("document.querySelector('#regularStudyContinuity h3').append(' ');true")
+            browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context').open")
+            # Same title is insufficient, and a different/unavailable destination is insufficient.
+            browser.evaluate("window.originalRowId=document.querySelector('#regularStudyContinuity article').dataset.quizId;document.querySelector('#regularStudyContinuity article').dataset.quizId='another-quiz';document.querySelector('#regularStudyContinuity h3').append(' ');true")
+            browser.wait_for("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')!==null")
+            browser.evaluate("document.querySelector('#regularStudyContinuity article').dataset.quizId=originalRowId;document.querySelector('#regularStudyContinuity h3').append(' ');true")
+            browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context')!==null")
+            browser.evaluate("window.originalHref=document.querySelector('#regularStudyContinuity a').href;document.querySelector('#regularStudyContinuity a').href='/unavailable';document.querySelector('#regularStudyContinuity h3').append(' ');true")
+            browser.wait_for("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')!==null")
+            browser.evaluate("document.querySelector('#regularStudyContinuity a').href=originalHref;document.getElementById('continueStudyPanel').hidden=true;true")
+            browser.wait_for("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')!==null")
+            browser.evaluate("document.getElementById('continueStudyPanel').hidden=false;true")
+            browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context')!==null")
+            assert browser.evaluate("dashboardRequests.filter(p=>p==='/api/dashboard/quiz-activity').length") == 1
+        finally: browser.command('script.removePreloadScript', {'script': preload})
+    preload = browser.command('script.addPreloadScript', {'contexts': [browser.context], 'functionDeclaration': """() => {
+        const original=fetch.bind(window);let fail=true;
+        window.fetch=(...args)=>{
+            if (String(args[0])==='/api/dashboard/quiz-activity' && fail){fail=false;return Promise.resolve(new Response('',{status:503}));}
+            if (String(args[0])==='/api/daily-review-plan') return original(...args).then(r=>new Promise(resolve=>{window.releaseDaily=()=>resolve(r);}));
+            return original(...args);};
+    }"""})['script']
+    try:
+        browser.navigate(base+'/')
+        browser.wait_for("typeof releaseDaily==='function' && document.querySelector('#recentActivity button')!==null")
+        browser.evaluate('releaseDaily();true')
+        browser.wait_for("document.getElementById('continueStudyHeading').textContent==='Last regular quiz'")
+        assert browser.evaluate("document.getElementById('recentActivity').textContent.includes('Couldn’t load')")
+        browser.click('#recentActivity button')
+        browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context')!==null")
+        assert browser.evaluate("document.activeElement.textContent") == 'Last studied'
+    finally: browser.command('script.removePreloadScript', {'script': preload})
+
+
 @pytest.mark.parametrize("theme", ("light", "dark", "ethereal"))
 def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, theme, tmp_path):
     browser = browser_stack.browser
@@ -13573,7 +13658,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     sidebar_before = browser.evaluate("fetch('/config/portal.json').then(r => r.json()).then(c => c.study_area_visibility)")
     browser.navigate(browser_stack.base_url + "/")
     browser.wait_for_page_ready("document.querySelector('.dashboard-nav-normalized') !== null")
-    assert browser.evaluate("document.querySelector('main h1') !== null && document.querySelector('.dashboard-customize') !== null")
+    assert browser.evaluate("document.querySelector('main h1') !== null && document.querySelector('.dashboard-customize') === null && document.querySelector('.dashboard-sidebar a[href=\"/settings\"]') !== null")
     assert browser.evaluate("document.querySelectorAll('.dashboard-action-card, .dashboard-lower-grid, .dashboard-action-grid, .daily-review-panel, .dashboard-welcome').length") == 0
     requests = browser.evaluate("performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname)")
     assert "/api/dashboard/quiz-activity" not in requests
@@ -13582,8 +13667,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
     if theme == "ethereal":
         assert browser.evaluate("parseFloat(getComputedStyle(document.querySelector('main h1')).fontSize)") == 24
-    browser.click(".dashboard-customize")
-    browser.wait_for("location.pathname === '/settings/layout'")
+    _open_dashboard_layout_from_settings(browser)
     if theme == "ethereal":
         # Hiding Today's Review must keep Ethereal's card and header styling.
         browser.click("[name=dashboard_card_library]")
@@ -13594,8 +13678,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
         assert browser.evaluate("document.querySelector('.daily-review-panel') === null")
         browser.wait_for("getComputedStyle(document.querySelector('.dashboard-action-card')).boxShadow === 'none'")
         assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
-        browser.click(".dashboard-customize")
-        browser.wait_for("location.pathname === '/settings/layout'")
+        _open_dashboard_layout_from_settings(browser)
     browser.click("button[value=dashboard_defaults]")
     browser.wait_for("location.search === '?saved=1'")
     assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.checked)")
@@ -13605,7 +13688,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     assert browser.evaluate("document.querySelectorAll('.dashboard-action-card').length") == 10
     for name, sample in _theme_contrast_snapshot(browser, {
         "activity_heading": ".dashboard-activity-summary h3",
-        "activity_detail": ".dashboard-activity-explanation", "customize": ".dashboard-customize",
+        "activity_detail": ".dashboard-activity-explanation", "settings": ".dashboard-sidebar a[href=\"/settings\"]",
     }).items():
         assert sample["contrast"] >= 4.5, (theme, name, sample)
     browser.evaluate("document.querySelector('.dashboard-activity-panel').scrollIntoView(); true")
@@ -14282,7 +14365,8 @@ def test_plan_selected_breakdown_risk_and_included_coverage(browser_stack, theme
             assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
             assert browser.evaluate("document.querySelector('#activeExamPlan .plan-workload-warning').textContent.includes('about 5 minutes')")
             assert browser.evaluate("document.querySelector('#activeExamPlan .plan-workload-warning a').getAttribute('href')") == path+'/edit'
-            assert browser.evaluate("document.querySelector('#activeExamPlan .plan-breakdown').textContent") == '2 no recorded answer'
+            assert browser.evaluate("document.querySelector('#activeExamPlan .plan-breakdown').textContent") == '2 with no saved answer'
+            assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan .dashboard-material-warning')].filter(n=>n.textContent.includes('unavailable')).length") == 1
             assert browser.evaluate("document.querySelector('#regularStudyContinuity a').classList.contains('daily-review-secondary')")
             assert browser.evaluate("Boolean(document.getElementById('activeExamPlan').compareDocumentPosition(document.getElementById('regularStudyContinuity')) & Node.DOCUMENT_POSITION_FOLLOWING)")
             assert browser.evaluate("document.querySelector('#regularStudyContinuity a').getAttribute('href')")=='/quizzes/'+regular_html
@@ -14799,7 +14883,7 @@ def test_calm_dashboard_identity_priority_empty_results_and_help(browser_stack, 
     browser.evaluate("document.querySelector('[name=name]').value='CISM certification';document.querySelector('[name=exam_date]').value=" + json.dumps(exam) + ";document.querySelector('[name=calendar_timezone]').value='America/Chicago';document.querySelectorAll('[name=weekdays], [name=folders]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
     browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary") !== null')
     browser.navigate(base + '/')
-    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…' && document.getElementById('overviewStatus').textContent.includes('No saved quiz results')")
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…' && document.getElementById('overviewStatus').textContent.includes('No saved Exam or legacy Study results')")
     assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-item').length") == 1
     assert browser.evaluate("document.querySelector('#regularStudyContinuity').textContent.includes('1 / 4 reviewed')")
     assert browser.evaluate("document.querySelectorAll('[data-dashboard-primary]').length") == 1
@@ -14819,6 +14903,16 @@ def test_calm_dashboard_identity_priority_empty_results_and_help(browser_stack, 
     assert browser.evaluate("""(async()=>{const p=await fetch('/api/daily-review-plan').then(r=>r.json());
         const bar=document.querySelector('.dashboard-plan-coverage progress');
         return bar.value===p.exam_plan.stats.included_reviewed && bar.max===p.exam_plan.stats.included;})()""")
+    # Display-only rounding leaves the actual DTO, quota and generation inputs unchanged.
+    assert browser.evaluate("""(async()=>{
+        const p=await fetch('/api/daily-review-plan').then(r=>r.json()), original=JSON.stringify(p);
+        const display=structuredClone(p);display.exam_plan.estimated_batch=19.4;
+        DLMSDailyReview.renderDailyReview(DLMSDailyReview.mergeBrowserSessions(display));
+        const rounded=document.querySelector('.dashboard-batch-size').textContent.includes('about 19 minutes');
+        DLMSDailyReview.renderDailyReview(DLMSDailyReview.mergeBrowserSessions(p));
+        return rounded && JSON.stringify(p)===original &&
+          Number(document.querySelector('#planPractice [data-count]').dataset.count)===p.exam_plan.selected_count;
+    })()""")
     assert browser.evaluate("""(() => {const ids=['studyNext','continueStudyPanel','recentActivity'];
         const nodes=ids.map(id=>document.getElementById(id)).concat([
           document.querySelector('.dashboard-history-grid'),document.querySelector('.dashboard-quick-tools'),
@@ -14865,7 +14959,7 @@ def test_calm_dashboard_identity_priority_empty_results_and_help(browser_stack, 
     browser.wait_for("!document.getElementById('retryOverview').hidden")
     assert browser.evaluate("document.getElementById('overviewStats').hidden")
     browser.evaluate('window.failOverview=false;true');browser.click('#retryOverview')
-    browser.wait_for("document.getElementById('overviewStatus').textContent==='No saved quiz results yet.'")
+    browser.wait_for("document.getElementById('overviewStatus').textContent==='No saved Exam or legacy Study results yet. Finished Study reviews are recorded separately in Study History.'")
     assert browser.evaluate("document.activeElement.id")=='overviewHeading'
     browser.evaluate('window.fetch=overviewFetch;true')
     # Actual Exam submission, with an explicitly legacy Study fixture alongside.
@@ -14915,7 +15009,7 @@ def test_calm_dashboard_identity_priority_empty_results_and_help(browser_stack, 
     browser.wait_for("location.search==='?saved=1'")
     browser.navigate(base+'/');browser.wait_for("document.getElementById('dailyReviewCount').textContent!=='Loading…' && document.getElementById('recentActivity').getAttribute('aria-busy')==='false'")
     assert browser.evaluate("document.getElementById('continueStudyPanel').hidden && document.getElementById('overviewStats').hidden")
-    assert browser.evaluate("document.getElementById('overviewStatus').textContent")=='No saved quiz results yet.'
+    assert browser.evaluate("document.getElementById('overviewStatus').textContent")=='No saved Exam or legacy Study results yet. Finished Study reviews are recorded separately in Study History.'
     for width in (1440,390):
         browser.set_viewport(width,1000)
         browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")

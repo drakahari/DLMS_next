@@ -16113,6 +16113,8 @@ h1, h2, h3 {
 .dashboard-main[data-home-dashboard] .dashboard-stat-icon {display:none;}
 .dashboard-main[data-home-dashboard] .dashboard-stat-card strong {font-size:1.5rem;}
 .dashboard-main[data-home-dashboard] #overviewExplanation {margin-top:12px;}
+.dashboard-main[data-home-dashboard] :is(.dashboard-study-detail,.dashboard-activity-context) {font-size:1rem; line-height:1.5; margin-top:8px;}
+.dashboard-main[data-home-dashboard] :is(.dashboard-study-detail,.dashboard-activity-context) summary {color:var(--theme-link); cursor:pointer;}
 @container(max-width:40rem) {
   .dashboard-study-layout {grid-template-columns:minmax(0,1fr);}
 }

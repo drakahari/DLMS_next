@@ -193,8 +193,8 @@ by omitting those environment variables.
 
 ### Focus desk refresh
 
-Source baseline: `a6de89e32b2b775fa87650ff0ce1cec405e3c9b8`, plus the
-Focus desk presentation changes. Capture actual application controls with
+Source baseline: `92ac6997a3c75b00c75ddf46809bd9f16473b18d`, plus the
+Focus desk wording and presentation polish. Capture actual application controls with
 disposable data; the design-explorer illustrations are not Help screenshots.
 
 ```sh
@@ -204,16 +204,22 @@ TMPDIR="$focus_review_dir/runtime" DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTEC
 DLMS_PRESENTATION_CAPTURE_DIR="$focus_review_dir/captures" \
 python -m pytest -q -p no:cacheprovider -m browser \
 --basetemp="$focus_review_dir/runtime/pytest" \
-tests/browser/test_critical_workflows.py -k calm_dashboard_identity
+tests/browser/test_critical_workflows.py \
+-k 'calm_dashboard_identity or plan_selected_breakdown_risk'
 ```
 
 This retains whole-dashboard desktop/narrow PNGs outside the repository and
-produces `dashboard.webp` and `exam-plan-dashboard.webp` crops from Light at
-1440 and 390 pixels. Inspect them before copying only those two crops into
+produces `dashboard.webp`, `exam-plan-dashboard.webp` and
+`exam-plan-workload.webp` crops from Light at 1440 and 390 pixels. Inspect them before copying only those three crops into
 `static/help_assets/`; update their Help dimensions, captions and alt text.
 Keep the existing image links for keyboard-accessible enlargement.
-The test also checks 1024/320 pixels and 200% text resizing. History and workload
-detail screenshots do not need replacing for this presentation-only update.
+The test also checks 1024/320 pixels and 200% text resizing. Confirm that matching
+current-quiz destinations share an action while retaining the saved-response time
+and expandable historical context. A finished review should say **Last regular
+quiz**, **Review finished** and **Open current quiz**; pending saves keep their
+warning and recovery action visible. Check Settings → Layout & navigation from
+the sidebar, including after hiding every optional card. The dashboard heading
+no longer contains a Customize link. The History screenshot is unchanged.
 
 Source baseline: `ce44530cc843f360b507d36055abb05ceaa99b88` plus the reviewed
 calmer-dashboard working tree. Use disposable data; never capture personal quizzes.
