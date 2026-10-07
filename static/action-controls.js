@@ -2,23 +2,48 @@
    disclosures remain authoritative. No requests or saved application state. */
 (() => {
     'use strict';
-    const root = document.querySelector('[data-home-dashboard], #studyHistory');
+    const root = document.querySelector('[data-home-dashboard], #studyHistory, [data-action-controls]');
     if (!root) return;
-    const selector = root.id === 'studyHistory'
+    const scopedSelectors = {
+        'exam-plans': '.plan-links a, .plan-list-card > a, .plan-primary, form[action$="/action"] button, #planPractice button, #planSummary > p > a, #other-practice li > a, #planEvidence > p > a, #planPreview > a, #previewPlan, #examPlanForm button[type="submit"]',
+        'learning-profile': '.learning-profile-actions a, #lpSmartReview, .learning-profile-retention-head > a',
+    };
+    const selector = scopedSelectors[root.dataset.actionControls] || (root.id === 'studyHistory'
         ? '[aria-label="History navigation"] a, .study-history-pages a, [data-session-content] > a, [data-session-content] button'
-        : '.daily-review-action, .daily-review-remove, #retryPlanPractice, .dashboard-plan-actions > a, .dashboard-plan-explanation > a, #reviewSuggestionsExplanation > a, #recentActivity a:not(p a), #dailyReviewEmpty > button';
+        : '.daily-review-action, .daily-review-remove, #retryPlanPractice, .dashboard-plan-actions > a, .dashboard-plan-explanation > a, #reviewSuggestionsExplanation > a, #recentActivity a:not(p a), #dailyReviewEmpty > button');
     const tips = new Map([
         ['View plan', 'View your plan, study material changes and estimates.'],
         ['Open current quiz', 'Open the current quiz content. This does not start or finish a review.'],
         ['Open next quiz', 'Open the next regular quiz in this folder’s saved Quiz Library order.'],
         ['Review attempt', 'View the answers and score saved for this Exam attempt.'],
         ['Study Help', 'Read about Study sessions, saved responses and safe recovery.'],
+        ['Exam Plan Help', 'Read how to set up a plan and understand today’s suggestions.'],
+        ['Hide from dashboard', 'Hide this plan without pausing suggestions or deleting history.'],
+        ['Pause suggestions', 'Stop this plan’s suggestions without hiding or deleting it.'],
+        ['Resume suggestions', 'Resume suggestions without changing dashboard visibility.'],
+        ['Mark these changes as seen', 'Acknowledge this displayed change summary without recording study work.'],
+        ['View Topic Details', 'View the evidence and recommendations for your topics.'],
+        ['Open Review Schedule', 'View due dates and review work, separate from the plan calendar.'],
     ]);
     const descriptions = new Map();
     let serial = 0, active = null, closeTimer;
     function label(node) { return node.textContent.trim(); }
     function icon(node) {
         const text = label(node);
+        if (root.dataset.actionControls) {
+            if (node.closest('[data-delete-plan]')) return 'trash';
+            if (node.matches('[value=acknowledge]')) return 'check';
+            if (node.matches('[type=submit]') && node.closest('#examPlanForm')) return 'save';
+            if (/New exam plan/.test(text)) return 'plus';
+            if (/Edit plan/.test(text)) return 'build';
+            if (/Hide from dashboard/.test(text)) return 'eye-off';
+            if (/Use this plan/.test(text)) return 'eye';
+            if (/Pause|Resume suggestions/.test(text)) return 'power';
+            if (/Topic Details/.test(text)) return 'brain';
+            if (/Review Schedule/.test(text)) return 'history';
+            if (node.matches('[data-practice], #lpSmartReview')) return 'review';
+            if (/More questions|More quizzes/.test(text)) return 'forward';
+        }
         if (/Retry/.test(text)) return 'refresh';
         if (/Clear/.test(text)) return 'trash';
         if (/Previous|Newer/.test(text)) return 'back';
@@ -96,6 +121,10 @@
         }
         root.querySelectorAll(selector).forEach(node => {
             node.classList.add('dlms-action-control');
+            if (root.dataset.actionControls) {
+                node.classList.toggle('dlms-action-primary', node.matches('.plan-primary, #lpSmartReview, #examPlanForm button[type="submit"]'));
+                node.classList.toggle('dlms-action-destructive', Boolean(node.closest('[data-delete-plan]')));
+            }
             if (!node.querySelector(':scope > .dlms-icon')) {
                 const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 svg.setAttribute('class', 'dlms-icon');

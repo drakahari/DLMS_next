@@ -1,6 +1,6 @@
-/* Loaded only by Dashboard and Study History. Prose links and quiz feedback
+/* Loaded only by Dashboard, Study History, Exam Plans and Learning Profile. Prose links and quiz feedback
    retain the shared stylesheet's appearance. */
-:is([data-home-dashboard], #studyHistory) .dlms-action-control {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -25,25 +25,25 @@
     /* Immediate feedback also avoids suspended transitions inside closed details. */
     transition: none;
 }
-:is([data-home-dashboard], #studyHistory) .dlms-action-control:not(:disabled):hover {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control:not(:disabled):hover {
     background: var(--semantic-secondary-control-hover);
     border-color: var(--theme-accent-text);
 }
-:is([data-home-dashboard], #studyHistory) .dlms-action-control[data-dashboard-primary] {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control:is([data-dashboard-primary], .dlms-action-primary) {
     background: var(--theme-accent-2);
     color: var(--semantic-primary-control-text) !important;
     border-color: var(--theme-accent-2);
     font-weight: 700;
 }
-:is([data-home-dashboard], #studyHistory) .dlms-action-control[data-dashboard-primary]:not(:disabled):hover {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control:is([data-dashboard-primary], .dlms-action-primary):not(:disabled):hover {
     background: var(--theme-accent);
     border-color: var(--theme-accent);
 }
-:is([data-home-dashboard], #studyHistory) .dlms-action-control:disabled {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control:disabled {
     cursor: default;
 }
-:is([data-home-dashboard], #studyHistory) .dlms-action-control[hidden] { display: none !important; }
-:is([data-home-dashboard], #studyHistory) .dlms-action-control > .dlms-icon {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control[hidden] { display: none !important; }
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control > .dlms-icon {
     width: 1.2rem;
     height: 1.2rem;
     flex: 0 0 1.2rem;
@@ -55,7 +55,7 @@
     gap: .6rem;
     margin-block: 1rem;
 }
-:is([data-home-dashboard], #studyHistory) details > summary {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) details > summary {
     position: relative;
     min-height: 44px;
     padding: .6rem .65rem .6rem 1.8rem;
@@ -65,8 +65,8 @@
     overflow-wrap: anywhere;
     transition: none;
 }
-:is([data-home-dashboard], #studyHistory) details > summary::-webkit-details-marker { display: none; }
-:is([data-home-dashboard], #studyHistory) details > summary::before {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) details > summary::-webkit-details-marker { display: none; }
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) details > summary::before {
     content: "";
     position: absolute;
     inset-inline-start: .65rem;
@@ -77,9 +77,9 @@
     border-block-start: 2px solid currentColor;
     transform: rotate(45deg);
 }
-:is([data-home-dashboard], #studyHistory) details[open] > summary::before { transform: rotate(135deg); }
-:is([data-home-dashboard], #studyHistory) details > summary:hover { background: var(--semantic-secondary-control-hover); }
-:is([data-home-dashboard], #studyHistory) :is(.dlms-action-control, details > summary):focus-visible {
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) details[open] > summary::before { transform: rotate(135deg); }
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) details > summary:hover { background: var(--semantic-secondary-control-hover); }
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) :is(.dlms-action-control, details > summary):focus-visible {
     outline: 3px solid var(--theme-focus-ring, var(--theme-accent-text));
     outline-offset: 3px;
 }
@@ -94,7 +94,8 @@
     padding: .55rem .7rem;
     border: 1px solid var(--theme-border);
     border-radius: var(--theme-control-radius, 9px);
-    background: var(--theme-panel-1);
+    /* Preserve the panel tint with an opaque theme backing for readable tips. */
+    background: linear-gradient(var(--theme-panel-1), var(--theme-panel-1)), var(--theme-body-base);
     color: var(--theme-page-text);
     font: 400 1rem/1.4 var(--theme-body-font, Arial, Helvetica, sans-serif);
     overflow-wrap: anywhere;
@@ -102,5 +103,31 @@
 }
 .dlms-action-tooltip[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) {
-    :is([data-home-dashboard], #studyHistory) :is(.dlms-action-control, details > summary) { transition: none; }
+    :is([data-home-dashboard], #studyHistory, [data-action-controls]) :is(.dlms-action-control, details > summary) { transition: none; }
+}
+
+/* Plan/profile variants reuse the same surfaces and native controls. */
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control.dlms-action-destructive {
+    color: var(--semantic-error-text) !important;
+    background: var(--semantic-error-surface);
+    border: 2px solid var(--semantic-error-border);
+}
+:is([data-home-dashboard], #studyHistory, [data-action-controls]) .dlms-action-control.dlms-action-destructive:not(:disabled):hover {
+    background: var(--semantic-error-surface);
+    border-color: var(--semantic-error-text);
+}
+[data-action-controls] .dlms-action-control:disabled {
+    opacity: .65;
+}
+[data-action-controls="learning-profile"] .learning-profile-retention-head > .dlms-action-control {
+    flex-shrink: 0;
+}
+
+[data-action-controls="exam-plans"] .plan-badge {
+    border: 0;
+    border-radius: 0;
+    padding: .25rem 0;
+    background: none;
+    color: var(--theme-muted-text);
+    cursor: default;
 }

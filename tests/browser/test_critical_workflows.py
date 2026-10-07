@@ -898,6 +898,17 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
             # End the test's checkpoint before loading another quiz/mode.
             browser.evaluate('localStorage.clear();true')
 
+    # Exercise the same shared controls on every supported theme, using only
+    # the disposable fixture database. No Study facts are created by navigation.
+    from datetime import timedelta
+    from dlms.services import exam_plans as plan_service
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.row_factory = sqlite3.Row
+        config = {**plan_service.DEFAULTS, 'name': 'Theme controls fixture',
+                  'exam_date': (datetime.now(timezone.utc) + timedelta(days=21)).date().isoformat(),
+                  'calendar_timezone': 'UTC', 'weekdays': list(range(7)), 'folders': ['browser regression']}
+        style_plan = plan_service.save(conn, config, generation=plan_service.state(conn.cursor())['generation'], known_folders=['browser regression'])
+
     representative = {'light', 'dark', 'ethereal', 'omarchy-catppuccin-latte',
                       'omarchy-tokyo-night', 'omarchy-miasma', 'omarchy-white'}
     shots = Path(os.environ.get('DLMS_THEME_REVIEW_DIR', str(tmp_path / 'manual-theme-review')))
@@ -917,6 +928,12 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
                           'score': '.history-score-badge', 'date': '.history-date-cell'}),
             ('/study-history', {'navigation': '[aria-label="History navigation"] .dlms-action-control',
                                 'disclosure': '#historyExplanation summary'}),
+            ('/exam-plans', {'navigation': '[aria-label="Exam Plan navigation"] .dlms-action-control',
+                             'view': '.plan-list-card > .dlms-action-control'}),
+            ('/exam-plans/' + style_plan, {'primary': '[data-practice="suggested"]',
+                                         'disclosure': '#planPlacement summary'}),
+            ('/learning-profile', {'secondary': '.learning-profile-actions a',
+                                   'schedule': '.learning-profile-retention-head > a'}),
         ):
             browser.navigate(base + route)
             browser.wait_for_page_ready()
@@ -925,6 +942,22 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
             if route == '/study-history':
                 browser.wait_for("document.querySelectorAll('[aria-label=\"History navigation\"] .dlms-action-control').length===4")
                 assert browser.evaluate("[...document.querySelectorAll('[aria-label=\"History navigation\"] a')].every(n=>n.getBoundingClientRect().height>=44 && n.querySelector('svg[aria-hidden=true][focusable=false]'))")
+            if route.startswith('/exam-plans') or route == '/learning-profile':
+                browser.wait_for("document.querySelector('[data-action-controls] .dlms-action-control')")
+                assert browser.evaluate("[...document.querySelectorAll('[data-action-controls] .dlms-action-control')].every(n=>{const r=n.getBoundingClientRect();return !r.height || r.height>=44})")
+                assert not browser.evaluate("document.querySelector('.plan-badge.dlms-action-control')")
+                if route == '/exam-plans':
+                    browser.evaluate("document.querySelector('.plan-links a:last-child').focus();true")
+                    browser.wait_for("document.querySelector('[role=tooltip]:not([hidden])')")
+                    assert browser.evaluate("getComputedStyle(document.querySelector('[role=tooltip]:not([hidden])')).backgroundColor.startsWith('rgb(')")
+                    tip = _theme_contrast_snapshot(browser, {'tip': '[role=tooltip]:not([hidden])'}, include_gradients=True)
+                    assert tip['tip']['contrast'] >= 4.5, (theme, width, tip)
+                    browser.press_key('\ue00c')
+                if route == '/exam-plans/' + style_plan:
+                    browser.click('#planPlacement summary')
+                    danger = _theme_contrast_snapshot(browser, {'delete': '[data-delete-plan] button'}, include_gradients=True)
+                    assert danger['delete']['contrast'] >= 4.5, (theme, width, danger)
+                    assert browser.evaluate("document.querySelector('[data-delete-plan] button').matches('.dlms-action-destructive')")
             for role, value in _theme_contrast_snapshot(browser, selectors, include_gradients=True).items():
                 assert value['contrast'] >= 4.5, (theme, width, route, role, value)
             assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'), (theme, width, route)
@@ -15559,3 +15592,125 @@ def test_dashboard_and_study_history_action_controls(browser_stack, theme):
     browser.navigate(base+'/study-history'); browser.wait_for("document.querySelector('.study-history-row details').open && document.querySelector('.study-history-detail').textContent.includes('A later correct answer was saved')")
     with sqlite3.connect(browser_stack.data_root/'results.db') as conn: assert list(conn.iterdump())==before
     if output: (Path(output)/('action-inventory-'+theme+'.json')).write_text(json.dumps(routes,indent=2))
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_exam_plan_and_profile_action_controls(browser_stack, theme):
+    """Native links/forms, status badges and snapshot acknowledgement survive styling."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance'); _set_theme(browser, theme)
+    browser.navigate(base + '/exam-plans')
+    browser.wait_for("document.querySelector('[aria-label=\"Exam Plan navigation\"] .dlms-action-control')")
+    assert 'No exam plans yet' in browser.evaluate('document.querySelector("main").textContent')
+    quiz_id, _ = _new_regular_study_quiz(browser_stack, 30)
+    browser.navigate(base + '/exam-plans/new'); browser.wait_for('window.dlmsCsrfToken')
+    browser.evaluate("document.querySelector('[name=name]').value='CISM — Information Security Governance and Risk Management';document.querySelector('[name=exam_date]').value=" + json.dumps((datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()) + ";document.querySelector('[name=calendar_timezone]').value='America/Chicago';document.querySelectorAll('[name=folders],[name=weekdays]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
+    browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary")')
+    path = browser.evaluate('location.pathname'); plan_id = path.split('/')[-1]
+    # Disposable change snapshot: all current questions need acknowledgement.
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute('UPDATE exam_plans SET scope_json=? WHERE id=?', ('{}', plan_id))
+    def facts():
+        with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+            return {table: conn.execute('SELECT count(*) FROM ' + table).fetchone()[0] for table in ('study_sessions', 'study_responses', 'learning_events')}
+    initial_facts = facts()
+    for width in (1440, 390, 320):
+        browser.set_viewport(width, 1000); browser.navigate(base + path)
+        browser.wait_for("document.querySelector('[data-practice=suggested].dlms-action-primary')")
+        assert browser.evaluate("[...document.querySelectorAll('[aria-label=\"Exam Plan navigation\"] a')].map(n=>[n.textContent,n.getAttribute('href')])") == [['All plans', '/exam-plans'], ['New exam plan', '/exam-plans/new'], ['Exam Plan Help', '/help/learning-intelligence#exam-plans']]
+        assert browser.evaluate("[...document.querySelectorAll('.plan-badge')].every(n=>n.tagName==='SPAN' && !n.matches('.dlms-action-control,[tabindex],[role=button]'))")
+        browser.activate(); browser.wait_for('document.hasFocus()')
+        browser.evaluate("document.querySelector('#planPlacement summary').focus();true"); browser.press_key('\ue007')
+        assert browser.evaluate("document.querySelector('#planPlacement').open && document.activeElement.matches(':focus-visible')")
+        assert browser.evaluate("document.querySelector('button[value=delete]').matches('.dlms-action-destructive') && document.querySelector('button[value=delete] svg use').getAttribute('href')==='/static/icons.svg#trash'")
+        assert browser.evaluate("document.querySelector('button[value=acknowledge]').closest('form').querySelector('[name=snapshot_token]')!==null")
+        assert browser.evaluate("[...document.querySelectorAll('.dlms-action-control')].every(n=>n.querySelector('svg[aria-hidden=true][focusable=false]'))")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        for role, value in _theme_contrast_snapshot(browser, {'primary':'[data-practice=suggested]', 'delete':'button[value=delete]', 'secondary':'button[value=hide]', 'summary':'#planPlacement summary'}, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+        browser.evaluate("document.querySelector('button[value=hide]').focus();true")
+        browser.wait_for("document.querySelector('[role=tooltip]:not([hidden])')")
+        assert browser.evaluate("(()=>{const r=document.querySelector('[role=tooltip]:not([hidden])').getBoundingClientRect();return r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight})()")
+        browser.press_key('\ue00c'); assert not browser.evaluate("document.querySelector('[role=tooltip]:not([hidden])')")
+        browser.evaluate("document.querySelector('#planPlacement summary').focus();true"); browser.press_key(' ')
+        assert not browser.evaluate("document.querySelector('#planPlacement').open")
+    # Pagination is a real link, preserving question IDs and earning no credit.
+    more = '#planChanges a[href*="change_quiz=' + str(quiz_id) + '"]'
+    browser.evaluate("document.querySelector(" + json.dumps(more) + ").closest('details').open=true;document.querySelector(" + json.dumps(more) + ").focus();true")
+    browser.press_key('\ue007'); browser.wait_for("location.search.includes('question_page=2')")
+    assert browser.evaluate("document.querySelector('#planChanges details[open] nav').textContent.includes('Page 2 of 2')")
+    assert facts() == initial_facts
+    # Styled acknowledgement still rejects a newer question added after this page.
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute('UPDATE questions SET question_text=question_text || ? WHERE quiz_id=?', (' changed', quiz_id))
+    browser.click('button[value=acknowledge]')
+    browser.wait_for("document.querySelector('[role=alert]')!==null")
+    assert 'changed' in browser.evaluate("document.querySelector('[role=alert]').textContent").lower()
+    assert facts() == initial_facts
+    browser.navigate(base + path); browser.click('button[value=acknowledge]')
+    browser.wait_for("document.querySelector('#planChanges').textContent.includes('No changes to study material')")
+    assert facts() == initial_facts
+    # Profile controls retain both context-specific schedule destinations.
+    browser.navigate(base + '/learning-profile')
+    browser.wait_for("document.querySelector('#lpSmartReview.dlms-action-primary') && document.getElementById('lpRecommendationTitle').textContent!=='Loading…'")
+    assert browser.evaluate("[...document.querySelectorAll('.learning-profile-actions a,.learning-profile-retention-head > a')].map(n=>[n.textContent,n.getAttribute('href')])") == [['View Topic Details', '/learning-intelligence'], ['Open Review Schedule', '/review-schedule'], ['Open Review Schedule', '/review-schedule']]
+    assert browser.evaluate("document.querySelector('.study-evidence-note a').matches(':not(.dlms-action-control)')")
+    assert browser.evaluate("document.querySelector('#lpSmartReview').tagName==='BUTTON' && document.querySelector('#lpPrimaryReviewForm').method==='post'")
+    for width in (1440, 390, 320):
+        browser.set_viewport(width,1000); browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        browser.evaluate("document.querySelector('.learning-profile-actions a').focus();true"); browser.press_key('\ue004')
+        assert browser.evaluate('document.activeElement.matches(":focus-visible")')
+        browser.press_key('\ue00c')
+    assert facts() == initial_facts
+    # An unsupported plan stays reachable; delete remains explicit and styled.
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute('UPDATE exam_plans SET config_json=? WHERE id=?', ('{}', plan_id))
+    browser.navigate(base + '/exam-plans')
+    browser.wait_for("document.querySelector('.plan-list-card > .dlms-action-control')")
+    assert 'Unavailable saved plan' in browser.evaluate('document.querySelector("main").textContent')
+    browser.click('.plan-list-card > a'); browser.wait_for('document.querySelector("[role=alert]")')
+    assert browser.evaluate("document.querySelector('button[value=delete]').matches('.dlms-action-destructive')")
+    assert facts() == initial_facts
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_learning_profile_primary_control_generates_native_review(browser_stack, theme):
+    """Actual first-response evidence enables the existing native review form."""
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance'); _set_theme(browser, theme)
+    quiz_id, _ = _new_regular_study_quiz(browser_stack, 3)
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        concept = conn.execute('INSERT INTO concepts(name) VALUES(?)', ('Information security governance',)).lastrowid
+        conn.execute('INSERT INTO question_concepts(question_id,concept_id) SELECT id,? FROM questions WHERE quiz_id=?', (concept, quiz_id))
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    for index in range(3):
+        browser.click("#choices .choice[data-index='1']"); browser.wait_for('studyLearningEventSaves.size===0')
+        if index < 2: browser.click('#nextBtn')
+    browser.click('#finishReviewBtn'); browser.wait_for('durableStudySession.completed_at !== null')
+    browser.navigate(base + '/learning-profile')
+    browser.wait_for("document.querySelector('#lpSmartReview.dlms-action-primary') && !document.querySelector('#lpSmartReview').disabled")
+    assert browser.evaluate('document.querySelector("#lpPrimaryReviewForm").getAttribute("action")') == '/smart-review/generate'
+    for width in (1440,390):
+        browser.set_viewport(width,1000); browser.wait_for_page_ready()
+        value = _theme_contrast_snapshot(browser, {'primary':'#lpSmartReview'},include_gradients=True)['primary']
+        assert value['contrast'] >= 4.5, (theme,width,value)
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        output = os.environ.get('DLMS_PLAN_PROFILE_CAPTURE_DIR')
+        if output:
+            browser.activate(); browser.wait_for('document.hasFocus()')
+            browser.evaluate("document.querySelector('.learning-profile-actions a').focus();true")
+            browser.press_key('\ue004'); browser.evaluate("document.querySelector('.learning-profile-actions a').focus();true")
+            browser.wait_for("document.querySelector('[role=tooltip]:not([hidden])')")
+            shot = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+            (Path(output) / f'profile-populated-focus-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            browser.press_key('\ue00c')
+    browser.click('#lpSmartReview')
+    browser.wait_for("location.pathname.startsWith('/quizzes/') && quizRecoveryReady")
+    assert not browser.evaluate("document.querySelector('link[href=\"/static/action-controls.css\"]')")
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM study_responses r JOIN study_sessions s ON s.id=r.session_id WHERE s.quiz_id=?',(quiz_id,)).fetchone()[0] == 3
+        assert conn.execute('SELECT count(*) FROM study_sessions WHERE quiz_id=? AND completed_at IS NOT NULL',(quiz_id,)).fetchone()[0] == 1
