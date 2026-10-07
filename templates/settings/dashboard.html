@@ -54,7 +54,7 @@
             {% for key, label in cards if key not in ['it', 'law', 'medical'] %}
             <label class="settings-toggle-row">
                 <input type="checkbox" name="dashboard_card_{{ key }}" {% if visibility[key] %}checked{% endif %}>
-                <span><strong>{{ label }}</strong></span>
+                <span><strong>{{ label }}</strong>{% if key == 'recent_activity' %}<br>Quiz sequence and latest Exam completed.{% endif %}</span>
             </label>
             {% endfor %}
         </fieldset>

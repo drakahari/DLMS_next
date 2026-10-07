@@ -38,7 +38,7 @@ def activity_timestamp(value, sqlite_utc=False):
         return None
 
 
-def recent_quiz_activity(cur, *, history_context, attempt_summary, quiz_folder, data_folder, quiz_origin):
+def recent_quiz_activity(cur, *, history_context, attempt_summary, quiz_folder, data_folder, quiz_origin, sequence=None):
     """Return two latest summaries and up to three other recent attempts.
 
     Each mode's dated summary uses one SQL pass over its records. Windows also
@@ -141,4 +141,5 @@ def recent_quiz_activity(cur, *, history_context, attempt_summary, quiz_folder, 
         "exam": {"entry": exam_entry, "record_count": exam["record_count"] if exam else 0,
                  "undated_count": exam["undated_count"] if exam else 0},
         "recent_attempts": [attempt(row) for row in recent],
+        **({"quiz_sequence": sequence(cur, list(registry.values()), context)} if sequence else {}),
     }

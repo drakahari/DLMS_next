@@ -1,5 +1,31 @@
 # Refreshing the Appearance and Layout Help screenshots
 
+## Dashboard quiz-sequence refresh
+
+The quiz-sequence dashboard image uses baseline
+`8dcae7321ce563ab527d35455f03fb8087d1a2d0` plus this reviewed change. It shows
+an unfinished regular CISM review and two distinct generated Exam Plan quizzes
+with equal titles, saved positions and times. All data is disposable. The
+sequence and latest Exam summary share the existing Recent quiz activity
+visibility choice; no new setting or stored ordering is introduced.
+
+```sh
+sequence_capture_dir="$HOME/.cache/dlms-sequence-help"
+mkdir -p "$sequence_capture_dir"
+DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
+DLMS_SEQUENCE_CAPTURE_DIR="$sequence_capture_dir" \
+python -m pytest -q -p no:cacheprovider -m browser \
+tests/browser/test_critical_workflows.py \
+-k dashboard_generated_resume_identity_and_sequence
+```
+
+Inspect the full desktop/narrow Light, Dark and Ethereal images and the
+finished-review `sequence-ready` captures. Copy only the reviewed Light
+`dashboard.webp` crop into `static/help_assets/` and update its dimensions in
+Getting Started Help. Optional before/after comparisons replay byte-verified
+baseline display scripts with the same disposable records and unchanged
+dashboard template; they are labeled baseline replay, not production captures.
+
 These five focused images show actual DLMS controls. They use the existing Help
 figure, caption and keyboard-accessible image viewer conventions. The written
 steps remain complete without images. The former Appearance and Navigation

@@ -12664,7 +12664,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
     assert browser.evaluate(
         "document.querySelector('.daily-review-native_due') !== null"
     ) is True
-    generated_card = f'.daily-review-unfinished:has([data-clear-recovery="unfinished-{generated[1]}"])'
+    generated_card = f'.daily-review-unfinished:has([data-clear-recovery^="unfinished-{generated[1]}-"])'
     assert "Spaced Review — Due Questions" in browser.evaluate(
         "document.querySelector(" + json.dumps(generated_card) + ").textContent"
     )
@@ -13418,13 +13418,14 @@ def test_ethereal_landing_headers_cards_and_catalog_remain_accessible(browser_st
             if (url !== '/api/dashboard/quiz-activity') return original(url, ...args);
             window.fetch = original;
             const empty = {entry: null, record_count: 0, undated_count: 0};
-            return Promise.resolve(new Response(JSON.stringify({study: empty, exam: empty, recent_attempts: []})));
+            return Promise.resolve(new Response(JSON.stringify({study: empty, exam: empty, recent_attempts: [],
+                quiz_sequence: {state: 'empty', anchor: null, next: null, folder: null}})));
         };
         const script = document.createElement('script');
         script.src = '/static/dashboard-activity.js'; document.body.append(script);
         return true;
     })()""")
-    browser.wait_for("document.querySelector('#recentActivity').textContent.includes('No saved Study responses yet.') && document.querySelector('#recentActivity').textContent.includes('No completed Exam attempts yet.')")
+    browser.wait_for("document.querySelector('#recentActivity').textContent.includes('Save a Study answer in a regular quiz to start a sequence.') && document.querySelector('#recentActivity').textContent.includes('No completed Exam attempts yet.')")
     browser.evaluate("document.querySelector('#recentActivity').scrollIntoView({block:'center'});true")
     capture('dashboard-empty-history')
 
@@ -13560,10 +13561,11 @@ def _open_dashboard_layout_from_settings(browser):
 
 
 def test_dashboard_activity_consolidation_order_identity_and_error(browser_stack):
-    """Only matching visible destinations share an action; errors stay errors."""
+    """Sequence uses its own completion DTO and works in either load order."""
     browser, base = browser_stack.browser, browser_stack.base_url
-    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
-    _new_regular_study_quiz(browser_stack, 2)
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    next_id, next_html = _new_regular_study_quiz(browser_stack, 1)
+    browser.navigate(base + '/quizzes/' + html); browser.wait_for('quizRecoveryReady')
     browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
     for index in range(2):
         browser.click("#choices .choice[data-index='1']")
@@ -13582,49 +13584,201 @@ def test_dashboard_activity_consolidation_order_identity_and_error(browser_stack
             browser.navigate(base+'/')
             browser.wait_for('Object.keys(releaseDashboard).length===2')
             browser.evaluate('releaseDashboard['+json.dumps(paths[first])+']();true')
-            if first == 1:
-                browser.wait_for("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')!==null")
             browser.evaluate('releaseDashboard['+json.dumps(paths[1-first])+']();true')
-            browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context')!==null")
+            browser.wait_for("document.querySelector('#recentActivity .dashboard-quiz-sequence a[href^=\"/quizzes/\"]')!==null")
             assert browser.evaluate("document.getElementById('continueStudyHeading').textContent") == 'Last regular quiz'
             assert browser.evaluate("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
             assert browser.evaluate("document.querySelector('#regularStudyContinuity a').textContent") == 'Open current quiz'
-            assert browser.evaluate("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')===null")
-            assert browser.evaluate("document.querySelector('#recentActivity time')!==null")
-            # Preserve open disclosures when an unrelated mutation does not change association.
+            assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').getAttribute('href')") == '/quizzes/' + next_html
+            assert not browser.evaluate("document.getElementById('recentActivity').textContent.includes('Last studied')")
             browser.activate(); browser.click('#recentActivity .dashboard-activity-context summary')
             browser.evaluate("document.querySelector('#regularStudyContinuity h3').append(' ');true")
-            browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context').open")
-            # Same title is insufficient, and a different/unavailable destination is insufficient.
-            browser.evaluate("window.originalRowId=document.querySelector('#regularStudyContinuity article').dataset.quizId;document.querySelector('#regularStudyContinuity article').dataset.quizId='another-quiz';document.querySelector('#regularStudyContinuity h3').append(' ');true")
-            browser.wait_for("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')!==null")
-            browser.evaluate("document.querySelector('#regularStudyContinuity article').dataset.quizId=originalRowId;document.querySelector('#regularStudyContinuity h3').append(' ');true")
-            browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context')!==null")
-            browser.evaluate("window.originalHref=document.querySelector('#regularStudyContinuity a').href;document.querySelector('#regularStudyContinuity a').href='/unavailable';document.querySelector('#regularStudyContinuity h3').append(' ');true")
-            browser.wait_for("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')!==null")
-            browser.evaluate("document.querySelector('#regularStudyContinuity a').href=originalHref;document.getElementById('continueStudyPanel').hidden=true;true")
-            browser.wait_for("document.querySelector('#recentActivity a[href^=\"/quizzes/\"]')!==null")
-            browser.evaluate("document.getElementById('continueStudyPanel').hidden=false;true")
-            browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context')!==null")
+            assert browser.evaluate("document.querySelector('#recentActivity .dashboard-activity-context').open")
+            browser.evaluate("document.getElementById('continueStudyPanel').hidden=true;true")
+            browser.wait_for("document.querySelector('#recentActivity .dashboard-quiz-sequence a').textContent==='Open next quiz'")
             assert browser.evaluate("dashboardRequests.filter(p=>p==='/api/dashboard/quiz-activity').length") == 1
         finally: browser.command('script.removePreloadScript', {'script': preload})
     preload = browser.command('script.addPreloadScript', {'contexts': [browser.context], 'functionDeclaration': """() => {
         const original=fetch.bind(window);let fail=true;
         window.fetch=(...args)=>{
             if (String(args[0])==='/api/dashboard/quiz-activity' && fail){fail=false;return Promise.resolve(new Response('',{status:503}));}
-            if (String(args[0])==='/api/daily-review-plan') return original(...args).then(r=>new Promise(resolve=>{window.releaseDaily=()=>resolve(r);}));
             return original(...args);};
     }"""})['script']
     try:
         browser.navigate(base+'/')
-        browser.wait_for("typeof releaseDaily==='function' && document.querySelector('#recentActivity button')!==null")
-        browser.evaluate('releaseDaily();true')
-        browser.wait_for("document.getElementById('continueStudyHeading').textContent==='Last regular quiz'")
+        browser.wait_for("document.querySelector('#recentActivity button')!==null")
         assert browser.evaluate("document.getElementById('recentActivity').textContent.includes('Couldn’t load')")
         browser.click('#recentActivity button')
-        browser.wait_for("document.querySelector('#recentActivity .dashboard-activity-context')!==null")
-        assert browser.evaluate("document.activeElement.textContent") == 'Last studied'
+        browser.wait_for("document.querySelector('#recentActivity .dashboard-quiz-sequence a')!==null")
+        assert browser.evaluate("document.activeElement.textContent") == 'Continue your quiz sequence'
     finally: browser.command('script.removePreloadScript', {'script': preload})
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        before=list(conn.iterdump())
+    browser.click('#recentActivity .dashboard-quiz-sequence a')
+    browser.wait_for('quizRecoveryReady && typeof quiz !== "undefined"')
+    assert browser.evaluate('location.pathname')=='/quizzes/'+next_html
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert list(conn.iterdump())==before
+    # Activity's preference remains independent of Study next. No new request
+    # or hidden continuation panel is required to offer the sequence link.
+    browser.navigate(base+'/settings/layout')
+    browser.click('[name=dashboard_card_daily_review]');browser.click('button[value=save]')
+    browser.wait_for("location.search==='?saved=1'")
+    browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false"')
+    assert browser.evaluate('document.getElementById("continueStudyPanel")===null')
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').textContent")=='Open next quiz'
+    assert browser.evaluate("!performance.getEntriesByType('resource').some(e=>e.name.includes('/api/daily-review-plan'))")
+    registry_path=browser_stack.data_root/'config/quizzes.json'
+    registry=json.loads(registry_path.read_text())
+    for entry in registry:
+        if entry['id']==qid: entry['folder']='Only this quiz'
+    registry_path.write_text(json.dumps(registry))
+    browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false"')
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence').textContent.includes('end of this folder')")
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').textContent")=='Choose another quiz'
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark', 'ethereal'])
+def test_dashboard_generated_resume_identity_and_sequence(browser_stack, theme):
+    """Actual plan publication, two equal titles, and retained browser records."""
+    from datetime import timedelta
+    from tests.browser._help_screenshots import capture_control
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance'); _set_theme(browser, theme)
+    anchor, anchor_html = _new_regular_study_quiz(browser_stack, 4)
+    registry_path=browser_stack.data_root/'config/quizzes.json'
+    registry=json.loads(registry_path.read_text())
+    title='CISM — Information Security Governance: roles and responsibilities'
+    for entry in registry:
+        if entry['id']==anchor: entry['title']=title
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute('UPDATE quizzes SET title=? WHERE id=?',(title,anchor))
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for('studyLearningEventSaves.size===0')
+    next_id, next_html = _new_regular_study_quiz(browser_stack, 1)
+    registry=json.loads(registry_path.read_text())
+    for entry in registry:
+        if entry['id']==next_id: entry['title']='CISM — Risk Management: next review'
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute('UPDATE quizzes SET title=? WHERE id=?',('CISM — Risk Management: next review',next_id))
+    browser.navigate(base+'/exam-plans/new')
+    browser.wait_for('window.dlmsCsrfToken && document.getElementById("examPlanForm")')
+    exam=(datetime.now(timezone.utc)+timedelta(days=21)).date().isoformat()
+    browser.evaluate("document.querySelector('[name=name]').value='CISM';document.querySelector('[name=exam_date]').value="+json.dumps(exam)+";document.querySelector('[name=calendar_timezone]').value='UTC';document.querySelectorAll('[name=weekdays],[name=folders]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
+    browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary")!==null')
+    generated=[]
+    for position in (0, 1):
+        browser.navigate(base+'/');browser.wait_for('document.querySelector("#planPractice [data-practice=suggested]")!==null')
+        browser.click('#planPractice [data-practice=suggested]')
+        browser.wait_for('location.pathname.startsWith("/quizzes/") && typeof quizRecoveryReady!=="undefined" && quizRecoveryReady')
+        browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null')
+        assert browser.evaluate('durableStudySession.purpose')=='focused'
+        generated.append(browser.evaluate('String(durableStudySession.quiz_id)'))
+        if position: browser.click('#nextBtn')
+    browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false" && document.querySelectorAll("#continuationList .daily-review-item").length===2')
+    records=browser.evaluate('DLMSQuizRecovery.listStoredRecords().records')
+    assert len(set(generated))==2
+    rows=browser.evaluate("[...document.querySelectorAll('#continuationList article')].map(n=>({id:n.dataset.quizId,title:n.querySelector('h3').textContent,checkpoint:n.querySelector('.dashboard-resume-checkpoint').textContent}))")
+    assert {r['id'] for r in rows}==set(generated)
+    assert all(r['title']=='Exam Plan — CISM' for r in rows)
+    assert len({r['checkpoint'] for r in rows})==2
+    for row in rows:
+        record=next(r for r in records if r['quizId']==row['id'])
+        assert f"Question {record['questionIndex']+1}" in row['checkpoint']
+        assert f"Quiz {record['quizId']}" in row['checkpoint']
+    assert browser.evaluate("document.querySelectorAll('#recentActivity a[href='+JSON.stringify('/quizzes/'+"+json.dumps(anchor_html)+")+']').length") == 0
+    assert browser.evaluate("document.getElementById('recentActivity').textContent.includes('Finish your current regular review')")
+    # Identical records are a rendering duplicate; different recovery sessions stay distinct.
+    assert browser.evaluate("""(async()=>{const p=await fetch('/api/daily-review-plan').then(r=>r.json());
+      const original=DLMSQuizRecovery.listStoredRecords, records=original().records;
+      try {
+        DLMSQuizRecovery.listStoredRecords=()=>({available:true,records:[records[0],records[0],records[1]]});
+        const exact=DLMSDailyReview.mergeBrowserSessions(p).items.filter(i=>i.kind==='unfinished');
+        DLMSQuizRecovery.listStoredRecords=()=>({available:true,records:[records[0],{...records[0],sessionId:'another-browser-session',learningSessionId:'another-study-session'}]});
+        const distinct=DLMSDailyReview.mergeBrowserSessions(p).items.filter(i=>i.kind==='unfinished');
+        return exact.length===2 && distinct.length===2 && distinct[0].id!==distinct[1].id;
+      }finally{DLMSQuizRecovery.listStoredRecords=original;}})()""")
+    assert browser.evaluate("""(async()=>{const p=await fetch('/api/daily-review-plan').then(r=>r.json()),original=DLMSQuizRecovery.listStoredRecords;
+      const record=original().records[0];try{
+        DLMSQuizRecovery.listStoredRecords=()=>({available:true,records:[{...record,updatedAt:null,questionIndex:null,pendingStudyCount:3}]});
+        const i=DLMSDailyReview.mergeBrowserSessions(p).items.find(i=>i.kind==='unfinished');
+        return i.checkpointLabel.includes('saved time unavailable') && i.checkpointLabel.includes('Question position unavailable') && i.needsSave && i.action.label==='Resolve Study saves';
+      }finally{DLMSQuizRecovery.listStoredRecords=original;}})()""")
+    assert browser.evaluate("DLMSQuizRecovery.listStoredRecords().records") == records
+    output=os.environ.get('DLMS_SEQUENCE_CAPTURE_DIR')
+    baseline=os.environ.get('DLMS_SEQUENCE_BASELINE_DIR')
+    if output and baseline:
+        # Optional visual comparison: replay the verified baseline display
+        # scripts against the same disposable records and unchanged template.
+        browser.evaluate((Path(baseline)/'daily-review.js').read_text())
+        browser.evaluate((Path(baseline)/'dashboard-activity.js').read_text())
+        browser.wait_for("document.querySelectorAll('#continuationList article').length===2 && document.getElementById('recentActivity').textContent.includes('Last studied')")
+        for width in (1440,390):
+            browser.set_viewport(width,1000)
+            browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'baseline-replay-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+        browser.navigate(base+'/')
+        browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false" && document.querySelectorAll("#continuationList article").length===2')
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if output:
+            path=Path(output);path.mkdir(parents=True,exist_ok=True)
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (path/f'sequence-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light' and width==1440: capture_control(browser,path/'dashboard.webp','.dashboard-main')
+    browser.activate();browser.evaluate("document.querySelector('#recentActivity .dashboard-activity-context summary').focus();true")
+    browser.press_key('\ue007')
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-activity-context').open && document.activeElement.matches(':focus-visible')")
+    for quiz_id in generated:
+        browser.click('#continuationList article[data-quiz-id='+json.dumps(quiz_id)+'] a.daily-review-action')
+        browser.wait_for('document.querySelector(".quiz-recovery-resume")!==null')
+        browser.click('.quiz-recovery-resume');browser.wait_for('quizRecoveryReady && durableStudySession!==null')
+        assert browser.evaluate('String(durableStudySession.quiz_id)')==quiz_id
+        expected=next(r for r in records if r['quizId']==quiz_id)
+        assert browser.evaluate('index')==expected['questionIndex']
+        browser.navigate(base+'/');browser.wait_for('document.querySelectorAll("#continuationList article").length===2')
+    # Browser-only resumed generated practice never displaces regular durable work.
+    assert browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json()).then(p=>p.regular_study.quiz_id)")==anchor
+    browser.navigate(base+'/quizzes/'+anchor_html)
+    browser.wait_for('document.querySelector(".quiz-recovery-resume")!==null')
+    browser.click('.quiz-recovery-resume');browser.wait_for('quizRecoveryReady && durableStudySession!==null')
+    for position in range(1,4):
+        browser.click('#nextBtn')
+        browser.click("#choices .choice[data-index='1']")
+        browser.wait_for('studyLearningEventSaves.size===0')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at!==null')
+    browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false"')
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').getAttribute('href')")=='/quizzes/'+next_html
+    assert browser.evaluate("document.getElementById('continueStudyHeading').textContent")=='Continue studying'  # generated work remains unfinished
+    assert browser.evaluate("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute("SELECT count(*) FROM study_sessions WHERE purpose='focused' AND completed_at IS NOT NULL").fetchone()[0]==0
+        assert conn.execute("SELECT count(*) FROM study_sessions WHERE quiz_id=? AND completed_at IS NOT NULL",(anchor,)).fetchone()[0]==1
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        for role, sample in _theme_contrast_snapshot(browser, {
+            'checkpoint':'#continuationList .dashboard-resume-checkpoint',
+            'sequence':'#recentActivity .dashboard-quiz-sequence h3',
+            'next_link':'#recentActivity .dashboard-sequence-link',
+        }, include_gradients=True).items():
+            assert sample['contrast']>=4.5, (theme,width,role,sample)
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'sequence-ready-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: before=list(conn.iterdump())
+    browser.activate();browser.evaluate("document.querySelector('#recentActivity .dashboard-sequence-link').focus();true")
+    browser.press_key('\ue007');browser.wait_for('quizRecoveryReady && typeof quiz!=="undefined"')
+    assert browser.evaluate('location.pathname')=='/quizzes/'+next_html
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: assert list(conn.iterdump())==before
 
 
 @pytest.mark.parametrize("theme", ("light", "dark", "ethereal"))
@@ -13710,11 +13864,11 @@ def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
     browser.navigate(browser_stack.base_url + "/")
     browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false'")
     text = browser.evaluate("document.getElementById('recentActivity').textContent")
-    assert "Last studied" in text and "Last response saved" in text
+    assert "Continue your quiz sequence" in text and "Finish your current regular review" in text
     assert "does not indicate quiz completion" in text
     assert "completion times cannot be determined" in text  # Seeded legacy Exam has no zone.
     assert "View undated results in Exam History" in text
-    assert browser.evaluate("document.querySelector('.dashboard-activity-summary time').dateTime.endsWith('+00:00')")
+    assert browser.evaluate("document.querySelector('.dashboard-activity-context time').dateTime.endsWith('+00:00')")
     browser.navigate(quiz_url)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     browser.click(".exam-mode-btn")
@@ -15139,7 +15293,7 @@ def test_dashboard_more_review_options_with_exam_plans(browser_stack, theme):
         assert not browser.evaluate("!document.getElementById('regularStudyContinuity').hidden")
         # A local generated checkpoint never consumes a shared recommendation.
         assert browser.evaluate(f"document.querySelector('.daily-review-{kind} button') !== null")
-        button = f'[data-clear-recovery="unfinished-{generated[0]}"]'
+        button = f'[data-clear-recovery^="unfinished-{generated[0]}-"]'
         _open_resume_management(browser, button)
         browser.click(button); browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
         browser.click('#dailyReviewClearDialog button[value=clear]')

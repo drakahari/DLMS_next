@@ -3,7 +3,7 @@
     const activity = document.getElementById("recentActivity");
     if (!activity) return;
     let loadedData = null;
-    let linkedHeading = null;
+    let linkedContinuation = false;
 
     // Display consolidation only: a matching current-quiz destination does not
     // establish that two records belong to the same Study session.
@@ -67,47 +67,92 @@
             `dashboard-score ${percent >= 80 ? "score-good" : percent >= 70 ? "score-warn" : "score-bad"}`);
     }
 
-    function summary(mode, data) {
+    function examSummary(data) {
         const section = element("section", null, "dashboard-activity-summary");
-        const study = mode === "study";
-        section.append(element("h3", study ? "Last studied" : "Latest Exam completed"));
+        section.append(element("h3", "Latest Exam completed"));
         if (data.entry) {
-            const shared = study && continuationFor(data.entry);
-            if (shared) {
-                const heading = document.getElementById("continueStudyHeading").textContent;
-                section.append(element("p", `Quiz shown in “${heading}” above.`, "dashboard-activity-detail"));
-            } else quizDetails(data.entry, section);
-            if (!study) section.append(score(data.entry));
-            section.append(timeLabel(study ? "Last response saved" : "Completed", study ? data.entry.saved_at : data.entry.completed_at));
-            if (shared) {
-                const detail = element("details", null, "dashboard-activity-context");
-                detail.append(element("summary", "Study activity details"));
-                quizDetails(data.entry, detail);
-                section.append(detail);
-            } else actions(data.entry, section, !study);
+            quizDetails(data.entry, section);
+            section.append(score(data.entry));
+            section.append(timeLabel("Completed", data.entry.completed_at));
+            actions(data.entry, section, true);
         } else if (data.record_count) {
-            section.append(element("p", study
-                ? "Saved Study responses exist, but their saved times cannot be determined."
-                : "Saved Exam attempts exist, but their completion times cannot be determined."));
+            section.append(element("p", "Saved Exam attempts exist, but their completion times cannot be determined."));
         } else {
-            section.append(element("p", study ? "No saved Study responses yet." : "No completed Exam attempts yet. Study reviews are separate in Study History."));
+            section.append(element("p", "No completed Exam attempts yet. Study reviews are separate in Study History."));
         }
         if (data.entry && data.undated_count) {
-            section.append(element("p", `${data.undated_count} ${study ? "Study response" : "Exam attempt"} record(s) have times that cannot be determined. Latest shown uses reliably dated records.`, "dashboard-activity-detail"));
+            section.append(element("p", `${data.undated_count} Exam attempt record(s) have times that cannot be determined. Latest shown uses reliably dated records.`, "dashboard-activity-detail"));
         }
-        if (!study && data.undated_count) section.append(link("View undated results in Exam History", "/history"));
+        if (data.undated_count) section.append(link("View undated results in Exam History", "/history"));
+        return section;
+    }
+
+    function sequence(data) {
+        const section = element("section", null, "dashboard-activity-summary dashboard-quiz-sequence");
+        section.append(element("h3", "Continue your quiz sequence"));
+        if (!data) {
+            section.append(element("p", "Quiz sequence could not be determined."));
+            section.append(link("Choose another quiz", "/library"));
+            return section;
+        }
+        const anchor = data.anchor;
+        const shared = anchor && continuationFor({quiz_id: anchor.quiz_id, quiz_url: anchor.url});
+        const messages = {
+            empty: "Save a Study answer in a regular quiz to start a sequence.",
+            unfinished: "Finish your current regular review before moving to the next quiz.",
+            incomplete_saves: "Your current review needs attention before the sequence can continue. Check its saves in Study History.",
+            changed: "Your regular quiz has changed. Finish a new review of the current content before continuing.",
+            unavailable: "Your last regular quiz is unavailable. Choose a quiz to start another sequence.",
+            hidden: "Your regular quiz or folder is hidden in Quiz Library. Choose a quiz or change its visibility there.",
+            excluded: "This folder is excluded by Learning Scope. The sequence will not select work outside your included material.",
+            next_hidden: "The next regular quiz is hidden in Quiz Library. It has not been skipped.",
+            next_excluded: "The next regular quiz is excluded by Learning Scope. It has not been skipped.",
+            next_unavailable: "The next regular quiz is unavailable. It has not been skipped.",
+            end: "You have reached the end of this folder’s regular quizzes. Choose another quiz when you are ready.",
+        };
+        if (data.state === "next") {
+            quizDetails(data.next, section);
+            section.append(element("p", data.next.review_status, "dashboard-activity-detail"));
+            if (data.next.completed_at) section.append(timeLabel("Review finished", data.next.completed_at));
+            const open = link("Open next quiz", data.next.quiz_url);
+            open.className = "dashboard-sequence-link";
+            section.append(open);
+        } else {
+            section.append(element("p", messages[data.state] || "Quiz sequence could not be determined."));
+            if (data.folder) section.append(element("p", `Folder: ${data.folder}`, "dashboard-activity-detail"));
+            if (data.next) {
+                quizDetails(data.next, section);
+                if (data.next.availability) section.append(element("p", data.next.availability, "dashboard-activity-detail"));
+            }
+            if (shared && ["unfinished", "incomplete_saves", "changed"].includes(data.state)) {
+                section.append(element("p", "Use the current quiz action in Continue studying above.", "dashboard-activity-detail"));
+            } else if (anchor?.url && ["unfinished", "changed"].includes(data.state)) {
+                section.append(element("strong", anchor.title));
+                const open = link(data.state === "unfinished" ? "Resume Study review" : "Open current quiz", anchor.url);
+                open.className = "dashboard-sequence-link";
+                section.append(open);
+            }
+            if (data.state === "incomplete_saves") section.append(link("Check Study History", "/study-history"));
+            if (["excluded", "next_excluded"].includes(data.state)) section.append(link("Manage Learning Scope", "/learning-scope"));
+            if (!["unfinished", "incomplete_saves", "changed"].includes(data.state)) section.append(link("Choose another quiz", "/library"));
+        }
+        const details = element("details", null, "dashboard-activity-context");
+        details.append(element("summary", "About the quiz sequence"));
+        details.append(element("p", "Uses the saved quiz order in this folder’s Quiz Library. Change the order with drag-and-drop or Up and Down. Generated focused practice is left out; reviewed quizzes are not skipped. Only a saved Finish Review for the current regular quiz content advances the sequence. Opening a quiz earns no review credit."));
+        if (anchor) details.append(timeLabel("Anchor’s last response saved", anchor.saved_at));
+        section.append(details);
         return section;
     }
 
     function render(data) {
-        linkedHeading = data.study.entry && continuationFor(data.study.entry)
-            ? document.getElementById("continueStudyHeading").textContent : null;
+        const anchor = data.quiz_sequence?.anchor;
+        linkedContinuation = Boolean(anchor && continuationFor({quiz_id: anchor.quiz_id, quiz_url: anchor.url}));
         const summaries = element("div", null, "dashboard-activity-summaries");
-        summaries.append(summary("study", data.study), summary("exam", data.exam));
+        summaries.append(sequence(data.quiz_sequence), examSummary(data.exam));
         activity.replaceChildren(summaries);
         const detail = element("details", null, "dashboard-activity-explanation");
         detail.append(element("summary", "About this activity"));
-        detail.append(element("p", "A saved Study response does not indicate quiz completion. A quiz shown above may be a different review of the same quiz; the saved response time here is historical activity. Latest Exam completed uses reliably dated saved attempts. Undated attempts remain in History. Open current quiz opens today’s content, which may differ from the version used for this activity."));
+        detail.append(element("p", "A saved Study response does not indicate quiz completion. Latest Exam completed uses reliably dated saved attempts. Undated attempts remain in History. Quiz links open today’s content, which may differ from a historical review. Study History keeps individual reviews and legacy saved responses."));
         activity.append(detail);
     }
 
@@ -141,9 +186,9 @@
     if (continuation) {
         new MutationObserver(() => {
             if (!loadedData) return;
-            const nextHeading = loadedData.study.entry && continuationFor(loadedData.study.entry)
-                ? document.getElementById("continueStudyHeading").textContent : null;
-            if (nextHeading !== linkedHeading) render(loadedData);
+            const anchor = loadedData.quiz_sequence?.anchor;
+            const shared = Boolean(anchor && continuationFor({quiz_id: anchor.quiz_id, quiz_url: anchor.url}));
+            if (shared !== linkedContinuation) render(loadedData);
         }).observe(
             continuation, {childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"]});
     }

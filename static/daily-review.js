@@ -27,20 +27,34 @@
     recovery.pruneStoredRecords({activeQuizIds});
     const listed = recovery.listStoredRecords({activeQuizIds});
     if (!listed.available) return [];
-    return listed.records.filter(record => record.mode !== "Study" || !completedStudySessions.has(record.learningSessionId)).slice(0, 2).flatMap(record => {
+    const seen = new Set();
+    return listed.records.filter(record => {
+      if (record.mode === "Study" && completedStudySessions.has(record.learningSessionId)) return false;
+      // Only identical display records can be repeated. Distinct session,
+      // owner, fingerprint or revision data must never be merged by title.
+      const key = JSON.stringify([record.quizId, record.sessionId, record.learningSessionId,
+        record.fingerprint, record.ownerToken, record.revision, record.mode, record.phase,
+        record.questionIndex, record.updatedAt, record.pendingStudyCount]);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 2).flatMap(record => {
       const quiz = quizIndex.get(String(record.quizId));
       if (!quiz) return [];
       const finishSaving = record.phase === "submitting";
       const pendingStudy = record.pendingStudyCount > 0;
-      const updated = new Date(record.updatedAt);
+      const updated = typeof record.updatedAt === "number" ? new Date(record.updatedAt) : new Date(NaN);
       const updatedText = Number.isNaN(updated.getTime())
-        ? "recently"
+        ? "saved time unavailable"
         : window.DLMSLocalTime.format(updated.toISOString());
+      const position = Number.isInteger(record.questionIndex) && record.questionIndex >= 0
+        ? `Question ${record.questionIndex + 1}` : "Question position unavailable";
       return [{
-        id: `unfinished-${record.quizId}`,
+        id: `unfinished-${record.quizId}-${record.sessionId || ''}`,
         kind: "unfinished",
         quizTitle: quiz.title,
         needsSave: finishSaving || pendingStudy,
+        checkpointLabel: `Quiz ${record.quizId} · ${position} · ${updatedText}`,
         priority: quiz.generated_kind === "native_due"
           ? 10
           : quiz.generated_kind === "concept_review" ? 20 : 30,
@@ -48,7 +62,7 @@
         reason: finishSaving
           ? `A completed Exam attempt is waiting to finish saving; last updated ${updatedText}.`
           : pendingStudy ? `${record.pendingStudyCount} Study ${record.pendingStudyCount === 1 ? "response needs" : "responses need"} saving in this browser. Last updated ${updatedText}.`
-          : `${record.mode} checkpoint at question ${record.questionIndex + 1} · ${updatedText}.`,
+          : `${record.mode} checkpoint · ${position} · ${updatedText}.`,
         scope: "This browser",
         recovery: record,
         action: {
@@ -121,7 +135,7 @@
         ? `<a class="daily-review-action${saved.completed_at || !saved.unchanged ? ' daily-review-secondary' : ''}" href="${escapeHtml(saved.url)}">${action}</a>` : "Quiz unavailable";
       regular.innerHTML = `<article data-quiz-id="${escapeHtml(saved.quiz_id)}" class="daily-review-item${matched ? ' daily-review-unfinished' : ''}" ${matched?.needsSave ? 'data-needs-save' : ''} ${!saved.completed_at && saved.unchanged ? 'data-unfinished-study' : ''}><div class="daily-review-copy">${continuing ? '<span>Last regular quiz</span>' : ''}<h3>${escapeHtml(saved.title)}</h3><p>${escapeHtml(state)} · ${saved.reviewed} / ${saved.total} reviewed</p>${integrity ? '<p class="dashboard-save-warning">Earlier saves or complete answers are missing. Check Study History; saved records have not been repaired.</p>' : ''}${matched?.needsSave ? `<p class="dashboard-save-warning">${escapeHtml(matched.reason)} This browser.</p>` : ''}</div><div class="daily-review-item-action">${controls}${!matched ? `<details class="dashboard-study-detail"><summary>Study details</summary>${savedTime}${saved.completed_at ? `<p>Review finished: ${escapeHtml(window.DLMSLocalTime.format(saved.completed_at))}</p>` : ''}</details>` : ''}</div></article>`;
     }
-    document.getElementById("continuationList").innerHTML = unfinished.filter(item => item !== matched).map(item => `<article data-quiz-id="${escapeHtml(item.recovery.quizId)}" class="daily-review-item daily-review-unfinished" ${item.needsSave ? 'data-needs-save' : ''}><div class="daily-review-copy"><span>This browser · ${escapeHtml(item.recovery.mode)}</span><h3>${escapeHtml(item.quizTitle)}</h3>${item.needsSave ? `<p class="dashboard-save-warning">${escapeHtml(item.reason)}</p>` : ''}</div><div class="daily-review-item-action">${recoveryControls(item)}</div></article>`).join('');
+    document.getElementById("continuationList").innerHTML = unfinished.filter(item => item !== matched).map(item => `<article data-quiz-id="${escapeHtml(item.recovery.quizId)}" class="daily-review-item daily-review-unfinished" ${item.needsSave ? 'data-needs-save' : ''}><div class="daily-review-copy"><span>This browser · ${escapeHtml(item.recovery.mode)}</span><h3>${escapeHtml(item.quizTitle)}</h3><p class="dashboard-resume-checkpoint">${escapeHtml(item.checkpointLabel)}</p>${item.needsSave ? `<p class="dashboard-save-warning">${escapeHtml(item.reason)}</p>` : ''}</div><div class="daily-review-item-action">${recoveryControls(item)}</div></article>`).join('');
     panel.querySelectorAll('[data-clear-recovery]').forEach(button => {
       button.addEventListener('click', () => clearUnfinishedItem(unfinished.find(item => item.id === button.dataset.clearRecovery)));
     });

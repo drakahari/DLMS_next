@@ -322,13 +322,9 @@ class HelpDocumentationTests(unittest.TestCase):
 
     def test_dashboard_help_distinguishes_sessions_results_and_browser_recovery(self):
         guide = self._static("help-getting-started.html")
-        for wording in ("Study next", "Continue studying", "Resolve Study saves", "Finish saving Exam", "Clear browser resume point", "Manage browser resume point", "Why this suggestion?", "Your activity", "Quick tools", "Last response", "Results overview"):
-            # The activity timestamp label is described without claiming completion.
-            if wording == "Last response":
-                self.assertIn("last-response-saved time", guide)
-            else:
-                self.assertIn(wording, guide)
-        for wording in ("Last regular quiz", "Open current quiz", "Study activity details", "What is counted?", "legacy Study"):
+        for wording in ("Study next", "Continue studying", "Resolve Study saves", "Finish saving Exam", "Clear browser resume point", "Manage browser resume point", "Why this suggestion?", "Your activity", "Quick tools", "Results overview"):
+            self.assertIn(wording, guide)
+        for wording in ("Last regular quiz", "Open current quiz", "Continue your quiz sequence", "What is counted?", "legacy Study"):
             self.assertIn(wording, guide)
         self.assertNotIn("Customize dashboard", guide)
         self.assertNotIn("Customize dashboard", self._static("help-settings.html"))
