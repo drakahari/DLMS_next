@@ -1,6 +1,7 @@
 """Dashboard settings and durable activity integration regressions."""
 
 import json
+import re
 from contextlib import closing
 from pathlib import Path
 from unittest import mock
@@ -159,6 +160,21 @@ def test_invalid_action_and_failed_write_preserve_settings(dashboard):
         assert response.status_code == 500
     assert Path(dlms.PORTAL_CONFIG).read_bytes() == before
     assert save_cards(dashboard, action="defaults").status_code == 302
+
+
+@pytest.mark.parametrize("keys", [[], ["study_history"], ["history"],
+                                 ["recent_activity"], ["study_history", "history", "settings"]])
+def test_focus_desk_groups_keep_independent_visibility(dashboard, keys):
+    assert save_cards(dashboard, keys).status_code == 302
+    main = dashboard.get("/").get_data(as_text=True).split('<main class="dashboard-main"')[1]
+    assert ('class="dashboard-history-grid"' in main) == bool(set(keys) & {"study_history", "history"})
+    assert ('class="dashboard-quick-tools"' in main) == ("settings" in keys)
+    assert ('id="recentActivity"' in main) == ("recent_activity" in keys)
+    history = re.search(r'<section class="dashboard-history-grid"[^>]*>(.*?)</section>', main, re.S)
+    assert re.findall(r'<a[^>]*href="([^"]+)"', history.group(1) if history else '') == [
+        url for key, url in (("study_history", "/study-history"), ("history", "/history")) if key in keys]
+    assert 'class="dashboard-customize" href="/settings/layout#dashboard-panels"' in main
+
 
 
 @pytest.mark.parametrize("raw,study,expected", [
@@ -391,7 +407,7 @@ def test_recent_attempts_bounded_deduplicated_by_identity_and_history_preserved(
     with closing(dlms.get_db()) as conn:
         assert conn.execute("SELECT count(*) FROM attempts").fetchone()[0] == 6
     page = dashboard.get("/").get_data(as_text=True)
-    assert page.index('id="dailyReviewList"') < page.index('id="recentActivity"') < page.index('aria-label="Quick access"')
+    assert page.index('id="dailyReviewList"') < page.index('id="recentActivity"') < page.index('aria-label="Study and Exam history"') < page.index('id="quickToolsHeading"')
     assert 'dashboard-lower-grid' not in page
 
 

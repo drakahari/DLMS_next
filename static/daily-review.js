@@ -99,7 +99,7 @@
   }
 
   function recoveryControls(item) {
-    return `${actionMarkup(item.action)}<button class="daily-review-remove" type="button" data-clear-recovery="${escapeHtml(item.id)}" aria-label="Clear browser resume point for ${escapeHtml(item.quizTitle)}">Clear browser resume point</button>`;
+    return `${actionMarkup(item.action)}<details class="dashboard-resume-management"><summary aria-label="Manage browser resume point for ${escapeHtml(item.quizTitle)}">Manage browser resume point</summary><button class="daily-review-remove" type="button" data-clear-recovery="${escapeHtml(item.id)}" aria-label="Clear browser resume point for ${escapeHtml(item.quizTitle)}">Clear browser resume point</button></details>`;
   }
 
   function renderContinuations(plan) {
@@ -146,6 +146,7 @@
     if (!list || !empty || !count) return;
     const planCard = document.getElementById("activeExamPlan");
     const exam = plan.exam_plan;
+    document.getElementById("reviewSuggestionsExplanation").hidden = Boolean(exam);
     planCard.hidden = !exam && !plan.exam_plan_error;
     if (exam) {
       const config = exam.plan.config, url = `/exam-plans/${encodeURIComponent(exam.plan.id)}`;
@@ -153,11 +154,31 @@
       const changes = Object.values(exam.changes).some(values => values.length) || exam.missing_folders.length;
       const breakdown = (exam.breakdown || []).map(item => `${item.count} ${item.label.toLowerCase()}`).join(' · ');
       const risk = exam.shortfall > 0 ? `<p class="plan-workload-warning"><strong>Estimated workload exceeds available study time by about ${exam.shortfall_rounded} minutes.</strong> Practice can be ready while the overall budget is short.${work.action_url !== url + '/edit' ? ` <a href="${url}/edit">Edit plan</a>.` : ''}</p>` : '';
-      const material = `<p>${exam.stats.included_reviewed} / ${exam.stats.included} included questions reviewed.${exam.stats.unavailable ? ` ${exam.stats.unavailable} included but unavailable.` : ""}</p>${exam.stats.blocked ? `<p>${exam.stats.blocked} questions excluded by Learning Scope. <a href="/learning-scope">Review exclusions</a>.</p>` : ''}`;
+      const material = `<div class="dashboard-plan-coverage"><p>${exam.stats.included_reviewed} / ${exam.stats.included} included questions reviewed.</p>${exam.stats.included > 0 ? `<progress aria-label="Included questions reviewed" value="${exam.stats.included_reviewed}" max="${exam.stats.included}"></progress>` : ''}</div>`;
+      const warnings = `${exam.stats.unavailable ? `<p class="dashboard-material-warning">${exam.stats.unavailable} included but unavailable.</p>` : ''}${exam.stats.blocked ? `<p class="dashboard-material-warning">${exam.stats.blocked} questions excluded by Learning Scope. <a href="/learning-scope">Review exclusions</a>.</p>` : ''}${work.warnings.filter(message=>!message.includes('excluded by Learning Scope')).map(message=>`<p class="dashboard-material-warning">${escapeHtml(message)}</p>`).join('')}${changes ? `<p class="dashboard-material-warning">Study material changed; inspect the plan.</p>` : ''}`;
       const requestId = crypto.randomUUID?.() || ('plan-' + Date.now().toString(16) + Math.random().toString(16).slice(2));
       const primary = exam.selected_count ? `<div id="planPractice" data-plan-id="${escapeHtml(exam.plan.id)}" data-revision="${exam.plan.revision}" data-generation="${escapeHtml(exam.generation)}" data-fingerprint="${escapeHtml(exam.fingerprint)}" data-request-id="${escapeHtml(requestId)}"><button class="daily-review-action" type="button" data-practice="suggested" data-count="${exam.selected_count}">Start suggested work</button><p id="planPracticeStatus" role="status"></p><button id="retryPlanPractice" type="button" hidden>Retry same request</button></div>` :
         work.action_url && work.action_url !== url && work.action_url !== '/learning-scope' ? `<a class="daily-review-action" href="${escapeHtml(work.action_url)}">${escapeHtml(work.action_label)}</a>` : '';
-      planCard.innerHTML = `<article class="daily-review-item"><div class="daily-review-copy"><h3>Your exam plan</h3><h4>${escapeHtml(config.name)} · Exam ${escapeHtml(config.exam_date)}</h4><p><strong>${escapeHtml(work.label)}</strong></p><p>${escapeHtml(work.reason)}</p>${risk}${material}${exam.selected_count ? `<p>${exam.selected_count} questions · about ${exam.estimated_batch} estimated minutes</p><p class="plan-breakdown">${escapeHtml(breakdown)}</p>` : ''}${!exam.selected_count && work.next_study_date ? `<p>${config.paused ? 'Next study date if resumed' : 'Next study date'}: ${escapeHtml(work.next_study_date)} · ${escapeHtml(config.calendar_timezone)}.</p>` : ''}<details><summary>Why this?</summary><p>Breakdown counts each selected question once: coverage needs first, then mistakes, due reviews and other practice. “No recorded answer” means no identifiable saved answer, not proof it was never seen. Coverage / fresh evidence includes previously answered material needing current Study coverage or post-reset evidence.</p><p>${exam.stats.total} selected questions in total; ${exam.stats.reviewed} reviewed across included and excluded material. Exclusions do not imply completion. Unavailable included questions stay in the coverage denominator and can add estimated work when restored.</p><p>${exam.stats.today} distinct questions answered today reduce the budget. First-pass/fresh-evidence target: ${exam.target}. Calendar: ${escapeHtml(config.calendar_timezone)}.${exam.estimate_available ? ` Base shortfall: ${exam.shortfall} estimated minutes.` : ' A useful workload estimate needs included, available material.'} Estimates are uncertain.</p>${exam.selected_count && work.next_study_date ? `<p>${config.paused ? 'Next study date if resumed' : 'Next study date'}: ${escapeHtml(work.next_study_date)}.</p>` : ''}${work.next_review_date ? `<p>Next scheduled review: ${escapeHtml(work.next_review_date)}.</p>` : ''}${work.next_review_date && work.next_study_date && work.next_review_date !== work.next_study_date ? '<p>The review date comes from spaced review; the study date comes from your chosen Study days. Neither date changes the other.</p>' : ''}${work.warnings.filter(message=>!message.includes('excluded by Learning Scope')).map(message=>`<p>${escapeHtml(message)}</p>`).join('')}${changes ? '<p>Study material changed; inspect the plan.</p>' : ''}</details><div class="daily-review-item-action">${primary}<a href="${url}">View plan</a></div></div></article>`;
+      planCard.innerHTML = `<article class="daily-review-item"><div class="daily-review-copy">
+        <h3 class="dashboard-plan-eyebrow">Your exam plan</h3>
+        <h4>${escapeHtml(config.name)} · Exam ${escapeHtml(config.exam_date)}</h4>
+        <p class="dashboard-plan-state"><strong>${escapeHtml(work.label)}</strong></p>
+        ${exam.selected_count ? `<p class="dashboard-batch-size"><strong>${exam.selected_count}</strong> questions <span>· about ${exam.estimated_batch} estimated minutes</span></p><p class="plan-breakdown">${escapeHtml(breakdown)}</p>` : `<p>${escapeHtml(work.reason)}</p>`}
+        ${risk}${warnings}
+        ${!exam.selected_count && work.next_study_date ? `<p>${config.paused ? 'Next study date if resumed' : 'Next study date'}: ${escapeHtml(work.next_study_date)} · ${escapeHtml(config.calendar_timezone)}.</p>` : ''}
+        <div class="daily-review-item-action dashboard-plan-actions">${primary}<a href="${url}">View plan</a></div>
+        ${material}
+        <details class="dashboard-plan-explanation"><summary>Why this suggestion?</summary>
+          ${exam.selected_count ? `<p>${escapeHtml(work.reason)}</p>` : ''}
+          <p>Breakdown counts each selected question once: coverage needs first, then mistakes, due reviews and other practice. “No recorded answer” means no identifiable saved answer, not proof it was never seen. Coverage / fresh evidence includes previously answered material needing current Study coverage or post-reset evidence.</p>
+          <p>${exam.stats.total} selected questions in total; ${exam.stats.reviewed} reviewed across included and excluded material. Exclusions do not imply completion. Unavailable included questions stay in the coverage denominator and can add estimated work when restored.</p>
+          <p>${exam.stats.today} distinct questions answered today reduce the budget. First-pass/fresh-evidence target: ${exam.target}. Calendar: ${escapeHtml(config.calendar_timezone)}.${exam.estimate_available ? ` Base shortfall: ${exam.shortfall} estimated minutes.` : ' A useful workload estimate needs included, available material.'} Estimates are uncertain.</p>
+          ${exam.selected_count && work.next_study_date ? `<p>${config.paused ? 'Next study date if resumed' : 'Next study date'}: ${escapeHtml(work.next_study_date)}.</p>` : ''}
+          ${work.next_review_date ? `<p>Next scheduled review: ${escapeHtml(work.next_review_date)}.</p>` : ''}
+          ${work.next_review_date && work.next_study_date && work.next_review_date !== work.next_study_date ? '<p>The review date comes from spaced review; the study date comes from your chosen Study days. Neither date changes the other.</p>' : ''}
+          <p>${exam.stats.blocked ? 'Learning Scope controls included material.' : '<a href="/learning-scope">Manage Learning Scope</a> to choose included material.'} Browser resume points are separate from recommendations.</p><a href="/exam-plans">Exam Plans</a>
+        </details>
+      </div></article>`;
       window.DLMSExamPlans?.initPractice(planCard.querySelector('#planPractice'));
     } else if (plan.exam_plan_error) {planCard.textContent = plan.exam_plan_error;}
     const items = (plan.items || []).filter(item => item.kind !== "unfinished");

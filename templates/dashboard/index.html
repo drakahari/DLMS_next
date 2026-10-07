@@ -133,7 +133,7 @@
                     <div id="activeExamPlan" hidden></div>
                     <div id="dailyReviewList" class="daily-review-list" aria-live="polite"><p>Loading your next study action…</p></div>
                     <div id="dailyReviewEmpty" class="daily-review-empty" hidden></div>
-                    <details class="dashboard-study-options"><summary>About suggestions</summary><p>Suggestions use existing Learning Intelligence evidence and your selected plan. <a href="/learning-scope">Manage Learning Scope</a> to choose included material. Browser resume points are separate from recommendations.</p><a href="/exam-plans">Exam Plans</a></details>
+                    <details id="reviewSuggestionsExplanation" class="dashboard-study-options"><summary>Why this suggestion?</summary><p>Suggestions use existing Learning Intelligence evidence. <a href="/learning-scope">Manage Learning Scope</a> to choose included material. Browser resume points are separate from recommendations.</p><a href="/exam-plans">Exam Plans</a></details>
                 </div>
                 <aside id="continueStudyPanel" aria-labelledby="continueStudyHeading" hidden>
                     <h2 id="continueStudyHeading">Continue studying</h2>
@@ -161,7 +161,7 @@
                 <div class="dashboard-panel-heading">
                     <div>
                         <span class="dashboard-heading-icon" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#activity"></use></svg></span>
-                        <h2>Recent activity</h2>
+                        <h2>Your activity</h2>
                     </div>
                 </div>
 
@@ -171,8 +171,8 @@
             </div>
 
             {% endif %}
-        {% if visibility.library or visibility.build or visibility.study_packs or visibility.it or visibility.law or visibility.study_history or visibility.history or visibility.analytics or visibility.settings or (visibility.medical and medical_pack_installed) %}
-        <section class="dashboard-action-grid" aria-label="Quick access">
+        {% if visibility.study_history or visibility.history %}
+        <section class="dashboard-history-grid" aria-label="Study and Exam history">
             {% if visibility.study_history %}
             <a class="dashboard-action-card" href="/study-history">
                 <div class="dashboard-action-icon icon-purple" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg></div>
@@ -195,7 +195,12 @@
             </a>
             {% endif %}
 
-
+        </section>
+        {% endif %}
+        {% if visibility.library or visibility.build or visibility.study_packs or visibility.it or visibility.law or visibility.analytics or visibility.settings or (visibility.medical and medical_pack_installed) %}
+        <section class="dashboard-quick-tools" aria-labelledby="quickToolsHeading">
+        <h2 id="quickToolsHeading">Quick tools</h2>
+        <div class="dashboard-action-grid">
             {% if visibility.library %}
             <a class="dashboard-action-card" href="/library">
                 <div class="dashboard-action-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#library"></use></svg></div>
@@ -283,6 +288,7 @@
                 <svg class="dlms-icon dashboard-action-arrow" aria-hidden="true" focusable="false"><use href="/static/icons.svg#forward"></use></svg>
             </a>
             {% endif %}
+        </div>
         </section>
         {% endif %}
 

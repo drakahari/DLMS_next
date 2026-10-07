@@ -191,6 +191,30 @@ by omitting those environment variables.
 
 ## Calmer dashboard and separate histories
 
+### Focus desk refresh
+
+Source baseline: `a6de89e32b2b775fa87650ff0ce1cec405e3c9b8`, plus the
+Focus desk presentation changes. Capture actual application controls with
+disposable data; the design-explorer illustrations are not Help screenshots.
+
+```sh
+focus_review_dir="$HOME/.cache/dlms-focus-desk-review"
+mkdir -p "$focus_review_dir/runtime" "$focus_review_dir/captures"
+TMPDIR="$focus_review_dir/runtime" DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
+DLMS_PRESENTATION_CAPTURE_DIR="$focus_review_dir/captures" \
+python -m pytest -q -p no:cacheprovider -m browser \
+--basetemp="$focus_review_dir/runtime/pytest" \
+tests/browser/test_critical_workflows.py -k calm_dashboard_identity
+```
+
+This retains whole-dashboard desktop/narrow PNGs outside the repository and
+produces `dashboard.webp` and `exam-plan-dashboard.webp` crops from Light at
+1440 and 390 pixels. Inspect them before copying only those two crops into
+`static/help_assets/`; update their Help dimensions, captions and alt text.
+Keep the existing image links for keyboard-accessible enlargement.
+The test also checks 1024/320 pixels and 200% text resizing. History and workload
+detail screenshots do not need replacing for this presentation-only update.
+
 Source baseline: `ce44530cc843f360b507d36055abb05ceaa99b88` plus the reviewed
 calmer-dashboard working tree. Use disposable data; never capture personal quizzes.
 
