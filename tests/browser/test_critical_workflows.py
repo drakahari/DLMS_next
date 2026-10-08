@@ -16523,3 +16523,80 @@ def test_certification_legacy_date_classification_error_retry(browser_stack,clas
         assert c.execute('SELECT COUNT(*) FROM certification_actions WHERE request_id=?',(identity['request'],)).fetchone()[0]==1
     b.navigate(base+'/certifications/'+cid);b.wait_for_page_ready()
     assert 'Classified by you as '+classification.replace('_',' ') in b.evaluate("document.querySelector('.cert-warning').textContent")
+
+
+def _check_certification_control_spacing(browser_stack, theme, native_zoom=False):
+    """Two control layouts, with actual sorting and keyboard training navigation."""
+    import uuid
+    from dlms.services import certifications as service
+    from tests.browser._help_screenshots import capture_control
+    b,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    if native_zoom:b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.row_factory=sqlite3.Row
+        def add(action,data,**parents):
+            return service.apply(conn,dict(action=action,data=data,request_id=uuid.uuid4().hex,**service.state(conn.cursor()),**parents))['id']
+        cid=add('certification',dict(name='Zulu security credential',issuer='Sample training association',earned='2025-01-01',expiration='2029-11-01',required=40))
+        alpha=add('certification',dict(name='Alpha architecture credential',issuer='Sample training association',earned='2026-01-01',expiration='2030-11-01'))
+        pid=service.detail(conn.cursor(),cid)['cycles'][0]['id']
+        tid=add('training',dict(name='Practical security course',provider='Sample provider',completed='2026-10-01',duration_minutes=562))
+        add('allocation',dict(hours=9,proposed=10,submitted=9,accepted=9),cycle_id=pid,training_id=tid)
+        facts={table:list(conn.execute('SELECT * FROM '+table)) for table in ('certification_cycles','certification_allocations','learning_events','study_sessions')}
+    output=os.environ.get('DLMS_CERT_CONTROL_CAPTURE_DIR')
+    layouts=[]
+    for width in ((None,) if native_zoom else (1440,390)):
+        if width:b.set_viewport(width,1000)
+        variant=str(width or 'native200')+'-'+theme
+        b.navigate(base+'/certifications');b.wait_for_page_ready()
+        b.evaluate("document.querySelector('[name=sort]').value='name';true")
+        b.click('form[action="/certifications/display"] button')
+        b.wait_for_page_ready("location.pathname==='/certifications' && document.querySelector('[name=sort]')?.value==='name'")
+        b.navigate(base+'/certifications')
+        assert b.evaluate("[...document.querySelectorAll('.cert-card')].map(n=>n.getAttribute('href'))")==['/certifications/'+alpha,'/certifications/'+cid]
+        assert json.loads((root/'config/portal.json').read_text())['certification_sort']=='name'
+        b.activate();b.evaluate("document.querySelector('[name=sort]').focus();true");b.press_key('\ue004')
+        assert b.evaluate("document.activeElement.matches('form[action=\"/certifications/display\"] button:focus-visible')")
+        sort=b.evaluate("""(()=>{const f=document.querySelector('form[action="/certifications/display"]'),s=f.querySelector('select').getBoundingClientRect(),b=f.querySelector('button').getBoundingClientRect();return {select:{left:s.left,right:s.right,top:s.top,bottom:s.bottom},button:{left:b.left,right:b.right,top:b.top,bottom:b.bottom},overflow:document.documentElement.scrollWidth>innerWidth};})()""")
+        if output:
+            capture_control(b,Path(output)/('sort-'+variant+'.webp'),'form[action="/certifications/display"]')
+            (Path(output)/('list-'+variant+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+        b.navigate(base+'/certifications/'+cid);b.wait_for_page_ready()
+        b.activate();b.evaluate("document.querySelector('.cert-period-content > section > details:last-of-type > summary').focus();true");b.press_key('\ue004')
+        assert b.evaluate("document.activeElement.matches('[data-use-training]:focus-visible')")
+        detail=b.evaluate("""(()=>{const b=document.querySelector('[data-use-training]'),r=b.getBoundingClientRect(),a=document.querySelector('.cert-cycle .cert-log-row').getBoundingClientRect();return {gap:a.top-r.bottom,margin:getComputedStyle(b).marginBottom,overflow:document.documentElement.scrollWidth>innerWidth,href:b.getAttribute('href')};})()""")
+        assert detail['href']=='/certifications/'+cid+'/cycles/'+pid+'/allocate'
+        if native_zoom:
+            assert b.evaluate('devicePixelRatio===2 && getComputedStyle(document.documentElement).fontSize==="16px"')
+            physical=next(w['width'] for w in b.command('browser.getClientWindows',{})['clientWindows'] if w['active'])
+            assert abs(b.evaluate('innerWidth*devicePixelRatio')-physical)<=2
+        if output:
+            capture_control(b,Path(output)/('training-'+variant+'.webp'),'.cert-cycle')
+            (Path(output)/('detail-'+variant+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+            (Path(output)/('metrics-'+variant+'.json')).write_text(json.dumps(dict(sort=sort,detail=detail),indent=2))
+        b.press_key('\ue007')
+        b.wait_for_page_ready("document.querySelector('[name=kind]')?.value==='allocation'")
+        assert b.evaluate("document.querySelector('[name=cycle_id]').value")==pid
+        layouts.append((variant,sort,detail))
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.row_factory=sqlite3.Row
+        for table,rows in facts.items():assert list(conn.execute('SELECT * FROM '+table))==rows
+    for variant,sort,detail in layouts:
+        assert not sort['overflow'] and not detail['overflow'],variant
+        if sort['button']['left']>=sort['select']['right']:
+            assert abs(sort['button']['bottom']-sort['select']['bottom'])<=1,(variant,sort)
+        else:
+            assert sort['button']['top']-sort['select']['bottom']>=8,(variant,sort)
+        assert detail['gap']>=12,(variant,detail)
+
+
+@pytest.mark.parametrize('theme',('light','dark'))
+def test_certification_control_spacing(browser_stack,theme):
+    _check_certification_control_spacing(browser_stack,theme)
+
+
+@pytest.mark.parametrize('theme',('light','dark'))
+def test_certification_native_zoom_control_spacing(browser_stack,theme):
+    _check_certification_control_spacing(browser_stack,theme,True)

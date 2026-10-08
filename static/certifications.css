@@ -60,6 +60,8 @@
 .cert-aligned-actions {align-items:end;}
 .cert-aligned-actions > label {display:grid;gap:.5rem;margin:0;flex:1;min-width:min(100%,16rem);}
 .cert-aligned-actions > button {margin:0;}
+.cert-workspace form.cert-aligned-actions > label {margin-block:0;}
+.cert-workspace form.cert-aligned-actions select[name=sort] {min-height:44px;box-sizing:border-box;}
 .cert-period-content {display:block;}
 .cert-period-content > section {min-width:0;}
 .cert-period-content > section + section {margin-top:1rem;}
@@ -75,4 +77,3 @@
 .cert-workspace .cert-fields > label > :is(input,select) {min-height:44px;box-sizing:border-box;}
 
 .cert-workspace :is(input[name=field_annual_goal],input[name=track_annual_amount]) {width:min(100%,12rem);box-sizing:border-box;}
-.cert-workspace [data-use-training] {margin-bottom:1rem;}
