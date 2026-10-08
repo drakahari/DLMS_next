@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from PIL import Image, ImageOps
 from pypdf import PdfReader
 from dlms.prompts import DEFAULT_CERTIFICATION_PROMPT, DEFAULT_PORTFOLIO_PROMPT
-from dlms.services import certification_tracking as tracking
+from dlms.services import certification_tracking as tracking, certification_time as duration
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 16_000_000
@@ -100,14 +100,20 @@ def normalize(kind, data):
         result=dict(name=text(data.get('name',''),'Activity / course',200,True),provider=text(data.get('provider',''),'Provider',200),
                     completed=day(data.get('completed',''),'Completion date',True),hours=amount(data.get('hours',0),'Recorded hours'),
                     notes=text(data.get('notes',''),'Training notes',5000),certificate=attachment_ref(data.get('certificate','')))
+        if 'duration_minutes' in data:
+            result['duration_minutes'] = duration.validate(data['duration_minutes'])
+            result['hours'] = duration.hours_projection(result['duration_minutes'])
         if 'course_url' in data:result['course_url']=policy_url(data['course_url'])
         if 'topics' in data:result['topics']=text(data['topics'],'Public course description / topics',3000)
         return result
     if kind=='allocation':
         result=dict(hours=amount(data.get('hours',0),'Hours associated with this cycle'),submitted=amount(data.get('submitted',0),'Submitted credit'),
                     accepted=amount(data.get('accepted',0),'Accepted credit'),notes=text(data.get('notes',''),'Allocation notes',2000))
-        for key in ('proposed',):
-            if key in data:result[key]=amount(data[key] or 0,'Proposed credit')
+        if 'duration_minutes' in data:
+            result['duration_minutes'] = duration.validate(data['duration_minutes'])
+            result['hours'] = duration.hours_projection(result['duration_minutes'])
+        if 'proposed' in data:
+            result['proposed'] = None if data['proposed'] in (None, '') else amount(data['proposed'], 'Estimated contribution')
         for key in ('rationale','category'):
             if key in data:result[key]=text(data[key],key.title(),2000 if key=='rationale' else 100)
         if 'source' in data:result['source']=policy_url(data['source'])
@@ -190,12 +196,16 @@ def records(cur,table):
     return rows
 
 
-def collection(cur):
+def collection(cur, sort='earned'):
     result=records(cur,'certifications')
     latest={}
     for period in records(cur,'certification_cycles'):
         if period['certification_id'] not in latest or period.get('period_order',0)>latest[period['certification_id']].get('period_order',0):latest[period['certification_id']]=period
-    for row in result:row['status']=tracking.status(row,latest.get(row['id']))
+    for row in result:
+        row['status']=tracking.status(row,latest.get(row['id']))
+        row['expiration'] = latest.get(row['id'], {}).get('data', {}).get('expiration', '')
+    if sort == 'name':return sorted(result, key=lambda r:(r['data']['name'].casefold(), r['id']))
+    if sort == 'expiration':return sorted(result, key=lambda r:(not bool(r['expiration']), r['expiration'], r['id']))
     return sorted(result,key=lambda r:(r['data']['earned'],r['id']),reverse=True)
 
 
@@ -217,6 +227,8 @@ def detail(cur,record_id):
         cycle['allocations']=[{**a,'training':activities[a['training_id']]} for a in allocations if a['cycle_id']==cycle['id']]
         cycle['totals']={key:round(sum(a['data'][key] for a in cycle['allocations']),2) for key in ('hours','submitted','accepted')}
         cycle['progress']=tracking.progress(cycle)
+        cycle['planning']=tracking.planning_progress(cycle)
+        cycle['duration_label']=duration.label({'duration_minutes':duration.number(sum((duration.minutes(a['data']) for a in cycle['allocations']), Decimal(0)))})
     cert['status']=tracking.status(cert,cycles[0] if cycles else None)
     return dict(certification=cert,cycles=cycles)
 
@@ -244,7 +256,7 @@ def validate_period(cur, cert_id, cert_data, proposed, existing=None, *, new_ren
     return order
 
 
-def apply(conn, payload, uploads=None):
+def apply(conn, payload, uploads=None, *, _nested=False):
     """Global optimistic revision + durable action identity protects retries/tabs/restore."""
     if not isinstance(payload,dict):raise ValueError('A certification request is required.')
     request_id=identifier(payload.get('request_id')); generation=identifier(payload.get('generation'))
@@ -256,21 +268,44 @@ def apply(conn, payload, uploads=None):
         mime,clean=result if isinstance(result,tuple) else (result,content)
         prepared[key]=(mime,clean)
     digest=sha256(json.dumps({'request':payload,'uploads':{k:sha256(v[1]).hexdigest() for k,v in prepared.items()}},sort_keys=True).encode()).hexdigest()
-    conn.execute('BEGIN IMMEDIATE')
+    if not _nested:conn.execute('BEGIN IMMEDIATE')
     try:
         cur=conn.cursor(); current=state(cur)
         if generation!=current['generation']:raise Conflict('This form predates a restore. Reopen the record; no change was applied.')
         old=cur.execute('SELECT * FROM certification_actions WHERE request_id=?',(request_id,)).fetchone()
         if old:
             if old['input_hash']!=digest:raise Conflict('This request was already used for different changes. Reopen the record.')
-            conn.rollback();return json.loads(old['result_json'])
+            if not _nested:conn.rollback()
+            return json.loads(old['result_json'])
         if type(payload.get('revision')) is not int or payload['revision']!=current['revision']:
             raise Conflict('Certifications changed in another tab. Reopen the record and compare before saving; your changes were not applied.')
         total=cur.execute('SELECT COALESCE(SUM(length(content)),0) FROM certification_attachments').fetchone()[0]
         if total+sum(len(v[1]) for v in prepared.values())>256*1024*1024:raise ValueError('Managed certification evidence exceeds the supported 256 MiB limit; keep a verified external copy before removing unused evidence.')
         action=payload.get('action'); data=payload.get('data',{}); record_id=payload.get('id') or uuid.uuid4().hex
         identifier(record_id)
-        if action in ('certification','cycle','training','allocation'):
+        if action == 'use_training':
+            training = get(cur, 'certification_training', payload.get('training_id'))
+            entries = payload.get('entries')
+            if not isinstance(entries, list) or not 1 <= len(entries) <= 200:
+                raise ValueError('Choose between 1 and 200 certifications. Nothing was saved.')
+            seen = set()
+            for entry in entries:
+                if not isinstance(entry, dict):raise ValueError('Invalid renewal selection.')
+                cid = identifier(entry.get('certification_id'))
+                if cid in seen:raise ValueError('Choose each certification once.')
+                seen.add(cid)
+                period = get(cur, 'certification_cycles', entry.get('cycle_id'))
+                if period['certification_id'] != cid:raise Conflict('The selected period belongs to another certification. Reopen your selection.')
+                existing = cur.execute('SELECT id,data_json FROM certification_allocations WHERE cycle_id=? AND training_id=?', (period['id'], training['id'])).fetchone()
+                data = json.loads(existing['data_json']) if existing else dict(hours=0, duration_minutes=duration.number(duration.minutes(training['data'])), submitted=0, accepted=0)
+                data['proposed'] = entry.get('proposed')
+                child = dict(action='allocation', id=existing['id'] if existing else None,
+                    request_id=uuid.uuid5(uuid.UUID(request_id), period['id']).hex,
+                    **state(cur), data=data, certification_id=cid, cycle_id=period['id'], training_id=training['id'])
+                apply(conn, child, _nested=True)
+            record_id = training['id']
+        elif action in ('certification','cycle','training','allocation'):
+
             table={'certification':'certifications','cycle':'certification_cycles','training':'certification_training','allocation':'certification_allocations'}[action]
             existing=cur.execute(f'SELECT * FROM {table} WHERE id=?',(record_id,)).fetchone()
             if payload.get('id') and not existing:raise Conflict('This record was removed. No replacement was created.')
@@ -278,6 +313,10 @@ def apply(conn, payload, uploads=None):
             data=dict(data)
             if existing:
                 previous=json.loads(existing['data_json'])
+                if action in ('training','allocation') and 'duration_minutes' in previous and 'duration_minutes' not in data:
+                    if 'hours' in data and amount(data['hours'], 'Hours') != previous['hours']:
+                        raise ValueError('Use the Hours and Minutes fields to change this exact duration.')
+                    data['duration_minutes'] = previous['duration_minutes']
                 for key in ('version','standing','relationships','tracking','renewal_source','course_url','topics','proposed','rationale','category','source','reporting_date','reviewed'):
                     if key in previous:data.setdefault(key,previous[key])
             for key,(mime,content) in prepared.items():
@@ -322,7 +361,7 @@ def apply(conn, payload, uploads=None):
                 cycle=get(cur,'certification_cycles',cycle_id)
                 if payload.get('certification_id') not in (None,cycle['certification_id']):raise Conflict('The allocation belongs to a different certification. Reopen its record.')
                 training=get(cur,'certification_training',training_id)
-                if normalized['hours']>training['data']['hours']:raise ValueError('Associated hours cannot exceed the activity’s recorded hours.')
+                if duration.minutes(normalized)>duration.minutes(training['data']):raise ValueError('Associated hours cannot exceed the activity’s recorded hours.')
                 rules=cycle['data'].get('tracking',{})
                 reporting=normalized.get('reporting_date') or training['data']['completed']
                 if normalized.get('reporting_date') and reporting!=training['data']['completed'] and not normalized.get('rationale'):
@@ -388,9 +427,11 @@ def apply(conn, payload, uploads=None):
         cur.execute('UPDATE certification_state SET revision=revision+1 WHERE id=1')
         result=dict(ok=True,id=record_id,**state(cur))
         cur.execute('INSERT INTO certification_actions VALUES(?,?,?,?)',(request_id,generation,digest,json.dumps(result)))
-        conn.commit();return result
+        if not _nested:conn.commit()
+        return result
     except Exception:
-        conn.rollback();raise
+        if not _nested:conn.rollback()
+        raise
 
 
 def curated_prompt(cur,cert_id,cycle_id,selection,question,template=None,include_certification=False,include_cycle=False):
@@ -408,7 +449,7 @@ def curated_prompt(cur,cert_id,cycle_id,selection,question,template=None,include
         row=get(cur,'certification_allocations',allocation_id)
         if row['cycle_id']!=cycle_id:raise ValueError('Select activities from this cycle only.')
         training=get(cur,'certification_training',row['training_id'])
-        activities.append({**{k:training['data'][k] for k in ('name','provider','completed','hours')},**{k:row['data'][k] for k in ('submitted','accepted')}})
+        activities.append({**{k:training['data'][k] for k in ('name','provider','completed')}, 'learning_time':duration.label(training['data']), 'learning_minutes':duration.number(duration.minutes(training['data'])),**{k:row['data'][k] for k in ('submitted','accepted')}})
     if activities:context['selected_training']=activities
     context['question']=text(question,'Question for the AI',2000,True)
     # Notes and attachments are intentionally not eligible context fields.
@@ -496,6 +537,6 @@ def portfolio_prompt(cur, certification_ids, training_ids, question, template=No
     activities=[]
     for tid in training_ids:
         row=get(cur,'certification_training',tid)['data']
-        activities.append({k:row[k] for k in ('name','provider','completed','hours','course_url','topics') if k in row})
+        activities.append({**{k:row[k] for k in ('name','provider','completed','course_url','topics') if k in row}, 'learning_time':duration.label(row), 'learning_minutes':duration.number(duration.minutes(row))})
     context=dict(credentials=credentials,training=activities,question=text(question,'Question',2000,True))
     return (template or DEFAULT_PORTFOLIO_PROMPT).replace('{{portfolio_context}}',json.dumps(context,ensure_ascii=False,indent=2))

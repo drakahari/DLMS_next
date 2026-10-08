@@ -85,3 +85,12 @@ def validate_relationship_constraints(conn):
 
 def invalidate(conn):
     conn.execute('UPDATE certification_state SET generation=lower(hex(randomblob(16))),revision=revision+1 WHERE id=1')
+
+
+def migrate_minutes(conn):
+    """Version guard for exact-duration/nullable-estimate JSON; no row conversion.
+
+    Schema-8 writers drop these fields, so must refuse this newer database.
+    Existing decimal hours and all history remain byte-for-byte unchanged.
+    """
+    validate_state(conn)

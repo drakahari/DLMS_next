@@ -298,7 +298,7 @@ d.bootstrap_database(sys.argv[1],schema_version=7,legacy_schema_version=1,legacy
         run=subprocess.run([sys.executable,'-c',script,str(path)],cwd=Path(dlms.__file__).parent,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=15)
         self.assertEqual(run.returncode,73,run.stderr)
         with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
-        self.assertEqual(dlms.bootstrap_database(str(path))['version'],8)
+        self.assertEqual(dlms.bootstrap_database(str(path))['version'],9)
         cid=self.create('Survives app restart')
         script="""import app,sys
 from dlms.services import certifications
@@ -621,7 +621,7 @@ finally:c.close()
         from zipfile import ZipFile
         cid=self.apply(self.request('certification',dict(name='Custom',issuer='Arbitrary issuer',earned='2025-06-01',tracking=dict(requirement_known=False,annual_kind='unknown'))),{'badge':self.png(),'certificate':self.pdf()})['id']
         self.apply(self.request('training',dict(name='Public course',completed='2026-01-01',hours=2,topics='A public description',course_url='https://example.org')))
-        cfg=dlms.load_portal_config();cfg.update(show_certifications=False,portfolio_ai_prompt_template='CUSTOM {{portfolio_context}}',certification_ai_prompt_template='INDEPENDENT {{certification_context}}');dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
+        cfg=dlms.load_portal_config();cfg.update(show_certifications=False,certification_display_count='11',certification_sort='expiration',portfolio_ai_prompt_template='CUSTOM {{portfolio_context}}',certification_ai_prompt_template='INDEPENDENT {{certification_context}}');dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
         backup,manifest=dlms._create_dlms_backup('portfolio-roundtrip')
         stage=Path(dlms.APP_DATA_DIR)/'portfolio-stage';stage.mkdir()
         report=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),report);dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
@@ -633,18 +633,19 @@ finally:c.close()
         configs=[p for p in stage.rglob('*.json') if 'portfolio_ai_prompt_template' in p.read_text()]
         self.assertTrue(configs)
         saved=next(json.loads(p.read_text()) for p in configs if 'show_certifications' in json.loads(p.read_text()))
+        self.assertEqual(saved['certification_display_count'],'11');self.assertEqual(saved['certification_sort'],'expiration')
         self.assertFalse(saved['show_certifications']);self.assertEqual(saved['certification_ai_prompt_template'],'INDEPENDENT {{certification_context}}')
     def test_visibility_and_independent_prompts_survive_real_restart(self):
         import os,subprocess,sys
-        cid=self.create();cfg=dlms.load_portal_config();cfg.update(certification_display_count='all',portfolio_ai_prompt_template='PORTFOLIO {{portfolio_context}}',certification_ai_prompt_template='SINGLE {{certification_context}}')
+        cid=self.create();cfg=dlms.load_portal_config();cfg.update(certification_display_count='11',certification_sort='name',portfolio_ai_prompt_template='PORTFOLIO {{portfolio_context}}',certification_ai_prompt_template='SINGLE {{certification_context}}')
         with dlms.get_db() as c:before={t:list(c.execute('SELECT * FROM '+t)) for t in cert.TABLES}
         for enabled in (False,True):
             cfg['show_certifications']=enabled;dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
-            code="import app,json; c=app.load_portal_config(); print('CHECK:'+json.dumps({k:c[k] for k in ('show_certifications','certification_display_count','portfolio_ai_prompt_template','certification_ai_prompt_template')}))"
+            code="import app,json; c=app.load_portal_config(); print('CHECK:'+json.dumps({k:c[k] for k in ('show_certifications','certification_display_count','certification_sort','portfolio_ai_prompt_template','certification_ai_prompt_template')}))"
             result=subprocess.run([sys.executable,'-c',code],cwd=Path(dlms.__file__).parent,env={**os.environ,'QUIZAPP_DATA_DIR':dlms.APP_DATA_DIR,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stderr)
             actual=json.loads(next(line[6:] for line in result.stdout.splitlines() if line.startswith('CHECK:')))
-            self.assertIs(actual['show_certifications'],enabled);self.assertEqual(actual['certification_display_count'],'all')
+            self.assertIs(actual['show_certifications'],enabled);self.assertEqual(actual['certification_display_count'],'11');self.assertEqual(actual['certification_sort'],'name')
             self.assertEqual(actual['portfolio_ai_prompt_template'],cfg['portfolio_ai_prompt_template']);self.assertEqual(actual['certification_ai_prompt_template'],cfg['certification_ai_prompt_template'])
         with dlms.get_db() as c:self.assertEqual({t:list(c.execute('SELECT * FROM '+t)) for t in cert.TABLES},before)
         for bad in (None,'false',0,[],{}):
@@ -678,7 +679,7 @@ finally:c.close()
         form=self.client.get('/certifications/'+cid+'/edit').get_data(as_text=True)
         self.assertRegex(form,r'name="track_annual_amount"[^>]*value=""')
         self.apply(self.request('training',dict(name='One activity',completed='2026-01-01',hours=1)))
-        self.assertIn('1 saved activity.',self.client.get('/certifications/training').get_data(as_text=True))
+        self.assertIn('1 saved course.',self.client.get('/certifications/training').get_data(as_text=True))
 
     def test_reporting_calendar_extremes_remain_viewable_and_restorable(self):
         for year in ('0001', '9999'):
@@ -723,3 +724,171 @@ finally:c.close()
         self.assertEqual(p['categories'][0]['over_cap'], .10)
         self.assertEqual(p['annual'][0]['remaining'], .10)
         self.assertEqual(self.cycle(cid)['totals']['accepted'], .40)
+
+    def test_exact_minutes_bulk_estimates_and_backup(self):
+        from dlms.services import certification_time
+        payload=self.request('training',dict(name='9 h 22 min course',provider='Any provider',completed='2026-10-01',duration_minutes=562,notes='PRIVATE'))
+        activity=self.apply(payload)['id']
+        with dlms.get_db() as c:
+            row=cert.get(c.cursor(),'certification_training',activity)['data']
+            self.assertEqual(certification_time.label(row),'9 h 22 min')
+            self.assertEqual(row['duration_minutes'],562)
+        a=self.apply(self.request('certification',dict(name='Hours goal',issuer='Custom',required=20,unit='hours',tracking=dict(requirement_known=True),expiration='2028-01-01')))['id']
+        b=self.apply(self.request('certification',dict(name='Unknown conversion',issuer='Custom',unit='PDU',expiration='2028-01-01')))['id']
+        periods=[self.cycle(a),self.cycle(b)]
+        page=self.client.get('/certifications/training/'+activity+'/renewals').get_data(as_text=True)
+        self.assertIn('9 h 22 min',page);self.assertIn('value="9.37"',page)
+        batch=self.request('use_training',training_id=activity,entries=[dict(certification_id=a,cycle_id=periods[0]['id'],proposed='9.37'),dict(certification_id=b,cycle_id=periods[1]['id'],proposed=None)])
+        saved=self.apply(batch);self.assertEqual(saved,self.apply(batch))
+        self.assertEqual(self.cycle(a)['planning']['accepted'],9.37)
+        self.assertEqual(self.cycle(a)['totals']['accepted'],0)
+        self.assertEqual(self.cycle(a)['duration_label'],'9 h 22 min')
+        self.assertEqual(self.cycle(b)['planning']['unknown'],1)
+        with dlms.get_db() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0],2)
+            prompt=cert.portfolio_prompt(c.cursor(),[a,b],[activity],'Compare')
+            self.assertIn('9 h 22 min',prompt);self.assertIn('562',prompt);self.assertNotIn('PRIVATE',prompt)
+            cert.validate_restored(c)
+        backup,manifest=dlms._create_dlms_backup('exact-minutes')
+        stage=Path(dlms.APP_DATA_DIR)/'minute-stage';stage.mkdir()
+        checked=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),checked)
+        dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
+        with sqlite3.connect(stage/'results.db') as c:
+            c.row_factory=sqlite3.Row
+            self.assertEqual(cert.get(c.cursor(),'certification_training',activity)['data']['duration_minutes'],562)
+            self.assertEqual(cert.detail(c.cursor(),a)['cycles'][0]['duration_label'],'9 h 22 min')
+
+    def test_bulk_failure_stale_retry_and_existing_acceptance_are_atomic(self):
+        a=self.create('A');b=self.create('B');pa=self.cycle(a);pb=self.cycle(b)
+        tid=self.apply(self.request('training',dict(name='Course',completed='2026-01-01',duration_minutes=562)))['id']
+        bad=self.request('use_training',training_id=tid,entries=[dict(certification_id=a,cycle_id=pa['id'],proposed=5),dict(certification_id=b,cycle_id=pb['id'],proposed='bad')])
+        with dlms.get_db() as c:before=list(c.iterdump())
+        with self.assertRaises(ValueError):self.apply(bad)
+        with dlms.get_db() as c:self.assertEqual(list(c.iterdump()),before)
+        good={**bad,'entries':[dict(certification_id=a,cycle_id=pa['id'],proposed=5),dict(certification_id=b,cycle_id=pb['id'],proposed=4)]}
+        result=self.apply(good);self.assertEqual(result,self.apply(good))
+        with self.assertRaises(cert.Conflict):self.apply({**good,'entries':[good['entries'][0]]})
+        allocation=self.cycle(a)['allocations'][0]
+        self.apply(self.request('allocation',{**allocation['data'],'submitted':4,'accepted':2},id=allocation['id'],cycle_id=pa['id'],training_id=tid))
+        self.apply(self.request('use_training',training_id=tid,entries=[dict(certification_id=a,cycle_id=pa['id'],proposed=3)]))
+        current=self.cycle(a)
+        self.assertEqual(len(current['allocations']),1);self.assertEqual(current['totals']['accepted'],2)
+        self.assertEqual(current['planning']['accepted'],3) # not 3+4+2
+        stale=self.request('use_training',training_id=tid,entries=[dict(certification_id=b,cycle_id=pb['id'],proposed=8)])
+        self.apply(self.request('cycle',dict(expiration='2029-01-01'),certification_id=b))
+        with self.assertRaises(cert.Conflict):self.apply(stale)
+
+    def test_duration_forms_validate_and_preserve_legacy_decimals(self):
+        tid=self.apply(self.request('training',dict(name='Old',completed='2026-01-01',hours=9.37)))['id']
+        with dlms.get_db() as c:original=cert.get(c.cursor(),'certification_training',tid)['data']
+        edit=self.client.get('/certifications/training/'+tid+'/edit').get_data(as_text=True)
+        self.assertIn('value="22.2"',edit)
+        req=self.request('training')
+        form=dict(kind='training',record_id=tid,request_id=req['request_id'],generation=req['generation'],revision=req['revision'],field_name='Old',field_completed='2026-01-01',duration_hours='9',duration_minutes='22.2')
+        self.assertEqual(self.client.post('/certifications/save',data=form,headers=self.headers).status_code,303)
+        with dlms.get_db() as c:self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data'],original)
+        for hours,minutes in [('9','60'),('1.5','2'),('-1','0'),('9','-1'),('nan','0')]:
+            with self.subTest(hours=hours,minutes=minutes):
+                req=self.request('training');f={**form,'record_id':'','request_id':req['request_id'],'revision':req['revision'],'duration_hours':hours,'duration_minutes':minutes}
+                failed=self.client.post('/certifications/save',data=f,headers=self.headers)
+                self.assertEqual(failed.status_code,400);self.assertIn('value="Old"',failed.get_data(as_text=True))
+        req=self.request('training');f={**form,'request_id':req['request_id'],'revision':req['revision'],'duration_minutes':'22'}
+        self.assertEqual(self.client.post('/certifications/save',data=f,headers=self.headers).status_code,303)
+        with dlms.get_db() as c:self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
+
+    def test_schema_nine_guard_does_not_convert_legacy_values(self):
+        tid=self.apply(self.request('training',dict(name='Legacy',completed='2026-01-01',hours=9.37)))['id']
+        path=Path(dlms.APP_DATA_DIR)/'schema8.db'
+        with dlms.get_db() as source,sqlite3.connect(path) as target:source.backup(target)
+        with sqlite3.connect(path) as c:
+            c.execute('UPDATE schema_meta SET version=8');before=list(c.iterdump())
+        def fail(c):certification_schema.migrate_minutes(c);raise RuntimeError('guard migration interruption')
+        with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{9:fail}):
+            with self.assertRaisesRegex(RuntimeError,'interruption'):dlms.bootstrap_database(str(path))
+        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        self.assertEqual(dlms.bootstrap_database(str(path))['version'],9)
+        with sqlite3.connect(path) as c:
+            c.row_factory=sqlite3.Row
+            self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['hours'],9.37)
+            self.assertNotIn('duration_minutes',cert.get(c.cursor(),'certification_training',tid)['data'])
+        raw=path.read_bytes()
+        with mock.patch.object(dlms,'DLMS_SCHEMA_VERSION',8):
+            with self.assertRaisesRegex(RuntimeError,'newer'):dlms.bootstrap_database(str(path))
+        self.assertEqual(path.read_bytes(),raw)
+
+    def test_custom_display_counts_sort_and_ai_defaults(self):
+        a=self.apply(self.request('certification',dict(name='Z',issuer='I',expiration='2028-01-01')))['id']
+        b=self.apply(self.request('certification',dict(name='A',issuer='I',expiration='2027-01-01')))['id']
+        unknown=self.create('Unknown status')
+        page=self.client.get('/certifications/matches').get_data(as_text=True)
+        for cid in (a,b):self.assertIn('value="'+cid+'" checked',page)
+        self.assertIn('value="'+unknown+'" >',page)
+        for count in ('1','7','1000','all'):
+            self.assertEqual(self.client.post('/certifications/display',data={'count':count,'sort':'name'},headers=self.headers).status_code,303)
+            self.assertEqual(dlms.load_portal_config()['certification_display_count'],count)
+            rows=dlms._certifications_dashboard()['rows'];self.assertEqual(rows[0]['id'],b)
+        before=Path(dlms.PORTAL_CONFIG).read_bytes()
+        for count in ('0','-1','1.5','NaN',''):
+            self.assertEqual(self.client.post('/certifications/display',data={'count':count},headers=self.headers).status_code,400)
+            self.assertEqual(Path(dlms.PORTAL_CONFIG).read_bytes(),before)
+
+    def test_bulk_concurrent_replays_and_restored_generation(self):
+        cid=self.create();period=self.cycle(cid)
+        tid=self.apply(self.request('training',dict(name='One exact course',completed='2026-01-01',duration_minutes=562)))['id']
+        request=self.request('use_training',training_id=tid,entries=[dict(certification_id=cid,cycle_id=period['id'],proposed=5)])
+        with ThreadPoolExecutor(2) as pool:
+            results=list(pool.map(self.apply,[request,copy.deepcopy(request)]))
+        self.assertEqual(results[0],results[1])
+        self.assertEqual(len(self.cycle(cid)['allocations']),1)
+        self.assertEqual(self.cycle(cid)['planning']['accepted'],5)
+        with dlms.get_db() as c:certification_schema.invalidate(c)
+        with self.assertRaisesRegex(cert.Conflict,'predates a restore'):self.apply(request)
+        self.assertEqual(len(self.cycle(cid)['allocations']),1)
+
+    def test_estimated_progress_respects_dates_caps_and_distinct_stages(self):
+        from dlms.services.certification_tracking import planning_progress
+        cid=self.apply(self.request('certification',dict(name='Planning',issuer='Any',required=20,
+            tracking=dict(requirement_known=True,reporting_start='2026-07-01',reporting_end='2028-06-30',
+            year_basis='anniversary',year_anchor='2026-07-01',annual_kind='pacing',annual_amount=10,
+            categories=[dict(name='Courses',cap=8)]))))['id']
+        period=self.cycle(cid)
+        for day,category,proposed,submitted,accepted in [('2026-06-30','Courses',9,0,0),('2026-07-01','Courses',6,5,2),('2027-06-30','Courses',6,0,0),('2027-07-01','',3,0,0)]:
+            tid=self.apply(self.request('training',dict(name=day,completed=day,hours=9)))['id']
+            self.apply(self.request('allocation',dict(hours=9,category=category,proposed=proposed,submitted=submitted,accepted=accepted),cycle_id=period['id'],training_id=tid))
+        cycle=self.cycle(cid);original=copy.deepcopy(cycle)
+        result=planning_progress(cycle)
+        self.assertEqual(result['accepted'],11) # 8 capped + 3 unclassified, not sum of workflow stages
+        self.assertEqual(result['remaining'],9);self.assertEqual(len(result['excluded']),1)
+        self.assertEqual([y['accepted'] for y in result['annual']],[12,3])
+        self.assertEqual(cycle,original);self.assertEqual(cycle['totals']['accepted'],2)
+
+    def test_layout_display_validation_and_scoped_defaults(self):
+        cfg=dlms.load_portal_config();cfg.update(certification_display_count='7',certification_sort='name',show_certifications=False)
+        dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg);before=Path(dlms.PORTAL_CONFIG).read_bytes()
+        for mode,count in [('custom','0'),('custom','2.5'),('invalid','3')]:
+            response=self.client.post('/settings/layout/save',data=dict(action='save',certification_count_mode=mode,certification_display_count=count),headers=self.headers)
+            self.assertEqual(response.status_code,400);self.assertEqual(Path(dlms.PORTAL_CONFIG).read_bytes(),before)
+        for action in ('dashboard_defaults','sidebar_defaults'):
+            self.assertEqual(self.client.post('/settings/layout/save',data=dict(action=action),headers=self.headers).status_code,302)
+            saved=dlms.load_portal_config();self.assertEqual(saved['certification_display_count'],'7');self.assertEqual(saved['certification_sort'],'name');self.assertFalse(saved['show_certifications'])
+        self.assertEqual(self.client.post('/settings/layout/save',data=dict(action='save',certification_count_mode='custom',certification_display_count='19',certification_sort='expiration'),headers=self.headers).status_code,302)
+        self.assertEqual(dlms.load_portal_config()['certification_display_count'],'19')
+
+    def test_reviewed_prompt_uses_selected_provider_without_prompt_in_url(self):
+        cid=self.create();cfg=dlms.load_portal_config()
+        from html.parser import HTMLParser
+        class Links(HTMLParser):
+            def __init__(self):super().__init__();self.urls=[]
+            def handle_starttag(self,tag,attrs):
+                attrs=dict(attrs)
+                if attrs.get('id')=='certProviderLink':self.urls.append(attrs['href'])
+        for provider,url in [('chatgpt','https://chatgpt.com/'),('claude','https://claude.ai/'),('gemini','https://gemini.google.com/'),('local','http://192.0.2.1:8080/')]:
+            with self.subTest(provider=provider):
+                cfg.update(ai_provider=provider,ai_custom_url=url,ai_helper_enabled=True);dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
+                response=self.client.post('/certifications/matches',data=dict(credentials=cid,question='Exact reviewed selection'),headers=self.headers)
+                self.assertEqual(response.status_code,200);html=response.get_data(as_text=True)
+                links=Links();links.feed(html);self.assertEqual(links.urls,[url])
+                self.assertIn('Copy &amp; open AI',html);self.assertIn('Exact reviewed selection',html)
+        cfg['ai_helper_enabled']=False;dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
+        html=self.client.post('/certifications/matches',data=dict(credentials=cid,question='Copy only'),headers=self.headers).get_data(as_text=True)
+        self.assertNotIn('data-cert-launch',html);self.assertIn('data-cert-copy',html)

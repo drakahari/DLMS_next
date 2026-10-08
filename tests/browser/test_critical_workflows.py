@@ -14371,6 +14371,9 @@ def test_exam_plan_no_work_states_and_switching(browser_stack, theme):
     for code,changes,label in cases:
         fixture(**changes)
         check(code,label)
+        if code=='non_study_day':
+            assert browser.evaluate("document.querySelector('#activeExamPlan').textContent.includes('Suggestions follow your selected study days. Optional practice is available today.')")
+            assert not browser.evaluate("document.querySelector('#activeExamPlan').textContent.toLowerCase().includes('weekdays')")
         if code=='excluded':
             browser.navigate(base+path)
             assert not browser.evaluate("document.body.textContent.includes('Known work fits')")
@@ -15756,12 +15759,12 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
     browser.evaluate("document.querySelector('[name=field_required]').value='20';document.querySelector('[name=field_unit]').value='credits';document.querySelector('[name=field_renewal]').value='2028-06-01';true")
     browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-cycle') && !document.querySelector('.cert-form')")
     browser.navigate(base+'/certifications/training/new')
-    browser.wait_for("document.querySelector('[name=field_hours]')")
-    browser.evaluate("document.querySelector('[name=field_name]').value='Security learning workshop';document.querySelector('[name=field_provider]').value='Example provider';document.querySelector('[name=field_completed]').value='2026-09-01';document.querySelector('[name=field_hours]').value='8';document.querySelector('[name=field_notes]').value='PRIVATE TRAINING NOTE';true")
-    browser.click('.cert-form [type=submit]');browser.wait_for("location.pathname==='/certifications/training' && document.querySelector('.cert-log-row')")
+    browser.wait_for("document.querySelector('[name=duration_hours]')")
+    browser.evaluate("document.querySelector('[name=field_name]').value='Security learning workshop';document.querySelector('[name=field_provider]').value='Example provider';document.querySelector('[name=field_completed]').value='2026-09-01';document.querySelector('[name=duration_hours]').value='8';document.querySelector('[name=field_notes]').value='PRIVATE TRAINING NOTE';true")
+    browser.click('.cert-form [type=submit]');browser.wait_for("location.pathname.endsWith('/renewals') && document.querySelector('.cert-use-form')")
     browser.navigate(base+path);browser.click('a[href$="/allocate"]')
     browser.wait_for("document.querySelector('[name=training_id]')")
-    browser.evaluate("document.querySelector('[name=training_id]').selectedIndex=1;document.querySelector('[name=field_hours]').value='6';document.querySelector('[name=field_submitted]').value='5';document.querySelector('[name=field_accepted]').value='3';true")
+    browser.evaluate("document.querySelector('[name=training_id]').selectedIndex=1;document.querySelector('[name=duration_hours]').value='6';document.querySelector('[name=field_submitted]').value='5';document.querySelector('[name=field_accepted]').value='3';true")
     browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-metrics').textContent.includes('3 credits')")
     with sqlite3.connect(root/'results.db') as c:
         first=list(c.execute('SELECT * FROM certification_allocations'))
@@ -15835,8 +15838,8 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
     cfg['dashboard_card_visibility']['library']=True;portal.write_text(json.dumps(cfg))
     browser.navigate(base+'/');browser.wait_for_page_ready()
     assert browser.evaluate("document.getElementById('myCertifications').compareDocumentPosition(document.querySelector('.dashboard-overview-panel')) & Node.DOCUMENT_POSITION_FOLLOWING")
-    browser.click('#myCertifications details summary');browser.evaluate("document.getElementById('certDisplayCount').value='all';true")
-    browser.click('#myCertifications button[type=submit]');browser.wait_for("location.hash==='#myCertifications'")
+    browser.click('#myCertifications a[href="/settings/layout#certifications-visibility"]');browser.wait_for("document.querySelector('[name=certification_count_mode]')");browser.evaluate("document.querySelector('[name=certification_count_mode]').value='all';true")
+    browser.click('button[value=save]');browser.wait_for("location.pathname==='/settings/layout' && location.search.includes('saved=1')")
     assert json.loads(portal.read_text())['certification_display_count']=='all'
     if output and theme in ('light','dark','ethereal'):
         browser.set_viewport(1440,1000);browser.navigate(base+'/');browser.wait_for_page_ready()
@@ -15892,12 +15895,23 @@ def test_certification_native_zoom(browser_stack, theme):
         assert abs(metrics['inner']*metrics['dpr']-physical)<=2
         assert metrics['font']=='16px'
         assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,name)
-        browser.activate();browser.evaluate('document.querySelector("main a").focus();true');browser.press_key('\ue004')
+        browser.activate();browser.evaluate("Array.from(document.querySelectorAll('main input:not([type=hidden]),main button,main a,main summary')).find(e=>e.getClientRects().length).focus();true");browser.press_key('\ue004')
         assert browser.evaluate('document.activeElement.matches(":focus-visible")')
         if output:
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
             (Path(output)/f'native200-{name}-{theme}.png').write_bytes(base64.b64decode(shot['data']))
             (Path(output)/f'native200-{name}-{theme}.json').write_text(json.dumps(metrics))
+        if name=='training-form':
+            browser.evaluate("document.querySelector('[name=field_name]').value='Nine-hour workshop';document.querySelector('[name=field_completed]').value='2026-10-01';document.querySelector('[name=duration_hours]').value='9';document.querySelector('[name=duration_minutes]').value='22';true")
+            browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-use-form')")
+            assert browser.evaluate('devicePixelRatio===2 && document.documentElement.scrollWidth<=innerWidth')
+            browser.click('[name=certifications]');browser.press_key('\ue004');browser.press_key('\ue004')
+            assert browser.evaluate("document.activeElement.matches('.cert-use-form summary:focus-visible')")
+            browser.press_key('\ue007');browser.wait_for("document.querySelector('.cert-use-form details').open")
+            assert browser.evaluate("document.querySelector('.cert-use-form details').open && document.activeElement.matches(':focus-visible')")
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'native200-use-training-{theme}.png').write_bytes(base64.b64decode(shot['data']))
         if name=='form':
             browser.evaluate("document.querySelectorAll('.cert-additional').forEach(d=>d.open=true);true")
             assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
@@ -15930,7 +15944,7 @@ def test_certification_stale_tabs_failed_upload_and_retry_identity(browser_stack
     try:
         browser.context=second;browser.navigate(base+path+'/edit');browser.wait_for("document.querySelector('[name=field_name]')")
         browser.evaluate("document.querySelector('[name=field_name]').value='Newer saved title';true")
-        browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero').textContent.includes('Newer saved title')")
+        browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('main h1').textContent.includes('Newer saved title')")
         browser.context=first
         browser.evaluate("document.querySelector('[name=field_name]').value='Stale title';true")
         browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('[role=alert]')")
@@ -15969,7 +15983,7 @@ def test_certification_custom_portfolio_journey(browser_stack, theme):
     fill(dict(field_name='River stewardship — custom earned credential',field_issuer='Independent Watershed Guild',field_version='Field standard 9',field_earned='2025-01-01',field_expiration='2028-01-01',field_notes='PRIVATE CERTIFICATION NOTE'))
     b.set_files('[name=badge]',[str(badge)]);b.set_files('[name=certificate]',[str(pdf)]);save()
     path=b.evaluate('location.pathname');cid=path.split('/')[-1]
-    assert b.evaluate("document.querySelector('main').textContent.includes('Total requirement unknown')")
+    assert b.evaluate("document.querySelector('main').textContent.includes('Set renewal goal')")
     certificate=b.evaluate("Array.from(document.querySelectorAll('.cert-hero a')).find(a=>a.textContent==='View certificate').getAttribute('href')")
     logo=b.evaluate("document.querySelector('.cert-hero img').getAttribute('src')")
     assert certificate!=logo
@@ -15986,16 +16000,18 @@ def test_certification_custom_portfolio_journey(browser_stack, theme):
     b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
     fill(dict(field_name='Community field educator',field_issuer='Local Education Cooperative',field_earned='2025-01-01',field_expiration='2027-01-01'));save()
     target=b.evaluate('location.pathname').split('/')[-1]
-    b.navigate(base+'/certifications/training/new');b.wait_for("document.querySelector('[name=field_hours]')")
-    fill(dict(field_name='Water sampling workshop',field_provider='Community learning center',field_completed='2026-08-01',field_hours='8',field_course_url='https://example.org/workshop',field_topics='Public sampling methods',field_notes='PRIVATE TRAINING NOTE'));save()
+    b.navigate(base+'/certifications/training/new');b.wait_for("document.querySelector('[name=duration_hours]')")
+    fill(dict(field_name='Water sampling workshop',field_provider='Community learning center',field_completed='2026-08-01',duration_hours='8',field_course_url='https://example.org/workshop',field_topics='Public sampling methods',field_notes='PRIVATE TRAINING NOTE'));save()
     for cert_id in (cid,target):
         b.navigate(base+'/certifications/training');b.wait_for("document.querySelector('.cert-log-row')")
-        assert b.evaluate("document.querySelector('main').textContent.includes('1 saved activity.')")
-        b.click('main a[href*="?apply="]');b.wait_for("document.querySelector('[name=period]')")
-        # Choose the intended saved credential's period by its authoritative ID.
+        assert b.evaluate("document.querySelector('main').textContent.includes('1 saved course.')")
+        b.click('main a[href$="/renewals"]');b.wait_for("document.querySelector('.cert-use-form')")
         with sqlite3.connect(root/'results.db') as c:period=c.execute('SELECT id FROM certification_cycles WHERE certification_id=?',(cert_id,)).fetchone()[0]
-        fill({'period':period});b.click('main button[type=submit]');b.wait_for("document.querySelector('[name=field_proposed]')")
-        fill(dict(field_hours='6',field_proposed='5',field_reviewed='yes',field_submitted='4',field_accepted='2',field_rationale='Verified relevant workshop; partial acceptance',field_source='https://example.org/custom-rules'));save()
+        b.evaluate("document.querySelector('[name=certifications][value=\""+cert_id+"\"]').checked=true;document.querySelector('[name=estimate_"+cert_id+"]').value='5';true")
+        b.click('.cert-use-form button[type=submit]');b.wait_for("location.pathname==='/certifications/training'")
+        with sqlite3.connect(root/'results.db') as c:aid=c.execute('SELECT id FROM certification_allocations WHERE cycle_id=?',(period,)).fetchone()[0]
+        b.navigate(base+'/certifications/'+cert_id+'/allocations/'+aid+'/edit');b.wait_for("document.querySelector('[name=field_proposed]')")
+        fill(dict(duration_hours='6',field_proposed='5',field_reviewed='yes',field_submitted='4',field_accepted='2',field_rationale='Verified relevant workshop; partial acceptance',field_source='https://example.org/custom-rules'));save()
     b.navigate(base+'/certifications/matches');b.wait_for("document.querySelector('[name=credentials]')")
     b.evaluate("document.querySelector('[name=training]').checked=true;true");b.click('main button[type=submit]');b.wait_for("document.querySelector('#certPrompt')")
     prompt=b.evaluate("document.querySelector('#certPrompt').value")
@@ -16066,3 +16082,87 @@ def test_certification_optional_presets_only_fill_unsaved_rules(browser_stack):
         assert b.evaluate("document.querySelector('[name=track_verification]').value")=='unverified'
     with sqlite3.connect(browser_stack.data_root/'results.db') as c:
         assert c.execute('SELECT COUNT(*) FROM certifications').fetchone()[0]==0
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_certification_simple_minutes_multi_renewal_and_ai_launch(browser_stack, theme):
+    """Actual LAN HTTP, exact duration, deliberate estimates and truthful launch fallback."""
+    b,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    def fill(values):
+        b.evaluate('(()=>{for(const [k,v] of Object.entries('+json.dumps(values)+'))document.querySelector(`[name="${k}"]`).value=v;return true;})()')
+    def save():
+        b.click('.cert-form [type=submit]');b.wait_for("!document.querySelector('.cert-form') && document.querySelector('main')")
+    ids=[]
+    for name,unit,goal in [('Professional renewal','hours','20'),('Custom field credential','credits','30'),('Unknown dates','credits','')]:
+        b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+        fill(dict(field_name=name,field_issuer='Independent learning guild',field_required=goal,field_unit=unit,field_expiration='' if name=='Unknown dates' else '2029-10-01'));save()
+        ids.append(b.evaluate('location.pathname').split('/')[-1])
+    b.navigate(base+'/certifications/training/new');b.wait_for("document.querySelector('[name=duration_minutes]')")
+    fill(dict(field_name='Practical security — complete course with a readable long title',field_provider='Independent provider',field_completed='2026-10-01',duration_hours='9',duration_minutes='22',field_topics='Public course topics',field_notes='PRIVATE TRAINING NOTE'))
+    assert b.evaluate("document.querySelector('[name=field_name]').getBoundingClientRect().width > document.querySelector('[name=field_provider]').getBoundingClientRect().width")
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    def shot(name):
+        if output:
+            (Path(output)/(name+'-'+theme+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+    shot('simple-add-training-desktop');save()
+    b.wait_for("document.querySelector('.cert-use-form')")
+    tid=b.evaluate('location.pathname').split('/')[-2]
+    assert b.evaluate('isSecureContext') is False
+    assert b.evaluate("document.querySelectorAll('[name=certifications]:checked').length")==0
+    assert b.evaluate("document.querySelector('main').textContent.includes('9 h 22 min')")
+    assert b.evaluate("document.querySelector('[name=estimate_"+ids[0]+"]').value")=='9.37'
+    assert b.evaluate("document.querySelector('[name=estimate_"+ids[1]+"]').value")==''
+    for cid in ids[:2]:b.click('[name=certifications][value="'+cid+'"]')
+    fill({'estimate_'+ids[1]:'5'})
+    shot('simple-use-renewal-desktop')
+    b.click('.cert-use-form button[type=submit]');b.wait_for("location.pathname==='/certifications/training' && document.querySelector('.cert-log-row')")
+    assert b.evaluate("document.querySelector('main').textContent.includes('Estimated 9.37 / 20 hours')")
+    assert b.evaluate("document.querySelector('main').textContent.includes('Estimated 5.0 / 30 credits')")
+    with sqlite3.connect(root/'results.db') as c:
+        course=json.loads(c.execute('SELECT data_json FROM certification_training WHERE id=?',(tid,)).fetchone()[0])
+        assert course['duration_minutes']==562
+        allocations=[json.loads(r[0]) for r in c.execute('SELECT data_json FROM certification_allocations')]
+        assert len(allocations)==2 and all(a['accepted']==0 and a['submitted']==0 for a in allocations)
+    b.navigate(base+'/certifications/training/'+tid+'/edit');b.wait_for("document.querySelector('[name=duration_minutes]')")
+    assert b.evaluate("document.querySelector('[name=duration_hours]').value")=='9'
+    assert b.evaluate("document.querySelector('[name=duration_minutes]').value")=='22'
+    save()
+    b.navigate(base+'/certifications/matches');b.wait_for("document.querySelector('[name=credentials]')")
+    selected=b.evaluate("Array.from(document.querySelectorAll('[name=credentials]:checked')).map(e=>e.value)")
+    assert set(selected)==set(ids[:2])
+    b.click('[name=training]');b.click('main button[type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+    prompt=b.evaluate("document.querySelector('#certPrompt').value")
+    assert '9 h 22 min' in prompt and '562' in prompt and 'PRIVATE' not in prompt and 'Unknown dates' not in prompt
+    # Substitute only external opening, to observe URL/options without contacting AI.
+    b.evaluate("window.launchCalls=[];window.originalOpen=window.open;window.open=(...args)=>{window.launchCalls.push(args);return null;};document.querySelector('#certPrompt').value+='\\nReviewed exact text';true")
+    exact=b.evaluate("document.querySelector('#certPrompt').value")
+    b.click('[data-cert-launch]')
+    assert b.evaluate('window.launchCalls')==[['https://chatgpt.com/','_blank','noopener,noreferrer']]
+    assert 'Prompt copied.' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    assert 'Open AI manually' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    b.evaluate("const sink=document.createElement('textarea');sink.id='clipboardCheck';sink.setAttribute('aria-label','Disposable clipboard verification');document.querySelector('main').append(sink);sink.focus();true")
+    b.command('input.performActions',{'context':b.context,'actions':[{'type':'key','id':'clipboard','actions':[{'type':'keyDown','value':'\ue009'},{'type':'keyDown','value':'v'},{'type':'keyUp','value':'v'},{'type':'keyUp','value':'\ue009'}]}]})
+    b.wait_for("document.querySelector('#clipboardCheck').value.length>0")
+    assert b.evaluate("document.querySelector('#clipboardCheck').value")==exact
+    b.evaluate("document.querySelector('#clipboardCheck').remove();window.originalExecCommand=document.execCommand;document.execCommand=()=>false;true")
+    b.click('[data-cert-launch]')
+    assert 'Copy failed.' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    assert 'Prompt copied' not in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    assert b.evaluate("document.querySelector('#certProviderLink').getAttribute('href')")=='https://chatgpt.com/'
+    b.click('[data-cert-copy]');b.wait_for("document.querySelector('#certCopyStatus').textContent.includes('Copy failed')")
+    b.evaluate("document.execCommand=window.originalExecCommand;window.open=window.originalOpen;true")
+    assert b.evaluate("performance.getEntriesByType('resource').every(r=>new URL(r.name).origin===location.origin)")
+    for width in (1440,390):
+        b.set_viewport(width,1000)
+        for url,name in [('/certifications/training','simple-library'),('/certifications/training/'+tid+'/renewals','simple-use'),('/certifications/'+ids[0],'simple-progress')]:
+            b.navigate(base+url);b.wait_for_page_ready()
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width,name)
+            b.evaluate("document.querySelector('main a').focus();true");b.press_key('\ue004')
+            assert b.evaluate('document.activeElement.matches(":focus-visible")')
+            shot(name+'-'+str(width))
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0]==2
+        assert all(json.loads(r[0])['accepted']==0 for r in c.execute('SELECT data_json FROM certification_allocations'))
+        assert c.execute('SELECT COUNT(*) FROM learning_events').fetchone()[0]==0

@@ -10,6 +10,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request
 from dlms.persistence.portal import DASHBOARD_CARD_GROUPS, dashboard_card_defaults
 from dlms.themes import THEME_IDS, theme_groups
 from dlms.prompts import DEFAULT_CERTIFICATION_PROMPT, DEFAULT_PORTFOLIO_PROMPT
+from dlms.services import certification_display
 
 
 Dependency = Callable[..., Any]
@@ -99,6 +100,8 @@ def settings_layout_page(dependencies):
         visibility=cfg.get("dashboard_card_visibility", dashboard_card_defaults()),
         sidebar_visibility=cfg["study_area_visibility"],
         show_certifications=cfg.get("show_certifications",True),
+        certification_display_count=cfg.get("certification_display_count","3"),
+        certification_sort=cfg.get("certification_sort","earned"),
     )
 
 
@@ -120,6 +123,16 @@ def save_layout_settings(dependencies):
         }
     if action == "save" and request.form.get("certifications_visibility_present") == "yes":
         cfg["show_certifications"] = "show_certifications" in request.form
+    if action == "save" and "certification_count_mode" in request.form:
+        try:
+            if request.form.get("certification_count_mode") not in ("all", "custom"):raise ValueError("Choose All or Custom number.")
+            cfg['certification_display_count'] = certification_display.count('all' if request.form.get('certification_count_mode') == 'all' else request.form.get('certification_display_count'))
+            cfg['certification_sort'] = certification_display.sort(request.form.get('certification_sort', cfg.get('certification_sort', 'earned')))
+        except ValueError as exc:
+            return render_template('settings/dashboard.html', groups=DASHBOARD_CARD_GROUPS,
+                visibility=cfg['dashboard_card_visibility'], sidebar_visibility=cfg['study_area_visibility'],
+                show_certifications=cfg.get('show_certifications', True), certification_display_count=request.form.get('certification_display_count',''),
+                certification_sort=request.form.get('certification_sort','earned'), layout_error=str(exc)), 400
     dependencies.write_portal_config(cfg)
     return redirect("/settings/layout?saved=1")
 

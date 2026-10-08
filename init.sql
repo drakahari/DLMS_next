@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 8);
+VALUES (1, 9);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)

@@ -8,6 +8,8 @@ import uuid
 from typing import Callable
 from flask import Blueprint, abort, redirect, render_template, request, send_file
 from dlms.services import certifications as service
+from dlms.services import certification_time as duration, certification_display
+from decimal import Decimal
 from dlms.prompts import DEFAULT_CERTIFICATION_PROMPT
 from dlms.services.certification_presets import PRESETS, values as preset_values
 
@@ -37,8 +39,10 @@ def create_certification_blueprint(deps):
 
     def page(conn, mode, **values):
         cur=conn.cursor()
+        cfg=deps.load_config()
         return render_template('certifications/workspace.html',page=mode,state=service.state(cur),
-            request_id=values.pop('request_id',uuid.uuid4().hex),records=service.collection(cur),
+            request_id=values.pop('request_id',uuid.uuid4().hex),records=service.collection(cur,cfg.get('certification_sort','earned')),
+            duration_label=duration.label,duration_parts=duration.parts,certification_sort=cfg.get('certification_sort','earned'),
             presets=PRESETS,preset_values={k:preset_values(k) for k in PRESETS},**values)
 
     @bp.get('/certifications')
@@ -78,10 +82,43 @@ def create_certification_blueprint(deps):
                 if cycle_id:
                     cycle=service.get(cur,'certification_cycles',cycle_id)
                     return redirect('/certifications/'+cycle['certification_id']+'/cycles/'+cycle_id+'/allocate?training='+training_id)
-                options=[service.detail(cur,r['id']) for r in service.collection(cur)]
-                return page(conn,'choose_period',activity=activity,options=options)
+                return redirect('/certifications/training/'+training_id+'/renewals')
             activities=service.records(cur,'certification_training')
-            return page(conn,'training',training=activities,total_hours=round(sum(a['data']['hours'] for a in activities),2))
+            uses={a['id']:[] for a in activities}
+            for record in service.collection(cur):
+                detail=service.detail(cur,record['id'])
+                for period in detail['cycles']:
+                    for allocation in period['allocations']:
+                        uses[allocation['training_id']].append(dict(certification=record,period=period))
+            total=duration.number(sum((duration.minutes(a['data']) for a in activities),Decimal(0)))
+            return page(conn,'training',training=activities,uses=uses,total_duration=duration.label({'duration_minutes':total}))
+
+    @bp.route('/certifications/training/<training_id>/renewals',methods=['GET','POST'])
+    def use_training(training_id):
+        error=''
+        if request.method=='POST':
+            form=request.form
+            try:
+                ids=form.getlist('certifications')
+                entries=[dict(certification_id=cid,cycle_id=form.get('period_'+cid),proposed=form.get('estimate_'+cid)) for cid in ids]
+                payload=dict(action='use_training',training_id=training_id,entries=entries,request_id=form.get('request_id'),generation=form.get('generation'),revision=int(form.get('revision','-1')))
+                with database(write=True) as conn:service.apply(conn,payload)
+                return redirect('/certifications/training?saved=1',code=303)
+            except (ValueError,sqlite3.Error,OSError) as exc:
+                error=(str(exc) if isinstance(exc,ValueError) else 'The save failed.')+' No renewal selections were saved. Retry the same form; if it is stale, reopen and compare your selections.'
+        with database() as conn:
+            cur=conn.cursor();activity=service.get(cur,'certification_training',training_id)
+            options=[]
+            for record in service.collection(cur):
+                detail=service.detail(cur,record['id'])
+                if not detail['cycles']:continue
+                for period in detail['cycles']:
+                    existing=next((a for a in period['allocations'] if a['training_id']==training_id),None)
+                    period['existing']=existing
+                    period['estimate']=existing['data'].get('proposed') if existing else duration.hours_projection(duration.number(duration.minutes(activity['data']))) if duration.hours_based(period['data']['unit']) else None
+                options.append(detail)
+            extra=dict(request_id=request.form.get('request_id'),retained_state=dict(generation=request.form.get('generation'),revision=request.form.get('revision'))) if error else {}
+            return page(conn,'use_training',activity=activity,options=options,error=error,**extra),409 if error else 200
 
     @bp.get('/certifications/training/new')
     @bp.get('/certifications/training/<training_id>/edit')
@@ -101,10 +138,14 @@ def create_certification_blueprint(deps):
             detail=service.detail(cur,cert_id)
             if cycle['certification_id']!=cert_id:abort(404)
             return page(conn,'form',kind='allocation',record_id=allocation_id,fields=row['data'] if row else {},
-                        training=service.records(cur,'certification_training'),parent=dict(certification_id=cert_id,cycle_id=cycle_id,training_id=row['training_id'] if row else selected['id'] if selected else ''),selected_certification=detail['certification'],selected_period=cycle,is_current=detail['cycles'][0]['id']==cycle_id)
+                        training=service.records(cur,'certification_training'),parent=dict(certification_id=cert_id,cycle_id=cycle_id,training_id=row['training_id'] if row else selected['id'] if selected else ''),selected_training=service.get(cur,'certification_training',row['training_id']) if row else selected,selected_certification=detail['certification'],selected_period=cycle,is_current=detail['cycles'][0]['id']==cycle_id)
 
-    def form_fields(form):
+    def form_fields(form, *, parse_duration=True):
         fields={k[6:]:v for k,v in form.items() if k.startswith('field_')}
+        if parse_duration and ('duration_hours' in form or 'duration_minutes' in form):
+            total=duration.from_fields(form.get('duration_hours'),form.get('duration_minutes'))
+            fields['duration_minutes']=total
+            fields['hours']=duration.hours_projection(total)
         if form.get('tracking_present')=='yes':
             values={k[6:]:v for k,v in form.items() if k.startswith('track_')}
             values['requirement_known']=bool(fields.get('required','').strip())
@@ -117,7 +158,7 @@ def create_certification_blueprint(deps):
         with database() as conn:
             cur=conn.cursor();cfg=deps.load_config();prompt='';error=''
             credentials=service.collection(cur);activities=service.records(cur,'certification_training')
-            selected=request.form.getlist('credentials') if request.method=='POST' else [c['id'] for c in credentials if c['data']['non_expiring']!='yes' and c['data'].get('standing')!='superseded']
+            selected=request.form.getlist('credentials') if request.method=='POST' else [c['id'] for c in credentials if c['data']['non_expiring']!='yes' and c['data'].get('standing')!='superseded' and c['expiration']]
             if request.method=='POST':
                 try:prompt=service.portfolio_prompt(cur,selected,request.form.getlist('training'),request.form.get('question',''),cfg.get('portfolio_ai_prompt_template'))
                 except ValueError as exc:error=str(exc)
@@ -159,14 +200,20 @@ def create_certification_blueprint(deps):
             for key in ('badge','certificate'):
                 if form.get('remove_'+key)=='yes':payload['data'][key]=''
             uploads={k:f.stream.read(service.MAX_ATTACHMENT_BYTES+1) for k,f in request.files.items() if f.filename}
-            with database(write=True) as conn:result=service.apply(conn,payload,uploads)
+            with database(write=True) as conn:
+                if payload['action'] in ('training','allocation') and payload['id'] and 'duration_minutes' in payload['data']:
+                    table='certification_training' if payload['action']=='training' else 'certification_allocations'
+                    old=service.get(conn.cursor(),table,payload['id'])['data']
+                    if 'duration_minutes' not in old and duration.minutes(old)==Decimal(str(payload['data']['duration_minutes'])):
+                        payload['data'].pop('duration_minutes');payload['data']['hours']=old['hours']
+                result=service.apply(conn,payload,uploads)
             kind=payload['action']
-            url='/certifications/training' if kind=='training' else '/certifications/'+(result['id'] if kind=='certification' else payload['certification_id'])
+            url=('/certifications/training/'+result['id']+'/renewals' if not payload.get('id') else '/certifications/training') if kind=='training' else '/certifications/'+(result['id'] if kind=='certification' else payload['certification_id'])
             return redirect(url+'?saved=1',code=303)
         except (ValueError,sqlite3.Error,OSError) as exc:
             with database() as conn:
                 message=str(exc) if isinstance(exc,ValueError) else 'The save failed. No changes were applied. Retry with the same form; reselect any upload.'
-                return page(conn,'form',kind=form.get('kind'),record_id=form.get('record_id'),fields=form_fields(form),
+                return page(conn,'form',kind=form.get('kind'),record_id=form.get('record_id'),fields=form_fields(form,parse_duration=False),
                     parent={k:form.get(k,'') for k in ('certification_id','cycle_id','training_id','renewal_from','renewal_trigger')},
                     edit_current=form.get('edit_current')=='yes',use_badge_certificate=form.get('use_badge_certificate')=='yes',training=service.records(conn.cursor(),'certification_training'),error=message,request_id=form.get('request_id'),retained_state=dict(generation=form.get('generation'),revision=form.get('revision'))),409 if isinstance(exc,service.Conflict) else 400 if isinstance(exc,ValueError) else 503
 
@@ -201,11 +248,16 @@ def create_certification_blueprint(deps):
 
     @bp.post('/certifications/display')
     def display():
-        count=request.form.get('count')
-        if count not in ('3','6','all'):return 'Choose 3, 6 or All.',400
+        try:
+            count=certification_display.count(request.form['count']) if 'count' in request.form else None
+            sort=certification_display.sort(request.form['sort']) if 'sort' in request.form else None
+        except ValueError as exc:return str(exc),400
         with deps.lock:
-            cfg=deps.load_config();cfg['certification_display_count']=count;deps.save_config(cfg)
-        return redirect('/#myCertifications',code=303)
+            cfg=deps.load_config()
+            if count is not None:cfg['certification_display_count']=count
+            if sort is not None:cfg['certification_sort']=sort
+            deps.save_config(cfg)
+        return redirect('/certifications' if request.form.get('destination')=='list' else '/#myCertifications',code=303)
 
     @bp.route('/certifications/<cert_id>/ai',methods=['GET','POST'])
     def assistant(cert_id):

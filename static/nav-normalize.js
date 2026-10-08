@@ -207,7 +207,7 @@
     });
   };
 
-  const certificationNavigation = () => `<div class="dashboard-nav-group" data-certification-navigation hidden style="display:none">${item('certifications','/certifications','star','My Certifications')}${path.startsWith('/certifications') ? `<div class="dashboard-nav-submenu normalized-open">${sub('/certifications/training','branch','Training log',path.startsWith('/certifications/training'))}</div>` : ''}</div>`;
+  const certificationNavigation = () => `<div class="dashboard-nav-group" data-certification-navigation hidden style="display:none">${item('certifications','/certifications','star','My Certifications')}${path.startsWith('/certifications') ? `<div class="dashboard-nav-submenu normalized-open">${sub('/certifications/training','branch','Training library',path.startsWith('/certifications/training'))}</div>` : ''}</div>`;
   const mountNavigation = (studyAreaVisibility) => {
     // Learning Intelligence pages ship with this exact canonical sidebar
     // because their content is otherwise ready to paint before this shared

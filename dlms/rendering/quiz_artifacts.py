@@ -529,6 +529,7 @@ def build_quiz_html(
   window.QUIZ_ID = {quiz_id_json};
 </script>
 
+<script src="/static/manual-ai.js"></script>
 <script src="/static/script.js"></script>
 
 

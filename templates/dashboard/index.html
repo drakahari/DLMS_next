@@ -299,7 +299,7 @@
         <section class="dashboard-panel cert-trophies" id="myCertifications" aria-labelledby="certificationsHeading">
             <div class="cert-section-head"><div><h2 id="certificationsHeading">My Certifications</h2><p>Your earned credentials. Exam preparation stays in Exam Plans.</p></div><div class="cert-actions"><a class="dlms-action-control" href="/certifications/new"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#plus"></use></svg>Add certification</a><a class="dlms-action-control" href="/certifications">{{ 'View all (' ~ trophies.total ~ ')' if trophies and trophies.total > trophies.rows|length else 'Manage certifications' }}</a></div></div>
             {% if trophies and trophies.error %}<p role="alert">{{ trophies.error }}</p>{% elif trophies and trophies.rows %}{{ cards(trophies.rows) }}{% else %}<p>No earned certifications recorded yet.</p>{% endif %}
-            <details><summary>Display options</summary><form method="post" action="/certifications/display"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="certDisplayCount">Certifications shown</label><select id="certDisplayCount" name="count">{% for value,label in [('3','3'),('6','6'),('all','All')] %}<option value="{{ value }}" {% if trophies and trophies.count==value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><button class="dlms-action-control" type="submit">Save display count</button></form></details>
+            <a class="dlms-action-control" href="/settings/layout#certifications-visibility">Display options</a>
         </section>
         {% endif %}
 

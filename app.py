@@ -1814,7 +1814,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods, 9: _database.certification_schema.migrate_minutes}
 
 
 def _read_database_schema_version(conn, tables):
@@ -3133,11 +3133,11 @@ def _certifications_dashboard():
         with registry_lock:
             conn = get_db()
             try:
-                rows = certifications.collection(conn.cursor())
+                cfg = load_portal_config()
+                rows = certifications.collection(conn.cursor(), cfg.get("certification_sort", "earned"))
             finally:
                 conn.close()
-        count = load_portal_config().get("certification_display_count", "3")
-        count = count if count in ("3", "6", "all") else "3"
+        count = cfg.get("certification_display_count", "3")
         return dict(rows=rows if count == "all" else rows[:int(count)], total=len(rows), count=count)
     except (sqlite3.Error, ValueError):
         return dict(rows=[], total=0, count="3", error="Certifications could not be loaded. Open My Certifications to retry.")

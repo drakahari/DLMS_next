@@ -5,6 +5,7 @@ import os
 
 from dlms.persistence import json_files
 from dlms.themes import normalize_theme
+from dlms.services import certification_display
 
 
 DASHBOARD_CARD_GROUPS = (
@@ -34,6 +35,8 @@ def _portal_defaults(
         "title": "Training & Practice Center",
         "dashboard_card_visibility": dashboard_card_defaults(),
         "show_certifications": True,
+        "certification_display_count": "3",
+        "certification_sort": "earned",
         "show_confidence": True,
         "enable_regex_replace": False,
         "background_image": None,
@@ -221,6 +224,9 @@ def load_portal_config(
     }
 
     cfg["show_certifications"] = cfg.get("show_certifications") if isinstance(cfg.get("show_certifications"), bool) else True
+    for key, validator, default in (('certification_display_count', certification_display.count, '3'), ('certification_sort', certification_display.sort, 'earned')):
+        try:cfg[key] = validator(cfg.get(key, default))
+        except ValueError:cfg[key] = default
     raw_dashboard = cfg.get("dashboard_card_visibility")
     if not isinstance(raw_dashboard, dict):
         raw_dashboard = {}

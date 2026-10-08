@@ -4,7 +4,7 @@ This is an earned-credential log, independent of Exam Plans, question evidence,
 quiz scoring and review schedules. Nothing in this module awards learning credit,
 quiz completion, issuer approval or verified renewal.
 
-## Schema 7 foundation and additive schema 8
+## Schema 7 foundation, additive schema 8 and schema 9 guard
 
 The existing SQLite migration runner adds seven tables in its transaction:
 `certification_state`, `certifications`, `certification_cycles`,
@@ -13,7 +13,7 @@ The existing SQLite migration runner adds seven tables in its transaction:
 same definitions in `init.sql`. Existing rows in other tables are untouched.
 Schema readiness includes the singleton generation/revision guard. Interrupted
 migration rolls back; the version advances only after validation. Rerunning a
-successful migration is a read/check operation. Older builds reject databases above their supported schema version. Schema 7 builds refuse schema 8.
+successful migration is a read/check operation. Older builds reject databases above their supported schema version. Schema 7 builds refuse schema 8; schema 8 builds refuse schema 9.
 
 Record IDs are random, stable identifiers. Dates are validated calendar dates
 (`YYYY-MM-DD`), with no timezone conversion. Periods remain separate. Schema 8 adds a unique positive `period_order` per credential, initialized from schema 7’s existing `(start, id)` order without changing dates or files. Known starts and expirations must remain ordered, but starts may be unknown and early-renewal coverage may overlap. Recording date is distinct from coverage. Current editing updates the same period; new renewal requires a later expiration and carries no credit or certificate forward.
@@ -88,8 +88,12 @@ the compatible newer application.
 
 ## AI assistance and Help capture
 
-The same Settings provider choices and manual copy/open pattern as Law and Study
-Packs are used. The certification template is independently editable/resettable.
+The same Settings provider choices and synchronous copy/launch behavior as the
+Study question/answer AI-review action are used through `manual-ai.js`. Newly
+generated quiz pages load this helper; older shared-script quiz pages retain the
+existing fallback. Copy & open AI attempts copying before opening the configured
+provider with no prompt in its URL. Clipboard failure and blocked-tab uncertainty
+are reported separately; independent Copy and a real manual provider link remain. The certification template is independently editable/resettable.
 Only explicitly selected name/issuer/earned date, cycle policy/dates/requirements
 and allocated activity name/provider/date/hours/credit amounts are curated.
 Notes, record IDs, attachment IDs, documents and document text are excluded.
@@ -151,3 +155,40 @@ checked for the user's actual credential/version, route and reporting dates.
 The CompTIA multiple-renewal source could not be reliably retrieved in this
 review. No built-in CompTIA mapping is enabled. Manual directional relationships
 with explicit evidence/confirmation are available for all issuers.
+
+## Exact time and simple planning (schema 9)
+
+Schema 9 adds no tables or columns and converts no saved JSON. Its repeat-safe
+migration validates the schema-8 state before advancing the version in the
+existing transaction. The version guard is necessary: older writers would drop
+the new exact-duration field and reject unknown estimates. Keep a schema-8 backup
+before upgrading; use the rollback procedure above with the matching old source.
+
+New time entries store optional `duration_minutes`, a nonnegative number with up
+to two decimal places. `hours` remains a two-decimal compatibility projection.
+9 h 22 min stores exactly 562 minutes, even though that projection is 9.37 hours.
+All displayed learning-time totals, form values, bounds and AI context use exact
+minutes. Legacy records without this field retain original `hours`; 9.37 hours
+means 562.2 minutes. Opening or saving unchanged time does not round, reinterpret
+or add a new field to that legacy record. Backup carries the exact JSON.
+
+A contribution's `proposed` value may be null for an unknown estimate. Existing
+zero values stay zero. Approximate progress uses the explicit estimate (at least
+accepted credit), or submitted/accepted credit when no estimate exists. It never
+adds workflow stages. Existing reporting boundaries and known category caps
+apply; unclassified estimates remain visible in approximate progress. Detailed
+accepted-credit calculations and saved amounts are unchanged. Neither calculation
+asserts issuer approval. Only hours-based units get an editable duration-derived
+starting estimate; credits/CPE/CPD/PDU need user input.
+
+`use_training` saves explicitly selected course/period contributions in one locked
+transaction with one replay identity. Child allocation writes and receipts commit
+or roll back together. An error saves none of the selected changes. Exact retries
+return the same result; changed inputs, stale revisions and pre-restore identities
+fail. Existing contributions keep submitted/accepted values and reporting details.
+
+`certification_display_count` retains existing 3/6/all values and now accepts any
+positive whole number (bounded input length). `certification_sort` defaults to the
+existing earned-date order; name/expiration are explicit saved alternatives. These
+settings use existing locked atomic persistence and portable backup, alongside
+`show_certifications`. Scoped dashboard/sidebar resets preserve these choices.

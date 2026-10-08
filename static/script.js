@@ -2476,6 +2476,7 @@ function resetDatabase() {
    Study question AI prompt and actions
 ===================================================== */
 function copyStudyAIPromptSynchronously(text) {
+    if (window.dlmsManualAI) return window.dlmsManualAI.copySynchronously(text);
     const previousFocus = document.activeElement;
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
@@ -2500,6 +2501,7 @@ function copyStudyAIPromptSynchronously(text) {
 }
 
 async function copyStudyAIPromptWithFallback(text) {
+    if (window.dlmsManualAI) return window.dlmsManualAI.copyWithFallback(text);
     try {
         if (window.isSecureContext && typeof navigator.clipboard?.writeText === "function") {
             await navigator.clipboard.writeText(text);
@@ -2635,7 +2637,7 @@ window.reviewCurrentQuestionWithAI = function() {
             gemini: "https://gemini.google.com/"
         };
 
-        const url = aiConfig.ai_provider === "local"
+        const url = window.dlmsManualAI ? window.dlmsManualAI.provider(aiConfig) : aiConfig.ai_provider === "local"
             ? (aiConfig.ai_custom_url || "").trim()
             : providers[aiConfig.ai_provider];
 

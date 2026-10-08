@@ -68,7 +68,7 @@ def _remaining(required, recorded):
     return float(max(Decimal(0), Decimal(str(required))-Decimal(str(recorded))))
 
 
-def progress(cycle):
+def progress(cycle, *, include_unclassified=False):
     """One activity per cycle is enforced in storage. Never count reuse as hours."""
     data = cycle['data']; rules = data.get('tracking', {})
     known = rules.get('requirement_known', bool(data['required']))
@@ -87,7 +87,7 @@ def progress(cycle):
                            'remaining': _remaining(rule['minimum'], accepted) if rule['minimum'] is not None else None})
     names={c['name'] for c in categories}
     unclassified=[a for a in included if names and a['data'].get('category') not in names]
-    accepted = _sum(a['data']['accepted'] for a in included if a not in unclassified)
+    accepted = _sum(a['data']['accepted'] for a in included if include_unclassified or a not in unclassified)
     capped = _remaining(accepted, _sum(c['over_cap'] for c in categories))
     annual = []
     basis = rules.get('year_basis', 'unknown')
@@ -127,3 +127,26 @@ def status(certification, current, today=None):
     if not expiration: return 'Expiration not recorded'
     if expiration < today.isoformat(): return 'Expired · earned achievement retained'
     return 'Expires '+expiration
+
+
+def contribution(allocation):
+    """One contribution per activity: never add its workflow stages together."""
+    data = allocation['data']
+    proposed = data.get('proposed')
+    if proposed is not None:
+        return max(proposed, data['accepted'])
+    return max(data['submitted'], data['accepted']) or None
+
+
+def planning_progress(cycle):
+    from copy import deepcopy
+    estimate = deepcopy(cycle)
+    unknown = 0
+    for row in estimate['allocations']:
+        value = contribution(row)
+        if value is None:unknown += 1
+        row['data']['accepted'] = value or 0
+    result = progress(estimate, include_unclassified=True)
+    result['unknown'] = unknown
+    result['today'] = date.today().isoformat()
+    return result

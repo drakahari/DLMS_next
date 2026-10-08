@@ -36,3 +36,20 @@
 .cert-workspace fieldset > label {margin-block:.8rem;}
 .cert-additional {margin-block:1rem;}
 .cert-additional > summary {cursor:pointer;padding-block:.6rem;}
+
+/* Planner hierarchy stays within the existing themed certification surfaces. */
+.cert-grid {grid-template-columns:repeat(3,minmax(0,1fr));}
+.cert-card {max-width:none;}
+.cert-badge-space {height:120px;display:flex;align-items:center;justify-content:center;}
+.cert-badge-space .cert-badge {object-fit:contain;flex:none;}
+.cert-muted {color:var(--theme-muted-text,var(--theme-page-text));font-size:.95em;}
+.cert-duration {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;}
+.cert-form-heading {display:none;}
+.cert-use-form label {display:grid;gap:.5rem;}
+.cert-use-form input[type=number] {width:min(100%,18rem);}
+.cert-workspace #certProviderLink {font-size:.95em;}
+@media(max-width:1150px){.cert-grid {grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:650px){.cert-grid {grid-template-columns:1fr;}}
+
+.cert-renewal-status:empty {display:none;}
+.cert-use-form [data-renewal-choice] > p {margin-block:.5rem;}

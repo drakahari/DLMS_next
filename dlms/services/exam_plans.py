@@ -227,11 +227,11 @@ def work_state(report, *, schedules, eligible_ids, today_ids, now):
         action, url = None, None
     elif not cal['days']:
         code, label = 'no_dates', 'No study dates remain before the exam'
-        reason = 'Your selected weekdays leave no pre-exam study dates. Review availability; the exam date will not move automatically.'
+        reason = 'Your selected study days leave no pre-exam study dates. Review availability; the exam date will not move automatically.'
         action, url = 'Edit study availability', edit
     elif not cal['study_today']:
         code, label = 'non_study_day', 'Today is not a selected study day'
-        reason = 'Suggestions follow the weekdays in your saved plan calendar. Optional practice is available today.'
+        reason = 'Suggestions follow your selected study days. Optional practice is available today.'
         action, url = None, None
     elif report['slots'] == 0:
         code, label = 'budget_too_small', 'One question exceeds the daily estimate'

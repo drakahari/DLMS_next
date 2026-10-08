@@ -772,6 +772,8 @@ class ExamPlanTests(unittest.TestCase):
                     changed={**plan,'config':{**plan['config'],**changes}}
                     result=plans.summary(conn.cursor(),changed,**opts,now=now)
                     self.assertEqual(result['work_state']['code'],code)
+                    if code=='non_study_day':self.assertEqual(result['work_state']['reason'],'Suggestions follow your selected study days. Optional practice is available today.')
+                    if code=='no_dates':self.assertIn('Your selected study days',result['work_state']['reason'])
             unavailable=plans.summary(conn.cursor(),plan,**{**opts,'media_available':lambda value:False},now=now)
             self.assertEqual(unavailable['work_state']['code'],'unavailable')
             self.assertFalse(unavailable['work_state']['optional_practice'])
