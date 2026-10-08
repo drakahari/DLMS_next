@@ -6,7 +6,7 @@ import sqlite3
 
 from . import study_schema, exam_plan_schema, review_mark_schema, certification_schema
 
-DLMS_SCHEMA_VERSION = 7
+DLMS_SCHEMA_VERSION = 8
 DLMS_LEGACY_SCHEMA_VERSION = 1
 
 DLMS_SCHEMA_COLUMNS = {
@@ -305,7 +305,7 @@ DLMS_SCHEMA_COLUMNS.update(exam_plan_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(review_mark_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(certification_schema.COLUMNS)
 DLMS_SCHEMA_INDEXES.update(study_schema.INDEXES)
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate, 7: certification_schema.migrate}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate, 7: certification_schema.migrate, 8: certification_schema.migrate_periods}
 
 
 def _read_database_schema_version(conn, tables, *, database_column_info=None):

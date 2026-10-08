@@ -33,6 +33,7 @@ def _portal_defaults(
     return {
         "title": "Training & Practice Center",
         "dashboard_card_visibility": dashboard_card_defaults(),
+        "show_certifications": True,
         "show_confidence": True,
         "enable_regex_replace": False,
         "background_image": None,
@@ -219,6 +220,7 @@ def load_portal_config(
         for key in ("it", "law", "medical", "other")
     }
 
+    cfg["show_certifications"] = cfg.get("show_certifications") if isinstance(cfg.get("show_certifications"), bool) else True
     raw_dashboard = cfg.get("dashboard_card_visibility")
     if not isinstance(raw_dashboard, dict):
         raw_dashboard = {}

@@ -9,7 +9,7 @@ from typing import Any
 from flask import Blueprint, jsonify, redirect, render_template, request
 from dlms.persistence.portal import DASHBOARD_CARD_GROUPS, dashboard_card_defaults
 from dlms.themes import THEME_IDS, theme_groups
-from dlms.prompts import DEFAULT_CERTIFICATION_PROMPT
+from dlms.prompts import DEFAULT_CERTIFICATION_PROMPT, DEFAULT_PORTFOLIO_PROMPT
 
 
 Dependency = Callable[..., Any]
@@ -98,6 +98,7 @@ def settings_layout_page(dependencies):
         "settings/dashboard.html", groups=DASHBOARD_CARD_GROUPS,
         visibility=cfg.get("dashboard_card_visibility", dashboard_card_defaults()),
         sidebar_visibility=cfg["study_area_visibility"],
+        show_certifications=cfg.get("show_certifications",True),
     )
 
 
@@ -117,6 +118,8 @@ def save_layout_settings(dependencies):
         cfg["study_area_visibility"] = {
             key: f"study_area_{key}" in request.form for key in ("it", "law", "medical", "other")
         }
+    if action == "save" and request.form.get("certifications_visibility_present") == "yes":
+        cfg["show_certifications"] = "show_certifications" in request.form
     dependencies.write_portal_config(cfg)
     return redirect("/settings/layout?saved=1")
 
@@ -218,6 +221,7 @@ def settings_ai_page(dependencies):
         "settings/ai.html",
         cfg=cfg,
         certification_default_prompt=DEFAULT_CERTIFICATION_PROMPT,
+        portfolio_default_prompt=DEFAULT_PORTFOLIO_PROMPT,
         law_default_prompt=law_prompt,
         study_pack_default_prompt=study_prompt,
         medical_study_pack_default_addendum=medical_addendum,
@@ -259,6 +263,9 @@ def save_ai_settings(dependencies):
     cfg["certification_ai_prompt_template"] = request.form.get("certification_ai_prompt_template", cfg.get("certification_ai_prompt_template", DEFAULT_CERTIFICATION_PROMPT)).strip() or DEFAULT_CERTIFICATION_PROMPT
     if len(cfg["certification_ai_prompt_template"]) > 20000:
         return "Certification prompt exceeds 20,000 characters.", 400
+    cfg["portfolio_ai_prompt_template"] = request.form.get("portfolio_ai_prompt_template", cfg.get("portfolio_ai_prompt_template", DEFAULT_PORTFOLIO_PROMPT)).strip() or DEFAULT_PORTFOLIO_PROMPT
+    if len(cfg["portfolio_ai_prompt_template"]) > 20000:
+        return "Portfolio prompt exceeds 20,000 characters.", 400
     dependencies.write_portal_config(cfg)
     return redirect("/settings/ai?saved=1")
 

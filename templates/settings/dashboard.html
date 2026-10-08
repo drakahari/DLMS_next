@@ -60,6 +60,7 @@
         </fieldset>
         {% endfor %}
 
+        <section class="settings-form-section" id="certifications-visibility"><h2>My Certifications</h2><input type="hidden" name="certifications_visibility_present" value="yes"><label><input type="checkbox" name="show_certifications" {% if show_certifications %}checked{% endif %}> Show My Certifications</label><p>Show the trophy case and certification sidebar links, including Training log. Turning this off keeps every record, document, period, allocation and display-count choice. Your separate dashboard-card choice is also preserved. The scoped Restore buttons do not change this switch.</p></section>
         <div class="settings-form-actions">
             <button type="submit" name="action" value="save" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save layout &amp; navigation</button>
             <button type="submit" name="action" value="dashboard_defaults" class="settings-secondary-button">Restore dashboard defaults</button>

@@ -1,5 +1,6 @@
 """Earned credentials and user-recorded renewal evidence, separate from learning."""
 import re
+import json
 
 STATEMENTS = (
     "CREATE TABLE IF NOT EXISTS certification_state (id INTEGER PRIMARY KEY CHECK(id=1), generation TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0)",
@@ -15,7 +16,7 @@ COLUMNS = {
     'certification_state': {'id','generation','revision'},
     'certification_attachments': {'id','mime','sha256','content'},
     'certifications': {'id','data_json'},
-    'certification_cycles': {'id','certification_id','data_json'},
+    'certification_cycles': {'id','certification_id','data_json','period_order'},
     'certification_training': {'id','data_json'},
     'certification_allocations': {'id','cycle_id','training_id','data_json'},
     'certification_actions': {'request_id','generation','input_hash','result_json'},
@@ -27,6 +28,19 @@ def migrate(conn):
         conn.execute(statement)
 
 
+def migrate_periods(conn):
+    """Preserve the schema-7 displayed order without guessing any dates."""
+    if 'period_order' not in {r[1] for r in conn.execute('PRAGMA table_info(certification_cycles)')}:
+        conn.execute('ALTER TABLE certification_cycles ADD COLUMN period_order INTEGER NOT NULL DEFAULT 0')
+        rows=conn.execute('SELECT id,certification_id,data_json FROM certification_cycles').fetchall()
+        parents={r[1] for r in rows}
+        for parent in parents:
+            ordered=sorted((r for r in rows if r[1]==parent),key=lambda r:(json.loads(r[2])['start'],r[0]))
+            for position,row in enumerate(ordered,1):
+                conn.execute('UPDATE certification_cycles SET period_order=? WHERE id=?',(position,row[0]))
+    conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS certification_period_order ON certification_cycles(certification_id,period_order)')
+
+
 def validate_state(conn):
     rows = conn.execute('SELECT id,generation,revision FROM certification_state').fetchall()
     if (len(rows) != 1 or rows[0][0] != 1 or not isinstance(rows[0][1],str)
@@ -34,6 +48,14 @@ def validate_state(conn):
             or type(rows[0][2]) is not int or rows[0][2] < 0):
         raise RuntimeError('Certification state is invalid. Restore a verified backup; no replacement was created.')
     validate_relationship_constraints(conn)
+    if 'period_order' in {r[1] for r in conn.execute('PRAGMA table_info(certification_cycles)')}:
+        rows=conn.execute('SELECT certification_id,period_order FROM certification_cycles').fetchall()
+        if any(type(r[1]) is not int or r[1]<1 for r in rows) or len(set(map(tuple,rows)))!=len(rows):
+            raise ValueError('Certification period order is invalid; restore a verified backup.')
+        indices=[]
+        for row in conn.execute('PRAGMA index_list(certification_cycles)').fetchall():
+            if row[2] and not row[4]:indices.append(tuple(r[2] for r in conn.execute('SELECT * FROM pragma_index_info(?)',(row[1],))))
+        if ('certification_id','period_order') not in indices:raise ValueError('Certification period order uniqueness is missing; restore a verified backup.')
 
 
 def validate_relationship_constraints(conn):

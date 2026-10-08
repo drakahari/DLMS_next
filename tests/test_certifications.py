@@ -55,7 +55,7 @@ class CertificationTests(foundation.unittest.TestCase):
         self.apply(self.request('training',dict(name='Workshop',completed='2026-09-01',hours=9),id=tid))
         with dlms.get_db() as c:
             self.assertEqual(cert.detail(c.cursor(),cid)['cycles'][0]['totals'],dict(hours=6,submitted=5,accepted=3))
-        newer=self.apply(self.request('cycle',dict(start='2026-10-01',required=20,unit='CEUs'),certification_id=cid))
+        newer=self.apply(self.request('cycle',dict(start='2026-10-01',expiration='2029-10-01',required=20,unit='CEUs'),certification_id=cid))
         with dlms.get_db() as c:
             detail=cert.detail(c.cursor(),cid)
             self.assertEqual(len(detail['cycles']),2)
@@ -276,7 +276,7 @@ class CertificationTests(foundation.unittest.TestCase):
     def test_non_expiring_and_foreign_cycle_scope_are_validated(self):
         cid=self.apply(self.request('certification',dict(name='Permanent',issuer='I',earned='2025-01-01',non_expiring='yes')))['id']
         cycle=self.cycle(cid)
-        with self.assertRaisesRegex(ValueError,'non-expiring'):
+        with self.assertRaisesRegex(ValueError,'Does not expire'):
             self.apply(self.request('cycle',{**cycle['data'],'expiration':'2028-01-01'},id=cycle['id'],certification_id=cid))
         second=self.create('Other')
         self.assertEqual(self.client.get('/certifications/'+second+'/cycles/'+cycle['id']+'/edit').status_code,404)
@@ -298,7 +298,7 @@ d.bootstrap_database(sys.argv[1],schema_version=7,legacy_schema_version=1,legacy
         run=subprocess.run([sys.executable,'-c',script,str(path)],cwd=Path(dlms.__file__).parent,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=15)
         self.assertEqual(run.returncode,73,run.stderr)
         with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
-        self.assertEqual(dlms.bootstrap_database(str(path))['version'],7)
+        self.assertEqual(dlms.bootstrap_database(str(path))['version'],8)
         cid=self.create('Survives app restart')
         script="""import app,sys
 from dlms.services import certifications
@@ -455,3 +455,271 @@ finally:c.close()
                 response=self.client.post('/certifications/save',data=form,headers=self.headers)
                 self.assertEqual(response.status_code,400)
                 with dlms.get_db() as conn:self.assertEqual(before,list(conn.iterdump()))
+
+    def test_unified_current_details_two_attachments_and_separate_early_renewal(self):
+        payload=self.request('certification',dict(name='Credential',issuer='Issuer',earned='2020-01-01',expiration='2027-06-01'),edit_current=True)
+        saved=self.apply(payload,{'badge':self.png(),'certificate':self.pdf()})
+        self.assertEqual(self.apply(payload,{'badge':self.png(),'certificate':self.pdf()}),saved)
+        cid=saved['id'];first=self.cycle(cid)
+        self.assertEqual(first['data']['start'],'','Unknown effective start must not be invented from earned date')
+        with dlms.get_db() as conn:badge=cert.get(conn.cursor(),'certifications',cid)['data']['badge']
+        document=first['data']['certificate'];self.assertNotEqual(badge,document)
+        edit=self.request('certification',dict(name='Credential',issuer='Issuer',earned='2020-01-01',badge=badge,**{**first['data'],'expiration':'2027-07-01'}),id=cid,cycle_id=first['id'],edit_current=True)
+        self.apply(edit,{'badge':self.png()})
+        current=self.cycle(cid);self.assertEqual(current['id'],first['id']);self.assertEqual(current['data']['certificate'],document)
+        renewal=self.apply(self.request('cycle',dict(start='2027-05-01',renewed='2027-04-01',expiration='2030-07-01'),certification_id=cid))
+        with dlms.get_db() as conn:
+            periods=cert.detail(conn.cursor(),cid)['cycles']
+            self.assertEqual(len(periods),2);self.assertEqual(periods[0]['id'],renewal['id'])
+            self.assertEqual(periods[0]['data']['certificate'],'');self.assertEqual(periods[1]['data']['certificate'],document)
+            self.assertEqual(periods[0]['totals'],dict(hours=0,submitted=0,accepted=0))
+        html=self.client.get('/certifications/'+cid).get_data(as_text=True)
+        self.assertIn('Add certificate',html);self.assertIn('/certifications/attachments/'+document,html)
+        self.assertNotIn('/certifications/attachments/'+badge,html)
+        with self.assertRaises(cert.Conflict):self.apply({**edit,'request_id':uuid.uuid4().hex})
+        with self.assertRaisesRegex(ValueError,'conflicts with period'):
+            self.apply(self.request('cycle',dict(expiration='2027-07-01'),certification_id=cid))
+
+    def test_http_unified_errors_preserve_fields_and_documents(self):
+        request=self.request('certification')
+        form=dict(kind='certification',edit_current='yes',request_id=request['request_id'],generation=request['generation'],revision=request['revision'],field_name='Entered title',field_issuer='Issuer',field_earned='2025-01-01',field_expiration='2024-01-01')
+        failed=self.client.post('/certifications/save',data={**form,'badge':(BytesIO(self.png()),'badge.png'),'certificate':(BytesIO(self.pdf()),'official.pdf')},headers=self.headers)
+        self.assertEqual(failed.status_code,400);self.assertIn('Entered title',failed.get_data(as_text=True))
+        with dlms.get_db() as conn:self.assertEqual(conn.execute('SELECT count(*) FROM certification_attachments').fetchone()[0],0)
+        form['field_expiration']='2028-01-01'
+        response=self.client.post('/certifications/save',data={**form,'badge':(BytesIO(self.png()),'badge.png'),'certificate':(BytesIO(self.pdf()),'official.pdf')},headers=self.headers)
+        self.assertEqual(response.status_code,303)
+        with dlms.get_db() as conn:
+            row=cert.collection(conn.cursor())[0];period=cert.detail(conn.cursor(),row['id'])['cycles'][0]
+            self.assertEqual(conn.execute('SELECT count(*) FROM certification_attachments').fetchone()[0],2)
+        edit=self.client.get('/certifications/'+row['id']+'/edit').get_data(as_text=True)
+        self.assertIn('value="2028-01-01"',edit)
+        self.assertIn('/certifications/attachments/'+period['data']['certificate'],edit)
+        self.assertEqual(self.client.get('/certifications/attachments/'+period['data']['certificate']).mimetype,'application/pdf')
+
+    def test_non_expiring_after_renewal_keeps_history_and_explicit_image_adoption(self):
+        cid=self.apply(self.request('certification',dict(name='A',issuer='I',earned='2020-01-01',expiration='2025-01-01')),{'badge':self.png()})['id']
+        first=self.cycle(cid)
+        self.apply(self.request('cycle',dict(expiration='2028-01-01'),certification_id=cid));current=self.cycle(cid)
+        with dlms.get_db() as conn:data=cert.get(conn.cursor(),'certifications',cid)['data']
+        self.apply(self.request('certification',{**data,**current['data'],'non_expiring':'yes','expiration':''},id=cid,cycle_id=current['id'],edit_current=True,use_badge_certificate=True))
+        with dlms.get_db() as conn:
+            periods=cert.detail(conn.cursor(),cid)['cycles']
+            self.assertEqual(periods[0]['data']['certificate'],data['badge'])
+            self.assertEqual(periods[1]['data']['expiration'],'2025-01-01')
+            cert.validate_restored(conn)
+        self.assertEqual(first['id'],periods[1]['id'])
+
+    def test_schema_eight_preserves_periods_and_rejects_failed_order_migration(self):
+        path=Path(dlms.APP_DATA_DIR)/'v7-copy.db'
+        cid=self.create();first=self.cycle(cid)
+        self.apply(self.request('cycle',dict(start='2026-01-01',expiration='2029-01-01'),certification_id=cid))
+        with dlms.get_db() as source,sqlite3.connect(path) as conn:source.backup(conn)
+        with sqlite3.connect(path) as conn:
+            conn.execute('DROP INDEX certification_period_order')
+            conn.execute('ALTER TABLE certification_cycles DROP COLUMN period_order')
+            conn.execute('UPDATE schema_meta SET version=7')
+            before=list(conn.iterdump())
+        def fail(conn):certification_schema.migrate_periods(conn);raise RuntimeError('interrupted period migration')
+        with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{8:fail}):
+            with self.assertRaisesRegex(RuntimeError,'interrupted'):dlms.bootstrap_database(str(path))
+        with sqlite3.connect(path) as conn:self.assertEqual(list(conn.iterdump()),before)
+        self.assertEqual(dlms.bootstrap_database(str(path))['from_version'],7)
+        with sqlite3.connect(path) as conn:
+            conn.row_factory=sqlite3.Row
+            rows=cert.detail(conn.cursor(),cid)['cycles']
+            self.assertEqual([r['period_order'] for r in rows],[2,1]);self.assertEqual(rows[1]['id'],first['id'])
+            certification_schema.migrate_periods(conn);cert.validate_restored(conn)
+        raw=path.read_bytes()
+        with mock.patch.object(dlms,'DLMS_SCHEMA_VERSION',7):
+            with self.assertRaisesRegex(RuntimeError,'newer'):dlms.bootstrap_database(str(path))
+        self.assertEqual(path.read_bytes(),raw)
+
+    def test_feature_visibility_preserves_data_counts_and_independent_preferences(self):
+        cid=self.create();cfg=dlms.load_portal_config();cfg['certification_display_count']='all';dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
+        with dlms.get_db() as conn:before=list(conn.iterdump())
+        choices={**{'dashboard_card_'+k:'on' for k,v in cfg['dashboard_card_visibility'].items() if v},**{'study_area_'+k:'on' for k,v in cfg['study_area_visibility'].items() if v},'certifications_visibility_present':'yes'}
+        self.assertEqual(self.client.post('/settings/layout/save',data=choices,headers=self.headers).status_code,302)
+        with mock.patch.object(dlms,'_certifications_dashboard',side_effect=AssertionError('hidden query')):
+            html=self.client.get('/').get_data(as_text=True);self.assertNotIn('id="myCertifications"',html)
+        cfg2=dlms.load_portal_config();self.assertFalse(cfg2['show_certifications']);self.assertEqual(cfg2['certification_display_count'],'all')
+        self.assertEqual(cfg2['dashboard_card_visibility'],cfg['dashboard_card_visibility'])
+        self.client.post('/settings/layout/save',data={'action':'dashboard_defaults'},headers=self.headers)
+        self.assertFalse(dlms.load_portal_config()['show_certifications'])
+        self.client.post('/settings/layout/save',data={**choices,'show_certifications':'on'},headers=self.headers)
+        self.assertTrue(dlms.load_portal_config()['show_certifications'])
+        self.assertIn('id="myCertifications"',self.client.get('/').get_data(as_text=True))
+        with dlms.get_db() as conn:self.assertEqual(list(conn.iterdump()),before)
+    def test_custom_issuer_shared_library_unknown_rules_and_portfolio_privacy(self):
+        a=self.apply(self.request('certification',dict(name='River stewardship',issuer='Independent Watershed Guild',earned='2025-06-01',version='Field standard 9',notes='PRIVATE ID 12345')))['id']
+        b=self.create('Second earned credential');one=self.cycle(a);two=self.cycle(b)
+        activity=self.apply(self.request('training',dict(name='Stream survey',provider='Community college',completed='2026-06-10',hours=8,course_url='https://example.org/course',topics='Water sampling',notes='PRIVATE MEDICAL NOTE')),{'certificate':self.pdf()})['id']
+        with dlms.get_db() as c:
+            self.assertIsNone(cert.detail(c.cursor(),a)['cycles'][0]['progress']['remaining'])
+            prompt=cert.portfolio_prompt(c.cursor(),[a,b],[activity],'Which rules apply?')
+        for secret in ('PRIVATE',a,b,activity,one['id'],'certificate.pdf'):self.assertNotIn(secret,prompt)
+        for expected in ('Independent Watershed Guild','Field standard 9','Unknown','Stream survey','Water sampling','https://example.org/course'):self.assertIn(expected,prompt)
+        for period in (one,two):
+            self.apply(self.request('allocation',dict(hours=6,proposed=5,reviewed='yes',submitted=4,accepted=2,rationale='Issuer allows field training',source='https://example.org/rules'),cycle_id=period['id'],training_id=activity))
+        with self.assertRaisesRegex(cert.Conflict,'already has'):
+            self.apply(self.request('allocation',dict(hours=1),cycle_id=one['id'],training_id=activity))
+        self.apply(self.request('training',dict(name='Stream survey',completed='2026-06-10',hours=10),id=activity))
+        with dlms.get_db() as c:
+            self.assertEqual(sum(r['data']['hours'] for r in cert.records(c.cursor(),'certification_training')),10)
+            self.assertEqual(self.cycle(a)['totals']['accepted'],2)
+            cert.validate_restored(c)
+        self.assertIn('Total requirement unknown',self.client.get('/certifications/'+a).get_data(as_text=True))
+        self.assertEqual(self.client.get('/certifications/matches').status_code,200)
+
+    def test_annual_reporting_boundaries_caps_and_minimum_versus_pacing(self):
+        rules=dict(requirement_known=True,annual_kind='minimum',annual_amount=20,year_basis='anniversary',year_anchor='2025-07-01',reporting_start='2025-07-01',reporting_end='2028-06-30',categories=[dict(name='Field work',minimum=10,cap=15)])
+        cid=self.apply(self.request('certification',dict(name='Custom standard',issuer='Open Field Institute',earned='2025-06-01',required=40,tracking=rules)))['id'];cycle=self.cycle(cid)
+        for when,credit in [('2026-06-30',10),('2026-07-01',8)]:
+            tid=self.apply(self.request('training',dict(name=when,completed=when,hours=10)))['id']
+            self.apply(self.request('allocation',dict(hours=10,submitted=credit,accepted=credit,category='Field work'),cycle_id=cycle['id'],training_id=tid))
+        p=self.cycle(cid)['progress'];self.assertEqual([y['accepted'] for y in p['annual']],[10,8,0]);self.assertEqual(p['accepted'],15);self.assertEqual(p['remaining'],25);self.assertEqual(p['categories'][0]['over_cap'],3)
+        tid=self.apply(self.request('training',dict(name='Outside',completed='2025-06-30',hours=2)))['id']
+        with self.assertRaisesRegex(ValueError,'outside'):
+            self.apply(self.request('allocation',dict(hours=1,submitted=1),cycle_id=cycle['id'],training_id=tid))
+        with self.assertRaisesRegex(ValueError,'Explain'):
+            self.apply(self.request('allocation',dict(hours=1,submitted=1,reporting_date='2025-07-01'),cycle_id=cycle['id'],training_id=tid))
+        self.apply(self.request('allocation',dict(hours=1,submitted=1,reporting_date='2025-07-01',rationale='Explicit initial-year exception checked with issuer'),cycle_id=cycle['id'],training_id=tid))
+        from dlms.services.certification_presets import values
+        self.assertEqual(values('cism-2026')['tracking']['annual_kind'],'minimum')
+        self.assertEqual(values('cissp-v7')['tracking']['annual_kind'],'pacing')
+        self.assertEqual(values('lpic-membership')['required'],60)
+        self.assertEqual(values('lpic-membership')['tracking']['annual_kind'],'unknown')
+        self.assertEqual(values('lpic-exams')['required'],'')
+        self.assertFalse(values('peoplecert-custom')['tracking']['requirement_known'])
+        # Date-only boundaries include leap day without shifting timezone.
+        from dlms.services.certification_tracking import progress
+        fake={**self.cycle(cid),'data':{**cycle['data'],'tracking':{**rules,'reporting_start':'2028-02-28','reporting_end':'2029-03-01','year_anchor':'2028-02-29'}},'allocations':[]}
+        years=progress(fake)['annual'];self.assertEqual(years[0]['end'],'2028-02-28');self.assertEqual(years[1]['start'],'2028-02-29');self.assertEqual(years[1]['end'],'2029-02-27')
+
+    def test_directional_relationship_expired_history_and_confirmed_renewal(self):
+        a=self.create('Higher credential');b=self.apply(self.request('certification',dict(name='Earlier achievement',issuer='Custom Guild',earned='2025-06-01',expiration='2026-06-01')))['id']
+        rel=dict(target=b,trigger='earning',rule='https://example.org/renewal',checked='2026-10-07',conditions='Only version 2 after issuer confirmation')
+        payload=self.request('relationship',rel,id=a);first=self.apply(payload);self.assertEqual(first,self.apply(payload))
+        with dlms.get_db() as c:
+            self.assertEqual(cert.get(c.cursor(),'certifications',b)['data'].get('relationships',[]),[])
+            self.assertIn('earned achievement retained',next(r for r in cert.collection(c.cursor()) if r['id']==b)['status'])
+        original=self.cycle(b)
+        renewal=self.request('cycle',dict(expiration='2029-06-01',renewed='2026-05-01'),certification_id=b,renewal_from=a,renewal_trigger='earning')
+        with self.assertRaisesRegex(ValueError,'Confirm'):self.apply(renewal)
+        renewal['confirm_relationship']=True;out=self.apply(renewal);self.assertEqual(out,self.apply(renewal))
+        self.assertEqual(self.cycle(b)['totals']['accepted'],0)
+        self.assertEqual(self.cycle(b)['data']['renewal_source']['name'],'Higher credential')
+        self.apply(self.request('relationship',rel,id=a,remove_relationship=True,confirm=True))
+        with dlms.get_db() as c:
+            self.assertEqual(len(cert.detail(c.cursor(),b)['cycles']),2)
+            self.assertEqual(cert.get(c.cursor(),'certification_cycles',original['id'])['data']['expiration'],'2026-06-01')
+            cert.validate_restored(c)
+        with self.assertRaisesRegex(cert.Conflict,'unavailable'):
+            self.apply(self.request('cycle',dict(expiration='2032-06-01'),certification_id=b,renewal_from=a,renewal_trigger='earning',confirm_relationship=True))
+
+    def test_new_metadata_backup_and_settings_roundtrip(self):
+        from zipfile import ZipFile
+        cid=self.apply(self.request('certification',dict(name='Custom',issuer='Arbitrary issuer',earned='2025-06-01',tracking=dict(requirement_known=False,annual_kind='unknown'))),{'badge':self.png(),'certificate':self.pdf()})['id']
+        self.apply(self.request('training',dict(name='Public course',completed='2026-01-01',hours=2,topics='A public description',course_url='https://example.org')))
+        cfg=dlms.load_portal_config();cfg.update(show_certifications=False,portfolio_ai_prompt_template='CUSTOM {{portfolio_context}}',certification_ai_prompt_template='INDEPENDENT {{certification_context}}');dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
+        backup,manifest=dlms._create_dlms_backup('portfolio-roundtrip')
+        stage=Path(dlms.APP_DATA_DIR)/'portfolio-stage';stage.mkdir()
+        report=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),report);dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
+        db=next(stage.rglob('results.db'))
+        with sqlite3.connect(db) as c:
+            c.row_factory=sqlite3.Row;cert.validate_restored(c)
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0],2)
+            self.assertFalse(cert.detail(c.cursor(),cid)['cycles'][0]['progress']['known'])
+        configs=[p for p in stage.rglob('*.json') if 'portfolio_ai_prompt_template' in p.read_text()]
+        self.assertTrue(configs)
+        saved=next(json.loads(p.read_text()) for p in configs if 'show_certifications' in json.loads(p.read_text()))
+        self.assertFalse(saved['show_certifications']);self.assertEqual(saved['certification_ai_prompt_template'],'INDEPENDENT {{certification_context}}')
+    def test_visibility_and_independent_prompts_survive_real_restart(self):
+        import os,subprocess,sys
+        cid=self.create();cfg=dlms.load_portal_config();cfg.update(certification_display_count='all',portfolio_ai_prompt_template='PORTFOLIO {{portfolio_context}}',certification_ai_prompt_template='SINGLE {{certification_context}}')
+        with dlms.get_db() as c:before={t:list(c.execute('SELECT * FROM '+t)) for t in cert.TABLES}
+        for enabled in (False,True):
+            cfg['show_certifications']=enabled;dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
+            code="import app,json; c=app.load_portal_config(); print('CHECK:'+json.dumps({k:c[k] for k in ('show_certifications','certification_display_count','portfolio_ai_prompt_template','certification_ai_prompt_template')}))"
+            result=subprocess.run([sys.executable,'-c',code],cwd=Path(dlms.__file__).parent,env={**os.environ,'QUIZAPP_DATA_DIR':dlms.APP_DATA_DIR,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=30)
+            self.assertEqual(result.returncode,0,result.stderr)
+            actual=json.loads(next(line[6:] for line in result.stdout.splitlines() if line.startswith('CHECK:')))
+            self.assertIs(actual['show_certifications'],enabled);self.assertEqual(actual['certification_display_count'],'all')
+            self.assertEqual(actual['portfolio_ai_prompt_template'],cfg['portfolio_ai_prompt_template']);self.assertEqual(actual['certification_ai_prompt_template'],cfg['certification_ai_prompt_template'])
+        with dlms.get_db() as c:self.assertEqual({t:list(c.execute('SELECT * FROM '+t)) for t in cert.TABLES},before)
+        for bad in (None,'false',0,[],{}):
+            cfg['show_certifications']=bad;dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
+            raw=Path(dlms.PORTAL_CONFIG).read_bytes();self.assertIs(dlms.load_portal_config()['show_certifications'],True)
+            self.assertEqual(Path(dlms.PORTAL_CONFIG).read_bytes(),raw)
+
+    def test_unknown_categories_cannot_hide_caps_or_invent_verified_progress(self):
+        from dlms.services.certification_tracking import progress
+        cid=self.create();cycle=self.cycle(cid)
+        row=dict(data=dict(hours=2,submitted=2,accepted=2,category='Typo'),training=dict(data=dict(completed='2026-01-01')))
+        cycle['allocations']=[row];cycle['data']['tracking']=dict(requirement_known=True,year_basis='calendar',annual_kind='minimum',annual_amount=1,reporting_start='2026-01-01',reporting_end='2026-12-31',categories=[dict(name='Course',minimum=1,cap=1)])
+        p=progress(cycle);self.assertEqual(p['accepted'],0);self.assertEqual(p['unclassified'],[row]);self.assertEqual(p['annual'][0]['accepted'],2)
+        for fields in ({'annual_kind':'minimum'}, {'year_basis':'anniversary'}, {'categories':[dict(name='A',minimum=2,cap=1)]}):
+            with self.subTest(fields=fields),self.assertRaises(ValueError):cert.normalize('cycle',dict(tracking=fields))
+        # Import validation preserves the period-order uniqueness safety boundary.
+        with dlms.get_db() as c:
+            c.execute('DROP INDEX certification_period_order')
+            with self.assertRaisesRegex(ValueError,'uniqueness'):cert.validate_restored(c)
+
+    def test_unknown_earned_date_is_not_invented_and_known_dates_still_validate(self):
+        cid=self.apply(self.request('certification',dict(name='Earned long ago',issuer='Any custom organization',non_expiring='yes')))['id']
+        with dlms.get_db() as c:
+            self.assertEqual(cert.get(c.cursor(),'certifications',cid)['data']['earned'],'')
+            self.assertEqual(cert.detail(c.cursor(),cid)['cycles'][0]['data']['start'],'')
+            cert.validate_restored(c)
+        self.assertIn('not recorded',self.client.get('/certifications/'+cid).get_data(as_text=True))
+
+    def test_unknown_annual_amount_and_singular_library_copy(self):
+        cid=self.apply(self.request('certification',dict(name='Custom',issuer='Any issuer',tracking={})))['id']
+        form=self.client.get('/certifications/'+cid+'/edit').get_data(as_text=True)
+        self.assertRegex(form,r'name="track_annual_amount"[^>]*value=""')
+        self.apply(self.request('training',dict(name='One activity',completed='2026-01-01',hours=1)))
+        self.assertIn('1 saved activity.',self.client.get('/certifications/training').get_data(as_text=True))
+
+    def test_reporting_calendar_extremes_remain_viewable_and_restorable(self):
+        for year in ('0001', '9999'):
+            with self.subTest(year=year):
+                start, end = year+'-01-01', year+'-12-31'
+                cid = self.apply(self.request('certification', dict(
+                    name='Calendar boundary '+year, issuer='Custom issuer',
+                    tracking=dict(year_basis='calendar', reporting_start=start,
+                                  reporting_end=end))))['id']
+                response = self.client.get('/certifications/'+cid)
+                self.assertEqual(response.status_code, 200)
+                annual = self.cycle(cid)['progress']['annual']
+                self.assertEqual([(row['start'], row['end']) for row in annual], [(start, end)])
+                from dlms.services.certification_tracking import progress
+                cycle = self.cycle(cid)
+                cycle['data']['tracking'].update(year_basis='anniversary', year_anchor='2000-07-01')
+                annual = progress(cycle)['annual']
+                self.assertEqual([(row['start'], row['end']) for row in annual],
+                                 [(start, year+'-06-30'), (year+'-07-01', end)])
+                with dlms.get_db() as conn:
+                    cert.validate_restored(conn)
+
+    def test_fractional_credit_progress_has_exact_two_decimal_arithmetic(self):
+        cid = self.apply(self.request('certification', dict(
+            name='Fractional credits', issuer='Custom issuer', required='.40',
+            tracking=dict(requirement_known=True, year_basis='calendar',
+                reporting_start='2026-01-01', reporting_end='2026-12-31',
+                annual_kind='minimum', annual_amount='.50',
+                categories=[dict(name='Course', minimum='.30', cap='.30')]))))['id']
+        cycle = self.cycle(cid)
+        for credit in ('.10', '.30'):
+            tid = self.apply(self.request('training', dict(
+                name='Partial course '+credit, completed='2026-06-01', hours=1)))['id']
+            self.apply(self.request('allocation', dict(hours=1, submitted=1,
+                accepted=credit, category='Course'), cycle_id=cycle['id'], training_id=tid))
+            p = self.cycle(cid)['progress']
+            if credit == '.10':
+                self.assertEqual(p['remaining'], .30)
+                self.assertEqual(p['categories'][0]['remaining'], .20)
+        self.assertEqual(p['accepted'], .30)
+        self.assertEqual(p['remaining'], .10)
+        self.assertEqual(p['categories'][0]['over_cap'], .10)
+        self.assertEqual(p['annual'][0]['remaining'], .10)
+        self.assertEqual(self.cycle(cid)['totals']['accepted'], .40)

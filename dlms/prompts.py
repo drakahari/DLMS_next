@@ -608,3 +608,19 @@ between cycles. Give a concise explanation and practical next steps.
 Selected context and my question:
 {{certification_context}}
 """
+
+DEFAULT_PORTFOLIO_PROMPT = """Help me find possible renewal matches across my earned-certification portfolio.
+Use only the selected information below. Research current official issuer policies
+for each credential/version and renewal route, and relevant public course descriptions.
+Do not assume that an issuer or a course provider is supported by a special integration.
+For each possible match give source URLs, policy publication/check dates, category,
+potentially eligible credit, exclusions, uncertainty and missing information. Distinguish
+actual learning hours from claimed credit and issuer-accepted credit. Check annual
+minimums versus optional pacing, reporting-year boundaries, cycle totals and category caps.
+Do not assume the same activity is accepted by every issuer or that a full credit total
+completes renewal. Mention other conditions (such as fees, membership or audit).
+These are eligibility suggestions, not issuer approval. Ask before assuming unknown rules.
+Nothing you write updates DLMS or renews any credential; I must verify and record it myself.
+
+{{portfolio_context}}
+"""

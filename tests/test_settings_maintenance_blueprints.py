@@ -457,7 +457,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         renderer.assert_called_once_with(
             "settings/dashboard.html", groups=settings_routes.DASHBOARD_CARD_GROUPS,
-            visibility=settings_routes.dashboard_card_defaults(), sidebar_visibility={"it": True}
+            visibility=settings_routes.dashboard_card_defaults(), sidebar_visibility={"it": True}, show_certifications=True
         )
 
         maintenance_services = {

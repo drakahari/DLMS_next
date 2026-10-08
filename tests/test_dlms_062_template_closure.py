@@ -171,8 +171,8 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
         self.assertEqual(TEMPLATE_ROOT.resolve(), Path(dlms.app.template_folder).resolve())
 
         templates = sorted(TEMPLATE_ROOT.rglob("*.html"))
-        # Includes certification workspace/cards, Help theme reference and Study partials.
-        self.assertEqual(80, len(templates))
+        # Includes the issuer-neutral certification tracking, matches, progress and relationship partials.
+        self.assertEqual(84, len(templates))
         self.assertTrue((TEMPLATE_ROOT / "dashboard/index.html").is_file())
         self.assertFalse((ROOT / "static/index.html").exists())
         self.assertNotIn("static/index.html", self.app_source)

@@ -243,7 +243,9 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
     @blueprint.get("/")
     def home():
         portal_title = dependencies.get_portal_title()
-        visible = dependencies.load_portal_config().get("dashboard_card_visibility", dashboard_card_defaults())
+        cfg = dependencies.load_portal_config()
+        visible = dict(cfg.get("dashboard_card_visibility", dashboard_card_defaults()))
+        if not cfg.get("show_certifications", True):visible["certifications"] = False
 
         return render_template(
             "dashboard/index.html",

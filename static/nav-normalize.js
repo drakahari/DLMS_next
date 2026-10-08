@@ -143,6 +143,7 @@
     if (key === 'law') return path === '/law' || path.startsWith('/law/');
     if (key === 'medical') return path === '/medical' || path.startsWith('/medical/') || medicalBuilder;
     if (key === 'other') return otherStudies || otherBuilder;
+    if (key === 'certifications') return path.startsWith('/certifications');
     if (key === 'history') return path === '/history' || path.startsWith('/review');
     if (key === 'analytics') return path === '/dashboard';
     if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile' || path === '/review-schedule' || path === '/learning-diagnostics' || path.startsWith('/exam-plans');
@@ -160,7 +161,8 @@
   const isActiveParent = (key) => (
     (key === 'build' && buildOpen) ||
     (key === 'learning' && learningOpen) ||
-    (key === 'anki' && ankiOpen && path !== '/anki')
+    (key === 'anki' && ankiOpen && path !== '/anki') ||
+    (key === 'certifications' && path.startsWith('/certifications/training'))
   );
   const iconMarkup = (icon, cssClass) => `<svg class="dlms-icon ${cssClass}" aria-hidden="true" focusable="false"><use href="/static/icons.svg#${icon}"></use></svg>`;
   const item = (key, href, icon, label) => {
@@ -205,12 +207,14 @@
     });
   };
 
+  const certificationNavigation = () => `<div class="dashboard-nav-group" data-certification-navigation hidden style="display:none">${item('certifications','/certifications','star','My Certifications')}${path.startsWith('/certifications') ? `<div class="dashboard-nav-submenu normalized-open">${sub('/certifications/training','branch','Training log',path.startsWith('/certifications/training'))}</div>` : ''}</div>`;
   const mountNavigation = (studyAreaVisibility) => {
     // Learning Intelligence pages ship with this exact canonical sidebar
     // because their content is otherwise ready to paint before this shared
     // script can replace the one-link template seed. Keep that stable DOM.
     const canonicalSeed = sidebar.querySelector(':scope > .dashboard-nav-normalized[data-navigation-seed="canonical"]');
     if (canonicalSeed) {
+      if (!canonicalSeed.querySelector('[data-certification-navigation]')) canonicalSeed.insertAdjacentHTML('beforeend',certificationNavigation());
       if (!canonicalSeed.querySelector('a[href="/exam-plans"]')) {
         canonicalSeed.querySelector('a[href="/learning-profile"]')?.insertAdjacentHTML('beforebegin', sub('/exam-plans','branch','Exam Plans', false));
       }
@@ -235,6 +239,7 @@
       item('medical','/medical','medical','Medical Study'),
       item('other','/study-packs?domain_group=other','other','Other Studies'),
       primarySection('Progress & tools'),
+      certificationNavigation(),
       item('history','/history','history','Exam History'),
       item('analytics','/dashboard','analytics','Analytics'),
       `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','learning','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','branch','Topic Intelligence', path === '/learning-intelligence')}${sub('/exam-plans','branch','Exam Plans', path.startsWith('/exam-plans'))}${sub('/learning-profile','branch','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','branch','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','branch','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
@@ -355,6 +360,7 @@
       appearanceLink.textContent = 'Open Appearance settings';
       themeQuick.appendChild(appearanceLink);
     }
+    document.querySelectorAll('[data-certification-navigation]').forEach(node => { const shown=cfg?.show_certifications !== false;node.hidden=!shown;node.style.display=shown?'':'none'; });
     const visibility = normalizeStudyAreaVisibility(cfg?.study_area_visibility);
     applyStudyAreaVisibility(visibility);
     cacheStudyAreaVisibility(visibility);

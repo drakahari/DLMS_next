@@ -32,3 +32,7 @@
 .cert-trophies .cert-section-head {display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:start;}
 .cert-trophies select {font:inherit;color:var(--theme-input-text);background:var(--theme-input-bg);min-height:44px;border:1px solid var(--theme-border);}
 @media(max-width:600px){.cert-workspace .dashboard-panel {padding:1rem;}.cert-badge {width:80px;height:80px;}.cert-actions {gap:.5rem;}}
+
+.cert-workspace fieldset > label {margin-block:.8rem;}
+.cert-additional {margin-block:1rem;}
+.cert-additional > summary {cursor:pointer;padding-block:.6rem;}

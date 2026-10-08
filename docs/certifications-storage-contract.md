@@ -4,7 +4,7 @@ This is an earned-credential log, independent of Exam Plans, question evidence,
 quiz scoring and review schedules. Nothing in this module awards learning credit,
 quiz completion, issuer approval or verified renewal.
 
-## Schema 7
+## Schema 7 foundation and additive schema 8
 
 The existing SQLite migration runner adds seven tables in its transaction:
 `certification_state`, `certifications`, `certification_cycles`,
@@ -13,11 +13,10 @@ The existing SQLite migration runner adds seven tables in its transaction:
 same definitions in `init.sql`. Existing rows in other tables are untouched.
 Schema readiness includes the singleton generation/revision guard. Interrupted
 migration rolls back; the version advances only after validation. Rerunning a
-successful migration is a read/check operation. Older builds reject version 7.
+successful migration is a read/check operation. Older builds reject databases above their supported schema version. Schema 7 builds refuse schema 8.
 
 Record IDs are random, stable identifiers. Dates are validated calendar dates
-(`YYYY-MM-DD`), with no timezone conversion. Cycles remain separate; new cycles
-start after recorded earlier cycles and contain no automatically carried credits.
+(`YYYY-MM-DD`), with no timezone conversion. Periods remain separate. Schema 8 adds a unique positive `period_order` per credential, initialized from schema 7’s existing `(start, id)` order without changing dates or files. Known starts and expirations must remain ordered, but starts may be unknown and early-renewal coverage may overlap. Recording date is distinct from coverage. Current editing updates the same period; new renewal requires a later expiration and carries no credit or certificate forward.
 Changing a cycle’s credit unit is blocked once it has allocations, to avoid
 silently reinterpreting existing credit amounts. Each activity has at most one
 allocation per cycle. The user may explicitly associate it with other cycles or
@@ -104,3 +103,51 @@ Copy its `certifications-trophy.webp` and `certifications-cycle.webp` to
 Use disposable sample records only. The design ZIP’s issuer badges and sample
 records are not shipped or seeded. `DLMS.spec` already includes complete static
 and template directories; new Python modules use ordinary imported dependencies.
+
+
+## Portfolio tracking (schema 8)
+
+Optional JSON metadata extends existing records without inventing historical
+verification or assistance. Existing schema-7 JSON remains valid and unchanged.
+Unknown requirements retain their legacy numeric storage default only for format
+compatibility; the UI and AI label them unknown unless explicitly recorded.
+A known zero is distinguishable from an unknown requirement. Free-text issuers
+and custom rules use every workflow; no preset is required.
+
+Training URLs/topics are optional public context; private notes stay excluded.
+Proposed amounts, review flags, sources and reporting-date exceptions are separate
+from submitted/accepted amounts. Library hours sum each activity once. A unique
+allocation per activity/period prevents duplicate cycle credit. Period and annual
+views partition saved allocations; caps affect displayed progress, not saved
+facts. Unknown reporting dates/rules never imply compliance. Years are calendar
+or user-anchored anniversary; irregular years remain explicitly manual. February
+29 anchors clamp to February 28 in non-leap years, disclosed before selection.
+
+Directional relationships live with the source credential as bounded metadata.
+Deleted targets remain unavailable references, not silently substituted records.
+Confirmed target renewals snapshot the source name, issuer, trigger and rule in
+the new target period. Removal of a relationship never erases that history.
+Nothing automatically updates other credentials or adds training credit.
+
+`show_certifications` defaults true. It masks the trophy card and certification
+sidebar group, preserving the independent card mapping and display count. Scoped
+layout restores do not change this master toggle. Settings remains reachable.
+The portfolio prompt uses its own setting and reset; existing prompts remain
+independent. These settings use the existing portable JSON backup.
+
+## Rule sources checked 2026-10-07
+
+Presets are stored in `dlms/services/certification_presets.py` and copied into an
+editable form only. No network or rule refresh occurs at runtime. Rules must be
+checked for the user's actual credential/version, route and reporting dates.
+
+- [ISACA 2026 CPE policy](https://www.isaca.org/-/media/files/isacadp/project/isaca/certification/general/cpe_policy.pdf): CISM 20 annually, 120 over three years; 90 aligned with the credential exam content, at most 30 other development. Calendar reporting years and special initial-year reporting apply. Activity-specific limits, fees, ethics and audit remain conditions to verify.
+- [ISC2 member policy v7](https://www.isc2.org/policies-procedures/member-policies): CISSP 120 over three years, including at least 90 Group A; up to 30 Group B. Forty annually is suggested pacing, not a mandatory annual minimum. Personal reporting boundaries are not inferred.
+- [PeopleCert FAQ](https://www.peoplecert.org/help-and-support/FAQ): version and renewal route matter. The preset is intentionally incomplete; Plus CPD and examination routes must not be conflated. ITIL v3 must not inherit ITIL 4 renewal rules.
+- [LPI renewal](https://www.lpi.org/our-certifications/renewal/): current exams, higher-level certification and optional membership are different renewal routes. No personal expiration or related renewal is applied automatically.
+- [LPI PDU policy](https://www.lpi.org/member/pdu-procedures-and-policies/): membership route has 60 PDUs per three-year cycle; Education minimum 30/cap 50, Community cap 20, Experience cap 30. Activity-specific conversion and caps remain manual. No carry-forward is automated.
+- [LPI membership program](https://www.lpi.org/membership-program-2/): a PDU cycle begins with membership activation, distinct from the one/three-year paid membership term and certification status. Its FAQ explicitly says there is no 20-PDU annual minimum; it separately requires 20 recent PDUs for inactive holders applying for membership. The renewal page still says 20 annually. The preset leaves this conflicting annual obligation unknown pending confirmation. Sixty PDUs is a membership-cycle requirement, not a three-year certification validity period; no certification expiration is calculated from it.
+
+The CompTIA multiple-renewal source could not be reliably retrieved in this
+review. No built-in CompTIA mapping is enabled. Manual directional relationships
+with explicit evidence/confirmation are available for all issuers.

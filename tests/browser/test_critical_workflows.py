@@ -15740,19 +15740,20 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
     image=Image.new('RGB',(100,100),'#dceafa');draw=ImageDraw.Draw(image);draw.ellipse((8,8,92,92),fill='#184a70');draw.text((25,43),'SAMPLE',fill='white');image.save(badge)
     evidence=root/'test-certificate.pdf';writer=PdfWriter();writer.add_blank_page(width=100,height=100)
     with evidence.open('wb') as f:writer.write(f)
-    browser.evaluate("document.querySelector('[name=field_name]').value='Security governance — earned sample credential with a long, readable name';document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2025-06-01';true")
+    browser.evaluate("document.querySelector('[name=field_name]').value='Security governance — earned sample credential with a long, readable name';document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2025-06-01';document.querySelector('[name=field_expiration]').value='2028-06-01';true")
     browser.set_files('[name=badge]',[str(badge)])
+    browser.set_files('[name=certificate]',[str(evidence)])
     browser.click('.cert-form [type=submit]')
     browser.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
     path=browser.evaluate('location.pathname');cid=path.split('/')[-1]
     browser.click('a[href$="/edit"]')
-    # The hero's edit link edits certification; cycle evidence is explicitly separate.
+    # Current-period corrections are one Edit certification operation.
     browser.wait_for("document.querySelector('[name=kind]').value==='certification'")
-    browser.navigate(base+path)
-    browser.click('.cert-cycle a[href$="/edit"]')
-    browser.wait_for("document.querySelector('[name=kind]').value==='cycle'")
+    assert browser.evaluate("document.querySelector('[name=field_expiration]').value") == '2028-06-01'
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT count(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0] == 1
+    browser.click('.cert-additional summary')
     browser.evaluate("document.querySelector('[name=field_required]').value='20';document.querySelector('[name=field_unit]').value='credits';document.querySelector('[name=field_renewal]').value='2028-06-01';true")
-    browser.set_files('[name=certificate]',[str(evidence)])
     browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-cycle') && !document.querySelector('.cert-form')")
     browser.navigate(base+'/certifications/training/new')
     browser.wait_for("document.querySelector('[name=field_hours]')")
@@ -15827,6 +15828,8 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
             if output and theme in ('light','dark','ethereal'):
                 shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
                 (Path(output)/f'{name}-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                if theme=='light' and width==1440 and name in ('custom-form','matches'):
+                    capture_control(b,Path(output)/('certifications-form.webp' if name=='custom-form' else 'certifications-matches.webp'),'.cert-form' if name=='custom-form' else 'main > .dashboard-panel')
                 if theme=='ethereal' and width==390 and name in ('detail','trophy-quick-hidden'):
                     capture_control(browser,Path(output)/('certifications-cycle.webp' if name=='detail' else 'certifications-trophy.webp'),'.cert-cycle' if name=='detail' else '#myCertifications')
     cfg['dashboard_card_visibility']['library']=True;portal.write_text(json.dumps(cfg))
@@ -15840,7 +15843,7 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
         shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
         (Path(output)/f'trophy-quick-shown-{theme}-1440.png').write_bytes(base64.b64decode(shot['data']))
     browser.navigate(base+'/certifications/remove/certifications/'+cid);browser.wait_for_page_ready()
-    browser.click('a[href="/certifications"]');browser.wait_for("location.pathname==='/certifications'")
+    browser.click('main a[href="/certifications"]');browser.wait_for("location.pathname==='/certifications'")
     with sqlite3.connect(root/'results.db') as c:
         assert list(c.execute('SELECT * FROM certification_allocations'))==first
         assert list(c.execute('SELECT * FROM learning_events'))==learning
@@ -15881,7 +15884,7 @@ def test_certification_native_zoom(browser_stack, theme):
     browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero')")
     path=browser.evaluate('location.pathname')
     output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
-    for route,name in [('/','dashboard'),(path,'detail'),(path+'/edit','form'),('/certifications/training/new','training-form'),('/help/certifications','help')]:
+    for route,name in [('/','dashboard'),(path,'detail'),(path+'/edit','form'),('/certifications/training/new','training-form'),('/certifications/matches','matches'),(path+'/relationships','relationships'),('/help/certifications','help')]:
         browser.navigate(base+route);browser.wait_for('devicePixelRatio===2 && document.querySelector("#dlmsQuickTheme")?.options.length===26')
         browser.wait_for_page_ready()
         metrics=browser.evaluate('({inner:innerWidth,outer:outerWidth,dpr:devicePixelRatio,font:getComputedStyle(document.documentElement).fontSize})')
@@ -15895,6 +15898,12 @@ def test_certification_native_zoom(browser_stack, theme):
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
             (Path(output)/f'native200-{name}-{theme}.png').write_bytes(base64.b64decode(shot['data']))
             (Path(output)/f'native200-{name}-{theme}.json').write_text(json.dumps(metrics))
+        if name=='form':
+            browser.evaluate("document.querySelectorAll('.cert-additional').forEach(d=>d.open=true);true")
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'native200-expanded-rules-{theme}.png').write_bytes(base64.b64decode(shot['data']))
 
 
 def test_certification_stale_tabs_failed_upload_and_retry_identity(browser_stack):
@@ -15933,8 +15942,127 @@ def test_certification_stale_tabs_failed_upload_and_retry_identity(browser_stack
         browser.navigate(base+'/certifications')
         assert browser.evaluate("document.querySelectorAll('.cert-card').length")==1
         browser.navigate(base+'/certifications/remove/certifications/'+cid);browser.wait_for("document.querySelector('[name=confirm]')")
-        browser.click('a[href="/certifications"]');browser.wait_for("location.pathname==='/certifications'")
+        browser.click('main a[href="/certifications"]');browser.wait_for("location.pathname==='/certifications'")
         assert browser.evaluate("document.querySelectorAll('.cert-card').length")==1
     finally:
         browser.context=first
         browser.command('browsingContext.close',{'context':second})
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_certification_custom_portfolio_journey(browser_stack, theme):
+    """Any issuer: current edits, shared training, manual AI, early renewal and hiding."""
+    from PIL import Image
+    from pypdf import PdfWriter
+    from tests.browser._help_screenshots import capture_control
+    b,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    badge=root/'custom-logo.png';Image.new('RGB',(80,80),'navy').save(badge)
+    pdf=root/'custom-official.pdf';writer=PdfWriter();writer.add_blank_page(width=100,height=100)
+    with pdf.open('wb') as f:writer.write(f)
+    def fill(values):
+        b.evaluate('(()=>{const values='+json.dumps(values)+';for(const [name,value] of Object.entries(values)){document.querySelector(`[name="${name}"]`).value=value;}return true;})()')
+    def save():
+        b.click('.cert-form [type=submit]');b.wait_for("!document.querySelector('.cert-form') && document.querySelector('main')")
+    b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+    fill(dict(field_name='River stewardship — custom earned credential',field_issuer='Independent Watershed Guild',field_version='Field standard 9',field_earned='2025-01-01',field_expiration='2028-01-01',field_notes='PRIVATE CERTIFICATION NOTE'))
+    b.set_files('[name=badge]',[str(badge)]);b.set_files('[name=certificate]',[str(pdf)]);save()
+    path=b.evaluate('location.pathname');cid=path.split('/')[-1]
+    assert b.evaluate("document.querySelector('main').textContent.includes('Total requirement unknown')")
+    certificate=b.evaluate("Array.from(document.querySelectorAll('.cert-hero a')).find(a=>a.textContent==='View certificate').getAttribute('href')")
+    logo=b.evaluate("document.querySelector('.cert-hero img').getAttribute('src')")
+    assert certificate!=logo
+    b.navigate(base+path+'/edit');b.wait_for("document.querySelector('[name=field_expiration]')")
+    fill(dict(field_expiration='2028-06-30',field_required='30',track_annual_kind='minimum',track_annual_amount='10',track_year_basis='anniversary',track_year_anchor='2025-07-01',track_reporting_start='2025-07-01',track_reporting_end='2028-06-30',track_conditions='Membership and issuer confirmation required',field_policy='https://example.org/custom-rules'))
+    # Native disclosure activates from the keyboard; focus remains visible.
+    b.activate();b.evaluate("document.querySelectorAll('.cert-additional summary')[1].focus();true");b.press_key('\ue007')
+    assert b.evaluate("document.querySelectorAll('.cert-additional')[1].open")
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    save()
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0]==1
+    # Record a second, custom credential; no preset is needed for either.
+    b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+    fill(dict(field_name='Community field educator',field_issuer='Local Education Cooperative',field_earned='2025-01-01',field_expiration='2027-01-01'));save()
+    target=b.evaluate('location.pathname').split('/')[-1]
+    b.navigate(base+'/certifications/training/new');b.wait_for("document.querySelector('[name=field_hours]')")
+    fill(dict(field_name='Water sampling workshop',field_provider='Community learning center',field_completed='2026-08-01',field_hours='8',field_course_url='https://example.org/workshop',field_topics='Public sampling methods',field_notes='PRIVATE TRAINING NOTE'));save()
+    for cert_id in (cid,target):
+        b.navigate(base+'/certifications/training');b.wait_for("document.querySelector('.cert-log-row')")
+        assert b.evaluate("document.querySelector('main').textContent.includes('1 saved activity.')")
+        b.click('main a[href*="?apply="]');b.wait_for("document.querySelector('[name=period]')")
+        # Choose the intended saved credential's period by its authoritative ID.
+        with sqlite3.connect(root/'results.db') as c:period=c.execute('SELECT id FROM certification_cycles WHERE certification_id=?',(cert_id,)).fetchone()[0]
+        fill({'period':period});b.click('main button[type=submit]');b.wait_for("document.querySelector('[name=field_proposed]')")
+        fill(dict(field_hours='6',field_proposed='5',field_reviewed='yes',field_submitted='4',field_accepted='2',field_rationale='Verified relevant workshop; partial acceptance',field_source='https://example.org/custom-rules'));save()
+    b.navigate(base+'/certifications/matches');b.wait_for("document.querySelector('[name=credentials]')")
+    b.evaluate("document.querySelector('[name=training]').checked=true;true");b.click('main button[type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+    prompt=b.evaluate("document.querySelector('#certPrompt').value")
+    assert 'Independent Watershed Guild' in prompt and 'Local Education Cooperative' in prompt
+    assert 'Public sampling methods' in prompt and 'Unknown' in prompt
+    assert 'PRIVATE' not in prompt and cid not in prompt and target not in prompt
+    # Observe the real copy event without replacing clipboard behavior. The
+    # selected text must be the exact editable preview, including a user's edit.
+    b.evaluate("document.querySelector('#certPrompt').value+='\\nMy reviewed question';document.addEventListener('copy',()=>{const e=document.activeElement;window.certCopiedSelection=e.value.slice(e.selectionStart,e.selectionEnd);},{once:true});true")
+    b.click('[data-cert-copy]');assert 'Prompt' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    assert b.evaluate('window.certCopiedSelection') == prompt+'\nMy reviewed question'
+    assert b.evaluate("performance.getEntriesByType('resource').every(r=>new URL(r.name).origin===location.origin)")
+    # Explicit relationship; no automatic target mutation.
+    b.navigate(base+path+'/relationships');b.wait_for("document.querySelector('[name=target]')")
+    fill(dict(target=target,trigger='renewing',rule='https://example.org/related-renewal',conditions='Manual issuer-confirmed renewal only'))
+    b.click('main button[type=submit]');b.wait_for("location.search.includes('saved=1')")
+    b.click('main a[href*="/cycles/new?from="]');b.wait_for("document.querySelector('[name=confirm_relationship]')")
+    fill(dict(field_expiration='2030-01-01',field_renewed='2026-10-07'))
+    b.click('[name=confirm_relationship]');save()
+    assert b.evaluate("Array.from(document.querySelectorAll('.cert-hero a')).some(a=>a.textContent==='Add certificate')")
+    b.navigate(base+path+'/cycles/new');b.wait_for("document.querySelector('[name=field_expiration]')")
+    fill(dict(field_expiration='2031-06-30',field_renewed='2026-10-07'));save()
+    assert b.evaluate("document.querySelectorAll('.cert-cycle').length")==2
+    assert b.evaluate("Array.from(document.querySelectorAll('.cert-hero a')).every(a=>a.textContent!=='View certificate')")
+    assert b.evaluate('!!document.querySelector(' + json.dumps('main a[href="'+certificate+'"]') + ')')
+    # Snapshot all facts; hiding and re-enabling must preserve them and the separate count.
+    with sqlite3.connect(root/'results.db') as c:
+        before={t:list(c.execute('SELECT * FROM '+t)) for t in ('certifications','certification_cycles','certification_training','certification_allocations','certification_attachments','learning_events','study_sessions')}
+    b.navigate(base+'/settings/layout');b.wait_for("document.querySelector('[name=show_certifications]')")
+    b.click('[name=show_certifications]');b.click('button[value=save]');b.wait_for("location.search.includes('saved')")
+    b.navigate(base+'/');b.wait_for_page_ready()
+    assert not b.evaluate("!!document.querySelector('#myCertifications')")
+    b.wait_for("window.dlmsPortalConfig || document.querySelector('#dlmsQuickTheme')")
+    assert b.evaluate("Array.from(document.querySelectorAll('aside a[href^=\"/certifications\"]')).every(a=>a.getClientRects().length===0)")
+    b.navigate(base+'/settings/layout');b.wait_for("document.querySelector('[name=show_certifications]')")
+    assert not b.evaluate("document.querySelector('[name=show_certifications]').checked")
+    b.click('[name=show_certifications]');b.click('button[value=save]');b.wait_for("location.search.includes('saved')")
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    for width in (1440,390):
+        b.command('browsingContext.setViewport',{'context':b.context,'viewport':{'width':width,'height':900}})
+        for route,name in [(path,'custom-detail'),(path+'/edit','custom-form'),('/certifications/training','library'),('/certifications/matches','matches'),(path+'/relationships','relationships')]:
+            b.navigate(base+route);b.wait_for_page_ready()
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width,name)
+            if output:
+                shot=b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})
+                (Path(output)/f'{name}-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                if theme=='light' and width==1440 and name in ('custom-form','matches'):
+                    capture_control(b,Path(output)/('certifications-form.webp' if name=='custom-form' else 'certifications-matches.webp'),'.cert-form' if name=='custom-form' else 'main > .dashboard-panel')
+    with sqlite3.connect(root/'results.db') as c:
+        assert before=={t:list(c.execute('SELECT * FROM '+t)) for t in before}
+        assert c.execute('SELECT COUNT(*) FROM certification_training').fetchone()[0]==1
+        assert c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0]==2
+
+
+def test_certification_optional_presets_only_fill_unsaved_rules(browser_stack):
+    b=browser_stack.browser;base=browser_stack.base_url
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('#applyCertPreset')")
+    b.evaluate("document.querySelector('[name=field_name]').value='My custom credential';document.querySelector('[name=field_issuer]').value='Independent organization';document.querySelector('[name=field_earned]').value='2025-01-01';document.querySelector('[name=field_expiration]').value='2028-01-01';true")
+    b.evaluate("document.querySelectorAll('.cert-additional summary')[1].focus();true");b.press_key('\ue007')
+    for key,required,annual in [('lpic-membership','60','unknown'),('lpic-exams','','none'),('cism-2026','120','minimum'),('cissp-v7','120','pacing'),('peoplecert-custom','','unknown')]:
+        b.evaluate("document.querySelector('#certRulePreset').value="+json.dumps(key))
+        b.click('#applyCertPreset')
+        assert b.evaluate("document.querySelector('[name=field_required]').value")==required
+        assert b.evaluate("document.querySelector('[name=track_annual_kind]').value")==annual
+        assert b.evaluate("document.querySelector('[name=field_issuer]').value")=='Independent organization'
+        assert b.evaluate("document.querySelector('[name=field_expiration]').value")=='2028-01-01'
+        assert b.evaluate("document.querySelector('[name=track_verification]').value")=='unverified'
+    with sqlite3.connect(browser_stack.data_root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM certifications').fetchone()[0]==0
