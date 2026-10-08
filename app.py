@@ -1814,7 +1814,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods, 9: _database.certification_schema.migrate_minutes}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods, 9: _database.certification_schema.migrate_minutes, 10: _database.certification_schema.migrate_deadlines}
 
 
 def _read_database_schema_version(conn, tables):

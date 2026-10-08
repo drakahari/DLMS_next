@@ -6,7 +6,7 @@ import sqlite3
 
 from . import study_schema, exam_plan_schema, review_mark_schema, certification_schema
 
-DLMS_SCHEMA_VERSION = 9
+DLMS_SCHEMA_VERSION = 10
 DLMS_LEGACY_SCHEMA_VERSION = 1
 
 DLMS_SCHEMA_COLUMNS = {
@@ -305,7 +305,7 @@ DLMS_SCHEMA_COLUMNS.update(exam_plan_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(review_mark_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(certification_schema.COLUMNS)
 DLMS_SCHEMA_INDEXES.update(study_schema.INDEXES)
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate, 7: certification_schema.migrate, 8: certification_schema.migrate_periods, 9: certification_schema.migrate_minutes}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate, 7: certification_schema.migrate, 8: certification_schema.migrate_periods, 9: certification_schema.migrate_minutes, 10: certification_schema.migrate_deadlines}
 
 
 def _read_database_schema_version(conn, tables, *, database_column_info=None):
@@ -361,6 +361,7 @@ def _validate_current_database_schema(
         review_mark_schema.validate_state(conn)
     if 'certification_state' in schema_columns:
         certification_schema.validate_state(conn)
+        certification_schema.validate_date_contract(conn)
 
 
 def bootstrap_database(

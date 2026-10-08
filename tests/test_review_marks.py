@@ -321,9 +321,14 @@ d.bootstrap_database(sys.argv[1],schema_version=6,legacy_schema_version=1,legacy
         self.assertEqual(contents(),before)
         dlms.bootstrap_database(dlms.DB_PATH)
         after=contents()
-        self.assertEqual({name:after[name] for name in before},before)
+        # Schema 10 rotates only certification form state to reject old deadline writers.
+        self.assertEqual({name:after[name] for name in before if name!='certification_state'},
+                         {name:rows for name,rows in before.items() if name!='certification_state'})
+        old_state,new_state=before['certification_state'][0],after['certification_state'][0]
+        self.assertEqual(new_state[0],old_state[0]);self.assertNotEqual(new_state[1],old_state[1])
+        self.assertEqual(new_state[2],old_state[2]+1)
         self.assertEqual(after['review_marks'],[]);self.assertEqual(after['learning_events'],[])
-        # The previous build's version guard rejects 6 before any migration/write.
+        # The previous build's version guard rejects the current schema before any write.
         raw=Path(dlms.DB_PATH).read_bytes()
         with mock.patch.object(dlms,'DLMS_SCHEMA_VERSION',5):
             with self.assertRaisesRegex(RuntimeError,'newer than this DLMS build'):dlms.bootstrap_database(dlms.DB_PATH)

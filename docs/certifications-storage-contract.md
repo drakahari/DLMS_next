@@ -193,7 +193,7 @@ existing earned-date order; name/expiration are explicit saved alternatives. The
 settings use existing locked atomic persistence and portable backup, alongside
 `show_certifications`. Scoped dashboard/sidebar resets preserve these choices.
 
-## Focused editors (schema 9 unchanged)
+## Focused editors (introduced in schema 9; date contract revised below)
 
 Identity, planning goal and detailed-requirements forms use the same existing
 records and action receipts. Identity edits merge only identity, expiration,
@@ -225,3 +225,93 @@ suggestion first shows source/version information for review, then fills the
 unsaved form. Save remains necessary. Neither action touches recorded credit.
 The existing pre-upgrade-backup rollback requirements above still apply: changing
 binaries alone cannot reverse schema 9 or restore earlier data.
+
+## Separate deadlines (schema 10)
+
+Schema 10 corrects the previous shared `cycle.data.renewal` contract. It does not
+change training minutes, allocations, credit calculations, Study evidence or
+certification identities. The following date-only strings are independent:
+
+| Stored field | Meaning and editing | Consumers |
+| --- | --- | --- |
+| `planning_deadline` | Optional personal target; Set/Edit renewal goal. Clearing it clears only this value. | Planner summary and explicitly labeled manual AI context. |
+| `renewal_deadline` | Separately user-recorded renewal due date; Manage detailed requirements or the period editor. Recording a date does not establish issuer verification. | Planner fallback and period details, labeled Renewal deadline. |
+| `expiration` | Existing certificate expiration; Edit certification or Record renewal/historical correction. | Credential status, expiration sorting, trophy cards and period heading; labeled Expires. |
+
+The planner prefers Planning deadline, then Renewal deadline, then Expires. With
+none recorded it says Planning deadline not recorded. The label changes with the
+source. Period headings use effective start and **expiration only**, never a
+personal planning target. Neither deadline determines reporting eligibility,
+annual boundaries, credit caps or period ordering. These continue to use explicit
+reporting start/end, reporting-year rules, and existing period order/coverage.
+All dates remain `YYYY-MM-DD`; no UTC/local-time conversion occurs.
+
+### Preserving the old ambiguous date
+
+Migration removes the shared `renewal` key and initializes both new deadline fields
+to empty strings. A nonempty old value is retained as:
+
+```
+legacy_deadline: {
+  value: "YYYY-MM-DD",
+  source: "cycle.data.renewal",
+  source_schema: 7 | 8 | 9,
+  classification: "unresolved"
+}
+```
+
+This is a record of the old value, not inferred history. It is displayed as an
+unclassified old date and is not a summary fallback or reporting boundary. Empty
+old fields need no provenance record. Existing backups with conflicting old/new
+fields are rejected rather than guessed. No overwritten dates can be recovered
+without independent evidence such as a backup.
+
+Manage detailed requirements offers an optional explicit classification into
+**one** deadline. The target must be empty or already equal to that date. A
+conflicting saved target requires an explicit correction first. Classification
+is saved with the existing optimistic revision and durable request receipt; the
+original value and source remain, with classification recording the user's choice.
+It is never copied into both deadlines automatically. Subsequent clearing of a
+classified deadline does not delete this provenance. There is no automatic
+classification from sample data, current labels, issuer names or matching dates.
+
+### Writers, migration and backups
+
+The bootstrap transaction contains every migrated row, the schema version,
+certification generation/revision invalidation and the new insert/update guards.
+Failure or process interruption rolls back the whole transaction; bootstrap cannot
+report a usable schema 10 after a partial migration. Repeated migration preserves
+rows and state. Old form generations are rejected, including old receipt retries.
+Requests containing the shared `renewal` key are rejected even with a current
+revision. Schema-9 source refuses schema 10 at bootstrap. SQLite guards also reject
+old period writers that omit the new date keys or write the old shared key.
+Backup validation checks those guards' definitions, not just their names.
+
+The goal editor merges only goal fields. The requirements editor merges its own
+fields; neither treats an omitted date as a clear. Full period corrections retain every omitted field, including expiration,
+certificate evidence, requirements, deadlines and provenance. Explicit empty strings clear only the selected
+new field. Saved provenance cannot be supplied or rewritten by an ordinary form.
+Classification is the sole explicit operation that changes its meaning.
+
+The app's existing backup ZIP is the certification export/import mechanism; there
+is no separate certification CSV importer. Its database carries all three dates,
+provenance, historical periods, attachments, settings and credit records. Schema
+7–9 backups are validated read-only, then migrated only in the disposable restore
+stage before the existing atomic replacement/recovery flow. Restoring invalidates
+form generations. A backup never silently reintroduces `renewal` in schema 10.
+
+### Practical rollback
+
+Before upgrading a real profile, create and verify a **pre-upgrade full DLMS data
+backup** using the compatible old application. Keep a separate copy outside the
+profile. After an upgrade, merely swapping binaries does **not** reverse schema 10.
+Do not edit schema numbers or strip fields/triggers to force an older build open.
+
+To roll back: stop the application normally; preserve the complete upgraded profile
+and a current backup separately; use a separate compatible old-app profile/data
+location; restore the verified pre-upgrade backup there through that build's normal
+restore flow; verify the old records and attachments before choosing that profile.
+Keep the upgraded copy for recovery. The old backup excludes **all changes made
+since that backup**, including unrelated Study/quiz activity. Do not overlay just
+the database onto current attachments/settings. This task tests only disposable
+copies and does not authorize stopping or replacing the owner's running instance.

@@ -227,13 +227,18 @@ def create_certification_blueprint(deps):
                 message=str(exc) if isinstance(exc,ValueError) else 'The save failed. No changes were applied. Retry with the same form; reselect any upload.'
                 fields=form_fields(form,parse_duration=False)
                 context={}
-                if form.get('edit_scope') in ('goal','requirements') and form.get('record_id'):
-                    # The short form omits policy fields. Retain their context
-                    # on an error page too, without issuing a newer save guard.
+                if form.get('kind')=='cycle' and form.get('record_id'):
+                    # Retain server-owned period context on errors without
+                    # issuing a newer save guard or trusting posted provenance.
                     try:
                         saved=service.get(conn.cursor(),'certification_cycles',form['record_id'])
                         if saved['certification_id']==form.get('certification_id'):
                             context=dict(task_period=saved,certification=service.get(conn.cursor(),'certifications',saved['certification_id']))
+                            # Provenance is server-owned and absent from submitted forms.
+                            # Keep it visible on errors without advancing the save guards.
+                            fields.pop('legacy_deadline',None)
+                            if saved['data'].get('legacy_deadline'):
+                                fields['legacy_deadline']=saved['data']['legacy_deadline']
                             if form.get('edit_scope')=='goal':
                                 rules=dict(saved['data'].get('tracking',{}))
                                 if 'required' in fields:rules['requirement_known']=bool(fields['required'].strip())

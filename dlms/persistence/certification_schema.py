@@ -94,3 +94,53 @@ def migrate_minutes(conn):
     Existing decimal hours and all history remain byte-for-byte unchanged.
     """
     validate_state(conn)
+
+
+DATE_TRIGGERS = {
+    name: f"""CREATE TRIGGER IF NOT EXISTS {name} BEFORE {event} ON certification_cycles
+    WHEN json_type(NEW.data_json,'$.planning_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal') IS NOT NULL
+    BEGIN SELECT RAISE(ABORT,'Outdated certification date contract; reopen with the current application.'); END"""
+    for name, event in (('certification_dates_insert', 'INSERT'), ('certification_dates_update', 'UPDATE'))
+}
+
+
+def migrate_deadlines(conn):
+    """Schema 10: preserve old shared dates, rotate stale forms, block old writers.
+
+    The bootstrap transaction includes rows, triggers, generation and schema version.
+    """
+    from dlms.services.certification_dates import upgrade_legacy
+    version = conn.execute('SELECT version FROM schema_meta WHERE id=1').fetchone()[0]
+    installed = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+    for row in conn.execute('SELECT id,data_json FROM certification_cycles').fetchall():
+        data = json.loads(row[1])
+        if 'renewal' in data or not all(k in data for k in ('planning_deadline', 'renewal_deadline')):
+            data = upgrade_legacy(data, max(7, min(version, 9)))
+            conn.execute('UPDATE certification_cycles SET data_json=? WHERE id=?', (json.dumps(data), row[0]))
+    for name, statement in DATE_TRIGGERS.items():
+        conn.execute('DROP TRIGGER IF EXISTS '+name)
+        conn.execute(statement)
+    if version<10 or not set(DATE_TRIGGERS) <= installed:
+        invalidate(conn)
+
+
+def validate_date_contract(conn):
+    installed = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+    if not set(DATE_TRIGGERS) <= installed:
+        raise ValueError('Certification date-contract protections are missing; restore a verified backup.')
+    canonical=lambda sql:' '.join(sql.lower().replace('if not exists ','').split()).rstrip(';')
+    for name, expected in DATE_TRIGGERS.items():
+        actual=conn.execute("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?",(name,)).fetchone()[0]
+        if canonical(actual)!=canonical(expected):
+            raise ValueError('Certification date-contract protections are incompatible.')
+    from dlms.services.certification_dates import calendar_day, validate_legacy
+    for row in conn.execute('SELECT data_json FROM certification_cycles'):
+        data = json.loads(row[0])
+        if 'renewal' in data or not all(k in data for k in ('planning_deadline', 'renewal_deadline')):
+            raise ValueError('Certification period uses an outdated date contract.')
+        for key in ('planning_deadline', 'renewal_deadline'):
+            calendar_day(data[key])
+        if 'legacy_deadline' in data:
+            validate_legacy(data['legacy_deadline'])

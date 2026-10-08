@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 9);
+VALUES (1, 10);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)
@@ -322,3 +322,15 @@ CREATE TABLE IF NOT EXISTS certification_allocations (id TEXT PRIMARY KEY, cycle
 CREATE TABLE IF NOT EXISTS certification_actions (request_id TEXT PRIMARY KEY, generation TEXT NOT NULL, input_hash TEXT NOT NULL, result_json TEXT NOT NULL);
 
 CREATE UNIQUE INDEX IF NOT EXISTS certification_period_order ON certification_cycles(certification_id,period_order);
+
+-- Schema 10 prevents stale shared-deadline writers from dropping independent dates.
+CREATE TRIGGER IF NOT EXISTS certification_dates_insert BEFORE INSERT ON certification_cycles
+    WHEN json_type(NEW.data_json,'$.planning_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal') IS NOT NULL
+    BEGIN SELECT RAISE(ABORT,'Outdated certification date contract; reopen with the current application.'); END;
+CREATE TRIGGER IF NOT EXISTS certification_dates_update BEFORE UPDATE ON certification_cycles
+    WHEN json_type(NEW.data_json,'$.planning_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal') IS NOT NULL
+    BEGIN SELECT RAISE(ABORT,'Outdated certification date contract; reopen with the current application.'); END;

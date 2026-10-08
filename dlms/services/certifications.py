@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from PIL import Image, ImageOps
 from pypdf import PdfReader
 from dlms.prompts import DEFAULT_CERTIFICATION_PROMPT, DEFAULT_PORTFOLIO_PROMPT
-from dlms.services import certification_tracking as tracking, certification_time as duration
+from dlms.services import certification_tracking as tracking, certification_time as duration, certification_dates as dates
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 16_000_000
@@ -83,13 +83,17 @@ def normalize(kind, data):
         if 'relationships' in data:result['relationships']=normalize_relationships(data['relationships'])
         return result
     if kind=='cycle':
+        if 'renewal' in data:
+            raise ValueError('This form uses the old shared deadline. Reopen the record; nothing was saved.')
         result=dict(start=day(data.get('start',''),'Period start'),expiration=day(data.get('expiration',''),'Expiration date'),
-                    renewal=day(data.get('renewal',''),'Renewal date'),renewed=day(data.get('renewed',''),'Renewal recorded date'),
+                    planning_deadline=day(data.get('planning_deadline',''),'Planning deadline'),
+                    renewal_deadline=day(data.get('renewal_deadline',''),'Renewal deadline'),renewed=day(data.get('renewed',''),'Renewal recorded date'),
                     required=amount(data.get('required') or 0,'Required credit'),unit=text(data.get('unit') or 'credits','Credit unit',60,True),
                     requirements=text(data.get('requirements',''),'Requirements / notes',5000),policy=policy_url(data.get('policy','')),
                     certificate=attachment_ref(data.get('certificate','')))
-        if result['start'] and any(result[k] and result[k]<result['start'] for k in ('expiration','renewal')):
-            raise ValueError('Expiration and renewal due dates cannot precede the period start. Correct the dates in Additional details.')
+        if result['start'] and any(result[k] and result[k]<result['start'] for k in ('expiration','renewal_deadline')):
+            raise ValueError('Expiration and renewal deadline cannot precede the period start. Correct the dates in Additional details.')
+        if 'legacy_deadline' in data:result['legacy_deadline']=dates.validate_legacy(data['legacy_deadline'])
         if 'tracking' in data:result['tracking']=tracking.normalize(data['tracking'],text,day,amount)
         if 'renewal_source' in data:
             source=data['renewal_source']
@@ -237,7 +241,7 @@ def detail(cur,record_id):
 def validate_period(cur, cert_id, cert_data, proposed, existing=None, *, new_renewal=False):
     periods=[r for r in records(cur,'certification_cycles') if r['certification_id']==cert_id]
     order=existing['period_order'] if existing else max((r['period_order'] for r in periods),default=0)+1
-    for label in ('start','expiration','renewal','renewed'):
+    for label in ('start','expiration','renewal_deadline','renewed'):
         if proposed[label] and proposed[label]<cert_data['earned']:
             raise ValueError(f"The period's {label} date precedes the originally earned date. Correct the earned date or this period's details.")
     if new_renewal and not proposed['expiration']:
@@ -271,7 +275,7 @@ def apply(conn, payload, uploads=None, *, _nested=False):
     if not _nested:conn.execute('BEGIN IMMEDIATE')
     try:
         cur=conn.cursor(); current=state(cur)
-        if generation!=current['generation']:raise Conflict('This form predates a restore. Reopen the record; no change was applied.')
+        if generation!=current['generation']:raise Conflict('This form predates a restore or data upgrade. Reopen the record; no change was applied.')
         old=cur.execute('SELECT * FROM certification_actions WHERE request_id=?',(request_id,)).fetchone()
         if old:
             if old['input_hash']!=digest:raise Conflict('This request was already used for different changes. Reopen the record.')
@@ -311,6 +315,8 @@ def apply(conn, payload, uploads=None, *, _nested=False):
             if payload.get('id') and not existing:raise Conflict('This record was removed. No replacement was created.')
             if not isinstance(data,dict):raise ValueError('Record fields are required.')
             data=dict(data)
+            if 'renewal' in data:
+                raise Conflict('This form uses the old shared deadline. Reopen the record; nothing was saved.')
             scope=payload.get('edit_scope')
             if scope:
                 # Merge only after receipt/revision checks, inside the write
@@ -324,7 +330,7 @@ def apply(conn, payload, uploads=None, *, _nested=False):
                     data={**base,**{k:v for k,v in data.items() if k in allowed}}
                 elif scope in ('goal','requirements') and action=='cycle' and existing:
                     base=json.loads(existing['data_json'])
-                    allowed={'required','unit','renewal'} if scope=='goal' else {'required','unit','policy','requirements','start','renewed','tracking'}
+                    allowed={'required','unit','planning_deadline'} if scope=='goal' else {'required','unit','policy','requirements','start','renewed','tracking','renewal_deadline','classify_legacy_deadline'}
                     patch={k:v for k,v in data.items() if k in allowed}
                     if scope=='goal':
                         rules=dict(base.get('tracking',{}))
@@ -337,7 +343,7 @@ def apply(conn, payload, uploads=None, *, _nested=False):
                                 rules.update(annual_kind='pacing',annual_amount=annual)
                             elif rules.get('annual_kind')=='pacing':
                                 rules.update(annual_kind='unknown',annual_amount=0)
-                        patch['tracking']=rules
+                        if rules != base.get('tracking',{}):patch['tracking']=rules
                     data={**base,**patch}
                     if prepared:raise ValueError('Use Edit certification to replace a document.')
                 else:raise ValueError('Open a supported editor for this record.')
@@ -349,6 +355,22 @@ def apply(conn, payload, uploads=None, *, _nested=False):
                     data['duration_minutes'] = previous['duration_minutes']
                 for key in ('version','standing','relationships','tracking','renewal_source','course_url','topics','proposed','rationale','category','source','reporting_date','reviewed'):
                     if key in previous:data.setdefault(key,previous[key])
+            if action=='cycle':
+                previous=json.loads(existing['data_json']) if existing else {}
+                # Full period corrections are patches too: omitted fields preserve
+                # expiry, evidence and requirements. Explicit empty values still clear.
+                data={**previous,**data}
+                if data.get('legacy_deadline')!=previous.get('legacy_deadline'):
+                    raise ValueError('The preserved legacy date cannot be rewritten.')
+                classification=data.pop('classify_legacy_deadline','')
+                if classification:
+                    legacy=previous.get('legacy_deadline')
+                    if scope=='goal' or classification not in dates.FIELDS or not legacy or legacy['classification']!='unresolved':
+                        raise ValueError('Choose an unresolved legacy date in detailed requirements.')
+                    if data.get(classification) not in (None,'',legacy['value']):
+                        raise ValueError('That deadline already has a different date. Keep it or explicitly clear it before classifying the old date.')
+                    data[classification]=legacy['value']
+                    data['legacy_deadline']={**legacy,'classification':classification}
             for key,(mime,content) in prepared.items():
                 if key not in ({'badge','certificate'} if action=='certification' else {'certificate'} if action in ('cycle','training') else set()):raise ValueError('This record does not support that upload.')
                 ref=uuid.uuid4().hex
@@ -361,6 +383,13 @@ def apply(conn, payload, uploads=None, *, _nested=False):
             if action=='certification' and 'relationships' in data:
                 if data['relationships']!=(json.loads(existing['data_json']).get('relationships',[]) if existing else []):raise ValueError('Use the explicit renewal relationships form.')
             normalized=normalize(action,data)
+            if action=='certification':
+                current=detail(cur,record_id)['cycles'] if existing else []
+                prior=current[0]['data'] if current else {}
+                for key in (*dates.FIELDS,'legacy_deadline'):
+                    if key in prior:data.setdefault(key,prior[key])
+                if data.get('legacy_deadline')!=prior.get('legacy_deadline'):
+                    raise ValueError('The preserved legacy date cannot be rewritten.')
             period_data=normalize('cycle',data) if action=='certification' and (not existing or payload.get('edit_current')) else None
             if action=='certification' and 'certificate' in prepared and period_data is None:raise ValueError('Open Edit certification to change the current certificate.')
             for key in ('badge','certificate'):
@@ -410,7 +439,7 @@ def apply(conn, payload, uploads=None, *, _nested=False):
                     raise Conflict('The current period changed. Reopen Edit certification; no changes were applied.')
                 for prior in periods:
                     effective=period_data if current_period and prior['id']==current_period['id'] and period_data is not None else prior['data']
-                    if any(effective[k] and effective[k]<normalized['earned'] for k in ('start','expiration','renewal','renewed')):
+                    if any(effective[k] and effective[k]<normalized['earned'] for k in ('start','expiration','renewal_deadline','renewed')):
                         raise ValueError(f"Originally earned date conflicts with period {prior['period_order']}. Correct that period's historical details first; no history was changed.")
                 if period_data is not None:
                     if current_period:
@@ -472,7 +501,8 @@ def curated_prompt(cur,cert_id,cycle_id,selection,question,template=None,include
     if include_certification:
         context['certification']={k:cert['data'][k] for k in ('name','issuer','earned')}
     if include_cycle:
-        context['renewal']={k:cycle['data'][k] for k in ('start','expiration','renewal','required','unit','policy')}
+        context['renewal']={k:cycle['data'][k] for k in ('start','required','unit','policy')}
+        context['renewal']['dates']=dates.prompt_dates(cycle['data'])
         if not cycle['data'].get('tracking',{}).get('requirement_known',bool(cycle['data']['required'])):context['renewal']['required']='Unknown — verify with issuer'
     activities=[]
     for allocation_id in selection:
@@ -497,6 +527,9 @@ def validate_restored(conn):
         if table not in tables or not columns <= {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:
             raise ValueError('Certification backup schema is incomplete.')
     validate_state(conn)
+    if version>=10:
+        from dlms.persistence.certification_schema import validate_date_contract
+        validate_date_contract(conn)
     conn.row_factory=__import__('sqlite3').Row;cur=conn.cursor()
     attachments=set()
     total=0
@@ -513,6 +546,8 @@ def validate_restored(conn):
         if len({row['id'] for row in loaded[table]})!=len(loaded[table]):
             raise ValueError('Certification backup contains duplicate record identifiers.')
         for row in loaded[table]:
+            if kind=='cycle' and version<10:
+                row['data']=dates.upgrade_legacy(row['data'],version)
             identifier(row['id']);normalized=normalize(kind,row['data'])
             if normalized!=row['data']:raise ValueError('Certification backup contains incompatible fields.')
             for key in ('badge','certificate'):
@@ -528,7 +563,7 @@ def validate_restored(conn):
     for cycle in cycles.values():
         parent=certificates.get(identifier(cycle['certification_id']))
         if not parent:raise ValueError('Certification backup has a renewal cycle without its certification.')
-        if any(cycle['data'][k] and cycle['data'][k]<parent['data']['earned'] for k in ('start','expiration','renewal','renewed')):
+        if any(cycle['data'][k] and cycle['data'][k]<parent['data']['earned'] for k in ('start','expiration','renewal_deadline','renewed')):
             raise ValueError('Certification backup has conflicting earned or expiration dates.')
     for parent in certificates.values():
         periods=[r for r in cycles.values() if r['certification_id']==parent['id']]
@@ -559,7 +594,8 @@ def portfolio_prompt(cur, certification_ids, training_ids, question, template=No
         item['version']=cert.get('version','')
         if value['cycles']:
             period=value['cycles'][0]['data']
-            item['current_period']={k:period[k] for k in ('start','expiration','renewal','unit','policy')}
+            item['current_period']={k:period[k] for k in ('start','unit','policy')}
+            item['current_period']['dates']=dates.prompt_dates(period)
             rules=period.get('tracking',{})
             item['current_period']['required']=period['required'] if rules.get('requirement_known',bool(period['required'])) else 'Unknown — verify with issuer'
             item['current_period']['rules']={k:rules[k] for k in ('version','route','checked','verification','annual_kind','annual_amount','year_basis','year_anchor','reporting_start','reporting_end','categories','conditions_status') if k in rules}

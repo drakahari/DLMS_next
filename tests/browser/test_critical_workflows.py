@@ -14957,7 +14957,9 @@ def test_marked_http_paging_selection_and_full_download(browser_stack,browser_se
     assert browser.evaluate("document.getElementById('selectPageMarks').textContent")=='Select all on this page (25)'
     browser.click('#selectPageMarks');browser.wait_for("document.getElementById('markSelectionCount').textContent.startsWith('25 questions selected')")
     first=browser.evaluate("[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)")
-    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===3")
+    # Rows precede the script that restores the saved cross-page selection.
+    # Read the restored state only after the destination document has loaded.
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for_page_ready("document.querySelectorAll('[data-mark-id]').length===3")
     assert browser.evaluate("document.getElementById('markSelectionCount').textContent")=='25 questions selected across pages · 0 on this page.'
     browser.click('#selectPageMarks');browser.wait_for("document.getElementById('markEligibility').textContent.includes('Anki: 28 included · 0 excluded.')")
     second=browser.evaluate("[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)")
@@ -14969,9 +14971,9 @@ def test_marked_http_paging_selection_and_full_download(browser_stack,browser_se
     sent=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/anki')).body.ids")
     assert set(sent)==set(first+second) and len(sent)==28
     browser.click('#clearMarkSelection');browser.wait_for("document.getElementById('markSelectionCount').textContent.startsWith('0 questions selected')")
-    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===25")
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for_page_ready("document.querySelectorAll('[data-mark-id]').length===25")
     assert browser.evaluate("document.querySelectorAll('[data-mark-id]:checked').length")==0
-    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===3")
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for_page_ready("document.querySelectorAll('[data-mark-id]').length===3")
     browser.click('#selectPageMarks');browser.wait_for("!document.getElementById('practiceMarks').disabled")
     browser.click('#practiceMarks');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
     browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady')
@@ -15758,7 +15760,7 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
         assert c.execute('SELECT count(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0] == 1
     browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
     browser.click('a[href$="/goal"]');browser.wait_for("document.querySelector('[name=field_required]')")
-    browser.evaluate("document.querySelector('[name=field_required]').value='20';document.querySelector('[name=field_unit]').value='credits';document.querySelector('[name=field_renewal]').value='2028-06-01';true")
+    browser.evaluate("document.querySelector('[name=field_required]').value='20';document.querySelector('[name=field_unit]').value='credits';document.querySelector('[name=field_planning_deadline]').value='2028-06-01';true")
     browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-cycle') && !document.querySelector('.cert-form')")
     browser.navigate(base+'/certifications/training/new')
     browser.wait_for("document.querySelector('[name=duration_hours]')")
@@ -16239,7 +16241,7 @@ def test_certification_guided_nine_credentials(browser_stack, theme):
     assert not b.evaluate("!!document.querySelector('[name=field_expiration]')")
     assert b.evaluate("document.querySelector('.cert-form [type=submit]').textContent.trim()")=='Save goal'
     assert 'CySA+ · Period 1' in b.evaluate("document.querySelector('.cert-task-context').textContent")
-    fill(dict(field_required='40',field_unit='credits',field_renewal='2029-09-01'));save()
+    fill(dict(field_required='40',field_unit='credits',field_planning_deadline='2029-09-01'));save()
     b.navigate(base+path);b.wait_for("document.querySelector('.cert-cycle')")
     assert 'Estimated 9.0 / 40 credits' in b.evaluate("document.querySelector('.cert-cycle').textContent")
     # Saving identity without a replacement upload retains both independent files.
@@ -16295,7 +16297,8 @@ def test_certification_guided_nine_credentials(browser_stack, theme):
     b.navigate(base+'/');b.wait_for("document.querySelector('#myCertifications .cert-card')")
     assert b.evaluate("document.querySelectorAll('#myCertifications .cert-card').length")==4
     assert 'View all (9)' in b.evaluate("document.querySelector('#myCertifications').textContent")
-    b.click('#myCertifications a[href*="certifications-visibility"]');b.wait_for("location.hash==='#certifications-visibility'")
+    # The URL fragment arrives before layout-settings.js wires the count selector.
+    b.click('#myCertifications a[href*="certifications-visibility"]');b.wait_for_page_ready("location.pathname==='/settings/layout' && location.hash==='#certifications-visibility'")
     assert b.evaluate("document.querySelector('[name=certification_display_count]').value")=='4'
     b.evaluate("const mode=document.querySelector('[name=certification_count_mode]');mode.value='all';mode.dispatchEvent(new Event('change'));true")
     assert b.evaluate("document.querySelector('[data-custom-certification-count]').hidden")
@@ -16400,3 +16403,123 @@ def test_shared_provider_settings_drive_study_and_certification_launch(browser_s
         b.wait_for('studyLearningEventSaves.size===0')
     with sqlite3.connect(browser_stack.data_root/'results.db') as c:
         assert c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0]==0
+
+
+def _check_certification_deadline_dates(browser_stack, theme, native_zoom=False):
+    """Real date forms over ordinary HTTP; targets never rewrite expiry or credits."""
+    import uuid
+    from dlms.services import certifications as service
+    from tests.browser._help_screenshots import capture_control
+    b=browser_stack.browser;root=browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    if native_zoom:b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    with sqlite3.connect(root/'results.db') as c:
+        c.row_factory=sqlite3.Row
+        def apply(action,data,**kw):return service.apply(c,dict(action=action,data=data,request_id=uuid.uuid4().hex,**service.state(c.cursor()),**kw))['id']
+        cid=apply('certification',dict(name='Independent credential — three separate dates',issuer='Sample learning association',earned='2025-01-01',start='2025-01-01',expiration='2029-11-01',planning_deadline='2029-03-11',renewal_deadline='2029-10-01',required=40,unit='credits'))
+        period=service.detail(c.cursor(),cid)['cycles'][0];pid=period['id']
+        tid=apply('training',dict(name='Practical course',completed='2026-10-01',duration_minutes=562))
+        aid=apply('allocation',dict(hours=9,proposed=10,submitted=9,accepted=9),cycle_id=pid,training_id=tid)
+        facts=list(c.execute('SELECT * FROM certification_allocations'))
+        data={**period['data'],'legacy_deadline':dict(value='2028-09-01',source='cycle.data.renewal',source_schema=9,classification='unresolved')}
+        c.execute('UPDATE certification_cycles SET data_json=? WHERE id=?',(json.dumps(data),pid));c.commit()
+    path='/certifications/'+cid
+    def open_page(route):b.navigate(base+route);b.wait_for_page_ready()
+    def fill(name,value):b.evaluate('document.querySelector('+json.dumps('[name='+name+']')+').value='+json.dumps(value)+';true')
+    def save():b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    open_page(path+'/cycles/'+pid+'/goal')
+    assert not b.evaluate("!!document.querySelector('[name=field_renewal_deadline]')")
+    fill('field_planning_deadline','2029-03-12');save()
+    assert 'Planning deadline: 2029-03-12' in b.evaluate("document.querySelector('.cert-cycle').textContent")
+    assert '2029-03-12' not in b.evaluate("document.querySelector('.cert-cycle > summary').textContent")
+    assert 'Expires 2029-11-01' in b.evaluate("document.querySelector('.cert-cycle > summary').textContent")
+    assert 'Unclassified — not used as a deadline' in b.evaluate("document.querySelector('.cert-warning').textContent")
+    open_page(path+'/cycles/'+pid+'/goal');fill('field_planning_deadline','');save()
+    assert 'Renewal deadline (user recorded): 2029-10-01' in b.evaluate("document.querySelector('.cert-cycle').textContent")
+    open_page(path+'/cycles/'+pid+'/requirements');fill('field_renewal_deadline','');save()
+    assert 'Expires: 2029-11-01' in b.evaluate("document.querySelector('.cert-cycle').textContent")
+    open_page(path+'/cycles/'+pid+'/goal');fill('field_planning_deadline','2029-03-12');save()
+    open_page(path+'/cycles/'+pid+'/requirements');fill('field_renewal_deadline','2029-10-01');save()
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    widths=(None,) if native_zoom else (1440,390)
+    for width in widths:
+        if width:b.set_viewport(width,1000)
+        for route,name,selector in [(path,'summary','.cert-cycle'),(path+'/cycles/'+pid+'/goal','goal','.cert-form'),(path+'/cycles/'+pid+'/requirements','requirements','.cert-form')]:
+            open_page(route)
+            if name=='summary':
+                b.evaluate("Array.from(document.querySelectorAll('summary')).find(e=>e.textContent==='Details — period information').parentElement.open=true;true")
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width,name)
+            if native_zoom:assert b.evaluate('devicePixelRatio')==2
+            b.activate();b.evaluate("Array.from(document.querySelectorAll('main a,main input:not([type=hidden]),main summary')).find(e=>e.getClientRects().length).focus();true");b.press_key('\ue004')
+            assert b.evaluate('document.activeElement.matches(":focus-visible")')
+            if output:
+                prefix='dates-'+name+'-'+str(width or 'native200')+'-'+theme
+                (Path(output)/(prefix+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+                if theme=='light' and width==1440:capture_control(b,Path(output)/(prefix+'.webp'),selector)
+    open_page(path+'/ai')
+    b.click('[name=include_cycle]');fill('question','Explain these separate dates');b.click('main button[type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+    prompt=b.evaluate("document.querySelector('#certPrompt').value")
+    for label in ('Planning deadline','Renewal deadline (user recorded; not issuer verified)','Expires','unresolved'):assert label in prompt
+    with sqlite3.connect(root/'results.db') as c:
+        c.row_factory=sqlite3.Row;current=service.detail(c.cursor(),cid)['cycles'][0]
+        assert current['data']['expiration']=='2029-11-01'
+        assert current['data']['planning_deadline']=='2029-03-12'
+        assert current['data']['renewal_deadline']=='2029-10-01'
+        assert list(c.execute('SELECT * FROM certification_allocations'))==facts
+        assert service.get(c.cursor(),'certification_training',tid)['data']['duration_minutes']==562
+        assert current['totals']['accepted']==9
+
+
+@pytest.mark.parametrize('browser_stack',['America/New_York','Pacific/Auckland'],indirect=True)
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_certification_deadline_dates(browser_stack,theme):
+    _check_certification_deadline_dates(browser_stack,theme)
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_certification_native_zoom_deadlines(browser_stack,theme):
+    _check_certification_deadline_dates(browser_stack,theme,True)
+
+
+@pytest.mark.parametrize('classification',('planning_deadline','renewal_deadline'))
+def test_certification_legacy_date_classification_error_retry(browser_stack,classification):
+    import uuid
+    from dlms.services import certifications as service
+    b=browser_stack.browser;root=browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.set_viewport(390,1000)
+    with sqlite3.connect(root/'results.db') as c:
+        c.row_factory=sqlite3.Row
+        out=service.apply(c,dict(action='certification',data=dict(name='Classification retry sample',issuer='Custom issuer',expiration='2029-11-01',required=20),request_id=uuid.uuid4().hex,**service.state(c.cursor())))
+        cid=out['id'];period=service.detail(c.cursor(),cid)['cycles'][0];pid=period['id']
+        initial={**period['data'],'legacy_deadline':dict(value='2029-09-01',source='cycle.data.renewal',source_schema=9,classification='unresolved')}
+        c.execute('UPDATE certification_cycles SET data_json=? WHERE id=?',(json.dumps(initial),pid));c.commit()
+    b.navigate(base+'/certifications/'+cid+'/cycles/'+pid+'/requirements');b.wait_for_page_ready()
+    options=b.evaluate("Array.from(document.querySelector('[name=field_classify_legacy_deadline]').options).map(o=>o.value)")
+    assert options==['','planning_deadline','renewal_deadline']
+    b.evaluate("document.querySelector('[name=field_classify_legacy_deadline]').value="+json.dumps(classification)+";document.querySelector('[name=track_reporting_start]').value='2029-01-01';document.querySelector('[name=track_reporting_end]').value='2028-01-01';true")
+    identity=b.evaluate("({request:document.querySelector('[name=request_id]').value,generation:document.querySelector('[name=generation]').value,revision:document.querySelector('[name=revision]').value})")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('[role=alert]')?.textContent.includes('Reporting end cannot precede')")
+    assert b.evaluate("document.querySelector('[name=field_classify_legacy_deadline]')?.value")==classification
+    assert '2029-09-01' in b.evaluate("document.querySelector('#legacyDeadline').textContent")
+    assert b.evaluate("({request:document.querySelector('[name=request_id]').value,generation:document.querySelector('[name=generation]').value,revision:document.querySelector('[name=revision]').value})")==identity
+    with sqlite3.connect(root/'results.db') as c:assert json.loads(c.execute('SELECT data_json FROM certification_cycles WHERE id=?',(pid,)).fetchone()[0])==initial
+    assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    b.activate();b.evaluate("document.querySelector('[name=field_classify_legacy_deadline]').focus();true");b.press_key('\ue004')
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    if output:(Path(output)/('classification-error-'+classification+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+    b.evaluate("document.querySelector('[name=track_reporting_end]').value='2030-01-01';true")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    with sqlite3.connect(root/'results.db') as c:
+        saved=json.loads(c.execute('SELECT data_json FROM certification_cycles WHERE id=?',(pid,)).fetchone()[0])
+        assert saved[classification]=='2029-09-01'
+        assert saved['renewal_deadline' if classification=='planning_deadline' else 'planning_deadline']==''
+        assert saved['expiration']=='2029-11-01'
+        assert saved['legacy_deadline']=={**initial['legacy_deadline'],'classification':classification}
+        assert c.execute('SELECT COUNT(*) FROM certification_actions WHERE request_id=?',(identity['request'],)).fetchone()[0]==1
+    b.navigate(base+'/certifications/'+cid);b.wait_for_page_ready()
+    assert 'Classified by you as '+classification.replace('_',' ') in b.evaluate("document.querySelector('.cert-warning').textContent")

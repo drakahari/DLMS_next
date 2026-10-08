@@ -298,7 +298,7 @@ d.bootstrap_database(sys.argv[1],schema_version=7,legacy_schema_version=1,legacy
         run=subprocess.run([sys.executable,'-c',script,str(path)],cwd=Path(dlms.__file__).parent,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=15)
         self.assertEqual(run.returncode,73,run.stderr)
         with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
-        self.assertEqual(dlms.bootstrap_database(str(path))['version'],9)
+        self.assertEqual(dlms.bootstrap_database(str(path))['version'],dlms.DLMS_SCHEMA_VERSION)
         cid=self.create('Survives app restart')
         script="""import app,sys
 from dlms.services import certifications
@@ -806,7 +806,7 @@ finally:c.close()
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{9:fail}):
             with self.assertRaisesRegex(RuntimeError,'interruption'):dlms.bootstrap_database(str(path))
         with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
-        self.assertEqual(dlms.bootstrap_database(str(path))['version'],9)
+        self.assertEqual(dlms.bootstrap_database(str(path))['version'],dlms.DLMS_SCHEMA_VERSION)
         with sqlite3.connect(path) as c:
             c.row_factory=sqlite3.Row
             self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['hours'],9.37)
@@ -899,7 +899,7 @@ finally:c.close()
                    reporting_start='2025-06-01',reporting_end='2028-06-01',year_basis='anniversary',year_anchor='2025-06-01',
                    categories=[dict(name='Technical',minimum=5,cap=40)],conditions='User-recorded condition')
         cid=self.apply(self.request('certification',dict(name='CySA+',issuer='Custom fixture issuer',earned='2025-06-01',
-            expiration='2028-06-01',start='2025-06-01',renewal='2028-05-01',requirements='Keep policy notes',tracking=rules)),
+            expiration='2028-06-01',start='2025-06-01',planning_deadline='2028-05-01',requirements='Keep policy notes',tracking=rules)),
             {'badge':self.png(),'certificate':self.pdf()})['id']
         period=self.cycle(cid)
         tid=self.apply(self.request('training',dict(name='Reviewed course',completed='2026-10-01',duration_minutes=562,hours=9.37)))['id']
@@ -911,10 +911,10 @@ finally:c.close()
         after=self.cycle(cid)
         self.assertEqual(after['id'],period['id'])
         self.assertEqual(after['data'],{**period['data'],'expiration':'2028-07-01'})
-        goal=self.request('cycle',dict(required=30,unit='credits',renewal='2028-04-01',annual_goal=21,expiration='2040-01-01',policy='https://evil.invalid'),
+        goal=self.request('cycle',dict(required=30,unit='credits',planning_deadline='2028-04-01',annual_goal=21,expiration='2040-01-01',policy='https://evil.invalid'),
                           id=period['id'],certification_id=cid,edit_scope='goal')
         self.apply(goal);self.assertEqual(self.apply(goal)['id'],period['id'])
-        now=self.cycle(cid)['data'];expected={**after['data'],'required':30.0,'renewal':'2028-04-01',
+        now=self.cycle(cid)['data'];expected={**after['data'],'required':30.0,'planning_deadline':'2028-04-01',
                                           'tracking':{**after['data']['tracking'],'requirement_known':True}}
         self.assertEqual(now,expected)
         with dlms.get_db() as c:
@@ -937,7 +937,7 @@ finally:c.close()
         goal_url='/certifications/'+cid+'/cycles/'+period['id']+'/goal'
         self.assertEqual(self.client.get(goal_url).status_code,200)
         self.assertEqual(self.cycle(cid)['data'],period['data'])
-        req=self.request('cycle',dict(required='bad',unit='credits',renewal='2028-01-01'),id=period['id'],certification_id=cid,edit_scope='goal')
+        req=self.request('cycle',dict(required='bad',unit='credits',planning_deadline='2028-01-01'),id=period['id'],certification_id=cid,edit_scope='goal')
         form={k:v for k,v in req.items() if k not in ('action','id','data')}
         form.update(kind='cycle',record_id=period['id'],**{'field_'+k:v for k,v in req['data'].items()})
         failed=self.client.post('/certifications/save',data=form,headers=self.headers)
@@ -951,7 +951,7 @@ finally:c.close()
         saved=self.cycle(cid)['data']
         self.apply(self.request('cycle',dict(policy='https://example.org/rules',tracking=dict(requirement_known=True,annual_kind='pacing',annual_amount=10),expiration='2099-01-01'),id=period['id'],certification_id=cid,edit_scope='requirements'))
         after=self.cycle(cid)['data']
-        self.assertEqual(after['expiration'],saved['expiration']);self.assertEqual(after['renewal'],saved['renewal'])
+        self.assertEqual(after['expiration'],saved['expiration']);self.assertEqual(after['planning_deadline'],saved['planning_deadline'])
         self.assertEqual(after['required'],40)
         self.assertEqual(after['policy'],'https://example.org/rules')
         with dlms.get_db() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0],1)
@@ -961,7 +961,7 @@ finally:c.close()
             {'badge':self.png(),'certificate':self.pdf()})['id'];period=self.cycle(cid)
         tid=self.apply(self.request('training',dict(name='Course',completed='2026-10-01',duration_minutes=562)),{'certificate':self.pdf()})['id']
         aid=self.apply(self.request('allocation',dict(hours=9,submitted=9,accepted=9),cycle_id=period['id'],training_id=tid))['id']
-        self.apply(self.request('cycle',dict(required=40,unit='credits',renewal='2029-09-01'),id=period['id'],certification_id=cid,edit_scope='goal'))
+        self.apply(self.request('cycle',dict(required=40,unit='credits',planning_deadline='2029-09-01'),id=period['id'],certification_id=cid,edit_scope='goal'))
         with dlms.get_db() as c:
             before={t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in (*cert.TABLES,'certification_attachments')}
         backup,manifest=dlms._create_dlms_backup('scoped-goal')
@@ -979,7 +979,7 @@ finally:c.close()
         cid=self.apply(self.request('certification',dict(name='Custom',issuer='Any',tracking=dict(annual_kind='minimum',annual_amount=20))))['id']
         period=self.cycle(cid)
         req=self.request('cycle',id=period['id'])
-        form=dict(kind='cycle',edit_scope='goal',record_id=period['id'],certification_id=cid,request_id=req['request_id'],generation=req['generation'],revision=req['revision'],field_required='30',field_unit='credits',field_renewal='2028-99-99',field_annual_goal='21')
+        form=dict(kind='cycle',edit_scope='goal',record_id=period['id'],certification_id=cid,request_id=req['request_id'],generation=req['generation'],revision=req['revision'],field_required='30',field_unit='credits',field_planning_deadline='2028-99-99',field_annual_goal='21')
         failed=self.client.post('/certifications/save',data=form,headers=self.headers)
         self.assertEqual(failed.status_code,400)
         html=failed.get_data(as_text=True)
@@ -1059,3 +1059,224 @@ finally:c.close()
             self.assertEqual(item['planning']['annual'],[])
             self.assertEqual(item['planning']['accepted'],9.37)
             self.assertEqual(item['totals']['accepted'],0)
+
+    def test_independent_deadlines_edit_clear_labels_and_credit_invariants(self):
+        cid=self.apply(self.request('certification',dict(name='Date fixture',issuer='Any issuer',earned='2025-01-01',
+            start='2025-02-01',expiration='2028-11-01',planning_deadline='2028-03-12',renewal_deadline='2028-10-01',required=40)))['id']
+        cycle=self.cycle(cid);pid=cycle['id']
+        tid=self.apply(self.request('training',dict(name='Exact time',completed='2026-10-01',duration_minutes=562)))['id']
+        aid=self.apply(self.request('allocation',dict(hours=9,proposed=10,submitted=9,accepted=9),cycle_id=pid,training_id=tid))['id']
+        before=self.cycle(cid)
+        def save(scope,values):
+            req=self.request('cycle',values,id=pid,certification_id=cid,edit_scope=scope)
+            self.apply(req);self.assertEqual(self.apply(req)['id'],pid)
+            return self.cycle(cid)
+        summary=self.client.get('/certifications/'+cid).get_data(as_text=True)
+        self.assertIn('Planning deadline: <strong>2028-03-12</strong>',summary)
+        self.assertIn('· Expires 2028-11-01</summary>',summary)
+        self.assertIn('<dt>Renewal deadline (user recorded)</dt><dd>2028-10-01</dd>',summary)
+        with dlms.get_db() as c:
+            prompts=[cert.curated_prompt(c.cursor(),cid,pid,[],'Dates?',include_cycle=True),cert.portfolio_prompt(c.cursor(),[cid],[],'Dates?')]
+        for prompt in prompts:
+            for value in ('Planning deadline','Renewal deadline (user recorded; not issuer verified)','Expires','2028-03-12','2028-10-01','2028-11-01'):self.assertIn(value,prompt)
+        # Scope filters reject any attempted cross-editor overwrite by ignoring it.
+        now=save('goal',dict(planning_deadline='',renewal_deadline='2040-01-01',expiration='2041-01-01'))
+        self.assertEqual(now['data'],{**before['data'],'planning_deadline':''})
+        self.assertIn('Renewal deadline (user recorded): <strong>2028-10-01</strong>',self.client.get('/certifications/'+cid).get_data(as_text=True))
+        now=save('requirements',dict(renewal_deadline='',planning_deadline='2040-01-01'))
+        self.assertEqual(now['data'],{**before['data'],'planning_deadline':'','renewal_deadline':''})
+        self.assertIn('Expires: <strong>2028-11-01</strong>',self.client.get('/certifications/'+cid).get_data(as_text=True))
+        # Equal dates remain independent; a personal target may precede effective coverage.
+        save('goal',dict(planning_deadline='2025-01-15'))
+        now=save('requirements',dict(renewal_deadline='2028-11-01'))
+        now=save('goal',dict(planning_deadline='2028-11-01'))
+        self.assertEqual(len({now['data'][k] for k in ('expiration','planning_deadline','renewal_deadline')}),1)
+        certdata=now['data'];req=self.request('certification',dict(expiration='',non_expiring='yes'),id=cid,cycle_id=pid,edit_current=True,edit_scope='identity');self.apply(req)
+        self.assertEqual(self.cycle(cid)['data'],{**certdata,'expiration':''})
+        with dlms.get_db() as c:
+            self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
+        for key in ('planning','progress','totals','allocations'):self.assertEqual(self.cycle(cid)[key],before[key])
+        save('goal',dict(planning_deadline=''));save('requirements',dict(renewal_deadline=''))
+        self.assertIn('Planning deadline: <strong>not recorded</strong>',self.client.get('/certifications/'+cid).get_data(as_text=True))
+        for invalid in ('2028-02-30','2028-03-12T00:00:00Z',None,22):
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):save('goal',dict(planning_deadline=invalid))
+        for day in ('2028-03-12','2028-11-05','2028-02-29'):
+            self.assertEqual(save('goal',dict(planning_deadline=day))['data']['planning_deadline'],day)
+
+    def legacy_date_copy(self, value='2028-09-01'):
+        cid=self.apply(self.request('certification',dict(name='Legacy date',issuer='Custom',earned='2025-01-01',expiration='2029-01-01')))['id']
+        pid=self.cycle(cid)['id'];path=Path(dlms.APP_DATA_DIR)/('legacy-'+uuid.uuid4().hex+'.db')
+        with dlms.get_db() as source,sqlite3.connect(path) as target:source.backup(target)
+        with sqlite3.connect(path) as c:
+            for name in certification_schema.DATE_TRIGGERS:c.execute('DROP TRIGGER '+name)
+            data=json.loads(c.execute('SELECT data_json FROM certification_cycles WHERE id=?',(pid,)).fetchone()[0])
+            for key in ('planning_deadline','renewal_deadline'):data.pop(key)
+            data['renewal']=value
+            c.execute('UPDATE certification_cycles SET data_json=? WHERE id=?',(json.dumps(data),pid));c.execute('UPDATE schema_meta SET version=9')
+        return path,cid,pid
+
+    def test_schema_ten_deadline_migration_failure_interruption_old_writer_and_rollback(self):
+        import subprocess,sys,os,shutil
+        path,cid,pid=self.legacy_date_copy()
+        backup=path.with_suffix('.pre-upgrade.db');shutil.copyfile(path,backup)
+        with sqlite3.connect(path) as c:before=list(c.iterdump())
+        def fail(c):certification_schema.migrate_deadlines(c);raise RuntimeError('interrupted date migration')
+        with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{10:fail}),self.assertRaisesRegex(RuntimeError,'interrupted'):
+            dlms.bootstrap_database(str(path))
+        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        script="""import os,sys
+from dlms.persistence import database as d,certification_schema as s
+def crash(c):s.migrate_deadlines(c);os._exit(73)
+d.bootstrap_database(sys.argv[1],schema_version=10,legacy_schema_version=1,legacy_core_tables=d.DLMS_LEGACY_CORE_TABLES,migrations={10:crash},create_current_schema=None,database_table_names=d._database_table_names,read_schema_version=d._read_database_schema_version,validate_current_schema=d._validate_current_database_schema)
+"""
+        run=subprocess.run([sys.executable,'-c',script,str(path)],cwd=Path(dlms.__file__).parent,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=15)
+        self.assertEqual(run.returncode,73,run.stderr)
+        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        self.assertEqual(dlms.bootstrap_database(str(path))['version'],10)
+        with sqlite3.connect(path) as c:
+            c.row_factory=sqlite3.Row;item=cert.get(c.cursor(),'certification_cycles',pid)['data'];state=cert.state(c.cursor());snapshot=list(c.iterdump())
+            self.assertEqual(item['legacy_deadline'],dict(value='2028-09-01',source='cycle.data.renewal',source_schema=9,classification='unresolved'))
+            self.assertEqual((item['planning_deadline'],item['renewal_deadline']),('',''))
+            certification_schema.migrate_deadlines(c);self.assertEqual(list(c.iterdump()),snapshot)
+            with self.assertRaisesRegex(sqlite3.IntegrityError,'Outdated'):c.execute('UPDATE certification_cycles SET data_json=? WHERE id=?',(json.dumps({**item,'renewal':'2030-01-01'}),pid))
+            c.rollback()
+            with self.assertRaisesRegex(cert.Conflict,'old shared'):cert.apply(c,dict(action='cycle',id=pid,certification_id=cid,data={'renewal':'2030-01-01'},request_id=uuid.uuid4().hex,**state))
+        # Exercise the compatibility limit without requiring repository history in CI.
+        # The actual schema-9 source bootstrap was also checked in retained review evidence.
+        from dlms.persistence import database as db
+        def old_bootstrap(target):
+            return db.bootstrap_database(str(target),schema_version=9,legacy_schema_version=1,
+                legacy_core_tables=db.DLMS_LEGACY_CORE_TABLES,migrations={},create_current_schema=None,
+                database_table_names=db._database_table_names,read_schema_version=db._read_database_schema_version,
+                validate_current_schema=certification_schema.validate_state)
+        raw=path.read_bytes()
+        with self.assertRaisesRegex(RuntimeError,'newer'):old_bootstrap(path)
+        self.assertEqual(path.read_bytes(),raw)
+        restored=path.with_suffix('.rollback.db');shutil.copyfile(backup,restored)
+        self.assertEqual(old_bootstrap(restored)['version'],9)
+        with sqlite3.connect(restored) as c:self.assertEqual(list(c.iterdump()),before)
+
+    def test_legacy_date_classification_is_explicit_retry_safe_and_preserved(self):
+        path,cid,pid=self.legacy_date_copy();dlms.bootstrap_database(str(path))
+        with sqlite3.connect(path) as c:
+            c.row_factory=sqlite3.Row
+            def request(data,scope='requirements'):
+                return dict(action='cycle',id=pid,certification_id=cid,edit_scope=scope,data=data,request_id=uuid.uuid4().hex,**cert.state(c.cursor()))
+            initial=cert.get(c.cursor(),'certification_cycles',pid)['data']
+            cert.apply(c,request(dict(required=20),'goal'))
+            self.assertEqual(cert.get(c.cursor(),'certification_cycles',pid)['data']['legacy_deadline'],initial['legacy_deadline'])
+            cert.apply(c,request(dict(planning_deadline='2028-06-01'),'goal'))
+            with self.assertRaisesRegex(ValueError,'different date'):cert.apply(c,request(dict(classify_legacy_deadline='planning_deadline')))
+            req=request(dict(classify_legacy_deadline='renewal_deadline'));out=cert.apply(c,req);self.assertEqual(cert.apply(c,req),out)
+            result=cert.get(c.cursor(),'certification_cycles',pid)['data']
+            self.assertEqual(result['planning_deadline'],'2028-06-01');self.assertEqual(result['renewal_deadline'],'2028-09-01')
+            self.assertEqual(result['legacy_deadline'],{**initial['legacy_deadline'],'classification':'renewal_deadline'})
+            cert.apply(c,request(dict(planning_deadline=''),'goal'))
+            self.assertEqual(cert.get(c.cursor(),'certification_cycles',pid)['data']['legacy_deadline'],result['legacy_deadline'])
+            stale=request(dict(renewal_deadline='2028-11-01'));other=request(dict(renewal_deadline='2028-12-01'))
+            cert.apply(c,other)
+            with self.assertRaises(cert.Conflict):cert.apply(c,stale)
+            cert.validate_restored(c)
+
+    def test_deadline_legacy_backup_validation_and_roundtrip(self):
+        path,cid,pid=self.legacy_date_copy()
+        with sqlite3.connect(path) as c:
+            before=list(c.iterdump());cert.validate_restored(c);self.assertEqual(list(c.iterdump()),before)
+        # Build a real legacy backup archive; validate it read-only, then migrate only staging.
+        with sqlite3.connect(path) as source,dlms.get_db() as target:source.backup(target)
+        old_backup,old_manifest=dlms._create_dlms_backup('schema-nine-deadlines')
+        old_stage=Path(dlms.APP_DATA_DIR)/'old-deadlines-stage'
+        checked=dlms._validate_dlms_backup(old_backup);dlms._extract_validated_backup(old_backup,str(old_stage),checked)
+        dlms._validate_staged_backup_semantics(str(old_stage),old_manifest)
+        dlms._prepare_staged_restore_database(str(old_stage))
+        with sqlite3.connect(old_stage/'results.db') as c:
+            c.row_factory=sqlite3.Row
+            restored=cert.get(c.cursor(),'certification_cycles',pid)['data']
+            self.assertEqual(restored['legacy_deadline']['value'],'2028-09-01')
+            self.assertEqual((restored['planning_deadline'],restored['renewal_deadline']),('',''))
+        dlms.bootstrap_database(str(path))
+        with sqlite3.connect(path) as source,dlms.get_db() as target:source.backup(target)
+        period=self.cycle(cid)
+        self.apply(self.request('cycle',dict(planning_deadline='2028-06-01',renewal_deadline='2028-10-01'),id=pid,certification_id=cid))
+        before=self.cycle(cid)['data']
+        backup,manifest=dlms._create_dlms_backup('distinct-deadlines');stage=Path(dlms.APP_DATA_DIR)/'deadlines-stage'
+        checked=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),checked)
+        dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
+        with sqlite3.connect(stage/'results.db') as c:
+            c.row_factory=sqlite3.Row;cert.validate_restored(c)
+            self.assertEqual(cert.get(c.cursor(),'certification_cycles',pid)['data'],before)
+        # A forged schema-9 export carrying new fields is rejected, not reinterpreted.
+        with sqlite3.connect(stage/'results.db') as c:
+            c.execute('UPDATE schema_meta SET version=9')
+            with self.assertRaisesRegex(ValueError,'conflicting deadline'):cert.validate_restored(c)
+
+    def test_date_guards_malformed_legacy_and_historical_periods(self):
+        path,cid,pid=self.legacy_date_copy('not-a-date')
+        with sqlite3.connect(path) as c:before=list(c.iterdump())
+        with self.assertRaises(ValueError):dlms.bootstrap_database(str(path))
+        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        cid=self.apply(self.request('certification',dict(name='History',issuer='Custom',earned='2025-01-01',expiration='2028-01-01',planning_deadline='2027-08-01',renewal_deadline='2027-12-01')))['id']
+        old=self.cycle(cid)
+        newer=self.apply(self.request('cycle',dict(expiration='2031-01-01',renewal_deadline='2030-12-01'),certification_id=cid))['id']
+        self.assertEqual(self.cycle(cid)['data']['planning_deadline'],'')
+        self.apply(self.request('cycle',dict(planning_deadline='2027-09-01'),id=old['id'],certification_id=cid,edit_scope='goal'))
+        with dlms.get_db() as c:
+            historical=cert.get(c.cursor(),'certification_cycles',old['id'])
+            self.assertEqual(historical['data'],{**old['data'],'planning_deadline':'2027-09-01'})
+            self.assertEqual(cert.get(c.cursor(),'certification_cycles',newer)['data']['renewal_deadline'],'2030-12-01')
+            before=list(c.iterdump())
+            with self.assertRaisesRegex(sqlite3.IntegrityError,'Outdated'):
+                c.execute('INSERT INTO certification_cycles VALUES(?,?,?,?)',(uuid.uuid4().hex,cid,json.dumps({'renewal':'2034-01-01'}),3))
+            c.rollback();self.assertEqual(list(c.iterdump()),before)
+            # A forged guard with the right name is still rejected on restore.
+            c.execute('DROP TRIGGER certification_dates_update')
+            c.execute('CREATE TRIGGER certification_dates_update BEFORE UPDATE ON certification_cycles BEGIN SELECT 1; END')
+            with self.assertRaisesRegex(ValueError,'protections are incompatible'):cert.validate_restored(c)
+
+    def test_partial_period_date_correction_preserves_omitted_evidence_and_credit(self):
+        cid=self.apply(self.request('certification',dict(name='Partial date correction',issuer='Custom',earned='2025-01-01',start='2025-01-01',expiration='2029-11-01',planning_deadline='2029-08-01',renewal_deadline='2029-10-01',required=40,requirements='Keep recorded requirements',policy='https://example.org/policy')),
+                       {'badge':self.png(),'certificate':self.pdf()})['id']
+        period=self.cycle(cid);pid=period['id']
+        tid=self.apply(self.request('training',dict(name='Recorded course',completed='2026-10-01',duration_minutes=562)))['id']
+        self.apply(self.request('allocation',dict(hours=9,proposed=10,submitted=9,accepted=9),cycle_id=pid,training_id=tid))
+        before=self.cycle(cid)
+        with dlms.get_db() as c:
+            preserved={t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in ('certifications','certification_training','certification_allocations','certification_attachments')}
+        req=self.request('cycle',dict(renewal_deadline='2029-10-15'),id=pid,certification_id=cid)
+        result=self.apply(req);self.assertEqual(self.apply(req),result)
+        self.assertEqual(self.cycle(cid)['data'],{**before['data'],'renewal_deadline':'2029-10-15'})
+        expected=self.cycle(cid)['data']
+        for key in ('planning_deadline','renewal_deadline','expiration'):
+            self.apply(self.request('cycle',{key:''},id=pid,certification_id=cid));expected={**expected,key:''}
+            self.assertEqual(self.cycle(cid)['data'],expected)
+        # An interrupted transaction cannot partially save a date or orphan its evidence.
+        req=self.request('cycle',dict(expiration='2029-12-01'),id=pid,certification_id=cid)
+        with dlms.get_db() as c:c.execute("CREATE TRIGGER fail_review_receipt BEFORE INSERT ON certification_actions BEGIN SELECT RAISE(ABORT,'review interruption'); END")
+        with self.assertRaisesRegex(sqlite3.IntegrityError,'review interruption'):self.apply(req)
+        self.assertEqual(self.cycle(cid)['data'],expected)
+        with dlms.get_db() as c:c.execute('DROP TRIGGER fail_review_receipt')
+        self.apply(req);self.assertEqual(self.apply(req)['id'],pid)
+        for key in ('planning','progress','totals','allocations'):self.assertEqual(self.cycle(cid)[key],before[key])
+        with dlms.get_db() as c:
+            self.assertEqual({t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in preserved},preserved)
+        stale=self.request('cycle',dict(renewal_deadline='2030-01-01'),id=pid,certification_id=cid)
+        current=self.request('cycle',dict(planning_deadline='2029-07-01'),id=pid,certification_id=cid)
+        self.apply(current)
+        with self.assertRaises(cert.Conflict):self.apply(stale)
+        self.assertEqual(self.cycle(cid)['data']['renewal_deadline'],'')
+
+    def test_legacy_classification_form_errors_preserve_provenance_selection_and_guards(self):
+        path,cid,pid=self.legacy_date_copy();dlms.bootstrap_database(str(path))
+        with sqlite3.connect(path) as source,dlms.get_db() as target:source.backup(target)
+        before=self.cycle(cid)['data']
+        for scope in ('requirements',''):
+            for choice in ('planning_deadline','renewal_deadline'):
+                with self.subTest(scope=scope,choice=choice):
+                    req=self.request('cycle')
+                    form=dict(kind='cycle',record_id=pid,certification_id=cid,edit_scope=scope,request_id=req['request_id'],generation=req['generation'],revision=req['revision'],field_required='invalid',field_unit='credits',field_classify_legacy_deadline=choice)
+                    response=self.client.post('/certifications/save',data=form,headers=self.headers)
+                    self.assertEqual(response.status_code,400);html=response.get_data(as_text=True)
+                    self.assertIn('id="legacyDeadline"',html);self.assertIn('2028-09-01',html)
+                    self.assertIn('value="'+choice+'" selected',html)
+                    for key in ('request_id','generation','revision'):self.assertIn('name="'+key+'" value="'+str(req[key])+'"',html)
+                    self.assertEqual(self.cycle(cid)['data'],before)
