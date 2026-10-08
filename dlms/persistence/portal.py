@@ -9,7 +9,7 @@ from dlms.themes import normalize_theme
 
 DASHBOARD_CARD_GROUPS = (
     ("Panels", (("welcome", "Welcome"), ("daily_review", "Study next & Continue studying"),
-                ("recent_activity", "Recent quiz activity"), ("overview", "Results overview"))),
+                ("recent_activity", "Recent quiz activity"), ("certifications", "My Certifications"), ("overview", "Results overview"))),
     ("Quick access", (("library", "Quiz Library"), ("build", "Build Quiz"),
                       ("study_packs", "Study Packs"), ("it", "IT Study"),
                       ("law", "Law Study"), ("medical", "Medical Study"),

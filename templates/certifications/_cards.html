@@ -1,0 +1,7 @@
+{% macro cards(rows) %}
+<div class="cert-grid">
+{% for record in rows %}<a class="cert-card" href="/certifications/{{ record.id }}">
+{% if record.data.badge %}<img class="cert-badge" src="/certifications/attachments/{{ record.data.badge }}" alt="Badge uploaded for {{ record.data.name }}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden role="status">Badge unavailable</span>{% else %}<svg class="dlms-icon cert-badge" aria-hidden="true" focusable="false"><use href="/static/icons.svg#star"></use></svg>{% endif %}
+<h3>{{ record.data.name }}</h3><p>{{ record.data.issuer }}</p><p>Earned {{ record.data.earned }}</p><span>View certification <span aria-hidden="true" focusable="false">→</span></span></a>{% endfor %}
+</div>
+{% endmacro %}

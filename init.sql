@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 6);
+VALUES (1, 7);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)
@@ -310,3 +310,13 @@ CREATE TABLE IF NOT EXISTS review_marks (
 CREATE TABLE IF NOT EXISTS review_mark_actions (
         request_id TEXT PRIMARY KEY, generation TEXT NOT NULL, input_hash TEXT NOT NULL,
         state TEXT NOT NULL, result_json TEXT, quiz_id INTEGER, html TEXT);
+
+-- Earned certifications and renewal evidence (schema 7).
+CREATE TABLE IF NOT EXISTS certification_state (id INTEGER PRIMARY KEY CHECK(id=1), generation TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0);
+INSERT OR IGNORE INTO certification_state(id,generation) VALUES(1,lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS certification_attachments (id TEXT PRIMARY KEY, mime TEXT NOT NULL, sha256 TEXT NOT NULL, content BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS certifications (id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS certification_cycles (id TEXT PRIMARY KEY, certification_id TEXT NOT NULL REFERENCES certifications(id) ON DELETE CASCADE, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS certification_training (id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS certification_allocations (id TEXT PRIMARY KEY, cycle_id TEXT NOT NULL REFERENCES certification_cycles(id) ON DELETE CASCADE, training_id TEXT NOT NULL REFERENCES certification_training(id) ON DELETE CASCADE, data_json TEXT NOT NULL, UNIQUE(cycle_id,training_id));
+CREATE TABLE IF NOT EXISTS certification_actions (request_id TEXT PRIMARY KEY, generation TEXT NOT NULL, input_hash TEXT NOT NULL, result_json TEXT NOT NULL);

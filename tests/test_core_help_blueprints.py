@@ -59,6 +59,7 @@ class CoreHelpBlueprintTests(unittest.TestCase):
         "browser_presence_update",
         "browser_presence_setting_loaded",
         "browser_presence_runtime_eligible",
+        "certifications_dashboard",
     }
     OLD_ENDPOINTS = {
         "home",

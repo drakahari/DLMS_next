@@ -138,6 +138,7 @@ def test_every_toggle_renders_independently_and_pack_gate_is_preserved(dashboard
         assert ('id="dailyReviewList"' in page) == (key == "daily_review")
         if key == "recent_activity":
             assert 'id="recentActivity"' in page and 'id="statAttempts"' not in page
+        assert ('id="myCertifications"' in page) == (key == "certifications")
         if key == "overview":
             assert 'id="statAttempts"' in page and 'id="recentActivity"' not in page
     save_cards(dashboard, ["medical"])
@@ -146,7 +147,7 @@ def test_every_toggle_renders_independently_and_pack_gate_is_preserved(dashboard
     assert '<a class="dashboard-action-card" href="/medical">' in page
     assert dlms.load_portal_config()["dashboard_card_visibility"]["medical"] is True
     page = dashboard.get("/settings/dashboard", follow_redirects=True).get_data(as_text=True)
-    assert page.count('class="settings-toggle-row"') == 18
+    assert page.count('class="settings-toggle-row"') == 19
     assert "Medical Study remains available without an installed content pack" in page
     from flask import render_template
     with dlms.app.test_request_context("/"):
@@ -360,7 +361,7 @@ def test_unified_layout_save_preserves_differing_choices_and_scoped_resets(dashb
     assert saved["study_area_visibility"]["law"] and not saved["dashboard_card_visibility"]["law"]
     assert saved["theme"] == "ethereal" and saved["custom_extension"] == {"keep": 1}
     page = dashboard.get("/settings/layout").get_data(as_text=True)
-    assert page.count('name="dashboard_card_') == 14
+    assert page.count('name="dashboard_card_') == 15
     assert page.count('name="study_area_') == 4
     assert 'dashboard_card_other' not in page
     assert page.count('value="save"') == 1

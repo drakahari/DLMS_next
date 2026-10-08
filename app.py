@@ -478,6 +478,8 @@ def reject_declared_oversized_workflow_upload():
         "/settings/data/restore/stage", "/settings/backup/restore/stage",
     }:
         request.max_content_length = BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES
+    if request.method == "POST" and request.path.startswith("/certifications/"):
+        request.max_content_length = 21 * 1024 * 1024
     if request.method != "POST" or not request.content_length:
         return None
     route_limits = {
@@ -1812,7 +1814,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables):
@@ -2015,12 +2017,18 @@ def _extract_validated_backup(zip_path, target_root, report):
 
 def _validate_restored_sqlite(path, relative_path="results.db"):
     """Validate a restored DLMS database without running writable migrations."""
-    return _backup_service.validate_restored_sqlite(
+    result = _backup_service.validate_restored_sqlite(
         path,
         relative_path,
         core_db_schema=DLMS_BACKUP_CORE_DB_SCHEMA,
         sqlite_module=sqlite3,
     )
+    if relative_path == "results.db":
+        from dlms.services.certifications import validate_restored
+        from pathlib import Path
+        with sqlite3.connect(Path(os.path.abspath(path)).as_uri() + "?mode=ro", uri=True) as conn:
+            validate_restored(conn)
+    return result
 
 
 def _validate_restored_json(path, relative_path):
@@ -3119,6 +3127,22 @@ def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, sourc
 # ROOT + STATIC (ORDER MATTERS)
 # =========================
 
+def _certifications_dashboard():
+    from dlms.services import certifications
+    try:
+        with registry_lock:
+            conn = get_db()
+            try:
+                rows = certifications.collection(conn.cursor())
+            finally:
+                conn.close()
+        count = load_portal_config().get("certification_display_count", "3")
+        count = count if count in ("3", "6", "all") else "3"
+        return dict(rows=rows if count == "all" else rows[:int(count)], total=len(rows), count=count)
+    except (sqlite3.Error, ValueError):
+        return dict(rows=[], total=0, count="3", error="Certifications could not be loaded. Open My Certifications to retry.")
+
+
 app.register_blueprint(create_core_blueprint(CoreRouteDependencies(
     app_version=lambda: APP_VERSION,
     get_portal_title=lambda: get_portal_title(),
@@ -3136,6 +3160,7 @@ app.register_blueprint(create_core_blueprint(CoreRouteDependencies(
     browser_presence_update=lambda token, closed: _update_browser_presence(token, closed),
     browser_presence_setting_loaded=lambda config: _browser_presence_setting_loaded(config),
     browser_presence_runtime_eligible=lambda: _browser_presence_runtime_eligible(),
+    certifications_dashboard=lambda: _certifications_dashboard(),
 )))
 app.register_blueprint(create_help_blueprint())
 
@@ -6180,6 +6205,12 @@ def _exam_plan_options(cur):
                 media_available=lambda value: _exam_plan_media_available(value, packs), registry=registry, folders=catalog["folders"], excluded=[_quiz_mutation_service.quiz_folder_identity_key(f) for f in excluded],
                 data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names)
 
+
+from dlms.routes.certifications import CertificationDependencies, create_certification_blueprint
+app.register_blueprint(create_certification_blueprint(CertificationDependencies(
+    get_db=lambda: get_db(), load_config=lambda: load_portal_config(),
+    save_config=lambda cfg: _write_settings_portal_config(cfg), lock=registry_lock,
+)))
 
 from dlms.routes.review_marks import ReviewMarkDependencies, create_review_mark_blueprint
 app.register_blueprint(create_review_mark_blueprint(ReviewMarkDependencies(

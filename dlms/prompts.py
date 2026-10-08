@@ -595,3 +595,16 @@ DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM = r"""MEDICAL-SPECIFIC SAFETY AND SOURCE 
 - Keep concise matching definitions separate from richer Study Mode explanations.
 - Mark uncertain image hotspot geometry for DLMS Image Study Editor review rather than pretending it is calibrated."""
 
+
+
+DEFAULT_CERTIFICATION_PROMPT = """Help me understand possible renewal-credit eligibility for my earned certification.
+Consult CURRENT official issuer rules, cite direct source links and policy dates, and explain
+possible eligibility, partial credit and missing information. Do not invent requirements or
+claim issuer verification or approval. Training hours, submitted credit and accepted credit
+are distinct user-recorded values. Guidance is not issuer approval; I must verify it myself.
+Do not request credential IDs or certificates. Do not infer stacked renewals or carry credit
+between cycles. Give a concise explanation and practical next steps.
+
+Selected context and my question:
+{{certification_context}}
+"""

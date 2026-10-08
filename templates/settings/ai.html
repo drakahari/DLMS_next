@@ -196,6 +196,7 @@
             <button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save AI Settings</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
+<section class="settings-form-section" id="certificationPromptSettings"><h2>Certification renewal prompt</h2><p>Used only for the selected context you preview in My Certifications. Keep {{ '{{certification_context}}' }} where selected information should appear.</p><label for="certificationPromptTemplate">Default certification prompt</label><textarea id="certificationPromptTemplate" name="certification_ai_prompt_template" rows="10" maxlength="20000">{{ cfg.get('certification_ai_prompt_template', certification_default_prompt) }}</textarea><button type="button" id="resetCertificationPrompt">Restore certification prompt default</button><p>Restore updates this form only. Save AI settings to persist it; other prompt choices remain independent.</p></section>
     </form>
 
     <div class="settings-scope-note">
@@ -262,6 +263,7 @@ if (resetLawPromptBtn && lawAIPromptTemplate) {
     });
 }
 </script>
+<script>document.getElementById('resetCertificationPrompt').addEventListener('click',()=>{const n=document.getElementById('certificationPromptTemplate');n.value={{ certification_default_prompt|tojson }};n.focus();});</script>
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>

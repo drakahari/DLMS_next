@@ -8,6 +8,7 @@ from dlms.themes import THEME_REGISTRY, theme_groups
 
 
 HELP_TOPIC_FILES = {
+    "certifications": "help-certifications.html",
     "getting-started": "help-getting-started.html",
     "quizzes": "help-quizzes.html",
     "build-quiz": "help-build-quiz.html",

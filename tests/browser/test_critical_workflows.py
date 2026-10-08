@@ -13830,7 +13830,7 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     browser.navigate(browser_stack.base_url + "/settings/dashboard")
     browser.activate()
     browser.set_viewport(390, 844)
-    browser.wait_for("document.querySelectorAll('[name^=dashboard_card_]').length === 14")
+    browser.wait_for("document.querySelectorAll('[name^=dashboard_card_]').length === 15")
     assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.labels.length === 1 && input.labels[0].textContent.trim())")
     for name, sample in _theme_contrast_snapshot(browser, {
         "checkbox_label": ".settings-toggle-row strong", "helper": ".settings-scope-note",
@@ -13853,10 +13853,13 @@ def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, the
     browser.wait_for_page_ready("document.querySelector('.dashboard-nav-normalized') !== null")
     assert browser.evaluate("document.querySelector('main h1') !== null && document.querySelector('.dashboard-customize') === null && document.querySelector('.dashboard-sidebar a[href=\"/settings\"]') !== null")
     assert browser.evaluate("document.querySelectorAll('.dashboard-action-card, .dashboard-lower-grid, .dashboard-action-grid, .daily-review-panel, .dashboard-welcome').length") == 0
+    assert browser.evaluate("document.querySelector('#myCertifications') === null")
     requests = browser.evaluate("performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname)")
     assert "/api/dashboard/quiz-activity" not in requests
     assert "/api/attempts/overview" not in requests
     assert "/api/daily-review-plan" not in requests
+    assert "/static/certifications.css" not in requests
+    assert not any(path.startswith('/certifications/attachments/') for path in requests)
     assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
     if theme == "ethereal":
         assert browser.evaluate("parseFloat(getComputedStyle(document.querySelector('main h1')).fontSize)") == 24
@@ -15714,3 +15717,224 @@ def test_learning_profile_primary_control_generates_native_review(browser_stack,
     with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
         assert conn.execute('SELECT count(*) FROM study_responses r JOIN study_sessions s ON s.id=r.session_id WHERE s.quiz_id=?',(quiz_id,)).fetchone()[0] == 3
         assert conn.execute('SELECT count(*) FROM study_sessions WHERE quiz_id=? AND completed_at IS NOT NULL',(quiz_id,)).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize('theme', sorted(THEME_IDS))
+def test_certification_trophy_and_workspace_themes(browser_stack, theme):
+    """Native forms, isolated evidence, ordinary LAN HTTP and all theme choices."""
+    from PIL import Image
+    from pypdf import PdfWriter
+    from tests.browser._help_screenshots import capture_control
+    browser,root=browser_stack.browser,browser_stack.data_root
+    browser.context=browser.command('browsingContext.create', {'type':'tab'})['context']
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    browser.navigate(base+'/certifications')
+    browser.wait_for_page_ready()
+    assert browser.evaluate('isSecureContext') is False
+    assert browser.evaluate("document.querySelector('main').textContent.includes('No certifications recorded yet')")
+    browser.navigate(base+'/certifications/new')
+    browser.wait_for("document.querySelector('[name=field_name]') && window.dlmsCsrfToken")
+    badge=root/'test-badge.png'
+    from PIL import ImageDraw
+    image=Image.new('RGB',(100,100),'#dceafa');draw=ImageDraw.Draw(image);draw.ellipse((8,8,92,92),fill='#184a70');draw.text((25,43),'SAMPLE',fill='white');image.save(badge)
+    evidence=root/'test-certificate.pdf';writer=PdfWriter();writer.add_blank_page(width=100,height=100)
+    with evidence.open('wb') as f:writer.write(f)
+    browser.evaluate("document.querySelector('[name=field_name]').value='Security governance — earned sample credential with a long, readable name';document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2025-06-01';true")
+    browser.set_files('[name=badge]',[str(badge)])
+    browser.click('.cert-form [type=submit]')
+    browser.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    path=browser.evaluate('location.pathname');cid=path.split('/')[-1]
+    browser.click('a[href$="/edit"]')
+    # The hero's edit link edits certification; cycle evidence is explicitly separate.
+    browser.wait_for("document.querySelector('[name=kind]').value==='certification'")
+    browser.navigate(base+path)
+    browser.click('.cert-cycle a[href$="/edit"]')
+    browser.wait_for("document.querySelector('[name=kind]').value==='cycle'")
+    browser.evaluate("document.querySelector('[name=field_required]').value='20';document.querySelector('[name=field_unit]').value='credits';document.querySelector('[name=field_renewal]').value='2028-06-01';true")
+    browser.set_files('[name=certificate]',[str(evidence)])
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-cycle') && !document.querySelector('.cert-form')")
+    browser.navigate(base+'/certifications/training/new')
+    browser.wait_for("document.querySelector('[name=field_hours]')")
+    browser.evaluate("document.querySelector('[name=field_name]').value='Security learning workshop';document.querySelector('[name=field_provider]').value='Example provider';document.querySelector('[name=field_completed]').value='2026-09-01';document.querySelector('[name=field_hours]').value='8';document.querySelector('[name=field_notes]').value='PRIVATE TRAINING NOTE';true")
+    browser.click('.cert-form [type=submit]');browser.wait_for("location.pathname==='/certifications/training' && document.querySelector('.cert-log-row')")
+    browser.navigate(base+path);browser.click('a[href$="/allocate"]')
+    browser.wait_for("document.querySelector('[name=training_id]')")
+    browser.evaluate("document.querySelector('[name=training_id]').selectedIndex=1;document.querySelector('[name=field_hours]').value='6';document.querySelector('[name=field_submitted]').value='5';document.querySelector('[name=field_accepted]').value='3';true")
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-metrics').textContent.includes('3 credits')")
+    with sqlite3.connect(root/'results.db') as c:
+        first=list(c.execute('SELECT * FROM certification_allocations'))
+        learning=list(c.execute('SELECT * FROM learning_events'));sessions=list(c.execute('SELECT * FROM study_sessions'))
+    browser.navigate(base+path+'/ai')
+    browser.wait_for("document.querySelector('[name=question]')")
+    browser.evaluate("document.querySelector('[name=include_certification]').checked=true;document.querySelector('[name=include_cycle]').checked=true;document.querySelector('[name=training]').checked=true;document.querySelector('[name=question]').value='Could this workshop qualify under current official rules?';true")
+    browser.click('button[type=submit]');browser.wait_for("document.querySelector('#certPrompt')")
+    assert not browser.evaluate("document.querySelector('#certPrompt').value.includes('PRIVATE TRAINING NOTE')")
+    assert browser.evaluate("document.querySelector('#certPrompt').value.includes('Security learning workshop')")
+    assert browser.evaluate("document.querySelector('#certAIPreview a[target=_blank]').search === ''")
+    browser.click('[data-cert-copy]')
+    assert 'Prompt' in browser.evaluate("document.querySelector('#certCopyStatus').textContent")
+    if theme == 'light':
+        # Check the actual clipboard after editing the preview, not just the
+        # success label. No clipboard permission or security preference override.
+        browser.evaluate("document.querySelector('#certPrompt').value += '\\nUser-edited question: café — exact preview';true")
+        expected_prompt = browser.evaluate("document.querySelector('#certPrompt').value")
+        browser.click('[data-cert-copy]')
+        browser.evaluate("const sink=document.createElement('textarea');sink.id='clipboardCheck';sink.setAttribute('aria-label','Disposable clipboard verification');document.querySelector('main').append(sink);sink.focus();true")
+        browser.command('input.performActions', {'context':browser.context,'actions':[{'type':'key','id':'clipboard-keys','actions':[
+            {'type':'keyDown','value':'\ue009'},{'type':'keyDown','value':'v'},
+            {'type':'keyUp','value':'v'},{'type':'keyUp','value':'\ue009'}]}]})
+        browser.wait_for("document.querySelector('#clipboardCheck').value.length > 0")
+        assert browser.evaluate("document.querySelector('#clipboardCheck').value") == expected_prompt
+        assert browser.evaluate("performance.getEntriesByType('resource').every(r=>new URL(r.name).origin===location.origin)")
+        browser.evaluate("document.querySelector('#clipboardCheck').remove();true")
+    for number in range(2,5):
+        browser.navigate(base+'/certifications/new');browser.wait_for("document.querySelector('[name=field_name]')")
+        browser.evaluate("document.querySelector('[name=field_name]').value="+json.dumps('Earned sample '+str(number))+";document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2024-06-01';true")
+        browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    portal=root/'config/portal.json'
+    cfg=json.loads(portal.read_text());cfg['dashboard_card_visibility']['library']=False;cfg['dashboard_card_visibility']['build']=False
+    cfg['dashboard_card_visibility']['study_packs']=False;cfg['dashboard_card_visibility']['it']=False;cfg['dashboard_card_visibility']['law']=False;cfg['dashboard_card_visibility']['medical']=False;cfg['dashboard_card_visibility']['analytics']=False;cfg['dashboard_card_visibility']['settings']=False
+    portal.write_text(json.dumps(cfg))
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    for route,name in [('/','trophy-quick-hidden'),(path,'detail'),('/certifications','list'),('/help/certifications','help')]:
+        for width in (1440,390):
+            browser.set_viewport(width,1000);browser.navigate(base+route);browser.wait_for_page_ready()
+            browser.wait_for("document.querySelector('#dlmsQuickTheme')?.options.length === 26")
+            if name.startswith('trophy'):
+                assert browser.evaluate("document.querySelector('#myCertifications .cert-card').getAttribute('href')") == path
+                assert browser.evaluate("document.querySelectorAll('#myCertifications .cert-card').length") == 3
+                assert browser.evaluate("document.querySelector('#myCertifications').textContent.includes('View all (4)')")
+                assert browser.evaluate("!document.querySelector('.dashboard-quick-tools')")
+            if name.startswith('trophy') or name=='list':
+                browser.evaluate("document.querySelector('.cert-card img').scrollIntoView();true")
+                browser.wait_for("document.querySelector('.cert-card img').complete && document.querySelector('.cert-card img').naturalWidth>0")
+                assert browser.evaluate("getComputedStyle(document.querySelector('.cert-card img + span')).display==='none'")
+                # A missing image exposes the fallback without changing the record.
+                browser.evaluate("window.certBadgeSource=document.querySelector('.cert-card img').src;document.querySelector('.cert-card img').src='/certifications/attachments/'+'0'.repeat(32);true")
+                browser.wait_for("document.querySelector('.cert-card img').hidden && !document.querySelector('.cert-card img + span').hidden")
+                assert browser.evaluate("getComputedStyle(document.querySelector('.cert-card img + span')).display!=='none'")
+                browser.evaluate("const img=document.querySelector('.cert-card img');img.hidden=false;img.nextElementSibling.hidden=true;img.src=window.certBadgeSource;true")
+                browser.wait_for("document.querySelector('.cert-card img').complete && document.querySelector('.cert-card img').naturalWidth>0")
+                browser.evaluate("window.scrollTo(0,0);true")
+            assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'),(theme,width,name)
+            browser.activate();browser.evaluate("document.querySelector('main a').focus();true");browser.press_key('\ue004')
+            assert browser.evaluate('document.activeElement.matches(":focus-visible")')
+            if name=='detail':
+                browser.evaluate("document.querySelector('.cert-cycle summary').focus();true");browser.press_key(' ')
+                assert not browser.evaluate("document.querySelector('.cert-cycle').open")
+                browser.press_key(' ');assert browser.evaluate("document.querySelector('.cert-cycle').open")
+            if output and theme in ('light','dark','ethereal'):
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'{name}-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                if theme=='ethereal' and width==390 and name in ('detail','trophy-quick-hidden'):
+                    capture_control(browser,Path(output)/('certifications-cycle.webp' if name=='detail' else 'certifications-trophy.webp'),'.cert-cycle' if name=='detail' else '#myCertifications')
+    cfg['dashboard_card_visibility']['library']=True;portal.write_text(json.dumps(cfg))
+    browser.navigate(base+'/');browser.wait_for_page_ready()
+    assert browser.evaluate("document.getElementById('myCertifications').compareDocumentPosition(document.querySelector('.dashboard-overview-panel')) & Node.DOCUMENT_POSITION_FOLLOWING")
+    browser.click('#myCertifications details summary');browser.evaluate("document.getElementById('certDisplayCount').value='all';true")
+    browser.click('#myCertifications button[type=submit]');browser.wait_for("location.hash==='#myCertifications'")
+    assert json.loads(portal.read_text())['certification_display_count']=='all'
+    if output and theme in ('light','dark','ethereal'):
+        browser.set_viewport(1440,1000);browser.navigate(base+'/');browser.wait_for_page_ready()
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        (Path(output)/f'trophy-quick-shown-{theme}-1440.png').write_bytes(base64.b64decode(shot['data']))
+    browser.navigate(base+'/certifications/remove/certifications/'+cid);browser.wait_for_page_ready()
+    browser.click('a[href="/certifications"]');browser.wait_for("location.pathname==='/certifications'")
+    with sqlite3.connect(root/'results.db') as c:
+        assert list(c.execute('SELECT * FROM certification_allocations'))==first
+        assert list(c.execute('SELECT * FROM learning_events'))==learning
+        assert list(c.execute('SELECT * FROM study_sessions'))==sessions
+        assert c.execute('SELECT count(*) FROM certifications').fetchone()[0]==4
+
+
+@pytest.fixture(autouse=True)
+def certification_native_zoom_profile(request, monkeypatch):
+    """Firefox's native 200% content zoom, configured in this disposable profile only."""
+    if not request.node.name.startswith('test_certification_native_zoom'):
+        return
+    original = _firefox_command
+    def command(firefox, profile, port, env):
+        assert profile.name == 'profile' and profile.parent.name.startswith('firefox-session-')
+        import tempfile
+        assert profile.is_relative_to(Path(tempfile.gettempdir()))
+        with sqlite3.connect(profile/'content-prefs.sqlite') as conn:
+            conn.executescript('''CREATE TABLE groups(id INTEGER PRIMARY KEY,name TEXT NOT NULL);
+                CREATE TABLE settings(id INTEGER PRIMARY KEY,name TEXT NOT NULL);
+                CREATE TABLE prefs(id INTEGER PRIMARY KEY,groupID INTEGER REFERENCES groups(id),settingID INTEGER NOT NULL REFERENCES settings(id),value BLOB,timestamp INTEGER NOT NULL DEFAULT 0);
+                CREATE INDEX groups_idx ON groups(name);CREATE INDEX settings_idx ON settings(name);
+                CREATE INDEX prefs_idx ON prefs(timestamp,groupID,settingID);
+                INSERT INTO settings(id,name) VALUES(1,'browser.content.full-zoom');
+                INSERT INTO prefs(groupID,settingID,value) VALUES(NULL,1,2.0);PRAGMA user_version=6;''')
+        return original(firefox,profile,port,env)
+    monkeypatch.setattr(sys.modules[__name__], '_firefox_command', command)
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_certification_native_zoom(browser_stack, theme):
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.command('browsingContext.setViewport',{'context':browser.context,'viewport':None,'devicePixelRatio':None})
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    browser.navigate(base+'/certifications/new');browser.wait_for("document.querySelector('[name=field_name]')")
+    browser.evaluate("document.querySelector('[name=field_name]').value='Earned sample — long certification title for practical renewal records';document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2025-06-01';true")
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero')")
+    path=browser.evaluate('location.pathname')
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    for route,name in [('/','dashboard'),(path,'detail'),(path+'/edit','form'),('/certifications/training/new','training-form'),('/help/certifications','help')]:
+        browser.navigate(base+route);browser.wait_for('devicePixelRatio===2 && document.querySelector("#dlmsQuickTheme")?.options.length===26')
+        browser.wait_for_page_ready()
+        metrics=browser.evaluate('({inner:innerWidth,outer:outerWidth,dpr:devicePixelRatio,font:getComputedStyle(document.documentElement).fontSize})')
+        physical=next(w['width'] for w in browser.command('browser.getClientWindows',{})['clientWindows'] if w['active'])
+        assert abs(metrics['inner']*metrics['dpr']-physical)<=2
+        assert metrics['font']=='16px'
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,name)
+        browser.activate();browser.evaluate('document.querySelector("main a").focus();true');browser.press_key('\ue004')
+        assert browser.evaluate('document.activeElement.matches(":focus-visible")')
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'native200-{name}-{theme}.png').write_bytes(base64.b64decode(shot['data']))
+            (Path(output)/f'native200-{name}-{theme}.json').write_text(json.dumps(metrics))
+
+
+def test_certification_stale_tabs_failed_upload_and_retry_identity(browser_stack):
+    """Real native error/recovery pages keep records unchanged across competing tabs."""
+    browser,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/certifications/new');browser.wait_for("document.querySelector('[name=field_name]')")
+    browser.evaluate("document.querySelector('[name=field_name]').value='Actual earned sample';document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2025-01-01';true")
+    invalid=root/'invalid-certificate.svg';invalid.write_text('<svg onload="alert(1)"/>')
+    browser.set_files('[name=badge]',[str(invalid)])
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('[role=alert]')")
+    assert browser.evaluate("document.querySelector('[name=field_name]').value")=='Actual earned sample'
+    assert 'PNG' in browser.evaluate("document.querySelector('[role=alert]').textContent")
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT count(*) FROM certifications').fetchone()[0]==0
+        assert c.execute('SELECT count(*) FROM certification_attachments').fetchone()[0]==0
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero')")
+    path=browser.evaluate('location.pathname');cid=path.split('/')[-1]
+    # Two edit pages share the same profile guard; a saved newer form wins.
+    browser.navigate(base+path+'/edit');browser.wait_for("document.querySelector('[name=field_name]')")
+    first=browser.context
+    second=browser.command('browsingContext.create',{'type':'tab'})['context']
+    try:
+        browser.context=second;browser.navigate(base+path+'/edit');browser.wait_for("document.querySelector('[name=field_name]')")
+        browser.evaluate("document.querySelector('[name=field_name]').value='Newer saved title';true")
+        browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero').textContent.includes('Newer saved title')")
+        browser.context=first
+        browser.evaluate("document.querySelector('[name=field_name]').value='Stale title';true")
+        browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('[role=alert]')")
+        assert 'another tab' in browser.evaluate("document.querySelector('[role=alert]').textContent")
+        assert browser.evaluate("document.querySelector('[name=field_name]').value")=='Stale title'
+        with sqlite3.connect(root/'results.db') as c:
+            assert json.loads(c.execute('SELECT data_json FROM certifications WHERE id=?',(cid,)).fetchone()[0])['name']=='Newer saved title'
+        # Stale edits and cancelled removal must not create another credential.
+        browser.navigate(base+'/certifications')
+        assert browser.evaluate("document.querySelectorAll('.cert-card').length")==1
+        browser.navigate(base+'/certifications/remove/certifications/'+cid);browser.wait_for("document.querySelector('[name=confirm]')")
+        browser.click('a[href="/certifications"]');browser.wait_for("location.pathname==='/certifications'")
+        assert browser.evaluate("document.querySelectorAll('.cert-card').length")==1
+    finally:
+        browser.context=first
+        browser.command('browsingContext.close',{'context':second})

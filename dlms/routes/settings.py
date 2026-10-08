@@ -9,6 +9,7 @@ from typing import Any
 from flask import Blueprint, jsonify, redirect, render_template, request
 from dlms.persistence.portal import DASHBOARD_CARD_GROUPS, dashboard_card_defaults
 from dlms.themes import THEME_IDS, theme_groups
+from dlms.prompts import DEFAULT_CERTIFICATION_PROMPT
 
 
 Dependency = Callable[..., Any]
@@ -216,6 +217,7 @@ def settings_ai_page(dependencies):
     return render_template(
         "settings/ai.html",
         cfg=cfg,
+        certification_default_prompt=DEFAULT_CERTIFICATION_PROMPT,
         law_default_prompt=law_prompt,
         study_pack_default_prompt=study_prompt,
         medical_study_pack_default_addendum=medical_addendum,
@@ -254,6 +256,9 @@ def save_ai_settings(dependencies):
         or dependencies.default_law_ai_prompt()
     )
 
+    cfg["certification_ai_prompt_template"] = request.form.get("certification_ai_prompt_template", cfg.get("certification_ai_prompt_template", DEFAULT_CERTIFICATION_PROMPT)).strip() or DEFAULT_CERTIFICATION_PROMPT
+    if len(cfg["certification_ai_prompt_template"]) > 20000:
+        return "Certification prompt exceeds 20,000 characters.", 400
     dependencies.write_portal_config(cfg)
     return redirect("/settings/ai?saved=1")
 

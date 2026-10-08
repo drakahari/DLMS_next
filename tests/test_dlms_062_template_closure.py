@@ -171,15 +171,15 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
         self.assertEqual(TEMPLATE_ROOT.resolve(), Path(dlms.app.template_folder).resolve())
 
         templates = sorted(TEMPLATE_ROOT.rglob("*.html"))
-        # Includes the Help theme reference and lazy Study session detail page/partial.
-        self.assertEqual(78, len(templates))
+        # Includes certification workspace/cards, Help theme reference and Study partials.
+        self.assertEqual(80, len(templates))
         self.assertTrue((TEMPLATE_ROOT / "dashboard/index.html").is_file())
         self.assertFalse((ROOT / "static/index.html").exists())
         self.assertNotIn("static/index.html", self.app_source)
         self.assertNotIn("static/index.html", (ROOT / "DLMS.spec").read_text(encoding="utf-8"))
 
         static_pages = sorted((ROOT / "static").glob("*.html"))
-        self.assertEqual(26, len(static_pages))
+        self.assertEqual(27, len(static_pages))
         for page in static_pages:
             source = page.read_text(encoding="utf-8")
             with self.subTest(static_page=page.name):

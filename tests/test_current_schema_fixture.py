@@ -188,6 +188,9 @@ class CurrentSchemaFixtureTests(unittest.TestCase):
             {
                 "test_anki_temp_cleanup.py",
                 "test_backup_semantic_validation.py",
+                # Ordinary certification fixtures use the full schema; only the
+                # adversarial import case intentionally omits constraints.
+                "test_certifications.py",
                 "test_database_bootstrap.py",
                 "test_history_api_pagination.py",
                 "test_restore_migration.py",

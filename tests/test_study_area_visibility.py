@@ -93,7 +93,7 @@ class StudyAreaVisibilityTests(unittest.TestCase):
     def test_navigation_controls_use_labeled_native_inputs_and_submit_button(self):
         page = self.client.get("/settings/navigation", follow_redirects=True).get_data(as_text=True)
 
-        self.assertEqual(18, page.count('class="settings-toggle-row"'))
+        self.assertEqual(19, page.count('class="settings-toggle-row"'))
         self.assertEqual(4, page.count('type="checkbox" name="study_area_'))
         self.assertIn(
             '<button type="submit" name="action" value="save" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save layout &amp; navigation</button>',

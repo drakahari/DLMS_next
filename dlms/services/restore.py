@@ -4,6 +4,7 @@ import json
 from dlms.persistence.study_schema import invalidate_queues, preserve_legacy
 from dlms.persistence.exam_plan_schema import invalidate as invalidate_plans
 from dlms.persistence.review_mark_schema import invalidate as invalidate_marks
+from dlms.persistence.certification_schema import invalidate as invalidate_certifications
 import os
 import re
 import shutil
@@ -194,6 +195,7 @@ def prepare_staged_restore_database(
             invalidate_queues(restored_conn)
             invalidate_plans(restored_conn)
             invalidate_marks(restored_conn)
+            invalidate_certifications(restored_conn)
         validation = validate_current_restored_database(database_path)
         quiz_html = regenerate_staged_quiz_html(staged_data_root, database_path)
     except unsupported_schema_error as exc:

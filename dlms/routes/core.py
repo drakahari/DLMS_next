@@ -32,6 +32,7 @@ class CoreRouteDependencies:
     browser_presence_update: Callable[[str, bool], bool]
     browser_presence_setting_loaded: Callable[[dict[str, Any]], None]
     browser_presence_runtime_eligible: Callable[[], bool]
+    certifications_dashboard: Callable = lambda: None
 
 
 def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
@@ -242,10 +243,12 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
     @blueprint.get("/")
     def home():
         portal_title = dependencies.get_portal_title()
+        visible = dependencies.load_portal_config().get("dashboard_card_visibility", dashboard_card_defaults())
 
         return render_template(
             "dashboard/index.html",
-            visibility=dependencies.load_portal_config().get("dashboard_card_visibility", dashboard_card_defaults()),
+            visibility=visible,
+            trophies=dependencies.certifications_dashboard() if visible.get("certifications", True) else None,
             portal_title=portal_title,
             app_version=dependencies.app_version(),
             installed_content_packs=dependencies.content_pack_summary(),

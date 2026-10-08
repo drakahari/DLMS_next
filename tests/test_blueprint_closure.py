@@ -36,6 +36,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "anki": 12,
         "content_packs": 8,
         "core": 9,
+        "certifications": 17,
         "exam_plans": 7,
         "review_marks": 6,
         "external_ai": 6,
@@ -57,6 +58,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "create_anki_blueprint",
         "create_content_packs_blueprint",
         "create_core_blueprint",
+        "create_certification_blueprint",
         "create_exam_plan_blueprint",
         "create_review_mark_blueprint",
         "create_external_ai_blueprint",
@@ -77,8 +79,9 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.admin_images.AdminImageRouteDependencies": 6,
         "dlms.routes.anki.AnkiRouteDependencies": 22,
         "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
-        "dlms.routes.core.CoreRouteDependencies": 16,
+        "dlms.routes.core.CoreRouteDependencies": 17,
         "dlms.routes.exam_plans.ExamPlanDependencies": 4,
+        "dlms.routes.certifications.CertificationDependencies": 4,
         "dlms.routes.review_marks.ReviewMarkDependencies": 6,
         "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
         "dlms.routes.history.HistoryRouteDependencies": 10,
@@ -97,9 +100,13 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study.StudyRouteDependencies": 4,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "9e6b02b49b5e7cf860e8d077ebaa78466bb203fbf93516af8ffc399aed2553f9"
+        "b75ff2dd3122cee4b94371f3590868d9e94ff2daea73ab848bcb9320ec2a6f89"
     )
     EXPECTED_CANONICAL_ALIASES = {
+        "certifications.certification_form": ("/certifications/new", {}),
+        "certifications.cycle_form": ("/certifications/cert/cycles/new", {"cert_id": "cert"}),
+        "certifications.training_form": ("/certifications/training/new", {}),
+        "certifications.allocation_form": ("/certifications/cert/cycles/cycle/allocate", {"cert_id": "cert", "cycle_id": "cycle"}),
         "exam_plans.edit": ("/exam-plans/new", {}),
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
         "admin_images.admin_hotspot_save": ("/admin/hotspots/save", {}),
@@ -151,11 +158,11 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_entire_explicit_url_map_matches_the_247_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(247, len(rules))
+        self.assertEqual(264, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(246, len(blueprint_rules))
+        self.assertEqual(263, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -241,7 +248,7 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_route_modules_have_frozen_family_dependencies_and_no_app_import(self):
         route_paths = sorted(ROUTE_ROOT.rglob("*.py"))
-        self.assertEqual(25, len(route_paths))
+        self.assertEqual(26, len(route_paths))
         for path in route_paths:
             with self.subTest(route_module=path.relative_to(ROOT)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))

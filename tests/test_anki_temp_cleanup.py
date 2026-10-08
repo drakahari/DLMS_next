@@ -111,6 +111,9 @@ class AnkiTemporaryCleanupTests(unittest.TestCase):
         """)
 
         client = dlms.app.test_client()
+        # Obtain the security token with the full schema before substituting
+        # this deliberately minimal export-only database projection.
+        headers = {"X-CSRFToken": csrf_token(client)}
         with mock.patch.object(dlms, "get_db", return_value=conn), \
              mock.patch.object(dlms, "_attempt_history_context", return_value=(
                  {7: {"title": "Network Fundamentals Final"}}, {}, {}
@@ -120,7 +123,7 @@ class AnkiTemporaryCleanupTests(unittest.TestCase):
             response = client.post(
                 "/export/anki",
                 json={"attempt_id": "history-attempt"},
-                headers={"X-CSRFToken": csrf_token(client)},
+                headers=headers,
             )
 
         self.assertEqual(response.status_code, 200)

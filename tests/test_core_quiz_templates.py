@@ -166,6 +166,7 @@ class CoreQuizExternalTemplateTests(unittest.TestCase):
             app_version=dlms.APP_VERSION,
             installed_content_packs=packs,
             visibility=dlms.load_portal_config()["dashboard_card_visibility"],
+            trophies=dlms._certifications_dashboard(),
         )
 
     def test_library_template_preserves_forms_states_javascript_and_escaping(self):

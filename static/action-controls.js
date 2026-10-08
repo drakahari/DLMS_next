@@ -5,6 +5,7 @@
     const root = document.querySelector('[data-home-dashboard], #studyHistory, [data-action-controls]');
     if (!root) return;
     const scopedSelectors = {
+        'certifications': 'a.dlms-action-control, button.dlms-action-control',
         'exam-plans': '.plan-links a, .plan-list-card > a, .plan-primary, form[action$="/action"] button, #planPractice button, #planSummary > p > a, #other-practice li > a, #planEvidence > p > a, #planPreview > a, #previewPlan, #examPlanForm button[type="submit"]',
         'learning-profile': '.learning-profile-actions a, #lpSmartReview, .learning-profile-retention-head > a',
     };
@@ -30,6 +31,8 @@
     function label(node) { return node.textContent.trim(); }
     function icon(node) {
         const text = label(node);
+        const explicit = node.dataset.actionIcon;
+        if (root.dataset.actionControls === 'certifications' && ['home','star','plus','history','help','save','build','back','eye','ai','trash','forward'].includes(explicit)) return explicit;
         if (root.dataset.actionControls) {
             if (node.closest('[data-delete-plan]')) return 'trash';
             if (node.matches('[value=acknowledge]')) return 'check';
@@ -121,7 +124,7 @@
         }
         root.querySelectorAll(selector).forEach(node => {
             node.classList.add('dlms-action-control');
-            if (root.dataset.actionControls) {
+            if (root.dataset.actionControls && root.dataset.actionControls !== 'certifications') {
                 node.classList.toggle('dlms-action-primary', node.matches('.plan-primary, #lpSmartReview, #examPlanForm button[type="submit"]'));
                 node.classList.toggle('dlms-action-destructive', Boolean(node.closest('[data-delete-plan]')));
             }
