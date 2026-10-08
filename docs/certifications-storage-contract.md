@@ -192,3 +192,36 @@ positive whole number (bounded input length). `certification_sort` defaults to t
 existing earned-date order; name/expiration are explicit saved alternatives. These
 settings use existing locked atomic persistence and portable backup, alongside
 `show_certifications`. Scoped dashboard/sidebar resets preserve these choices.
+
+## Focused editors (schema 9 unchanged)
+
+Identity, planning goal and detailed-requirements forms use the same existing
+records and action receipts. Identity edits merge only identity, expiration,
+badge/certificate and private-note fields into the current record/period. Goal
+edits change only the target, unit, planning deadline and optional annual amount;
+they do not alter expiration, attachments, history or recorded contributions.
+The short goal editor never changes a recorded mandatory annual minimum; correct
+that rule in Manage detailed requirements. For an optional
+pacing goal, explicitly clearing it returns that annual goal to unknown.
+
+The merge occurs inside the existing locked write, after generation, receipt and
+revision checks. Receipt hashes cover the original submitted patch, so a lost
+acknowledgement is replayable even after a later edit. Changed inputs under the
+same request ID and stale competing edits remain rejected. New task routes are
+GET editors; they never create a period or learning evidence. Advanced fields
+omitted from these short forms remain intact. Full legacy save callers remain
+supported. No schema migration or new backup format is introduced.
+
+Targets are user-recorded planning amounts, not verified issuer requirements.
+Existing policy sources/check status remain separately recorded; editing a goal
+does not verify the changed amount against those sources. Unit changes with
+existing contributions remain blocked. Estimates, submitted credit, accepted
+credit, course duration and associated duration keep their existing meanings.
+Unchecked rows in Use toward renewal are ignored, not removed. Selected rows
+save atomically; updating an existing relationship changes its estimate only.
+
+Category removal and suggested requirements require explicit UI actions; a
+suggestion first shows source/version information for review, then fills the
+unsaved form. Save remains necessary. Neither action touches recorded credit.
+The existing pre-upgrade-backup rollback requirements above still apply: changing
+binaries alone cannot reverse schema 9 or restore earlier data.

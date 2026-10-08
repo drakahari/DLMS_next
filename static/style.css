@@ -16131,3 +16131,12 @@ h1, h2, h3 {
   .dashboard-study-layout .daily-review-item-action {justify-items:stretch;}
   .dashboard-main[data-home-dashboard] .dashboard-action-card {grid-template-columns:24px minmax(0,1fr);}
 }
+
+/* Certification display preferences stay aligned as labels wrap. */
+.settings-dashboard-page .certification-display-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:1rem;margin-block:1rem;align-items:end;}
+.settings-dashboard-page .certification-display-fields label {display:flex;flex-direction:column;gap:.5rem;margin:0;min-width:0;}
+.settings-dashboard-page .certification-display-fields [hidden] {display:none;}
+.settings-dashboard-page .certification-display-fields :is(input,select) {width:100%;min-width:0;box-sizing:border-box;}
+
+.settings-dashboard-page .certification-display-fields :is(input,select) {min-height:44px;padding:.65rem;font:inherit;color:var(--theme-input-text);background:var(--theme-input-bg);border:1px solid var(--theme-border);border-radius:.35rem;}
+.settings-dashboard-page .certification-display-fields :is(input,select):focus-visible {outline:3px solid var(--theme-focus-ring,var(--theme-accent-text));outline-offset:3px;}

@@ -676,7 +676,7 @@ finally:c.close()
 
     def test_unknown_annual_amount_and_singular_library_copy(self):
         cid=self.apply(self.request('certification',dict(name='Custom',issuer='Any issuer',tracking={})))['id']
-        form=self.client.get('/certifications/'+cid+'/edit').get_data(as_text=True)
+        form=self.client.get('/certifications/'+cid+'/cycles/'+self.cycle(cid)['id']+'/requirements').get_data(as_text=True)
         self.assertRegex(form,r'name="track_annual_amount"[^>]*value=""')
         self.apply(self.request('training',dict(name='One activity',completed='2026-01-01',hours=1)))
         self.assertIn('1 saved course.',self.client.get('/certifications/training').get_data(as_text=True))
@@ -888,7 +888,119 @@ finally:c.close()
                 response=self.client.post('/certifications/matches',data=dict(credentials=cid,question='Exact reviewed selection'),headers=self.headers)
                 self.assertEqual(response.status_code,200);html=response.get_data(as_text=True)
                 links=Links();links.feed(html);self.assertEqual(links.urls,[url])
-                self.assertIn('Copy &amp; open AI',html);self.assertIn('Exact reviewed selection',html)
+                self.assertIn('Copy &amp; open '+{'chatgpt':'ChatGPT','claude':'Claude','gemini':'Gemini','local':'your configured AI'}[provider],html);self.assertIn('Exact reviewed selection',html)
         cfg['ai_helper_enabled']=False;dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
         html=self.client.post('/certifications/matches',data=dict(credentials=cid,question='Copy only'),headers=self.headers).get_data(as_text=True)
         self.assertNotIn('data-cert-launch',html);self.assertIn('data-cert-copy',html)
+
+    def test_focused_edit_scopes_preserve_period_policy_credit_and_retry_identity(self):
+        rules=dict(requirement_known=False,annual_kind='minimum',annual_amount=20,
+                   version='Recorded policy version',verification='user_checked',route='Custom route',
+                   reporting_start='2025-06-01',reporting_end='2028-06-01',year_basis='anniversary',year_anchor='2025-06-01',
+                   categories=[dict(name='Technical',minimum=5,cap=40)],conditions='User-recorded condition')
+        cid=self.apply(self.request('certification',dict(name='CySA+',issuer='Custom fixture issuer',earned='2025-06-01',
+            expiration='2028-06-01',start='2025-06-01',renewal='2028-05-01',requirements='Keep policy notes',tracking=rules)),
+            {'badge':self.png(),'certificate':self.pdf()})['id']
+        period=self.cycle(cid)
+        tid=self.apply(self.request('training',dict(name='Reviewed course',completed='2026-10-01',duration_minutes=562,hours=9.37)))['id']
+        aid=self.apply(self.request('allocation',dict(hours=9,submitted=9,accepted=9),cycle_id=period['id'],training_id=tid))['id']
+        with dlms.get_db() as c:allocation=cert.get(c.cursor(),'certification_allocations',aid)
+        identity=self.request('certification',dict(name='CySA+ updated',expiration='2028-07-01',required=999,policy='https://evil.invalid'),
+                              id=cid,cycle_id=period['id'],edit_current=True,edit_scope='identity')
+        self.apply(identity);self.assertEqual(self.apply(identity)['id'],cid)
+        after=self.cycle(cid)
+        self.assertEqual(after['id'],period['id'])
+        self.assertEqual(after['data'],{**period['data'],'expiration':'2028-07-01'})
+        goal=self.request('cycle',dict(required=30,unit='credits',renewal='2028-04-01',annual_goal=21,expiration='2040-01-01',policy='https://evil.invalid'),
+                          id=period['id'],certification_id=cid,edit_scope='goal')
+        self.apply(goal);self.assertEqual(self.apply(goal)['id'],period['id'])
+        now=self.cycle(cid)['data'];expected={**after['data'],'required':30.0,'renewal':'2028-04-01',
+                                          'tracking':{**after['data']['tracking'],'requirement_known':True}}
+        self.assertEqual(now,expected)
+        with dlms.get_db() as c:
+            self.assertEqual(cert.get(c.cursor(),'certification_allocations',aid),allocation)
+            self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
+            cert.validate_restored(c)
+        # A new operation makes the old form stale, but its lost acknowledgement
+        # still replays exactly; changed content under the same ID is rejected.
+        self.apply(self.request('training',dict(name='Other',completed='2026-10-01',hours=1)))
+        self.assertEqual(self.apply(goal)['id'],period['id'])
+        with self.assertRaises(cert.Conflict):self.apply({**goal,'data':{**goal['data'],'required':50}})
+        with self.assertRaises(cert.Conflict):self.apply({**goal,'request_id':uuid.uuid4().hex})
+        reopened=self.client.get('/certifications/'+cid+'/edit').get_data(as_text=True)
+        self.assertIn('Replace badge',reopened);self.assertIn('Replace certificate',reopened)
+        self.assertNotIn('name="field_required"',reopened)
+        self.assertEqual(self.cycle(cid)['data'],now)
+
+    def test_goal_form_validation_cancel_and_requirements_patch_preserve_dates(self):
+        cid=self.create();period=self.cycle(cid)
+        goal_url='/certifications/'+cid+'/cycles/'+period['id']+'/goal'
+        self.assertEqual(self.client.get(goal_url).status_code,200)
+        self.assertEqual(self.cycle(cid)['data'],period['data'])
+        req=self.request('cycle',dict(required='bad',unit='credits',renewal='2028-01-01'),id=period['id'],certification_id=cid,edit_scope='goal')
+        form={k:v for k,v in req.items() if k not in ('action','id','data')}
+        form.update(kind='cycle',record_id=period['id'],**{'field_'+k:v for k,v in req['data'].items()})
+        failed=self.client.post('/certifications/save',data=form,headers=self.headers)
+        self.assertEqual(failed.status_code,400)
+        self.assertIn('value="2028-01-01"',failed.get_data(as_text=True))
+        self.assertIn('value="goal"',failed.get_data(as_text=True))
+        self.assertEqual(self.cycle(cid)['data'],period['data'])
+        form['field_required']='40'
+        self.assertEqual(self.client.post('/certifications/save',data=form,headers=self.headers).status_code,303)
+        self.assertEqual(self.client.post('/certifications/save',data=form,headers=self.headers).status_code,303)
+        saved=self.cycle(cid)['data']
+        self.apply(self.request('cycle',dict(policy='https://example.org/rules',tracking=dict(requirement_known=True,annual_kind='pacing',annual_amount=10),expiration='2099-01-01'),id=period['id'],certification_id=cid,edit_scope='requirements'))
+        after=self.cycle(cid)['data']
+        self.assertEqual(after['expiration'],saved['expiration']);self.assertEqual(after['renewal'],saved['renewal'])
+        self.assertEqual(after['required'],40)
+        self.assertEqual(after['policy'],'https://example.org/rules')
+        with dlms.get_db() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0],1)
+
+    def test_focused_goal_backup_roundtrip_preserves_legacy_associated_time_and_documents(self):
+        cid=self.apply(self.request('certification',dict(name='CySA+ fixture',issuer='Disposable issuer',expiration='2029-10-01')),
+            {'badge':self.png(),'certificate':self.pdf()})['id'];period=self.cycle(cid)
+        tid=self.apply(self.request('training',dict(name='Course',completed='2026-10-01',duration_minutes=562)),{'certificate':self.pdf()})['id']
+        aid=self.apply(self.request('allocation',dict(hours=9,submitted=9,accepted=9),cycle_id=period['id'],training_id=tid))['id']
+        self.apply(self.request('cycle',dict(required=40,unit='credits',renewal='2029-09-01'),id=period['id'],certification_id=cid,edit_scope='goal'))
+        with dlms.get_db() as c:
+            before={t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in (*cert.TABLES,'certification_attachments')}
+        backup,manifest=dlms._create_dlms_backup('scoped-goal')
+        stage=Path(dlms.APP_DATA_DIR)/'goal-stage';stage.mkdir()
+        checked=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),checked)
+        dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
+        with sqlite3.connect(stage/'results.db') as c:
+            c.row_factory=sqlite3.Row;cert.validate_restored(c)
+            self.assertEqual(before,{t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in before})
+            self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
+            self.assertEqual(cert.get(c.cursor(),'certification_allocations',aid)['data']['hours'],9)
+            self.assertEqual(cert.detail(c.cursor(),cid)['cycles'][0]['totals']['accepted'],9)
+
+    def test_goal_error_retains_mandatory_annual_context_and_submitted_values(self):
+        cid=self.apply(self.request('certification',dict(name='Custom',issuer='Any',tracking=dict(annual_kind='minimum',annual_amount=20))))['id']
+        period=self.cycle(cid)
+        req=self.request('cycle',id=period['id'])
+        form=dict(kind='cycle',edit_scope='goal',record_id=period['id'],certification_id=cid,request_id=req['request_id'],generation=req['generation'],revision=req['revision'],field_required='30',field_unit='credits',field_renewal='2028-99-99',field_annual_goal='21')
+        failed=self.client.post('/certifications/save',data=form,headers=self.headers)
+        self.assertEqual(failed.status_code,400)
+        html=failed.get_data(as_text=True)
+        self.assertIn('recorded mandatory annual minimum',html)
+        self.assertIn('class="cert-task-context"><strong>Custom</strong>',html)
+        self.assertNotIn('name="field_annual_goal"',html)
+        self.assertIn('minimum is 20 credits',html)
+        self.assertRegex(html,r'name="field_required"[^>]*value="30"')
+        self.assertEqual(self.cycle(cid)['data'],period['data'])
+
+    def test_optional_annual_planning_goal_is_pacing_and_can_be_cleared(self):
+        cid=self.create();period=self.cycle(cid)
+        self.apply(self.request('cycle',dict(required=40,unit='credits',annual_goal=10),id=period['id'],certification_id=cid,edit_scope='goal'))
+        data=self.cycle(cid)['data']
+        self.assertEqual(data['tracking']['annual_kind'],'pacing')
+        self.assertEqual(data['tracking']['annual_amount'],10)
+        self.assertEqual(data['tracking']['year_basis'],'unknown')
+        self.assertEqual(data['expiration'],period['data']['expiration'])
+        self.apply(self.request('cycle',dict(annual_goal=''),id=period['id'],certification_id=cid,edit_scope='goal'))
+        cleared=self.cycle(cid)['data']
+        self.assertEqual(cleared['required'],40)
+        self.assertTrue(cleared['tracking']['requirement_known'])
+        self.assertEqual(cleared['tracking']['annual_kind'],'unknown')
+        self.assertEqual(cleared['tracking']['annual_amount'],0)

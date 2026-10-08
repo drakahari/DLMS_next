@@ -41,6 +41,7 @@ def create_certification_blueprint(deps):
         cur=conn.cursor()
         cfg=deps.load_config()
         return render_template('certifications/workspace.html',page=mode,state=service.state(cur),
+            ai_name={'chatgpt':'ChatGPT','claude':'Claude','gemini':'Gemini','local':'your configured AI'}.get(cfg.get('ai_provider','chatgpt'),'AI'),
             request_id=values.pop('request_id',uuid.uuid4().hex),records=service.collection(cur,cfg.get('certification_sort','earned')),
             duration_label=duration.label,duration_parts=duration.parts,certification_sort=cfg.get('certification_sort','earned'),
             presets=PRESETS,preset_values={k:preset_values(k) for k in PRESETS},**values)
@@ -57,6 +58,16 @@ def create_certification_blueprint(deps):
             current=detail['cycles'][0] if detail and detail['cycles'] else None
             data={**detail['certification']['data'],**(current['data'] if current else {})} if detail else {}
             return page(conn,'form',kind='certification',record_id=cert_id,fields=data,parent=dict(cycle_id=current['id']) if current else {},edit_current=True)
+
+    @bp.get('/certifications/<cert_id>/cycles/<cycle_id>/goal')
+    @bp.get('/certifications/<cert_id>/cycles/<cycle_id>/requirements')
+    def period_task(cert_id,cycle_id):
+        with database() as conn:
+            cycle=service.get(conn.cursor(),'certification_cycles',cycle_id)
+            if cycle['certification_id']!=cert_id:abort(404)
+            return page(conn,'form',kind='cycle',edit_scope=request.path.rsplit('/',1)[-1],
+                record_id=cycle_id,fields=cycle['data'],task_period=cycle,parent=dict(certification_id=cert_id),
+                certification=service.get(conn.cursor(),'certifications',cert_id))
 
     @bp.get('/certifications/<cert_id>')
     def detail(cert_id):
@@ -89,7 +100,7 @@ def create_certification_blueprint(deps):
                 detail=service.detail(cur,record['id'])
                 for period in detail['cycles']:
                     for allocation in period['allocations']:
-                        uses[allocation['training_id']].append(dict(certification=record,period=period))
+                        uses[allocation['training_id']].append(dict(certification=record,period=period,allocation=allocation))
             total=duration.number(sum((duration.minutes(a['data']) for a in activities),Decimal(0)))
             return page(conn,'training',training=activities,uses=uses,total_duration=duration.label({'duration_minutes':total}))
 
@@ -188,6 +199,7 @@ def create_certification_blueprint(deps):
             payload=dict(request_id=form.get('request_id'),generation=form.get('generation'),revision=int(form.get('revision','-1')),
                          action=form.get('kind'),id=form.get('record_id') or None,data=form_fields(form))
             if payload['action'] not in ('certification','cycle','training','allocation'):raise ValueError('Choose a supported certification form.')
+            if form.get('edit_scope'):payload['edit_scope']=form['edit_scope']
             if form.get('edit_current')=='yes':payload['edit_current']=True
             if form.get('use_badge_certificate')=='yes':payload['use_badge_certificate']=True
             for key in ('certification_id','cycle_id','training_id','renewal_from','renewal_trigger'):
@@ -213,7 +225,21 @@ def create_certification_blueprint(deps):
         except (ValueError,sqlite3.Error,OSError) as exc:
             with database() as conn:
                 message=str(exc) if isinstance(exc,ValueError) else 'The save failed. No changes were applied. Retry with the same form; reselect any upload.'
-                return page(conn,'form',kind=form.get('kind'),record_id=form.get('record_id'),fields=form_fields(form,parse_duration=False),
+                fields=form_fields(form,parse_duration=False)
+                context={}
+                if form.get('edit_scope') in ('goal','requirements') and form.get('record_id'):
+                    # The short form omits policy fields. Retain their context
+                    # on an error page too, without issuing a newer save guard.
+                    try:
+                        saved=service.get(conn.cursor(),'certification_cycles',form['record_id'])
+                        if saved['certification_id']==form.get('certification_id'):
+                            context=dict(task_period=saved,certification=service.get(conn.cursor(),'certifications',saved['certification_id']))
+                            if form.get('edit_scope')=='goal':
+                                rules=dict(saved['data'].get('tracking',{}))
+                                if 'required' in fields:rules['requirement_known']=bool(fields['required'].strip())
+                                fields['tracking']=rules
+                    except ValueError:pass
+                return page(conn,'form',kind=form.get('kind'),edit_scope=form.get('edit_scope'),record_id=form.get('record_id'),fields=fields,**context,
                     parent={k:form.get(k,'') for k in ('certification_id','cycle_id','training_id','renewal_from','renewal_trigger')},
                     edit_current=form.get('edit_current')=='yes',use_badge_certificate=form.get('use_badge_certificate')=='yes',training=service.records(conn.cursor(),'certification_training'),error=message,request_id=form.get('request_id'),retained_state=dict(generation=form.get('generation'),revision=form.get('revision'))),409 if isinstance(exc,service.Conflict) else 400 if isinstance(exc,ValueError) else 503
 

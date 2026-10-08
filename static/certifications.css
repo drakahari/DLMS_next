@@ -53,3 +53,23 @@
 
 .cert-renewal-status:empty {display:none;}
 .cert-use-form [data-renewal-choice] > p {margin-block:.5rem;}
+
+/* Focused task forms and full-width course summaries. */
+.cert-workspace [hidden] {display:none !important;}
+.cert-workspace .cert-duration {max-width:20rem;}
+.cert-aligned-actions {align-items:end;}
+.cert-aligned-actions > label {display:grid;gap:.5rem;margin:0;flex:1;min-width:min(100%,16rem);}
+.cert-aligned-actions > button {margin:0;}
+.cert-period-content {display:block;}
+.cert-period-content > section {min-width:0;}
+.cert-period-content > section + section {margin-top:1rem;}
+.cert-use-form [data-renewal-choice] {padding:.85rem 1rem;}
+.cert-use-form [data-renewal-choice] legend {max-width:100%;overflow-wrap:anywhere;}
+.cert-use-form .cert-linked {font-size:.95em;}
+.cert-workspace #certPrompt {max-height:26rem;}
+.cert-workspace #certMatchCount {font-weight:600;}
+.cert-trophies > a[href*="certifications-visibility"] {margin-top:1.25rem;}
+
+.cert-workspace .cert-fields {align-items:end;}
+.cert-workspace .cert-fields > label {display:flex;flex-direction:column;gap:.5rem;}
+.cert-workspace .cert-fields > label > :is(input,select) {min-height:44px;box-sizing:border-box;}

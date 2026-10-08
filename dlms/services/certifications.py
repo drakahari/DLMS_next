@@ -311,6 +311,36 @@ def apply(conn, payload, uploads=None, *, _nested=False):
             if payload.get('id') and not existing:raise Conflict('This record was removed. No replacement was created.')
             if not isinstance(data,dict):raise ValueError('Record fields are required.')
             data=dict(data)
+            scope=payload.get('edit_scope')
+            if scope:
+                # Merge only after receipt/revision checks, inside the write
+                # transaction. A retry hashes the submitted patch, not a newer
+                # database snapshot. Omitted fields are never form defaults.
+                if scope=='identity' and action=='certification':
+                    allowed={'name','issuer','version','standing','earned','expiration','non_expiring','badge','certificate','notes'}
+                    prior=detail(cur,record_id) if existing else None
+                    period=prior['cycles'][0] if prior and prior['cycles'] else None
+                    base={**(period['data'] if period else {}),**(prior['certification']['data'] if prior else {})}
+                    data={**base,**{k:v for k,v in data.items() if k in allowed}}
+                elif scope in ('goal','requirements') and action=='cycle' and existing:
+                    base=json.loads(existing['data_json'])
+                    allowed={'required','unit','renewal'} if scope=='goal' else {'required','unit','policy','requirements','start','renewed','tracking'}
+                    patch={k:v for k,v in data.items() if k in allowed}
+                    if scope=='goal':
+                        rules=dict(base.get('tracking',{}))
+                        if 'required' in data:rules['requirement_known']=str(data['required']).strip()!=''
+                        # Planning edits never redefine an issuer minimum.
+                        # Correct mandatory rules in the detailed editor.
+                        if 'annual_goal' in data and rules.get('annual_kind')!='minimum':
+                            annual=data['annual_goal']
+                            if str(annual).strip():
+                                rules.update(annual_kind='pacing',annual_amount=annual)
+                            elif rules.get('annual_kind')=='pacing':
+                                rules.update(annual_kind='unknown',annual_amount=0)
+                        patch['tracking']=rules
+                    data={**base,**patch}
+                    if prepared:raise ValueError('Use Edit certification to replace a document.')
+                else:raise ValueError('Open a supported editor for this record.')
             if existing:
                 previous=json.loads(existing['data_json'])
                 if action in ('training','allocation') and 'duration_minutes' in previous and 'duration_minutes' not in data:
