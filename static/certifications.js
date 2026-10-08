@@ -62,6 +62,9 @@
     };
     form.elements.track_annual_kind.addEventListener('change',dependencies);
     form.elements.track_year_basis.addEventListener('change',dependencies);dependencies();
+    const presetSelect=document.querySelector('#certRulePreset');
+    const updatePreset=()=>{apply.disabled=!presetSelect.value;document.querySelector('#certPresetReview').hidden=true;};
+    presetSelect.addEventListener('change',updatePreset);updatePreset();
     const all=JSON.parse(document.querySelector('#certRulePresets').textContent);
     let pending=null;
     apply.addEventListener('click',()=>{
@@ -116,4 +119,15 @@ if(selectionForm){
             document.querySelector('#certCopyStatus').textContent=changed?'Selection or question changed. Prepare prompt again before copying.':'';
         }
     };selectionForm.addEventListener('change',update);selectionForm.addEventListener('input',update);update();
+}
+
+// Selecting a row opts into an add/update; it never opts out of a saved link.
+const renewalForm=document.querySelector('.cert-use-form');
+if(renewalForm){
+    const update=()=>{
+        const count=renewalForm.querySelectorAll('[name=certifications]:checked').length;
+        document.querySelector('#renewalSelectionCount').textContent=`${count} certification${count===1?'':'s'} selected. ${count?'Selected rows will be added or updated.':'Select rows to add or update.'}`;
+        const submit=renewalForm.querySelector('[data-renewal-submit]');if(submit)submit.disabled=count===0;
+    };
+    renewalForm.addEventListener('change',update);update();
 }

@@ -54,21 +54,23 @@
             {% for key, label in cards if key not in ['it', 'law', 'medical'] %}
             <label class="settings-toggle-row">
                 <input type="checkbox" name="dashboard_card_{{ key }}" {% if visibility[key] %}checked{% endif %}>
-                <span><strong>{{ label }}</strong>{% if key == 'recent_activity' %}<br>Quiz sequence and latest Exam completed.{% endif %}</span>
+                <span><strong>{{ 'My Certifications — dashboard trophy case only' if key == 'certifications' else label }}</strong>{% if key == 'recent_activity' %}<br>Quiz sequence and latest Exam completed.{% endif %}</span>
             </label>
             {% endfor %}
         </fieldset>
         {% endfor %}
 
-        <section class="settings-form-section" id="certifications-visibility"><h2>My Certifications</h2><input type="hidden" name="certifications_visibility_present" value="yes"><label><input type="checkbox" name="show_certifications" {% if show_certifications %}checked{% endif %}> Show My Certifications</label>{% if layout_error %}<p role="alert">{{ layout_error }}</p>{% endif %}
+        <section class="settings-form-section" id="certifications-visibility"><h2>My Certifications</h2><input type="hidden" name="certifications_visibility_present" value="yes"><label><input type="checkbox" name="show_certifications" {% if show_certifications %}checked{% endif %}> Show My Certifications — dashboard and sidebar</label>{% if layout_error %}<p role="alert">{{ layout_error }}</p>{% endif %}
 <div class="certification-display-fields"><label>Number to show<select name="certification_count_mode"><option value="all" {% if certification_display_count=='all' %}selected{% endif %}>All</option><option value="custom" {% if certification_display_count!='all' %}selected{% endif %}>Custom number</option></select></label><label data-custom-certification-count>Custom count<input name="certification_display_count" type="number" min="1" step="1" value="{{ certification_display_count if certification_display_count!='all' else '' }}"></label><label>Sort order<select name="certification_sort">{% for key,label in [('earned','Earned date — newest first'),('name','Name'),('expiration','Expiration date — soonest first')] %}<option value="{{ key }}" {% if certification_sort==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label></div>
 <p>This feature switch controls the trophy case and certification sidebar links, including Training library. Dashboard panels → My Certifications controls only the trophy case; both must be on to show it. Turning this off keeps every record, document, period, allocation and display-count choice. Your separate dashboard-card choice is also preserved. The scoped Restore buttons do not change this switch.</p></section>
         <div class="settings-form-actions">
             <button type="submit" name="action" value="save" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save layout &amp; navigation</button>
-            <button type="submit" name="action" value="dashboard_defaults" formnovalidate class="settings-secondary-button">Restore dashboard defaults</button>
-            <button type="submit" name="action" value="sidebar_defaults" formnovalidate class="settings-secondary-button">Restore sidebar defaults</button>
             <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
         </div>
+        <div class="settings-form-section" id="layoutRestoreDefaults"><h2>Restore saved defaults now</h2><p>These actions apply immediately. Unsaved form edits are discarded only after confirmation; they are not saved by Restore.</p><div class="settings-inline-actions">
+            <button type="submit" name="action" value="dashboard_defaults" formnovalidate class="settings-secondary-button">Restore dashboard defaults</button>
+            <button type="submit" name="action" value="sidebar_defaults" formnovalidate class="settings-secondary-button">Restore sidebar defaults</button>
+        </div></div>
     </form>
 
     <div class="settings-scope-note">Save applies all visibility choices. Each Restore button immediately restores only its named section to visible, preserving the other section’s saved choices and unrelated settings. Unsaved edits are not applied by Restore. Settings remains in the sidebar even with all optional dashboard content hidden. Use Layout &amp; navigation here to show hidden cards again.</div>

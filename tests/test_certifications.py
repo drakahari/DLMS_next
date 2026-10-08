@@ -888,7 +888,7 @@ finally:c.close()
                 response=self.client.post('/certifications/matches',data=dict(credentials=cid,question='Exact reviewed selection'),headers=self.headers)
                 self.assertEqual(response.status_code,200);html=response.get_data(as_text=True)
                 links=Links();links.feed(html);self.assertEqual(links.urls,[url])
-                self.assertIn('Copy &amp; open '+{'chatgpt':'ChatGPT','claude':'Claude','gemini':'Gemini','local':'your configured AI'}[provider],html);self.assertIn('Exact reviewed selection',html)
+                self.assertIn('Copy &amp; open AI',html);self.assertIn('Selected provider: '+{'chatgpt':'ChatGPT','claude':'Claude','gemini':'Gemini','local':'your configured AI'}[provider],html);self.assertIn('Exact reviewed selection',html)
         cfg['ai_helper_enabled']=False;dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
         html=self.client.post('/certifications/matches',data=dict(credentials=cid,question='Copy only'),headers=self.headers).get_data(as_text=True)
         self.assertNotIn('data-cert-launch',html);self.assertIn('data-cert-copy',html)
@@ -1004,3 +1004,58 @@ finally:c.close()
         self.assertTrue(cleared['tracking']['requirement_known'])
         self.assertEqual(cleared['tracking']['annual_kind'],'unknown')
         self.assertEqual(cleared['tracking']['annual_amount'],0)
+
+    def test_ai_settings_single_save_retains_all_editors_on_validation_and_io_failure(self):
+        from html import unescape
+        import re
+        original=Path(dlms.PORTAL_CONFIG).read_bytes()
+        data=dict(ai_helper_enabled='on',ai_provider='local',ai_custom_url='javascript:bad',
+                  ai_prompt_template='STUDY {{questions}}',law_ai_prompt_template='LAW',
+                  study_pack_ai_prompt_template='PACK',medical_study_pack_ai_addendum='MEDICAL',
+                  certification_ai_prompt_template='  CERT {{certification_context}}  ',
+                  portfolio_ai_prompt_template='  PORT {{portfolio_context}}  ')
+        def post():return self.client.post('/settings/ai/save',data=data,headers=self.headers)
+        response=post();self.assertEqual(response.status_code,400)
+        html=response.get_data(as_text=True)
+        for key in ('ai_prompt_template','law_ai_prompt_template','study_pack_ai_prompt_template','medical_study_pack_ai_addendum','certification_ai_prompt_template','portfolio_ai_prompt_template'):
+            self.assertEqual(unescape(re.search(r'<textarea[^>]*name="'+key+r'"[^>]*>(.*?)</textarea>',html,re.S).group(1)),data[key])
+        self.assertEqual(Path(dlms.PORTAL_CONFIG).read_bytes(),original)
+        data['ai_custom_url']='https://example.org/assistant'
+        with mock.patch.object(dlms,'_write_settings_portal_config',side_effect=OSError('disposable failure')):
+            failed=post();self.assertEqual(failed.status_code,503)
+            self.assertIn(b'Your edits are retained',failed.data)
+        self.assertEqual(Path(dlms.PORTAL_CONFIG).read_bytes(),original)
+        data['portfolio_ai_prompt_template']='x'*20001
+        self.assertEqual(post().status_code,400)
+        self.assertEqual(Path(dlms.PORTAL_CONFIG).read_bytes(),original)
+        data['portfolio_ai_prompt_template']='PORT {{portfolio_context}}'
+        self.assertEqual(post().status_code,302)
+        saved=dlms.load_portal_config()
+        for key in data:
+            if key!='ai_helper_enabled':self.assertEqual(saved[key],data[key].strip())
+        for key,value in json.loads(original).items():
+            if not key.startswith(('ai_','law_ai_','study_pack_ai_','medical_study_pack_ai_','certification_ai_','portfolio_ai_')):self.assertEqual(saved[key],value)
+        backup,manifest=dlms._create_dlms_backup('ai-settings-form-roundtrip')
+        stage=Path(dlms.APP_DATA_DIR)/'ai-settings-stage';stage.mkdir()
+        report=dlms._validate_dlms_backup(backup)
+        dlms._extract_validated_backup(backup,str(stage),report)
+        dlms._validate_staged_backup_semantics(str(stage),manifest)
+        restored=next(json.loads(p.read_text()) for p in stage.rglob('portal.json'))
+        for key in data:
+            self.assertEqual(restored[key],saved[key])
+        page=self.client.get('/settings/ai').get_data(as_text=True)
+        self.assertEqual(page.count('type="submit"'),1)
+        self.assertLess(page.index('id="certificationPromptSettings"'),page.index('class="settings-form-actions ai-settings-actions"'))
+
+    def test_optional_annual_pacing_does_not_invent_reporting_year(self):
+        cid=self.create();cycle=self.cycle(cid)
+        self.apply(self.request('cycle',dict(required=20,unit='hours',annual_goal=10),id=cycle['id'],certification_id=cid,edit_scope='goal'))
+        tid=self.apply(self.request('training',dict(name='Planning example',completed='2026-10-01',duration_minutes=562,hours=9.37)))['id']
+        self.apply(self.request('allocation',dict(hours=0,duration_minutes=562,proposed=9.37,submitted=0,accepted=0),cycle_id=cycle['id'],training_id=tid))
+        with dlms.get_db() as c:
+            item=cert.detail(c.cursor(),cid)['cycles'][0]
+            self.assertEqual(item['data']['tracking']['annual_kind'],'pacing')
+            self.assertEqual(item['data']['tracking']['year_basis'],'unknown')
+            self.assertEqual(item['planning']['annual'],[])
+            self.assertEqual(item['planning']['accepted'],9.37)
+            self.assertEqual(item['totals']['accepted'],0)

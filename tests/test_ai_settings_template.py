@@ -83,7 +83,9 @@ class AISettingsTemplateTests(unittest.TestCase):
         for value in ("chatgpt", "claude", "local"):
             self.assertNotIn(f'<option value="{value}" selected>', page)
         self.assertIn('placeholder="Example: http://192.168.1.50:3000"', page)
-        self.assertEqual(2, page.count('onclick="location.href=\'/settings\'"'))
+        self.assertEqual(1, page.count('onclick="location.href=\'/settings\'"'))
+        self.assertIn('id="cancelAISettings" class="settings-secondary-button" href="/settings/ai"', page)
+        self.assertLess(page.index('id="certificationPromptSettings"'), page.index('class="settings-form-actions ai-settings-actions"'))
         self.assertIn('<script src="/static/nav-normalize.js"></script>', page)
 
         textarea_values = {
@@ -210,6 +212,7 @@ class AISettingsTemplateTests(unittest.TestCase):
                 f'''if ({button} && {field}) {{
     {button}.addEventListener("click", () => {{
         {field}.value = {default};
+        {field}.dispatchEvent(new Event("input", {{bubbles:true}}));
         {field}.focus();
     }});
 }}''',

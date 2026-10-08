@@ -14,7 +14,7 @@ HELP_SCREENSHOTS = {
     'settings-appearance-save.webp': ('/settings/appearance', '.settings-form-actions', 390),
     'sidebar-theme-selector.webp': ('/settings/appearance', '.dashboard-nav a[href="/settings"], .dashboard-nav a[href="/help/"], .dashboard-theme-quick, .dashboard-navigation-customize, .dashboard-sidebar-version', 1440),
     'settings-layout-study-areas.webp': ('/settings/layout', '#studyAreasHeading, .layout-study-area:nth-of-type(1), .layout-study-area:nth-of-type(2)', 390),
-    'settings-layout-restore.webp': ('/settings/layout', '.settings-form-actions', 390),
+    'settings-layout-restore.webp': ('/settings/layout', '.settings-form-actions, #layoutRestoreDefaults', 390),
 }
 
 

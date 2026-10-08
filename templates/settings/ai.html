@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
-<body class="dashboard-home settings-detail-page">
+<body class="dashboard-home settings-detail-page settings-ai-page">
 <div class="dashboard-shell">
 {{ settings_shell_sidebar("Settings")|safe }}
 <main class="dashboard-main settings-dashboard-main">
@@ -24,11 +24,12 @@
         <button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button>
     </div>
 
-    {% if request.args.get('saved') == '1' %}
+    {% if not ai_error and request.args.get('saved') == '1' %}
     <div class="settings-success-banner" role="status" aria-live="polite"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> AI integration settings saved.</div>
     {% endif %}
 
-    <form class="settings-detail-card" action="/settings/ai/save" method="POST">
+    {% if ai_error %}<div class="settings-error-banner" role="alert">{{ ai_error }} Your edits are retained below; nothing was saved.</div>{% endif %}
+    <form id="aiSettingsForm" data-unsaved="{{ 'true' if ai_error else 'false' }}" class="settings-detail-card" action="/settings/ai/save" method="POST">
         <section class="settings-form-section">
             <div class="settings-section-heading">
                 <div class="settings-section-icon icon-purple">AI</div>
@@ -103,6 +104,7 @@
                 Include <code>{{ '{{questions}}' }}</code> where DLMS should insert the selected questions.
             </div>
 
+            <label class="settings-field-label" for="aiPromptTemplate">Study question explanation prompt</label>
             <textarea class="settings-textarea"
                       id="aiPromptTemplate"
                       name="ai_prompt_template"
@@ -133,6 +135,7 @@
                 <code>{{ '{{image_guidance}}' }}</code>
             </div>
 
+            <label class="settings-field-label" for="studyPackAIPromptTemplate">Study Pack prompt</label>
             <textarea class="settings-textarea settings-study-pack-prompt-textarea"
                       id="studyPackAIPromptTemplate"
                       name="study_pack_ai_prompt_template"
@@ -156,6 +159,7 @@
                 This text is appended after the main Study Pack template only for Medical requests. Keep source, licensing, provenance, and non-synthetic-image safeguards intact unless you intentionally replace them.
             </div>
 
+            <label class="settings-field-label" for="medicalStudyPackAddendum">Medical safety addendum</label>
             <textarea class="settings-textarea settings-study-pack-prompt-textarea"
                       id="medicalStudyPackAddendum"
                       name="medical_study_pack_ai_addendum"
@@ -182,6 +186,7 @@
                 <code>{{ '{{study_sections}}' }}</code>
             </div>
 
+            <label class="settings-field-label" for="lawAIPromptTemplate">Law Study prompt</label>
             <textarea class="settings-textarea settings-law-prompt-textarea"
                       id="lawAIPromptTemplate"
                       name="law_ai_prompt_template"
@@ -192,12 +197,13 @@
             </div>
         </section>
 
-        <div class="settings-form-actions">
-            <button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save AI Settings</button>
-            <button type="button" class="settings-secondary-button" onclick="location.href='/settings'">Cancel</button>
+<section class="settings-form-section" id="portfolioPromptSettings"><h2>Portfolio renewal matches prompt</h2><p>For selected earned credentials from any issuer and selected training. Keep {{ '{{portfolio_context}}' }} where the selected information should appear.</p><label class="settings-field-label" for="portfolioPromptTemplate">Default portfolio prompt</label><textarea class="settings-textarea" id="portfolioPromptTemplate" name="portfolio_ai_prompt_template" rows="10" maxlength="20000">{{ cfg.get('portfolio_ai_prompt_template', portfolio_default_prompt) }}</textarea><div class="settings-inline-actions"><button type="button" class="settings-secondary-button" id="resetPortfolioPrompt">Restore portfolio prompt default</button></div><p>This changes only this field. Save AI settings to persist it.</p></section>
+<section class="settings-form-section" id="certificationPromptSettings"><h2>Certification renewal prompt</h2><p>Used only for the selected context you preview in My Certifications. Keep {{ '{{certification_context}}' }} where selected information should appear.</p><label class="settings-field-label" for="certificationPromptTemplate">Default certification prompt</label><textarea class="settings-textarea" id="certificationPromptTemplate" name="certification_ai_prompt_template" rows="10" maxlength="20000">{{ cfg.get('certification_ai_prompt_template', certification_default_prompt) }}</textarea><div class="settings-inline-actions"><button type="button" class="settings-secondary-button" id="resetCertificationPrompt">Restore certification prompt default</button></div><p>Restore updates this form only. Save AI settings to persist it; other prompt choices remain independent.</p></section>
+        <div class="settings-form-actions ai-settings-actions">
+            <p id="aiSettingsStatus" role="status" aria-live="polite">{{ 'Unsaved edits — correct the error above and save again.' if ai_error else 'All changes on this page use one Save action.' }}</p>
+            <button type="submit" class="settings-primary-button"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Save AI settings</button>
+            <a id="cancelAISettings" class="settings-secondary-button" href="/settings/ai">Cancel</a>
         </div>
-<section class="settings-form-section" id="portfolioPromptSettings"><h2>Portfolio renewal matches prompt</h2><p>For selected earned credentials from any issuer and selected training. Keep {{ '{{portfolio_context}}' }} where the selected information should appear.</p><label for="portfolioPromptTemplate">Default portfolio prompt</label><textarea id="portfolioPromptTemplate" name="portfolio_ai_prompt_template" rows="10" maxlength="20000">{{ cfg.get('portfolio_ai_prompt_template', portfolio_default_prompt) }}</textarea><button type="button" id="resetPortfolioPrompt">Restore portfolio prompt default</button><p>This changes only this field. Save AI settings to persist it.</p></section>
-<section class="settings-form-section" id="certificationPromptSettings"><h2>Certification renewal prompt</h2><p>Used only for the selected context you preview in My Certifications. Keep {{ '{{certification_context}}' }} where selected information should appear.</p><label for="certificationPromptTemplate">Default certification prompt</label><textarea id="certificationPromptTemplate" name="certification_ai_prompt_template" rows="10" maxlength="20000">{{ cfg.get('certification_ai_prompt_template', certification_default_prompt) }}</textarea><button type="button" id="resetCertificationPrompt">Restore certification prompt default</button><p>Restore updates this form only. Save AI settings to persist it; other prompt choices remain independent.</p></section>
     </form>
 
     <div class="settings-scope-note">
@@ -239,6 +245,7 @@ const medicalStudyPackAddendum = document.getElementById("medicalStudyPackAddend
 if (resetAIPromptBtn && aiPromptTemplate) {
     resetAIPromptBtn.addEventListener("click", () => {
         aiPromptTemplate.value = DEFAULT_AI_PROMPT;
+        aiPromptTemplate.dispatchEvent(new Event("input", {bubbles:true}));
         aiPromptTemplate.focus();
     });
 }
@@ -246,6 +253,7 @@ if (resetAIPromptBtn && aiPromptTemplate) {
 if (resetStudyPackPromptBtn && studyPackAIPromptTemplate) {
     resetStudyPackPromptBtn.addEventListener("click", () => {
         studyPackAIPromptTemplate.value = DEFAULT_STUDY_PACK_AI_PROMPT;
+        studyPackAIPromptTemplate.dispatchEvent(new Event("input", {bubbles:true}));
         studyPackAIPromptTemplate.focus();
     });
 }
@@ -253,6 +261,7 @@ if (resetStudyPackPromptBtn && studyPackAIPromptTemplate) {
 if (resetMedicalStudyPackPromptBtn && medicalStudyPackAddendum) {
     resetMedicalStudyPackPromptBtn.addEventListener("click", () => {
         medicalStudyPackAddendum.value = DEFAULT_MEDICAL_STUDY_PACK_ADDENDUM;
+        medicalStudyPackAddendum.dispatchEvent(new Event("input", {bubbles:true}));
         medicalStudyPackAddendum.focus();
     });
 }
@@ -260,13 +269,15 @@ if (resetMedicalStudyPackPromptBtn && medicalStudyPackAddendum) {
 if (resetLawPromptBtn && lawAIPromptTemplate) {
     resetLawPromptBtn.addEventListener("click", () => {
         lawAIPromptTemplate.value = DEFAULT_LAW_AI_PROMPT;
+        lawAIPromptTemplate.dispatchEvent(new Event("input", {bubbles:true}));
         lawAIPromptTemplate.focus();
     });
 }
 </script>
-<script>document.getElementById('resetCertificationPrompt').addEventListener('click',()=>{const n=document.getElementById('certificationPromptTemplate');n.value={{ certification_default_prompt|tojson }};n.focus();});</script>
+<script>document.getElementById('resetCertificationPrompt').addEventListener('click',()=>{const n=document.getElementById('certificationPromptTemplate');n.value={{ certification_default_prompt|tojson }};n.dispatchEvent(new Event("input",{bubbles:true}));n.focus();});</script>
+<script>document.getElementById("resetPortfolioPrompt").addEventListener("click",()=>{const n=document.getElementById("portfolioPromptTemplate");n.value={{ portfolio_default_prompt|tojson }};n.dispatchEvent(new Event("input",{bubbles:true}));n.focus();});</script>
+
+<script src="/static/ai-settings.js"></script>
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>
-
-<script>document.getElementById("resetPortfolioPrompt").addEventListener("click",()=>{const n=document.getElementById("portfolioPromptTemplate");n.value={{ portfolio_default_prompt|tojson }};n.focus();});</script>

@@ -921,6 +921,7 @@ def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack,
                    'welcome': '.dashboard-welcome', 'study_heading':'#studyNext h2',
                    'history_heading':'.dashboard-history-grid h2'}),
             ('/settings/appearance', {'helper': '#themeGuidance', 'select': '#appearanceTheme', 'input': '#portalTitle'}),
+            ('/settings/ai', {'prompt':'#portfolioPromptTemplate','save':'#aiSettingsForm [type=submit]','cancel':'#cancelAISettings','status':'#aiSettingsStatus'}),
             ('/settings/backup?storage=1', {'legend': '.storage-usage-list li', 'note': '#storageChartNote'}),
             ('/settings/reset-remove', {'warning': '.settings-warning-panel span',
                                         'danger': '.settings-danger-button'}),
@@ -15890,9 +15891,12 @@ def test_certification_native_zoom(browser_stack, theme):
     goal=browser.evaluate("document.querySelector('a[href$=\"/goal\"]').getAttribute('href')")
     requirements=browser.evaluate("document.querySelector('a[href$=\"/requirements\"]').getAttribute('href')")
     output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
-    for route,name in [(goal,'goal'),(requirements,'requirements'),('/settings/layout#certifications-visibility','display-settings'),('/','dashboard'),(path,'detail'),(path+'/edit','form'),('/certifications/training/new','training-form'),('/certifications/matches','matches'),(path+'/relationships','relationships'),('/help/certifications','help')]:
+    for route,name in [(goal,'goal'),(requirements,'requirements'),('/settings/layout#certifications-visibility','display-settings'),('/settings/ai#portfolioPromptSettings','ai-settings'),('/','dashboard'),(path,'detail'),(path+'/edit','form'),('/certifications/training/new','training-form'),('/certifications/matches','matches'),(path+'/relationships','relationships'),('/help/certifications','help')]:
         browser.navigate(base+route);browser.wait_for('devicePixelRatio===2 && document.querySelector("#dlmsQuickTheme")?.options.length===26')
         browser.wait_for_page_ready()
+        if name=='goal':
+            browser.click('.cert-additional > summary')
+            assert browser.evaluate("document.querySelector('[name=field_annual_goal]').getBoundingClientRect().width<=192")
         metrics=browser.evaluate('({inner:innerWidth,outer:outerWidth,dpr:devicePixelRatio,font:getComputedStyle(document.documentElement).fontSize})')
         physical=next(w['width'] for w in browser.command('browser.getClientWindows',{})['clientWindows'] if w['active'])
         assert abs(metrics['inner']*metrics['dpr']-physical)<=2
@@ -15904,6 +15908,11 @@ def test_certification_native_zoom(browser_stack, theme):
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
             (Path(output)/f'native200-{name}-{theme}.png').write_bytes(base64.b64decode(shot['data']))
             (Path(output)/f'native200-{name}-{theme}.json').write_text(json.dumps(metrics))
+        if name=='ai-settings':
+            browser.evaluate("document.querySelector('#portfolioPromptTemplate').focus();true");browser.press_key('\ue004')
+            browser.wait_for("document.activeElement.matches(':focus-visible')")
+            assert browser.evaluate("document.activeElement.getBoundingClientRect().bottom <= document.querySelector('.ai-settings-actions').getBoundingClientRect().top")
+            if output:(Path(output)/f'native200-ai-settings-focus-{theme}.png').write_bytes(base64.b64decode(browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'viewport'})['data']))
         if name=='training-form':
             browser.evaluate("document.querySelector('[name=field_name]').value='Nine-hour workshop';document.querySelector('[name=field_completed]').value='2026-10-01';document.querySelector('[name=duration_hours]').value='9';document.querySelector('[name=duration_minutes]').value='22';true")
             browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-use-form')")
@@ -16089,9 +16098,11 @@ def test_certification_optional_presets_only_fill_unsaved_rules(browser_stack):
         before={t:list(c.execute('SELECT * FROM '+t)) for t in ('certifications','certification_cycles')}
     b.click('a[href$="/requirements"]');b.wait_for("document.querySelector('#applyCertPreset')")
     assert b.evaluate("document.querySelectorAll('[data-category-row]').length")==0
+    assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
     for key,required,annual in [('lpic-membership','60','unknown'),('lpic-exams','','none'),('cism-2026','120','minimum'),('cissp-v7','120','pacing'),('peoplecert-custom','','unknown')]:
         original=b.evaluate("document.querySelector('[name=field_required]').value")
-        b.evaluate("document.querySelector('#certRulePreset').value="+json.dumps(key))
+        b.evaluate("document.querySelector('#certRulePreset').value="+json.dumps(key)+";document.querySelector('#certRulePreset').dispatchEvent(new Event('change',{bubbles:true}));true")
+        assert not b.evaluate("document.querySelector('#applyCertPreset').disabled")
         b.click('#applyCertPreset')
         assert b.evaluate("document.querySelector('[name=field_required]').value")==original
         b.click('#cancelCertPreset')
@@ -16100,6 +16111,8 @@ def test_certification_optional_presets_only_fill_unsaved_rules(browser_stack):
         assert b.evaluate("document.querySelector('[name=field_required]').value")==required
         assert b.evaluate("document.querySelector('[name=track_annual_kind]').value")==annual
         assert b.evaluate("document.querySelector('[name=track_verification]').value")=='unverified'
+    b.evaluate("document.querySelector('#certRulePreset').value='';document.querySelector('#certRulePreset').dispatchEvent(new Event('change',{bubbles:true}));true")
+    assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
     with sqlite3.connect(browser_stack.data_root/'results.db') as c:
         assert before=={t:list(c.execute('SELECT * FROM '+t)) for t in before}
 
@@ -16224,6 +16237,7 @@ def test_certification_guided_nine_credentials(browser_stack, theme):
     b.navigate(base+path);b.wait_for("document.querySelector('.cert-hero')")
     b.click('a[href$="/goal"]');b.wait_for("document.querySelector('[name=edit_scope]').value==='goal'")
     assert not b.evaluate("!!document.querySelector('[name=field_expiration]')")
+    assert b.evaluate("document.querySelector('.cert-form [type=submit]').textContent.trim()")=='Save goal'
     assert 'CySA+ · Period 1' in b.evaluate("document.querySelector('.cert-task-context').textContent")
     fill(dict(field_required='40',field_unit='credits',field_renewal='2029-09-01'));save()
     b.navigate(base+path);b.wait_for("document.querySelector('.cert-cycle')")
@@ -16235,10 +16249,15 @@ def test_certification_guided_nine_credentials(browser_stack, theme):
     save()
     b.navigate(base+'/certifications/training/'+tid+'/renewals');b.wait_for("document.querySelector('.cert-use-form')")
     assert b.evaluate("document.querySelectorAll('[name=certifications]:checked').length")==0
+    assert b.evaluate("document.querySelector('[data-renewal-submit]').disabled")
+    assert '0 certifications selected' in b.evaluate("document.querySelector('#renewalSelectionCount').textContent")
+    assert 'keeps its saved 9 h 0 min association' in b.evaluate("document.querySelector('.cert-use-form').textContent")
     row='[data-renewal-choice]:has([value="'+ids[0]+'"])'
     assert 'Already linked' in b.evaluate('document.querySelector('+json.dumps(row)+').textContent')
     assert b.evaluate('document.querySelector('+json.dumps(row)+').querySelector("[data-renewal-edit]").hidden')
     for cid in ids[1:3]:b.click('[name=certifications][value="'+cid+'"]')
+    assert not b.evaluate("document.querySelector('[data-renewal-submit]').disabled")
+    assert '2 certifications selected' in b.evaluate("document.querySelector('#renewalSelectionCount').textContent")
     fill({'estimate_'+ids[1]:'5','estimate_'+ids[2]:'6'})
     b.click('.cert-use-form [type=submit]');b.wait_for("location.pathname==='/certifications/training'")
     assert 'Used toward: CySA+' in b.evaluate("document.querySelector('main').textContent")
@@ -16250,7 +16269,7 @@ def test_certification_guided_nine_credentials(browser_stack, theme):
     b.click('[name=training]');b.click('main [type=submit]');b.wait_for("document.querySelector('#certPrompt')")
     assert '9 certifications · 1 course' in b.evaluate("document.querySelector('#certAIPreview').textContent")
     assert not b.evaluate("document.querySelector('#certPreviewDetails').open")
-    assert b.evaluate("document.querySelector('[data-cert-launch]').textContent")=='Copy & open ChatGPT'
+    assert b.evaluate("document.querySelector('[data-cert-launch]').textContent")=='Copy & open AI'
     assert '9 h 22 min' in b.evaluate("document.querySelector('#certPrompt').value")
     assert 'PRIVATE NOTES' not in b.evaluate("document.querySelector('#certPrompt').value")
     output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
@@ -16286,6 +16305,7 @@ def test_certification_guided_nine_credentials(browser_stack, theme):
         for route,name,selector in [(path,'guided-detail','.cert-cycle'),(path+'/edit','guided-identity','.cert-form'),(path+'/cycles/'+period+'/goal','guided-goal','.cert-form'),(path+'/cycles/'+period+'/requirements','guided-requirements','.cert-form'),('/certifications/training','guided-library','main > section'),('/certifications/training/'+tid+'/renewals','guided-use','main > section'),('/settings/layout#certifications-visibility','guided-settings','#certifications-visibility')]:
             b.navigate(base+route);b.wait_for_page_ready()
             assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width,name)
+            if name=='guided-requirements':assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
             if name=='guided-use':b.click('[name=certifications][value="'+ids[0]+'"]')
             b.activate();b.evaluate("Array.from(document.querySelectorAll('main input:not([type=hidden]),main a,main button,main summary')).find(e=>e.getClientRects().length).focus();true");b.press_key('\ue004')
             assert b.evaluate('document.activeElement.matches(":focus-visible")')
@@ -16298,3 +16318,85 @@ def test_certification_guided_nine_credentials(browser_stack, theme):
         assert service.detail(c.cursor(),ids[0])['cycles'][0]['data']['expiration']=='2029-10-01'
         assert c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0]==2
         assert c.execute('SELECT COUNT(*) FROM learning_events').fetchone()[0]==0
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_ai_settings_coherent_save_cancel_and_focus(browser_stack, theme):
+    b=browser_stack.browser;base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    b.navigate(base+'/settings/ai');b.wait_for("document.querySelector('#aiSettingsForm') && window.dlmsCsrfToken")
+    assert b.evaluate("[...document.querySelector('#aiSettingsForm').children].filter(e=>!e.matches('input[type=hidden]')).at(-1).matches('.ai-settings-actions')")
+    before=b.evaluate("document.querySelector('#portfolioPromptTemplate').value")
+    b.evaluate("document.querySelector('#portfolioPromptTemplate').value='EDITED {{portfolio_context}}';document.querySelector('#portfolioPromptTemplate').dispatchEvent(new Event('input',{bubbles:true}));true")
+    assert 'Unsaved changes' in b.evaluate("document.querySelector('#aiSettingsStatus').textContent")
+    b.evaluate("window.confirm=()=>false;true");b.click('#cancelAISettings')
+    assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")=='EDITED {{portfolio_context}}'
+    b.evaluate("window.confirm=()=>true;true");b.click('#cancelAISettings')
+    b.wait_for("document.querySelector('#portfolioPromptTemplate').value!== 'EDITED {{portfolio_context}}'")
+    assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")==before
+    b.click('#resetPortfolioPrompt')
+    # Programmatic default reset also announces the form's dirty state when changed.
+    b.evaluate("document.querySelector('#portfolioPromptTemplate').value='PORTFOLIO {{portfolio_context}}';document.querySelector('#certificationPromptTemplate').value='SINGLE {{certification_context}}';document.querySelector('#aiProvider').value='claude';document.querySelector('#aiProvider').dispatchEvent(new Event('change',{bubbles:true}));true")
+    b.click('#aiSettingsForm [type=submit]');b.wait_for("location.search==='?saved=1'")
+    assert 'saved' in b.evaluate("document.querySelector('.settings-success-banner').textContent")
+    b.navigate(base+'/settings/ai')
+    assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")=='PORTFOLIO {{portfolio_context}}'
+    assert b.evaluate("document.querySelector('#certificationPromptTemplate').value")=='SINGLE {{certification_context}}'
+    assert b.evaluate("document.querySelector('#aiProvider').value")=='claude'
+    # Validation returns every editor, not a dead-end text error or a partial write.
+    b.evaluate("document.querySelector('#aiCustomUrl').value='javascript:invalid';document.querySelector('#portfolioPromptTemplate').value='RETAINED {{portfolio_context}}';true")
+    b.click('#aiSettingsForm [type=submit]');b.wait_for("document.querySelector('[role=alert]')")
+    assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")=='RETAINED {{portfolio_context}}'
+    b.evaluate("window.confirm=()=>true;true");b.click('#cancelAISettings')
+    b.wait_for("document.querySelector('#portfolioPromptTemplate')?.value==='PORTFOLIO {{portfolio_context}}'")
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    for width in (1440,390):
+        b.set_viewport(width,1000);b.navigate(base+'/settings/ai');b.wait_for_page_ready();b.evaluate("document.querySelector('#portfolioPromptSettings').scrollIntoView();true")
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        assert b.evaluate("document.querySelector('#portfolioPromptTemplate').getBoundingClientRect().width>document.querySelector('#portfolioPromptSettings').getBoundingClientRect().width*.9")
+        b.activate();b.evaluate("document.querySelector('#portfolioPromptTemplate').focus();true");b.press_key('\ue004')
+        b.wait_for("document.hasFocus() && document.activeElement.matches(':focus-visible')")
+        b.wait_for("document.querySelector('.ai-settings-actions').getBoundingClientRect().bottom<=innerHeight+1")
+        assert not b.evaluate("getComputedStyle(document.querySelector('.ai-settings-actions')).backgroundColor").startswith('rgba')
+        assert b.evaluate("(()=>{const r=document.activeElement.getBoundingClientRect(),a=document.querySelector('.ai-settings-actions').getBoundingClientRect();return r.bottom<=a.top || document.querySelector('.ai-settings-actions').contains(document.activeElement);})()")
+        if output:
+            (Path(output)/f'ai-settings-{width}-{theme}.png').write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+            (Path(output)/f'ai-settings-focused-{width}-{theme}.png').write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'viewport'})['data']))
+
+
+def test_shared_provider_settings_drive_study_and_certification_launch(browser_stack):
+    b=browser_stack.browser;base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    # Log a real disposable credential/course; AI selection does not allocate it.
+    b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+    b.evaluate("document.querySelector('[name=field_name]').value='Manual planning';document.querySelector('[name=field_issuer]').value='Custom guild';document.querySelector('[name=field_expiration]').value='2029-10-01';true")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero')")
+    b.navigate(base+'/certifications/training/new');b.wait_for("document.querySelector('[name=duration_hours]')")
+    b.evaluate("document.querySelector('[name=field_name]').value='Selected course';document.querySelector('[name=field_completed]').value='2026-10-01';document.querySelector('[name=duration_hours]').value=9;document.querySelector('[name=duration_minutes]').value=22;true")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-use-form')")
+    for provider,url in [('claude','https://claude.ai/'),('local','https://example.org/manual-ai')]:
+        b.navigate(base+'/settings/ai');b.wait_for("document.querySelector('#aiProvider')")
+        b.evaluate("document.querySelector('[name=ai_helper_enabled]').checked=true;document.querySelector('#aiProvider').value="+json.dumps(provider)+";document.querySelector('#aiCustomUrl').value="+json.dumps(url if provider=='local' else '')+";document.querySelector('#portfolioPromptTemplate').value='PORTFOLIO {{portfolio_context}}';document.querySelector('#certificationPromptTemplate').value='SINGLE {{certification_context}}';true")
+        b.click('#aiSettingsForm [type=submit]');b.wait_for("location.search==='?saved=1'")
+        b.navigate(base+'/certifications/matches');b.wait_for("document.querySelector('[name=training]')")
+        b.click('[name=training]');b.click('main [type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+        payload=b.evaluate("document.querySelector('#certPrompt').value")
+        assert payload.startswith('PORTFOLIO ') and '9 h 22 min' in payload
+        assert '562' in payload or '9 h 22 min' in payload
+        assert b.evaluate("document.querySelector('[data-cert-launch]').textContent")=='Copy & open AI'
+        # Capture the real copy event while preventing external navigation.
+        b.evaluate("window.copied=[];window.opened=[];document.addEventListener('copy',()=>copied.push(document.activeElement.value));window.open=(url)=>{opened.push(url);return null;};document.querySelector('#certPrompt').value+='\\nREVIEWED EDIT';true")
+        b.click('[data-cert-launch]')
+        assert b.evaluate('copied.at(-1)')==payload+'\nREVIEWED EDIT'
+        assert b.evaluate('opened')==[url]
+        assert b.evaluate('isSecureContext') is False
+        _,html=_new_regular_study_quiz(browser_stack,2)
+        b.navigate(base+'/quizzes/'+html)
+        b.wait_for("quizRecoveryReady && studyAIConfig && studyAIConfig.ai_provider==="+json.dumps(provider))
+        b.click('.study-mode-btn');b.wait_for('durableStudySession !== null && document.querySelector("#choices .choice")')
+        b.evaluate("window.opened=[];window.open=url=>{opened.push(url);return null;};true")
+        b.click('button[onclick*=reviewCurrentQuestionWithAI]')
+        assert b.evaluate('opened')==[url]
+        b.wait_for('studyLearningEventSaves.size===0')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0]==0

@@ -16140,3 +16140,25 @@ h1, h2, h3 {
 
 .settings-dashboard-page .certification-display-fields :is(input,select) {min-height:44px;padding:.65rem;font:inherit;color:var(--theme-input-text);background:var(--theme-input-bg);border:1px solid var(--theme-border);border-radius:.35rem;}
 .settings-dashboard-page .certification-display-fields :is(input,select):focus-visible {outline:3px solid var(--theme-focus-ring,var(--theme-accent-text));outline-offset:3px;}
+
+/* AI settings: a single save scope after every prompt editor. */
+#aiSettingsForm .ai-settings-actions {
+    position:sticky;bottom:0;z-index:5;margin-top:1.5rem;padding:1rem;
+    background:var(--theme-body-base);border-top:1px solid var(--theme-border);
+    display:flex;flex-wrap:wrap;align-items:center;gap:.75rem;
+}
+#aiSettingsStatus {flex-basis:100%;margin:0;color:var(--theme-muted-text);}
+#aiSettingsForm :is(input,select,textarea,button,a) {scroll-margin-block:1rem var(--ai-action-height,10rem);}
+#aiSettingsForm .settings-textarea {box-sizing:border-box;max-width:100%;}
+#aiSettingsForm .settings-field-label {display:block;}
+#cancelAISettings {display:inline-flex;align-items:center;justify-content:center;min-height:44px;box-sizing:border-box;text-decoration:none;padding:.65rem 1rem;border:1px solid var(--theme-border);border-radius:8px;color:var(--theme-page-text);background:var(--theme-surface-2);font-weight:600;}
+#cancelAISettings:focus-visible {outline:3px solid var(--theme-focus-ring,var(--theme-accent-text));outline-offset:3px;}
+@media(max-height:450px){#aiSettingsForm .ai-settings-actions {position:static;}}
+@media(max-width:760px){#cancelAISettings {width:100%;}}
+
+/* Clip shell painting without creating a second scroll container for the sticky save row. */
+.settings-ai-page .dashboard-shell {overflow:clip;}
+
+#cancelAISettings:hover {background:var(--theme-surface);border-color:var(--theme-accent-text);}
+#aiSettingsForm .settings-primary-button {background:var(--theme-accent-2);color:var(--semantic-primary-control-text);border-color:var(--theme-accent-2);}
+#aiSettingsForm .settings-primary-button:hover {background:var(--theme-accent);border-color:var(--theme-accent);}

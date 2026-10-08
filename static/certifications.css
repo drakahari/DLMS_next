@@ -73,3 +73,6 @@
 .cert-workspace .cert-fields {align-items:end;}
 .cert-workspace .cert-fields > label {display:flex;flex-direction:column;gap:.5rem;}
 .cert-workspace .cert-fields > label > :is(input,select) {min-height:44px;box-sizing:border-box;}
+
+.cert-workspace :is(input[name=field_annual_goal],input[name=track_annual_amount]) {width:min(100%,12rem);box-sizing:border-box;}
+.cert-workspace [data-use-training] {margin-bottom:1rem;}

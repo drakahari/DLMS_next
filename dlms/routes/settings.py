@@ -215,8 +215,8 @@ def api_set_theme(dependencies):
     return jsonify({"ok": True, "theme": requested})
 
 
-def settings_ai_page(dependencies):
-    cfg = dependencies.load_portal_config()
+def settings_ai_page(dependencies, *, cfg=None, error=None):
+    cfg = dict(dependencies.load_portal_config() if cfg is None else cfg)
     study_prompt = dependencies.default_study_content_pack_prompt()
     medical_addendum = dependencies.default_medical_study_pack_ai_addendum()
     law_prompt = dependencies.default_law_ai_prompt()
@@ -233,6 +233,7 @@ def settings_ai_page(dependencies):
     return render_template(
         "settings/ai.html",
         cfg=cfg,
+        ai_error=error,
         certification_default_prompt=DEFAULT_CERTIFICATION_PROMPT,
         portfolio_default_prompt=DEFAULT_PORTFOLIO_PROMPT,
         law_default_prompt=law_prompt,
@@ -250,12 +251,7 @@ def save_ai_settings(dependencies):
     provider = request.form.get("ai_provider", "chatgpt").strip().lower()
     cfg["ai_provider"] = provider if provider in AI_PROVIDERS else "chatgpt"
 
-    try:
-        cfg["ai_custom_url"] = dependencies.validate_custom_ai_url(
-            request.form.get("ai_custom_url", "")
-        )
-    except ValueError as exc:
-        return str(exc), 400
+    cfg["ai_custom_url"] = request.form.get("ai_custom_url", "")
 
     cfg["ai_prompt_template"] = request.form.get(
         "ai_prompt_template", ""
@@ -274,12 +270,27 @@ def save_ai_settings(dependencies):
     )
 
     cfg["certification_ai_prompt_template"] = request.form.get("certification_ai_prompt_template", cfg.get("certification_ai_prompt_template", DEFAULT_CERTIFICATION_PROMPT)).strip() or DEFAULT_CERTIFICATION_PROMPT
-    if len(cfg["certification_ai_prompt_template"]) > 20000:
-        return "Certification prompt exceeds 20,000 characters.", 400
     cfg["portfolio_ai_prompt_template"] = request.form.get("portfolio_ai_prompt_template", cfg.get("portfolio_ai_prompt_template", DEFAULT_PORTFOLIO_PROMPT)).strip() or DEFAULT_PORTFOLIO_PROMPT
-    if len(cfg["portfolio_ai_prompt_template"]) > 20000:
-        return "Portfolio prompt exceeds 20,000 characters.", 400
-    dependencies.write_portal_config(cfg)
+    def failed(message, status):
+        retained = dict(cfg)
+        for key in ("ai_custom_url", "ai_prompt_template", "study_pack_ai_prompt_template",
+                    "medical_study_pack_ai_addendum", "law_ai_prompt_template",
+                    "certification_ai_prompt_template", "portfolio_ai_prompt_template"):
+            if key in request.form:
+                retained[key] = request.form[key]
+        return settings_ai_page(dependencies, cfg=retained, error=message), status
+
+    try:
+        cfg["ai_custom_url"] = dependencies.validate_custom_ai_url(cfg["ai_custom_url"])
+        for key, label in (("certification_ai_prompt_template", "Certification"), ("portfolio_ai_prompt_template", "Portfolio")):
+            if len(cfg[key]) > 20000:
+                raise ValueError(f"{label} prompt exceeds 20,000 characters.")
+    except ValueError as exc:
+        return failed(str(exc), 400)
+    try:
+        dependencies.write_portal_config(cfg)
+    except OSError:
+        return failed("Could not save AI settings. Try saving again.", 503)
     return redirect("/settings/ai?saved=1")
 
 
