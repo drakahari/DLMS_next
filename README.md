@@ -14,6 +14,7 @@ and training records, and 26 manually selected themes for 3.3.0. See the
 The owner accepted the Ubuntu 24.04 3.3.0 package from commit
 `57d536f9bb20f91e8b275555e8bbfad6f0d6e83d`. That checkpoint does not establish
 Windows, macOS or other native-platform acceptance, or public publication.
+That package predates the later manual and Help refresh.
 
 DLMS 3.2.2 is published. Native package and Linux AppImage release acceptance
 is complete. The [Releases page](../../releases) is authoritative for downloads.

@@ -330,4 +330,3 @@ source/evidence hashes and Git scope. Only the two new files below are intended:
 `docs/audits/2026-10-09/README.md` and `verification.json`. They remain unstaged;
 original reports and all other files are preserved. No tasks/processes were
 started that require cleanup.
-

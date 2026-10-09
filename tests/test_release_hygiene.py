@@ -21,7 +21,22 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertEqual(version.group(1), "3.3.0")
         self.assertIn(f"Development target: DLMS {version.group(1)} (unreleased)", readme)
         self.assertIn("Latest published release: DLMS 3.2.2", readme)
-        self.assertIn("3.3.0 packages have not been built or accepted", readme)
+        normalized_readme = " ".join(readme.split())
+        self.assertIn(
+            "The owner accepted the Ubuntu 24.04 3.3.0 package from commit "
+            "`57d536f9bb20f91e8b275555e8bbfad6f0d6e83d`.",
+            normalized_readme,
+        )
+        self.assertIn(
+            "That checkpoint does not establish Windows, macOS or other "
+            "native-platform acceptance, or public publication.",
+            normalized_readme,
+        )
+        self.assertIn(
+            "That package predates the later manual and Help refresh.",
+            normalized_readme,
+        )
+        self.assertNotIn("3.3.0 packages have not been built or accepted", readme)
         self.assertNotIn("DLMS v2.1.0 is now available", readme)
         for setting in ("--browser", "--no-browser", "DLMS_NO_BROWSER"):
             self.assertIn(setting, readme)
