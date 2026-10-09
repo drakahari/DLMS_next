@@ -5,7 +5,7 @@ for different kinds of selection. You can let DLMS suggest one useful next
 action, ask it for a balanced personalized session, focus on a known weak
 area, follow a schedule, or revisit the exact questions missed on an Exam.
 
-If you are unsure which path to choose, start with **Today’s Review** on the
+If you are unsure which path to choose, start with **Study next** on the
 Dashboard. It is the default answer to “What should I study right now?” The
 other options remain useful when you already know the kind of review you want.
 
@@ -13,7 +13,7 @@ other options remain useful when you already know the kind of review you want.
 
 | Study option | Best for | Who chooses the focus? | Timing | Result |
 | --- | --- | --- | --- | --- |
-| **Today’s Review** | One clear place to begin | DLMS assembles a short plan from current signals | May include scheduled work | Links to the appropriate existing action |
+| **Study next** | One clear place to begin | DLMS assembles a short plan from current signals | May include scheduled work | Links to the appropriate existing action |
 | **Adaptive Study** | A balanced personalized session | DLMS balances several learning signals; you choose the size | On demand, with review timing among its signals | Generated Practice |
 | **Smart Review** | Broad practice across weak concepts | DLMS selects currently weak concepts; you choose the size | On demand | Generated Practice |
 | **Concept Review** | Focused practice on one concept | You choose the concept | On demand | Generated Practice |
@@ -21,73 +21,40 @@ other options remain useful when you already know the kind of review you want.
 | **Topic Retention Schedule** | Concept-level reinforcement | You choose a review window of scheduled topics | Scheduled per concept | Generated Practice |
 | **Missed-question review** | Understanding mistakes from one completed Exam | You choose the attempt | On demand | Review of that saved result |
 
-![Help comparison explaining when to use Today’s Review, Adaptive Study, Smart Review, Concept Review, Due Questions, and Topic Retention](images/UM-10-review-options-guide.png)
+*For the current dashboard controls, see the [dashboard illustration](03-interface-and-navigation.md#the-dashboard).*
 
 These options reuse the same local quizzes and saved learning evidence. They do
 not alter the source questions, and none of them requires an AI service.
 
-## Start with Today’s Review
+## Start with Study next
 
-**Today’s Review** is a planning surface on the Dashboard, not a separate
-review algorithm. It asks the existing scheduling and Learning Intelligence
-features for their current signals, then presents a short list of actions with
-a reason for each one. **Manage Learning Scope** beside the
-plan lets you choose which folders inform those automatic recommendations;
-saved **Resume** cards from this browser remain available even when their
-folder is excluded.
+Use the main Dashboard suggestion, or open **More review options** when other
+eligible review work is available. An active Exam Plan can set today's suggested
+batch without changing the existing spaced intervals. **Why this suggestion?**
+explains actual selected questions, approximate time, exclusions and workload
+shortfalls. [Exam Plans](exam-plans.md) explains setup and no-work states.
 
-Depending on your material and activity, the list can include:
+Continue unfinished work through **Continue studying**. Browser recovery and
+server eligibility are different: a browser's Resume point does not remove
+shared due/concept/adaptive options. Resolve pending saves before starting more work.
+Use **Manage browser resume point → Clear browser resume point** only to remove
+that named browser checkpoint. It does not delete saved Study progress, history,
+other checkpoints or another browser's data. Pending saves block clearing.
 
-- a **Due Questions** action for individual questions that are due or overdue;
-- a focused action for a weak or developing concept;
-- **Study What I Need Most** when broader Adaptive Study is more useful than a
-  specific due or concept action;
-- recent Study Pack activity that may be worth continuing; and
-- a valid interrupted Study or Exam session from the current browser.
+Due review shows the total due/overdue and offers up to 20 per dashboard batch.
+After acknowledged work, return to the Dashboard to recalculate. Concept and due
+review can take precedence over a broader adaptive suggestion. Optional practice
+can use included Learning Scope material outside an active plan; it does not
+consume a future day's plan allowance.
 
-Specific due or concept work can take the place of a broader Adaptive Study
-suggestion when both would describe the same need. This keeps the panel from
-repeating essentially the same recommendation through several cards.
-
-### Understand unfinished cards
-
-An unfinished card is marked **This browser**. It comes from a recovery
-checkpoint in the current browser profile and can differ from what another
-computer sees when both use the same DLMS server. Successfully saved due
-counts, completed activity, concepts, and other server-derived recommendations
-are shared after refresh; interrupted checkpoints are not.
-
-If you no longer want to continue, choose **Remove from Today’s Review** on
-that card and confirm **Clear Saved Resume Point**. This clears only the
-saved resume point in this browser, including its unfinished answers. The
-quiz, completed history, scores, and activity already saved to DLMS remain.
-Other browsers and other unfinished sessions are unaffected. If Study answers
-or a submitted Exam attempt are still waiting to be saved, DLMS keeps the
-checkpoint and asks you to **Resume Quiz** or **Finish Saving** first.
-
-A genuinely interrupted generated session can replace the equivalent new
-recommendation on that browser. Once the session is complete and its activity
-has been saved, its recovery checkpoint is cleared. It should not return as a
-stale Resume card or prevent DLMS from offering the next valid recommendation.
-
-### Read a Due Questions card
-
-Today’s Review distinguishes the **total number due** from the **next batch**.
-For example, if 34 source questions are due, the card can report all 34 while
-offering a next review of up to 20. The Dashboard’s default Due Questions batch
-limit is 20, but the actual batch is smaller when fewer than 20 questions are
-due.
-
-After you complete and successfully save a limited batch, return to or refresh
-the Dashboard. DLMS recalculates the schedule. If more source questions are
-still due, it offers a new Due Questions action for the remaining work rather
-than resurrecting the completed generated quiz. If none remain, neither a
-stale Due action nor a stale Resume action should appear.
+A completed regular review remains accessible through **Open current quiz**;
+**Continue your quiz sequence** offers the next quiz in the same saved folder order.
+These links do not change recommendation selection or award learning credit.
 
 ## Use Adaptive Study for a balanced focus
 
 Open **Learning Intelligence** and choose **Study What I Need Most**, or follow
-an Adaptive Study action from Today’s Review. Where a size control is offered,
+an Adaptive Study action from Study next. Where a size control is offered,
 choose 10, 20, 30, or 50 questions. A session can be smaller when fewer source
 questions are eligible.
 
@@ -134,7 +101,7 @@ available, DLMS explains that it cannot build the session yet.
 ## Use Concept Review for one chosen concept
 
 In the Learning Intelligence concept table, choose **Study concept** beside the
-concept you want to practice. A weak-concept card in Today’s Review can lead to
+concept you want to practice. A weak-concept card in Study next can lead to
 the same kind of focused action.
 
 Concept Review gathers source questions carrying that concept across relevant
@@ -268,7 +235,13 @@ Library distinction.
 ## Put the choice into practice
 
 Use the comparison at the beginning of this chapter whenever the options feel
-similar. Start with Today’s Review when you want one recommendation; move to a
+similar. Start with Study next when you want one recommendation; move to a
 specialized option only when its focus matches your immediate goal. Generated
 review quizzes use the normal Study and Exam experience described in
 [Taking Quizzes](06-taking-quizzes.md).
+
+## Make an optional Exam Plan
+
+Open **Learning Intelligence → Exam Plans** for folder-based preparation,
+study days and an estimated daily workload. Multiple plans can be saved; one can
+appear on the dashboard. Follow the [Exam Plan guide](exam-plans.md).

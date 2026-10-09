@@ -15,7 +15,7 @@ application can be stopped.
 | Settings area | Use it to |
 | --- | --- |
 | **Appearance** | Choose a theme, change the Dashboard title, or use a background image. |
-| **Navigation** | Show or hide optional subject-area links in the sidebar. |
+| **Layout & navigation** | Independently choose dashboard panels/shortcuts and configurable sidebar study areas; set certification visibility/count/sort. |
 | **AI Integration** | Configure optional External AI helper buttons, provider destinations, and prompt templates. |
 | **Parsing** | Control optional confidence and text-cleanup tools used during quiz preparation. |
 | **Application Lifecycle** | Allow an eligible local DLMS process to stop after all DLMS browser pages close. |
@@ -64,20 +64,21 @@ browsers use the saved host settings when their pages refresh.
 
 ## Simplify the navigation
 
-Open **Settings → Navigation** to show or hide these optional study areas:
+Use **Settings → Layout & navigation** for independent sidebar and dashboard
+choices. IT, Law and Medical share a row with separate checkboxes; Other Studies
+is sidebar-only. **Hide from both** edits the form, then **Save layout & navigation**
+persists it. **Restore dashboard defaults** and **Restore sidebar defaults** apply
+immediately, each to its own scope; respond to the unsaved-edit confirmation.
+Visibility never deletes content or changes Learning Scope.
 
-- IT Study;
-- Law Study;
-- Medical Study; and
-- Other Studies.
+Beside **Show My Certifications**, choose **Number to show** (All or Custom), a
+positive whole **Custom count**, and **Sort order**. Save to persist ordinary
+changes. The feature switch hides both its dashboard trophy case and sidebar
+entries, including Training library; the separate dashboard panel choice affects
+only the trophy case. Neither deletes records or changes saved count/sort choices.
+**Display options** on the Dashboard opens the right Settings section. A limited
+card grid retains **View all**; Settings is accessible with every panel hidden.
 
-Hiding an area removes its link from the navigation. It does not delete or
-disable the area's content, History, analytics, or direct page address. **Study
-Packs** and **Settings** remain available, and showing an area again restores
-its link.
-
-This is useful when you want a less crowded sidebar. It is not a content-removal
-tool.
 
 ## Configure optional External AI helpers
 

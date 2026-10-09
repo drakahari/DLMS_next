@@ -27,7 +27,7 @@ count.
 Excluded quizzes remain saved and playable. Their attempts, scores, concepts,
 answer evidence, and schedules stay intact. Current Topic Intelligence,
 Learning Profile, Diagnostics, Due Questions, Topic Retention, Adaptive Study,
-Smart Review, Concept Review, and automatic Today’s Review recommendations use
+Smart Review, Concept Review, and automatic Study next recommendations use
 only included source material. A concept shared by included and excluded
 quizzes is calculated from its included questions and answers only. When no
 included source question remains, it leaves the active topic view.
@@ -59,7 +59,7 @@ The Learning Intelligence navigation contains several related views:
   patterns that may deserve review.
 
 These views use the same saved learning evidence for different purposes. For a
-day-to-day recommendation, continue to start with Today’s Review as described
+day-to-day recommendation, continue to start with Study next as described
 in [Study and Review](07-study-and-review.md). Use Learning Intelligence when
 you want to understand the evidence behind a topic or select a more specific
 follow-up.
@@ -93,10 +93,7 @@ The Topic Intelligence page begins with summary cards for topics with evidence,
 average accuracy, average Mastery, and weak areas. The concept table then gives
 more detail for each topic.
 
-![Learning Intelligence concept table with the How DLMS calculates mastery explanation open](images/UM-12-learning-intelligence-mastery.png)
-
-*The explanation separates Mastery from Trend and describes how limited
-evidence affects the result.*
+*Use the current **How mastery works** explanation in the application; older concept-table screenshots omit the independent-success distinction.*
 
 | Column or indicator | What it means |
 | --- | --- |
@@ -110,10 +107,7 @@ evidence affects the result.*
 | **Status** | **Not enough data**, **Weak area**, **Developing**, **Proficient**, or **Strong** under the current evidence rules. |
 | **Practice** | **Study concept** creates Concept Review for that selected topic when source questions are available. |
 
-Study Mode can record more than one interaction while you work through a
-question. To keep repeated clicks from overpowering other evidence, DLMS counts
-the latest saved response for that question in a Study session. A completed
-Exam contributes one response per question for that attempt.
+New durable Study sessions retain first-response difficulty, corrections and observable assistance separately. The latest outcome can be correct while independent success is not established. Repeated clicks do not become independent wins. Legacy records cannot supply unknown historical first attempts or assistance. A completed Exam contributes its saved responses. See [Study and Review](07-study-and-review.md) for the elapsed-time rule.
 
 Use the filters to view all concepts or focus on Weak Areas, Developing,
 Proficient, Strong, or Not Enough Data. Search narrows the visible topic list.
@@ -132,8 +126,8 @@ The **How mastery works** dialog explains that the score combines four things:
 
 | Factor | Weight | Plain-language meaning |
 | --- | ---: | --- |
-| **Overall performance** | 55% | How many of all counted answers for this concept were correct. |
-| **Recent performance** | 20% | Accuracy across up to the five most recent counted answers. |
+| **Overall performance** | 55% | Independent success across counted evidence; a corrected or assisted durable Study answer is not automatically independent success. |
+| **Recent performance** | 20% | Independent success across up to the five most recent counted evidence entries. |
 | **Evidence** | 15% | How much response evidence supports the score. Full evidence credit is reached at eight responses. |
 | **Recency** | 10% | More recent practice receives more credit than older practice. |
 
@@ -241,6 +235,10 @@ qualifies but concept-level review is due, it can start a Topic Retention
 session. With little evidence, the profile explains what kind of activity is
 needed instead of assigning unsupported strengths or weaknesses.
 
+![Current Learning Profile with distinct study actions](../../static/help_assets/learning-profile-current.webp)
+
+*Current application, disposable learning records. Actions open different study views; the summary is not exam readiness.*
+
 ## Use Diagnostics as a review prompt
 
 **Diagnostics** looks for two kinds of patterns:
@@ -289,3 +287,16 @@ Use [History, Results, and Progress](09-history-results-and-progress.md) to
 inspect saved Exam attempts. History answers “what happened on that Exam?”;
 Learning Intelligence answers “what patterns are appearing across concepts and
 recorded activity?”
+
+## Historical coverage and reset estimates
+
+**Reset Learning Intelligence** clears estimates and recommendations based on
+answer evidence while keeping factual Study sessions/completions. Retained
+history does not repopulate cleared estimates after restart or restore. Plans
+can show historical coverage while still needing fresh evidence. Study History
+deletion is a different confirmed action. See [maintenance](17-maintenance-backup-and-data-management.md).
+
+For practical actions, **Start Smart Review** starts weak-topic practice,
+**View Topic Details** opens the concept table, and **Open Review Schedule** opens
+the scheduling views. These are different destinations, not extra scores.
+[Exam Plans](exam-plans.md) adds optional calendar planning using the same evidence.

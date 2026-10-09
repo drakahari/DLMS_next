@@ -16774,3 +16774,59 @@ def test_certification_control_spacing(browser_stack,theme):
 @pytest.mark.parametrize('theme',('light','dark'))
 def test_certification_native_zoom_control_spacing(browser_stack,theme):
     _check_certification_control_spacing(browser_stack,theme,True)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_documentation_refresh_help_and_safety_navigation(browser_stack, theme):
+    """Current task guidance, real images and safe navigation, with disposable data."""
+    b, base = browser_stack.browser, browser_stack.base_url
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(base + '/settings/appearance')
+    _set_theme(b, theme)
+    output = os.environ.get('DLMS_HELP_CAPTURE_DIR')
+    pages = ('getting-started', 'quizzes', 'history-analytics', 'learning-intelligence', 'certifications', 'maintenance')
+    for width in (1440, 390):
+        b.set_viewport(width, 1000)
+        for topic in pages:
+            b.navigate(base + '/help/' + topic)
+            b.wait_for_page_ready()
+            # Help intentionally lazy-loads instructional images below the fold.
+            for index in range(b.evaluate("document.querySelectorAll('.help-shot img').length")):
+                selector = f"document.querySelectorAll('.help-shot img')[{index}]"
+                b.evaluate(selector + ".scrollIntoView({block:'center'});true")
+                b.wait_for(selector + ".complete && " + selector + ".naturalWidth>0")
+            assert b.evaluate('document.documentElement.scrollWidth <= innerWidth'), (topic, theme, width)
+            assert b.evaluate("Array.from(document.querySelectorAll('.help-shot img')).every(i=>i.alt.trim() && i.naturalWidth===Number(i.getAttribute('width')) && i.naturalHeight===Number(i.getAttribute('height')))")
+            if topic == 'maintenance':
+                for label in ('Reset Learning Intelligence', 'Delete Study History', 'Reset Quiz Library & Results', 'Clear Imported / Source Content', 'Reset Application Settings', 'Reset DLMS to Fresh State', 'Remove DLMS Data from This Computer'):
+                    assert label in b.evaluate("document.querySelector('#reset-remove').textContent")
+                b.activate()
+                b.evaluate("document.querySelector('#backup-restore details summary').scrollIntoView({block:'center'});document.querySelector('#backup-restore details summary').focus();true")
+                b.press_key('\ue007')
+                assert b.evaluate("document.querySelector('#backup-restore details').open")
+                b.press_key('\ue004')
+                assert b.evaluate('document.activeElement.matches(":focus-visible")')
+            if output:
+                target = Path(output) / ('help-' + topic + '-' + theme + '-' + str(width) + '.png')
+                target.write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot', {'context': b.context, 'origin': 'document'})['data']))
+    # Visiting the destructive-action page is safe; do not press any reset control.
+    for route, name in (('/settings/reset-remove', 'settings-reset_remove'), ('/settings/backup', 'settings-backup'), ('/learning-profile', 'learning-profile'), ('/history', 'history')):
+        b.set_viewport(1440, 1000)
+        b.navigate(base + route)
+        b.wait_for_page_ready()
+        if output and theme == 'light':
+            from tests.browser._help_screenshots import capture_control
+            capture_control(b, Path(output) / (name + '.webp'), '.dashboard-main')
+            if name == 'settings-reset_remove':
+                # Crop before the machine-specific data path, without altering UI.
+                from PIL import Image
+                top, path_top = b.evaluate("(() => {const m=document.querySelector('.dashboard-main').getBoundingClientRect(),p=document.querySelector('.settings-current-value').getBoundingClientRect();return [Math.max(0,Math.floor(m.top+scrollY)-8),p.top+scrollY];})()")
+                image_path = Path(output) / (name + '.webp')
+                with Image.open(image_path) as original:
+                    original.crop((0, 0, original.width, int(path_top-top)-8)).save(image_path, format='WEBP', lossless=True)
+            if name == 'history':
+                from PIL import Image
+                top, panel_bottom = b.evaluate("(() => {const m=document.querySelector('.dashboard-main').getBoundingClientRect(),p=document.querySelector('.history-table-panel').getBoundingClientRect();return [Math.max(0,Math.floor(m.top+scrollY)-8),p.bottom+scrollY];})()")
+                image_path = Path(output) / (name + '.webp')
+                with Image.open(image_path) as original:
+                    original.crop((0, 0, original.width, min(original.height, int(panel_bottom-top)+8))).save(image_path, format='WEBP', lossless=True)

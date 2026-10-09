@@ -19,6 +19,7 @@ DLMS data directory.
 | Repair stale playable quiz pages | **Rebuild All Quiz Pages** | Regenerates derived page files without changing canonical quiz data. |
 | Remove only completed attempt records | **Clear Saved Results from Database and Dashboard** | Deletes attempts, saved attempt answers, and missed-question History. |
 | Start learning measurements over | **Reset Learning Intelligence** | Deletes answer evidence used for Mastery, recommendations, and schedules. |
+| Remove factual Study history | **Delete Study History** | Deletes Study sessions, responses, completions, preserved legacy responses and Study learning evidence; Exam data remains. |
 | Remove published quizzes and their results | **Reset Quiz Library & Results** | Clears the Quiz Library, quiz records/artifacts, and related learning/history data. |
 | Remove reusable imported source material | **Clear Imported / Source Content** | Removes source banks, removable packs, drafts, and staging while preserving published quizzes. |
 | Restore all interface preferences to defaults | **Reset Application Settings** | Resets the saved portal configuration and custom background. |
@@ -89,7 +90,9 @@ A backup includes persistent material such as:
 - quizzes, generated quiz artifacts, question data, quiz assets, and logos;
 - the database containing attempts, History, missed-question records, and
   learning activity;
-- application settings, including Learning Scope, and the custom background;
+- durable Study sessions/responses, marked questions and Exam Plans;
+- earned certifications, renewal periods, training/credit links and certificate/badge evidence;
+- application settings, including Learning Scope, feature visibility, card counts/sorting and the custom background;
 - installed Study Packs and Content Packs;
 - PDF & Image Import question and terminology banks and relevant saved drafts;
 - Law Study content; and
@@ -106,6 +109,10 @@ material. Store it with the same care as the source material. Copy an important
 backup to a location outside the DLMS data directory so that permanent removal,
 disk failure, or loss of the host computer does not remove your only recovery
 copy.
+
+![Current Backup & Restore page with snapshot creation and staged restore controls](../../static/help_assets/settings-backup.webp)
+
+*Disposable sample profile. Validation and confirmation are separate from choosing a file.*
 
 ## Restore a backup
 
@@ -146,7 +153,23 @@ attempts to recover the previous workspace from the pre-restore snapshot and
 keeps that backup in its backup folder. Record the displayed error and avoid
 repeating destructive actions until you know which workspace is active.
 
+![Current Reset & Remove page listing all scoped actions and permanent removal](../../static/help_assets/settings-reset_remove.webp)
+
+*Opening this page changes no data. Read each action’s scope before confirming.*
+
 ## Understand safety backups
+
+The **Reset & Remove** control on Backup & Restore only opens the action page.
+All eight destructive controls explain their scope before execution. Six scoped
+resets create a safety backup. Clear Saved Results does not. Permanent removal
+does not. Every action has a browser confirmation and CSRF protection; Study
+history deletion also sends `DELETE STUDY HISTORY`, and permanent removal
+requires typing `REMOVE DLMS DATA`, a final warning and server validation.
+
+Successful quiz-library/fresh-state resets and permanent removal clear this
+browser’s stored quiz recovery records. Other reset operations can invalidate
+old Study queues; saved history, browser checkpoints and learning estimates are
+different. Do not clear browser storage as a troubleshooting shortcut.
 
 The scoped reset actions under **Reset & Remove** create a safety backup before
 they change data. **Reset DLMS to Fresh State** also preserves backup ZIPs in
@@ -162,7 +185,28 @@ Two actions are important exceptions:
 Create and copy your own backup elsewhere before either action if you might
 need the removed data.
 
+## Restore versus application rollback
+
+Restore replaces the active profile with a snapshot; it is not a merge. Anything
+created or changed after that snapshot can be lost, including Study history,
+settings, plans, marks, certifications, training and documents. An older backup
+without a feature's records can restore that feature to an empty collection.
+
+Current DLMS uses **schema 10**. Compatible older backups can be upgraded by the
+supported staged restore flow, but an older application must refuse an upgraded
+database. Replacing the binary alone does not undo a database upgrade.
+
+To roll back safely: stop DLMS normally; preserve the upgraded profile and a
+current backup separately; use the compatible older application and a separate
+supported data root; restore a verified **pre-upgrade backup** through that
+application; verify records/documents before choosing it as the working profile.
+This loses changes made since the old backup. Do not edit schema numbers or
+manually copy individual tables to bypass compatibility checks.
+
 ## Clear saved results only
+
+This action does **not** create an automatic backup. It preserves durable Study
+history and Learning Intelligence evidence; it is not a learning reset.
 
 Under **Settings → Reset & Remove**, **Clear Saved Results from Database and
 Dashboard** removes completed attempts, their saved answers, and
@@ -185,12 +229,27 @@ Learning Intelligence and review-schedule results begin again with no evidence.
 
 It preserves quizzes, questions, concepts and tags, Study Packs, application
 settings, completed attempt records, missed-question History, imported source
-content, and backup archives. DLMS creates a safety backup before the reset.
+content, and backup archives. DLMS creates a safety backup before the reset. Factual Study history and
+completions remain, but cannot repopulate cleared learning estimates after
+restart or restore. Historical coverage is distinct from fresh evidence.
 
 Use this only when you deliberately want to start DLMS's learning measurements
 over. It is not necessary simply because a quiz score was disappointing.
 
+## Delete Study History
+
+This separate confirmed action deletes factual Study sessions, responses,
+completions, preserved legacy Study responses and Study learning evidence.
+Exam attempts/evidence, quizzes, settings, plans and certifications remain.
+DLMS creates a safety backup first. Old queued Study requests are invalidated;
+reload open Study tabs before starting again. Recovery requires restoring a
+backup containing that history; resetting estimates cannot recreate it.
+
 ## Reset the Quiz Library and results
+
+This also removes factual Study sessions/responses, legacy Study responses and
+learning evidence. Certification/training records and saved plans remain, though
+removed quiz targets become unavailable.
 
 **Reset Quiz Library & Results** removes the published quiz collection and its
 related records: questions and choices, generated quiz page data and assets,
@@ -227,7 +286,7 @@ DLMS creates a safety backup before clearing the source content.
 custom background, then recreates current defaults. This resets:
 
 - the theme, Dashboard title, and background;
-- optional subject-navigation visibility;
+- independent dashboard/sidebar visibility, certification feature/count/order preferences;
 - Parsing options;
 - External AI helper, provider, URL, and prompt-template settings;
 - the Application Lifecycle preference; and
@@ -245,6 +304,8 @@ DLMS creates a safety backup first. Prefer an individual settings page when
 you only want to change one category.
 
 ## Reset DLMS to a fresh state
+
+This includes certifications, training, documents, renewal history, plans and marks.
 
 **Reset DLMS to Fresh State** removes essentially all active user and runtime
 data, including quizzes and generated pages, database records and History,
@@ -339,3 +400,36 @@ When you are unsure what to do:
 
 See [Troubleshooting](18-troubleshooting.md) for symptom-based guidance before
 using a destructive tool.
+
+## Administrator notes: storage and isolation
+
+Backup creation uses an exclusive temporary file and atomic, non-replacing
+hard-link publication. Same-second and simultaneous successful requests produce
+distinct snapshots; existing backups are never replaced. The backup filesystem
+must support hard links. An unsupported filesystem fails safely: retain earlier
+backups and use a supported writable location rather than bypassing validation.
+See [release verification](../RELEASE_VERIFICATION.md) for platform acceptance.
+
+For disposable recovery checks, the supported `QUIZAPP_DATA_DIR` environment
+variable selects an absolute dedicated data root. Set it **before launching**;
+use separate HOME/XDG config/cache paths and verify the application bind. The
+supported launch options include `--host 127.0.0.1` and `--no-browser`; DLMS uses
+port 9001, not a supported `--port` override. Do not point a test at a normal
+profile or start it on an occupied production port. This is administrator guidance,
+not a request to change working settings.
+
+Restore rejects unexpected SQLite executable schema before migration writes,
+as well as unsafe archive paths, resource limits and incompatible data. Never
+strip a rejected trigger or manually install a rejected database. Preserve the
+original backup and follow the reported validation/recovery state. This check is
+not authentication of a backup or protection from every database-engine flaw.
+
+Scoped resets have a safety backup, but do not promise automatic rollback if the
+reset itself partially fails. Keep the backup and inspect the stated outcome
+before retrying. **Clear Saved Results** and **Remove All DLMS Data & Shut Down**
+have no automatic backup. The latter deletes backups inside the data root.
+
+A failed scoped reset may have applied some changes before an error. A safety
+backup is a recovery point, not a promise of automatic rollback. Preserve the
+message and recovery files and use the supported restore flow only after checking
+which workspace is active.

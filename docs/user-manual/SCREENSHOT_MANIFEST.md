@@ -90,3 +90,43 @@ refresh while reviewing one UI area:
 
 The complete command should be used before accepting a refreshed set so the
 metadata sidecar accounts for all 27 IDs.
+
+## 3.3.0 refresh (current instructional assets)
+
+The UM-01–UM-27 table above is the historical 3.2.0 capture set. The current
+refresh documents application commit `57d536f9bb20f91e8b275555e8bbfad6f0d6e83d`
+and documentation edits only. Source runs use Fedora 44, Firefox 157.0,
+disposable profiles and synthetic quiz/certification/course records. No production
+service, owner profile, credential identifiers or uploaded owner evidence is used.
+
+Current assets are shared with in-app Help in `static/help_assets/`; chapters
+reference those files rather than maintaining duplicate image copies. Help links
+open the existing keyboard-accessible enlargement viewer. Markdown viewers can
+open the linked/source image at its original size. Written steps remain complete.
+
+| Current asset | Route / teaching state | Capture evidence |
+| --- | --- | --- |
+| `dashboard.webp` | Dashboard: primary plan, separate browser Resume entries, sequence and histories | `test_dashboard_generated_resume_identity_and_sequence` |
+| `study-history-row.webp`, `study-history-expanded.webp` | Compact and expanded saved Study sessions, wrong-first correction and local timestamps | `test_compact_study_history_pagination_and_recovery` |
+| `history.webp` | Exam History with Study History access and an explicitly ambiguous timestamp | Documentation safety/navigation check; crop ends after results panel |
+| `learning-profile-current.webp` | Learning Profile with limited-evidence state and distinct study destinations | Documentation safety/navigation check |
+| `exam-plan-setup.webp`, `exam-plan-availability.webp`, `exam-plan-selection.webp`, `exam-plan-dashboard.webp` | Real plan setup, Study days, selection and primary study action | `test_exam_plan_setup_dashboard_practice_and_help` |
+| `settings-appearance-theme.webp`, `settings-appearance-save.webp`, `sidebar-theme-selector.webp`, `settings-layout-study-areas.webp`, `settings-layout-restore.webp` | 26-choice selector, separate Save, independent IT/Law choices, scoped Restore | `test_help_screenshot_capture_controls` |
+| `certifications-form.webp`, `certifications-goal.webp`, `certifications-use.webp`, `certifications-ai.webp`, `certifications-display.webp` | Independent files, short goal, explicit selected links, manual AI handoff and Settings count/sort | `test_certification_guided_nine_credentials` |
+| `certifications-training.webp`, `certifications-training-library.webp` | Add training and reusable library showing exact 9 h 22 min plus distinct older 9 h credit association | Simple training and guided nine-credential checks |
+| `certifications-cycle.webp` | Three independently labeled dates and explicitly unclassified old date | `test_certification_deadline_dates` |
+| `settings-backup.webp`, `settings-reset_remove.webp` | Current backup controls and eight destructive scopes/warnings | Documentation safety/navigation check; reset crop excludes the machine-specific path and final removal control |
+
+All published crops are actual unmodified UI regions, without compositing or
+invented controls. Cropping excludes irrelevant margins and machine-specific
+paths. Sample dates, counts and IDs are illustrative data, not defaults or proof
+of certification ownership. Reset/removal controls were never executed to obtain
+these images. Per-asset dimensions/hashes and commands are retained in the task
+report; refresh instructions are in [Help screenshot maintenance](../help-screenshots.md).
+
+Representative desktop/narrow Light, Dark and Ethereal application/Help images
+are retained under `/home/drak/.cache/dlms-documentation-20261009-rjfygunb/screenshots`.
+The same directory contains local Markdown reading-preview captures; these are
+QA artifacts, not a configured canonical PDF/export pipeline. Older materially
+unchanged UM images remain dated by the original table. The obsolete review-options
+illustration and old mastery explanation were removed from the current chapters.

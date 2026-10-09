@@ -125,9 +125,9 @@ when lineage is available. They are not automatically deleted. See
 
 ## H
 
-### History
+### Exam History
 
-The area containing saved completed attempts, results, missed questions, and
+The area containing saved scored attempts, clearly labeled legacy Study results, missed questions, and
 attempt review. History is persistent server data; a browser-local Resume
 checkpoint is not History. See
 [History, Results, and Progress](09-history-results-and-progress.md).
@@ -358,12 +358,12 @@ A label indicating that an unfinished Resume checkpoint belongs only to the
 current browser profile or device. Server-derived due counts and completed
 history remain shared by clients of the same DLMS instance.
 
-### Today’s Review
+### Study next
 
 The Dashboard's concise daily action plan and the recommended answer to “What
 should I study right now?” It combines links to existing recommendations and
 unfinished work rather than acting as one new review algorithm. See
-[Study and Review](07-study-and-review.md#start-with-todays-review).
+[Study and Review](07-study-and-review.md#start-with-study-next).
 
 ### Topic Retention Schedule
 
@@ -390,3 +390,28 @@ Its membership can differ between clients connected to the same DLMS server.
 A concept with enough recorded evidence whose current learning measures meet
 DLMS's weak-area criteria. A concept with too little evidence is not labeled
 weak merely because few answers exist.
+
+## Additional planning and history terms
+
+### Study History and Finish Review
+
+Study History keeps durable partial and finished sessions. Finish Review confirms
+saved coverage of the session’s question set, not mastery or a passing score.
+See [Taking Quizzes](06-taking-quizzes.md).
+
+### Exam Plans
+
+Optional quiz-preparation plans with study days, saved calendar timezone and
+estimated workload. See [Exam Plans](exam-plans.md).
+
+### Planning deadline, Renewal deadline and Expires
+
+A personal target, a separately recorded renewal due date and certificate
+expiration respectively. They are independent date-only values. Old unclassified
+dates remain preserved without guessing. See [certification dates](certifications-and-training.md#dates-and-goals).
+
+### Training library
+
+A reusable record of actual learning time. Linking it to a credential records
+separate estimated/submitted/accepted contribution values; multiple links do not
+add extra learning hours. See [certifications and training](certifications-and-training.md).

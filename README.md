@@ -7,10 +7,13 @@ own learning material.**
 
 **Latest published release: DLMS 3.2.2** · [Download packaged releases](../../releases)
 
-This branch contains the optional Ethereal theme for 3.3.0. See the
+This branch includes durable Study history, optional Exam Plans, earned-certification
+and training records, and 26 manually selected themes for 3.3.0. See the
 [draft release notes](docs/releases/3.3.0.md) and
 [release review checklist](docs/releases/3.3.0-RELEASE-CHECKLIST.md).
-3.3.0 packages have not been built or accepted.
+The owner accepted the Ubuntu 24.04 3.3.0 package from commit
+`57d536f9bb20f91e8b275555e8bbfad6f0d6e83d`. That checkpoint does not establish
+Windows, macOS or other native-platform acceptance, or public publication.
 
 DLMS 3.2.2 is published. Native package and Linux AppImage release acceptance
 is complete. The [Releases page](../../releases) is authoritative for downloads.
@@ -82,8 +85,10 @@ Learning Intelligence, Packs, Anki, backups, and everyday workflows.
 - Choose **Study Mode** for immediate feedback and explanations, or **Exam
   Mode** for a timed, test-like attempt.
 - Resume eligible in-progress Study or Exam sessions after an interruption.
-- Review saved attempts, missed questions, scores, pass rates, trends, and
-  confidence information through **History** and **Analytics**.
+- Browse durable **Study History** separately from **Exam History** and its
+  clearly labeled legacy Study results. Analytics summarizes saved results.
+- Use optional **Exam Plans** for explainable daily targets within your selected
+  study days and estimated time budget; Study next keeps other review options available.
 - Attach reusable **concepts** to questions so Learning Intelligence can show
   topic accuracy, evidence, mastery, and weak areas.
 - Generate **Smart Review** sets from weak concepts and **Spaced Review** sets
@@ -103,6 +108,15 @@ Learning Intelligence, Packs, Anki, backups, and everyday workflows.
 - Create portable backups, validate them before restore, and preserve a safety
   backup while applying a restore.
 
+### Record earned certifications and training
+
+- Keep earned, expired and non-expiring credentials from any issuer, with
+  independent badge artwork and official certificate evidence.
+- Log exact learning hours/minutes and choose which credentials a course may
+  support. Estimated, submitted and user-recorded accepted credit stay distinct.
+- Keep personal planning deadlines, recorded renewal deadlines and expiration
+  separate. Optional AI matching remains a reviewed copy-and-manual-paste workflow.
+
 ### Continue outside DLMS
 
 - Build custom Anki decks from selected quiz questions, missed questions, and
@@ -112,8 +126,9 @@ Learning Intelligence, Packs, Anki, backups, and everyday workflows.
 
 ### Personal, accessible desktop experience
 
-- Choose Light, Dark, Purple & Gold, Maroon & Gold, or Ethereal themes and customize the
-  visible study-area navigation.
+- Choose from **26 manual themes**, including the existing adapted Ethereal,
+  using the sidebar selector or Appearance settings. No Omarchy installation is needed.
+- Choose dashboard and sidebar visibility independently in **Layout & navigation**.
 - Use semantic controls, visible focus states, keyboard-operable quiz choices,
   and touch/keyboard alternatives for matching activities.
 - Keep all active data in the current user's application-data directory, with
@@ -382,8 +397,7 @@ a separately assembled source ZIP.
 ## Project status
 
 This source targets DLMS 3.3.0 for release review; it is not a published release.
-The latest published release is 3.2.2. Ethereal and its presentation refinements
-are available in this development source and are not included in those published
-packages. Source tests alone do not establish native-package readiness. The
+The latest published release is 3.2.2. The owner-accepted Ubuntu 24.04 checkpoint
+above is separate from public release and cross-platform acceptance. Source tests alone do not establish native-package readiness. The
 [release review checklist](docs/releases/3.3.0-RELEASE-CHECKLIST.md) records the
 remaining gates; the Releases page remains authoritative for downloads.

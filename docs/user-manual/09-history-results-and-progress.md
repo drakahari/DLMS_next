@@ -1,15 +1,31 @@
 # 9. History, Results, and Progress
 
 DLMS records a completed **Exam Mode** submission as an **attempt** after the
-result has been successfully saved. **History** lets you find those attempts,
+result has been successfully saved. **Exam History** lets you find those attempts,
 compare their scores, and inspect the questions missed on a particular Exam.
 **Analytics** summarizes the same saved attempts by quiz.
 
-Study Mode records a different kind of progress. Its successfully saved answers
-can contribute to Learning Intelligence and review schedules, but they do not
-create a completed attempt row in History. This distinction lets Study Mode
-remain an ongoing learning activity while Exam Mode produces a durable,
-test-like result.
+Study Mode saves durable sessions and ordered responses in **Study History**. Finish Review adds acknowledged completion, not a scored Exam attempt. **Exam History** also retains older saved Study results, explicitly labeled **Study — legacy saved result**. Their presence is not proof of a modern finished review.
+
+## Browse Study History
+
+Open the Dashboard's **Study History** shortcut, or its link from Exam History.
+Compact session rows show the quiz, browser-local saved time, full-quiz or focused
+scope, finished/unfinished state and reviewed count. Expand a row for first
+outcomes, corrections, observable assistance and recovery details. Individual
+sessions stay separate even when their titles match. Missing-save indicators
+remain visible; an old gap is not silently repaired.
+
+Older saved responses have their own collapsed, independently paginated section.
+No sessions on this page is different from no sessions anywhere. These old
+responses do not prove completion or historical assistance. Known timestamp
+instants use your browser timezone; ambiguous legacy times remain labeled rather
+than guessed. Date-only certification and plan-calendar dates do not shift zones.
+
+![Sample compact Study History with independently expandable sessions](../../static/help_assets/study-history-expanded.webp)
+
+*Opening a row does not change history. Resetting learning estimates and deleting
+Study history are separate actions; see [maintenance](17-maintenance-backup-and-data-management.md).*
 
 ## What is saved after a quiz
 
@@ -21,8 +37,7 @@ the Learning Profile, and later recommendations. Repeated interactions with one
 question in the same Study session are handled conservatively so they do not
 inflate concept evidence.
 
-Finishing Study Mode does not create a scored History attempt. You can see its
-effect in the learning and review views instead. If a response save fails, use
+Finish Review saves completion in Study History after full acknowledged coverage. Incorrect or assisted responses count as reviewed; independent success is separate. It does not create a scored Exam History attempt. If a response save fails, use
 the visible **Retry** action; unsaved activity cannot contribute to those shared
 views yet.
 
@@ -47,7 +62,7 @@ attempt so a visible score is not mistaken for a successfully recorded result.
 
 ## Browse History
 
-Open **History** from the primary navigation. Summary cards show the total
+Open **Exam History** from the primary navigation, or the independent Dashboard card. Summary cards show the total
 number of saved attempts, their average score, and the best score in the
 current origin view.
 
@@ -65,11 +80,9 @@ source area. These filters do not delete or alter anything. If the result set
 spans several pages, use **Previous** and **Next**; the summary continues to
 describe the selected origin, not just the rows on the current page.
 
-![History page showing completed quiz attempts, score filters, dates, modes, and Review actions](images/UM-14-history.png)
+![Current Exam History with a separate Study History link, saved score and explicit timezone-unknown date](../../static/help_assets/history.webp)
 
-The Dashboard’s recent activity list also links to recently saved attempts. If
-you arrive at History with one attempt selected, DLMS highlights and scrolls to
-that row when it is available on the loaded page.
+The Dashboard shows **Latest Exam completed**, with a score and **Review attempt**, when a saved Exam has a reliable completion time. The former three-row saved-attempt list is no longer on the Dashboard. Undated results remain accessible in Exam History. If you arrive with one attempt selected, DLMS highlights its row when available.
 
 ## Review one completed attempt
 
@@ -159,7 +172,7 @@ Successfully saved activity becomes input to other DLMS views:
   Questions schedule.
 - Misses, concept status, and recency can affect Adaptive Study selection.
 - Topic evidence and elapsed time can affect the Topic Retention Schedule.
-- Today’s Review can change after refresh because the underlying due and
+- Study next can change after refresh because the underlying due and
   learning state has changed.
 
 Generated practice remains connected to its source material. Completing an
@@ -196,15 +209,13 @@ they do not prove long-term retention by themselves.
 When a score is lower than expected, use the missed-question review to inspect
 the actual mistakes. Then use Learning Intelligence if you want to see whether
 the same concepts show a broader pattern across Study and Exam activity. When
-you simply want DLMS to recommend the next action, return to Today’s Review.
+you simply want DLMS to recommend the next action, return to Study next.
 
 ## Common questions
 
 ### Why is a Study session not listed in History?
 
-History lists saved Exam attempts. Study Mode saves question-level learning
-evidence for feedback, scheduling, and Learning Intelligence instead of
-creating a scored attempt row.
+Open **Study History** for durable Study sessions. **Exam History** keeps saved Exam attempts and clearly labeled legacy Study results. Ordinary current Study responses do not create scored attempts.
 
 ### Why did Learning Intelligence change after I finished a quiz?
 

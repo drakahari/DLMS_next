@@ -9,7 +9,8 @@ RELEASE REVIEW STATUS
 
 This support document targets DLMS 3.3.0, currently in development. The latest
 published release is 3.2.2. The names below describe planned 3.3.0 packages;
-this document does not establish that those packages have passed acceptance.
+the owner accepted the Ubuntu 24.04 package at commit 57d536f9bb20. This does
+not establish acceptance of the other native targets or public publication.
 
 CHOOSE THE PACKAGE FOR YOUR SYSTEM
 
@@ -101,3 +102,24 @@ new computer or performing a reset.
 
 For full usage, troubleshooting, backup, and import guidance, open the Help
 Center inside DLMS.
+
+CURRENT WORKFLOWS
+
+Study History contains durable Study sessions; Exam History also keeps clearly
+labeled legacy Study results. Finish Review requires saved coverage, not correct
+answers. Keep a pending-save tab and its recovery record until saves succeed.
+
+Use Settings > Layout & navigation for independent dashboard/sidebar choices,
+certification feature visibility and card counts. Choose any of 26 manual themes
+in the sidebar or Appearance settings. Omarchy is not required.
+
+My Certifications records earned achievements and reusable training. Learning
+time, estimated credit and user-recorded accepted credit are different. AI
+matching copies only reviewed material for manual paste; it does not renew records.
+
+Restore replaces the workspace with the backup, losing subsequent changes.
+Schema 10 cannot be rolled back by replacing the binary. Keep a verified
+pre-upgrade backup and the compatible older application in a separate profile.
+Clear Saved Results and permanent data removal have no automatic safety backup.
+Permanent removal deletes backups inside the data folder, not the executable.
+See Help > System Tools & Data Management before destructive actions.

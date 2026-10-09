@@ -84,8 +84,8 @@ generated quiz remains in the library until you choose to manage it; DLMS does
 not automatically remove it after an attempt.
 
 If recent Study Pack activity is useful to the daily plan, it may also appear
-in **Today’s Review**. See
-[Study and Review](07-study-and-review.md#start-with-todays-review) for the daily planning
+in **Study next**. See
+[Study and Review](07-study-and-review.md#start-with-study-next) for the daily planning
 workflow.
 
 ## Import a Content Pack ZIP

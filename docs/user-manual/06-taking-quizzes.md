@@ -67,8 +67,7 @@ the instructions and presented labels define the current attempt.
 A choice or matching question can include a supporting image above its answer
 controls. A **hotspot question** instead asks you to select a particular region
 of the image. Point to the requested structure and activate the image. Keyboard
-users can focus the image and use Enter or Space through the supported hotspot
-control.
+users can focus the image, position the crosshair with arrow keys (Shift gives a larger step), and submit that selected position with Enter or Space. Keyboard use does not supply a correct target or count as assistance.
 
 In Study Mode, hotspot feedback reports whether the selected region is correct
 and can show available explanation or source-verification detail. In Exam Mode,
@@ -76,53 +75,56 @@ the location is retained for final grading without immediate correctness.
 
 ## Use Study Mode for guided learning
 
-Study Mode is untimed. The timer, pause control, and Submit Exam action are not
-part of this mode.
+A saved Study session keeps ordered responses, the first graded outcome, later
+corrections and observable assistance separately. Select an answer, read feedback
+and correct mistakes as needed. Correcting an answer does not erase the first miss.
+Incomplete multiple-answer or matching selections are not automatically graded as
+a wrong first answer. Feedback exposed before a later answer can mean independent
+success is not established. DLMS does not assume an external AI answer was read.
 
-For a choice question, selecting an answer immediately distinguishes a correct
-or incorrect response without relying only on color. A fully correct response
-can also show the saved explanation and a safe source link when those details
-exist. Matching and hotspot questions provide their corresponding per-item or
-location feedback.
+Watch save notices: an answer is durable only after acknowledgement. **Retry**
+resends the same pending response identity; it must not create duplicate credit.
+Do not close a tab with failed saves or clear its browser recovery data. A known
+expired security token can be renewed automatically once while preserving the
+request. Other failures still need the displayed recovery action.
 
-Use Previous and Next to revisit the set. Your last selection for each question
-is kept in the current session. A question is considered complete for recovery
-purposes only when it has a sufficient response: one selection for a
-single-answer question, the expected number of selections for a multi-select
-question, every required matching target filled, or a hotspot location chosen.
+### Finish a full or focused review
 
-### Saving Study Mode progress
+1. Give a complete response for every question in this session.
+2. Resolve any pending or failed saves.
+3. Select **Finish Review** and wait for **Review completed**.
 
-Study Mode sends answer activity to DLMS as question-level learning evidence.
-That evidence can later support concept intelligence, scheduling, and
-recommendations. You do not need to manage a separate save file.
+Complete wrong or assisted answers count as reviewed; correctness is not required
+to finish. Coverage alone is not completion. A full review covers that regular
+quiz's current question set; a generated focused session covers only its selected
+set and cannot finish a whole source quiz. First outcomes and assistance remain
+available in Study History after completion.
 
-If a response cannot be saved, the quiz remains usable and displays **Learning
-progress was not saved** with a **Retry** action. DLMS retains the unsaved
-response in the browser checkpoint rather than declaring the session safely
-complete. Retry while the DLMS process or server is reachable.
+For example, if you answer a question wrong and then correct it, both responses
+remain saved. You can leave and resume later. The original difficulty still helps
+prioritize practice; merely returning tomorrow does not prove it is due. New
+independent Study successes advance a spaced interval only when the **previous
+interval has elapsed**, not with immediate retries or new sessions. The existing
+schedule uses 1, 3, 7, 14 and 30 days; correcting a miss is not a new independent win.
 
-Once every question has a complete response and all pending response saves are
-acknowledged, DLMS clears the completed recovery checkpoint. Merely arriving at
-the final question does not count as completion.
+![Actual sample Study History row with reviewed count and explicit review state](../../static/help_assets/study-history-row.webp)
 
-### Optional learning actions
+*Reviewed, correct independently and finished are different facts.*
 
-Study Mode shows **Question Tools** below Previous and Next. **Mark for review**
-supports every question type. **Review with AI** copies an AI-ready prompt and
-opens the configured provider workflow. **Copy Question** copies the same
-AI-ready prompt to your clipboard, keeps you on the quiz page, and lets you
-paste it into any AI conversation you choose. The prompt can include the
-question, answer choices, available answer or correctness context, and visible
-explanation text, depending on the current question state. Clicking
-**Copy Question** does not send the prompt to an AI provider. **Review with AI**
-and **Copy Question** are unavailable for matching and hotspot questions and
-are hidden in Exam Mode. **Mark for review** adds the current question to a
-durable list in **Marked questions**. Export supported text choice questions to
-Anki or start focused practice independently; neither action removes marks. The External AI and Anki chapters explain these
-optional workflows.
+### Question Tools and marks
 
-![Study Mode showing an incorrect answer, navigation, and Question Tools](../../static/help_assets/quiz_study_mode_incorrect.webp)
+**Mark for review** saves an intention to revisit. Open **Marked questions** for
+this quiz or all marked quizzes, select questions, and independently use **Start
+focused quiz** or **Export to Anki**. Neither clears marks. Practice supports text
+choice/matching; Anki supports text choice. Image/hotspot marks remain available
+for direct review. Read included/excluded counts before acting; edited, missing
+or Learning Scope-excluded sources are not silently substituted.
+
+Use **Select all on this page** or **Deselect all** with the displayed scope.
+Deselecting checkboxes does not remove saved marks; **Unmark selected questions**
+is a separate confirmed action. Larger selections are not silently truncated.
+See [Anki](14-anki-decks-and-printable-cards.md) and
+[External AI](12-external-ai-workflows.md) for optional handoffs.
 
 ## Use Exam Mode for a test-like attempt
 
@@ -167,20 +169,32 @@ Resume action marked **This browser**. That label is important: an interrupted
 checkpoint belongs to the browser profile where it was created, not to every
 device connected to the same DLMS server.
 
-To abandon a saved session without removing the quiz, use the Dashboard card's
-**Remove from Today’s Review** action. See [unfinished cards](07-study-and-review.md#understand-unfinished-cards)
-for confirmation and pending-save protection.
+To clear a browser checkpoint without removing the quiz, open **Manage browser
+resume point → Clear browser resume point** on its Dashboard card and read the
+confirmation. Pending or failed saves retain recovery priority; do not discard
+them. Clearing a checkpoint does not delete durable Study history or finish a review.
 
 DLMS validates a checkpoint against the current playable quiz. A checkpoint
 that has expired, is malformed, or no longer matches an edited quiz is not
 silently applied to incompatible content.
 
-Finishing every Study Mode response and saving all of its learning activity
-clears that completed checkpoint. Exam Mode clears its checkpoint only after
+Study Mode clears a completed checkpoint only after **Finish Review** is
+acknowledged. Saving every response alone does not finish it. Exam Mode clears its checkpoint only after
 the final attempt is successfully persisted. If you leave on an unanswered
 final question or a save fails, recovery remains available.
 
 ![Interrupted quiz recovery panel showing Resume and Start Over for a saved Exam Mode checkpoint](images/UM-09-quiz-recovery.png)
+
+### Durable resume and another browser
+
+A supported current quiz can also resume acknowledged partial Study progress
+from DLMS. This differs from a browser checkpoint, which can include unsaved
+responses and an Exam in progress. Resolve the browser's pending saves first.
+Competing Study tabs have ownership/takeover checks; a stale tab cannot overwrite
+newer acknowledged work. Review the conflict message instead of starting over.
+Changed questions can reject a stale page. Older unsupported self-contained quiz
+pages explicitly require owner-controlled regeneration; they must not appear to
+save the new tracking successfully. See [safe recovery](18-troubleshooting.md).
 
 ## Understand shared and browser-local state
 
@@ -212,10 +226,10 @@ pairs, an explanation, or hotspot feedback.
 
 Saved Study Mode answers and completed attempts also contribute to broader
 progress and recommendation features. The next chapters explain how to use
-Today’s Review, missed-question review, Due Questions, Topic Retention
+Study next, missed-question review, Due Questions, Topic Retention
 Schedule, and Learning Intelligence without confusing their different roles.
 When you are simply deciding what to study now, return to the Dashboard and
-start with **Today’s Review**.
+start with **Study next**.
 
 ## If a quiz does not proceed normally
 

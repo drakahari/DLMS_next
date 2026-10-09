@@ -12,7 +12,9 @@ other DLMS data stay in your user account's application-data directory unless
 you deliberately export or share them.
 
 This manual documents the DLMS 3.3.0 development target. The latest published
-release remains 3.2.2; Ethereal is available in the development source.
+release remains 3.2.2. The owner accepted the Ubuntu 24.04 package at the
+checkpoint recorded in the [manual coverage notes](UPDATE-COVERAGE-3.3.0.md);
+other platform acceptance is separate.
 It is written for people using the application; native-build and release-engineering procedures remain in the
 repository's maintainer documentation.
 
@@ -84,7 +86,7 @@ weak area or launch focused practice. Generated practice keeps a relationship
 to its source questions, so answering a review copy can contribute learning
 evidence without turning that copy into a new independent source question.
 
-When you are unsure what to study, begin with **Today’s Review** on the
+When you are unsure what to study, begin with **Study next** on the
 Dashboard. It brings the most useful current actions into one short plan. More
 specialized choices—including Adaptive Study, Smart Review, Concept Review,
 Due Questions, Topic Retention Schedule, and missed-question review—remain
@@ -104,6 +106,14 @@ Content Packs carry reusable study content. A full DLMS backup protects the
 broader persistent workspace, including user-specific data that should not be
 included in a quiz bundle. The portability and data-management chapters explain
 these boundaries before you choose a format.
+
+### Optional plans and earned credentials
+
+[Exam Plans](exam-plans.md) organize quiz preparation using selected folders,
+study days and an estimated budget. They do not predict a passing result.
+[My Certifications and Training library](certifications-and-training.md) keep
+earned achievements, documents and approximate renewal goals separate from quiz
+learning. Any issuer can be recorded; unknown requirements remain unknown.
 
 ### Optional external AI assistance
 
@@ -153,7 +163,7 @@ If you are new to DLMS:
    Quiz**.
 4. Open that quiz in **Study Mode** and answer a few questions.
 5. Return to the Dashboard. When you later have enough saved activity to make
-   recommendations useful, use **Today’s Review** as the default answer to
+   recommendations useful, use **Study next** as the default answer to
    “What should I study right now?”
 6. Create a backup before moving installations, performing a reset, or making a
    significant upgrade.

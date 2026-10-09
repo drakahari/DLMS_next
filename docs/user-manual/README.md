@@ -1,10 +1,14 @@
 # DLMS User Manual
 
-The canonical user guide for **DLMS 3.3.0 development source** covers installation, importing your
+The canonical user guide for **DLMS 3.3.0** covers installation, importing your
 material, studying, timed assessments, learning-guided review, and keeping your
 data portable. Start with [Introduction](01-introduction.md), then
 [Installation and First Launch](02-installation-and-first-launch.md), or choose
 a workflow below. For a quick tour, [watch the DLMS 3.2 overview](https://www.youtube.com/watch?v=nrUz3umt8vk).
+
+New 3.3.0 workflow images use disposable sample data. Retained **UM-xx** images
+are dated 3.2.0 captures of materially unchanged workflows; follow the current
+written labels where wording differs. The screenshot manifest records both sets.
 
 Markdown is the editable source of truth. A PDF may later be generated as an
 optional distribution artifact; it is not required to maintain or use the
@@ -36,6 +40,14 @@ canonical manual and must not replace these files.
 - [Appendix: Keyboard and Accessibility](appendix-keyboard-and-accessibility.md)
 - [Appendix: Glossary](appendix-glossary.md)
 
+## Start with a task
+
+1. [Create or import a quiz](04-creating-and-importing-content.md), then [study and finish a review](06-taking-quizzes.md).
+2. [Find Study sessions or Exam results](09-history-results-and-progress.md).
+3. [Create an optional Exam Plan](exam-plans.md) when preparing for an exam.
+4. [Record earned certifications and training](certifications-and-training.md) when planning renewals.
+5. [Back up your workspace](17-maintenance-backup-and-data-management.md) before upgrades or destructive actions.
+
 ## Maintainer reference
 
 - [Focused documentation video series](../demo-video/series/README.md) — six approved
@@ -45,6 +57,7 @@ canonical manual and must not replace these files.
 The following records support documentation maintenance; the chapters above are
 the reader's entry point.
 
+- [3.3.0 change-to-documentation checklist](UPDATE-COVERAGE-3.3.0.md) — current coverage and verification sources.
 - [Feature inventory](FEATURE_INVENTORY.md) — code-verified workflows, limits,
   dependencies, and historical audit findings.
 - [Terminology](TERMINOLOGY.md) — user-facing vocabulary and distinctions.
@@ -93,7 +106,7 @@ instructions and supporting screenshots where useful.
    safe quiz management.
 6. **[Taking Quizzes](06-taking-quizzes.md)** — Study Mode, Exam Mode, choice/multi-select, matching,
    images/hotspots, results, recovery, and the browser-local checkpoint model.
-7. **[Study and Review](07-study-and-review.md)** — Today’s Review as the
+7. **[Study and Review](07-study-and-review.md)** — Study next as the
    default starting point, Due Questions, Adaptive Study, Smart Review,
    Concept Review, Topic Retention Schedule, and missed-question review.
 8. **[Learning Intelligence](08-learning-intelligence.md)** — Learning

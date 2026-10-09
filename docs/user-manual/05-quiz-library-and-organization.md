@@ -169,7 +169,7 @@ browser-local Resume card; that checkpoint is separate from the completed
 Library status.
 
 The later study-and-review chapter explains when to choose each generator. If
-you simply want DLMS's current recommendation, start with **Today’s Review** on
+you simply want DLMS's current recommendation, start with **Study next** on
 the Dashboard rather than choosing among all of them in the Library.
 
 ## Keep Mixed Quizzes distinct

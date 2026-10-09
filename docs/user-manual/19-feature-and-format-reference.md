@@ -76,7 +76,8 @@ They protect a local application from unexpectedly large or malformed input.
 | External AI matching request | 2–100 pairs. Pasted structured response up to 1 MiB. |
 | Portable Quiz Bundle import | Archive up to 128 MiB; up to 100 quizzes and 10,000 questions in total. DLMS also enforces per-file, expanded-size, media, and archive-safety limits. |
 | Content Pack import | Archive up to 256 MiB. DLMS also validates its expanded size, entries, paths, and supported content. |
-| Backup restore upload | Backup ZIP up to 1 GiB. |
+| Backup restore upload | ZIP up to 1 GiB; expanded content up to 2 GiB, 768 MiB per file, 20,000 entries and compression-ratio protections. |
+| Certification evidence | PNG, JPEG, WebP or PDF, up to 10 MiB per file; additional decoded-image/PDF/resource validation applies. HTML and SVG are rejected. |
 | Image Study uploads | Up to 12 PNG, JPEG/JPG, or WebP images; each image up to 32 MiB and 80 million pixels, with a 16,000-pixel side limit; total staged images up to 192 MiB. |
 | Mixed Quiz | Select at least two source quizzes and at least two questions. |
 
@@ -89,7 +90,7 @@ correct the source material instead.
 
 | Option | Use it when | Selection level | Creates Generated Practice? |
 | --- | --- | --- | --- |
-| Today’s Review | You want one recommended starting point based on current DLMS signals. | A planning surface that links to several existing actions. | No; the action you choose may create it. |
+| Study next | You want one recommended starting point based on current DLMS signals. | A planning surface that links to several existing actions. | No; the action you choose may create it. |
 | Adaptive Study | You want DLMS to choose a balanced personalized session. | Questions across several learning signals and sources. | Yes. |
 | Smart Review | You want broad practice from weak concepts. | Source questions associated with weak concepts. | Yes. |
 | Concept Review | You want to choose one concept and study it directly. | One user-selected concept. | Yes. |
@@ -109,7 +110,9 @@ Practice**:
 - Smart Review practice;
 - Concept Review practice;
 - Due Questions practice;
-- Topic Retention practice.
+- Topic Retention practice;
+- Exam Plan focused practice; and
+- marked-question focused practice.
 
 These saved sessions remain in the library; DLMS does not automatically delete
 them. Active Uncategorized sessions appear in the automatic **Generated
@@ -141,7 +144,7 @@ covered in [Quiz Library and Organization](05-quiz-library-and-organization.md#u
 
 | Information | Where it applies |
 | --- | --- |
-| Quiz content, folders, completed attempts, learning evidence, settings, and schedules | Persisted in the DLMS workspace and visible to clients of the same running installation after refresh. |
+| Quiz content, folders, durable Study sessions, marks, plans, certification/training records and documents, completed attempts, learning evidence, settings, and schedules | Persisted in the DLMS workspace and visible to clients of the same running installation after refresh. |
 | Interrupted-session Resume checkpoint | Stored by the current browser profile and marked **This browser**. It is not synchronized to another client. |
 | Generated Practice quiz | Saved in the Quiz Library until the user manages it; its answers can contribute learning evidence to source questions. |
 | Portable Quiz Bundle | Carries selected content and supported media, not personal scores, attempts, history, or scheduling state. |
@@ -153,7 +156,8 @@ For privacy implications, see [Privacy and Data Handling](appendix-privacy-and-d
 ## Native packages
 
 The latest published release, DLMS 3.2.2, is packaged for these targets.
-The 3.3.0 development target retains this matrix, with native acceptance pending:
+The 3.3.0 development target retains this matrix, with the owner-accepted Ubuntu 24.04 checkpoint recorded in the coverage notes.
+Other native acceptance is not established by this documentation update:
 
 - Fedora 44 x86-64;
 - Ubuntu 24.04 x86-64;

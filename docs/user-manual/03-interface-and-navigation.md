@@ -11,32 +11,36 @@ Learning Intelligence in depth.
 
 ## The Dashboard
 
-The **Dashboard** is the home screen and the best place to reorient yourself.
-It has four main roles:
+Start with **Study next**. It makes one suggested action prominent, with a short
+reason and **Why this suggestion?** for detail. An active Exam Plan can guide
+that action; **More review options** reveals eligible due, concept or Adaptive
+Study alternatives. A request error is not a valid “no suggestions” result.
 
-- **Today’s Review** presents a short, prioritized set of useful next actions.
-- **Quick Access** opens common destinations such as Quiz Library, Build Quiz,
-  Study Packs, History, Analytics, and Settings.
-- **Recent Activity** summarizes the latest saved attempts and links to
-  History.
-- **Overview** shows high-level attempt totals and score summaries.
+**Continue studying** keeps your last regular quiz separate from generated
+practice. A durable Study response establishes that reference; opening a quiz
+alone does not. A confirmed finished review offers **Open current quiz**, not
+Resume. Actual unfinished work can offer **Resume**, while pending or failed
+saves take priority through **Resolve Study saves** or **Finish saving Exam**.
 
-If your immediate question is “What should I study right now?”, start with
-**Today’s Review**. It reuses due-question, concept, adaptive, unfinished, and
-recent Study Pack information; it is not a separate scoring system. A new or
-low-history installation may show introductory actions until DLMS has enough
-saved learning evidence to make more specific recommendations.
+**Your activity** contains **Continue your quiz sequence** and **Latest Exam
+completed**. After acknowledged Finish Review for unchanged regular material,
+the sequence offers the next regular quiz in the same folder's saved Quiz Library
+order. Generated practice never replaces the anchor; already-reviewed quizzes
+are not skipped. It does not jump folders. Opening a link earns no credit.
 
-![Today’s Review dashboard showing Due Questions and an unfinished quiz saved in this browser](images/UM-01-dashboard.png)
+Use the independent **Study History** and **Exam History** shortcuts. **Quick
+tools** keeps optional shortcuts compact. **Results overview** summarizes saved
+Exam and legacy Study scores, not durable Study coverage. No saved results does
+not mean your Study work is missing. **My Certifications** displays earned
+credentials, including expired achievements; exam preparation belongs in Exam Plans.
 
-*Today’s Review combines server-derived study recommendations with Resume
-items marked for this browser.*
+![Sample Focus desk Dashboard with Study next, compact continuation and separate history shortcuts](../../static/help_assets/dashboard.webp)
 
-Today’s Review only introduces the available actions. The review chapter later
-distinguishes Adaptive Study, Smart Review, Concept Review, Due Questions,
-Topic Retention Schedule, and missed-question review. In particular, **Due
-Questions** schedules individual source questions, while **Topic Retention
-Schedule** works at the concept level.
+*Disposable sample data. Open warnings before starting more work; secondary
+review options and historical records remain separate from the main suggestion.*
+
+See [Study and Review](07-study-and-review.md), [Exam Plans](exam-plans.md) and
+[History](09-history-results-and-progress.md) for the different evidence meanings.
 
 ## Use the sidebar
 
@@ -51,7 +55,8 @@ area:
 
 - **Build Quiz** exposes the Quiz Builder and PDF & Image Import paths.
 - **Learning Intelligence** exposes Topic Intelligence, Learning Profile,
-  Review Schedule, and Diagnostics.
+  Review Schedule, Diagnostics and Exam Plans.
+- **My Certifications** includes the reusable Training library when the feature is shown.
 - **Anki Tools** exposes Custom Deck & Printable Cards and Law Study Anki.
 
 The parent destination remains a useful landing page. You do not need to learn
@@ -61,12 +66,12 @@ each submenu before beginning a normal quiz.
 
 | Destination | What you use it for |
 | --- | --- |
-| **Dashboard** | Start with Today’s Review, use Quick Access, and see recent activity and overview figures. |
+| **Dashboard** | Start with Study next, continue saved work, and open separate histories. |
 | **Quiz Library** | Find, open, edit, organize, export, or manage saved quizzes. Library Tools also opens mixed-quiz, duplicate-review, and portable-bundle workflows. |
 | **Build Quiz** | Create material manually or from text, matching data, PDFs, images, OCR, or structured External AI output. |
 | **Study Packs** | Browse installed learner-facing collections and generate their supported study activities. |
 | **IT Study**, **Law Study**, **Medical Study**, and **Other Studies** | Open subject-focused views. These links can be hidden from the sidebar without deleting their content. |
-| **History** | Review saved attempts, results, and missed questions. |
+| **Exam History** | Review saved Exam and clearly labeled legacy Study results. Study History is a separate dashboard shortcut. |
 | **Analytics** | See aggregate attempt summaries and performance patterns. |
 | **Learning Intelligence** | Understand concept-level learning evidence and open targeted review or scheduling tools. |
 | **Anki Tools** | Create `.apkg` decks or printable cards from supported DLMS material. |
@@ -83,38 +88,33 @@ routine step after every update.
 
 ## Customize visible study areas
 
-Open **Settings → Navigation**, or select **Customize navigation** in the
-sidebar, to show or hide IT Study, Law Study, Medical Study, and Other Studies.
-All four are enabled by default on a new configuration.
+Open **Settings → Layout & navigation**. IT, Law and Medical each have independent
+**Show on dashboard** and **Show in sidebar** choices. **Hide from both** changes
+the form; **Save layout & navigation** persists it. Other Studies is sidebar-only.
+Dashboard panels and remaining shortcuts have their own controls on this page.
 
-This changes navigation only. Hiding a study area does not delete or disable
-its quizzes, Study Packs, cases, History, Analytics, or saved direct links. You
-can restore its sidebar entry at any time. Study Packs and Settings remain
-available.
+**Restore dashboard defaults** and **Restore sidebar defaults** apply immediately,
+each to its own mapping. Confirm discarding unsaved edits when prompted. Hiding
+content never deletes it or changes Learning Scope. Settings remains reachable
+when every optional dashboard section is hidden; there is no Dashboard Customize
+link to find. The separate **Show My Certifications** switch also hides that
+feature's sidebar links, including Training library, without deleting its data.
 
-The subject pages contain different material only when the corresponding
-content has been installed or created. A visible destination does not imply
-that its catalog is already populated.
+See [Settings and Runtime](16-settings-and-runtime.md).
 
 ## Choose an appearance
 
-The sidebar’s compact **Theme** selector provides a quick way to switch among:
+Select a theme in the sidebar to apply and save it immediately, or open
+**Settings → Appearance**, choose **Color theme**, then **Save Appearance**.
+The 26 manual choices are grouped as DLMS, Omarchy · Light and Omarchy · Dark.
+The existing adapted Ethereal remains one choice, not an exact copy of every
+upstream detail. Omarchy installation or automatic desktop matching is not needed.
 
-- Dark;
-- Light;
-- Purple & Gold; and
-- Maroon & Gold.
-
-For the full appearance settings, open **Settings → Appearance**. There you can
-also change the Dashboard title and choose a background image. Appearance
-changes presentation only; they do not change quiz content, grading, History,
-or Learning Intelligence.
-
-DLMS pages adapt to narrower content areas. Cards and controls wrap or stack,
-the sidebar moves behind the menu button, and dense tables may provide their
-own horizontal scrolling so important actions remain reachable. If content
-seems unusually cramped, use the page’s own scrolling area rather than reducing
-browser zoom until text becomes difficult to read.
+An already-open tab may need a reload to use a change made elsewhere. Shared-CSS
+quiz pages use the current theme; older self-contained HTML may need an explicit
+owner-controlled rebuild. Theme changes do not change grades or learning evidence.
+For current names/classifications and readability guidance, use the registry-fed
+reference in **Help → Settings → Appearance**.
 
 ## Recognize common interface patterns
 
@@ -177,7 +177,7 @@ larger product model, cross-workflow distinctions, and reference detail.
 
 | If you need to… | Go to… |
 | --- | --- |
-| Decide what to study now | **Dashboard → Today’s Review** |
+| Decide what to study now | **Dashboard → Study next** |
 | Find or open an existing quiz | **Quiz Library** |
 | Create or import study material | **Build Quiz** |
 | Use installed subject collections | **Study Packs** or the relevant visible study area |
@@ -187,7 +187,7 @@ larger product model, cross-workflow distinctions, and reference detail.
 | Review individually scheduled questions | **Learning Intelligence → Review Schedule → Due Questions** |
 | Review concept-level retention timing | **Learning Intelligence → Review Schedule → Topic Retention Schedule** |
 | Export Anki material or printable cards | **Anki Tools** |
-| Change the theme or visible study areas | **Settings → Appearance** or **Settings → Navigation** |
+| Change the theme or visible study areas | **Settings → Appearance** or **Settings → Layout & navigation** |
 | Back up or restore DLMS data | **Settings → Backup & Restore** |
 | Get task-specific guidance | **Help** |
 

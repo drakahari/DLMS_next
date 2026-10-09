@@ -233,3 +233,29 @@ Browser clipboard permission or popup blocking can prevent the convenience
 action. Select and copy the prompt manually, then open the configured provider
 in another tab. For a Local / Custom provider, verify its absolute HTTP or HTTPS
 URL in Settings.
+
+## Certification and training AI matching
+
+Open **My Certifications → Find renewal matches**, select credentials and
+courses, then **Prepare prompt**. All current renewable credentials are initially
+selected; uncheck any unwanted ones. Unknown-status records can be chosen
+explicitly. Review/edit the exact prepared preview before copying.
+
+**Copy & open [selected provider]** uses the same manual copy-and-launch pattern
+as Study **Review with AI**. Paste the copied text yourself. **Copy only** remains
+available. If copying fails, select the preview and copy manually; if nothing
+opens, use the recovery disclosure's **Open AI manually**. Clipboard permission,
+ordinary LAN HTTP and popup blocking can affect the handoff. Copying and opening
+are reported separately; DLMS does not claim every launch failure is detectable.
+
+Only selected relevant credential/rule fields, public course details and exact
+hours/minutes enter prepared context. Private notes, credential IDs, attachments
+and extracted contents are excluded. Anything added manually is your choice.
+No personal prompt text goes in provider URLs and no AI request is sent by DLMS.
+Ask the AI for current official sources, uncertainty and missing information;
+its output never changes credits, dates, renewals or Study evidence.
+
+**Settings → AI Integration** stores the shared provider and independent Study,
+single-certification and portfolio prompt templates. **Save AI settings** persists
+edits; a template's default control edits only its own field. See
+[the certification workflow](certifications-and-training.md#find-renewal-matches).

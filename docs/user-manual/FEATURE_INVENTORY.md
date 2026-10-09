@@ -8,8 +8,11 @@
 
 **Purpose:** Phase 1 end-user manual architecture; not finished user guidance
 
-This inventory describes what a DLMS user can see or do in the current source
-tree. It is organized by user goal rather than by Python module. Route names,
+This historical inventory describes the September 2026 source at the revision
+above. It is retained as evidence of the original manual audit, not as a current
+3.3.0 feature contract. See [the 3.3.0 coverage checklist](UPDATE-COVERAGE-3.3.0.md)
+and current chapters for durable Study sessions, Exam Plans, certifications,
+26 themes, Layout & navigation and changed dashboard/history controls. It is organized by user goal rather than by Python module. Route names,
 services, templates, tests, and current Help are cited only as evidence.
 
 ## Audit method and scope

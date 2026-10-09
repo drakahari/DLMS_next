@@ -1,4 +1,4 @@
-# Refreshing the Appearance and Layout Help screenshots
+# Refreshing instructional Help and manual screenshots
 
 ## Dashboard quiz-sequence refresh
 
@@ -46,12 +46,14 @@ choices. These are sample choices, not changed application defaults.
 
 ## Refresh procedure
 
-Run from the repository root using the project environment and Firefox:
+Run from the repository root using the activated project test environment and Firefox.
+Create the disk-backed output directory under home first:
 
 ```sh
+mkdir -p "$HOME/.cache/dlms-help-refresh"
 DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
-DLMS_HELP_CAPTURE_DIR=/tmp/dlms-help-refresh \
-.venv/bin/python -m pytest -q -p no:cacheprovider \
+DLMS_HELP_CAPTURE_DIR="$HOME/.cache/dlms-help-refresh" \
+python -m pytest -q -p no:cacheprovider \
 tests/browser/test_critical_workflows.py -k help_screenshot_capture_controls
 ```
 
@@ -87,10 +89,10 @@ compositing, inserting controls or changing application markup.
 4. Run documentation tests and the focused Firefox checks:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider \
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider \
 tests/test_help_documentation.py
 DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
-.venv/bin/python -m pytest -q -p no:cacheprovider \
+python -m pytest -q -p no:cacheprovider \
 tests/browser/test_critical_workflows.py \
 -k 'help_instruction_images or help_screenshot_capture or appearance_help or navigation_help'
 ```
@@ -119,7 +121,7 @@ Firefox form and a synthetic CISM plan. Refresh them with:
 ```sh
 DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
 DLMS_EXAM_PLAN_CAPTURE_DIR=/tmp/dlms-exam-plan-refresh \
-.venv/bin/python -m pytest -q -p no:cacheprovider \
+python -m pytest -q -p no:cacheprovider \
 tests/browser/test_critical_workflows.py -k "exam_plan_setup or exam_plan_no_work"
 ```
 
@@ -151,7 +153,7 @@ Baseline: `6327b738c049522ad15ba5ed4be9a85aa19619cc`. Refresh disposable capture
 DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
 DLMS_PRESENTATION_CAPTURE_DIR=/tmp/dlms-history-plan-captures \
 DLMS_EXAM_PLAN_CAPTURE_DIR=/tmp/dlms-history-plan-captures \
-.venv/bin/python -m pytest -q -p no:cacheprovider -m browser \
+python -m pytest -q -p no:cacheprovider -m browser \
 tests/browser/test_critical_workflows.py \
 -k "compact_study_history or plan_selected_breakdown or exam_plan_setup"
 ```
@@ -176,7 +178,7 @@ DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
 DLMS_PREBUILD_CAPTURE_DIR=/tmp/dlms-prebuild-captures \
 DLMS_EXAM_PLAN_CAPTURE_DIR=/tmp/dlms-prebuild-captures \
 DLMS_PRESENTATION_CAPTURE_DIR=/tmp/dlms-prebuild-captures \
-.venv/bin/python -m pytest -q -p no:cacheprovider -m browser \
+python -m pytest -q -p no:cacheprovider -m browser \
 tests/browser/test_critical_workflows.py \
 -k "marked_questions_practice_export_and_compact_changes or exam_plan_setup or exam_plan_no_work or plan_selected_breakdown"
 ```
@@ -272,3 +274,48 @@ that legacy saved Study results prove a completed durable review.
 Keep Help links around images for the existing keyboard-accessible enlargement.
 No separate gallery or synthetic control labels are needed. The normal gates
 validate links and UI behavior; they do not automatically overwrite Help assets.
+
+
+## Current 3.3.0 documentation refresh
+
+Application revision: `57d536f9bb20f91e8b275555e8bbfad6f0d6e83d`; source UI on
+Fedora 44/Firefox 157.0. Documentation-only edits do not alter the controls.
+The [manual screenshot manifest](user-manual/SCREENSHOT_MANIFEST.md#330-refresh-current-instructional-assets)
+lists the current shared assets and their capture tests. Historical provenance
+above remains historical rather than being rewritten as a fresh capture claim.
+
+For a refresh, create a new directory under home, activate the project test
+environment, and supply only the relevant optional capture variable:
+
+```sh
+dlms_doc_evidence_dir="$HOME/.cache/dlms-documentation-refresh"
+mkdir -p "$dlms_doc_evidence_dir"
+DLMS_RUN_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 \
+DLMS_HELP_CAPTURE_DIR="$dlms_doc_evidence_dir" \
+python -m pytest -q -p no:cacheprovider -m browser \
+tests/browser/test_critical_workflows.py::test_help_screenshot_capture_controls \
+tests/browser/test_critical_workflows.py::test_documentation_refresh_help_and_safety_navigation
+```
+
+Other families use `DLMS_SEQUENCE_CAPTURE_DIR`, `DLMS_PRESENTATION_CAPTURE_DIR`,
+`DLMS_EXAM_PLAN_CAPTURE_DIR` or `DLMS_CERTIFICATION_CAPTURE_DIR` with the focused
+tests listed in the manifest. Run sequentially to avoid overlapping heavy browsers.
+Never point fixtures at a normal profile or the production server. Capture tests
+create their own data and ports; they do not require running the owner’s app.
+
+1. Inspect source images at desktop/narrow widths. Use current controls and labels;
+   do not replace screenshots with mockups. No owner data, accounts, tokens or
+   machine-specific paths belong in published images.
+2. Review crops for complete useful controls. Reset & Remove is cropped before its
+   data-path field; written confirmation/removal steps remain authoritative. Do not
+   run a destructive action merely to photograph it.
+3. Copy only reviewed assets. Read actual dimensions, update Help image attributes,
+   captions and alt text, and verify Markdown links. Keep uncropped QA evidence local.
+4. Check native image enlargement with Enter, Tab and Escape. Help lazy-loads
+   images: scroll them into view before asserting that they loaded.
+5. Run the documentation tests and focused Help browser checks. Record source HEAD,
+   environment, fixture, dimensions, hashes and commands in a new report. Preserve
+   failures and terminate only verified task-owned processes.
+
+No canonical manual PDF build is configured. Optional task-local HTML reading
+previews may help QA, but do not represent them as an official exported manual.

@@ -10,7 +10,8 @@ security risk.
 Ordinary local desktop use does not require a DLMS account or sign-in. The DLMS
 process serves its interface to a browser on the same computer and stores the
 persistent workspace in that computer's application-data location. Quizzes,
-folders, settings, completed attempts, learning evidence, schedules, installed
+folders, settings, durable Study sessions, marked questions, Exam Plans,
+certifications, training, documents, completed attempts, learning evidence, schedules, installed
 packs, and related content remain part of that local workspace unless the user
 deliberately exports, backs up, or shares them.
 
@@ -149,3 +150,15 @@ for ordinary data care. Users should:
 
 For backup scope and restoration safety, see
 [Maintenance, Backup, and Data Management](17-maintenance-backup-and-data-management.md).
+
+## Certification and training AI selection
+
+Review the editable preview before Copy & open AI. It includes only the selected
+credential/period and training context; private notes, credential identifiers and
+attachment contents are excluded by default. The provider URL contains no prompt.
+You paste the copied text yourself. An AI answer is guidance, not issuer approval,
+and cannot automatically add credit, renew a credential or change Study evidence.
+
+Backups include certification documents and settings. A backup does not contain
+unsent responses held only in a browser recovery record. Do not delete that record
+or clear browser storage while recovering failed Study saves.
