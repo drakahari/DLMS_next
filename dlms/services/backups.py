@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,7 @@ def backup_display_label(filename):
         r"DLMS-backup-\d{8}-\d{6}-(.+)\.zip", name, flags=re.IGNORECASE
     )
     label = match.group(1) if match else re.sub(r"\.zip$", "", name, flags=re.IGNORECASE)
+    label = re.sub(r"-[0-9a-f]{32}$", "", label, flags=re.IGNORECASE)
     label = re.sub(r"[-_]+", " ", label).strip()
     if not label:
         return "DLMS backup"
@@ -215,9 +217,7 @@ def create_dlms_backup(
     ensure_runtime_data_dirs()
     stamp = now().strftime("%Y%m%d-%H%M%S")
     safe_label = re.sub(r"[^A-Za-z0-9_-]+", "-", str(label or "manual")).strip("-")[:40] or "manual"
-    filename = f"DLMS-backup-{stamp}-{safe_label}.zip"
-    final_path = os.path.join(backup_folder, filename)
-    temp_path = final_path + ".tmp"
+    temp_path = None
 
     inventory = file_inventory()
     total_bytes = sum(os.path.getsize(path) for path, _ in inventory if os.path.isfile(path))
@@ -233,6 +233,8 @@ def create_dlms_backup(
 
     db_temp = None
     try:
+        fd, temp_path = tempfile.mkstemp(prefix=".dlms-backup-", suffix=".zip.tmp", dir=backup_folder)
+        os.close(fd)
         if os.path.isfile(db_path):
             fd, db_temp = tempfile.mkstemp(prefix="dlms-db-snapshot-", suffix=".db")
             os.close(fd)
@@ -274,7 +276,23 @@ def create_dlms_backup(
         if os.path.getsize(temp_path) > restore_upload_max_bytes:
             raise BackupRestoreLimitError("Backup exceeds the restore upload limit")
         validate_restore_archive(temp_path)
-        os.replace(temp_path, final_path)
+        with open(temp_path, "r+b") as handle:
+            os.fsync(handle.fileno())
+        # A hard link publishes complete bytes atomically and refuses to replace
+        # an existing snapshot. Both names are on the same filesystem. If this
+        # filesystem cannot support that guarantee, fail safely rather than
+        # expose a partially copied backup or overwrite an older one.
+        for _ in range(32):
+            filename = f"DLMS-backup-{stamp}-{safe_label}-{uuid.uuid4().hex}.zip"
+            final_path = os.path.join(backup_folder, filename)
+            try:
+                os.link(temp_path, final_path)
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise FileExistsError("Unable to reserve a distinct backup filename")
+        json_files._fsync_json_directory(backup_folder)
         return final_path, manifest
     finally:
         if db_temp and os.path.exists(db_temp):
@@ -282,7 +300,7 @@ def create_dlms_backup(
                 os.remove(db_temp)
             except OSError:
                 pass
-        if os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except OSError:
@@ -470,6 +488,8 @@ def validate_restored_sqlite(
     except sqlite_module.Error as exc:
         raise ValueError(f"{relative_path} is not a readable SQLite database") from exc
     try:
+        from dlms.persistence.schema_programs import validate_schema_programs
+        validate_schema_programs(conn)
         integrity_rows = conn.execute("PRAGMA integrity_check").fetchall()
         if integrity_rows != [("ok",)]:
             detail = str(integrity_rows[0][0]) if integrity_rows else "no result"

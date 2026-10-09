@@ -103,13 +103,10 @@ precise authoring easier. Full instructions are in
 
 ## Themes, contrast, and high-contrast modes
 
-The 3.3.0 development source provides five themes:
-
-- Light;
-- Dark;
-- Purple & Gold;
-- Maroon & Gold;
-- Ethereal.
+DLMS provides **26 manually selectable themes**, grouped as DLMS, Omarchy · Light
+and Omarchy · Dark. The DLMS group includes Light, Dark, Purple & Gold, Maroon & Gold
+and the existing adapted Ethereal. The in-app Appearance Help draws the complete
+reference and light/dark classifications from the theme registry.
 
 Purple & Gold remains the default. Ethereal is optional and does not require
 Omarchy. Its release validation and outstanding accessibility checks are recorded

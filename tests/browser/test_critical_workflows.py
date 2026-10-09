@@ -34,6 +34,21 @@ from tests.browser._help_screenshots import HELP_SCREENSHOTS, capture_help_scree
 ROOT = Path(__file__).resolve().parents[2]
 RUN_BROWSER_TESTS = os.environ.get("DLMS_RUN_BROWSER_TESTS") == "1"
 
+_CAPTURE_ENVIRONMENTS = (
+    'DLMS_CSRF_CAPTURE_DIR', 'DLMS_COMPLETION_CAPTURE_DIR', 'DLMS_STUDY_CAPTURE_DIR',
+    'DLMS_HELP_CAPTURE_DIR', 'DLMS_PRESENTATION_CAPTURE_DIR', 'DLMS_SEQUENCE_CAPTURE_DIR',
+    'DLMS_EXAM_PLAN_CAPTURE_DIR', 'DLMS_PREBUILD_CAPTURE_DIR', 'DLMS_ACTION_CAPTURE_DIR',
+    'DLMS_PLAN_PROFILE_CAPTURE_DIR', 'DLMS_CERTIFICATION_CAPTURE_DIR', 'DLMS_CERT_CONTROL_CAPTURE_DIR',
+    'DLMS_REMEDIATION_CAPTURE_DIR',
+)
+
+
+def _prepare_capture_directories():
+    """Optional screenshots must work in fresh, nested evidence directories."""
+    for name in _CAPTURE_ENVIRONMENTS:
+        if os.environ.get(name):
+            Path(os.environ[name]).mkdir(parents=True, exist_ok=True)
+
 pytestmark = [
     pytest.mark.browser,
     pytest.mark.skipif(
@@ -1457,6 +1472,7 @@ def _terminate_process_tree(process):
 
 @pytest.fixture
 def browser_server(tmp_path_factory):
+    _prepare_capture_directories()
     firefox = shutil.which("firefox") or shutil.which("firefox-esr")
     if not firefox:
         pytest.skip("Firefox is not installed")
@@ -2418,7 +2434,8 @@ def test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browse
         f"form.querySelector('[name=folder]').value = {json.dumps(folder_name)}; "
         "form.requestSubmit(); return true; })()"
     ) is True
-    browser.wait_for(
+    browser.wait_for_page_ready(
+        f"Boolean(({folder_lookup(folder_name)})?.querySelector('[data-id={json.dumps(critical_html)}]')) && "
         f"getComputedStyle({folder_lookup(folder_name)}).display === 'none'"
     )
 
@@ -2495,7 +2512,8 @@ def test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browse
         "folder.querySelector(\"form[action='/set_quiz_folder_hidden']\").requestSubmit(); "
         "return true; })()"
     ) is True
-    browser.wait_for(
+    browser.wait_for_page_ready(
+        f"({folder_lookup(renamed_folder)})?.dataset.folderHidden === 'true' && "
         f"getComputedStyle({folder_lookup(renamed_folder)}).display === 'none'"
     )
 
@@ -5016,8 +5034,12 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack,
     _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     # Create a real backup after choosing the theme, then restore it below.
+    backup_directory = browser_stack.data_root / "backups"
+    existing_backups = set(backup_directory.glob("*.zip"))
     assert browser.evaluate("fetch('/settings/backup/create', {method:'POST'}).then(async response => {await response.arrayBuffer(); return response.status;})") == 200
-    restore_path = max((browser_stack.data_root / "backups").glob("*-manual.zip"), key=lambda path: path.stat().st_mtime)
+    created_backups = set(backup_directory.glob("*.zip")) - existing_backups
+    assert len(created_backups) == 1
+    restore_path = created_backups.pop()
     quiz_id = browser_stack.metadata["critical_id"]
     original_title = "Browser Critical Workflow"
     changed_title = "Browser Restore Mutation"
@@ -16098,7 +16120,7 @@ def test_certification_optional_presets_only_fill_unsaved_rules(browser_stack):
     b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero')")
     with sqlite3.connect(browser_stack.data_root/'results.db') as c:
         before={t:list(c.execute('SELECT * FROM '+t)) for t in ('certifications','certification_cycles')}
-    b.click('a[href$="/requirements"]');b.wait_for("document.querySelector('#applyCertPreset')")
+    b.click('a[href$="/requirements"]');b.wait_for_page_ready("document.querySelector('#applyCertPreset')")
     assert b.evaluate("document.querySelectorAll('[data-category-row]').length")==0
     assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
     for key,required,annual in [('lpic-membership','60','unknown'),('lpic-exams','','none'),('cism-2026','120','minimum'),('cissp-v7','120','pacing'),('peoplecert-custom','','unknown')]:
@@ -16117,6 +16139,158 @@ def test_certification_optional_presets_only_fill_unsaved_rules(browser_stack):
     assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
     with sqlite3.connect(browser_stack.data_root/'results.db') as c:
         assert before=={t:list(c.execute('SELECT * FROM '+t)) for t in before}
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+@pytest.mark.parametrize('round_size,direction', [(2, 'term_to_definition'), (2, 'definition_to_term'), (5, 'random')])
+def test_matching_exam_round_identity_resume_and_lost_acknowledgement(browser_stack, round_size, direction):
+    stack, b = browser_stack, browser_stack.browser
+    base = stack.base_url.replace('127.0.0.1', 'dlms-http.test')
+    b.navigate(base + '/matching_bank_import')
+    b.evaluate("document.querySelector('[name=quiz_title]').value='Validated matching bank';document.querySelector('[name=round_size]').value=" + json.dumps(str(round_size)) + ";document.querySelector('[name=direction]').value=" + json.dumps(direction) + ";const input=document.querySelector('[name=csv_file]'),files=new DataTransfer();files.items.add(new File(['term,definition\\nAlpha,First\\nBeta,Second\\nGamma,Third\\nDelta,Fourth\\nEpsilon,Fifth\\n'],'matching.csv',{type:'text/csv'}));input.files=files.files;true")
+    b.click('form button[type=submit]')
+    b.wait_for_page_ready("location.pathname.startsWith('/edit_quiz/')")
+    registry = json.loads((stack.data_root / 'config/quizzes.json').read_text())
+    entries = registry.values() if isinstance(registry, dict) else registry
+    entry = next(item for item in entries if item.get('title') == 'Validated matching bank')
+    url = base + '/quizzes/' + entry['html']
+    b.navigate(url)
+    assert not b.evaluate('isSecureContext')
+    b.click('.exam-mode-btn')
+    b.wait_for(f"document.querySelectorAll('.matching-drop-target').length==={round_size}")
+    variant = b.evaluate('quiz[0]._matching_variant')
+    b.click('[data-match-answer="0"]')
+    b.click('[data-match-target="0"]')
+    b.navigate(url)
+    b.wait_for("document.querySelector('.quiz-recovery-panel')")
+    b.click('.quiz-recovery-resume')
+    b.wait_for(f"document.querySelectorAll('.matching-drop-target').length==={round_size}")
+    assert b.evaluate('quiz[0]._matching_variant') == variant
+    for index in range(1, round_size):
+        b.click(f'[data-match-answer="{index}"]')
+        b.click(f'[data-match-target="{index}"]')
+    b.evaluate("window.matchingSaveTrace=[];const original=window.fetch;let lose=true;window.fetch=async function(input,options){const response=await original.call(this,input,options);if(String(input).includes('/record_attempt')){window.matchingSaveTrace.push({status:response.status,body:JSON.parse(options.body),response:await response.clone().json()});if(lose){lose=false;throw new TypeError('Acknowledgement interrupted');}}return response;};true")
+    assert b.click_with_prompt('#submitBtn', accept=True)
+    b.wait_for("window.matchingSaveTrace.length===1 && document.querySelector('#result [role=alert]')")
+    assert b.evaluate('window.matchingSaveTrace[0].status') == 200
+    assert b.evaluate('window.matchingSaveTrace[0].body.percent') == 100
+    b.click('#result button[onclick="retryExamAttemptSave()"]')
+    b.wait_for("window.matchingSaveTrace.length===2 && document.querySelector('#result').textContent.includes('saved successfully')")
+    trace = b.evaluate('window.matchingSaveTrace')
+    assert trace[0]['body'] == trace[1]['body']
+    assert trace[1]['status'] == 200
+    with sqlite3.connect(stack.data_root / 'results.db') as conn:
+        assert conn.execute('SELECT score,total,percent FROM attempts WHERE quiz_id=?', (entry['id'],)).fetchall() == [(1, 1, 100)]
+        response = json.loads(conn.execute("SELECT response_json FROM learning_events WHERE quiz_id=? AND event_type='exam_answer'", (entry['id'],)).fetchone()[0])
+        assert response['matching_variant'] == variant
+    output = os.environ.get('DLMS_REMEDIATION_CAPTURE_DIR')
+    if output:
+        target = Path(output); target.mkdir(parents=True, exist_ok=True)
+        (target / f'matching-saved-{round_size}-{direction}.png').write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot', {'context': b.context, 'origin': 'document'})['data']))
+        (target / f'matching-trace-{round_size}-{direction}.json').write_text(json.dumps(trace, indent=2))
+
+
+def test_certification_presets_wait_for_deferred_script(browser_stack):
+    """Reproduce DOM-ready/event-handler-not-ready without sleeps or timeouts."""
+    b = browser_stack.browser
+    b.navigate(browser_stack.base_url + '/certifications/new')
+    b.evaluate("document.querySelector('[name=field_name]').value='Deferred custom';document.querySelector('[name=field_issuer]').value='Independent';true")
+    b.click('.cert-form [type=submit]')
+    b.wait_for_page_ready("document.querySelector('.cert-hero')")
+    b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+    interception = b.command('network.addIntercept', {
+        'phases': ['beforeRequestSent'], 'contexts': [b.context],
+        'urlPatterns': [{'type': 'string', 'pattern': browser_stack.base_url + '/static/certifications.js'}],
+    })['intercept']
+    b.command('network.setCacheBehavior', {'cacheBehavior': 'bypass', 'contexts': [b.context]})
+    blocked = []
+    receive = b._receive_text
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+    b._receive_text = record
+    try:
+        b.click('a[href$="/requirements"]')
+        b.wait_for("document.querySelector('#applyCertPreset')")
+        assert blocked
+        assert b.evaluate("document.readyState") != 'complete'
+        b.evaluate("document.querySelector('#certRulePreset').value='cism-2026';document.querySelector('#certRulePreset').dispatchEvent(new Event('change',{bubbles:true}));true")
+        # The old DOM-only wait reached this state and its enabled assertion
+        # failed before the deferred listener existed.
+        assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
+        b.command('network.continueRequest', {'request': blocked.pop()})
+        b.wait_for_page_ready("document.querySelector('#applyCertPreset')")
+        b.evaluate("document.querySelector('#certRulePreset').dispatchEvent(new Event('change',{bubbles:true}));true")
+        assert not b.evaluate("document.querySelector('#applyCertPreset').disabled")
+        b.click('#applyCertPreset')
+        b.click('#confirmCertPreset')
+        assert b.evaluate("document.querySelector('[name=field_required]').value") == '120'
+    finally:
+        for request in blocked:
+            b.command('network.continueRequest', {'request': request})
+        b._receive_text = receive
+        b.command('network.removeIntercept', {'intercept': interception})
+
+def test_library_post_move_waits_for_document_and_search_listener(browser_stack):
+    """The actual lifecycle test must survive deferred post-submit scripts."""
+    b = browser_stack.browser
+    evaluate, ready, receive = b.evaluate, b.wait_for_page_ready, b._receive_text
+    state = {'interception': None, 'pending': False, 'observed': False}
+    blocked = []
+    moved_selector = (
+        '.library-folder[data-folder-name="Browser Hidden Folder"] [data-id='
+        + json.dumps(browser_stack.metadata['critical_html']) + ']'
+    )
+
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+
+    def submit(expression):
+        if "const form = card.querySelector('.move-quiz-form')" in expression and 'form.requestSubmit()' in expression:
+            b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+            state['interception'] = b.command('network.addIntercept', {
+                'phases': ['beforeRequestSent'], 'contexts': [b.context],
+                'urlPatterns': [{'type': 'string', 'pattern': browser_stack.base_url + '/static/local-time.js'}],
+            })['intercept']
+            b.command('network.setCacheBehavior', {'cacheBehavior': 'bypass', 'contexts': [b.context]})
+            b._receive_text = record
+            state['pending'] = True
+        return evaluate(expression)
+
+    def after_navigation(expression='true', timeout=6.0):
+        if state['pending']:
+            # Prove we reached the moved quiz's new document while the
+            # DOMContentLoaded search listener is still unable to initialize.
+            b.wait_for(f'Boolean(document.querySelector({json.dumps(moved_selector)}))')
+            assert blocked
+            assert evaluate('document.readyState') != 'complete'
+            state['observed'] = True
+            while blocked:
+                b.command('network.continueRequest', {'request': blocked.pop()})
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+            state.update(interception=None, pending=False)
+        return ready(expression, timeout)
+
+    b.evaluate, b.wait_for_page_ready = submit, after_navigation
+    try:
+        # Reuse every existing visibility, search, reorder and persistence
+        # assertion. The pre-fix CSS-only wait times out at its search check.
+        test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browser_stack)
+        assert state['observed']
+    finally:
+        while blocked:
+            b.command('network.continueRequest', {'request': blocked.pop()})
+        if state['interception']:
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+        b.evaluate, b.wait_for_page_ready, b._receive_text = evaluate, ready, receive
+
 
 @pytest.mark.parametrize('theme', ('light','dark','ethereal'))
 def test_certification_simple_minutes_multi_renewal_and_ai_launch(browser_stack, theme):

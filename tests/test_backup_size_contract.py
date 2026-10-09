@@ -63,23 +63,21 @@ def test_exact_boundary_accepted_one_byte_or_member_over_rejected(creator, monke
             "members": ("DLMS_BACKUP_MAX_FILES", len(infos)),
         }
     if bound == "upload":
-        create(upload_limit=len(original))
-        last_success = Path(path).read_bytes()
+        second, _ = create(upload_limit=len(original))
+        last_success = Path(second).read_bytes()
         with pytest.raises(backups.BackupRestoreLimitError):
             create(upload_limit=len(original) - 1)
     else:
         key, value = limits[bound]
         monkeypatch.setattr(dlms, key, value)
-        create()
-        last_success = Path(path).read_bytes()
+        second, _ = create()
+        last_success = Path(second).read_bytes()
         monkeypatch.setattr(dlms, key, value - 1)
         with pytest.raises(backups.BackupRestoreLimitError):
             create()
-    # The second successful create replaces this fixed-name fixture archive.
-    # ZIP timestamps need not match the first create. A rejected create must
-    # preserve the bytes that existed immediately before that rejection.
-    assert Path(path).read_bytes() == last_success
-    assert list(output.iterdir()) == [Path(path)]  # no failed temp ZIP
+    assert Path(path).read_bytes() == original
+    assert Path(second).read_bytes() == last_success
+    assert sorted(output.iterdir()) == sorted([Path(path), Path(second)])
 
 
 def test_rejected_backup_preserves_latest_success_across_zip_timestamp_change(creator, monkeypatch):
@@ -100,16 +98,17 @@ def test_rejected_backup_preserves_latest_success_across_zip_timestamp_change(cr
         members = len(archive.infolist())
         contents = {name: archive.read(name) for name in archive.namelist()}
     seconds[0] = 2
-    create()
-    last_success = Path(path).read_bytes()
+    second, _ = create()
+    last_success = Path(second).read_bytes()
     assert first != last_success  # real ZIP metadata, no wall-clock sleeps
-    with zipfile.ZipFile(path) as archive:
+    with zipfile.ZipFile(second) as archive:
         assert contents == {name: archive.read(name) for name in archive.namelist()}
     monkeypatch.setattr(dlms, "DLMS_BACKUP_MAX_FILES", members - 1)
     with pytest.raises(backups.BackupRestoreLimitError):
         create()
-    assert Path(path).read_bytes() == last_success
-    assert list(output.iterdir()) == [Path(path)]
+    assert Path(path).read_bytes() == first
+    assert Path(second).read_bytes() == last_success
+    assert sorted(output.iterdir()) == sorted([Path(path), Path(second)])
 
 
 def test_compressible_data_cannot_bypass_expansion_or_ratio_safety(creator, monkeypatch):

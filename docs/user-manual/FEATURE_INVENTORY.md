@@ -709,7 +709,7 @@ below.
 | --- | --- |
 | Screen / reach | Settings → Appearance / Navigation. |
 | What and why | Personalizes the local UI and controls optional subject-navigation visibility. |
-| Options | Light, Dark, Purple & Gold, and Maroon & Gold themes; portal title; background image. Show/hide IT, Law, Medical, and Other Studies navigation. |
+| Options | 26 manual themes grouped as DLMS, Omarchy · Light and Omarchy · Dark; the five existing choices, including adapted Ethereal, remain. Portal title; background image. Independent dashboard/sidebar visibility in Layout & navigation. |
 | Boundary | Navigation visibility does not delete or disable underlying content. Themes use shared semantic styling, focus, responsive, and contrast behavior. |
 | Evidence | settings routes/templates; `static/style.css`; theme/layout/accessibility tests; Help settings assets. |
 | Manual / screenshot / status | Ch. 3 and 16; a small appearance screenshot may be optional; **Verified**. |

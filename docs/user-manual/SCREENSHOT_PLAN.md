@@ -12,7 +12,7 @@ Help asset must be compared with the current 3.2.0 screen at the target viewport
 - Prefer a consistent desktop viewport that includes enough navigation for
   orientation. Use a focused crop only when it makes a dense workflow legible.
 - Capture the Light theme by default. Add a second theme only when the theme or
-  contrast behavior is itself being taught; four-theme duplication has little
+  contrast behavior is itself being taught; duplicating all 26 themes has little
   teaching value.
 - Use callouts sparingly and keep an unannotated source capture. Annotations
   should identify decisions or sequences, not restate every visible label.
@@ -79,7 +79,7 @@ deferred second state for every ID.
 
 - Every error page, empty state, folder operation, theme choice, and minor modal:
   prose and focused callouts are easier to maintain.
-- All four themes for every workflow: this would multiply maintenance without
+- All 26 themes for every workflow: this would multiply maintenance without
   teaching the task. Theme coverage belongs in product testing, while one
   representative appearance screenshot may support the settings chapter.
 - Native build, OCR bundle, frozen probe, package verifier, and release assembly

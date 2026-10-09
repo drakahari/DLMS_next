@@ -384,6 +384,8 @@ def bootstrap_database(
     conn.row_factory = sqlite_module.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
+        from .schema_programs import validate_schema_programs
+        validate_schema_programs(conn)
         tables = database_table_names(conn)
         if not tables:
             create_current_schema(conn)

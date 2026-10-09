@@ -30,22 +30,21 @@ before using them.
 ## Change the appearance
 
 Open **Settings → Appearance** to change presentation without changing study
-content. DLMS provides five themes:
-
-- Light;
-- Dark;
-- Purple & Gold;
-- Maroon & Gold; and
-- Ethereal (Omarchy-inspired).
+content. DLMS provides **26 manually selectable themes**, grouped as DLMS,
+Omarchy · Light and Omarchy · Dark in the selector. The DLMS group preserves
+Light, Dark, Purple & Gold, Maroon & Gold and the existing adapted Ethereal.
+In **Help → Settings → Appearance**, the compact theme reference comes from the
+authoritative [registry](../../dlms/themes.py), so names and light/dark
+classification stay current.
 
 The theme applies throughout DLMS. It changes colors and surfaces, not grades,
 question behavior, or learning data. **Purple & Gold** is the default on a new
 installation. Ethereal is optional.
 
-![Appearance theme choices: Dark, Light, Purple & Gold, Maroon & Gold, and Ethereal selected](../../static/help_assets/settings-appearance-3.3.0-ethereal.webp)
+![Appearance settings with the Color theme selector and readability guidance](../../static/help_assets/settings-appearance-theme.webp)
 
-*DLMS 3.3.0 Appearance with optional Ethereal selected among five themes.
-Purple & Gold remains the default.*
+*Choose a theme in the grouped selector, then Save Appearance.
+Purple & Gold remains the default; Omarchy installation is not required.*
 
 Ethereal pairs midnight-blue surfaces with peach text and lavender accents.
 Reading and form text use system sans-serif fonts; headings and counters use

@@ -19,6 +19,6 @@ Pillow==12.3.0
 pypdf==6.19.0
 pypdfium2==5.13.0
 PyYAML==6.0.3
-Werkzeug==3.1.8
+Werkzeug==3.1.9
 WTForms==3.2.2
 tzdata==2026.5

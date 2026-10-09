@@ -135,7 +135,11 @@ class BackupSemanticValidationTests(unittest.TestCase):
 
     def test_integrity_check_failure_is_rejected(self):
         connection = mock.MagicMock()
-        connection.execute.return_value.fetchall.return_value = [("page 3 is damaged",)]
+        def execute(statement):
+            result = mock.MagicMock()
+            result.fetchall.return_value = [("page 3 is damaged",)] if statement == 'PRAGMA integrity_check' else []
+            return result
+        connection.execute.side_effect = execute
         with mock.patch.object(dlms.sqlite3, "connect", return_value=connection):
             with self.assertRaisesRegex(ValueError, "failed SQLite integrity_check"):
                 dlms._validate_restored_sqlite(self.root / "results.db")

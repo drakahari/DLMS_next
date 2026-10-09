@@ -4886,12 +4886,13 @@ def _choice_response(cur, question_id, selected, *, study):
     )
 
 
-def _matching_response(cur, question_id, selected, *, study):
+def _matching_response(cur, question_id, selected, *, study, matching_variant=None):
     return _attempt_service._matching_response(
         cur,
         question_id,
         selected,
         study=study,
+        matching_variant=matching_variant,
         learning_integer=_learning_integer,
     )
 

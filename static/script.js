@@ -2211,7 +2211,11 @@ async function submitQuiz(force = false, recoveredAttempt = null) {
                     attemptQuestionNumber: i + 1,
                     questionType: "matching",
                     wasCorrect: !!isCorrect,
-                    selected: matchAns
+                    selected: matchAns,
+                    matchingVariant: q._matching_variant ? {
+                        sourcePairIndexes: q._matching_variant.sourcePairIndexes.slice(),
+                        direction: q._matching_variant.direction
+                    } : null
                 });
                 if (isCorrect) {
                     correct++;
