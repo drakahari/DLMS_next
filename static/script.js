@@ -46,6 +46,24 @@ let durableStudyReady = Promise.resolve();
 let durableStudyPositionSave = Promise.resolve();
 const durableStudyOwner = createLearningSessionId();
 
+const CHOICE_ANSWER_ENCODING = "choice-labels-v1";
+function choiceIndexesForLabels(question, labels) {
+    return labels.map(label => question.choices.findIndex(choice => choice.label === label)).sort((a,b) => a-b);
+}
+function choiceLabelsForIndexes(question, indexes) {
+    return indexes.map(value => question.choices[value]?.label);
+}
+function requiresActualChoiceLabels(questions = rawQuiz) {
+    return questions.some(q => (q.type || 'choice') === 'choice' && q.choices.some((c,i) => c.label !== String.fromCharCode(65+i)));
+}
+async function checkQuizReadiness() {
+    if (!durableStudySupported) return;
+    const response = await fetch(`/api/study/quiz/${window.QUIZ_ID}`, {cache: "no-store"});
+    if (!response.ok) throw new Error("Quiz readiness could not be checked. Keep recovery data and try again.");
+    const data = await response.json();
+    if (data.readiness && !data.readiness.ready) throw new Error("This quiz needs review before Study or Exam. Review and edit it in Quiz Library. Saved history and recovery are retained.");
+}
+
 async function studyFetch(url, options) {
     const response = await fetch(url, options);
     if (response.status !== 400) return response;
@@ -75,7 +93,7 @@ async function studyRequest(url, payload) {
 
 function studyCredentials() {
     return {quizId: Number(window.QUIZ_ID), sessionId: learningSessionId, owner: durableStudyOwner,
-        generation: durableStudyGeneration, assessmentRevision: durableStudySession?.assessment_revision};
+        answerEncoding: CHOICE_ANSWER_ENCODING, generation: durableStudyGeneration, assessmentRevision: durableStudySession?.assessment_revision};
 }
 
 async function claimDurableStudy(takeover = false) {
@@ -135,7 +153,7 @@ async function loadDurableStudy() {
             Object.entries(variants).forEach(([i, variant]) => { if (variant.optionOrder) matchingOptionOrders[`q${i}`] = variant.optionOrder.slice(); });
             userAnswers = {};
             Object.entries(saved.answers).forEach(([i, answer]) => {
-                userAnswers[`q${i}`] = answer.type === "choice" ? answer.selected.map(value => value.charCodeAt(0) - 65) : answer.selected;
+                userAnswers[`q${i}`] = answer.type === "choice" ? choiceIndexesForLabels(quiz[Number(i)], answer.selected) : answer.selected;
             });
             index = saved.position;
             studyLearningEventSaves.clear();
@@ -144,7 +162,7 @@ async function loadDurableStudy() {
             const current = await durableStudyReady;
             userAnswers = {};
             Object.entries(current.answers).forEach(([i, answer]) => {
-                userAnswers[`q${i}`] = answer.type === "choice" ? answer.selected.map(value => value.charCodeAt(0) - 65) : answer.selected;
+                userAnswers[`q${i}`] = answer.type === "choice" ? choiceIndexesForLabels(quiz[Number(i)], answer.selected) : answer.selected;
             });
             index = current.position;
             showActiveQuizUI();
@@ -472,6 +490,10 @@ async function loadQuiz() {
         } catch (_error) {
             generatedPracticeStatus = null;
         }
+        // Establish the assessment before any Resume control can restore its
+        // saved variant; initial loading must never overwrite resumed work.
+        await checkQuizReadiness();
+        quiz = prepareQuizForAttempt();
         try {
             const recovery = await loadQuizRecoveryRuntime();
             if (!recovery) throw new Error("Quiz recovery module did not initialize");
@@ -494,6 +516,7 @@ async function loadQuiz() {
                 rawQuiz,
                 capture: captureQuizRecoveryState,
                 restore: restoreQuizRecoveryState,
+                canRestore: canRestoreChoiceRecovery,
                 isCompleted: record => record.session.mode === "Study" && completedStudy.has(record.learningSessionId),
                 finishSubmission: recoveredAttempt => { void submitQuiz(true, recoveredAttempt); },
                 startOver: () => {},
@@ -505,12 +528,11 @@ async function loadQuiz() {
             console.warn("Quiz recovery unavailable; continuing without it:", recoveryError);
             showQuizRecoveryNotice("Quiz recovery is unavailable in this browser. The quiz will continue normally.");
         }
-        quiz = prepareQuizForAttempt();
         console.log("Quiz loaded. Questions:", quiz.length);
         setQuizModeButtonsEnabled(true);
     } catch (err) {
         console.error("Failed to load quiz:", err);
-        alert("Failed to load quiz questions.");
+        showQuizRecoveryNotice(err.message || "Failed to load quiz questions.");
     }
 }
 loadQuiz();
@@ -1114,9 +1136,7 @@ function safeProvenanceLabel(source, fallback = "") {
 }
 
 function choiceStudyState(q, selected) {
-    const correctIndexes = (q.correct || [])
-        .map(letter => String(letter).toUpperCase().charCodeAt(0) - 65)
-        .sort((a, b) => a - b);
+    const correctIndexes = choiceIndexesForLabels(q, q.correct || []);
     const isMulti = correctIndexes.length > 1;
     const evaluable = !isMulti || selected.length === correctIndexes.length;
     const isCorrect = evaluable
@@ -1154,14 +1174,14 @@ function selectChoice(i) {
                 arr = arr.filter(v => v !== i);
             } else {
                 arr.push(i);
-                arr.sort();
+                arr.sort((a,b) => a-b);
             }
         }
 
         userAnswers[key] = arr;
         checkpointQuizRecovery();
         const state = choiceStudyState(q, arr);
-        void recordStudyLearningEvent(q, state.isCorrect, arr.map(idx => String.fromCharCode(65 + idx)));
+        void recordStudyLearningEvent(q, state.isCorrect, choiceLabelsForIndexes(q, arr));
         renderQuestion();
         return;
     }
@@ -1174,7 +1194,7 @@ function selectChoice(i) {
             arr = arr.filter(v => v !== i);
         } else {
             arr.push(i);
-            arr.sort();
+            arr.sort((a,b) => a-b);
         }
     }
 
@@ -1589,7 +1609,7 @@ function generatedPracticeStudyAnswers() {
             selected = selected && typeof selected === "object" ? {...selected} : {};
         } else {
             selected = Array.isArray(selected)
-                ? selected.map(value => String.fromCharCode(65 + value)) : [];
+                ? choiceLabelsForIndexes(question, selected) : [];
         }
         return {ordinal: questionIndex + 1, selected};
     });
@@ -1601,6 +1621,7 @@ async function requestGeneratedPracticeCompletion(mode, reference) {
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
             quizId: window.QUIZ_ID,
+            answerEncoding: CHOICE_ANSWER_ENCODING,
             mode,
             reference,
             questionCount: quiz.length,
@@ -1716,6 +1737,7 @@ function captureQuizRecoveryState() {
         phase: pendingExamAttempt ? "submitting" : "active",
         view: {
             questionIndex: index,
+            answerEncoding: CHOICE_ANSWER_ENCODING,
             ankiQuestionIndexes: Array.from(studyAnkiSelections).sort((a, b) => a - b),
             matchingInteractionMode,
         },
@@ -1764,7 +1786,18 @@ function showActiveQuizUI() {
     updateStudyModeBadge();
 }
 
+function canRestoreChoiceRecovery(record) {
+    if (requiresActualChoiceLabels() && (record.view.answerEncoding !== CHOICE_ANSWER_ENCODING
+        || record.unacknowledgedStudyEvents.some(event => event.payload.answerEncoding !== CHOICE_ANSWER_ENCODING))) {
+        showQuizRecoveryNotice("This older recovery record cannot safely encode this quiz's choice labels. Keep it for review; it was not replayed or deleted. Use the current page for new work.");
+        return false;
+    }
+    return true;
+}
+
 async function restoreQuizRecoveryState(record) {
+    if (!canRestoreChoiceRecovery(record)) return false;
+    try { await checkQuizReadiness(); } catch (error) { showQuizRecoveryNotice(error.message); return false; }
     stopExamTimer();
     quiz = prepareQuizForAttempt(record.matchingVariants);
     index = record.view.questionIndex;
@@ -1819,7 +1852,7 @@ async function restoreQuizRecoveryState(record) {
             const current = await durableStudyReady;
             userAnswers = {};
             Object.entries(current.answers).forEach(([i, answer]) => {
-                userAnswers[`q${i}`] = answer.type === "choice" ? answer.selected.map(value => value.charCodeAt(0) - 65) : answer.selected;
+                userAnswers[`q${i}`] = answer.type === "choice" ? choiceIndexesForLabels(quiz[Number(i)], answer.selected) : answer.selected;
             });
             // A failed position write must not undo the latest recovered answer's
             // navigation. Preserve server precedence if another browser saved
@@ -1854,6 +1887,8 @@ async function restoreQuizRecoveryState(record) {
 ===================================================== */
 async function startQuiz(isExam) {
     if (!quiz.length) return;
+    // Loading verifies readiness before enabling mode controls. Durable claims
+    // and every save independently recheck the current server assessment.
     setQuizModeButtonsEnabled(false);
     examMode = isExam;
     quiz = prepareQuizForAttempt();
@@ -2251,9 +2286,7 @@ async function submitQuiz(force = false, recoveredAttempt = null) {
             }
 
             // Convert ["A"] -> [0], ["D"] -> [3], etc.
-            const correctIndexes = q.correct.map(
-                l => String(l).toUpperCase().charCodeAt(0) - 65
-            );
+            const correctIndexes = choiceIndexesForLabels(q, q.correct);
 
             // Compare arrays safely
             const isCorrect =
@@ -2264,7 +2297,7 @@ async function submitQuiz(force = false, recoveredAttempt = null) {
                 attemptQuestionNumber: i + 1,
                 questionType: "choice",
                 wasCorrect: !!isCorrect,
-                selected: ans.map(idx => String.fromCharCode(65 + idx))
+                selected: choiceLabelsForIndexes(q, ans)
             });
 
             if (isCorrect) {
@@ -2303,9 +2336,9 @@ async function submitQuiz(force = false, recoveredAttempt = null) {
 
         // What the user actually selected
         selectedIndexes: ans,
-        selectedLetters: ans.map(idx => String.fromCharCode(65 + idx)),
+        selectedLetters: choiceLabelsForIndexes(q, ans),
         selectedText: ans.map(idx =>
-            `${String.fromCharCode(65 + idx)} — ${q.choices[idx].text}`
+            `${q.choices[idx].label} — ${q.choices[idx].text}`
         )
     });
 
@@ -2335,6 +2368,7 @@ async function submitQuiz(force = false, recoveredAttempt = null) {
     const attemptPayload = {
             quizTitle: window.quiz_title || QUIZ_FILE || "Unknown Quiz",
             quizId: window.QUIZ_ID,
+            answerEncoding: CHOICE_ANSWER_ENCODING,
 
             score: correct,
             total: total,

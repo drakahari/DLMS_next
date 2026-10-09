@@ -46,27 +46,81 @@ want transferable content.
 
 1. Open **Quiz Library**.
 2. Under the library tools, open **Quiz Bundles**.
-3. Under **Export quizzes**, select one or more eligible source quizzes. Use
-   **Select all** or **Clear** when helpful.
-4. Review the live selected count and choose **Download Portable Bundle**.
-5. Store or transfer the resulting `DLMS-Quiz-Bundle-...zip` file without
-   changing its contents.
+3. Under **Export quizzes**, use **Search quizzes** and **Folder** to find source quizzes.
+4. Select individual checkboxes or **Select all filtered results (N)**. That action
+   includes every matching page, not just the current 50 rows. Changing a filter
+   or page keeps your choices; the count shows selections outside the filter.
+   **Deselect all** clears the selection on every page.
+5. Choose **Download selected quizzes**. One compatible ordinary bundle is
+   downloaded when everything fits. Larger selections split automatically into
+   a **Bundle Collection** ZIP.
+6. For a collection, extract the ZIP first. Read `inventory.json` and `READ-ME.txt`,
+   then import each numbered `DLMS-Quiz-Bundle-part-...zip` separately. The outer
+   collection is **not** an importable portable bundle. The inventory records
+   each part's filename, count, hash, and source quiz IDs/titles/folders so you
+   can check completeness; imported quizzes receive new local IDs.
 
-Export does not edit, move, or delete the source quizzes. If DLMS reports that
-generated review or composition quizzes were excluded, that is an intentional
-portability boundary rather than lost source content.
+![Portable export with folder filtering, selection across pages and one-download collection instructions](images/UM-06-portable-quiz-selection.webp)
 
-The export panel reports how many source quizzes are available from your Library
-and how many hidden quizzes are included. Hidden quizzes and hidden folders do
-not limit export eligibility. The list scrolls within the panel: seeing only a
-few quizzes at once does not mean that only those quizzes are available.
-**Select all** includes the entire candidate list; select up to 100 quizzes per
-bundle.
+Export does not edit, move, or delete source quizzes or copy their learning
+history. Generated review/composition quizzes remain excluded. Hidden quizzes
+and folders can still be exported; their visibility does not limit this list.
+
+Each ordinary bundle contains at most **100 quizzes**, 10,000 questions overall
+and 2,000 per quiz, and fits the **128 MiB** import upload limit. Media, file and
+manifest limits can cause smaller parts. A download is limited to **1,000 source
+quizzes and 512 MiB**; select a smaller batch if you exceed these limits. DLMS
+validates every selected quiz and every part before returning the download. It
+never silently skips invalid quizzes or reports an incomplete selection as a
+complete export. A failure identifies the affected quiz/question where possible
+and keeps your selected checkboxes and filters so you can investigate or retry.
+
+Portable **format 2** preserves each choice separately: original order, labels,
+text and stored correct flags, including repeated text or labels. It also keeps
+safely representable incomplete content. No answer is inferred and no question
+is repaired to make a transfer succeed. Local database IDs and learning history
+are not transferred; original question numbering is kept as source numbering
+when it differs from the receiving page's position.
+
+Use **Check selected quizzes** for a complete selection report. It groups issues
+by quiz title and ID and identifies question positions, stored numbers, reasons
+and **Review and edit** links. **Needs review** warnings do not block transfer.
+If Download discovers warnings, review the report and choose **Download selected
+quizzes** again to preserve those records. Actual blockers, such as missing or
+unsafe images, prevent the entire download. All checkboxes remain selected.
+Changing the selection or detected issues requires a new warning review.
+
+![Disposable selection check showing transferable question warnings separately from missing-image blockers, with all three selected quizzes retained](images/UM-06-portable-quiz-preflight.webp)
+
+The receiving DLMS must support **format 2**. Older applications reject it;
+matching the product version number alone is insufficient. This receiving
+implementation uses database **schema 11**. It still imports supported format-1
+bundles. Collections are never directly importable: extract and import each
+numbered inner ZIP.
+
+### When a quiz needs review
+
+The Library keeps incomplete quizzes with a **Needs review** notice and specific
+question reasons. You can export them unchanged. Graded Study and Exam are
+blocked until you explicitly correct the content in **Review and edit**. A
+repeated label, empty required question/answer text or absent correct answer
+cannot support reliable grading. Supported media-only questions retain their
+existing behavior. Unique label gaps such as A/C/D are valid: selecting D means D.
+The editor exposes **Choice label** for each separate choice row. Saving a
+correction updates readiness and assessment revision; it does not rewrite history.
+
+An older self-contained page using positional answer mapping must be explicitly
+regenerated through the editor before use with nonpositional labels. An ambiguous
+old recovery record is retained and blocked from replay, rather than guessed or
+relabeled. Keep that recovery data; saved history remains factual. Opening a
+quiz or importing content does not award Study credit or completion.
 
 DLMS separately reports excluded generated/Mixed quizzes, entries whose saved
 quiz data is unavailable, empty quizzes, and quizzes with unsupported question
 types. This format supports choice and matching questions with supported images,
-not interactive hotspots. Use a full backup for your complete DLMS state. The
+not interactive hotspots. Image Study hotspot surrogates are blocked rather than
+converted into ordinary choice questions. Transfer their original content pack,
+or use a full backup for your complete DLMS state. The
 selected questions and media still need to pass validation when you download.
 
 ### Import a bundle
@@ -278,3 +332,14 @@ Quiz text, Portable Quiz Bundles, Study Pack ZIPs, Anki packages, printable
 cards, and Law text exports are content-focused formats. Use a full **Portable
 Backup** when you need completed attempts, scores, and the broader persistent
 DLMS state.
+
+### Administrator note: export staging
+
+Exports use private job directories under the profile's
+`uploads/quiz_bundles/exports` directory. Normal completion, validation failures
+and closed download connections clean up their own jobs. Abrupt process or host
+failure can leave staging files behind; they are not published quizzes or
+backups. Stop the application before reviewing abandoned export directories;
+do not remove jobs while an export is running. Two exports per application
+process are allowed at once, with temporary disk use bounded to approximately
+1.5 GiB per job. Allow sufficient space for concurrent exports.

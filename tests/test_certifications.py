@@ -1132,7 +1132,7 @@ d.bootstrap_database(sys.argv[1],schema_version=10,legacy_schema_version=1,legac
         run=subprocess.run([sys.executable,'-c',script,str(path)],cwd=Path(dlms.__file__).parent,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=15)
         self.assertEqual(run.returncode,73,run.stderr)
         with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
-        self.assertEqual(dlms.bootstrap_database(str(path))['version'],10)
+        self.assertEqual(dlms.bootstrap_database(str(path))['version'],dlms.DLMS_SCHEMA_VERSION)
         with sqlite3.connect(path) as c:
             c.row_factory=sqlite3.Row;item=cert.get(c.cursor(),'certification_cycles',pid)['data'];state=cert.state(c.cursor());snapshot=list(c.iterdump())
             self.assertEqual(item['legacy_deadline'],dict(value='2028-09-01',source='cycle.data.renewal',source_schema=9,classification='unresolved'))

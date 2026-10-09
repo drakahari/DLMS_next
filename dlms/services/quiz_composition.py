@@ -66,7 +66,7 @@ def build_mixed_quiz_catalog(
     for row in cur.execute("""
         SELECT question_id, label, text
         FROM choices
-        ORDER BY question_id, label, id
+        ORDER BY question_id, choice_order, label, id
     """).fetchall():
         choices_by_question.setdefault(row["question_id"], []).append({
             "label": row["label"], "text": row["text"] or ""

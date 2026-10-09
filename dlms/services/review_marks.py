@@ -95,6 +95,18 @@ def _context_rows(cur, quiz_id, questions):
             # only; no Study revision, scoring or learning record is rewritten.
             compared['type']=saved['type']
             compared['choices']=[]
+            if saved.get('choices'):
+                # Image Study's canonical surrogate retains the explicit target
+                # label. Verify that exact representation before comparing it;
+                # do not turn arbitrary choice rows into hotspot sources.
+                label=item.get('target_label')
+                expected=[dict(label='A',text=label,is_correct=True)]
+                if (not isinstance(label,str) or not label
+                        or saved['choices']!=expected
+                        or saved.get('question')!=str(item.get('question') or '')+' [Image hotspot]'):
+                    raise Conflict('The source changed. Reload or regenerate this quiz before transferring marks.')
+                compared['question']=saved['question']
+                compared['choices']=expected
             for key in ('target','hotspot','target_label'):compared.pop(key,None)
         if _assessment(saved)!=_assessment(compared):
             raise Conflict('The source changed. Reload or regenerate this quiz before transferring marks.')

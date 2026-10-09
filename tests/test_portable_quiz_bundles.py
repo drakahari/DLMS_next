@@ -409,6 +409,62 @@ class PortableQuizBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(bundles.PortableQuizBundleError, "not exportable"):
             self._export([generated_id])
 
+    def test_canonical_hotspot_is_blocked_instead_of_converted_to_choice(self):
+        image=Path(dlms.QUIZ_ASSET_FOLDER)/'hotspot/diagram.png'
+        image.parent.mkdir()
+        Image.new('RGB',(8,8),'navy').save(image)
+        surrogate=self._choice('Locate the control [Image hotspot]',image_url='/quiz-assets/hotspot/diagram.png')
+        surrogate['choices']=[dict(label='A',text='Control',is_correct=True)]
+        quiz=self._seed('Canonical Image Study','image-study.html',[surrogate])
+        good=self._seed('Ordinary image choice','ordinary-image.html',[
+            self._choice(image_url='/quiz-assets/hotspot/diagram.png')])
+        with dlms.get_db() as connection:
+            before=list(connection.iterdump())
+            report=dlms._preflight_portable_quiz_export(connection.cursor(),dlms.load_registry(),[quiz,good])
+            self.assertEqual((0,1),(report['warning_quizzes'],report['blocked_quizzes']))
+            issue=report['quizzes'][0]['blockers'][0]
+            self.assertEqual((1,1),(issue['position'],issue['number']))
+            self.assertIn('Image hotspot targets',issue['reason'])
+            self.assertEqual(before,list(connection.iterdump()))
+        with self.assertRaisesRegex(bundles.PortableQuizBundleError,'hotspot target geometry'):
+            self._export([quiz])
+        with zipfile.ZipFile(io.BytesIO(self._export([good])[0])) as archive:
+            self.assertEqual(1,len(json.loads(archive.read(bundles.PORTABLE_QUIZ_BUNDLE_MANIFEST))['quizzes']))
+        client=dlms.app.test_client()
+        response=client.post('/quiz-bundles/export',data={'quiz_ids':[str(quiz),str(good)]},headers=csrf_headers(client,'/quiz-bundles'))
+        self.assertEqual(response.status_code,400)
+        html=response.get_data(as_text=True)
+        self.assertIn('hotspot targets',html)
+        self.assertEqual(2,html.count(' checked'))
+
+    def test_no_media_hotspot_surrogate_and_forged_bundles_are_refused(self):
+        surrogate=self._choice('Locate the control [Image hotspot]')
+        surrogate['choices']=[dict(label='A',text='Control',is_correct=True)]
+        quiz=self._seed('Anatomy database surrogate','anatomy.html',[surrogate])
+        with dlms.get_db() as connection:
+            report=dlms._preflight_portable_quiz_export(connection.cursor(),dlms.load_registry(),[quiz])
+            self.assertEqual(1,report['blocked_quizzes'])
+        with self.assertRaisesRegex(bundles.PortableQuizBundleError,'hotspot target geometry'):
+            self._export([quiz])
+        for version in (1,2):
+            with self.subTest(version=version):
+                manifest=self._minimal_manifest()
+                manifest['schema_version']=version
+                question=manifest['quizzes'][0]['questions'][0]
+                question['question']='Locate the control [Image hotspot]'
+                if version==2:
+                    for index,choice in enumerate(question['choices']):choice['key']=f'choice-{index+1:03d}'
+                with self.assertRaisesRegex(bundles.PortableQuizBundleError,'hotspot target geometry'):
+                    bundles.validate_portable_quiz_bundle_manifest(manifest)
+                archive=self._write_bundle(manifest)
+                client=dlms.app.test_client()
+                response=client.post('/quiz-bundles/import',data={'bundle_zip':(io.BytesIO(archive.read_bytes()),'hotspot.zip')},headers=csrf_headers(client,'/quiz-bundles'))
+                self.assertEqual(response.status_code,400)
+                self.assertIn('not a valid, safe DLMS portable quiz bundle',response.get_data(as_text=True))
+                with dlms.get_db() as connection:
+                    self.assertEqual(1,connection.execute('SELECT count(*) FROM quizzes').fetchone()[0])
+                self.assertEqual([],list(Path(dlms.PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER).iterdir()))
+
     def test_catalog_accounts_for_visibility_types_and_unavailable_entries(self):
         visible = self._seed('Visible source', 'visible.html', [self._choice()])
         hidden = self._seed('Hidden source', 'hidden.html', [self._choice()], folder='Custom')
@@ -446,7 +502,7 @@ class PortableQuizBundleTests(unittest.TestCase):
         html = dlms.app.test_client().get('/quiz-bundles').get_data(as_text=True)
         self.assertIn('5 source quizzes available', html)
         self.assertIn('Hidden quizzes included: 1', html)
-        self.assertIn('Scroll within the list to see all 5 candidates', html)
+        self.assertIn('Browse the pages to see all 5 candidates', html)
         self.assertIn('Folder visibility does not limit export', html)
         with self.assertRaises(bundles.PortableQuizBundleError):
             self._export([hotspot])
@@ -623,6 +679,245 @@ class PortableQuizBundleTests(unittest.TestCase):
         self.assertEqual([first, second], [entry["id"] for entry in dlms.load_registry()])
         self.assertTrue((Path(dlms.PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER) / token).is_dir())
         self.assertEqual([], list(Path(dlms.QUIZ_ASSET_FOLDER).glob("portable_import_*")))
+
+    def _download(self, ids):
+        connection = dlms.get_db()
+        try:
+            return dlms._build_portable_quiz_download(connection.cursor(), dlms.load_registry(), ids)
+        finally:
+            connection.close()
+
+    def _import_bytes(self, payload):
+        client = dlms.app.test_client()
+        staged = client.post('/quiz-bundles/import', data={'bundle_zip': (io.BytesIO(payload), 'part.zip')},
+                             headers=csrf_headers(client, '/quiz-bundles'))
+        self.assertEqual(302, staged.status_code, staged.data[:500])
+        url = staged.headers['Location']
+        confirmed = client.post(url + '/confirm', data={'confirm_import': 'yes'}, headers=csrf_headers(client, url))
+        self.assertEqual(302, confirmed.status_code)
+
+    def test_duplicate_choice_text_identity_round_trip_and_actual_grading(self):
+        from dlms.services.attempts import _choice_response
+        from dlms.services.content_packs import _content_pack_choice_question_errors
+        for correct in ((True, False, False, False), (True, False, True, False)):
+            with self.subTest(correct=correct):
+                q = self._choice()
+                q['choices'] = [{'label': chr(65+i), 'text': text, 'is_correct': correct[i]}
+                                for i, text in enumerate(('  Same text  ', 'Same text', 'same TEXT', 'Other'))]
+                self.assertTrue(_content_pack_choice_question_errors(q, context='AI authoring'))
+                original = self._seed('Repeated text', 'repeat-'+str(len(dlms.load_registry()))+'.html', [q])
+                data, _, manifest = self._export([original])
+                self.assertEqual([{**c,'key':f'choice-{i:03d}'} for i,c in enumerate(q['choices'],1)], manifest['quizzes'][0]['questions'][0]['choices'])
+                old_ids = {e['id'] for e in dlms.load_registry()}
+                self._import_bytes(data)
+                imported = next(e['id'] for e in dlms.load_registry() if e['id'] not in old_ids)
+                with dlms.get_db() as c:
+                    question_id = c.execute('SELECT id FROM questions WHERE quiz_id=?', (imported,)).fetchone()[0]
+                    choices = c.execute('SELECT label,text,is_correct FROM choices WHERE question_id=? ORDER BY label', (question_id,)).fetchall()
+                    self.assertEqual([(x['label'], x['text'], int(x['is_correct'])) for x in q['choices']], [tuple(x) for x in choices])
+                    for study in (True, False):
+                        expected = [x['label'] for x in q['choices'] if x['is_correct']]
+                        self.assertTrue(_choice_response(c.cursor(), question_id, expected, study=study)[1])
+                        self.assertFalse(_choice_response(c.cursor(), question_id, ['B', 'D'] if len(expected)==2 else ['B'], study=study)[1])
+                    payload = dlms._question_payload_from_db(c.cursor(), question_id)
+                    self.assertEqual(expected, payload['correct'])
+
+    def test_collection_count_boundaries_inventory_and_complete_reimport(self):
+        ids = [self._seed(f'Synthetic {i}', f'part-{i}.html', [self._choice()], folder='Sample') for i in range(193)]
+        for size, counts in ((99,[99]), (100,[100]), (101,[100,1]), (193,[100,93])):
+            with self.subTest(size=size):
+                job = self._download(ids[:size])
+                try:
+                    if len(counts)==1:
+                        self.assertEqual(counts[0], self._inspect(job.path)['quiz_count'])
+                    else:
+                        with zipfile.ZipFile(job.path) as collection:
+                            inventory = json.loads(collection.read('inventory.json'))
+                            self.assertEqual(counts, [p['quiz_count'] for p in inventory['bundles']])
+                            got = [q['source_quiz_id'] for part in inventory['bundles'] for q in part['quizzes']]
+                            self.assertEqual(ids[:size], got)
+                            self.assertEqual(size, len(set(got)))
+                            for part in inventory['bundles']:
+                                data = collection.read(part['filename'])
+                                self.assertEqual(part['sha256'], hashlib.sha256(data).hexdigest())
+                                path = self.root / part['filename']; path.write_bytes(data)
+                                self.assertEqual(part['quiz_count'], self._inspect(path)['quiz_count'])
+                                if size==193:
+                                    self._import_bytes(data)
+                        with self.assertRaisesRegex(bundles.PortableQuizBundleError, 'manifest|unexpected'):
+                            self._inspect(job.path)  # Collection intentionally is not importable.
+                finally:
+                    root = job.path.parent;job.close();self.assertFalse(root.exists())
+        self.assertEqual(386, len(dlms.load_registry()))
+        with dlms.get_db() as c:
+            self.assertEqual(386, c.execute('SELECT COUNT(*) FROM questions').fetchone()[0])
+            self.assertEqual(0, c.execute('SELECT COUNT(*) FROM attempts').fetchone()[0])
+            self.assertEqual(0, c.execute('SELECT COUNT(*) FROM study_responses').fetchone()[0])
+
+    def test_collection_splits_question_member_and_manifest_budgets(self):
+        ids = [self._seed(f'Budget {i}', f'budget-{i}.html', [self._choice()]) for i in range(5)]
+        with mock.patch.object(bundles, 'PORTABLE_QUIZ_BUNDLE_MAX_TOTAL_QUESTIONS', 2):
+            job = self._download(ids)
+            try:
+                with zipfile.ZipFile(job.path) as z:
+                    inv = json.loads(z.read('inventory.json'))
+                    self.assertEqual([2,2,1], [x['quiz_count'] for x in inv['bundles']])
+            finally:job.close()
+        from dlms.services import portable_quiz_exports as exports
+        manifest = self._minimal_manifest()
+        base = len(exports._manifest_bytes(manifest))
+        with mock.patch.object(bundles, '_MAX_MANIFEST_BYTES', base-1):
+            self.assertFalse(exports._fits(manifest))
+        with mock.patch.object(bundles, 'PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES', base):
+            self.assertFalse(exports._fits(manifest))
+        with mock.patch.object(bundles, 'PORTABLE_QUIZ_BUNDLE_MAX_FILES', 0):
+            self.assertFalse(exports._fits(manifest))
+
+    def test_actionable_media_error_keeps_selection_filters_and_no_partial_output(self):
+        good = self._seed('Good bank', 'good.html', [self._choice()])
+        bad = self._seed('Missing diagram', 'bad.html', [self._choice(image_url='/quiz-assets/missing/picture.png')])
+        client = dlms.app.test_client()
+        response = client.post('/quiz-bundles/export', data={'quiz_ids':[str(good),str(bad)], 'export_search':'diagram', 'export_folder':'Uncategorized'}, headers=csrf_headers(client,'/quiz-bundles'))
+        self.assertEqual(400, response.status_code)
+        html = response.get_data(as_text=True)
+        self.assertIn('Missing diagram · quiz ID', html)
+        self.assertNotIn(str(self.root), html)
+        self.assertEqual(2, html.count(' checked'))
+        self.assertIn('value="diagram"', html)
+        self.assertEqual([], list((Path(dlms.PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER)/'exports').glob('export-*')))
+        response = client.post('/quiz-bundles/export', data={},headers=csrf_headers(client,'/quiz-bundles'))
+        self.assertEqual(400,response.status_code)
+        self.assertIn('Select between 1 and 1,000',response.get_data(as_text=True))
+
+    def test_malformed_question_identified_and_unexpected_error_not_leaked(self):
+        quiz = self._seed('Malformed sample', 'broken.html', [self._choice()])
+        with dlms.get_db() as c:c.execute('UPDATE choices SET is_correct=0 WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?)',(quiz,));c.commit()
+        client = dlms.app.test_client()
+        r = client.post('/quiz-bundles/export', data={'quiz_ids':str(quiz)}, headers=csrf_headers(client,'/quiz-bundles'))
+        self.assertEqual(200,r.status_code);r.close()
+        # Missing answers are now preservable warnings, not export blockers.
+        checked = client.post('/quiz-bundles/export', data={'quiz_ids':str(quiz),'export_action':'check'}, headers=csrf_headers(client,'/quiz-bundles'))
+        self.assertIn('No correct answer is marked',checked.get_data(as_text=True))
+        self.assertIn('0 blocked',checked.get_data(as_text=True))
+        with dlms.get_db() as conn:
+            signature=dlms._preflight_portable_quiz_export(conn.cursor(),dlms.load_registry(),[quiz])['signature']
+        with mock.patch.object(dlms,'_build_portable_quiz_download',side_effect=OSError('/secret/absolute/path')):
+            r = client.post('/quiz-bundles/export',data={'quiz_ids':str(quiz),'export_action':'preserve','warning_snapshot':signature},headers=csrf_headers(client,'/quiz-bundles'))
+        self.assertEqual(500,r.status_code);self.assertNotIn('/secret',r.get_data(as_text=True));self.assertIn(' checked',r.get_data(as_text=True))
+
+    def test_interrupted_stream_and_failed_build_release_files_and_export_slot(self):
+        from dlms.services import portable_quiz_exports as exports
+        quiz = self._seed('Stream fixture', 'stream.html', [self._choice()])
+        client=dlms.app.test_client()
+        response=client.post('/quiz-bundles/export',data={'quiz_ids':str(quiz)},headers=csrf_headers(client,'/quiz-bundles'),buffered=False)
+        self.assertEqual(200,response.status_code);next(iter(response.response));response.close()
+        root=Path(dlms.PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER)/'exports'
+        self.assertEqual([],list(root.glob('export-*')))
+        with mock.patch.object(dlms,'_inspect_portable_quiz_bundle',side_effect=OSError('Interrupted validation')):
+            with self.assertRaises(OSError):self._download([quiz])
+        self.assertEqual([],list(root.glob('export-*')))
+        with mock.patch.object(exports,'MAX_DOWNLOAD_BYTES',1):
+            with self.assertRaisesRegex(exports.ExportSelectionError,'512 MiB'):self._download([quiz])
+        self.assertEqual([],list(root.glob('export-*')))
+        self.assertTrue(exports._EXPORT_SLOTS.acquire(blocking=False))
+        self.assertTrue(exports._EXPORT_SLOTS.acquire(blocking=False))
+        try:
+            with self.assertRaises(exports.ExportBusyError):self._download([quiz])
+        finally:exports._EXPORT_SLOTS.release();exports._EXPORT_SLOTS.release()
+
+    def test_simultaneous_exports_have_unique_complete_jobs(self):
+        from concurrent.futures import ThreadPoolExecutor
+        quiz=self._seed('Concurrent fixture','concurrent.html',[self._choice()])
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            jobs=list(pool.map(lambda _:self._download([quiz]),range(2)))
+        try:
+            self.assertNotEqual(jobs[0].path,jobs[1].path)
+            for job in jobs:self.assertEqual(1,self._inspect(job.path)['quiz_count'])
+        finally:
+            for job in jobs:job.close()
+
+    def test_disk_full_is_storage_error_retains_selection_and_cleans_job(self):
+        import errno
+        quiz = self._seed('Storage sample', 'storage.html', [self._choice()])
+        client = dlms.app.test_client()
+        with mock.patch.object(dlms, '_build_portable_quiz_bundle', side_effect=OSError(errno.ENOSPC, 'No space', '/private/path')):
+            response = client.post('/quiz-bundles/export', data={'quiz_ids': str(quiz), 'export_search': 'Storage'}, headers=csrf_headers(client, '/quiz-bundles'))
+        text = response.get_data(as_text=True)
+        self.assertEqual(500, response.status_code)
+        self.assertIn('storage or server error', text)
+        self.assertNotIn('/private/path', text)
+        self.assertRegex(text, rf'value="{quiz}"[^>]*checked')
+        self.assertIn('value="Storage"', text)
+        self.assertEqual([], list((Path(dlms.PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER) / 'exports').glob('export-*')))
+
+    def test_collection_media_references_remain_distinct_and_importable(self):
+        image = Path(dlms.QUIZ_ASSET_FOLDER) / 'sample' / 'sample.png'
+        image.parent.mkdir()
+        Image.new('RGB', (12, 12), 'navy').save(image)
+        ids = [self._seed(f'Media {n}', f'media-{n}.html', [self._choice(image_url='/quiz-assets/sample/sample.png')]) for n in range(3)]
+        old_ids = {entry['id'] for entry in dlms.load_registry()}
+        with mock.patch.object(bundles, 'PORTABLE_QUIZ_BUNDLE_MAX_TOTAL_QUESTIONS', 2):
+            job = self._download(ids)
+        try:
+            with zipfile.ZipFile(job.path) as collection:
+                inventory = json.loads(collection.read('inventory.json'))
+                self.assertEqual([2, 1], [part['quiz_count'] for part in inventory['bundles']])
+                for part in inventory['bundles']:
+                    self._import_bytes(collection.read(part['filename']))
+        finally:
+            job.close()
+        imported = [entry['id'] for entry in dlms.load_registry() if entry['id'] not in old_ids]
+        self.assertEqual(3, len(imported))
+        paths = []
+        with dlms.get_db() as connection:
+            for quiz in imported:
+                media = json.loads(connection.execute('SELECT media_json FROM questions WHERE quiz_id=?', (quiz,)).fetchone()[0])
+                path = Path(dlms.QUIZ_ASSET_FOLDER) / media['image_url'].removeprefix('/quiz-assets/')
+                paths.append(path)
+                self.assertEqual(image.read_bytes(), path.read_bytes())
+        self.assertEqual(3, len(set(paths)))
+
+    def test_export_rejects_symlink_media_without_reading_outside_assets(self):
+        outside = self.root / 'private.png'
+        Image.new('RGB', (12, 12), 'navy').save(outside)
+        link = Path(dlms.QUIZ_ASSET_FOLDER) / 'sample' / 'linked.png'
+        link.parent.mkdir()
+        link.symlink_to(outside)
+        quiz = self._seed('Linked image', 'linked.html', [self._choice(image_url='/quiz-assets/sample/linked.png')])
+        from dlms.services.portable_quiz_exports import ExportSelectionError
+        with self.assertRaises(ExportSelectionError) as caught:
+            self._download([quiz])
+        self.assertEqual(quiz, caught.exception.report['quizzes'][0]['quiz_id'])
+        self.assertEqual(1, caught.exception.report['quizzes'][0]['blockers'][0]['position'])
+        self.assertTrue(outside.is_file())
+        self.assertEqual([], list((Path(dlms.PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER) / 'exports').glob('export-*')))
+
+    def test_preserved_choice_raw_length_cannot_bypass_limit(self):
+        q=self._minimal_manifest()
+        q['quizzes'][0]['questions'][0]['choices'][0]['text']=' '*4000+'x'
+        with self.assertRaisesRegex(bundles.PortableQuizBundleError,'character limit'):
+            bundles.validate_portable_quiz_bundle_manifest(q)
+
+    def test_cleanup_failure_still_releases_bounded_export_slot(self):
+        from dlms.services import portable_quiz_exports as exports
+        quiz=self._seed('Cleanup fixture','cleanup.html',[self._choice()])
+        with mock.patch.object(dlms,'_inspect_portable_quiz_bundle',side_effect=ValueError('Bad asset')), mock.patch.object(exports.tempfile.TemporaryDirectory,'cleanup',side_effect=OSError('Cleanup interrupted')):
+            with self.assertRaisesRegex(OSError,'Cleanup interrupted'):
+                self._download([quiz])
+        self.assertTrue(exports._EXPORT_SLOTS.acquire(blocking=False))
+        self.assertTrue(exports._EXPORT_SLOTS.acquire(blocking=False))
+        exports._EXPORT_SLOTS.release();exports._EXPORT_SLOTS.release()
+
+    def test_selection_validation_and_import_limits_remain_strict(self):
+        from dlms.services import portable_quiz_exports as exports
+        for ids in (['oops'],[-1],[True],list(range(1,1002))):
+            with self.subTest(ids_type=type(ids[0]).__name__),self.assertRaises(exports.ExportSelectionError):
+                self._download(ids)
+        manifest=self._minimal_manifest()
+        for field,value in [('label','B'),('is_correct','true'),('text','')]:
+            m=copy.deepcopy(manifest);m['quizzes'][0]['questions'][0]['choices'][0][field]=value
+            with self.subTest(field=field),self.assertRaises(bundles.PortableQuizBundleError):
+                bundles.validate_portable_quiz_bundle_manifest(m)
 
 
 if __name__ == "__main__":

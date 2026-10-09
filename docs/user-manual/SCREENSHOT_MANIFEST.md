@@ -130,3 +130,17 @@ The same directory contains local Markdown reading-preview captures; these are
 QA artifacts, not a configured canonical PDF/export pipeline. Older materially
 unchanged UM images remain dated by the original table. The obsolete review-options
 illustration and old mastery explanation were removed from the current chapters.
+
+### Portable selection refresh (2026-10-09)
+
+`images/UM-06-portable-quiz-selection.webp` shows the actual updated application
+with disposable sample courses. It replaces no owner content and supplements
+UM-06's existing import-preview image. Refresh it from the
+`test_portable_batch_selection_and_label_grading[light]` browser check using
+`DLMS_BUNDLE_CAPTURE_DIR`; inspect the captured crop before copying it to this
+manual and `static/help_assets/portable-bundle-selection.webp`. The same Help
+image supports its existing full-size enlargement link.
+
+### Portable preservation selection check
+
+- `images/UM-06-portable-quiz-preflight.webp`: actual isolated sample preflight, two warning quizzes and one blocked quiz; repeated labels, empty text, no answer and missing images are distinguished. Source: `test_portable_complete_preflight_and_explicit_editor`; refresh with `DLMS_BUNDLE_CAPTURE_DIR` and copy the Light crop.

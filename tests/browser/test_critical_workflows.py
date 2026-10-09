@@ -39,7 +39,7 @@ _CAPTURE_ENVIRONMENTS = (
     'DLMS_HELP_CAPTURE_DIR', 'DLMS_PRESENTATION_CAPTURE_DIR', 'DLMS_SEQUENCE_CAPTURE_DIR',
     'DLMS_EXAM_PLAN_CAPTURE_DIR', 'DLMS_PREBUILD_CAPTURE_DIR', 'DLMS_ACTION_CAPTURE_DIR',
     'DLMS_PLAN_PROFILE_CAPTURE_DIR', 'DLMS_CERTIFICATION_CAPTURE_DIR', 'DLMS_CERT_CONTROL_CAPTURE_DIR',
-    'DLMS_REMEDIATION_CAPTURE_DIR',
+    'DLMS_REMEDIATION_CAPTURE_DIR', 'DLMS_BUNDLE_CAPTURE_DIR',
 )
 
 
@@ -63,6 +63,15 @@ def _open_resume_management(browser, button_selector):
     button = browser.evaluate("(() => {const n=document.querySelector(" + json.dumps(button_selector) + ");return {id:n.dataset.clearRecovery,open:n.closest('details').open};})()")
     if not button['open']:
         browser.click('details.dashboard-resume-management:has([data-clear-recovery=' + json.dumps(button['id']) + ']) > summary')
+
+
+def _wait_for_quiz_mode_controls(browser, count=2):
+    """Prepared questions precede recovery; wait for usable mode controls."""
+    browser.wait_for(
+        f"quizRecoveryReady === true && quiz.length === {count} && "
+        "!document.querySelector('.study-mode-btn').disabled && "
+        "!document.querySelector('.exam-mode-btn').disabled"
+    )
 
 
 def _new_four_question_study_quiz(stack):
@@ -3206,7 +3215,7 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
     )
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
 
     browser.click(".study-mode-btn")
     browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
@@ -3221,7 +3230,7 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
     )
 
     browser.navigate(quiz_url)
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
     browser.click(".exam-mode-btn")
     exam_recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
@@ -3245,6 +3254,89 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
     browser.click("#result button[onclick*='/history']")
     browser.wait_for("location.pathname === '/history'")
     browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
+
+
+def test_study_feedback_waits_for_deferred_recovery_initialization(browser_stack):
+    """Question-array availability does not mean the mode controls are ready."""
+    b = browser_stack.browser
+    navigate, wait, click, receive = b.navigate, b.wait_for, b.click, b._receive_text
+    state = {'visits': 0, 'interception': None, 'held': False, 'observations': []}
+    blocked = []
+    url = browser_stack.base_url + '/api/study/quiz/' + str(browser_stack.metadata['critical_id'])
+
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+
+    def request_arrived():
+        deadline = time.monotonic() + 6
+        while not blocked and time.monotonic() < deadline:
+            b.evaluate('true')
+        assert blocked, 'Expected the controlled Study-status request'
+
+    def release():
+        b.command('network.continueRequest', {'request': blocked.pop(0)})
+        state['held'] = False
+
+    def observed_navigate(target):
+        if '/quizzes/' in target:
+            state['visits'] += 1
+            if state['visits'] == 2:
+                b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+                state['interception'] = b.command('network.addIntercept', {
+                    'phases': ['beforeRequestSent'], 'contexts': [b.context],
+                    'urlPatterns': [{'type': 'string', 'pattern': url}],
+                })['intercept']
+                b._receive_text = record
+        result = navigate(target)
+        if state['visits'] == 2 and state['interception']:
+            request_arrived()
+            release()  # The initial readiness check succeeds.
+            wait('quiz.length === 2')
+            request_arrived()  # Hold the subsequent durable-recovery lookup.
+            state['held'] = True
+            observation = b.evaluate("({questions:quiz.length,recoveryReady:quizRecoveryReady,examDisabled:document.querySelector('.exam-mode-btn').disabled})")
+            assert observation == {'questions': 2, 'recoveryReady': False, 'examDisabled': True}
+            state['observations'].append(observation)
+        return result
+
+    def observed_wait(expression, timeout=6.0):
+        if state['held'] and 'quizRecoveryReady' in expression:
+            release()
+        return wait(expression, timeout)
+
+    def observed_click(selector):
+        result = click(selector)
+        if state['held'] and selector == '.exam-mode-btn':
+            # With the pre-fix array-only wait this disabled click is ignored.
+            # Release loading, without supplying a second click or a result.
+            state['observations'].append(b.evaluate("({ignoredClick:!examMode,quizHidden:document.getElementById('quiz').classList.contains('hidden')})"))
+            release()
+            wait("quizRecoveryReady && !document.querySelector('.exam-mode-btn').disabled")
+        return result
+
+    b.navigate, b.wait_for, b.click = observed_navigate, observed_wait, observed_click
+    try:
+        test_study_feedback_exam_save_and_history_navigation(browser_stack, 'omarchy-miasma')
+        assert len(state['observations']) == 1
+    finally:
+        if state['held']:
+            release()
+        while blocked:
+            b.command('network.continueRequest', {'request': blocked.pop()})
+        b.navigate, b.wait_for, b.click, b._receive_text = navigate, wait, click, receive
+        if state['interception']:
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+        output = os.environ.get('DLMS_BUNDLE_CAPTURE_DIR')
+        if output:
+            folder = Path(output);folder.mkdir(parents=True, exist_ok=True)
+            (folder/'deferred-mode-controls.json').write_text(json.dumps(state['observations'], indent=2))
+            server_log = browser_stack.data_root.parent/'server.log'
+            if server_log.exists():
+                shutil.copy2(server_log, folder/'deferred-mode-server.log')
 
 
 @pytest.mark.parametrize("theme", ("purple-gold", "ethereal", "omarchy-catppuccin-latte", "omarchy-tokyo-night", "omarchy-miasma", "omarchy-white"))
@@ -3901,7 +3993,16 @@ def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement
         "if(String(args[0]).includes('/record_attempt'))"
         "window.__recoveryRetryResponse=await response.clone().json();return response}); }; true"
     ) is True
+    # Hold the real readiness response until we prove recovery does not race it.
+    browser.evaluate("window.__beforeReadinessFetch=window.fetch;window.__releaseReadiness=null;"
+        "window.fetch=(...args)=>String(args[0]).includes('/api/study/quiz/')?"
+        "new Promise(resolve=>{window.__releaseReadiness=()=>resolve(window.__beforeReadinessFetch(...args));}):"
+        "window.__beforeReadinessFetch(...args);true")
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("typeof window.__releaseReadiness === 'function'")
+    assert browser.evaluate("window.__recoveryRetryPayload === undefined")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume').disabled")
+    browser.evaluate("window.__releaseReadiness();true")
     browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
     assert browser.evaluate("JSON.parse(window.__recoveryRetryPayload)") == original_payload
     assert browser.evaluate("window.__recoveryRetryResponse.already_recorded") is True
@@ -4348,7 +4449,7 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
 
         for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
             browser.navigate(f"{quiz_url}?theme={theme}&mode={mode_selector[1:]}")
-            browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+            _wait_for_quiz_mode_controls(browser)
             pre_quiz = browser.evaluate(
                 "(() => {"
                 "const bounds = selector => { const rect = document.querySelector(selector).getBoundingClientRect();"
@@ -4995,7 +5096,7 @@ def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack
     )
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
     assert browser.evaluate(
         "(() => { const originalFetch = window.fetch.bind(window); let failStudySave = true; "
         "window.fetch = (...args) => { const target = String(args[0]); "
@@ -9049,7 +9150,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         browser_stack.data_root / "external_ai_drafts" / f"{draft_id}.json"
     ).exists()
     browser.navigate(f"{base_url}/quizzes/{entry['html']}")
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
     browser.click(".study-mode-btn")
     browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 3")
@@ -13920,7 +14021,7 @@ def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
     browser.click(".study-mode-btn")
     browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
@@ -13935,7 +14036,7 @@ def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
     assert "View undated results in Exam History" in text
     assert browser.evaluate("document.querySelector('.dashboard-activity-context time').dateTime.endsWith('+00:00')")
     browser.navigate(quiz_url)
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
     browser.click(".exam-mode-btn")
     browser.click("#choices .choice[data-index='0']")
     browser.click("#nextBtn")
@@ -14772,9 +14873,12 @@ def test_marked_selection_type_counts_and_preview_retry(browser_stack):
     script="""import app,json
 choice={'number':1,'type':'choice','question':'Who accepts business risk?','choices':[{'label':'A','text':'Business owner','is_correct':True},{'label':'B','text':'Vendor','is_correct':False}]}
 matching={'number':2,'type':'matching','question':'Match each risk role','pairs':[{'left':'Owner','right':'Accept risk'},{'left':'Auditor','right':'Assess controls'}]}
-hotspot={'number':3,'type':'hotspot','question':'Locate the control','image_url':'/static/favicon.ico','image_alt':'Isolated test image','target':{'type':'circle','x':.5,'y':.5,'radius':.2}}
+hotspot={'number':3,'type':'hotspot','question':'Locate the control','image_url':'/static/favicon.ico','image_alt':'Isolated test image','target':{'type':'circle','x':.5,'y':.5,'radius':.2},'target_label':'Control'}
 image={**choice,'number':4,'question':'Review the illustrated control','image_url':'/static/favicon.ico'}
-qid,html=app._publish_quiz('CISM — Mark types',[choice,matching,hotspot,image],filename_prefix='mark_types')
+# Match the canonical surrogate used by _quiz_dataset_runtime for Image Study.
+# The runtime hotspot still owns its target; a zero-choice DB row is incomplete.
+db_hotspot={**hotspot,'type':'choice','question':hotspot['question']+' [Image hotspot]','choices':[{'label':'A','text':'Control','is_correct':True}]}
+qid,html=app._publish_quiz('CISM — Mark types',[choice,matching,hotspot,image],[choice,matching,db_hotspot,image],filename_prefix='mark_types')
 print(json.dumps({'id':qid,'html':html}))
 """
     seeded=subprocess.run([sys.executable,'-c',script],cwd=ROOT,env={**os.environ,'QUIZAPP_DATA_DIR':str(browser_stack.data_root),'DLMS_NO_BROWSER':'1','PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=20)
@@ -15883,7 +15987,7 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
 @pytest.fixture(autouse=True)
 def certification_native_zoom_profile(request, monkeypatch):
     """Firefox's native 200% content zoom, configured in this disposable profile only."""
-    if not request.node.name.startswith('test_certification_native_zoom'):
+    if not request.node.name.startswith(('test_certification_native_zoom', 'test_portable_native_zoom')):
         return
     original = _firefox_command
     def command(firefox, profile, port, env):
@@ -16155,14 +16259,26 @@ def test_matching_exam_round_identity_resume_and_lost_acknowledgement(browser_st
     entry = next(item for item in entries if item.get('title') == 'Validated matching bank')
     url = base + '/quizzes/' + entry['html']
     b.navigate(url)
+    _wait_for_quiz_mode_controls(b, count=1)
     assert not b.evaluate('isSecureContext')
     b.click('.exam-mode-btn')
     b.wait_for(f"document.querySelectorAll('.matching-drop-target').length==={round_size}")
     variant = b.evaluate('quiz[0]._matching_variant')
     b.click('[data-match-answer="0"]')
     b.click('[data-match-target="0"]')
-    b.navigate(url)
-    b.wait_for("document.querySelector('.quiz-recovery-panel')")
+    preload=b.command('script.addPreloadScript', {'contexts':[b.context], 'functionDeclaration':
+        "() => {const original=window.fetch;let first=true;window.fetch=(...args)=>{"
+        "if(first&&String(args[0]).startsWith('/api/study/quiz/')){first=false;return new Promise(resolve=>{window.releaseInitialReadiness=()=>resolve(original(...args));});}"
+        "return original(...args);};}"})['script']
+    try:
+        b.navigate(url)
+        b.wait_for("typeof window.releaseInitialReadiness === 'function'")
+        assert not b.evaluate("Boolean(document.querySelector('.quiz-recovery-resume'))")
+        assert b.evaluate('quizRecoveryReady') is False
+        b.evaluate('window.releaseInitialReadiness();true')
+        b.wait_for("document.querySelector('.quiz-recovery-panel')")
+    finally:
+        b.command('script.removePreloadScript',{'script':preload})
     b.click('.quiz-recovery-resume')
     b.wait_for(f"document.querySelectorAll('.matching-drop-target').length==={round_size}")
     assert b.evaluate('quiz[0]._matching_variant') == variant
@@ -16830,3 +16946,247 @@ def test_documentation_refresh_help_and_safety_navigation(browser_stack, theme):
                 image_path = Path(output) / (name + '.webp')
                 with Image.open(image_path) as original:
                     original.crop((0, 0, original.width, min(original.height, int(panel_bottom-top)+8))).save(image_path, format='WEBP', lossless=True)
+
+
+def _portable_batch_selection(browser_stack, browser_server, theme, *, native_zoom=False):
+    """Real form downloads, ordinary-part import and label-based Study/Exam saves."""
+    b, root = browser_stack.browser, browser_stack.data_root
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    registry_path = root/'config/quizzes.json'
+    registry = json.loads(registry_path.read_text())
+    ids = []
+    with sqlite3.connect(root/'results.db') as c:
+        for n in range(101):
+            title = f'Sample Cloud course {n+1:03d}'
+            i = c.execute('INSERT INTO quizzes(title,source_file) VALUES(?,?)',(title,f'batch-{n}.html')).lastrowid
+            ids.append(i)
+            for number in ((1,2) if n==0 else (1,)):
+                qi = c.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type) VALUES(?,?,?,'choice')",(i,number,'Choose by label, not by equal text.')).lastrowid
+                c.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',[(qi,'A','Same',1),(qi,'B','Same',0),(qi,'C','same',int(number==2)),(qi,'D','Other',0)])
+            registry.append({'id':i,'title':title,'html':f'batch-{n}.html','folder':'Sample Cloud','exam_minutes':5})
+        bad = c.execute('INSERT INTO quizzes(title,source_file) VALUES(?,?)',('Sample missing image','missing.html')).lastrowid
+        qi = c.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type,media_json) VALUES(?,1,'Missing sample image','choice',?)",(bad,json.dumps({'image_url':'/quiz-assets/missing/sample.png'}))).lastrowid
+        c.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',[(qi,'A','First',1),(qi,'B','Second',0)])
+        registry.append({'id':bad,'title':'Sample missing image','html':'missing.html','folder':'Missing sample'})
+    registry_path.write_text(json.dumps(registry))
+    b.navigate(browser_stack.base_url+'/settings');b.wait_for('window.dlmsCsrfToken')
+    assert b.evaluate("fetch('/api/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:"+json.dumps(theme)+"})}).then(r=>r.ok)")
+    b.navigate(browser_stack.base_url+'/quiz-bundles');b.wait_for("document.getElementById('bundleSearch')")
+    if native_zoom:
+        b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+        assert b.evaluate('devicePixelRatio')==2
+    b.evaluate("bundleFolder.value='Sample Cloud';bundleFolder.dispatchEvent(new Event('input',{bubbles:true}));true")
+    assert b.evaluate('bundleMatchCount.textContent').startswith('101 matching')
+    assert b.evaluate("document.querySelectorAll('.portable-bundle-quiz:not([hidden])').length")==50
+    b.click('#selectAllBundleQuizzes')
+    assert b.evaluate("document.querySelectorAll('input[name=quiz_ids]:checked').length")==101
+    b.click('#bundleNext');assert b.evaluate('bundlePage.textContent')=='Page 2 of 3'
+    assert b.evaluate("document.querySelectorAll('input[name=quiz_ids]:checked').length")==101
+    b.evaluate("bundleSearch.value='101';bundleSearch.dispatchEvent(new Event('input',{bubbles:true}));true")
+    assert b.evaluate('bundleQuizCount.textContent')=='101 selected · 100 outside this filter'
+    b.click('#clearBundleQuizzes');assert b.evaluate('bundleDownload.disabled')
+    assert b.evaluate("document.querySelectorAll('input[name=quiz_ids]:checked').length")==0
+    b.evaluate("bundleSearch.value='';bundleSearch.dispatchEvent(new Event('input',{bubbles:true}));true")
+    # Keyboard activation uses the focused semantic button.
+    b.activate()
+    b.click('#bundleSearch')
+    b.press_key('\ue004')
+    b.press_key('\ue004')
+    assert b.evaluate('document.activeElement.id')=='selectAllBundleQuizzes'
+    assert b.evaluate('document.hasFocus()')
+    b.press_key('\ue007')
+    b.wait_for("document.querySelectorAll('input[name=quiz_ids]:checked').length===101")
+    assert b.evaluate("getComputedStyle(document.activeElement).outlineStyle")!='none'
+    out = os.environ.get('DLMS_BUNDLE_CAPTURE_DIR')
+    for width in ((None,) if native_zoom else (1440,390)):
+        if width:b.set_viewport(width,1000)
+        # A mobile drawer can remain open after desktop sidebar focus. Capture
+        # the actual controls, using the application's normal dismissal.
+        if b.evaluate("document.querySelector('#dashboardSidebar')?.classList.contains('open') || false"):
+            b.press_key('\ue00c')
+            b.wait_for("!document.querySelector('#dashboardSidebar').classList.contains('open')")
+        if b.evaluate('innerWidth < 820'):
+            b.wait_for("document.querySelector('#dashboardSidebar').getBoundingClientRect().right <= 0")
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if out:
+            folder=Path(out);folder.mkdir(parents=True,exist_ok=True)
+            shot=b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})
+            (folder/f'export-{theme}-{width or "zoom200"}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light' and width==1440:
+                from tests.browser._help_screenshots import capture_control
+                capture_control(b,folder/'portable-bundle-selection.webp','#portableBundleExportForm')
+    if native_zoom:return
+    # The server returns the specific reason and retained selected ID/filter.
+    b.evaluate("bundleFolder.value='Missing sample';bundleFolder.dispatchEvent(new Event('input',{bubbles:true}));true")
+    b.click('#clearBundleQuizzes');b.click('#selectAllBundleQuizzes');b.click('#bundleDownload')
+    b.wait_for("document.querySelector('.portable-bundle-error')")
+    assert 'Export is blocked' in b.evaluate("document.querySelector('.portable-bundle-error').textContent")
+    assert 'Sample missing image · quiz ID' in b.evaluate("document.querySelector('.portable-preflight-group').textContent")
+    assert 'Question 1' in b.evaluate("document.querySelector('.portable-preflight-group').textContent")
+    assert b.evaluate("document.querySelectorAll('input[name=quiz_ids]:checked').length")==1
+    assert b.evaluate('bundleFolder.value')=='Missing sample'
+    assert b.evaluate('bundleDownload.disabled') is False
+    if theme!='light':return
+    b.evaluate("bundleFolder.value='Sample Cloud';bundleFolder.dispatchEvent(new Event('input',{bubbles:true}));true")
+    b.click('#clearBundleQuizzes');b.click('#selectAllBundleQuizzes');b.click('#bundleDownload')
+    deadline=time.monotonic()+30
+    while time.monotonic()<deadline:
+        files=list(browser_server.work_root.glob('firefox-session-*/downloads/*Collection*.zip'))
+        if files:
+            try:
+                with zipfile.ZipFile(files[0]) as z:
+                    if z.testzip() is None:break
+            except (OSError,zipfile.BadZipFile):pass
+        time.sleep(.1)
+    else:raise AssertionError('No complete native collection download')
+    with zipfile.ZipFile(files[0]) as z:
+        inv=json.loads(z.read('inventory.json'))
+        assert [p['quiz_count'] for p in inv['bundles']]==[100,1]
+        assert [q['source_quiz_id'] for p in inv['bundles'] for q in p['quizzes']]==ids
+        for part in inv['bundles']:
+            path=browser_server.work_root/part['filename'];path.write_bytes(z.read(part['filename']))
+            b.navigate(browser_stack.base_url+'/quiz-bundles');b.wait_for_page_ready()
+            b.set_files('[name=bundle_zip]',[str(path)]);b.click("form[action='/quiz-bundles/import'] button[type=submit]")
+            b.wait_for("location.pathname.includes('/quiz-bundles/import/')")
+            b.click('[name=confirm_import]');b.click("form[action$='/confirm'] button[type=submit]")
+            b.wait_for("location.pathname==='/quiz-bundles'")
+    registry=json.loads(registry_path.read_text()); imported=[e for e in registry if e['id'] not in ids and e['title'].startswith('Sample Cloud')]
+    assert len(imported)==101
+    entry=next(e for e in imported if e['title'].startswith('Sample Cloud course 001'))
+    b.navigate(browser_stack.base_url+'/quizzes/'+entry['html']);b.wait_for('quizRecoveryReady')
+    b.click('.study-mode-btn');b.wait_for('durableStudySession!==null')
+    b.click("#choices .choice[data-index='1']");b.wait_for('studyLearningEventSaves.size===0')
+    b.click("#choices .choice[data-index='0']");b.wait_for('studyLearningEventSaves.size===0')
+    b.click('#nextBtn');b.click("#choices .choice[data-index='0']");b.click("#choices .choice[data-index='2']");b.wait_for('studyLearningEventSaves.size===0')
+    b.click('#finishReviewBtn');b.wait_for('Boolean(durableStudySession.completed_at)')
+    session=b.evaluate('learningSessionId')
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT was_correct FROM study_responses WHERE session_id=? ORDER BY sequence',(session,)).fetchall()==[(0,),(1,),(None,),(1,)]
+    b.navigate(browser_stack.base_url+'/quizzes/'+entry['html']);b.wait_for('quizRecoveryReady')
+    b.click('.exam-mode-btn');b.click("#choices .choice[data-index='0']");b.click('#nextBtn');b.click("#choices .choice[data-index='0']");b.click("#choices .choice[data-index='2']")
+    b.evaluate('window.confirm=()=>true;true');b.click('#submitBtn');b.wait_for("result.textContent.includes('saved successfully')")
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT score,total FROM attempts WHERE quiz_id=? ORDER BY id DESC LIMIT 1',(entry['id'],)).fetchone()==(2,2)
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_portable_batch_selection_and_label_grading(browser_stack,browser_server,theme):
+    _portable_batch_selection(browser_stack,browser_server,theme)
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_portable_native_zoom_selection(browser_stack,browser_server,theme):
+    _portable_batch_selection(browser_stack,browser_server,theme,native_zoom=True)
+
+
+def test_gapped_labels_study_exam_resume_and_legacy_queue_guard(browser_stack):
+    b,root=browser_stack.browser,browser_stack.data_root
+    qid,html=_new_regular_study_quiz(browser_stack,2)
+    with sqlite3.connect(root/'results.db') as c:
+        for n,labels in ((1,['A','C','D']),(2,['D','A','C'])):
+            qi=c.execute('SELECT id FROM questions WHERE quiz_id=? AND question_number=?',(qid,n)).fetchone()[0]
+            choices=c.execute('SELECT id FROM choices WHERE question_id=? ORDER BY choice_order',(qi,)).fetchall()
+            c.execute('DELETE FROM choices WHERE id=?',choices[3])
+            for i,(choice_id,) in enumerate(choices[:3]):
+                c.execute('UPDATE choices SET label=?,is_correct=? WHERE id=?',(labels[i],int(i==2 or (n==2 and i==0)),choice_id))
+    # Explicitly rebuild this disposable page through the editor, preserving labels.
+    b.navigate(browser_stack.base_url+f'/edit_quiz/{qid}');b.wait_for_page_ready()
+    b.evaluate('window.__beforePreservationSave=true;true')
+    b.click('#edit-quiz-form .build-primary-button');b.wait_for_page_ready('window.__beforePreservationSave !== true')
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for('quizRecoveryReady')
+    b.click('.study-mode-btn');b.wait_for('durableStudySession!==null')
+    b.click("#choices .choice[data-index='1']");b.wait_for('studyLearningEventSaves.size===0')
+    b.click("#choices .choice[data-index='2']");b.wait_for('studyLearningEventSaves.size===0')
+    session=b.evaluate('learningSessionId')
+    key=b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for("document.querySelector('.quiz-recovery-resume')")
+    b.click('.quiz-recovery-resume');b.wait_for('durableStudySession!==null && userAnswers.q0 !== undefined')
+    assert b.evaluate('userAnswers.q0')==[2]
+    b.click('#nextBtn');b.click("#choices .choice[data-index='0']");b.click("#choices .choice[data-index='2']")
+    b.wait_for('studyLearningEventSaves.size===0');b.click('#finishReviewBtn');b.wait_for('Boolean(durableStudySession.completed_at)')
+    with sqlite3.connect(root/'results.db') as c:
+        rows=c.execute('SELECT payload_json,was_correct FROM study_responses WHERE session_id=? ORDER BY sequence',(session,)).fetchall()
+        assert [(json.loads(r[0])['selected'],r[1]) for r in rows]==[(['C'],0),(['D'],1),(['D'],None),(['D','C'],1)]
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for('quizRecoveryReady')
+    b.click('.exam-mode-btn');b.click("#choices .choice[data-index='2']");b.click('#nextBtn')
+    b.click("#choices .choice[data-index='0']");b.click("#choices .choice[data-index='2']")
+    b.evaluate('window.confirm=()=>true;true');b.click('#submitBtn');b.wait_for("result.textContent.includes('saved successfully')")
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT score,total FROM attempts WHERE quiz_id=? ORDER BY id DESC LIMIT 1',(qid,)).fetchone()==(2,2)
+    # An old ambiguous recovery record remains byte-for-byte; it is not claimed or replayed.
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for('quizRecoveryReady')
+    b.click('.study-mode-btn');b.wait_for('durableStudySession!==null');b.click("#choices .choice[data-index='1']")
+    b.wait_for('studyLearningEventSaves.size===0')
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for("document.querySelector('.quiz-recovery-resume')")
+    b.evaluate("const old=JSON.parse(localStorage.getItem("+json.dumps(key)+"));delete old.view.answerEncoding;localStorage.setItem("+json.dumps(key)+",JSON.stringify(old));true")
+    old=b.evaluate('localStorage.getItem('+json.dumps(key)+')')
+    b.click('.quiz-recovery-resume')
+    b.wait_for("document.body.textContent.includes('older recovery record cannot safely encode')")
+    assert b.evaluate('localStorage.getItem('+json.dumps(key)+')')==old
+
+
+def _portable_preflight_review(browser_stack,theme,*,zoom=False):
+    b,root=browser_stack.browser,browser_stack.data_root
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    registry_path=root/'config/quizzes.json';registry=json.loads(registry_path.read_text());ids=[]
+    with sqlite3.connect(root/'results.db') as c:
+        for title,kind in [('Sample repeated labels','duplicate'),('Sample incomplete questions','empty'),('Sample missing images','media')]:
+            qi=c.execute('INSERT INTO quizzes(title,source_file) VALUES(?,?)',(title,title+'.html')).lastrowid;ids.append(qi)
+            for n in (1,2):
+                question=c.execute("INSERT INTO questions(quiz_id,question_number,question_text,media_json) VALUES(?,?,?,?)",(qi,n,'' if kind=='empty' and n==1 else 'Sample preserved question',json.dumps({'image_url':'/quiz-assets/missing/sample.png'}) if kind=='media' else '{}')).lastrowid
+                for i,label in enumerate(['A','A' if kind=='duplicate' else 'B','C']):
+                    c.execute('INSERT INTO choices(question_id,choice_order,label,text,is_correct) VALUES(?,?,?,?,?)',(question,i,label,'Option '+str(i),int(i==2 and not(kind=='empty' and n==2))))
+            registry.append({'id':qi,'title':title,'html':title+'.html','folder':'Preservation samples'})
+    registry_path.write_text(json.dumps(registry))
+    b.navigate(browser_stack.base_url+'/settings');_set_theme(b,theme)
+    b.navigate(browser_stack.base_url+'/quiz-bundles');b.wait_for_page_ready()
+    b.evaluate("bundleFolder.value='Preservation samples';bundleFolder.dispatchEvent(new Event('input',{bubbles:true}));true")
+    b.click('#selectAllBundleQuizzes');b.click('#bundleDownload');b.wait_for_page_ready("document.getElementById('exportPreflightHeading')")
+    text=b.evaluate("document.querySelector('#exportPreflightHeading').parentElement.textContent")
+    assert '2 quizzes with Needs review warnings · 1 blocked' in text
+    assert text.count('Question 1')==3 and text.count('Question 2')==3
+    assert b.evaluate("document.querySelectorAll('[name=quiz_ids]:checked').length")==3
+    assert b.evaluate("document.querySelectorAll('.portable-preflight-group a').length")==3
+    # Real disclosure keyboard activation, focus and retained state.
+    b.evaluate("document.querySelector('.portable-preflight-group summary').focus();true");b.activate();b.press_key('\ue007')
+    b.wait_for("document.querySelector('.portable-preflight-group').open")
+    assert b.evaluate("getComputedStyle(document.activeElement).outlineStyle")!='none'
+    b.evaluate("document.querySelectorAll('.portable-preflight-group').forEach(d=>d.open=true);true")
+    for width in ((None,) if zoom else (1440,390)):
+        if width:b.set_viewport(width,1000)
+        else:
+            b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+            assert b.evaluate('devicePixelRatio')==2
+        if b.evaluate("document.querySelector('#dashboardSidebar')?.classList.contains('open') || false"):
+            b.press_key('\ue00c')
+            b.wait_for("!document.querySelector('#dashboardSidebar').classList.contains('open')")
+        if b.evaluate('innerWidth < 820'):
+            b.wait_for("document.querySelector('#dashboardSidebar').getBoundingClientRect().right <= 0")
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if os.environ.get('DLMS_BUNDLE_CAPTURE_DIR'):
+            out=Path(os.environ['DLMS_BUNDLE_CAPTURE_DIR']);out.mkdir(parents=True,exist_ok=True)
+            (out/f'preflight-{theme}-{width or "zoom200"}.png').write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+            if theme=='light' and width==1440:
+                from tests.browser._help_screenshots import capture_control
+                capture_control(b,out/'portable-preflight.webp',"section:has(> #exportPreflightHeading)")
+    # Explicit editor correction on a disposable copy changes readiness, not history.
+    qid=ids[0];b.navigate(browser_stack.base_url+f'/edit_quiz/{qid}');b.wait_for_page_ready()
+    assert 'Needs review before graded Study or Exam' in b.evaluate('document.body.textContent')
+    b.evaluate("document.querySelectorAll('.edit-question-card').forEach(()=>{});document.querySelectorAll('input[name^=label_]').forEach((n,i)=>n.value=['A','B','C'][i%3]);true")
+    b.evaluate('window.__beforePreservationSave=true;true')
+    b.click('#edit-quiz-form .build-primary-button');b.wait_for_page_ready('window.__beforePreservationSave !== true')
+    status=b.evaluate('fetch("/api/study/quiz/'+str(qid)+'").then(r=>r.json())')
+    assert status['readiness']['ready']
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM study_sessions WHERE quiz_id=?',(qid,)).fetchone()[0]==0
+    b.navigate(browser_stack.base_url+'/library');b.wait_for_page_ready()
+    assert 'Needs review' in b.evaluate('document.body.textContent')
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_portable_complete_preflight_and_explicit_editor(browser_stack,theme):
+    _portable_preflight_review(browser_stack,theme)
+
+
+def test_portable_native_zoom_preflight(browser_stack):
+    _portable_preflight_review(browser_stack,'light',zoom=True)

@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS choices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
     question_id INTEGER NOT NULL,
+    choice_order INTEGER,
     label TEXT NOT NULL,          -- "A", "B", "C", etc.
     text TEXT NOT NULL,
     is_correct INTEGER NOT NULL DEFAULT 0,
@@ -209,7 +210,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 10);
+VALUES (1, 11);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)
@@ -334,3 +335,6 @@ CREATE TRIGGER IF NOT EXISTS certification_dates_update BEFORE UPDATE ON certifi
       OR json_type(NEW.data_json,'$.renewal_deadline') IS NOT 'text'
       OR json_type(NEW.data_json,'$.renewal') IS NOT NULL
     BEGIN SELECT RAISE(ABORT,'Outdated certification date contract; reopen with the current application.'); END;
+
+-- Explicit independent choice order (schema 11).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_choices_order ON choices(question_id, choice_order);

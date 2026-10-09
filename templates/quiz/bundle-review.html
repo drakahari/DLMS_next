@@ -34,6 +34,7 @@
                 <div class="portable-bundle-review-heading"><div><span>Quiz {{ loop.index }}</span><h2>{{ plan.import_title }}</h2></div>{% if plan.renamed %}<span class="portable-bundle-rename-badge">RENAMED</span>{% endif %}</div>
                 {% if plan.renamed %}<p class="portable-bundle-collision">The source title “{{ plan.source_title }}” already exists. This copy will use “{{ plan.import_title }}”.</p>{% endif %}
                 <div class="portable-bundle-review-meta"><span>Folder: <strong>{{ plan.folder }}</strong></span><span>{{ plan.question_count }} question{% if plan.question_count != 1 %}s{% endif %}</span><span>{{ plan.choice_count }} choice</span><span>{{ plan.matching_count }} matching</span><span>{{ plan.asset_count }} media file{% if plan.asset_count != 1 %}s{% endif %}</span></div>
+                {% if plan.readiness_issues %}<details open><summary>Needs review · {{ plan.readiness_issues|length }} issue{% if plan.readiness_issues|length != 1 %}s{% endif %}</summary><p>Content will be preserved. Graded Study and Exam are unavailable until you explicitly review and edit it.</p><ul>{% for issue in plan.readiness_issues %}<li>Question {{ issue.position }}: {{ issue.reason }}</li>{% endfor %}</ul></details>{% else %}<p>Ready to study</p>{% endif %}
                 <details><summary>Preview questions</summary><ol>{% for question in plan.quiz.questions %}<li><strong>{{ question.type|capitalize }}:</strong> {{ question.question }}</li>{% endfor %}</ol></details>
             </article>
             {% endfor %}

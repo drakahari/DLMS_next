@@ -155,7 +155,7 @@ def _source_records(cur, registry, *, is_generated_source):
     for row in cur.execute("""
         SELECT question_id, label, text, is_correct
         FROM choices
-        ORDER BY question_id, label, id
+        ORDER BY question_id, choice_order, label, id
     """).fetchall():
         choices[row["question_id"]].append({
             "label": row["label"] or "",

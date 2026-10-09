@@ -75,3 +75,15 @@ This refresh changes documentation, Help content, image assets and related tests
 only. It does not change runtime behavior, user records or settings. Focused
 checks are not a new whole-app audit, full release qualification, native Windows
 or macOS acceptance, or an accessibility conformance claim.
+
+### Portable quiz export follow-up (2026-10-09)
+
+Chapter 15 and Taking Quizzes Help now cover lossless repeated-choice text,
+filtered selection across pages, retained failure selections, collection
+splitting/inventory, extract-then-import instructions, resource limits and older
+importer restrictions. UM-06 gains an actual sample-profile export-selection
+capture; the existing ordinary import-preview image remains applicable.
+
+### Preservation-first portable transfer / schema 11 candidate
+
+Manual 15 and Taking Quizzes Help explain format-2 receiver requirements, ordered separate choices, transferable Needs review content, complete grouped preflight, selection retention and explicit editor correction. Manual 17 and the portable preservation contract explain schema-11 compatibility and pre-upgrade-backup rollback. Selection/preflight screenshots use disposable samples. The accepted schema-10 package remains a pre-change artifact.

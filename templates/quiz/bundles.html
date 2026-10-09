@@ -36,6 +36,13 @@
         {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="portable-bundle-messages" aria-live="polite">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
         {% if error %}<div class="portable-bundle-error" role="alert">{{ error }}</div>{% endif %}
 
+        {% if preflight %}<section class="dashboard-panel portable-bundle-panel" aria-labelledby="exportPreflightHeading"><h2 id="exportPreflightHeading">Selection check</h2>
+        <p>{{ preflight.selected_count }} selected · {{ preflight.warning_quizzes }} quiz{% if preflight.warning_quizzes != 1 %}zes{% endif %} with Needs review warnings · {{ preflight.blocked_quizzes }} blocked.</p>
+        <p>Needs review content can be preserved in format 2. Only export blockers prevent the download; no selected quizzes will be skipped.</p>
+        {% for group in preflight.quizzes %}<details class="portable-preflight-group"><summary>{{ group.title }} · quiz ID {{ group.quiz_id }} · {{ group.warnings|length }} warning{% if group.warnings|length != 1 %}s{% endif %} · {{ group.blockers|length }} blocker{% if group.blockers|length != 1 %}s{% endif %}</summary>
+        <div class="portable-preflight-issues" tabindex="0" aria-label="All issues for {{ group.title }}"><ul>{% for issue in group.blockers %}<li><strong>Export blocker:</strong> {% if issue.position %}Question {{ issue.position }}{% if issue.number != issue.position %} (stored number {{ issue.number }}){% endif %} — {% endif %}{{ issue.reason }}</li>{% endfor %}{% for issue in group.warnings %}<li><strong>Needs review — transferable:</strong> {% if issue.position %}Question {{ issue.position }}{% if issue.number != issue.position %} (stored number {{ issue.number }}){% endif %} — {% endif %}{{ issue.reason }}</li>{% endfor %}</ul></div>
+        {% if group.edit_url %}<a class="library-secondary-action" href="{{ group.edit_url }}">Review and edit</a>{% endif %}</details>{% endfor %}
+        {% if not preflight.quizzes %}<p>No content warnings or export blockers detected. Bundle resource limits are also checked during download.</p>{% endif %}</section>{% endif %}
         <div class="portable-bundle-workflows">
             <section class="dashboard-panel portable-bundle-panel" aria-labelledby="bundleExportHeading">
                 <div class="portable-bundle-panel-heading"><div><span class="portable-bundle-step">1</span><h2 id="bundleExportHeading">Export quizzes</h2></div><p>Select one or more normal source quizzes. Export does not modify them.</p></div>
@@ -43,14 +50,25 @@
                 <p class="portable-bundle-helper">Choice and matching questions, including supported images, are supported. Selected content and media are validated when you download.</p>
                 {% if catalog.quizzes %}
                 <form method="POST" action="/quiz-bundles/export" id="portableBundleExportForm">
-                    <div class="portable-bundle-selection-actions"><button type="button" id="selectAllBundleQuizzes">Select all</button><button type="button" id="clearBundleQuizzes">Clear</button><strong id="bundleQuizCount" aria-live="polite">0 selected</strong></div>
-                    <p class="portable-bundle-helper" id="bundleScrollHelp">Scroll within the list to see all {{ catalog.candidate_count }} candidates. Select all includes the entire list, not just the quizzes currently in view. Export up to {{ catalog.max_quizzes }} quizzes per bundle.</p>
+                    {% if preflight %}<input type="hidden" name="warning_snapshot" value="{{ preflight.signature }}">{% endif %}
+                    <div class="portable-bundle-filters">
+                        <label class="build-field"><span>Search quizzes</span><input type="search" name="export_search" id="bundleSearch" value="{{ export_search }}" placeholder="Title or folder"></label>
+                        <label class="build-field"><span>Folder</span><select name="export_folder" id="bundleFolder"><option value="">All folders</option>{% for folder in catalog.quizzes|map(attribute='folder')|unique|sort %}<option value="{{ folder }}"{% if folder == export_folder %} selected{% endif %}>{{ folder }}</option>{% endfor %}</select></label>
+                    </div>
+                    <div class="portable-bundle-selection-actions"><button type="button" id="selectAllBundleQuizzes">Select all filtered results</button><button type="button" id="clearBundleQuizzes">Deselect all</button></div>
+                    <strong id="bundleQuizCount" aria-live="polite">{{ selected|length }} selected</strong>
+                    <p class="portable-bundle-helper" id="bundleMatchCount" aria-live="polite"></p>
+                    <p class="portable-bundle-helper" id="bundleScrollHelp">Browse the pages to see all {{ catalog.candidate_count }} candidates. Select all filtered results includes every matching page. Filters and page changes keep your selection; Deselect all clears it on every page. Ordinary bundles contain up to {{ catalog.max_quizzes }} quizzes. Larger selections split automatically into a collection.</p>
                     <div class="portable-bundle-quiz-list" tabindex="0" role="group" aria-label="All export candidates" aria-describedby="bundleScrollHelp">
                         {% for quiz in catalog.quizzes %}
-                        <label class="portable-bundle-quiz"><input type="checkbox" name="quiz_ids" value="{{ quiz.quiz_id }}"><span><strong>{{ quiz.title }}</strong><small>{{ quiz.folder }} · {{ quiz.question_count }} question{% if quiz.question_count != 1 %}s{% endif %}{% if quiz.matching_count %} · {{ quiz.matching_count }} matching{% endif %}</small></span></label>
+                        <label class="portable-bundle-quiz" data-title="{{ quiz.title }}" data-folder="{{ quiz.folder }}"><input type="checkbox" name="quiz_ids" value="{{ quiz.quiz_id }}"{% if quiz.quiz_id|string in selected %} checked{% endif %}><span><strong>{{ quiz.title }}</strong><small>{{ quiz.folder }} · {{ quiz.question_count }} question{% if quiz.question_count != 1 %}s{% endif %}{% if quiz.matching_count %} · {{ quiz.matching_count }} matching{% endif %}</small></span></label>
                         {% endfor %}
                     </div>
-                    <button class="library-primary-action" type="submit">Download Portable Bundle</button>
+                    <p id="bundleNoMatches" class="portable-bundle-helper" hidden>No quizzes match these filters. Your existing selection is kept.</p>
+                    <nav class="portable-bundle-selection-actions" aria-label="Export candidate pages"><button type="button" id="bundlePrevious">Previous page</button><span id="bundlePage" aria-live="polite"></span><button type="button" id="bundleNext">Next page</button></nav>
+                    <div class="portable-bundle-selection-actions"><button type="submit" name="export_action" value="check">Check selected quizzes</button><button class="library-primary-action" id="bundleDownload" type="submit" name="export_action" value="{% if preflight and not preflight.blocked_quizzes %}preserve{% else %}download{% endif %}">Download selected quizzes</button></div>
+                    <p class="portable-bundle-helper" id="bundleDownloadHelp">One download. If it is a <strong>Bundle Collection</strong>, extract it and import each numbered bundle separately. The collection itself is not importable. Each bundle meets the 128 MiB import limit; one download is limited to 1,000 quizzes and 512 MiB. Large media or question sets may create extra parts. No quizzes are skipped on failure.</p>
+                    <details><summary>Compatibility and what is included</summary><p class="portable-bundle-helper">The bundle keeps distinct labeled choices even when their text matches. Format 2 also preserves original choice order, repeated labels and incomplete content. A receiver with format-2 support is required; older applications reject it. Needs review content is retained, but graded Study and Exam stay unavailable until you explicitly review and edit it. Quizzes and supported media are included; personal results and history are not. Use a full backup for recovery.</p></details>
                 </form>
                 {% else %}
                 <div class="portable-bundle-empty"><strong>No exportable source quizzes</strong><p>Create or import a normal quiz first.</p></div>
@@ -72,17 +90,7 @@
         </div>
     </main>
 </div>
-<script>
-(() => {
-    const boxes = [...document.querySelectorAll("input[name='quiz_ids']")];
-    const count = document.getElementById('bundleQuizCount');
-    const update = () => { if (count) count.textContent = `${boxes.filter(box => box.checked).length} selected`; };
-    boxes.forEach(box => box.addEventListener('change', update));
-    document.getElementById('selectAllBundleQuizzes')?.addEventListener('click', () => { boxes.forEach(box => { box.checked = true; }); update(); });
-    document.getElementById('clearBundleQuizzes')?.addEventListener('click', () => { boxes.forEach(box => { box.checked = false; }); update(); });
-    update();
-})();
-</script>
+<script src="/static/portable-quiz-selection.js"></script>
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>

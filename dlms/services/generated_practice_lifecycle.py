@@ -177,6 +177,8 @@ def complete_generated_practice(
         raise ValueError("This quiz is no longer available.")
     if not quiz_is_transient(quiz):
         return {"ok": True, "applicable": False}
+    from .quiz_readiness import require_ready
+    require_ready(cur, quiz_id, encoding=data.get("answerEncoding"), check_encoding=True)
     questions = _current_quiz_questions(cur, quiz_id)
     if len(questions) != count:
         raise ValueError("The quiz question set changed. Reload and retry.")

@@ -82,6 +82,7 @@
           {% endif %}
         {% endwith %}
 
+        {% if readiness and not readiness.ready %}<section class="portable-bundle-error" aria-label="Content needs review"><strong>Needs review before graded Study or Exam.</strong><p>Portable export preserves this content. Edit only the details you intend to correct; saved history is retained.</p><details><summary>Question issues ({{ readiness.issues|length }})</summary><ul>{% for issue in readiness.issues %}<li>{% if issue.position %}Question {{ issue.position }}: {% endif %}{{ issue.reason }}</li>{% endfor %}</ul></details></section>{% endif %}
         <form id="edit-quiz-form"
               class="build-workspace"
               method="POST"
@@ -217,7 +218,7 @@
                         <ul class="build-choice-list edit-quiz-choice-list">
                         {% for c in q.choices %}
                             <li>
-                                <b class="choice-label">{{ c["label"] }}.</b>
+                                <label class="build-field"><span>Choice label</span><input type="text" name="label_{{ c['id'] }}" value="{{ c['label'] }}" maxlength="1" pattern="[A-Z]" size="2" aria-label="Choice label for option {{ loop.index }} in question {{ q.number }}"></label>
 
                                 <input type="text"
                                        name="choice_{{ c['id'] }}"

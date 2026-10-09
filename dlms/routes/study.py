@@ -54,7 +54,8 @@ def create_study_blueprint(dependencies):
                 row = cur.execute("SELECT id, quiz_id, purpose, completed_at FROM study_sessions WHERE id = ? AND quiz_id = ?", (session_id, quiz_id)).fetchone()
                 return jsonify(session=dict(row) if row else None)
             row = cur.execute("SELECT * FROM study_sessions WHERE quiz_id = ? AND last_activity_at IS NOT NULL ORDER BY last_activity_at DESC, rowid DESC LIMIT 1", (quiz_id,)).fetchone()
-            return jsonify(generation=study.generation(cur), session=study.public_session(cur, row))
+            from dlms.services.quiz_readiness import quiz_readiness
+            return jsonify(generation=study.generation(cur), session=study.public_session(cur, row), readiness=quiz_readiness(cur, quiz_id))
         finally:
             conn.close()
 

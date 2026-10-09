@@ -120,7 +120,7 @@
         return {type, pairCount, matchingCount, configuredDirection};
       }
       if (type === "hotspot") return {type};
-      return {type: "choice", choiceCount: Array.isArray(question?.choices) ? question.choices.length : 0};
+      return {type: "choice", choiceCount: Array.isArray(question?.choices) ? question.choices.length : 0, choiceLabels: (question?.choices || []).map(c => c.label)};
     });
   }
 
@@ -209,6 +209,7 @@
         if (!finiteInteger(payload.sequence, 1, 1000000) || !["response", "ai_open", "prompt_copy"].includes(payload.kind)
             || !boundedString(payload.owner, 128) || !boundedString(payload.generation, 128) || !boundedString(payload.assessmentRevision, 128)) return false;
       }
+      if (payload.answerEncoding !== undefined) { if (payload.answerEncoding !== "choice-labels-v1") return false; keys.push("answerEncoding"); }
       if (!exactKeys(payload, keys)) return false;
       if (!(String(payload.quizId) === String(quizId)
         && payload.sessionId === sessionId
@@ -223,8 +224,9 @@
       if (descriptor.type === "choice") {
         if (!Array.isArray(payload.selected) || payload.selected.length > descriptor.choiceCount) return false;
         if (!payload.selected.every(value => typeof value === "string" && /^[A-Z]$/.test(value))) return false;
-        const selectedIndexes = payload.selected.map(value => value.charCodeAt(0) - 65);
-        if (selectedIndexes.some(value => value >= descriptor.choiceCount) || new Set(selectedIndexes).size !== selectedIndexes.length) return false;
+        const selectedIndexes = payload.selected.map(value => payload.answerEncoding === "choice-labels-v1" ? descriptor.choiceLabels.indexOf(value) : value.charCodeAt(0) - 65);
+        const limit = payload.answerEncoding === undefined && descriptor.choiceLabels.some((label,i) => label !== String.fromCharCode(65+i)) ? 26 : descriptor.choiceCount;
+        if (selectedIndexes.some(value => value < 0 || value >= limit) || new Set(selectedIndexes).size !== selectedIndexes.length) return false;
       } else if (descriptor.type === "hotspot") {
         const selected = payload.selected;
         if (!selected || typeof selected !== "object" || Array.isArray(selected)) return false;
@@ -287,7 +289,8 @@
     if (session.expiresAt !== session.updatedAt + EXPIRY_MS || session.expiresAt > now + EXPIRY_MS) return false;
     const view = record.view;
     if (!view || typeof view !== "object" || Array.isArray(view)) return false;
-    if (!exactKeys(view, ["ankiQuestionIndexes", "matchingInteractionMode", "questionIndex"])) return false;
+    if (view.answerEncoding !== undefined && view.answerEncoding !== "choice-labels-v1") return false;
+    if (!exactKeys(view, ["ankiQuestionIndexes", "matchingInteractionMode", "questionIndex", ...(view.answerEncoding === undefined ? [] : ["answerEncoding"])])) return false;
     if (!finiteInteger(view.questionIndex, 0, Number.MAX_SAFE_INTEGER)) return false;
     if (!["drag", "select"].includes(view.matchingInteractionMode)) return false;
     if (!Array.isArray(view.ankiQuestionIndexes)) return false;
@@ -332,7 +335,8 @@
     if (session.expiresAt !== session.updatedAt + EXPIRY_MS || session.expiresAt > now + EXPIRY_MS) return false;
     const view = record.view;
     if (!view || typeof view !== "object" || Array.isArray(view)) return false;
-    if (!exactKeys(view, ["ankiQuestionIndexes", "matchingInteractionMode", "questionIndex"])) return false;
+    if (view.answerEncoding !== undefined && view.answerEncoding !== "choice-labels-v1") return false;
+    if (!exactKeys(view, ["ankiQuestionIndexes", "matchingInteractionMode", "questionIndex", ...(view.answerEncoding === undefined ? [] : ["answerEncoding"])])) return false;
     if (!finiteInteger(view.questionIndex, 0, context.descriptors.length - 1)) return false;
     if (!["drag", "select"].includes(view.matchingInteractionMode)) return false;
     if (!Array.isArray(view.ankiQuestionIndexes)) return false;
@@ -729,6 +733,7 @@
       if (button?.disabled) return;
       const record = readStored();
       if (!record) { hidePanel(); return; }
+      if (options.canRestore?.(record) === false) return;
       const claimed = claimStored(record);
       if (!claimed) return;
       if (button) button.disabled = true;
@@ -741,14 +746,22 @@
       }
     }
 
-    function finishSavedSubmission() {
+    async function finishSavedSubmission() {
+      const button = recoveryPanel?.querySelector(".quiz-recovery-resume");
+      if (button?.disabled) return;
       const record = readStored();
       if (!record || record.session.phase !== "submitting") { hidePanel(); return; }
+      if (options.canRestore?.(record) === false) return;
       const claimed = claimStored(record);
       if (!claimed) return;
-      options.restore(claimed);
-      hidePanel();
-      options.finishSubmission(claimed.pendingAttempt);
+      if (button) button.disabled = true;
+      try {
+        if (await options.restore(claimed) === false) return;
+        hidePanel();
+        await options.finishSubmission(claimed.pendingAttempt);
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
 
     function startOver() {

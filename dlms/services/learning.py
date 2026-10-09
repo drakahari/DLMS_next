@@ -991,7 +991,7 @@ def _question_payload_from_db(
     else:
         choices = cur.execute("""
             SELECT label, text, is_correct FROM choices
-            WHERE question_id = ? ORDER BY label
+            WHERE question_id = ? ORDER BY choice_order, label, id
         """, (q["id"],)).fetchall()
         item["choices"] = [{"label": r["label"], "text": r["text"], "is_correct": bool(r["is_correct"])} for r in choices]
         item["correct"] = [r["label"] for r in choices if r["is_correct"]]
@@ -1512,7 +1512,7 @@ def _question_diagnostics_payload(
         for concept in question_concepts(cur, q['id']):
             g['concepts'].add(concept)
         if qtype == 'choice':
-            for choice in cur.execute("SELECT label,text,is_correct FROM choices WHERE question_id=? ORDER BY label", (q['id'],)).fetchall():
+            for choice in cur.execute("SELECT label,text,is_correct FROM choices WHERE question_id=? ORDER BY choice_order, label, id", (q['id'],)).fetchall():
                 label = str(choice['label'] or '').upper()
                 if label and label not in g['choice_map']:
                     g['choice_map'][label] = choice['text'] or ''

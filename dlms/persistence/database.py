@@ -4,9 +4,9 @@ import os
 import sqlite3
 
 
-from . import study_schema, exam_plan_schema, review_mark_schema, certification_schema
+from . import study_schema, exam_plan_schema, review_mark_schema, certification_schema, choice_schema
 
-DLMS_SCHEMA_VERSION = 10
+DLMS_SCHEMA_VERSION = 11
 DLMS_LEGACY_SCHEMA_VERSION = 1
 
 DLMS_SCHEMA_COLUMNS = {
@@ -21,7 +21,7 @@ DLMS_SCHEMA_COLUMNS = {
         "question_uid", "canonical_question_uid", "source_question_uid",
         "is_generated_copy",
     },
-    "choices": {"id", "question_id", "label", "text", "is_correct"},
+    "choices": {"id", "question_id", "label", "text", "is_correct", "choice_order"},
     "matching_pairs": {
         "id", "question_id", "pair_order", "left_text", "right_text",
         "category", "explanation", "verification_json",
@@ -51,6 +51,7 @@ DLMS_SCHEMA_INDEXES = {
     "idx_questions_source_uid",
     "idx_questions_question_uid_unique",
     "idx_choices_question",
+    "idx_choices_order",
     "idx_matching_pairs_question",
     "idx_attempts_quiz",
     "idx_attempts_completed_id",
@@ -305,7 +306,7 @@ DLMS_SCHEMA_COLUMNS.update(exam_plan_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(review_mark_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(certification_schema.COLUMNS)
 DLMS_SCHEMA_INDEXES.update(study_schema.INDEXES)
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate, 7: certification_schema.migrate, 8: certification_schema.migrate_periods, 9: certification_schema.migrate_minutes, 10: certification_schema.migrate_deadlines}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate, 7: certification_schema.migrate, 8: certification_schema.migrate_periods, 9: certification_schema.migrate_minutes, 10: certification_schema.migrate_deadlines, 11: choice_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables, *, database_column_info=None):
@@ -357,6 +358,8 @@ def _validate_current_database_schema(
     missing_indexes = sorted(schema_indexes - indexes)
     if missing_indexes:
         raise RuntimeError("DLMS database is missing required indexes: " + ", ".join(missing_indexes))
+    if 'choice_order' in schema_columns.get('choices', set()):
+        choice_schema.validate(conn)
     if 'review_mark_state' in schema_columns:
         review_mark_schema.validate_state(conn)
     if 'certification_state' in schema_columns:

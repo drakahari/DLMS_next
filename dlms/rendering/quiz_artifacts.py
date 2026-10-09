@@ -133,7 +133,7 @@ def _quiz_json_payload_from_db(
             SELECT label, text, is_correct
             FROM choices
             WHERE question_id = ?
-            ORDER BY label
+            ORDER BY choice_order, label, id
             """,
             (q["id"],)
         ).fetchall()

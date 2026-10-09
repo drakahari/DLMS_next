@@ -199,18 +199,19 @@ def seed_current_quiz(
                         ),
                     )
             else:
-                for choice in question.get("choices", []):
+                for position, choice in enumerate(question.get("choices", [])):
                     cursor.execute(
                         """
                         INSERT INTO choices (
-                            question_id, label, text, is_correct
-                        ) VALUES (?, ?, ?, ?)
+                            question_id, label, text, is_correct, choice_order
+                        ) VALUES (?, ?, ?, ?, ?)
                         """,
                         (
                             question_id,
                             choice.get("label"),
                             choice.get("text"),
                             1 if choice.get("is_correct") else 0,
+                            position,
                         ),
                     )
         connection.commit()

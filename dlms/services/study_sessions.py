@@ -28,7 +28,7 @@ def assessment_revision(cur, quiz_id):
     identity_metadata = {"question_uid", "canonical_question_uid", "source_question_uid", "is_generated_copy"}
     content = [{**{key: row[key] for key in row.keys() if key not in identity_metadata}, "choices": [], "pairs": []} for row in questions]
     by_id = {row["id"]: row for row in content}
-    for row in cur.execute("SELECT c.question_id, c.label, c.text, c.is_correct FROM choices c JOIN questions q ON q.id=c.question_id WHERE q.quiz_id=? ORDER BY c.question_id, c.label", (quiz_id,)):
+    for row in cur.execute("SELECT c.question_id, c.label, c.text, c.is_correct FROM choices c JOIN questions q ON q.id=c.question_id WHERE q.quiz_id=? ORDER BY c.question_id, c.choice_order, c.label, c.id", (quiz_id,)):
         by_id[row[0]]["choices"].append(tuple(row)[1:])
     for row in cur.execute("SELECT p.question_id, p.pair_order, p.left_text, p.right_text FROM matching_pairs p JOIN questions q ON q.id=p.question_id WHERE q.quiz_id=? ORDER BY p.question_id, p.pair_order, p.id", (quiz_id,)):
         by_id[row[0]]["pairs"].append(tuple(row)[1:])
@@ -43,7 +43,7 @@ def question_revision(cur, question_id):
     row = cur.execute("SELECT question_text, question_type, matching_round_size, matching_direction, explanation, media_json, correct_letters, correct_text FROM questions WHERE id = ?", (question_id,)).fetchone()
     if row is None:
         return None
-    content = {"question": tuple(row), "choices": [tuple(r) for r in cur.execute("SELECT label, text, is_correct FROM choices WHERE question_id = ? ORDER BY label", (question_id,))],
+    content = {"question": tuple(row), "choices": [tuple(r) for r in cur.execute("SELECT label, text, is_correct FROM choices WHERE question_id = ? ORDER BY choice_order, label, id", (question_id,))],
                "pairs": [tuple(r) for r in cur.execute("SELECT pair_order, left_text, right_text FROM matching_pairs WHERE question_id = ? ORDER BY pair_order, id", (question_id,))]}
     return hashlib.sha256(encode(content).encode()).hexdigest()
 
@@ -152,6 +152,8 @@ def claim(conn, data, *, registry, data_folder, artifact_names):
     cur = conn.cursor()
     if data.get("generation") != generation(cur):
         raise StudyConflict("Data was reset or restored. Reload before resuming; old queued saves are invalid.")
+    from .quiz_readiness import require_ready
+    require_ready(cur, quiz_id, encoding=data.get("answerEncoding"), check_encoding=True)
     questions = artifact(cur, quiz_id, data.get("fingerprint"), registry=registry, data_folder=data_folder, artifact_names=artifact_names)
     revision = assessment_revision(cur, quiz_id)
     row = cur.execute("SELECT * FROM study_sessions WHERE id = ?", (session_id,)).fetchone()
@@ -185,6 +187,8 @@ def owned(cur, data):
         raise StudyConflict("This session was taken over by another tab. Reload and explicitly resume to take it back.")
     if row["assessment_revision"] != data.get("assessmentRevision") or row["assessment_revision"] != assessment_revision(cur, row["quiz_id"]):
         raise StudyConflict("The questions changed. Reload and start a new review; saved history is retained.")
+    from .quiz_readiness import require_ready
+    require_ready(cur, row["quiz_id"], encoding=data.get("answerEncoding"), check_encoding=True)
     return row
 
 

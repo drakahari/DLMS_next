@@ -3001,6 +3001,15 @@ a.settings-hub-card:active {
 }
 
 /* DLMS-133: Portable Quiz Bundles */
+.portable-bundle-filters {display:flex;flex-wrap:wrap;gap:12px;align-items:end;}
+.portable-bundle-filters .build-field {flex:1 1 180px;min-width:0;}
+.portable-bundle-filters input,.portable-bundle-filters select {width:100%;min-height:44px;box-sizing:border-box;}
+.portable-bundle-quiz[hidden] {display:none;}
+.portable-bundle-page [hidden] {display:none !important;}
+.portable-bundle-selection-actions button {min-height:44px;}
+.portable-bundle-selection-actions button:focus-visible,
+.portable-bundle-filters :is(input,select):focus-visible {outline:2px solid var(--theme-accent);outline-offset:3px;}
+.portable-bundle-selection-actions button:disabled {cursor:default;opacity:.65;}
 .portable-bundle-main {
     display: grid;
     align-content: start;
@@ -16162,3 +16171,7 @@ h1, h2, h3 {
 #cancelAISettings:hover {background:var(--theme-surface);border-color:var(--theme-accent-text);}
 #aiSettingsForm .settings-primary-button {background:var(--theme-accent-2);color:var(--semantic-primary-control-text);border-color:var(--theme-accent-2);}
 #aiSettingsForm .settings-primary-button:hover {background:var(--theme-accent);border-color:var(--theme-accent);}
+
+.portable-bundle-page .portable-preflight-group { margin-block: .75rem; }
+.portable-bundle-page .portable-preflight-issues { max-block-size: 22rem; overflow: auto; overflow-wrap: anywhere; padding: .25rem .5rem; }
+.portable-bundle-page .portable-preflight-issues:focus-visible { outline: 2px solid var(--theme-focus-ring, var(--theme-accent)); outline-offset: 2px; }

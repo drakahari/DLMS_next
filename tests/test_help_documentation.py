@@ -173,6 +173,7 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn("Anki Tools → Custom Deck &amp; Printable Cards", anki)
 
         maintenance = self._static("help-maintenance.html")
+        self.assertIn("Current schema 11 stores explicit choice order", maintenance)
         self.assertIn("System Tools", maintenance)
         self.assertIn("not a routine update step", maintenance)
         self.assertIn("normally do not need to run it after updating DLMS", maintenance)
@@ -239,6 +240,19 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn('/help/maintenance#reset-remove', settings)
         self.assertNotIn("Data &amp; History", settings)
         self.assertNotIn("Reset &amp; Recovery", settings)
+
+    def test_portable_bundle_help_explains_filtered_collection_and_compatibility(self):
+        page=self._static('help-quizzes.html')
+        for text in ('Select all filtered results','Deselect all','Bundle Collection','each numbered bundle',
+                     'Older importers','1,000 quizzes','512 MiB','portable-bundle-selection.webp'):
+            self.assertIn(text,page)
+        self.assertIn('target="_blank" rel="noopener"',page)
+        asset = Path(dlms.STATIC_ROOT,'help_assets','portable-bundle-selection.webp')
+        self.assertTrue(asset.is_file())
+        tag = re.search(r'<img\b[^>]*portable-bundle-selection\.webp[^>]*>', page).group(0)
+        with Image.open(asset) as image:
+            self.assertIn(f'width="{image.width}"', tag)
+            self.assertIn(f'height="{image.height}"', tag)
 
     def test_help_distinguishes_library_reference_quiz_export_and_portable_backup(self):
         maintenance = self._static("help-maintenance.html")

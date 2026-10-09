@@ -768,6 +768,11 @@ def quiz_edit_validation(
             errors.append(
                 f"Question {question['question_number']} must have at least one correct answer."
             )
+    from .quiz_readiness import quiz_readiness
+    for issue in quiz_readiness(cur, quiz_id)['issues']:
+        message = f"Question {issue['position']}: {issue['reason']}"
+        if message not in errors:
+            errors.append(message)
     return errors, warnings
 
 

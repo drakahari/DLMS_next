@@ -63,14 +63,29 @@ def serve_quiz(dependencies, filename):
 
     if os.path.splitext(str(filename or ""))[1].lower() != ".html":
         return "Unsupported quiz file", 415
+    registry = dependencies.load_registry()
+    entry = next((q for q in registry if q.get('html') == filename), None)
+    readiness = None
+    if entry and str(entry.get('id') or '').isdigit():
+        from dlms.services.quiz_readiness import quiz_readiness
+        connection = dependencies.get_db()
+        try:
+            readiness = quiz_readiness(connection.cursor(), int(entry['id']))
+        finally:
+            connection.close()
+        if not readiness['ready']:
+            return render_template('quiz/needs-review.html', entry=entry, readiness=readiness), 409
     response = send_from_directory(QUIZ_FOLDER, filename, conditional=False)
     response.direct_passthrough = False
     # Preserve legacy encodings byte-for-byte; inspection needs only HTML tags.
     source = response.get_data().decode("utf-8", errors="surrogateescape")
     markup = _QuizRuntimeMarkup(source)
     markup.feed(source)
+    if readiness and readiness['actual_labels_required'] and not markup.shared:
+        return render_template('quiz/needs-review.html', entry=entry, readiness={'issues': [{'reason': 'This self-contained page uses an older answer mapping. Regenerate its HTML explicitly in the editor before graded use. Retained recovery and saved history have not been changed.'}]}), 409
     if markup.shared:
-        return response.make_conditional(request)
+        response.cache_control.no_store = True
+        return response
     # Presentation only: never rewrite or automatically regenerate user artifacts.
     notice = render_template("quiz/_legacy-study-notice.html")
     response.set_data((source[:markup.body_end] + notice + source[markup.body_end:]).encode("utf-8", errors="surrogateescape"))
@@ -117,7 +132,7 @@ def edit_quiz(dependencies, quiz_id):
             SELECT id, label, text, is_correct
             FROM choices
             WHERE question_id = ?
-            ORDER BY label
+            ORDER BY choice_order, label, id
             """,
             (q["id"],)
         ).fetchall()
@@ -149,13 +164,15 @@ def edit_quiz(dependencies, quiz_id):
             }
         })
 
+    from dlms.services.quiz_readiness import quiz_readiness
+    readiness = quiz_readiness(cur, quiz_id)
     conn.close()
 
     registry = load_registry()
     quiz_entry = next((q for q in registry if str(q.get("id")) == str(quiz_id)), {})
     exam_minutes = normalize_exam_minutes(quiz_entry.get("exam_minutes", 90))
 
-    return render_template("quiz/edit.html", quiz=quiz, questions=question_list, exam_minutes=exam_minutes, app_version=APP_VERSION)
+    return render_template("quiz/edit.html", quiz=quiz, questions=question_list, exam_minutes=exam_minutes, app_version=APP_VERSION, readiness=readiness)
 
 def rebuild_all_quiz_html(dependencies):
     confirmation = request.get_json(silent=True) or {}
@@ -254,7 +271,7 @@ def save_edited_quiz(dependencies, quiz_id):
 
     choices = cur.execute(
         """
-        SELECT c.id
+        SELECT c.id, c.label
         FROM choices c
         JOIN questions q ON q.id = c.question_id
         WHERE q.quiz_id = ?
@@ -264,16 +281,17 @@ def save_edited_quiz(dependencies, quiz_id):
 
     for c in choices:
         choice_id = c[0]
+        new_label = request.form.get(f"label_{choice_id}", c[1])
         new_choice_text = request.form.get(f"choice_{choice_id}", "").strip()
         is_correct = 1 if request.form.get(f"correct_{choice_id}") else 0
 
         cur.execute(
             """
             UPDATE choices
-            SET text = ?, is_correct = ?
+            SET text = ?, is_correct = ?, label = ?
             WHERE id = ?
             """,
-            (new_choice_text, is_correct, choice_id)
+            (new_choice_text, is_correct, new_label, choice_id)
         )
 
     matching_pairs = cur.execute(
@@ -331,10 +349,10 @@ def save_edited_quiz(dependencies, quiz_id):
         for label in ["A", "B", "C", "D"]:
             cur.execute(
                 """
-                INSERT INTO choices (question_id, label, text, is_correct)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO choices (question_id, label, text, is_correct, choice_order)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (question_id, label, f"Option {label}", 0)
+                (question_id, label, f"Option {label}", 0, cur.execute("SELECT COALESCE(MAX(choice_order), -1)+1 FROM choices WHERE question_id=?", (question_id,)).fetchone()[0])
             )
 
         try:
@@ -395,7 +413,7 @@ def save_edited_quiz(dependencies, quiz_id):
             SELECT label
             FROM choices
             WHERE question_id = ?
-            ORDER BY label
+            ORDER BY choice_order, label, id
             """,
             (question_id,)
         ).fetchall()
@@ -411,10 +429,10 @@ def save_edited_quiz(dependencies, quiz_id):
             if label not in used_labels:
                 cur.execute(
                     """
-                    INSERT INTO choices (question_id, label, text, is_correct)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO choices (question_id, label, text, is_correct, choice_order)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    (question_id, label, f"Option {label}", 0)
+                    (question_id, label, f"Option {label}", 0, cur.execute("SELECT COALESCE(MAX(choice_order), -1)+1 FROM choices WHERE question_id=?", (question_id,)).fetchone()[0])
                 )
 
                 used_labels.add(label)
@@ -525,7 +543,7 @@ def add_choices_to_question(dependencies, quiz_id, question_id):
         SELECT label
         FROM choices
         WHERE question_id = ?
-        ORDER BY label
+        ORDER BY choice_order, label, id
         """,
         (question_id,)
     ).fetchall()
@@ -541,10 +559,10 @@ def add_choices_to_question(dependencies, quiz_id, question_id):
         if label not in used_labels:
             cur.execute(
                 """
-                INSERT INTO choices (question_id, label, text, is_correct)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO choices (question_id, label, text, is_correct, choice_order)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (question_id, label, f"Option {label}", 0)
+                (question_id, label, f"Option {label}", 0, cur.execute("SELECT COALESCE(MAX(choice_order), -1)+1 FROM choices WHERE question_id=?", (question_id,)).fetchone()[0])
             )
 
             used_labels.add(label)

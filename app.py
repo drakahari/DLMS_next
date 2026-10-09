@@ -62,6 +62,7 @@ from dlms.services import quiz_composition as _quiz_composition_service
 from dlms.services import quiz_duplicates as _quiz_duplicate_service
 from dlms.services import quiz_smart_views as _quiz_smart_view_service
 from dlms.services import portable_quiz_bundles as _portable_quiz_bundle_service
+from dlms.services import portable_quiz_exports as _portable_quiz_export_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import question_identity as _question_identity_service
 from dlms.services import restore as _restore_service
@@ -1337,6 +1338,12 @@ def _publish_quiz(
     # quizzes explicitly so user-chosen titles cannot imitate review prefixes.
     if generation_kind is None:
         generation_kind = _question_identity_service.SOURCE_QUIZ_KIND
+    if generation_kind != _question_identity_service.SOURCE_QUIZ_KIND:
+        from dlms.services.quiz_readiness import question_issues
+        for position, question in enumerate(db_questions if db_questions is not None else runtime_questions, 1):
+            reasons = question_issues(question)
+            if reasons:
+                raise ValueError(f"Question {position} needs review before generated practice: {reasons[0]}")
     return _quiz_publication_service.publish_quiz(
         quiz_title,
         runtime_questions,
@@ -1814,7 +1821,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods, 9: _database.certification_schema.migrate_minutes, 10: _database.certification_schema.migrate_deadlines}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods, 9: _database.certification_schema.migrate_minutes, 10: _database.certification_schema.migrate_deadlines, 11: _database.choice_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables):
@@ -4025,17 +4032,18 @@ def _insert_quiz_rows(
                     ),
                 )
         else:
-            for c in q.get("choices", []):
+            for choice_order, c in enumerate(q.get("choices", [])):
                 cur.execute(
                     """
-                    INSERT INTO choices (question_id, label, text, is_correct)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO choices (question_id, label, text, is_correct, choice_order)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
                         question_id,
                         c.get("label"),
                         c.get("text"),
                         1 if c.get("is_correct") else 0,
+                        choice_order,
                     ),
                 )
 
@@ -5105,7 +5113,7 @@ def _inspect_portable_quiz_bundle(path):
     )
 
 
-def _build_portable_quiz_bundle(cur, registry, selected_quiz_ids):
+def _build_portable_quiz_bundle(cur, registry, selected_quiz_ids, output_path=None):
     return _portable_quiz_bundle_service.build_portable_quiz_bundle(
         cur,
         registry,
@@ -5117,6 +5125,35 @@ def _build_portable_quiz_bundle(cur, registry, selected_quiz_ids):
         allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
         app_version=APP_VERSION,
         now=datetime.now,
+        output_path=output_path,
+    )
+
+
+def _preflight_portable_quiz_export(cur, registry, selected_ids):
+    from dlms.services.portable_quiz_exports import MAX_SELECTION, ExportSelectionError
+    selected = []
+    for raw in selected_ids:
+        if not re.fullmatch(r'[0-9]{1,18}', str(raw)) or int(raw) <= 0:
+            raise ExportSelectionError('The selection contains an invalid quiz ID.')
+        if int(raw) not in selected:
+            selected.append(int(raw))
+    if not selected or len(selected) > MAX_SELECTION:
+        raise ExportSelectionError('Select between 1 and 1,000 source quizzes.')
+    return _portable_quiz_bundle_service.preflight_portable_quiz_export(cur, registry, selected,
+        question_payload_from_db=_question_payload_from_db, resolve_media_source=_portable_quiz_media_source,
+        logo_folder=LOGO_FOLDER, validate_raster_image=_decode_raster_image,
+        allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS)
+
+
+def _build_portable_quiz_download(cur, registry, selected_quiz_ids):
+    return _portable_quiz_export_service.build_export_download(
+        cur, registry, selected_quiz_ids,
+        staging_folder=os.path.join(PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER, "exports"),
+        build_single=lambda cursor, entries, ids, path: _build_portable_quiz_bundle(
+            cursor, entries, ids, output_path=path
+        ),
+        inspect_bundle=_inspect_portable_quiz_bundle,
+        preflight=_preflight_portable_quiz_export,
     )
 
 
@@ -5651,7 +5688,7 @@ def _load_anki_study_export_selection(quiz_id, question_numbers):
             SELECT label, text, is_correct
             FROM choices
             WHERE question_id = ?
-            ORDER BY label
+            ORDER BY choice_order, label, id
             """,
             (question["id"],),
         ).fetchall()
@@ -5721,7 +5758,7 @@ def _load_anki_missed_tsv_rows(attempt_id, attempt_qnums):
                     SELECT c2.label || '. ' || c2.text AS x
                     FROM choices c2
                     WHERE c2.question_id = q.id
-                    ORDER BY c2.label
+                    ORDER BY c2.choice_order, c2.label, c2.id
                 )
             ) AS choices_text,
             (
@@ -5729,7 +5766,7 @@ def _load_anki_missed_tsv_rows(attempt_id, attempt_qnums):
                 FROM choices c3
                 WHERE c3.question_id = q.id
                   AND c3.is_correct = 1
-                ORDER BY c3.label
+                ORDER BY c3.choice_order, c3.label, c3.id
             ) AS correct_letters,
             (
                 SELECT GROUP_CONCAT(x, CHAR(10))
@@ -5738,7 +5775,7 @@ def _load_anki_missed_tsv_rows(attempt_id, attempt_qnums):
                     FROM choices c4
                     WHERE c4.question_id = q.id
                       AND c4.is_correct = 1
-                    ORDER BY c4.label
+                    ORDER BY c4.choice_order, c4.label, c4.id
                 )
             ) AS correct_text,
             qu.title AS quiz_title
@@ -6751,8 +6788,9 @@ app.register_blueprint(create_quiz_blueprint(
         export_catalog=lambda cur, registry: (
             _portable_quiz_bundle_service.portable_quiz_export_catalog(cur, registry)
         ),
+        preflight_export=_preflight_portable_quiz_export,
         build_export=lambda cur, registry, selected: (
-            _build_portable_quiz_bundle(cur, registry, selected)
+            _build_portable_quiz_download(cur, registry, selected)
         ),
         stage_upload=lambda upload: _stage_portable_quiz_bundle(upload),
         load_staged=lambda token: _load_staged_portable_quiz_bundle(token),

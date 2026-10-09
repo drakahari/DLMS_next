@@ -281,7 +281,10 @@
                             </div>
 
                             <div class="library-quiz-actions">
-                                <a class="library-primary-action compact" href="/quizzes/{{ q['html'] }}">▶ Open Quiz</a>
+                                {% if q.readiness and not q.readiness.ready %}
+                                <details><summary>Needs review · {{ q.readiness.issues|length }} issue{% if q.readiness.issues|length != 1 %}s{% endif %}</summary><ul>{% for issue in q.readiness.issues %}<li>Question {{ issue.position }}{% if issue.number != issue.position %} (stored number {{ issue.number }}){% endif %}: {{ issue.reason }}</li>{% endfor %}</ul></details>
+                                <a class="library-primary-action compact" href="/edit_quiz/{{ q['id'] }}">Review and edit</a>
+                                {% else %}<a class="library-primary-action compact" href="/quizzes/{{ q['html'] }}">▶ Open Quiz</a>{% endif %}
                                 <a class="library-secondary-action compact" href="/edit_quiz/{{ q['id'] }}"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg> Edit</a>
                                 <a class="library-secondary-action compact" href="/export/quiz/{{ q['id'] }}.txt" title="Exports a classic choice-question text representation. Use Quiz Bundles to preserve matching, images, and hotspots." aria-label="Export {{ q['title'] }} as classic choice-question text">⇩ Export</a>
 

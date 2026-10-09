@@ -479,7 +479,7 @@ def export_all_quizzes_txt(dependencies):
                 SELECT label, text, is_correct
                 FROM choices
                 WHERE question_id = ?
-                ORDER BY label
+                ORDER BY choice_order, label, id
                 """,
                 (question_id,)
             ).fetchall()
@@ -596,7 +596,7 @@ def export_single_quiz_txt(dependencies, quiz_id):
             SELECT label, text, is_correct
             FROM choices
             WHERE question_id = ?
-            ORDER BY label
+            ORDER BY choice_order, label, id
             """,
             (question_id,)
         ).fetchall()
@@ -723,6 +723,8 @@ def quiz_library(dependencies):
     conn = dependencies.get_db()
     try:
         smart_view_data = dependencies.quiz_smart_views(conn.cursor(), registry)
+        from dlms.services.quiz_readiness import quiz_readiness
+        readiness_by_id = {q['id']: quiz_readiness(conn.cursor(), q['id']) for q in render_filtered if isinstance(q.get('id'), int)}
     finally:
         conn.close()
     smart_matches = smart_view_data["matches"]
@@ -786,6 +788,7 @@ def quiz_library(dependencies):
             "generation": generation_presentations.get(q.get("id")),
             "completion": completion_presentations.get(q.get("id")),
             "source_provenance": source_provenance.get(q.get("id")),
+            "readiness": readiness_by_id.get(q.get("id")),
         }
         for q in render_filtered
     ]

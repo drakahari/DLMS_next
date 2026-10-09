@@ -137,7 +137,7 @@ def _choice_response(cur, question_id, selected, *, study):
         )
 
     choices = cur.execute(
-        "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY label",
+        "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY choice_order, label, id",
         (question_id,),
     ).fetchall()
     allowed = {row["label"] for row in choices}
@@ -353,7 +353,7 @@ def _validate_missed_details(
         cleaned["questionId"] = response["questionId"]
         if response["questionType"] == "choice":
             choice_rows = cur.execute(
-                "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY label",
+                "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY choice_order, label, id",
                 (response["questionId"],),
             ).fetchall()
             cleaned["correctLetters"] = [
@@ -410,7 +410,7 @@ def _validate_missed_details(
                 """
                 SELECT text FROM choices
                 WHERE question_id = ? AND is_correct = 1
-                ORDER BY label LIMIT 1
+                ORDER BY choice_order, label, id LIMIT 1
                 """,
                 (response["questionId"],),
             ).fetchone()
@@ -449,6 +449,8 @@ def _validate_attempt_payload(
     )
     if not cur.execute("SELECT 1 FROM quizzes WHERE id = ?", (quiz_id,)).fetchone():
         raise LearningPayloadError("quizId does not identify an existing quiz")
+    from .quiz_readiness import require_ready
+    require_ready(cur, quiz_id, encoding=data.get("answerEncoding"), check_encoding=True)
     attempt_id = learning_identifier(data.get("attemptId"), "attemptId")
     session_id = optional_learning_identifier(data.get("sessionId"), "sessionId")
 
@@ -874,7 +876,7 @@ def persist_attempt(
                 SELECT label, text
                 FROM choices
                 WHERE question_id = ?
-                ORDER BY label
+                ORDER BY choice_order, label, id
                 """,
                 (question_id,),
             )
@@ -981,6 +983,8 @@ def persist_study_learning_event(
     quiz_id = learning_integer(
         data.get("quizId"), "quizId", minimum=1, allow_numeric_string=True
     )
+    from .quiz_readiness import require_ready
+    require_ready(cur, quiz_id, encoding=data.get("answerEncoding"), check_encoding=True)
     question_ordinal = learning_integer(
         data.get("questionOrdinal", data.get("questionNumber")),
         "questionOrdinal",

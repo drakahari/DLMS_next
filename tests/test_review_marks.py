@@ -381,6 +381,26 @@ d.bootstrap_database(sys.argv[1],schema_version=6,legacy_schema_version=1,legacy
         self.assertIn('changed',response.json['anki']['reasons'][0]['reason'])
         self.assertEqual(self.client.post('/api/review-marks/anki',json=d,headers=self.headers).status_code,409)
 
+    def test_canonical_hotspot_marks_verify_target_label_and_source_projection(self):
+        hotspot=dict(number=1,type='hotspot',question='Select the target',image_url='/static/favicon.ico',
+                     target=dict(type='circle',x=.5,y=.5,radius=.2),target_label='Center')
+        canonical=dict(number=1,type='choice',question='Select the target [Image hotspot]',
+                       image_url='/static/favicon.ico',choices=[dict(label='A',text='Center',is_correct=True)])
+        qid,_=dlms._publish_quiz('Canonical hotspot',[hotspot],[canonical],filename_prefix='canonical_hotspot')
+        self.mark(qid)
+        before=self.rows(qid)
+        self.assertEqual(len(before),1)
+        self.assertTrue(before[0]['url'])
+        self.assertIn('image or hotspot',before[0]['practice_reason'])
+        self.assertIn('text choice',before[0]['anki_reason'])
+        with dlms.get_db() as conn:
+            conn.execute("UPDATE choices SET text='Different target' WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?)",(qid,))
+        rejected=self.client.post('/api/review-marks/context',json=dict(quiz_id=qid,fingerprint=self.fingerprint(qid)),headers=self.headers)
+        self.assertEqual(rejected.status_code,409)
+        self.assertIn('source changed',rejected.json['error'])
+        self.assertEqual(len(self.rows(qid)),1)
+        self.assertEqual(self.evidence(),[])
+
     def test_hotspot_target_revision_and_legacy_fingerprint_are_not_substituted(self):
         hotspot=dict(number=1,type='hotspot',question='Select the target',image_url='/static/favicon.ico',target=dict(type='circle',x=.5,y=.5,radius=.2))
         qid,_=self.publish(title='Direct hotspot review',questions=[hotspot],kind=None)
