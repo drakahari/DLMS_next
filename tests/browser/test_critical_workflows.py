@@ -16010,7 +16010,7 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
 @pytest.fixture(autouse=True)
 def certification_native_zoom_profile(request, monkeypatch):
     """Firefox's native 200% content zoom, configured in this disposable profile only."""
-    if not request.node.name.startswith(('test_certification_native_zoom', 'test_portable_native_zoom')):
+    if not request.node.name.startswith(('test_certification_native_zoom', 'test_portable_native_zoom', 'test_study_mistakes_native_zoom')):
         return
     original = _firefox_command
     def command(firefox, profile, port, env):
@@ -17685,3 +17685,187 @@ def test_cleanup_return_navigation_and_question_controls(browser_stack, theme):
     generated = next(entry for entry in registry if entry['html'] == b.evaluate('location.pathname.split("/").pop()'))
     with sqlite3.connect(browser_stack.data_root / 'results.db') as c:
         assert c.execute('SELECT count(*) FROM questions WHERE quiz_id=?', (generated['id'],)).fetchone()[0] == 10
+
+
+def _study_mistakes_browser_source(stack):
+    """Use actual saved regular questions and actual acknowledged wrong answers."""
+    stack.base_url = stack.base_url.replace('127.0.0.1', 'dlms-http.test')
+    b = stack.browser
+    qid, html = _new_regular_study_quiz(stack, 2)
+    assert b.evaluate('isSecureContext') is False
+    b.click('.study-mode-btn')
+    b.wait_for('durableStudySession !== null')
+    sid = b.evaluate('learningSessionId')
+    b.click('#choices .choice[data-index="1"]')
+    b.wait_for('studyLearningEventSaves.size === 0')
+    b.click('#choices .choice[data-index="0"]')
+    b.wait_for('studyLearningEventSaves.size === 0')
+    b.click('#nextBtn')
+    b.click('#choices .choice[data-index="1"]')
+    b.wait_for('studyLearningEventSaves.size === 0')
+    b.click('#finishReviewBtn')
+    b.wait_for('document.querySelector(".study-learning-save-message")?.textContent.includes("Review completed")')
+    return qid, html, sid
+
+
+def _mistake_browser_capture(b, name):
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    if output:
+        shot = b.command('browsingContext.captureScreenshot', {'context':b.context,'origin':'viewport'})
+        (Path(output) / (name + '.png')).write_bytes(base64.b64decode(shot['data']))
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_study_mistakes_saved_mix_retry_study_exam_and_random(browser_stack):
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, source_html, sid = _study_mistakes_browser_source(browser_stack)
+    base = browser_stack.base_url
+    with sqlite3.connect(root/'results.db') as c:
+        original = list(c.execute('SELECT * FROM study_responses WHERE session_id=? ORDER BY sequence',(sid,)))
+        sources = list(c.execute('SELECT * FROM choices WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?) ORDER BY id',(qid,)))
+    route = base + '/quiz-composer/study-mistakes?quizzes=' + str(qid)
+    b.navigate(route)
+    b.wait_for('document.getElementById("mistakeCounts").textContent.includes("2 available")')
+    assert b.evaluate('document.getElementById("mistakeMode").value') == 'without-repeats'
+    b.click('#startMistakePass')
+    b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("2 remaining")')
+    b.evaluate("document.getElementById('mistakeTitle').value='One-question Study mistakes';document.getElementById('mistakeCount').value=1;true")
+    # The server really commits before this simulated lost acknowledgement.
+    b.evaluate("""window.realMistakeFetch=fetch;window.dropMistakeAck=true;window.mistakeTrace=[];
+      window.fetch=async(u,o)=>{const r=await realMistakeFetch(u,o);
+      if(String(u).includes('/study-mistakes/create')){mistakeTrace.push({body:JSON.parse(o.body),status:r.status});
+      if(dropMistakeAck&&r.ok){dropMistakeAck=false;throw new Error('Lost creation acknowledgement');}}return r;};true""")
+    b.click('#createMistakeMix')
+    b.wait_for('document.getElementById("mistakeStatus").textContent.includes("Lost creation acknowledgement")')
+    first = b.evaluate('mistakeTrace[0]')
+    b.navigate(route)
+    assert b.evaluate('JSON.parse(sessionStorage.getItem("dlms-study-mistakes-request"))') == first['body']
+    b.evaluate("window.mistakeTrace=[];window.realMistakeFetch=fetch;window.fetch=async(u,o)=>{const r=await realMistakeFetch(u,o);if(String(u).includes('/study-mistakes/create'))mistakeTrace.push({body:JSON.parse(o.body),status:r.status});return r;};true")
+    b.click('#retryMistakeMix')
+    b.wait_for('!document.getElementById("openMistakeMix").hidden')
+    trace = [first] + b.evaluate('mistakeTrace')
+    assert len(trace) == 2 and trace[0]['body'] == trace[1]['body']
+    assert all(row['status'] == 200 for row in trace)
+    assert b.evaluate('document.getElementById("createMistakeMix").disabled')
+    b.click('#openMistakeMix')
+    _wait_for_quiz_mode_controls(b, 1)
+    mix_id = b.evaluate('QUIZ_ID')
+    mix_path = b.evaluate('location.pathname')
+    b.click('.study-mode-btn');b.wait_for('durableStudySession !== null')
+    b.click('#choices .choice[data-index="1"]');b.wait_for('studyLearningEventSaves.size===0')
+    mix_sid = b.evaluate('learningSessionId')
+    b.navigate(base+mix_path)
+    b.wait_for('quizRecoveryReady && document.querySelector(".quiz-recovery-resume")')
+    b.click('.quiz-recovery-resume');b.wait_for('durableStudySession !== null')
+    assert b.evaluate('learningSessionId') == mix_sid
+    b.click('#choices .choice[data-index="0"]');b.wait_for('studyLearningEventSaves.size===0')
+    b.click('#finishReviewBtn')
+    b.wait_for('document.querySelector(".study-learning-save-message")?.textContent.includes("Review completed")')
+    b.navigate(base+mix_path);_wait_for_quiz_mode_controls(b,1)
+    b.click('.exam-mode-btn');b.click('#choices .choice[data-index="0"]')
+    assert b.click_with_prompt('#submitBtn',accept=True)
+    b.wait_for('document.getElementById("result").textContent.includes("saved successfully")')
+    assert 'Score: 1 / 1 (100%)' in b.evaluate('result.textContent')
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM attempts WHERE quiz_id=?',(mix_id,)).fetchone()[0] == 1
+        assert c.execute('SELECT COUNT(*) FROM quizzes WHERE title=?',('One-question Study mistakes',)).fetchone()[0] == 1
+        assert list(c.execute('SELECT * FROM study_responses WHERE session_id=? ORDER BY sequence',(sid,))) == original
+        assert list(c.execute('SELECT * FROM choices WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?) ORDER BY id',(qid,))) == sources
+    # Random permits another saved batch after a fresh page, but cannot replay
+    # its old ID under changed input or consume the Without repeats remainder.
+    for number in range(2):
+        b.navigate(route);b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("1 remaining")')
+        b.evaluate("document.getElementById('mistakeMode').value='random';document.getElementById('mistakeMode').dispatchEvent(new Event('change'));document.getElementById('mistakeTitle').value="+json.dumps('Random mistakes '+str(number))+";document.getElementById('mistakeCount').value=1;true")
+        b.click('#createMistakeMix');b.wait_for('!document.getElementById("openMistakeMix").hidden')
+        assert b.evaluate('document.getElementById("createMistakeMix").disabled')
+    b.navigate(route);b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("1 remaining")')
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM study_mistake_members WHERE used_by IS NOT NULL').fetchone()[0] == 1
+        assert c.execute('SELECT COUNT(*) FROM quizzes WHERE title LIKE "Random mistakes %"').fetchone()[0] == 2
+    # Explicit shortage recovery preserves the form and permits a smaller
+    # batch, without consuming anything or silently truncating the request.
+    b.evaluate("document.getElementById('mistakeTitle').value='Final remainder';document.getElementById('mistakeCount').value=2;document.getElementById('mistakeCount').dispatchEvent(new Event('input',{bubbles:true}));true")
+    b.click('#createMistakeMix')
+    b.wait_for('document.getElementById("mistakeStatus").textContent.includes("Only 1 question remains")')
+    assert b.evaluate('!document.getElementById("changeMistakeRequest").hidden')
+    retained = b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")')
+    assert b.click_with_prompt('#changeMistakeRequest',accept=False)
+    assert b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")') == retained
+    assert b.click_with_prompt('#changeMistakeRequest',accept=True)
+    b.wait_for('!document.getElementById("createMistakeMix").disabled')
+    assert b.evaluate('document.getElementById("mistakeTitle").value') == 'Final remainder'
+    b.evaluate('document.getElementById("mistakeCount").value=1;true')
+    b.click('#createMistakeMix');b.wait_for('!document.getElementById("openMistakeMix").hidden')
+    b.navigate(route)
+    b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("0 remaining")')
+    assert b.evaluate('document.getElementById("createMistakeMix").disabled && !document.getElementById("startMistakePass").disabled')
+    stale = b.evaluate('JSON.parse(document.getElementById("studyMistakeContext").textContent)')
+    stale_request = {key:stale[key] for key in ('scope','generation','fingerprint','request_id','pass_id')}
+    stale_request.update(mode='without-repeats',count=1,title='Old pre-restore request')
+    with sqlite3.connect(root/'results.db') as c:
+        pass_records = {table:list(c.execute('SELECT * FROM '+table+' ORDER BY rowid')) for table in
+                        ('study_mistake_passes','study_mistake_members','study_mistake_actions')}
+    existing = set((root/'backups').glob('*.zip'))
+    assert b.evaluate("fetch('/settings/backup/create',{method:'POST'}).then(async r=>{await r.arrayBuffer();return r.status;})") == 200
+    archive = set((root/'backups').glob('*.zip')) - existing
+    assert len(archive) == 1
+    b.navigate(base+'/settings/backup');b.wait_for('document.getElementById("backupFile")')
+    b.set_files('#backupFile',[str(archive.pop())])
+    b.click("form[action='/settings/backup/restore/stage'] button[type=submit]")
+    b.wait_for('document.querySelector("h1").textContent.includes("Review backup before restore")')
+    b.click("form[action*='/restore/confirm/'] button[type=submit]")
+    b.wait_for('document.querySelector("h1").textContent.includes("Restore complete")')
+    b.navigate(route);b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("0 remaining")')
+    response = b.evaluate("fetch('/api/quiz-composer/study-mistakes/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify("+json.dumps(stale_request)+")}).then(async r=>({status:r.status,body:await r.json()}))")
+    assert response['status'] == 409 and 'restored or reset' in response['body']['error']
+    with sqlite3.connect(root/'results.db') as c:
+        for table,records in pass_records.items():
+            assert list(c.execute('SELECT * FROM '+table+' ORDER BY rowid')) == records
+
+
+def test_study_mistakes_all_theme_controls_and_responsive_views(browser_stack):
+    b = browser_stack.browser
+    b.context = b.command('browsingContext.create', {'type':'tab'})['context']
+    qid, _, _ = _study_mistakes_browser_source(browser_stack)
+    base = browser_stack.base_url
+    b.navigate(base+'/quiz-composer')
+    _mistake_browser_capture(b, 'before-manual-mixed-builder')
+    route = base+'/quiz-composer/study-mistakes?quizzes='+str(qid)
+    for theme in THEME_IDS:
+        b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+        for width in ([1440,390] if theme in ('light','dark','ethereal') else [1100]):
+            b.set_viewport(width,1000 if width>400 else 844)
+            b.navigate(route);b.wait_for('document.getElementById("mistakeCounts")')
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width)
+            assert b.evaluate('document.getElementById("mistakeMode").options.length') == 2
+            contrast = _theme_contrast_snapshot(b, {'check':'#mistakeScopeForm button','primary':'#createMistakeMix','input':'#mistakeTitle'})
+            assert all(v['contrast']>=4.5 for v in contrast.values()),(theme,contrast)
+            b.activate();b.evaluate('document.getElementById("mistakeTitle").focus();true');b.press_key('\ue004')
+            assert b.evaluate('document.activeElement.id === "mistakeCount" && getComputedStyle(document.activeElement).outlineStyle !== "none"'), b.evaluate('({id:document.activeElement.id,outline:getComputedStyle(document.activeElement).outline,focus:document.activeElement.matches(":focus"),sheets:[...document.styleSheets].map(s=>s.href)})')
+            b.evaluate('document.querySelector("#studyMistakeBuilder summary").focus();true');b.press_key(' ')
+            assert b.evaluate('document.querySelector("#studyMistakeBuilder details").open')
+            b.evaluate('document.querySelector("#studyMistakeBuilder details").open=false;scrollTo(0,0);true')
+            _mistake_browser_capture(b, f'study-mistakes-{theme}-{width}')
+            if theme == 'light' and width == 1440:
+                shot = b.command('browsingContext.captureScreenshot', {'context':b.context,'origin':'document'})
+                output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+                if output:
+                    (Path(output)/'study-mistakes-help.png').write_bytes(base64.b64decode(shot['data']))
+    b.navigate(base+'/quiz-composer/study-mistakes')
+    assert b.evaluate('document.getElementById("createMistakeMix").disabled')
+    assert '0 available' in b.evaluate('document.getElementById("mistakeCounts").textContent')
+    _mistake_browser_capture(b, 'study-mistakes-empty')
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_study_mistakes_native_zoom(browser_stack,theme):
+    b = browser_stack.browser
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+    b.navigate(browser_stack.base_url+'/settings/appearance');_set_theme(b,theme)
+    b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes')
+    b.wait_for('devicePixelRatio===2 && document.getElementById("mistakeTitle")')
+    assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    b.activate();b.evaluate('document.getElementById("mistakeTitle").focus();true');b.press_key('\ue004')
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    _mistake_browser_capture(b,'study-mistakes-native200-'+theme)

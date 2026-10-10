@@ -2,6 +2,7 @@
 
 import json
 from dlms.persistence.study_schema import invalidate_queues, preserve_legacy
+from dlms.persistence.study_mistake_schema import invalidate as invalidate_mistakes
 from dlms.persistence.exam_plan_schema import invalidate as invalidate_plans
 from dlms.persistence.review_mark_schema import invalidate as invalidate_marks
 from dlms.persistence.certification_schema import invalidate as invalidate_certifications
@@ -193,6 +194,7 @@ def prepare_staged_restore_database(
         bootstrap_result = bootstrap_database(database_path)
         with sqlite3.connect(database_path) as restored_conn:
             invalidate_queues(restored_conn)
+            invalidate_mistakes(restored_conn)
             invalidate_plans(restored_conn)
             invalidate_marks(restored_conn)
             invalidate_certifications(restored_conn)
@@ -863,6 +865,9 @@ def reset_quiz_library_core(
     cur = conn.cursor()
     cur.executescript("""
         UPDATE exam_plan_actions SET quiz_id=NULL;
+        DELETE FROM study_mistake_members;
+        DELETE FROM study_mistake_actions;
+        DELETE FROM study_mistake_passes;
         DELETE FROM study_responses;
         DELETE FROM study_sessions;
         DELETE FROM study_legacy_responses;
@@ -878,6 +883,7 @@ def reset_quiz_library_core(
         DELETE FROM sqlite_sequence;
     """)
     invalidate_queues(conn)
+    invalidate_mistakes(conn)
     invalidate_plans(conn)
     invalidate_marks(conn)
     conn.commit()
@@ -905,6 +911,7 @@ def delete_study_history_core(db_path):
     try:
         conn.execute("PRAGMA foreign_keys = ON")
         with conn:
+            invalidate_mistakes(conn)
             conn.execute("DELETE FROM study_sessions")
             conn.execute("DELETE FROM study_legacy_responses")
             conn.execute("DELETE FROM learning_events WHERE event_type IN ('study_answer', 'study_action')")

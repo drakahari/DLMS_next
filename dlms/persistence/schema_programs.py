@@ -71,7 +71,7 @@ def validate_schema_programs(conn):
                 raise ValueError('Backup contains an unexpected SQLite table')
             tokens = sql_tokens(sql)
             expected = ['sequence', '>', '0'] if name == 'study_responses' else ['id', '=', '1']
-            allowed_checks = {'schema_meta', 'study_state', 'exam_plan_state', 'review_mark_state', 'certification_state', 'study_responses'}
+            allowed_checks = {'schema_meta', 'study_state', 'exam_plan_state', 'review_mark_state', 'certification_state', 'study_mistake_state', 'study_responses'}
             for expression in _check_expressions(tokens):
                 if name not in allowed_checks or expression != expected:
                     raise ValueError('Backup contains an unexpected SQLite CHECK expression')

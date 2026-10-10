@@ -192,7 +192,7 @@ created or changed after that snapshot can be lost, including Study history,
 settings, plans, marks, certifications, training and documents. An older backup
 without a feature's records can restore that feature to an empty collection.
 
-This source implementation uses **schema 11**, adding explicit choice order while preserving existing displayed order and content. The previously accepted 3.3.0 package uses schema 10; it cannot open a schema-11 profile. Compatible older backups can be upgraded by the
+This source implementation uses **schema 12**, adding durable Study-mistake composition passes while preserving explicit choice order, existing content and factual history. The previously accepted 3.3.0 package uses schema 10; it cannot open a schema-12 profile. Compatible older backups can be upgraded by the
 supported staged restore flow, but an older application must refuse an upgraded
 database. Replacing the binary alone does not undo a database upgrade.
 

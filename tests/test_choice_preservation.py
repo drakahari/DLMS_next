@@ -263,7 +263,7 @@ class ChoiceMigrationTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='dlms-choice-migration-');self.addCleanup(self.temp.cleanup)
         self.path=Path(self.temp.name)/'results.db'
-        sql=Path('init.sql').read_text().replace('    choice_order INTEGER,\n','').replace('VALUES (1, 11);','VALUES (1, 10);')
+        sql=Path('init.sql').read_text().replace('    choice_order INTEGER,\n','').replace('VALUES (1, 12);','VALUES (1, 10);')
         sql=sql.replace('CREATE UNIQUE INDEX IF NOT EXISTS idx_choices_order ON choices(question_id, choice_order);','')
         with sqlite3.connect(self.path) as c:
             c.executescript(sql)
@@ -275,7 +275,7 @@ class ChoiceMigrationTests(unittest.TestCase):
 
     def test_migration_preserves_values_tie_order_and_repeated_startup(self):
         result=dlms.bootstrap_database(str(self.path),require_owned_root=False)
-        self.assertEqual(10,result['from_version']);self.assertEqual(11,result['version'])
+        self.assertEqual(10,result['from_version']);self.assertEqual(dlms.DLMS_SCHEMA_VERSION,result['version'])
         with database.get_db(self.path) as c:
             self.assertEqual(self.before,[tuple(r) for r in c.execute('SELECT id,question_id,label,text,is_correct FROM choices ORDER BY id')])
             for qid,expected in [(1,['A','B','C','D','R']),(2,['A','B','C','D']),(3,['A','A','B'])]:

@@ -173,7 +173,7 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn("Anki Tools → Custom Deck &amp; Printable Cards", anki)
 
         maintenance = self._static("help-maintenance.html")
-        self.assertIn("Current schema 11 stores explicit choice order", maintenance)
+        self.assertIn("Current schema 12 adds durable Study-mistake composition passes", maintenance)
         self.assertIn("System Tools", maintenance)
         self.assertIn("not a routine update step", maintenance)
         self.assertIn("normally do not need to run it after updating DLMS", maintenance)

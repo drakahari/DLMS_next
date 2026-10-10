@@ -52,6 +52,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "settings": 19,
         "study_packs": 9,
         "study": 7,
+        "study_mistakes": 3,
     }
     EXPECTED_FACTORY_NAMES = {
         "create_admin_images_blueprint",
@@ -74,6 +75,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "create_settings_blueprint",
         "create_study_packs_blueprint",
         "create_study_blueprint",
+        "create_study_mistake_blueprint",
     }
     EXPECTED_DEPENDENCY_TYPES = {
         "dlms.routes.admin_images.AdminImageRouteDependencies": 6,
@@ -100,7 +102,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study.StudyRouteDependencies": 4,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "d286bf99176ab1f51b1bddc149f51ca381c7d3ff66f614511f352382f0bc441b"
+        "bcba5275a6ffd412075b11e33312e469d8189efd8b4391fa4b8da0ac49b3c2a1"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "certifications.certification_form": ("/certifications/new", {}),
@@ -159,11 +161,11 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_entire_explicit_url_map_matches_the_247_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(269, len(rules))
+        self.assertEqual(272, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(268, len(blueprint_rules))
+        self.assertEqual(271, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -249,7 +251,7 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_route_modules_have_frozen_family_dependencies_and_no_app_import(self):
         route_paths = sorted(ROUTE_ROOT.rglob("*.py"))
-        self.assertEqual(26, len(route_paths))
+        self.assertEqual(27, len(route_paths))
         for path in route_paths:
             with self.subTest(route_module=path.relative_to(ROOT)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))

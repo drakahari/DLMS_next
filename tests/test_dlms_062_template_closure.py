@@ -172,7 +172,7 @@ class Dlms062TemplateClosureTests(unittest.TestCase):
 
         templates = sorted(TEMPLATE_ROOT.rglob("*.html"))
         # Includes the issuer-neutral certification tracking, matches, progress and relationship partials.
-        self.assertEqual(87, len(templates))
+        self.assertEqual(88, len(templates))
         self.assertTrue((TEMPLATE_ROOT / "dashboard/index.html").is_file())
         self.assertFalse((ROOT / "static/index.html").exists())
         self.assertNotIn("static/index.html", self.app_source)

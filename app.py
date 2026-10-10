@@ -1290,8 +1290,14 @@ def _reconcile_quiz_publication_journal(journal_path):
     )
 
 
+def _study_mistake_options():
+    return dict(registry=normalize_quiz_folders(load_registry()), data_folder=DATA_FOLDER,
+                quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names,
+                media_source=_portable_quiz_media_source)
+
+
 def reconcile_quiz_publications():
-    return _quiz_publication_service.reconcile_quiz_publications(
+    result = _quiz_publication_service.reconcile_quiz_publications(
         app_data_dir=APP_DATA_DIR,
         read_data_root_marker=_read_data_root_marker,
         staging_root=_quiz_publication_staging_root,
@@ -1306,6 +1312,16 @@ def reconcile_quiz_publications():
         join_path=os.path.join,
         print_message=print,
     )
+    if _read_data_root_marker(APP_DATA_DIR) is None or result['unsafe'] or result['failed']:
+        return result
+    from dlms.services import study_mistakes
+    with registry_lock:
+        conn = get_db()
+        try:
+            study_mistakes.recover(conn, _study_mistake_options(), _quiz_publication_staging_root())
+        finally:
+            conn.close()
+    return result
 
 
 def _normalize_quiz_question_ordinals(runtime_questions, db_questions):
@@ -1326,6 +1342,7 @@ def _publish_quiz(
     source_pack_id=None,
     source_dataset_id=None,
     snapshot_existing_assets=False,
+    preserve_asset_sources=False,
     rollback_logo_filename=None,
     generation_kind=None,
     publication_record=None,
@@ -1367,7 +1384,9 @@ def _publish_quiz(
         fsync_directory=_fsync_quiz_publication_directory,
         checkpoint=_quiz_publication_checkpoint,
         snapshot_runtime_questions=_snapshot_runtime_questions,
-        snapshot_existing_quiz_asset_refs=_snapshot_existing_quiz_asset_refs,
+        snapshot_existing_quiz_asset_refs=(
+            _snapshot_composition_asset_refs if preserve_asset_sources else _snapshot_existing_quiz_asset_refs
+        ),
         write_staged_quiz_json=_write_staged_quiz_json,
         get_db=get_db,
         insert_quiz_rows=_insert_quiz_rows,
@@ -1821,7 +1840,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods, 9: _database.certification_schema.migrate_minutes, 10: _database.certification_schema.migrate_deadlines, 11: _database.choice_schema.migrate}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods, 9: _database.certification_schema.migrate_minutes, 10: _database.certification_schema.migrate_deadlines, 11: _database.choice_schema.migrate, 12: _database.study_mistake_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables):
@@ -5230,6 +5249,41 @@ def _install_staged_portable_quiz_bundle(token):
     )
 
 
+def _snapshot_composition_asset_refs(value, bucket, *, destination_root=None, strict=False):
+    """Copy actual image references, preserving all text and attribution."""
+    if isinstance(value, dict):
+        result = dict(value)
+        if 'image_url' in result:
+            result['image_url'] = _snapshot_composition_asset_refs(
+                result['image_url'], bucket, destination_root=destination_root, strict=strict)
+        if isinstance(result.get('media'), dict):
+            result['media'] = dict(result['media'])
+            if 'image_url' in result['media']:
+                result['media']['image_url'] = _snapshot_composition_asset_refs(
+                    result['media']['image_url'], bucket, destination_root=destination_root, strict=strict)
+        return result
+    if isinstance(value, list):
+        return [_snapshot_composition_asset_refs(v, bucket, destination_root=destination_root, strict=strict) for v in value]
+    if not isinstance(value, str) or not value.startswith(('/quiz-assets/', '/content-packs/')):
+        return value
+    match = re.fullmatch(r'/quiz-assets/([A-Za-z0-9_.-]{1,140})/(.+)', value)
+    pack = re.fullmatch(r'/content-packs/([A-Za-z0-9_-]+)/assets/(.+)', value)
+    if not match and not pack:
+        raise ValueError('Invalid composition media reference')
+    origin, relative = (match or pack).groups()
+    source = _portable_quiz_media_source(value)
+    if not source or not os.path.isfile(source):
+        raise ValueError('Required composition media is unavailable')
+    # Prefix the source identity so same-named images cannot replace each other.
+    relative = ('quiz_' if match else 'pack_') + origin + '/' + relative
+    root = destination_root or os.path.join(QUIZ_ASSET_FOLDER, bucket)
+    target = _safe_pack_child(root, relative)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    if not os.path.isfile(target):
+        shutil.copy2(source, target)
+    return _quiz_asset_url(bucket, relative)
+
+
 def _snapshot_existing_quiz_asset_refs(value, bucket, *, destination_root=None, strict=False):
     """Copy existing quiz-owned asset URLs so Smart Review survives source-quiz deletion."""
     if isinstance(value, dict):
@@ -6684,6 +6738,14 @@ app.register_blueprint(create_admin_images_blueprint(AdminImageRouteDependencies
     get_content_pack=lambda pack_id: get_content_pack(pack_id),
     safe_pack_child=lambda root, path: _safe_pack_child(root, path),
 )))
+
+
+from dlms.routes.study_mistakes import create_study_mistake_blueprint
+app.register_blueprint(create_study_mistake_blueprint(
+    get_db=lambda: get_db(), options=_study_mistake_options,
+    publish=lambda *args, **kwargs: _publish_quiz(*args, **kwargs), registry_lock=registry_lock,
+    app_version=lambda: APP_VERSION, portal_title=lambda: get_portal_title(),
+))
 
 
 app.register_blueprint(create_quiz_blueprint(

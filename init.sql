@@ -210,7 +210,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 11);
+VALUES (1, 12);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)
@@ -338,3 +338,23 @@ CREATE TRIGGER IF NOT EXISTS certification_dates_update BEFORE UPDATE ON certifi
 
 -- Explicit independent choice order (schema 11).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_choices_order ON choices(question_id, choice_order);
+
+-- Durable Study mistakes composition passes (schema 12).
+CREATE TABLE IF NOT EXISTS study_mistake_state (
+        id INTEGER PRIMARY KEY CHECK(id=1), generation TEXT NOT NULL);
+INSERT OR IGNORE INTO study_mistake_state VALUES(1,lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS study_mistake_passes (
+        id TEXT PRIMARY KEY, scope_json TEXT NOT NULL, scope_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS study_mistake_actions (
+        request_id TEXT PRIMARY KEY, generation TEXT NOT NULL, input_hash TEXT NOT NULL,
+        input_json TEXT NOT NULL, selection_json TEXT NOT NULL, pass_id TEXT,
+        state TEXT NOT NULL, quiz_id INTEGER, html TEXT,
+        FOREIGN KEY(pass_id) REFERENCES study_mistake_passes(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS study_mistake_members (
+        pass_id TEXT NOT NULL, question_id INTEGER NOT NULL, revision TEXT NOT NULL,
+        position INTEGER NOT NULL, reserved_by TEXT, used_by TEXT,
+        PRIMARY KEY(pass_id,question_id), UNIQUE(pass_id,position),
+        FOREIGN KEY(pass_id) REFERENCES study_mistake_passes(id) ON DELETE CASCADE,
+        FOREIGN KEY(reserved_by) REFERENCES study_mistake_actions(request_id),
+        FOREIGN KEY(used_by) REFERENCES study_mistake_actions(request_id));

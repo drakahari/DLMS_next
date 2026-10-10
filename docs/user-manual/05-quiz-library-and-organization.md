@@ -203,6 +203,40 @@ quiz unchanged and records source relationships for the new questions.
 
 ![Mixed Quiz Builder with questions selected from multiple source quizzes](images/UM-04-mixed-quiz-builder.png)
 
+### Make a mix from Study mistakes
+
+In **Mix Questions**, choose **Study mistakes**. Select folders, source quizzes,
+or both, then **Check Study mistakes**. Either selection includes a question;
+overlapping selections count once. Hidden and Learning Scope-excluded folders
+remain available here because this is a deliberate manual selection.
+
+A complete saved wrong answer from any Study attempt qualifies, even in an
+unfinished review or after an earlier correct answer. Corrections and later
+success do not erase it. This differs from the manual **Missed before** filter.
+Unanswered questions, assistance alone and unsaved browser answers do not count.
+
+1. Use **Start pass** for **Without repeats** (the default).
+2. Enter a quiz name and choose 1–100 questions; one source quiz is enough.
+3. Choose **Create Mixed Quiz**, then **Open saved Mixed Quiz**.
+
+Without repeats keeps a saved snapshot. Only successful quiz creation uses its
+questions. Restart preserves the pass; deleting a mix does not return questions.
+When fewer remain than requested, choose the smaller count explicitly. Exhaustion
+requires **Start new pass**; DLMS never silently recycles. New mistakes wait for
+the next pass. **Random** permits repeats between mixes and leaves the pass alone.
+
+Unavailable questions and revision/media reasons appear in a disclosure. A
+quiz-wide edit can make earlier evidence unverifiable; legacy answers without a
+verified revision cannot be used automatically. No source content is repaired,
+substituted or merged by matching text. Creating a mix does not award Study
+credit, finish a source review, or change Last regular quiz.
+
+If an acknowledgement is lost, **Retry same request** returns the same saved
+quiz. Keep uncertain requests for recovery. **Change request** is offered only
+when the server allows abandoning a rejected request; it does not clear answers.
+
+![Study mistakes source with folders, quizzes, pass counts and creation controls](images/UM-04-study-mistakes.png)
+
 ## Review possible duplicates
 
 Choose **Find Duplicates** under Library Tools to scan ordinary source

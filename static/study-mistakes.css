@@ -1,0 +1,22 @@
+/* Confined to the additive Mixed Quiz source. */
+.mixed-quiz-builder-page .study-mistakes-panel { padding: var(--dlms-space-xl,24px); margin-bottom: 1rem; }
+.mixed-quiz-builder-page .study-mistakes-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 1rem;
+    margin-block: 1rem;
+}
+.mixed-quiz-builder-page .study-mistakes-fields label { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+.mixed-quiz-builder-page .study-mistakes-fields input,
+.mixed-quiz-builder-page .study-mistakes-fields select {
+    width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px;
+    font: inherit; border-radius: var(--theme-control-radius,9px);
+    border: 1px solid var(--theme-border-soft); background: var(--theme-input-bg); color: var(--theme-input-text);
+}
+.mixed-quiz-builder-page [aria-label="Question selection source"] { margin-block: 1rem; flex-wrap: wrap; }
+.mixed-quiz-builder-page #studyMistakeBuilder details { margin-top: 1rem; }
+.mixed-quiz-builder-page #studyMistakeBuilder [hidden] { display: none; }
+.mixed-quiz-builder-page #mistakeStatus { overflow-wrap: anywhere; }
+.mixed-quiz-builder-page .study-mistakes-fields :is(input,select):focus-within,
+.mixed-quiz-builder-page #studyMistakeBuilder :is(button,a,summary):focus-visible,
+.mixed-quiz-builder-page .study-mistakes-scope button:focus-visible { outline: 3px solid var(--theme-focus-ring,var(--theme-accent)); outline-offset: 3px; }

@@ -4,9 +4,9 @@ import os
 import sqlite3
 
 
-from . import study_schema, exam_plan_schema, review_mark_schema, certification_schema, choice_schema
+from . import study_schema, exam_plan_schema, review_mark_schema, certification_schema, choice_schema, study_mistake_schema
 
-DLMS_SCHEMA_VERSION = 11
+DLMS_SCHEMA_VERSION = 12
 DLMS_LEGACY_SCHEMA_VERSION = 1
 
 DLMS_SCHEMA_COLUMNS = {
@@ -301,12 +301,13 @@ def _migrate_schema_to_v3(conn, *, database_column_info=None):
     )
 
 
+DLMS_SCHEMA_COLUMNS.update(study_mistake_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(study_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(exam_plan_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(review_mark_schema.COLUMNS)
 DLMS_SCHEMA_COLUMNS.update(certification_schema.COLUMNS)
 DLMS_SCHEMA_INDEXES.update(study_schema.INDEXES)
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate, 7: certification_schema.migrate, 8: certification_schema.migrate_periods, 9: certification_schema.migrate_minutes, 10: certification_schema.migrate_deadlines, 11: choice_schema.migrate}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: study_schema.migrate, 5: exam_plan_schema.migrate, 6: review_mark_schema.migrate, 7: certification_schema.migrate, 8: certification_schema.migrate_periods, 9: certification_schema.migrate_minutes, 10: certification_schema.migrate_deadlines, 11: choice_schema.migrate, 12: study_mistake_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables, *, database_column_info=None):
@@ -360,6 +361,8 @@ def _validate_current_database_schema(
         raise RuntimeError("DLMS database is missing required indexes: " + ", ".join(missing_indexes))
     if 'choice_order' in schema_columns.get('choices', set()):
         choice_schema.validate(conn)
+    if 'study_mistake_state' in schema_columns:
+        study_mistake_schema.validate(conn)
     if 'review_mark_state' in schema_columns:
         review_mark_schema.validate_state(conn)
     if 'certification_state' in schema_columns:
