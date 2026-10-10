@@ -159,8 +159,9 @@ Mode sessions in the current browser profile. Reopening that quiz can show
 **Continue your saved quiz?** with the saved mode, question position, and time.
 
 - **Resume** restores the valid checkpoint and continues the session.
-- **Start Over** clears that browser's checkpoint and begins without the saved
-  progress.
+- **Start Over** asks before discarding that browser's answers and pending saves.
+  Cancel keeps them unchanged. Saved server history remains; choose a mode
+  separately to start a new session.
 - **Finish Saving Submitted Attempt** can appear when an Exam Mode attempt was
   already submitted but its final save still needs confirmation.
 
@@ -189,12 +190,20 @@ final question or a save fails, recovery remains available.
 
 A supported current quiz can also resume acknowledged partial Study progress
 from DLMS. This differs from a browser checkpoint, which can include unsaved
-responses and an Exam in progress. Resolve the browser's pending saves first.
+responses and an Exam in progress. When both refer to the same Study session,
+DLMS shows one browser **Resume** action: it restores the checkpoint, retries
+pending saves and uses newer acknowledged server answers. A separate **Resume
+and take over** appears for a different server review, or when no browser
+checkpoint remains. Resolve the browser's different session first; the server
+action does not silently replace it. Resume takes Study ownership from other
+tabs. **Study Mode** and **Exam Mode** start separate sessions.
 Competing Study tabs have ownership/takeover checks; a stale tab cannot overwrite
 newer acknowledged work. Review the conflict message instead of starting over.
 Changed questions can reject a stale page. Older unsupported self-contained quiz
 pages explicitly require owner-controlled regeneration; they must not appear to
 save the new tracking successfully. See [safe recovery](18-troubleshooting.md).
+
+![One Study continuation control with five reviewed questions, question six next and a separate new-session area](images/UM-09-study-resume.webp)
 
 ## Understand shared and browser-local state
 

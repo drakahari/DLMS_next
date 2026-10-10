@@ -144,3 +144,9 @@ image supports its existing full-size enlargement link.
 ### Portable preservation selection check
 
 - `images/UM-06-portable-quiz-preflight.webp`: actual isolated sample preflight, two warning quizzes and one blocked quiz; repeated labels, empty text, no answer and missing images are distinguished. Source: `test_portable_complete_preflight_and_explicit_editor`; refresh with `DLMS_BUNDLE_CAPTURE_DIR` and copy the Light crop.
+
+### Editor and continuation correction captures
+
+- `images/UM-06-quiz-editor-choice-labels.webp` and Help `quiz-editor-choice-labels.webp`: real Light narrow editor with readable choice labels and the explicit Add Choices save notice. Refresh with `test_walkthrough_editor_label_geometry_and_incomplete_repair[light]` and `DLMS_BUNDLE_CAPTURE_DIR`; copy `after-editor-light-390.webp`.
+- `images/UM-09-study-resume.webp` and Help `quiz-resume-study.webp`: real Light narrow Study continuation with five reviewed questions and question six next. Refresh with `test_walkthrough_resume_same_session_and_canceled_discard[light]`; copy `after-resume-light-390.webp`.
+- Portable selection and preflight images were refreshed through their existing isolated Firefox capture tests. All captures use disposable synthetic content; no owner records.

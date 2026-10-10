@@ -606,11 +606,15 @@
       }
     }
 
-    function writeSnapshot({allowTakeover = false} = {}) {
+    function writeSnapshot({allowTakeover = false, preserveExisting = false} = {}) {
       if (!owned) return false;
       let current = null;
       try {
         const raw = localStorage.getItem(storageKey);
+        if (raw && preserveExisting) {
+          owned = false;
+          return false;
+        }
         if (raw) {
           if (storageBytes(raw) > MAX_RECORD_BYTES) {
             localStorage.removeItem(storageKey);
@@ -621,8 +625,13 @@
           }
         }
       } catch (_error) {
+        if (preserveExisting) { owned = false; storageWarning(); return false; }
         try { localStorage.removeItem(storageKey); }
         catch (_storageError) { storageWarning(); return false; }
+      }
+      if (current && preserveExisting) {
+        owned = false;
+        return false;
       }
       if (!current && savedRecord !== null && !allowTakeover) {
         owned = false;
@@ -688,17 +697,18 @@
       }
     }
 
-    function claimNew() {
+    function claimNew({preserveExisting = false} = {}) {
       owned = true;
       revision = 0;
       createdAt = Date.now();
       savedRecord = null;
-      return writeSnapshot({allowTakeover: true});
+      return writeSnapshot({allowTakeover: true, preserveExisting});
     }
 
     function claimStored(record) {
       const current = readStored();
-      if (!current || current.session.revision !== record.session.revision) return null;
+      if (!current || current.session.revision !== record.session.revision
+          || current.session.id !== record.session.id || current.learningSessionId !== record.learningSessionId) return null;
       const now = Date.now();
       const claimed = {
         ...current,
@@ -732,7 +742,7 @@
       const button = recoveryPanel?.querySelector(".quiz-recovery-resume");
       if (button?.disabled) return;
       const record = readStored();
-      if (!record) { hidePanel(); return; }
+      if (!record) { hidePanel(); options.recoveryChanged?.(); return; }
       if (options.canRestore?.(record) === false) return;
       const claimed = claimStored(record);
       if (!claimed) return;
@@ -792,6 +802,17 @@
         ? `${record.session.mode} Mode · submitted ${savedTime}`
         : `${record.session.mode} Mode · Question ${record.view.questionIndex + 1} of ${context.descriptors.length} · saved ${savedTime}`;
       panel.appendChild(summary);
+      const explanation = document.createElement("p");
+      explanation.textContent = record.session.mode === "Study"
+        ? "Resume restores answers and retries pending saves. For Study, it takes ownership from other tabs and keeps newer server saves. Study Mode starts a new review."
+        : "Resume restores this browser’s Exam answers. Study Mode or Exam Mode starts a separate session.";
+      panel.appendChild(explanation);
+      if (record.unacknowledgedStudyEvents.length) {
+        const pending = document.createElement("p");
+        pending.className = "study-learning-save-status";
+        pending.textContent = `${record.unacknowledgedStudyEvents.length} response save${record.unacknowledgedStudyEvents.length === 1 ? "" : "s"} still need confirmation. Use Resume and retry saves before starting other work.`;
+        panel.appendChild(pending);
+      }
 
       const actions = document.createElement("div");
       actions.className = "quiz-recovery-actions";
@@ -806,7 +827,15 @@
       reset.type = "button";
       reset.className = "quiz-recovery-start-over";
       reset.textContent = "Start Over";
-      reset.addEventListener("click", startOver);
+      reset.addEventListener("click", () => {
+        const expected = localStorage.getItem(storageKey);
+        if (!window.confirm("Discard this browser’s saved answers and pending saves for this quiz? Saved server history remains. Cancel keeps the recovery record unchanged.")) return;
+        if (localStorage.getItem(storageKey) !== expected) {
+          notify("Saved work changed in another tab. Nothing was discarded. Reload to review the current recovery record.");
+          return;
+        }
+        startOver();
+      });
       actions.appendChild(reset);
       panel.appendChild(actions);
       modeSelect.prepend(panel);
@@ -822,7 +851,14 @@
       }
       if (savedRecord) renderPanel(savedRecord);
       window.addEventListener("storage", event => {
-        if (event.key !== storageKey || !owned) return;
+        if (event.key !== storageKey) return;
+        if (!owned) {
+          recoveryPanel?.remove();
+          savedRecord = readStored({discardInvalid: false});
+          if (savedRecord) renderPanel(savedRecord);
+          options.recoveryChanged?.();
+          return;
+        }
         let incoming = null;
         try { incoming = event.newValue ? JSON.parse(event.newValue) : null; }
         catch (_error) { incoming = null; }
@@ -859,6 +895,13 @@
       storageKey,
       ownerToken,
       get hasSavedState() { return Boolean(savedRecord); },
+      get savedSessionSummary() {
+        // Re-read without clearing invalid/stale data. Identity, not mode or
+        // title alone, decides whether two continuation actions are equivalent.
+        const record = readStored({discardInvalid: false});
+        return record ? {mode: record.session.mode, learningSessionId: record.learningSessionId,
+          phase: record.session.phase, pendingStudySaves: record.unacknowledgedStudyEvents.length} : null;
+      },
       get ownsState() { return owned; },
     };
   }

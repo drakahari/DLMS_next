@@ -4025,6 +4025,7 @@ def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement
     assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
 
 
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
 def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
@@ -4115,7 +4116,7 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
     browser.click("#choices .choice[data-index='0']")
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-start-over') !== null")
-    browser.click(".quiz-recovery-start-over")
+    assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
     assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
     assert browser.evaluate(
         "!document.getElementById('modeSelect').classList.contains('hidden') && "
@@ -4619,6 +4620,7 @@ def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and
     assert browser.evaluate("document.querySelector('.hero-title').children.length") == 0
 
 
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
 def test_study_session_panel_is_study_only_and_contained_across_themes(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
@@ -4630,7 +4632,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
         if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
-            browser.click(".quiz-recovery-start-over")
+            assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
         browser.click(".study-mode-btn")
         browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.wait_for("document.getElementById('studySessionIntro') !== null")
@@ -4694,7 +4696,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
         browser.navigate(f"{base_url}/quizzes/{filename}")
         browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
         if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
-            browser.click(".quiz-recovery-start-over")
+            assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
         browser.click(".study-mode-btn")
         browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         assert browser.evaluate(
@@ -4706,7 +4708,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
     if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
-        browser.click(".quiz-recovery-start-over")
+        assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
     browser.click(".study-mode-btn")
     browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#nextBtn")
@@ -4742,7 +4744,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
     if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
-        browser.click(".quiz-recovery-start-over")
+        assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
     browser.click(".exam-mode-btn")
     fresh_exam = browser.evaluate(
         "(() => {const bar=document.querySelector('.top-bar');"
@@ -12206,12 +12208,14 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
             layout = browser.evaluate(
                 "(() => {const panels=[...document.querySelectorAll('.portable-bundle-panel')];"
                 "const intro=document.querySelector('.portable-bundle-intro');"
-                "const back=intro.querySelector('.build-secondary-link');"
+                "const back=intro.querySelector('a[href=\"/library\"]');"
                 "const file=document.querySelector('.portable-bundle-upload-form input[type=file]');"
                 "const rect=node=>node.getBoundingClientRect();"
                 "const headings=panels.map(panel=>panel.querySelector('h2'));"
                 "return {sideBySide:Math.abs(rect(panels[0]).top-rect(panels[1]).top)<=1,"
                 "panelWidths:panels.map(panel=>Math.round(rect(panel).width)),"
+                "workflowWidth:Math.round(rect(document.querySelector('.portable-bundle-workflows')).width),"
+                "stackedOrder:rect(panels[1]).top>=rect(panels[0]).bottom,"
                 "panelInsets:panels.map(panel=>Math.round(rect(panel.firstElementChild).left-rect(panel).left)),"
                 "headingHeights:headings.map(heading=>Math.round(rect(heading).height)),"
                 "backWidth:Math.round(rect(back).width),"
@@ -12220,7 +12224,10 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
                 "cardsContained:[intro,...panels].every(card=>card.scrollWidth<=card.clientWidth+1),"
                 "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
             )
-            assert layout["sideBySide"] == (width == 1280), (theme, width, layout)
+            # Approved workflow: full-width export, then import below it.
+            assert layout["sideBySide"] is False, (theme, width, layout)
+            assert layout["stackedOrder"] is True, (theme, width, layout)
+            assert all(abs(size - layout["workflowWidth"]) <= 1 for size in layout["panelWidths"]), (theme, width, layout)
             assert min(layout["panelWidths"]) >= min(388, width - 32), (
                 theme, width, layout,
             )
@@ -17190,3 +17197,265 @@ def test_portable_complete_preflight_and_explicit_editor(browser_stack,theme):
 
 def test_portable_native_zoom_preflight(browser_stack):
     _portable_preflight_review(browser_stack,'light',zoom=True)
+
+
+def _walkthrough_editor_repair(stack, theme, *, native_zoom=False):
+    """Real Add Choices repairs an incomplete key without inventing an answer."""
+    b, root = stack.browser, stack.data_root
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(stack.base_url + '/settings/appearance'); _set_theme(b, theme)
+    qid, html = _new_regular_study_quiz(stack, 1)
+    with sqlite3.connect(root / 'results.db') as c:
+        question = c.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchone()[0]
+        ids = [r[0] for r in c.execute('SELECT id FROM choices WHERE question_id=? ORDER BY choice_order', (question,))]
+        c.execute('DELETE FROM choices WHERE id=?', (ids[-1],))
+        for cid, label in zip(ids, ['A', 'C', 'D']):
+            c.execute('UPDATE choices SET label=?,text=?,is_correct=0 WHERE id=?', (label, 'Long answer ' + 'readable detail ' * 15, cid))
+    b.navigate(stack.base_url + f'/edit_quiz/{qid}'); b.wait_for_page_ready()
+    if native_zoom:
+        b.command('browsingContext.setViewport', {'context': b.context, 'viewport': None, 'devicePixelRatio': None})
+        assert b.evaluate('devicePixelRatio') == 2
+    for width in ((None,) if native_zoom else (1440, 390)):
+        if width: b.set_viewport(width, 1000)
+        geometry = b.evaluate("""[...document.querySelectorAll('.edit-quiz-choice-label')].map(l=>{
+            const i=l.querySelector('input'),s=l.querySelector('span');
+            return {width:l.clientWidth,inner:i.clientWidth-parseFloat(getComputedStyle(i).paddingLeft)-parseFloat(getComputedStyle(i).paddingRight),
+              captionFits:s.scrollWidth<=s.clientWidth,captionHeight:s.getBoundingClientRect().height};})""")
+        assert all(g['width'] >= 90 and g['inner'] >= 35 and g['captionFits'] and g['captionHeight'] < 30 for g in geometry), geometry
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        b.evaluate("document.querySelector('.edit-quiz-choice-label input').focus();true")
+        assert b.evaluate("document.activeElement.matches('.edit-quiz-choice-label input')")
+        if os.environ.get('DLMS_BUNDLE_CAPTURE_DIR'):
+            from tests.browser._help_screenshots import capture_control
+            out = Path(os.environ['DLMS_BUNDLE_CAPTURE_DIR'])
+            capture_control(b, out / f'after-editor-{theme}-{width or "native200"}.webp', '.question-block:last-child')
+    # No correct answer exists. Add two choices, then one, using the actual form.
+    for count, expected in ((2, 5), (1, 6)):
+        b.evaluate(f"document.querySelector('[name=choice_count_{question}]').value='{count}';document.querySelector('[name=question_{question}]').value='Edited incomplete sample';window.__beforeAdd=true;true")
+        b.click(f'button[value="add_choices_{question}"]')
+        b.wait_for_page_ready('window.__beforeAdd !== true')
+        assert b.evaluate("document.querySelectorAll('.edit-quiz-choice-label').length") == expected
+        with sqlite3.connect(root / 'results.db') as c:
+            rows = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+            assert len(rows) == expected and all(r[3] == 0 for r in rows)
+            assert [r[1] for r in rows[:3]] == ['A', 'C', 'D']
+            assert c.execute('SELECT question_text FROM questions WHERE id=?', (question,)).fetchone()[0] == 'Edited incomplete sample'
+        status = b.evaluate(f"fetch('/api/study/quiz/{qid}').then(r=>r.json())")
+        assert not status['readiness']['ready']
+    # Final save still blocks a missing key, retaining the unsaved text.
+    b.evaluate("window.__alerts=[];window.alert=x=>__alerts.push(x);document.querySelector('.question-text').value='Unsaved retained sample';true")
+    b.click('#edit-quiz-form .build-primary-button')
+    assert b.evaluate('__alerts') == ['Question 1 must have at least one correct answer.']
+    assert b.evaluate("document.querySelector('.question-text').value") == 'Unsaved retained sample'
+    # Explicitly fill the new choices and mark only the chosen new answer.
+    b.evaluate("document.querySelectorAll('.edit-quiz-choice-list input[name^=choice_]').forEach((n,i)=>{if(!n.value)n.value='New answer '+i});document.querySelector('.edit-quiz-choice-list li:last-child input[type=checkbox]').checked=true;window.__beforeFinal=true;true")
+    b.click('#edit-quiz-form .build-primary-button'); b.wait_for_page_ready('window.__beforeFinal !== true')
+    status = b.evaluate(f"fetch('/api/study/quiz/{qid}').then(r=>r.json())")
+    assert status['readiness']['ready']
+    with sqlite3.connect(root / 'results.db') as c:
+        rows = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+        assert [r[0] for r in rows[:3]] == ids[:3]
+        assert [r[3] for r in rows] == [0, 0, 0, 0, 0, 1]
+        assert c.execute('SELECT COUNT(*) FROM study_sessions WHERE quiz_id=?', (qid,)).fetchone()[0] == 0
+    b.navigate(stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="5"]'); b.wait_for('studyLearningEventSaves.size===0')
+    assert b.evaluate("document.querySelector('.choice-study-explanation.is-correct').textContent.includes('Correct')")
+    b.click('#finishReviewBtn'); b.wait_for('Boolean(durableStudySession.completed_at)')
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_walkthrough_editor_label_geometry_and_incomplete_repair(browser_stack, theme):
+    _walkthrough_editor_repair(browser_stack, theme)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_portable_native_zoom_editor_repair(browser_stack, theme):
+    _walkthrough_editor_repair(browser_stack, theme, native_zoom=True)
+
+
+def _walkthrough_resume_same(stack, theme, *, native_zoom=False):
+    b, root = stack.browser, stack.data_root
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(stack.base_url + '/settings/appearance'); _set_theme(b, theme)
+    qid, html = _new_regular_study_quiz(stack, 6)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    for _ in range(5):
+        b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0'); b.click('#nextBtn')
+    b.evaluate('durableStudyPositionSave.then(()=>true)')
+    session = b.evaluate('learningSessionId'); key = b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    assert b.evaluate("document.querySelectorAll('.quiz-recovery-panel:not([hidden]),#durableStudyResume:not([hidden])').length") == 1
+    assert b.evaluate("document.querySelector('.quiz-recovery-panel').textContent.includes('Question 6 of 6')")
+    assert b.evaluate("document.querySelector('#quizRecoveryDurableSummary').textContent.includes('5 of 6')")
+    if native_zoom:
+        b.command('browsingContext.setViewport', {'context': b.context, 'viewport': None, 'devicePixelRatio': None})
+        assert b.evaluate('devicePixelRatio') == 2
+    for width in ((None,) if native_zoom else (1440, 390)):
+        if width: b.set_viewport(width, 1000)
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if os.environ.get('DLMS_BUNDLE_CAPTURE_DIR'):
+            from tests.browser._help_screenshots import capture_control
+            capture_control(b, Path(os.environ['DLMS_BUNDLE_CAPTURE_DIR']) / f'after-resume-{theme}-{width or "native200"}.webp', '#modeSelect')
+    raw = b.evaluate('localStorage.getItem(' + json.dumps(key) + ')')
+    b.evaluate('window.confirm=()=>false;true'); b.click('.quiz-recovery-start-over')
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    b.click('.quiz-recovery-resume'); b.wait_for('durableStudySession!==null && index===5')
+    assert b.evaluate('learningSessionId') == session
+    with sqlite3.connect(root / 'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM study_responses WHERE session_id=?', (session,)).fetchone()[0] == 5
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    b.click('#finishReviewBtn'); b.wait_for('Boolean(durableStudySession.completed_at)')
+    b.navigate(stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    assert b.evaluate("document.querySelectorAll('.quiz-recovery-panel,#durableStudyResume').length") == 0
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_walkthrough_resume_same_session_and_canceled_discard(browser_stack, theme):
+    _walkthrough_resume_same(browser_stack, theme)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_portable_native_zoom_resume(browser_stack, theme):
+    _walkthrough_resume_same(browser_stack, theme, native_zoom=True)
+
+
+def test_walkthrough_distinct_browser_exam_and_server_study(browser_stack):
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    session = b.evaluate('learningSessionId'); key = b.evaluate('quizRecoveryController.storageKey')
+    # An explicitly started Exam is distinct work; its recovery must not be
+    # routed into Study or overwritten by the server-only continuation button.
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    b.click('.exam-mode-btn'); b.click('#choices .choice[data-index="1"]')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    assert b.evaluate("document.querySelectorAll('.quiz-recovery-panel:not([hidden]),#durableStudyResume').length") == 2
+    raw = b.evaluate('localStorage.getItem(' + json.dumps(key) + ')')
+    b.click('#durableStudyResume button')
+    b.wait_for("document.body.textContent.includes('different saved session')")
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    assert b.evaluate('learningSessionId') != session
+    b.evaluate('window.confirm=()=>false;true'); b.click('.quiz-recovery-start-over')
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    b.click('.quiz-recovery-resume'); b.wait_for('examMode && userAnswers.q0 !== undefined')
+    assert b.evaluate('userAnswers.q0') == [1]
+
+
+def test_walkthrough_server_takeover_preserves_new_browser_queue(browser_stack):
+    b = browser_stack.browser
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    key = b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    b.click('.exam-mode-btn'); b.click('#choices .choice[data-index="1"]')
+    raw = b.evaluate('localStorage.getItem(' + json.dumps(key) + ')')
+    # Simulate another tab retaining its distinct valid Exam checkpoint. The
+    # server claim is held at its real response boundary, not by an arbitrary sleep.
+    b.evaluate('localStorage.removeItem(' + json.dumps(key) + ');true')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    b.evaluate("""window.__realFetch=window.fetch;window.fetch=async (...args)=>{
+      const r=await __realFetch(...args);if(String(args[0])==='/api/study/session'){
+        window.__claimWaiting=true;await new Promise(resolve=>window.__releaseClaim=resolve);}
+      return r;};true""")
+    b.click('#durableStudyResume button'); b.wait_for('window.__claimWaiting===true')
+    b.evaluate('localStorage.setItem(' + json.dumps(key) + ',' + json.dumps(raw) + ');window.__releaseClaim();true')
+    b.wait_for("document.body.textContent.includes('Saved work appeared in this browser')")
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    assert b.evaluate('quizRecoveryController.ownsState') is False
+    assert b.evaluate("!document.querySelector('#modeSelect').classList.contains('hidden')")
+
+
+def test_walkthrough_missing_browser_record_restores_server_action(browser_stack):
+    b = browser_stack.browser
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    key = b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    assert b.evaluate("document.querySelector('#durableStudyResume')===null")
+    b.evaluate('localStorage.removeItem(' + json.dumps(key) + ');true')
+    b.click('.quiz-recovery-resume')
+    b.wait_for("document.querySelector('#durableStudyResume')!==null")
+    assert b.evaluate("document.querySelector('.quiz-recovery-panel').hidden")
+    assert b.evaluate('durableStudySession===null')
+    b.click('#durableStudyResume button'); b.wait_for('durableStudySession!==null')
+    assert b.evaluate('userAnswers.q0') == [0]
+
+
+def test_walkthrough_add_choices_without_a_correct_answer(browser_stack):
+    """Adding structure must not demand a false answer key first."""
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, _ = _new_regular_study_quiz(browser_stack, 1)
+    with sqlite3.connect(root / 'results.db') as c:
+        question = c.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchone()[0]
+        c.execute('UPDATE choices SET is_correct=0 WHERE question_id=?', (question,))
+    b.navigate(browser_stack.base_url + f'/edit_quiz/{qid}'); b.wait_for_page_ready()
+    b.evaluate("window.__alerts=[];window.alert=x=>__alerts.push(x);window.__beforeAdd=true;document.querySelector('.edit-quiz-choice-count input').value='2';true")
+    b.click(f'button[value="add_choices_{question}"]')
+    assert b.evaluate('window.__alerts || []') == []
+    b.wait_for_page_ready('window.__beforeAdd !== true')
+    with sqlite3.connect(root / 'results.db') as c:
+        assert c.execute('SELECT count(*),sum(is_correct) FROM choices WHERE question_id=?', (question,)).fetchone() == (6, 0)
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_walkthrough_start_over_native_confirmation_and_changed_record(browser_stack):
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    session, key = b.evaluate('learningSessionId'), b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    raw = b.evaluate('localStorage.getItem(' + json.dumps(key) + ')')
+    prompts = b.click_with_prompt('.quiz-recovery-start-over', accept=False)
+    assert len(prompts) == 1 and prompts[0]['type'] == 'confirm'
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    # A confirmed stale dialog must not erase a newer revision from another tab.
+    b.evaluate('window.__nativeConfirm=window.confirm;window.confirm=()=>{const key=' + json.dumps(key) + ';const r=JSON.parse(localStorage.getItem(key));r.session.revision++;window.__newerRaw=JSON.stringify(r);localStorage.setItem(key,__newerRaw);return true;};true')
+    b.click('.quiz-recovery-start-over'); b.wait_for("document.body.textContent.includes('Nothing was discarded')")
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')===window.__newerRaw')
+    b.evaluate('window.confirm=window.__nativeConfirm;true')
+    prompts = b.click_with_prompt('.quiz-recovery-start-over', accept=True)
+    assert len(prompts) == 1
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') is None
+    b.wait_for("document.querySelector('#durableStudyResume')!==null")
+    with sqlite3.connect(root / 'results.db') as c:
+        assert c.execute('SELECT count(*) FROM study_responses WHERE session_id=?', (session,)).fetchone()[0] == 1
+        assert c.execute('SELECT completed_at FROM study_sessions WHERE id=?', (session,)).fetchone()[0] is None
+
+
+def test_walkthrough_preflight_download_uses_retained_selection(browser_stack, browser_server):
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, _ = _new_regular_study_quiz(browser_stack, 1)
+    with sqlite3.connect(root / 'results.db') as c:
+        c.execute('UPDATE choices SET is_correct=0 WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?)', (qid,))
+    b.navigate(browser_stack.base_url + '/quiz-bundles'); b.wait_for_page_ready()
+    b.click(f'[name=quiz_ids][value="{qid}"]')
+    b.evaluate('window.__beforeCheck=true;true'); b.click('[name=export_action][value=check]')
+    b.wait_for_page_ready('window.__beforeCheck !== true')
+    assert b.evaluate("document.querySelector('#bundleDownloadTop').form.id") == 'portableBundleExportForm'
+    assert b.evaluate("[...document.querySelectorAll('[name=quiz_ids]:checked')].map(n=>Number(n.value))") == [qid]
+    assert b.evaluate("document.querySelector('#bundleDownloadTop').disabled") is False
+    assert b.evaluate("document.querySelector('[href=\"#bundleImportHeading\"]')!==null")
+    # The export section occupies the workflow width; import remains below it.
+    assert b.evaluate("document.querySelector('[aria-labelledby=bundleExportHeading]').getBoundingClientRect().width / document.querySelector('.portable-bundle-workflows').getBoundingClientRect().width") > .98
+    b.click('#bundleDownloadTop')
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        files = list(browser_server.work_root.glob('firefox-session-*/downloads/DLMS-Quiz-Bundle*.zip'))
+        if files:
+            try:
+                with zipfile.ZipFile(files[0]) as z:
+                    data = json.loads(z.read('dlms-quiz-bundle.json'))
+                    assert z.testzip() is None
+                break
+            except (OSError, zipfile.BadZipFile): pass
+        time.sleep(.1)
+    else: raise AssertionError('No complete native download from the preflight action')
+    assert len(data['quizzes']) == 1 and len(data['quizzes'][0]['questions']) == 1
+    assert not any(choice['is_correct'] for choice in data['quizzes'][0]['questions'][0]['choices'])
+    b.click('#clearBundleQuizzes')
+    assert b.evaluate("[...document.querySelectorAll('[data-bundle-download]')].every(n=>n.disabled)")

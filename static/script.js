@@ -122,26 +122,48 @@ async function loadDurableStudy() {
     const data = await response.json();
     durableStudyGeneration = data.generation;
     const saved = data.session;
-    if (!saved || saved.completed_at) return;
+    return saved && !saved.completed_at ? saved : null;
+}
+
+function renderDurableStudyResume(saved) {
+    document.getElementById("durableStudyResume")?.remove();
+    const local = quizRecoveryController?.savedSessionSummary;
+    const modeHeading = document.querySelector("#modeSelect .mode-center h2");
+    if (modeHeading) modeHeading.textContent = saved || local ? "Start a new session" : "Select Mode";
+    if (!saved) return;
+    // The browser action restores its pending queue and reconciles the same
+    // durable session. Do not offer a competing server-only path for that work.
+    if (local?.mode === "Study" && local.learningSessionId === saved.id) {
+        const browserPanel = document.querySelector(".quiz-recovery-panel");
+        let summary = document.getElementById("quizRecoveryDurableSummary");
+        if (browserPanel && !summary) {
+            summary = document.createElement("p");
+            summary.id = "quizRecoveryDurableSummary";
+            browserPanel.insertBefore(summary, browserPanel.querySelector(".quiz-recovery-actions"));
+        }
+        if (summary) summary.textContent = `${saved.reviewed} of ${saved.total} questions reviewed on the server. Finish Review has not been saved.`;
+        return;
+    }
     const container = document.getElementById("modeSelect");
     if (!container) return;
     const panel = document.createElement("section");
     panel.id = "durableStudyResume";
     panel.className = "study-learning-save-status";
     const description = document.createElement("p");
-    description.textContent = `Saved Study review: ${saved.reviewed} of ${saved.total} questions reviewed. Resume here takes ownership from other tabs.`;
+    description.textContent = `Study review saved on this server: ${saved.reviewed} of ${saved.total} questions reviewed. Resume and take over continues this review and stops other tabs from saving to it.`;
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = "Resume and take over";
     button.addEventListener("click", async () => {
-        // Preserve this browser's unsaved queue before restoring server state.
-        try {
-            const local = JSON.parse(localStorage.getItem(quizRecoveryController?.storageKey) || "null");
-            if (local?.session?.mode === "Study" && local.unacknowledgedStudyEvents?.length && quizRecoveryController?.hasSavedState) {
+        const recovery = quizRecoveryController?.savedSessionSummary;
+        if (recovery) {
+            if (recovery.mode === "Study" && recovery.learningSessionId === saved.id) {
                 document.querySelector(".quiz-recovery-resume")?.click();
-                return;
+            } else {
+                showQuizRecoveryNotice("This browser has a different saved session. Resume it first, or explicitly choose Start Over before taking over the server review. Nothing has been discarded.");
             }
-        } catch (_error) { /* Server resume still works without browser storage. */ }
+            return;
+        }
         button.disabled = true;
         try {
             examMode = false;
@@ -165,12 +187,21 @@ async function loadDurableStudy() {
                 userAnswers[`q${i}`] = answer.type === "choice" ? choiceIndexesForLabels(quiz[Number(i)], answer.selected) : answer.selected;
             });
             index = current.position;
+            // Another tab may have created recovery while the claim was in
+            // flight. Never replace that record with this server-only resume.
+            if (quizRecoveryReady && !quizRecoveryController.claimNew({preserveExisting: true})) {
+                throw new Error("Saved work appeared in this browser while this review was loading. Its recovery record is retained. Resume that work or reload to choose between the sessions.");
+            }
             showActiveQuizUI();
             renderQuestion();
-            if (quizRecoveryReady) quizRecoveryController.claimNew();
         } catch (error) { description.textContent = error.message; }
         finally { button.disabled = false; }
     });
+    if (local) {
+        const alternative = document.createElement("p");
+        alternative.textContent = "This is a different review from the saved session in this browser. Resume that session first, or choose Start Over to discard only its browser recovery before taking over this review.";
+        panel.append(alternative);
+    }
     panel.append(description, button);
     container.append(panel);
 }
@@ -507,7 +538,8 @@ async function loadQuiz() {
             const completedStudy = durableStudySupported
                 ? await recovery.reconcileCompletedStudy({quizId: window.QUIZ_ID, limit: 1}) : new Set();
             if (completedStudy.size) showQuizRecoveryNotice("This Study review is already finished. Select Study Mode to start a new review.");
-            try { await loadDurableStudy(); } catch (error) { showQuizRecoveryNotice(error.message); }
+            let savedStudy = null;
+            try { savedStudy = await loadDurableStudy(); } catch (error) { showQuizRecoveryNotice(error.message); }
             quizRecoveryController = recovery.createController({
                 quizId: window.QUIZ_ID,
                 quizFile: file,
@@ -519,11 +551,13 @@ async function loadQuiz() {
                 canRestore: canRestoreChoiceRecovery,
                 isCompleted: record => record.session.mode === "Study" && completedStudy.has(record.learningSessionId),
                 finishSubmission: recoveredAttempt => { void submitQuiz(true, recoveredAttempt); },
-                startOver: () => {},
+                startOver: () => renderDurableStudyResume(savedStudy),
+                recoveryChanged: () => renderDurableStudyResume(savedStudy),
                 notify: showQuizRecoveryNotice,
             });
             quizRecoveryController.initialize();
             quizRecoveryReady = true;
+            renderDurableStudyResume(savedStudy);
         } catch (recoveryError) {
             console.warn("Quiz recovery unavailable; continuing without it:", recoveryError);
             showQuizRecoveryNotice("Quiz recovery is unavailable in this browser. The quiz will continue normally.");

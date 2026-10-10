@@ -136,7 +136,7 @@
                     <div class="build-step-number">2</div>
                     <div>
                         <h2>Questions &amp; Answers</h2>
-                        <p>Edit question text and answer choices. Every question must retain at least one correct answer.</p>
+                        <p>Edit question text and answer choices. Study and Exam require a complete, unambiguous answer key.</p>
                     </div>
                 </div>
 
@@ -218,11 +218,12 @@
                         <ul class="build-choice-list edit-quiz-choice-list">
                         {% for c in q.choices %}
                             <li>
-                                <label class="build-field"><span>Choice label</span><input type="text" name="label_{{ c['id'] }}" value="{{ c['label'] }}" maxlength="1" pattern="[A-Z]" size="2" aria-label="Choice label for option {{ loop.index }} in question {{ q.number }}"></label>
+                                <label class="build-field edit-quiz-choice-label"><span>Choice label</span><input type="text" name="label_{{ c['id'] }}" value="{{ c['label'] }}" maxlength="1" pattern="[A-Z]" size="2" aria-label="Choice label for option {{ loop.index }} in question {{ q.number }}"></label>
 
                                 <input type="text"
                                        name="choice_{{ c['id'] }}"
-                                       value="{{ c['text'] }}">
+                                       value="{{ c['text'] }}"
+                                       aria-label="Answer text for option {{ loop.index }} in question {{ q.number }}">
 
                                 <label class="build-correct-toggle">
                                     <input type="checkbox"
@@ -245,7 +246,7 @@
                             <label class="build-field edit-quiz-choice-count">
                                 <span>Add answer choices</span>
                                 <input type="number"
-                                       name="choice_count"
+                                       name="choice_count_{{ q.id }}"
                                        value="1"
                                        min="1"
                                        max="10"
@@ -257,6 +258,7 @@
                                     name="action"
                                     value="add_choices_{{ q.id }}"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#plus"></use></svg> Add Choices</button>
                         </div>
+                        <p class="edit-quiz-choice-save-note">Add Choices saves your current edits. New choices are not marked correct; Study and Exam stay unavailable while question issues remain.</p>
                         <label class="build-field edit-quiz-explanation-field">
                             <span>Study Mode Explanation <em>Optional</em></span>
                             <textarea name="explanation_{{ q.id }}" rows="4" placeholder="Add or edit the explanation shown in Study Mode.">{{ q.explanation }}</textarea>
@@ -307,6 +309,10 @@
 
 <script>
 document.getElementById("edit-quiz-form").addEventListener("submit", function(e) {
+    // Structural edits intentionally save the current form before extending it.
+    // Final Save Changes and graded entry points still enforce readiness.
+    const action = e.submitter?.value || "";
+    if (/^(?:add_choices|add_match_pair)_\d+$/.test(action) || action === "add_question") return;
     const questions = document.querySelectorAll(".question-block");
 
     for (let i = 0; i < questions.length; i++) {

@@ -297,7 +297,7 @@
         {% if visibility.certifications %}
         {% from 'certifications/_cards.html' import cards %}
         <section class="dashboard-panel cert-trophies" id="myCertifications" aria-labelledby="certificationsHeading">
-            <div class="cert-section-head"><div><h2 id="certificationsHeading">My Certifications</h2><p>Your earned credentials. Exam preparation stays in Exam Plans.</p></div><div class="cert-actions"><a class="dlms-action-control" href="/certifications/new"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#plus"></use></svg>Add certification</a><a class="dlms-action-control" href="/certifications">{{ 'View all (' ~ trophies.total ~ ')' if trophies and trophies.total > trophies.rows|length else 'Manage certifications' }}</a></div></div>
+            <div class="cert-section-head"><div><h2 id="certificationsHeading">My Certifications</h2></div><div class="cert-actions"><a class="dlms-action-control" href="/certifications/new"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#plus"></use></svg>Add certification</a><a class="dlms-action-control" href="/certifications">{{ 'View all (' ~ trophies.total ~ ')' if trophies and trophies.total > trophies.rows|length else 'Manage certifications' }}</a></div></div>
             {% if trophies and trophies.error %}<p role="alert">{{ trophies.error }}</p>{% elif trophies and trophies.rows %}{{ cards(trophies.rows) }}{% else %}<p>No earned certifications recorded yet.</p>{% endif %}
             <a class="dlms-action-control" href="/settings/layout#certifications-visibility">Display options</a>
         </section>

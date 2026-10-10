@@ -3063,7 +3063,7 @@ a.settings-hub-card:active {
 
 .portable-bundle-workflows {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 20px;
     align-items: start;
 }
@@ -7053,7 +7053,37 @@ a.settings-hub-card:active {
 }
 
 .edit-quiz-page .edit-quiz-choice-list li {
-    grid-template-columns: 28px minmax(0, 1fr) 92px 32px;
+    grid-template-columns: 7rem minmax(0, 1fr) max-content 40px;
+    align-items: end;
+}
+
+.edit-quiz-page .edit-quiz-choice-label {
+    min-width: 0;
+}
+
+.edit-quiz-page .edit-quiz-choice-label > span {
+    white-space: nowrap;
+}
+
+.edit-quiz-page .edit-quiz-choice-label input {
+    min-width: 0;
+    text-align: center;
+}
+
+.edit-quiz-page .edit-quiz-choice-save-note {
+    color: var(--theme-muted-text);
+    line-height: 1.5;
+    margin: 10px 0 14px;
+    font-size: 14px;
+}
+
+.edit-quiz-page .edit-quiz-choice-list .build-choice-delete {
+    width: 40px;
+    height: 40px;
+}
+
+.edit-quiz-page .edit-quiz-choice-list .build-correct-toggle {
+    min-height: 36px;
 }
 
 .edit-quiz-page .edit-quiz-add-choice-row {
@@ -7084,11 +7114,12 @@ a.settings-hub-card:active {
 
 @media (max-width: 760px) {
     .edit-quiz-page .edit-quiz-choice-list li {
-        grid-template-columns: 25px minmax(0, 1fr) 32px;
+        grid-template-columns: 6.5rem minmax(0, 1fr) 40px;
     }
 
     .edit-quiz-page .edit-quiz-choice-list .build-correct-toggle {
         grid-column: 2;
+        grid-row: 2;
     }
 
     .edit-quiz-page .edit-quiz-choice-list .build-choice-delete {

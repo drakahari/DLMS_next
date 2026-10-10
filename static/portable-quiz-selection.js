@@ -8,7 +8,7 @@
     const count = document.getElementById('bundleQuizCount');
     const matches = document.getElementById('bundleMatchCount');
     const all = document.getElementById('selectAllBundleQuizzes');
-    const download = document.getElementById('bundleDownload');
+    const downloads = [...document.querySelectorAll('[data-bundle-download]')];
     const previous = document.getElementById('bundlePrevious');
     const next = document.getElementById('bundleNext');
     const pageLabel = document.getElementById('bundlePage');
@@ -30,7 +30,7 @@
         matches.textContent = `${filtered.length} matching of ${rows.length} available sources`;
         all.textContent = `Select all filtered results (${filtered.length})`;
         all.disabled = filtered.length === 0;
-        download.disabled = selected.length === 0 || selected.length > 1000;
+        downloads.forEach(button => { button.disabled = selected.length === 0 || selected.length > 1000; });
         if (selected.length > 1000) count.textContent += ' · Limit: 1,000 per download; deselect some quizzes';
         pageLabel.textContent = filtered.length ? `Page ${page + 1} of ${pages}` : 'No matching pages';
         previous.disabled = page === 0;
@@ -45,6 +45,6 @@
     });
     previous.addEventListener('click', () => { page -= 1; update(); });
     next.addEventListener('click', () => { page += 1; update(); });
-    form.addEventListener('submit', event => { if (download.disabled) event.preventDefault(); });
+    form.addEventListener('submit', event => { if (downloads.some(button => button.disabled)) event.preventDefault(); });
     update();
 })();

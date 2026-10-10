@@ -18,6 +18,10 @@ using the prior label/ID rule; the supported application writers never create
 NULL positions. Invalid explicit positions or a differently defined uniqueness
 index are rejected on startup/restore. Assessment and marked-question revisions
 hash the ordered content, not the added column itself; migration retains them.
+The regression oracle in `tests/schema10_revision_reference.py` freezes the
+pre-migration revision functions from `856131ad333dc8d9fb7b32b010cf96c70dea93e4`,
+with their source hash. It runs without Git history, including shallow CI
+checkouts. It must not be replaced by the current reader when testing migration.
 
 Affected readers include rendering, learning/recommendations, Study revisions,
 Exam validation, composition, duplicates, editor and Anki. Content lineage and

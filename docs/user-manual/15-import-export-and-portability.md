@@ -84,7 +84,8 @@ when it differs from the receiving page's position.
 
 Use **Check selected quizzes** for a complete selection report. It groups issues
 by quiz title and ID and identifies question positions, stored numbers, reasons
-and **Review and edit** links. **Needs review** warnings do not block transfer.
+and **Review and edit** links. A download control beside an unblocked report
+uses the retained selection. **Needs review** warnings do not block transfer.
 If Download discovers warnings, review the report and choose **Download selected
 quizzes** again to preserve those records. Actual blockers, such as missing or
 unsafe images, prevent the entire download. All checkboxes remain selected.
@@ -106,8 +107,15 @@ blocked until you explicitly correct the content in **Review and edit**. A
 repeated label, empty required question/answer text or absent correct answer
 cannot support reliable grading. Supported media-only questions retain their
 existing behavior. Unique label gaps such as A/C/D are valid: selecting D means D.
-The editor exposes **Choice label** for each separate choice row. Saving a
-correction updates readiness and assessment revision; it does not rewrite history.
+The editor exposes **Choice label** for each separate choice row. **Add Choices**
+saves your current edits and adds the number entered under **Add answer choices**;
+new rows are not marked correct. You do not need to mark an existing wrong
+answer just to add a missing choice. Enter the new text and explicitly select
+the correct answer before **Save Changes**. Graded Study and Exam remain unavailable
+while question issues remain. Saving a correction updates readiness and
+assessment revision; it does not rewrite history.
+
+![Readable choice-label fields and Add Choices for a disposable incomplete question](images/UM-06-quiz-editor-choice-labels.webp)
 
 An older self-contained page using positional answer mapping must be explicitly
 regenerated through the editor before use with nonpositional labels. An ambiguous

@@ -14,6 +14,7 @@ from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
 from tests import test_portable_quiz_bundles as fixtures
+from tests import schema10_revision_reference
 from tests.csrf_test_utils import csrf_headers
 from dlms.persistence import choice_schema, database
 from dlms.services import portable_quiz_bundles as bundles, quiz_readiness, study_sessions
@@ -220,6 +221,44 @@ class ChoicePreservationTests(unittest.TestCase):
             self.assertEqual(0, c.execute('SELECT count(*) FROM attempts').fetchone()[0])
 
 
+    def test_structural_editor_add_choices_saves_edits_without_inventing_key(self):
+        sample = self.quiz(flags=(False, False, False))
+        for choice in sample['choices']:
+            choice['text'] = choice['text'].strip()
+        qid, _ = dlms._publish_quiz('Repair sample', [sample])
+        with dlms.get_db() as c:
+            question = c.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchone()[0]
+            rows = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+        page = self.client.get(f'/edit_quiz/{qid}').text
+        self.assertIn(f'name="choice_count_{question}"', page)
+        form = {'quiz_title': 'Repair sample', 'exam_minutes': '90',
+                f'question_{question}': 'Edited incomplete question',
+                f'choice_count_{question}': '2', 'action': f'add_choices_{question}'}
+        for row in rows:
+            form[f'choice_{row[0]}'] = row[2]
+            form[f'label_{row[0]}'] = row[1]
+        response = self.client.post(f'/edit_quiz/{qid}', data=form, headers=self.headers)
+        self.assertEqual(302, response.status_code)
+        with dlms.get_db() as c:
+            after = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+            self.assertEqual(5, len(after))
+            self.assertEqual([tuple(r) for r in rows], [tuple(r) for r in after[:3]])
+            self.assertEqual([0] * 5, [r[3] for r in after])
+            self.assertFalse(quiz_readiness.quiz_readiness(c.cursor(), qid)['ready'])
+            self.assertEqual('Edited incomplete question', c.execute('SELECT question_text FROM questions WHERE id=?', (question,)).fetchone()[0])
+            self.assertEqual(0, c.execute('SELECT count(*) FROM study_sessions WHERE quiz_id=?', (qid,)).fetchone()[0])
+        # Final Save cannot publish a ready assessment with an absent answer key.
+        form['action'] = 'save'
+        for row in after:
+            form[f'choice_{row[0]}'] = row[2] or 'Explicit new answer'
+            form[f'label_{row[0]}'] = row[1]
+        self.client.post(f'/edit_quiz/{qid}', data=form, headers=self.headers)
+        with dlms.get_db() as c:
+            self.assertEqual([tuple(r) for r in after], [tuple(r) for r in c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,))])
+        entry = next(e for e in dlms.load_registry() if e['id'] == qid)
+        self.assertEqual(409, self.client.get('/quizzes/' + entry['html']).status_code)
+
+
 class ChoiceMigrationTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='dlms-choice-migration-');self.addCleanup(self.temp.cleanup)
@@ -247,10 +286,7 @@ class ChoiceMigrationTests(unittest.TestCase):
         self.assertEqual('current',dlms.bootstrap_database(str(self.path),require_owned_root=False)['status'])
 
     def test_migration_keeps_assessment_and_mark_question_revisions(self):
-        import types
-        old=types.ModuleType('dlms.services.pre_migration_study');old.__package__='dlms.services'
-        code=subprocess.check_output(['git','show','HEAD:dlms/services/study_sessions.py'],text=True)
-        exec(compile(code,'pre_migration_study.py','exec'),old.__dict__)
+        old = schema10_revision_reference
         with database.get_db(self.path) as c:
             before=(old.assessment_revision(c.cursor(),1),[old.question_revision(c.cursor(),q) for q in (1,2,3)])
         dlms.bootstrap_database(str(self.path),require_owned_root=False)
