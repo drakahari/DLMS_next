@@ -18068,3 +18068,63 @@ def test_study_mistakes_acknowledged_request_storage_failure_gates_new_work(brow
     with sqlite3.connect(browser_stack.data_root/'results.db') as c:
         assert c.execute("SELECT count(*) FROM quizzes WHERE title='Known saved despite blocked cleanup'").fetchone()[0]==1
         assert c.execute('SELECT count(*) FROM study_mistake_members WHERE used_by IS NOT NULL').fetchone()[0]==1
+
+
+def _check_study_mistakes_browse_wording_and_table(browser_stack, theme, native_zoom=False):
+    """Real rendered singular/plural copy and populated headings, with no creation."""
+    b, root = browser_stack.browser, browser_stack.data_root
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    if native_zoom:
+        b.command('browsingContext.setViewport', {'context': b.context, 'viewport': None, 'devicePixelRatio': None})
+    qid, _ = _mistake_usability_source(browser_stack, 2, 'Presentation sample source', 'Presentation sample', wrong=False)
+    with sqlite3.connect(root/'results.db') as c:
+        for row in c.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchall():
+            c.execute("INSERT INTO study_legacy_responses(quiz_id,question_id,mode,was_correct,response_json) VALUES(?,?,'Study',0,?)", (qid, row[0], json.dumps({'selected': ['B']})))
+        before = {table: list(c.execute('SELECT * FROM '+table+' ORDER BY rowid')) for table in ('questions', 'choices', 'study_legacy_responses')}
+    b.navigate(browser_stack.base_url+'/settings/appearance'); _set_theme(b, theme)
+    b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid))
+    b.wait_for_page_ready('document.getElementById("mistakeQuizBrowse")')
+    statuses = {}
+    for value, label in [('selected', 'zero'), ('folder:Presentation sample', 'one'), ('all', 'plural')]:
+        b.evaluate('mistakeQuizBrowse.value='+json.dumps(value)+';mistakeQuizBrowse.dispatchEvent(new Event("change"));true')
+        statuses[label] = b.evaluate('({count:mistakeQuizSelect.options.length,text:mistakeBrowseStatus.textContent})')
+        assert b.evaluate('new FormData(mistakeScopeForm).getAll("quizzes")') == [str(qid)]
+    b.evaluate('mistakeQuizBrowse.value="folder:Presentation sample";mistakeQuizBrowse.dispatchEvent(new Event("change"));true')
+    b.activate(); b.wait_for('document.hasFocus()')
+    b.evaluate('mistakeUnavailableDetails.querySelector("summary").focus();true'); b.press_key(' ')
+    b.wait_for('mistakeUnavailableDetails.open')
+    measurements = []
+    for width in ((None,) if native_zoom else (1440, 390)):
+        if width: b.set_viewport(width, 1000)
+        if b.evaluate('innerWidth<900'): b.wait_for('dashboardSidebar.getBoundingClientRect().right<=0')
+        b.evaluate('mistakeUnavailableDetails.querySelector("summary").scrollIntoView({block:"start",behavior:"instant"});true')
+        metric = b.evaluate('''(() => {const table=document.querySelector('.study-mistakes-exclusions'),h=table.querySelector('thead th:nth-child(2)'),cell=table.querySelector('[data-label="Question"]'),r=document.createRange();r.selectNodeContents(h);return {width:innerWidth,dpr:devicePixelRatio,overflow:document.documentElement.scrollWidth>innerWidth,heading:h.textContent,headingLines:r.getClientRects().length,stacked:getComputedStyle(table.querySelector('thead')).position==='absolute',stackedLabel:getComputedStyle(cell,'::before').content,rows:table.querySelectorAll('tbody tr').length,href:table.querySelector('tbody a').getAttribute('href')};})()''')
+        measurements.append(metric)
+        _mistake_browser_capture(b, 'table-heading-'+theme+'-'+str(width or 'native200'))
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    if output:
+        (Path(output)/('table-heading-'+theme+'-'+('native200' if native_zoom else 'responsive')+'.json')).write_text(json.dumps(dict(statuses=statuses,measurements=measurements),indent=2))
+    assert statuses['zero']['count'] == 0 and statuses['zero']['text'].startswith('0 quizzes shown')
+    assert statuses['one']['count'] == 1 and statuses['one']['text'].startswith('1 quiz shown')
+    assert statuses['plural']['count'] > 1 and statuses['plural']['text'].startswith(str(statuses['plural']['count'])+' quizzes shown')
+    for metric in measurements:
+        assert not metric['overflow'] and metric['rows'] == 2 and metric['heading'] == 'Question', metric
+        assert metric['href'] == '/edit_quiz/'+str(qid), metric
+        if metric['stacked']: assert metric['stackedLabel'].replace('" "', '').strip('"') == 'Question: ', metric
+        else: assert metric['headingLines'] == 1, metric
+        if native_zoom: assert metric['dpr'] == 2
+    b.activate(); b.evaluate('document.querySelector(".study-mistakes-exclusions tbody a").focus();true')
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    b.press_key('\ue007'); b.wait_for_page_ready('location.pathname==="/edit_quiz/'+str(qid)+'"')
+    with sqlite3.connect(root/'results.db') as c:
+        for table, records in before.items(): assert list(c.execute('SELECT * FROM '+table+' ORDER BY rowid')) == records
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_study_mistakes_browse_wording_and_table_headings(browser_stack, theme):
+    _check_study_mistakes_browse_wording_and_table(browser_stack, theme)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_study_mistakes_native_zoom_table_headings(browser_stack, theme):
+    _check_study_mistakes_browse_wording_and_table(browser_stack, theme, True)

@@ -106,7 +106,7 @@
         }
         group('Selected folders', [...pickedFolders], 'folder'); group('Selected individual quizzes', [...pickedQuizzes], 'quiz');
         const outside = [...pickedQuizzes].filter(id => !visibleIds.has(id)).length;
-        document.getElementById('mistakeBrowseStatus').textContent = `${quizzes.options.length} quizzes shown · ${outside} selected individual ${outside === 1 ? 'quiz' : 'quizzes'} outside this view retained.`;
+        document.getElementById('mistakeBrowseStatus').textContent = `${quizzes.options.length} ${quizzes.options.length === 1 ? 'quiz' : 'quizzes'} shown · ${outside} selected individual ${outside === 1 ? 'quiz' : 'quizzes'} outside this view retained.`;
         sync();
     }
     function renderBrowse() {

@@ -43,7 +43,7 @@
 .mixed-quiz-builder-page .study-mistakes-preview li { padding-block: .35rem; overflow-wrap: anywhere; }
 .mixed-quiz-builder-page .study-mistakes-exclusions { width: 100%; table-layout: fixed; border-collapse: collapse; }
 .mixed-quiz-builder-page .study-mistakes-exclusions :is(th,td) { text-align: start; padding: .75rem; border-bottom: 1px solid var(--theme-border-soft); overflow-wrap: anywhere; vertical-align: top; }
-.mixed-quiz-builder-page .study-mistakes-exclusions th:nth-child(2) { width: 5rem; }
+.mixed-quiz-builder-page .study-mistakes-exclusions thead th:nth-child(2) { width: 7.5rem; white-space: nowrap; overflow-wrap: normal; }
 .mixed-quiz-builder-page .study-mistakes-exclusions caption { text-align: start; padding-block: .75rem; }
 .mixed-quiz-builder-page #mistakeCreationReason { margin-block: .75rem; }
 .mixed-quiz-builder-page #mistakeCount:disabled { background: var(--semantic-secondary-control-surface); }
