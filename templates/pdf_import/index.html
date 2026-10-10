@@ -187,14 +187,14 @@
 {% endif %}
 {% endwith %}
 <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button><div><div class="build-eyebrow">PDF &amp; IMAGE IMPORT</div><h1>PDF &amp; Image Import</h1><p>Import structured PDF question banks or terminology sources, or create reviewable quiz drafts from screenshots.</p></div></header>
-<section class="dashboard-panel pdf-import-intro"><div><span class="build-method-label">SAFE ADDITIVE WORKFLOW</span><h2>Your existing parsers are untouched</h2><p>This is a separate importer. The original text upload, paste parser, CSV matching importer, manual builder, and image builder continue to work exactly as before.</p></div>
-<div class="pdf-import-badges"><span>Question banks</span><span>Glossary / terminology</span><span>Automatic detection</span><span>Cross-page content</span><span>Inline repair</span></div></section>
-<section class="dashboard-panel">
+<nav class="pdf-import-task-links" aria-label="Import navigation"><a class="build-secondary-link" href="/upload">Build Quiz</a><a class="build-secondary-link" href="#savedBanks">Saved banks</a><a class="build-secondary-link" href="/help/smart-pdf">Import Help</a></nav>
+<section class="dashboard-panel" aria-labelledby="pdfTextHeading">
+<h2 id="pdfTextHeading">Import PDF questions or terminology</h2>
 <form action="/pdf-import/analyze" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form">
 <label class="build-field"><span>PDF file</span><input type="file" name="pdf_file" accept=".pdf,application/pdf" required><small>Selectable text is always used first. If question-bank pages have little or no usable text, DLMS can offer optional local OCR for selected pages.</small></label>
 <label class="build-field"><span>Source bank title</span><input type="text" name="quiz_title" placeholder="Example: CISM Glossary or PenTest+ Practice"><small>You can change this again on the review screen.</small></label>
 <label class="build-field"><span>Content type</span><select name="pdf_content_type"><option value="auto">Auto-detect</option><option value="question_bank">Question bank</option><option value="glossary">Glossary / terminology</option></select><small>Choose manually if the PDF has an unusual layout.</small></label>
-<label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label>
+<label class="build-field"><span>Exam timer (minutes)</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label>
 <label class="pdf-import-rights"><input type="checkbox" name="rights_ok" required><span>I have permission to use this document for my own study. DLMS will treat the imported material as user-provided and not cleared for redistribution.</span></label>
 <div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Quiz</a><button class="build-primary-button" type="submit">Analyze PDF</button></div>
 </form></section>
@@ -203,19 +203,19 @@
 <form action="/pdf-import/screenshots" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form" id="pdfOcrUploadForm">
 <label class="build-field"><span>Quiz screenshots</span><input type="file" name="screenshots" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple required {% if not ocr_available %}disabled{% endif %}><small>Maximum {{ ocr_max_file_mib }} MiB each and {{ ocr_max_batch_mib }} MiB total. Upload order is preserved.</small></label>
 <label class="build-field"><span>Source bank title</span><input type="text" name="quiz_title" placeholder="Example: Network Security Screenshots" {% if not ocr_available %}disabled{% endif %}><small>You can change this again during review.</small></label>
-<label class="build-field"><span>Exam timer</span><input type="number" name="exam_minutes" min="1" max="1440" value="90" {% if not ocr_available %}disabled{% endif %}></label>
-<div class="pdf-ocr-guidance semantic-info-surface"><strong>OCR creates reviewable drafts, not trusted answers.</strong><span>Labels A–Z may be inferred; 2–26 choices and multiple correct answers are supported. A selected or highlighted answer in a screenshot is never treated as proof of correctness. Confirm the complete correct-answer set before saving.</span></div>
+<label class="build-field"><span>Exam timer (minutes)</span><input type="number" name="exam_minutes" min="1" max="1440" value="90" {% if not ocr_available %}disabled{% endif %}></label>
+<div class="pdf-ocr-guidance semantic-info-surface"><strong>OCR creates reviewable drafts, not trusted answers.</strong><span>Compare each draft with its source preview and confirm all correct answers. Highlighted or selected answers are not proof of correctness.</span></div>
 <label class="pdf-import-rights"><input type="checkbox" name="rights_ok" required {% if not ocr_available %}disabled{% endif %}><span>I have permission to use these screenshots for my own study. Validated images are retained temporarily for review, then removed after save or cancellation.</span></label>
 <div class="build-submit-row"><span class="pdf-ocr-local-note">Processing stays on this device. Clear, upright screenshots work best.</span><button class="build-primary-button" type="submit" {% if not ocr_available %}disabled{% endif %}>Import Quiz Screenshots</button></div>
 </form>
 {% if not ocr_available %}<div class="semantic-warning-surface pdf-ocr-unavailable" role="status">Screenshot and scanned-page OCR are unavailable in this runtime. Normal selectable-text PDF import remains fully available.{% if ocr_unavailable_guidance %} {{ ocr_unavailable_guidance }}{% endif %}</div>{% endif %}
 </section>
 <section class="dashboard-panel pdf-ocr-import-panel" aria-labelledby="ocrMatchingHeading">
-<div class="pdf-bank-panel-heading"><div><span class="build-method-label">LOCAL OCR · MATCHING</span><h2 id="ocrMatchingHeading">Import Terminology Images or Scanned PDF</h2><p>Extract conservative term/definition candidates from up to {{ ocr_max_files }} ordered screenshots or one scanned PDF of up to {{ ocr_max_files }} pages, then repair and confirm every pairing before publication.</p></div>{% if ocr_available %}<span class="pdf-status complete pdf-ocr-availability">OCR available</span>{% else %}<span class="pdf-status incomplete pdf-ocr-availability">OCR unavailable</span>{% endif %}</div>
+<div class="pdf-bank-panel-heading"><div><span class="build-method-label">LOCAL OCR · MATCHING</span><h2 id="ocrMatchingHeading">Import Terminology Images or Scanned PDF</h2><p>Extract terms and definitions for matching practice from up to {{ ocr_max_files }} images or one scanned PDF of up to {{ ocr_max_files }} pages. Review and confirm each pairing before saving.</p></div>{% if ocr_available %}<span class="pdf-status complete pdf-ocr-availability">OCR available</span>{% else %}<span class="pdf-status incomplete pdf-ocr-availability">OCR unavailable</span>{% endif %}</div>
 <form action="/pdf-import/ocr-matching" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form" id="ocrMatchingUploadForm">
 <label class="build-field"><span>Terminology screenshots / images</span><input type="file" name="matching_images" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple {% if not ocr_available %}disabled{% endif %}><small>Upload order is preserved. Leave empty when using a scanned PDF.</small></label>
 <label class="build-field"><span>Scanned terminology PDF</span><input type="file" name="matching_pdf" accept=".pdf,application/pdf" {% if not ocr_available %}disabled{% endif %}><small>Choose images or one PDF, not both. Every PDF page is processed locally.</small></label>
-<label class="build-field"><span>Quiz title</span><input type="text" name="quiz_title" maxlength="240" placeholder="Example: Workshop Terminology" {% if not ocr_available %}disabled{% endif %}></label>
+<label class="build-field pdf-terminology-title"><span>Quiz title</span><input type="text" name="quiz_title" maxlength="240" placeholder="Example: Workshop Terminology" {% if not ocr_available %}disabled{% endif %}></label>
 <label class="build-field"><span>Matching prompt</span><input type="text" name="matching_question" maxlength="10000" value="Match each term to its definition." {% if not ocr_available %}disabled{% endif %}></label>
 <label class="build-field"><span>Direction</span><select name="matching_direction" {% if not ocr_available %}disabled{% endif %}><option value="term_to_definition">Term → definition</option><option value="definition_to_term">Definition → term</option><option value="random">Random each attempt</option></select></label>
 <div class="pdf-ocr-guidance semantic-info-surface"><strong>Pairing is deliberately conservative.</strong><span>DLMS recognizes explicit separators, labeled term/definition lines, and reliably aligned two-column rows. Ambiguous OCR text stays visible as unassigned material for Review &amp; Repair instead of being silently paired.</span></div>
@@ -223,10 +223,11 @@
 <div class="build-submit-row"><span class="pdf-ocr-local-note">No cloud OCR or external AI is used.</span><button class="build-primary-button" type="submit" {% if not ocr_available %}disabled{% endif %}>Extract Terminology Pairs</button></div>
 </form>
 </section>
-<section class="dashboard-panel pdf-import-note"><strong>Current import scope</strong><p>DLMS handles selectable-text PDF question banks and glossary/terminology layouts, screenshot OCR, terminology/matching OCR, and optional OCR of explicitly selected low-text question-bank PDF pages. OCR runs locally and never trusts selected or highlighted answers as proof of correctness. Choice OCR supports 2–26 choices and multiple correct answers, and every OCR draft requires Review &amp; Repair. Temporary source files are removed after conversion, save, cancellation, or expiration. Arbitrary textbook/chapter interpretation is not enabled.</p></section>
+<details class="dashboard-panel pdf-import-note"><summary>Supported layouts and OCR limits</summary><p>DLMS handles selectable-text PDF question banks and glossary/terminology layouts, screenshot OCR, terminology/matching OCR, and optional OCR of explicitly selected low-text question-bank PDF pages. OCR runs locally and never trusts selected or highlighted answers as proof of correctness. Choice OCR supports 2–26 choices and multiple correct answers, and every OCR draft requires Review &amp; Repair. Temporary source files are removed after conversion, save, cancellation, or expiration. Arbitrary textbook/chapter interpretation is not enabled.</p></details>
+<section id="savedBanks" aria-labelledby="savedBanksHeading"><h2 id="savedBanksHeading">Saved banks</h2><p class="pdf-bank-count-help">Included questions or terms can be used in generated quizzes. “Used in quizzes” counts items previously selected for generation; it does not mean answered or reviewed.</p>
 {% if banks or term_banks %}
 <div class="pdf-bank-toolbar">
-<div><strong>Saved PDF source banks</strong><span>Collapse large collections or enable management controls when you need them.</span></div>
+<div><strong>Saved source banks</strong><span>Collapse large collections or enable management controls when you need them.</span></div>
 <div class="pdf-bank-toolbar-actions">
 <button type="button" class="pdf-bank-quiet-button" id="pdfExpandBanks">Expand All</button>
 <button type="button" class="pdf-bank-quiet-button" id="pdfCollapseBanks">Collapse All</button>
@@ -246,12 +247,12 @@
 {% for bank in banks %}
 <div class="pdf-bank-row">
 <a class="pdf-bank-row-main" href="/pdf-import/bank/{{ bank.id }}">
-<div><strong>{{ bank.title }}</strong><small>Question bank · {{ bank.source_name }}</small></div>
-<div class="pdf-bank-row-stats"><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
+<div><strong>{{ bank.title }}</strong><small>{{ bank.source_name }}</small></div>
+<div class="pdf-bank-row-stats"><span>{{ bank.active_count }} included</span><span>{{ bank.used_count }} used in quizzes</span><span>{{ bank.generated_count }} quiz{% if bank.generated_count != 1 %}zes{% endif %} generated</span></div>
 <span class="pdf-bank-open">Open →</span>
 </a>
 <form class="pdf-bank-manage-action" method="POST" action="/pdf-import/bank/{{ bank.id }}/delete" data-pdf-bank-kind="question" data-pdf-bank-title="{{ bank.title }}">
-<button class="pdf-bank-delete-button" type="submit">Delete</button>
+<button class="pdf-bank-delete-button" type="submit">Delete bank</button>
 </form>
 </div>
 {% endfor %}
@@ -271,12 +272,12 @@
 {% for bank in term_banks %}
 <div class="pdf-bank-row">
 <a class="pdf-bank-row-main" href="/pdf-import/terms/{{ bank.id }}">
-<div><strong>{{ bank.title }}</strong><small>Terminology bank · {{ bank.source_name }}</small></div>
-<div class="pdf-bank-row-stats"><span>{{ bank.active_count }} active</span><span>{{ bank.used_count }} used</span><span>{{ bank.generated_count }} quizzes</span></div>
+<div><strong>{{ bank.title }}</strong><small>{{ bank.source_name }}</small></div>
+<div class="pdf-bank-row-stats"><span>{{ bank.active_count }} included</span><span>{{ bank.used_count }} used in quizzes</span><span>{{ bank.generated_count }} quiz{% if bank.generated_count != 1 %}zes{% endif %} generated</span></div>
 <span class="pdf-bank-open">Open →</span>
 </a>
 <form class="pdf-bank-manage-action" method="POST" action="/pdf-import/terms/{{ bank.id }}/delete" data-pdf-bank-kind="terminology" data-pdf-bank-title="{{ bank.title }}">
-<button class="pdf-bank-delete-button" type="submit">Delete</button>
+<button class="pdf-bank-delete-button" type="submit">Delete bank</button>
 </form>
 </div>
 {% endfor %}
@@ -284,6 +285,7 @@
 </div>
 </details>
 {% endif %}
+</section>
 </main></div>
 <script>
 document.getElementById("menuButton")?.addEventListener("click",()=>document.getElementById("dashboardSidebar")?.classList.toggle("open"));

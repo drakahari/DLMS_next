@@ -12,8 +12,10 @@ class LearningIntelligenceEmptyStateTests(unittest.TestCase):
         source = PAGE.read_text(encoding="utf-8")
 
         self.assertIn("No Learning Intelligence data exists yet.", source)
-        self.assertIn("Your tagged concepts are preserved.", source)
-        self.assertIn("after you answer tagged questions in Study or Exam Mode", source)
+        self.assertIn("state.topics.length ?", source)
+        self.assertIn("No tagged concepts are available in the current Learning Scope.", source)
+        self.assertIn("tagged concept${state.topics.length===1?'':'s'} preserved.", source)
+        self.assertIn("Answer tagged questions in Study or Exam Mode", source)
 
     def test_zero_evidence_topics_are_hidden_until_explicitly_requested(self):
         source = PAGE.read_text(encoding="utf-8")

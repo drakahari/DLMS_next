@@ -260,7 +260,7 @@ class LearningScopeTests(unittest.TestCase):
             "csrf_token": token, "folder": "ARCHIVE", "included": "0",
         }, follow_redirects=True)
         self.assertEqual(200, response.status_code)
-        self.assertIn(b"Excluded from Learning Scope", response.data)
+        self.assertIn(b'<strong class="learning-scope-state">Excluded</strong>', response.data)
         self.assertEqual(["Archive"], dlms.get_excluded_learning_folders())
         self.assertIn(b"Excluded from Learning Scope", client.get("/library?view=all").data)
         other_client = dlms.app.test_client()

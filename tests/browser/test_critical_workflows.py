@@ -5063,13 +5063,13 @@ def test_anki_summary_cards_across_themes_and_widths(browser_stack):
                 "metricColors:items.map(item => getComputedStyle(item.querySelector('strong')).color),"
                 "heading:resolve('--theme-heading')}; })()"
             )
-            assert "Questions Ever Missed:" in summary["text"]
+            assert "Questions ever missed" in summary["text"]
             assert "not yet revisited" in summary["text"]
             assert "revisited later" in summary["text"]
             assert "missed more than once" in summary["text"]
             assert "Repeat count overlaps revisit status." in summary["text"]
             assert summary["itemCount"] == 3
-            assert summary["labels"] == ["Quizzes", "Questions Ever Missed:", "Law Flashcards"]
+            assert summary["labels"] == ["Quizzes", "Questions ever missed", "Law Flashcards"]
             assert summary["lawCount"] == str(custom_law_count) == "3"
             assert summary["associated"] is True
             assert summary["overflow"] is False
@@ -9493,7 +9493,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "(() => {const form=document.querySelector('form[action=\"/pdf-import/screenshots\"]');"
         "return {method:form.method,enctype:form.enctype,multiple:form.querySelector('[name=screenshots]').multiple,"
         "disabled:form.querySelector('[name=screenshots]').disabled,rights:form.querySelector('[name=rights_ok]').required,"
-        "help:form.closest('section').innerText.includes('selected or highlighted answer')};})()"
+        "help:form.closest('section').innerText.includes('Highlighted or selected answers are not proof of correctness.')};})()"
     )
     assert entry == {
         "method": "post",
@@ -10398,8 +10398,8 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
         )
         for role in ("review", "incomplete", "issue", "feedback", "deleteToggle", "muted"):
             assert pdf_state[role]["contrast"] >= 4.5, (theme, role, pdf_state[role])
-        assert "REVIEW" in pdf_state["review"]["text"]
-        assert "INCOMPLETE" in pdf_state["incomplete"]["text"]
+        assert pdf_state["review"]["text"] == "Needs review"
+        assert pdf_state["incomplete"]["text"] == "Incomplete"
         assert pdf_state["review"]["borderStyle"] != "none"
         assert pdf_state["incomplete"]["borderStyle"] != "none"
 
@@ -13902,7 +13902,9 @@ def test_dashboard_generated_resume_identity_and_sequence(browser_stack, theme):
             path=Path(output);path.mkdir(parents=True,exist_ok=True)
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
             (path/f'sequence-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
-            if theme=='light' and width==1440: capture_control(browser,path/'dashboard.webp','.dashboard-main')
+            if theme=='ethereal' and width==1440:
+                from tests.browser._help_screenshots import capture_viewport
+                capture_viewport(browser,path/'dashboard.webp')
     browser.activate();browser.evaluate("document.querySelector('#recentActivity .dashboard-activity-context summary').focus();true")
     browser.press_key('\ue007')
     assert browser.evaluate("document.querySelector('#recentActivity .dashboard-activity-context').open && document.activeElement.matches(':focus-visible')")
@@ -15268,8 +15270,11 @@ def test_calm_dashboard_identity_priority_empty_results_and_help(browser_stack, 
             target=Path(output);target.mkdir(parents=True,exist_ok=True)
             shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
             (target/f'calm-populated-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
-            if theme=='light' and width in (1440,390):
-                capture_control(browser,target/('dashboard.webp' if width==1440 else 'exam-plan-dashboard.webp'),'.dashboard-main' if width==1440 else '#activeExamPlan')
+            if theme=='light' and width==390:
+                capture_control(browser,target/'exam-plan-dashboard.webp','#activeExamPlan')
+            if theme=='ethereal' and width==1440:
+                from tests.browser._help_screenshots import capture_viewport
+                capture_viewport(browser,target/'dashboard.webp')
     browser.set_viewport(1024,1000)
     browser.evaluate("document.documentElement.style.fontSize='200%';true")
     assert browser.evaluate("document.documentElement.scrollWidth<=innerWidth && getComputedStyle(document.querySelector('.dashboard-study-layout')).gridTemplateColumns.split(' ').length===1")
@@ -15947,6 +15952,7 @@ def test_certification_trophy_and_workspace_themes(browser_stack, theme):
                 assert browser.evaluate("document.querySelectorAll('#myCertifications .cert-card').length") == 3
                 assert browser.evaluate("document.querySelector('#myCertifications').textContent.includes('View all (4)')")
                 assert browser.evaluate("!document.querySelector('.dashboard-quick-tools')")
+                assert browser.evaluate("document.querySelector('#myCertifications > a[href=\"/settings/layout#certifications-visibility\"]').getBoundingClientRect().top-document.querySelector('#myCertifications .cert-grid').getBoundingClientRect().bottom") >= 19.5
             if name.startswith('trophy') or name=='list':
                 browser.evaluate("document.querySelector('.cert-card img').scrollIntoView();true")
                 browser.wait_for("document.querySelector('.cert-card img').complete && document.querySelector('.cert-card img').naturalWidth>0")
@@ -17457,5 +17463,117 @@ def test_walkthrough_preflight_download_uses_retained_selection(browser_stack, b
     else: raise AssertionError('No complete native download from the preflight action')
     assert len(data['quizzes']) == 1 and len(data['quizzes'][0]['questions']) == 1
     assert not any(choice['is_correct'] for choice in data['quizzes'][0]['questions'][0]['choices'])
+    assert b.evaluate("document.querySelector('a[href=\"#bundleExportHeading\"]')===null")
+    assert b.evaluate("[...document.querySelectorAll('[data-bundle-download]')].length") == 2
+    # Change the current selection after preflight; the lower button must use it.
+    other = browser_stack.metadata['critical_id']
+    b.click(f'[name=quiz_ids][value="{qid}"]')
+    b.click(f'[name=quiz_ids][value="{other}"]')
+    before_files = set(files)
+    b.click('#bundleDownload')
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        new_files = set(browser_server.work_root.glob('firefox-session-*/downloads/DLMS-Quiz-Bundle*.zip')) - before_files
+        if new_files:
+            try:
+                with zipfile.ZipFile(next(iter(new_files))) as z:
+                    second = json.loads(z.read('dlms-quiz-bundle.json'))
+                    assert z.testzip() is None
+                break
+            except (OSError, zipfile.BadZipFile): pass
+        time.sleep(.1)
+    else: raise AssertionError('No complete native download from the lower action')
+    assert len(second['quizzes']) == 1
+    assert second['quizzes'][0]['title'] != data['quizzes'][0]['title']
     b.click('#clearBundleQuizzes')
     assert b.evaluate("[...document.querySelectorAll('[data-bundle-download]')].every(n=>n.disabled)")
+
+
+@pytest.mark.parametrize('count', (1, 3))
+def test_cleanup_add_choices_restores_question_and_focus(browser_stack, count):
+    """Save-on-add keeps a long editor at the repaired question, with its values intact."""
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, _ = _new_regular_study_quiz(browser_stack, 13)
+    with sqlite3.connect(root / 'results.db') as c:
+        question = c.execute('SELECT id FROM questions WHERE quiz_id=? AND question_number=13', (qid,)).fetchone()[0]
+        original = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+        c.execute('UPDATE choices SET is_correct=0 WHERE question_id=?', (question,))
+    b.navigate(browser_stack.base_url + f'/edit_quiz/{qid}'); b.wait_for_page_ready()
+    b.set_viewport(390, 1000)
+    first = original[0][0]
+    b.evaluate(f"document.querySelector('[name=choice_{first}]').value='Explicit edited answer';document.querySelector('[name=choice_count_{question}]').value='{count}';window.__oldEditor=true;true")
+    b.click(f'button[value="add_choices_{question}"]')
+    b.wait_for_page_ready('window.__oldEditor!==true')
+    old_names = [f'choice_{row[0]}' for row in original]
+    b.wait_for("document.activeElement.name?.startsWith('choice_') && !" + json.dumps(old_names) + ".includes(document.activeElement.name)")
+    assert b.evaluate(f"document.activeElement.closest('.question-block').dataset.questionId") == str(question)
+    geometry = b.evaluate('({top:document.activeElement.getBoundingClientRect().top,bottom:document.activeElement.getBoundingClientRect().bottom,height:innerHeight,y:scrollY})')
+    assert 0 <= geometry['top'] < geometry['bottom'] <= geometry['height'] and geometry['y'] > 1000
+    with sqlite3.connect(root / 'results.db') as c:
+        after = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+    assert after[0][2] == 'Explicit edited answer'
+    assert [(r[0],r[1],r[4]) for r in after[:4]] == [(r[0],r[1],r[4]) for r in original]
+    assert len(after) == 4 + count and all(row[3] == 0 for row in after)
+    # The consumed position intent must not steal focus during a later ordinary visit.
+    b.navigate(browser_stack.base_url + f'/edit_quiz/{qid}'); b.wait_for_page_ready()
+    assert b.evaluate('scrollY') == 0
+    assert b.evaluate("document.activeElement.name?.startsWith('choice_') || false") is False
+
+
+def test_cleanup_secondary_navigation_and_learning_states(browser_stack):
+    b, base = browser_stack.browser, browser_stack.base_url
+    b.navigate(base + '/learning-profile'); b.wait_for("document.getElementById('lpRecommendationTitle').textContent!=='Loading…'")
+    data = b.evaluate("fetch('/api/learning-profile').then(r=>r.json())")
+    expected_disabled = not (data['summary']['weak_areas'] > 0 or data['retention']['due_now'] > 0)
+    assert b.evaluate("document.getElementById('lpSmartReview').disabled") == expected_disabled
+    if expected_disabled:
+        assert 'No weak topics or due topic reviews' in b.evaluate("document.getElementById('lpReviewAvailability').textContent")
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    if b.evaluate('state.topics.length') == 0:
+        assert 'No tagged concepts' in b.evaluate("document.getElementById('liNoEvidenceDetail').textContent")
+    b.navigate(base + '/anki'); b.wait_for_page_ready()
+    preview = b.evaluate("document.querySelector('form[method=GET] select[name=quiz_id]')?.name || document.querySelector('form[method=get] select[name=quiz_id]')?.name")
+    assert preview == 'quiz_id'
+    assert 'Quiz to preview' in b.evaluate('document.body.textContent')
+    assert b.evaluate("document.querySelector('form[action=\"/anki/export/quiz\"] select[name=quiz_id]')!==null")
+    b.navigate(base + '/anki/custom'); b.wait_for_page_ready()
+    assert b.evaluate("document.querySelector('a[href=\"#printableCards\"]').textContent") == 'Export & print'
+    assert b.evaluate("document.querySelector('[formaction=\"/anki/export/custom\"]').form.id") == 'customAnkiForm'
+    assert b.evaluate("document.querySelector('[formaction=\"/anki/printable\"]').form.id") == 'customAnkiForm'
+    b.navigate(base + '/settings'); b.wait_for_page_ready()
+    assert b.evaluate("document.querySelector('.dashboard-main a[href=\"/certifications\"]')===null")
+    assert b.evaluate("document.querySelector('.dashboard-main a[href=\"/settings/layout\"]')!==null")
+    b.navigate(base + '/settings/layout#certifications-visibility'); b.wait_for_page_ready()
+    assert b.evaluate("document.querySelector('[name=show_certifications]')!==null")
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_cleanup_saved_bank_management_counts_and_confirmation(browser_stack):
+    b, root = browser_stack.browser, browser_stack.data_root
+    bank_root = root / 'pdf_question_banks'; bank_root.mkdir(exist_ok=True)
+    for count in (0, 1, 2):
+        (bank_root / f'cleanup-{count}.json').write_text(json.dumps({
+            'id':f'cleanup-{count}', 'title':f'Sample bank {count}', 'source_name':f'sample-{count}.pdf',
+            'questions':[{'number':1,'question':'Which sample control?','choices':[{'label':'A','text':'Check access'},{'label':'B','text':'Skip checks'}],'correct':'A','active':True}],
+            'used_question_numbers':[1], 'generated_quizzes':[{'quiz_id':browser_stack.metadata['critical_id']} for _ in range(count)],
+        }))
+    b.navigate(browser_stack.base_url + '/pdf-import'); b.wait_for_page_ready()
+    b.click('#pdfExpandBanks')
+    for count, noun in ((0,'quizzes'), (1,'quiz'), (2,'quizzes')):
+        assert b.evaluate(f"document.querySelector('[href=\"/pdf-import/bank/cleanup-{count}\"]').textContent.includes('{count} {noun} generated')")
+    assert b.evaluate("[...document.querySelectorAll('.pdf-bank-manage-action')].every(n=>!n.getClientRects().length)")
+    b.click('#pdfManageBanks'); assert b.evaluate("document.getElementById('pdfManageBanks').textContent") == 'Done Managing'
+    selector='form[action="/pdf-import/bank/cleanup-1/delete"] button'
+    prompts=b.click_with_prompt(selector, accept=False)
+    assert len(prompts)==1 and prompts[0]['type']=='confirm'
+    assert (bank_root/'cleanup-1.json').exists()
+    with sqlite3.connect(root/'results.db') as c: quizzes=c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0]
+    b.evaluate('window.__beforeBankDelete=true;true')
+    prompts=b.click_with_prompt(selector, accept=True)
+    assert len(prompts)==1
+    b.wait_for_page_ready('window.__beforeBankDelete!==true')
+    assert not (bank_root/'cleanup-1.json').exists()
+    assert (bank_root/'cleanup-0.json').exists() and (bank_root/'cleanup-2.json').exists()
+    with sqlite3.connect(root/'results.db') as c: assert c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0]==quizzes
+    b.click('#pdfCollapseBanks'); assert b.evaluate("[...document.querySelectorAll('[data-pdf-bank-section]')].every(n=>!n.open)")
+    b.click('#pdfExpandBanks'); assert b.evaluate("[...document.querySelectorAll('[data-pdf-bank-section]')].every(n=>n.open)")

@@ -16206,3 +16206,45 @@ h1, h2, h3 {
 .portable-bundle-page .portable-preflight-group { margin-block: .75rem; }
 .portable-bundle-page .portable-preflight-issues { max-block-size: 22rem; overflow: auto; overflow-wrap: anywhere; padding: .25rem .5rem; }
 .portable-bundle-page .portable-preflight-issues:focus-visible { outline: 2px solid var(--theme-focus-ring, var(--theme-accent)); outline-offset: 2px; }
+.pdf-import-page .pdf-import-task-links {display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px;}
+.pdf-import-page .pdf-import-upload-form input:not([type="checkbox"]),
+.pdf-import-page .pdf-import-upload-form select,
+.pdf-review-page .build-field input:not([type="checkbox"]),
+.pdf-review-page .build-field select {min-height:44px;padding:10px 12px;font-size:1rem;}
+.pdf-import-page .pdf-terminology-title {grid-column:1 / -1;}
+.pdf-import-page .pdf-bank-count-help {color:var(--theme-muted-text);font-size:.9rem;line-height:1.5;}
+.pdf-import-page .pdf-bank-row-stats {align-items:center;gap:8px;}
+.pdf-import-page .pdf-bank-row-stats span {font-size:.82rem;line-height:1.4;}
+.pdf-review-page .build-field textarea {font-family:inherit;font-size:1rem;line-height:1.5;padding:12px;}
+.pdf-review-page .pdf-import-summary-grid,
+.pdf-review-page .pdf-import-unassigned {margin-bottom:20px;}
+.pdf-review-page .pdf-import-filter-row {margin-block:16px;}
+.pdf-review-page .pdf-review-start-over {display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:8rem;padding:10px 16px;border:1px solid var(--theme-border);border-radius:8px;background:var(--theme-surface-2);color:var(--theme-page-text);white-space:nowrap;text-decoration:none;box-sizing:border-box;}
+.pdf-review-page .pdf-review-start-over:hover {background:var(--theme-surface);border-color:var(--theme-accent-text);}
+.learning-scope-page .learning-scope-state {display:inline-block;padding:4px 9px;border:1px solid var(--theme-border-soft);border-radius:6px;background:var(--theme-surface-2);}
+.learning-intelligence-page .learning-intelligence-weak-panel {margin-top:20px;}
+.learning-profile-page .learning-profile-summary .dashboard-stat-card,
+.anki-law-page .anki-tools-summary .dashboard-stat-card {display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:8px;min-width:0;}
+.learning-profile-page .learning-profile-summary .dashboard-stat-card > *,
+.anki-law-page .anki-tools-summary .dashboard-stat-card > * {margin:0;overflow-wrap:anywhere;}
+.learning-profile-page #lpReviewAvailability {margin-top:12px;color:var(--theme-muted-text);}
+.learning-intelligence-page .learning-intelligence-search,
+.learning-diagnostics-page input[type="search"],
+.learning-diagnostics-page select,
+.review-schedule-page .learning-intelligence-search,
+.review-schedule-page select {min-height:44px;box-sizing:border-box;padding:10px 12px;}
+.review-schedule-page .topic-schedule-heading {margin-block:24px 16px;}
+.review-schedule-page .native-review-table th:nth-child(1),
+.review-schedule-page .native-review-table td:nth-child(1) {width:38%;}
+.review-schedule-page .native-review-table th:nth-child(2),
+.review-schedule-page .native-review-table td:nth-child(2) {width:18%;}
+.review-schedule-page .native-review-table th:nth-child(3),
+.review-schedule-page .native-review-table td:nth-child(3) {width:14%;}
+.review-schedule-page .native-review-table th:nth-child(4),
+.review-schedule-page .native-review-table td:nth-child(4) {width:30%;}
+.learning-diagnostics-page .confusion-pair {display:flex;align-items:center;flex-wrap:wrap;gap:12px;}
+.learning-diagnostics-page .confusion-pair small {display:block;margin-bottom:5px;}
+.anki-custom-page .anki-print-settings {margin-block:16px;padding:16px;border:1px solid var(--theme-border-soft);border-radius:10px;background:var(--theme-surface-2);}
+.anki-custom-page .anki-print-settings h3 {margin:0 0 12px;font-size:1rem;}
+.anki-custom-page .anki-custom-quiz-summary-meta {display:flex;justify-content:flex-start;margin:8px 0 0;gap:8px;}
+.content-packs-page .content-pack-manager {margin-top:24px;}

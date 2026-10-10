@@ -51,3 +51,13 @@ def capture_control(browser, filename, selector):
     shot = browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
     with Image.open(io.BytesIO(base64.b64decode(shot['data']))) as image:
         image.crop((max(0,math.floor(bounds[0])-8),max(0,math.floor(bounds[1])-8),min(image.width,math.ceil(bounds[2])+8),min(image.height,math.ceil(bounds[3])+8))).convert('RGB').save(filename,format='WEBP',lossless=True)
+
+
+def capture_viewport(browser, filename):
+    """Keep native text size and sidebar in a visible application-window capture."""
+    filename = Path(filename)
+    filename.parent.mkdir(parents=True, exist_ok=True)
+    browser.evaluate('window.scrollTo(0,0);document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))')
+    shot = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+    with Image.open(io.BytesIO(base64.b64decode(shot['data']))) as image:
+        image.convert('RGB').save(filename, format='WEBP', lossless=True)

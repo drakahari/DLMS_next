@@ -142,7 +142,7 @@
 
                 <div class="build-question-list">
                     {% for q in questions %}
-                    <article class="build-question-card question-block">
+                    <article class="build-question-card question-block" id="quiz-question-{{ q.id }}" data-question-id="{{ q.id }}">
                         <div class="build-question-heading-row">
                             <h3>Question {{ q.number }}</h3>
                             <button type="submit"
@@ -307,6 +307,7 @@
     </main>
 </div>
 
+<script src="/static/quiz-editor-position.js"></script>
 <script>
 document.getElementById("edit-quiz-form").addEventListener("submit", function(e) {
     // Structural edits intentionally save the current form before extending it.

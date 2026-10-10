@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
-<body class="dashboard-home anki-tools-page">
+<body class="dashboard-home anki-tools-page anki-law-page">
 <div class="dashboard-shell">
 
     <aside class="dashboard-sidebar" id="dashboardSidebar">
@@ -139,7 +139,7 @@
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                     <button type="submit" class="anki-preview-button">Preview Cards</button>
-                    <button type="button" class="anki-export-button" id="exportLawAnki">Export .apkg</button>
+                    <button type="button" class="anki-export-button" id="exportLawAnki">Export Anki deck (.apkg)</button>
                 </div>
             </form>
             {% else %}
@@ -188,11 +188,7 @@
         {% endif %}
 
         <div style="margin-top:18px;">
-            <button type="button"
-                    class="anki-preview-button"
-                    onclick="location.href='/anki'">
-                ← Back to Anki Tools
-            </button>
+            <a class="build-secondary-link anki-law-back" href="/anki">Back to Anki Tools</a>
         </div>
     </main>
 </div>

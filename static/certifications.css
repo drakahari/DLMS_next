@@ -70,7 +70,7 @@
 .cert-use-form .cert-linked {font-size:.95em;}
 .cert-workspace #certPrompt {max-height:26rem;}
 .cert-workspace #certMatchCount {font-weight:600;}
-.cert-trophies > a[href*="certifications-visibility"] {margin-top:1.25rem;}
+#myCertifications > a[href="/settings/layout#certifications-visibility"] {margin-top:1.25rem;}
 
 .cert-workspace .cert-fields {align-items:end;}
 .cert-workspace .cert-fields > label {display:flex;flex-direction:column;gap:.5rem;}

@@ -39,7 +39,7 @@
 <main class="dashboard-main">
 <header class="dashboard-header learning-intelligence-header">
   <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
-  <div><div class="build-eyebrow">LEARNING INTELLIGENCE · CROSS-QUIZ TOPICS</div><h1>Topics, Mastery &amp; Weak Areas</h1><p class="study-evidence-note">New Study estimates distinguish independent first success from corrections and prior feedback or tool actions. <a href="/help/quizzes#study-history">How Study evidence works</a> · <a href="/study-history">Historical Study coverage</a></p><p>Concept-level insight across quizzes, Study Packs, and recorded learning activity.</p></div>
+  <div><div class="build-eyebrow">LEARNING INTELLIGENCE · CROSS-QUIZ TOPICS</div><h1>Topics, Mastery &amp; Weak Areas</h1><p class="study-evidence-note">Study estimates distinguish independent first success from corrected or assisted answers. <a href="/help/quizzes#study-history">How Study evidence works</a> · <a href="/study-history">Historical Study coverage</a></p><p>Concept-level insight across quizzes, Study Packs, and recorded learning activity.</p></div>
 </header>
 
 <section class="learning-scope-summary" aria-label="Learning Scope">
@@ -73,7 +73,7 @@
   <div id="liLoading" class="learning-intelligence-empty" role="status" aria-live="polite">Loading learning intelligence…</div>
   <div id="liNoEvidence" class="learning-intelligence-empty learning-intelligence-no-evidence" role="status" hidden>
     <strong>No Learning Intelligence data exists yet.</strong>
-    <p>Your tagged concepts are preserved. New mastery data will appear after you answer tagged questions in Study or Exam Mode.</p>
+    <p id="liNoEvidenceDetail">Answer tagged questions in Study or Exam Mode to build topic evidence.</p>
     <button class="build-secondary-link" id="liToggleZeroEvidence" type="button" aria-expanded="false" aria-controls="liTableWrap" hidden>View preserved tagged concepts</button>
   </div>
   <div id="liEmpty" class="learning-intelligence-empty" role="status" aria-live="polite" hidden>No concepts match this view.</div>
@@ -142,6 +142,7 @@ function render(){
  const visibleTopics=noEvidence&&!state.showZeroEvidence?[]:state.topics;
  const rows=visibleTopics.filter(t=>(state.filter==='all'||t.status===state.filter)&&(!q||t.name.toLowerCase().includes(q)));
  document.getElementById('liNoEvidence').hidden=!noEvidence;
+ document.getElementById('liNoEvidenceDetail').textContent=state.topics.length ? `${state.topics.length} tagged concept${state.topics.length===1?'':'s'} preserved. Answer tagged questions in Study or Exam Mode to build new mastery evidence.` : 'No tagged concepts are available in the current Learning Scope. Add concepts to your questions, then answer them to build topic evidence.';
  document.getElementById('liToolbar').hidden=noEvidence&&!state.showZeroEvidence;
  document.getElementById('liEmpty').hidden=rows.length!==0||(noEvidence&&!state.showZeroEvidence);
  document.getElementById('liTableWrap').hidden=rows.length===0;
@@ -179,18 +180,18 @@ fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
  zeroEvidenceToggle.hidden=state.hasEvidence||state.topics.length===0;
  zeroEvidenceToggle.textContent=`View ${state.topics.length} preserved tagged concept${state.topics.length===1?'':'s'}`;
  document.getElementById('liEvidenceTopics').textContent=s.concepts_with_evidence??0;
- document.getElementById('liEvidenceNote').textContent=`of ${s.concepts??0} concepts`;
+ document.getElementById('liEvidenceNote').textContent=`of ${s.concepts??0} concept${Number(s.concepts)===1?'':'s'}`;
  document.getElementById('liAverageAccuracy').textContent=pct(s.average_accuracy);
  document.getElementById('liAverageMastery').textContent=pct(s.average_mastery);
  document.getElementById('liWeakAreas').textContent=s.weak_areas??0;
  document.getElementById('liLoading').hidden=true;
  document.getElementById('liModelContent').innerHTML=`
-  <p class="li-mastery-intro"><strong>Mastery is a 0–100 study signal for one concept.</strong> It combines how accurately you have answered, how you are doing lately, how much evidence DLMS has, and how recently you practiced. It is a guide for choosing what to study—not a course grade.</p>
+  <p class="li-mastery-intro"><strong>Mastery is a 0–100 study signal for one concept.</strong> It combines accuracy, recent performance, evidence and recency to guide your next study choice. It is not a course grade.</p>
   <h3>Your score combines four things</h3>
   <ol class="li-mastery-factors">
    <li><strong><span>55%</span> Overall performance</strong><p>New Study sessions contribute independent first success to mastery; corrections and prior feedback/tool actions do not establish it. Exam and legacy evidence keep their existing interpretation. Repeated saves count once.</p></li>
    <li><strong><span>20%</span> Recent performance</strong><p>The same mastery rule applied to up to five recent counted answers. The table’s accuracy retains actual first correctness, including assisted correct answers.</p></li>
-   <li><strong><span>15%</span> Evidence</strong><p>More responses make the signal more trustworthy. Full evidence credit is reached at eight responses.</p></li>
+   <li><strong><span>15%</span> Evidence</strong><p>Evidence credit increases with responses, reaching its full value at eight.</p></li>
    <li><strong><span>10%</span> Recency</strong><p>Recent practice receives more credit than older practice.</p></li>
   </ol>
   <section class="li-mastery-explanation">
@@ -201,7 +202,7 @@ fetch('/api/learning-intelligence/topics').then(r=>r.json()).then(data=>{
   </section>
   <section class="li-mastery-explanation">
    <h3>Trend and generated practice</h3>
-   <p><strong>Trend is different from Mastery.</strong> Mastery summarizes current evidence; Trend compares recent windows to show whether performance is improving, declining, or roughly stable. Trend needs at least six responses.</p>
+   <p><strong>Trend is different from Mastery.</strong> It compares recent response windows and needs at least six responses.</p>
    <p>When you answer a generated practice question, DLMS credits the original source question and concept. Practice copies add learning evidence without inflating the number of source questions or quizzes.</p>
   </section>
   <details class="li-mastery-technical">

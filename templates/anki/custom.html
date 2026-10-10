@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Custom Anki Deck - DLMS</title>
+    <title>Custom Deck &amp; Printable Cards - DLMS</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
 </head>
-<body class="dashboard-home anki-tools-page">
+<body class="dashboard-home anki-tools-page anki-custom-page">
 <div class="dashboard-shell">
 
     <aside class="dashboard-sidebar" id="dashboardSidebar">
@@ -70,7 +70,8 @@
             <button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button>
             <div>
                 <div class="anki-tools-eyebrow">ANKI TOOLS · CUSTOM DECK</div>
-                <h1>Build a Custom Anki Deck</h1>
+                <h1>Custom Deck &amp; Printable Cards</h1>
+<a class="build-secondary-link" href="#printableCards">Export &amp; print</a>
                 <p>Combine selected quiz questions, performance-history questions, and Law Study flashcards into one DLMS deck.</p>
             </div>
         </header>
@@ -276,17 +277,17 @@
                         <p>Use the same selected DLMS cards for Anki or a browser-printable 3-card-per-sheet Avery layout.</p>
                     </div>
                 </div>
-                <div class="anki-two-field-row" style="margin:12px 0 14px;">
+                <div class="anki-print-settings"><h3>Print settings only</h3><div class="anki-two-field-row">
                     <label><span>Template</span><select disabled><option>Avery 5388 — 3 × 5, 3 per sheet</option></select></label>
                     <label><span>Duplex flip</span><select name="duplex_flip"><option value="long">Long edge — same card order</option><option value="short">Short edge — reverse back order</option></select></label>
-                </div>
+                </div></div>
                 <div class="anki-custom-selection-toolbar" aria-label="Selected card controls">
                     <span class="anki-custom-selection-count" id="ankiSelectedCount" aria-live="polite">0 cards selected</span>
                     <button type="button" class="anki-clear-selection-button" id="ankiClearSelection" disabled>Clear Selected Cards</button>
                 </div>
                 <div class="anki-action-grid anki-action-grid-three">
                     <button type="submit" class="anki-preview-button" formaction="/anki/custom" formmethod="POST">Preview Deck</button>
-                    <button type="submit" class="anki-export-button" formaction="/anki/export/custom" formmethod="POST">Export .apkg</button>
+                    <button type="submit" class="anki-export-button" formaction="/anki/export/custom" formmethod="POST">Export Anki deck (.apkg)</button>
                     <button type="submit" class="anki-export-button printable-flashcard-button" formaction="/anki/printable" formmethod="POST" formtarget="_blank">Open Avery Print Layout</button>
                 </div>
                 <div class="anki-print-note">Official Avery 5388 stock uses 3 × 5 inch cards, 3 cards per US Letter sheet. Print one duplex test sheet before a large batch.</div>

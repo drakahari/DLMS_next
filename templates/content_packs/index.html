@@ -70,12 +70,7 @@
                 <span class="medical-eyebrow">INSTALL STUDY CONTENT</span>
                 <h2>Install Content Pack</h2>
                 <p>Select a DLMS Study Pack ZIP. DLMS stages and independently validates the archive first; nothing is installed until you review the report and confirm.</p>
-                <div class="content-pack-upload-guardrails">
-                    <span>One top-level pack folder</span>
-                    <span>Safe archive paths</span>
-                    <span>Manifest + JSON validation</span>
-                    <span>Referenced-file checks</span>
-                </div>
+                <p class="content-pack-upload-guidance">DLMS checks the pack folder, archive paths, manifest, data and referenced files before you can confirm installation.</p>
             </div>
             <form method="POST" action="/content-packs/import" enctype="multipart/form-data" class="content-pack-upload-form">
                 <label class="build-field"><span>Study Pack ZIP</span><input type="file" name="pack_zip" accept=".zip,application/zip" required><small>The ZIP is validated before installation.</small></label>
@@ -185,7 +180,7 @@
             </div>
             <p id="packFilterEmpty" class="pack-filter-empty" hidden>No packs match your search. Clear or change the search to see installed packs.</p>
             {% else %}
-            <div class="pack-empty-card"><h2>No content packs installed</h2><p>DLMS core is working normally. Install or create a Study Pack to manage it here.</p></div>
+            <div class="pack-empty-card"><h2>No content packs installed</h2><p>Install a Study Pack ZIP to get started.</p></div>
             {% endif %}
         </section>
     </main>

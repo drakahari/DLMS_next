@@ -150,3 +150,19 @@ image supports its existing full-size enlargement link.
 - `images/UM-06-quiz-editor-choice-labels.webp` and Help `quiz-editor-choice-labels.webp`: real Light narrow editor with readable choice labels and the explicit Add Choices save notice. Refresh with `test_walkthrough_editor_label_geometry_and_incomplete_repair[light]` and `DLMS_BUNDLE_CAPTURE_DIR`; copy `after-editor-light-390.webp`.
 - `images/UM-09-study-resume.webp` and Help `quiz-resume-study.webp`: real Light narrow Study continuation with five reviewed questions and question six next. Refresh with `test_walkthrough_resume_same_session_and_canceled_discard[light]`; copy `after-resume-light-390.webp`.
 - Portable selection and preflight images were refreshed through their existing isolated Firefox capture tests. All captures use disposable synthetic content; no owner records.
+
+## 2026-10-10 presentation refresh
+
+The current Help dashboard image is an actual Ethereal **1440 × 1000 visible
+Firefox viewport**, including the sidebar. It replaces the tall scrolling-page
+illustration. Do not shrink a whole-page capture to regenerate this image.
+
+Current PDF import/review, Anki Tools, custom selection and print controls use
+fictional disposable sample data. The original UM-01–UM-27 capture set remains
+unchanged as historical evidence; affected manual instructions now link to the
+current Help assets. Full capture provenance and before/after images are kept in
+`build/ui-ux-cleanup-20261010/reports/screenshot-provenance.json` (ignored output).
+Refresh using an isolated sample profile, the real application and the existing
+Firefox screenshot helpers. Use `origin: viewport` for the dashboard, and focused
+control crops for print actions. Check labels, image dimensions, narrow rendering
+and captions before replacing assets. Never use an owner profile.

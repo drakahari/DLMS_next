@@ -32,11 +32,11 @@ especially when the source quiz contains matching or image-based questions.
 Open **Anki Tools** and use **Quiz → Anki** when you want one card for each
 question in an existing quiz.
 
-1. Select the **Source Quiz** and choose **Preview Cards**.
+1. Select the **Quiz to preview** and choose **Preview Cards**.
 2. Check the card fronts and backs. For a choice question, the front contains
    the question and choices; the back contains the marked correct answer or
    answers.
-3. Select the quiz under **Quiz to Export** and choose **Export .apkg**.
+3. Select the quiz under **Quiz to Export** and choose **Export Anki deck (.apkg)**.
 4. Save the downloaded file, then import it in Anki.
 
 The preview shows at most the first 20 cards, but the exported deck contains
@@ -60,7 +60,7 @@ completed attempts. You can filter the source before previewing or exporting:
   correct.
 - **Missed Once** includes questions with exactly one recorded miss.
 
-Preview the result, then choose **Export .apkg**. Each back includes the correct
+Preview the result, then choose **Export Anki deck (.apkg)**. Each back includes the correct
 answer plus the number of recorded misses and the current DLMS status used by
 this export view. A question can belong to overlapping summaries—for example,
 it can be both Repeatedly Missed and Currently Weak.
@@ -104,7 +104,7 @@ selection across several sources.
 4. Under **Select Law Flashcards**, choose recognized cards from saved Case
    Reviews when available.
 5. Check the live selected-card count and choose **Preview Deck**.
-6. After reviewing the first cards, choose **Export .apkg**.
+6. After reviewing the first cards, choose **Export Anki deck (.apkg)**.
 
 The custom output is one flat Anki deck; DLMS does not create nested subdecks
 from its source groups. If the same front and back are selected through more
@@ -112,7 +112,7 @@ than one source—for example as both a quiz card and a history card—DLMS keep
 one copy in the custom deck. The preview shows the first 20 cards, while export
 includes the complete deduplicated selection.
 
-![Custom Anki Deck page showing deck naming and grouped quiz-question selection](images/UM-24-custom-anki-deck.png)
+![Custom Deck & Printable Cards with deck naming and grouped sample quiz selection](../../static/help_assets/custom-anki-selection.webp)
 
 ## Export Law Study cards
 
@@ -125,7 +125,7 @@ Open **Anki Tools → Law Study Anki**, then choose either:
 - **Entire Course**, where DLMS combines recognized cards for the chosen
   course.
 
-Preview the cards before choosing **Export .apkg**. The case title is added to
+Preview the cards before choosing **Export Anki deck (.apkg)**. The case title is added to
 each card front so that combined exports retain useful context. A saved Case
 Review with no recognized front/back rule cards cannot produce a Law deck.
 

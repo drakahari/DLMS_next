@@ -423,3 +423,6 @@ body.help-lightbox-open { overflow: hidden; }
     .help-lightbox-image { max-width: 98vw; max-height: 84vh; }
     .help-lightbox-caption { padding-right: 44px; }
 }
+.help-page[data-help-topic="home"] .help-panel + section {margin-top:24px;}
+.help-page[data-help-topic="home"] .help-shot {max-width:none;}
+.help-page[data-help-topic="home"] .help-shot img {width:100%;height:auto;}

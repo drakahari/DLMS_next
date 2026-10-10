@@ -29,7 +29,7 @@ class AnkiMissedSummaryLabelTests(unittest.TestCase):
             "once": 27,
         })
 
-        self.assertRegex(html, r"Questions Ever Missed:</span>\s*<strong>30</strong>")
+        self.assertRegex(html, r"Questions ever missed</span>\s*<strong>30</strong>")
         self.assertRegex(html, r"<strong>28</strong>\s*<span>not yet revisited</span>")
         self.assertRegex(html, r"<strong>2</strong>\s*<span>revisited later</span>")
         self.assertRegex(html, r"<strong>3</strong>\s*<span>missed more than once</span>")
