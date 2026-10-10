@@ -453,7 +453,7 @@ class StudyMistakeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
         self.assertIn('Without repeats', html); self.assertIn('Random', html)
-        self.assertIn('1 available', html); self.assertIn('Check Study mistakes', html)
+        self.assertIn('1 eligible question in these sources', html); self.assertIn('Check Study mistakes', html)
         self.assertEqual(self.client.post('/api/quiz-composer/study-mistakes/create', json={}, headers=self.headers).status_code, 400)
         self.assertEqual(self.client.post('/api/quiz-composer/study-mistakes/create', json={}).status_code, 400)
 
@@ -609,3 +609,44 @@ class StudyMistakeTests(unittest.TestCase):
             self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],12)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_mistake_passes').fetchone()[0],0)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_responses').fetchone()[0],1)
+
+    def test_checked_pool_labels_and_complete_pass_presentation(self):
+        self.wrong(); pid=self.start()
+        self.assertEqual(self.create(self.create_data(pid)).status_code,200)
+        html=self.client.get('/quiz-composer/study-mistakes?quizzes='+str(self.quiz_id)).get_data(as_text=True)
+        self.assertIn('1 eligible question in these sources',html)
+        self.assertIn('0 remaining in this pass',html)
+        self.assertIn('1 included in saved mixes',html)
+        self.assertIn('Pass complete',html)
+        self.assertIn('not the exact next batch',html)
+        self.assertIn('Unavailable questions (0)',html)
+        self.assertLess(html.index('id="mistakePreviewHeading"'),html.index('id="mistakeCreateForm"'))
+        self.assertIn('aria-describedby="mistakeCreationReason"',html)
+        self.assertEqual(self.report()['used'],1)
+
+    def test_legacy_exclusion_table_groups_reasons_and_bounds_every_page(self):
+        questions=[dict(self.choice(),number=n,question='Legacy exclusion '+str(n)) for n in range(1,26)]
+        qid,_=self.publish(kind=None,questions=questions)
+        with dlms.get_db() as c:
+            for row in c.execute('SELECT id FROM questions WHERE quiz_id=?',(qid,)).fetchall():
+                c.execute("INSERT INTO study_legacy_responses(quiz_id,question_id,mode,was_correct,response_json) VALUES(?,?,'Study',0,?)",(qid,row['id'],json.dumps({'selected':['C']})))
+        base='/quiz-composer/study-mistakes?quizzes='+str(qid)
+        first=self.client.get(base).get_data(as_text=True)
+        second=self.client.get(base+'&unavailable_page=2').get_data(as_text=True)
+        self.assertIn('Unavailable questions (25)',first)
+        self.assertEqual(first.count('data-label="Quiz"'),20)
+        self.assertEqual(second.count('data-label="Quiz"'),5)
+        self.assertEqual(first.count('Legacy response has no verifiable content revision.'),1)
+        self.assertEqual(first.count('Unverified legacy history'),20)
+        self.assertIn('cannot recreate a missing historical revision',first)
+        self.assertIn('More unavailable questions',first)
+        self.assertIn('Previous unavailable questions',second)
+        self.assertEqual(self.pool(self.selection([qid]))['eligible'],[])
+
+    def test_reserved_pass_does_not_claim_completion(self):
+        self.wrong();pid=self.start();data=self.create_data(pid)
+        with dlms.get_db() as c:sm.reserve(c,data,dlms._study_mistake_options())
+        html=self.client.get('/quiz-composer/study-mistakes?quizzes='+str(self.quiz_id)).get_data(as_text=True)
+        self.assertIn('1 reserved',html)
+        self.assertIn('id="mistakePassComplete" class="study-mistakes-notice" hidden',html)
+        self.assertEqual(self.report()['used'],0)

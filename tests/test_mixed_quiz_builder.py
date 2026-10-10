@@ -265,6 +265,16 @@ class MixedQuizBuilderTests(unittest.TestCase):
         library_html = dlms.app.test_client().get("/library").get_data(as_text=True)
         self.assertIn('href="/quiz-composer">Mix Questions</a>', library_html)
 
+    def test_choice_count_copy_is_singular_without_changing_manual_minimums(self):
+        one = self._question("One choice fixture?")
+        one['choices'] = one['choices'][:1]
+        self._seed("Singular sample", "singular.html", [one])
+        self._seed("Plural sample", "plural.html", [self._question("Two choices fixture?")])
+        html = dlms.app.test_client().get("/quiz-composer").get_data(as_text=True)
+        self.assertIn("1 choice", html)
+        self.assertNotIn("1 choices", html)
+        self.assertIn("2 choices", html)
+
     def test_empty_and_single_source_selections_do_not_publish(self):
         _quiz_id, question_ids = self._seed(
             "Only Bank",

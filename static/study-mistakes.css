@@ -20,3 +20,41 @@
 .mixed-quiz-builder-page .study-mistakes-fields :is(input,select):focus-within,
 .mixed-quiz-builder-page #studyMistakeBuilder :is(button,a,summary):focus-visible,
 .mixed-quiz-builder-page .study-mistakes-scope button:focus-visible { outline: 3px solid var(--theme-focus-ring,var(--theme-accent)); outline-offset: 3px; }
+/* Page-local secondary navigation and selection/result presentation. */
+.mixed-quiz-builder-page .mixed-builder-intro { flex-wrap: wrap; align-items: flex-start; }
+.mixed-quiz-builder-page .mixed-builder-intro > div { flex: 1 1 30rem; min-width: 0; }
+.mixed-quiz-builder-page #mixedBuilderReturn { flex: 0 0 auto; white-space: nowrap; }
+.mixed-quiz-builder-page .mixed-builder-source-nav { gap: .65rem; }
+.mixed-quiz-builder-page #mixedBuilderSourceNav [aria-current="page"] { border: 2px solid var(--theme-accent-text); font-weight: 800; }
+.mixed-quiz-builder-page #studyMistakeWorkflow [hidden] { display: none; }
+.mixed-quiz-builder-page #studyMistakeWorkflow :is(button,a,summary):focus-visible { outline: 3px solid var(--theme-focus-ring,var(--theme-accent)); outline-offset: 3px; }
+.mixed-quiz-builder-page #studyMistakeWorkflow :is(button,input):disabled { opacity: .7; cursor: not-allowed; }
+.mixed-quiz-builder-page .study-mistakes-fields > div { min-width: 0; }
+.mixed-quiz-builder-page .study-mistakes-fields > div > label { margin-block: .5rem; }
+.mixed-quiz-builder-page .study-mistakes-note { color: var(--theme-muted-text); font-size: 1rem; }
+.mixed-quiz-builder-page .study-mistakes-selections p { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.mixed-quiz-builder-page .study-mistakes-selection { display: inline-flex; align-items: center; gap: .5rem; max-width: 100%; border: 1px solid var(--theme-border-soft); border-radius: var(--theme-control-radius,9px); padding: .4rem .6rem; }
+.mixed-quiz-builder-page .study-mistakes-selection > span { min-width: 0; overflow-wrap: anywhere; }
+.mixed-quiz-builder-page .study-mistakes-selection > button { flex-shrink: 0; }
+.mixed-quiz-builder-page .study-mistakes-names { max-height: 16rem; overflow: auto; padding-inline-start: 1.5rem; }
+.mixed-quiz-builder-page .study-mistakes-names li { padding-block: .4rem; overflow-wrap: anywhere; }
+.mixed-quiz-builder-page .study-mistakes-notice { padding: 1rem; margin-block: 1rem; border-inline-start: 4px solid var(--theme-accent-text); background: var(--semantic-secondary-control-surface); color: var(--theme-page-text); }
+.mixed-quiz-builder-page .study-mistakes-pass-summary { font-size: 1.15rem; }
+.mixed-quiz-builder-page .study-mistakes-preview li { padding-block: .35rem; overflow-wrap: anywhere; }
+.mixed-quiz-builder-page .study-mistakes-exclusions { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.mixed-quiz-builder-page .study-mistakes-exclusions :is(th,td) { text-align: start; padding: .75rem; border-bottom: 1px solid var(--theme-border-soft); overflow-wrap: anywhere; vertical-align: top; }
+.mixed-quiz-builder-page .study-mistakes-exclusions th:nth-child(2) { width: 5rem; }
+.mixed-quiz-builder-page .study-mistakes-exclusions caption { text-align: start; padding-block: .75rem; }
+.mixed-quiz-builder-page #mistakeCreationReason { margin-block: .75rem; }
+.mixed-quiz-builder-page #mistakeCount:disabled { background: var(--semantic-secondary-control-surface); }
+@media (max-width: 600px) {
+    .mixed-quiz-builder-page .study-mistakes-exclusions :is(thead) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .mixed-quiz-builder-page .study-mistakes-exclusions :is(tbody,tr,th,td) { display: block; width: auto; }
+    .mixed-quiz-builder-page .study-mistakes-exclusions tr { margin-block: .75rem; border: 1px solid var(--theme-border-soft); }
+    .mixed-quiz-builder-page .study-mistakes-exclusions [data-label]::before { content: attr(data-label) ": "; font-weight: 700; }
+}
+
+@media (max-width: 900px) {
+    .mixed-quiz-builder-page .mixed-builder-intro > div { flex: 0 1 auto; }
+    .mixed-quiz-builder-page .mixed-builder-return { align-self: flex-start; }
+}

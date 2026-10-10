@@ -42,18 +42,18 @@
             <div><h1>Mixed Quiz Builder</h1><p>Quiz Library <span>•</span> Select <span>•</span> Preview <span>•</span> Create</p></div>
         </header>
 
-        <section class="dashboard-panel mixed-builder-intro">
+        <section class="dashboard-panel mixed-builder-intro" data-action-controls>
             <div>
                 <span class="library-eyebrow">QUESTION-BANK COMPOSITION</span>
                 <h2>Build one quiz from your existing banks.</h2>
                 <p>{% if study_mistakes %}Make a saved mix from verified wrong Study answers. Corrections do not erase those mistakes. Your source quizzes will not be changed.{% else %}Filter and preview original questions, then select material from at least two quizzes. Your source quizzes will not be changed.{% endif %}</p>
             </div>
-            <a class="build-secondary-link" href="/library">Back to Quiz Library</a>
+            <a id="mixedBuilderReturn" class="dlms-action-control mixed-builder-return" href="/library"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#back"></use></svg><span>Back to Quiz Library</span></a>
         </section>
 
-        <nav class="mixed-builder-bulk-actions" aria-label="Question selection source">
-            <a href="/quiz-composer" {% if not study_mistakes %}aria-current="page"{% endif %}>Choose questions manually</a>
-            <a href="/quiz-composer/study-mistakes" {% if study_mistakes %}aria-current="page"{% endif %}>Study mistakes</a>
+        <nav id="mixedBuilderSourceNav" class="mixed-builder-bulk-actions mixed-builder-source-nav" data-action-controls aria-label="Question selection source">
+            <a class="dlms-action-control" href="/quiz-composer" {% if not study_mistakes %}aria-current="page"{% endif %}>Choose questions manually</a>
+            <a class="dlms-action-control" href="/quiz-composer/study-mistakes" {% if study_mistakes %}aria-current="page"{% endif %}>Study mistakes</a>
         </nav>
         {% if error %}<div class="mixed-builder-error" role="alert">{{ error }}</div>{% endif %}
 
@@ -111,7 +111,7 @@
                     <div class="mixed-builder-question-content">
                         <div class="mixed-builder-question-meta">
                             <span>{{ item.question_type|capitalize }}</span>
-                            {% if item.question_type == 'matching' %}<span>{{ item.pair_count }} pairs</span>{% else %}<span>{{ item.choice_count }} choices</span>{% endif %}
+                            {% if item.question_type == 'matching' %}<span>{{ item.pair_count }} pairs</span>{% else %}<span>{{ item.choice_count }} {{ 'choice' if item.choice_count == 1 else 'choices' }}</span>{% endif %}
                             {% if item.ever_missed %}<span class="mixed-builder-missed">Missed before</span>{% endif %}
                         </div>
                         <h3>{{ item.question_text }}</h3>
@@ -212,6 +212,7 @@
     });
 })();
 </script>
+<script src="/static/action-controls.js"></script>
 <script src="/static/nav-normalize.js"></script>
 </body>
 </html>

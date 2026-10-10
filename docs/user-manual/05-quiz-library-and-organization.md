@@ -205,37 +205,60 @@ quiz unchanged and records source relationships for the new questions.
 
 ### Make a mix from Study mistakes
 
-In **Mix Questions**, choose **Study mistakes**. Select folders, source quizzes,
-or both, then **Check Study mistakes**. Either selection includes a question;
-overlapping selections count once. Hidden and Learning Scope-excluded folders
-remain available here because this is a deliberate manual selection.
+Open **Quiz Library → Mix Questions → Study mistakes**. Select folders,
+individual source quizzes, or both: questions from either selection are included,
+and overlaps count once. **Browse source quizzes by folder** changes the list
+only. Selected quizzes outside that view remain included and appear in the
+selection summary. Remove an item there, or use **Clear selections**.
+**Full quiz names in this view** provides readable names without hovering.
 
-A complete saved wrong answer from any Study attempt qualifies, even in an
-unfinished review or after an earlier correct answer. Corrections and later
-success do not erase it. This differs from the manual **Missed before** filter.
+1. Choose **Check Study mistakes** and review the checked sources.
+2. Choose **Start pass** for **Without repeats** (the default).
+3. Enter a quiz name and 1–100 questions, then **Create Mixed Quiz**.
+4. Choose **Open saved Mixed Quiz** for normal Study or Exam.
+
+**Eligible questions in these sources** is the whole usable pool, including
+questions already included in saved mixes. **Remaining in this pass** shows what
+is still unused in the current snapshot. The **Eligible source pool preview**
+is not the exact next batch. Changing the source controls hides earlier results
+and requires another check; returning to a previous scope retains its pass.
+
+Counts refresh after a confirmed save. **Prepare next quiz** starts a separate
+creation request while keeping the editable name and count. If count refresh
+fails, the saved quiz and its Open action remain confirmed. Use **Refresh counts**
+or reload before preparing more work; do not recreate the confirmed quiz.
+
+**Pass complete** means all snapshot questions were included. Creation stays
+unavailable until you explicitly **Start new pass** or choose **Random**. A new
+pass permits repeats across passes. Random permits repeats between mixes and
+does not consume or reset the Without repeats pass. If fewer questions remain
+than requested, choose a smaller count explicitly. One source quiz and a
+one-question remainder are supported here; manual composition keeps its minimums.
+
+#### Eligibility and recovery reference
+
+A complete saved graded wrong answer from any Study attempt qualifies, even in
+an unfinished review or after an earlier correct answer. Corrections and later
+success do not erase it. The manual **Missed before** filter remains separate.
 Unanswered questions, assistance alone and unsaved browser answers do not count.
 
-1. Use **Start pass** for **Without repeats** (the default).
-2. Enter a quiz name and choose 1–100 questions; one source quiz is enough.
-3. Choose **Create Mixed Quiz**, then **Open saved Mixed Quiz**.
+The pass survives restart. Failed creation consumes nothing; deleting a saved
+mix does not return questions. Newly qualifying mistakes wait for the next pass.
+Manual selections may include Library-hidden or Learning Scope-excluded sources
+without changing those settings.
 
-Without repeats keeps a saved snapshot. Only successful quiz creation uses its
-questions. Restart preserves the pass; deleting a mix does not return questions.
-When fewer remain than requested, choose the smaller count explicitly. Exhaustion
-requires **Start new pass**; DLMS never silently recycles. New mistakes wait for
-the next pass. **Random** permits repeats between mixes and leaves the pass alone.
-
-Unavailable questions and revision/media reasons appear in a disclosure. A
-quiz-wide edit can make earlier evidence unverifiable; legacy answers without a
-verified revision cannot be used automatically. No source content is repaired,
-substituted or merged by matching text. Creating a mix does not award Study
-credit, finish a source review, or change Last regular quiz.
+**Unavailable questions** is collapsed initially and lists up to 20 rows per
+page, with Quiz, Question and Reason. Repeated explanations are grouped, while
+every excluded question remains accessible. Editing content cannot recreate
+missing historical revision evidence. A quiz-wide edit can make earlier evidence
+unverifiable. Source content is never repaired or substituted. Creating a mix
+does not award Study credit, finish a source review or change Last regular quiz.
 
 If an acknowledgement is lost, **Retry same request** returns the same saved
 quiz. Keep uncertain requests for recovery. **Change request** is offered only
-when the server allows abandoning a rejected request; it does not clear answers.
+when the server permits abandoning a rejected request; it does not clear answers.
 
-![Study mistakes source with folders, quizzes, pass counts and creation controls](images/UM-04-study-mistakes.png)
+![Disposable Study mistakes example with source selection, pool preview and separate remaining/included counts](images/UM-04-study-mistakes.png)
 
 ## Review possible duplicates
 

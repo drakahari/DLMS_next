@@ -1,68 +1,86 @@
 {% set sm = study_mistakes %}
+<div id="studyMistakeWorkflow" data-action-controls>
 <section class="dashboard-panel study-mistakes-panel study-mistakes-scope" aria-labelledby="mistakesHeading">
     <h2 id="mistakesHeading">Study mistakes</h2>
-    <p>A complete saved wrong answer in any Study attempt counts, including an unfinished review. Assistance alone and unanswered questions do not count.</p>
+    <p>Saved wrong Study answers count, even after correction. Assistance alone and unanswered questions do not.</p>
     <form method="GET" action="/quiz-composer/study-mistakes" id="mistakeScopeForm">
         <div class="study-mistakes-fields">
-            <label>Folders
+            <label>Include folders
                 <select name="folders" multiple size="5" aria-describedby="mistakeScopeHelp">
                     {% for folder in sm.options.folders %}<option value="{{ folder }}" {% if folder in sm.scope.folders %}selected{% endif %}>{{ folder }}</option>{% endfor %}
                 </select>
             </label>
-            <label>Source quizzes
-                <select name="quizzes" multiple size="5" aria-describedby="mistakeScopeHelp">
-                    {% for quiz in sm.options.quizzes %}<option value="{{ quiz.id }}" {% if quiz.id in sm.scope.quizzes %}selected{% endif %}>{{ quiz.title }} · {{ quiz.folder }}</option>{% endfor %}
+            <div>
+                <label for="mistakeQuizBrowse">Browse source quizzes by folder</label>
+                <select id="mistakeQuizBrowse"><option value="all">All folders</option><option value="selected">Selected folders</option>{% for folder in sm.options.folders %}<option value="folder:{{ folder }}">{{ folder }}</option>{% endfor %}</select>
+                <label for="mistakeQuizSelect">Add individual quizzes</label>
+                <select id="mistakeQuizSelect" name="quizzes" multiple size="5" aria-describedby="mistakeScopeHelp mistakeBrowseStatus">
+                    {% for quiz in sm.options.quizzes %}<option value="{{ quiz.id }}" data-folder="{{ quiz.folder }}" data-title="{{ quiz.title }}" title="{{ quiz.title }} · {{ quiz.folder }}" {% if quiz.id in sm.scope.quizzes %}selected{% endif %}>{{ quiz.title }} · {{ quiz.folder }}</option>{% endfor %}
                 </select>
-            </label>
+                <p id="mistakeBrowseStatus" class="study-mistakes-note"></p>
+                <details><summary>Full quiz names in this view</summary><ul id="mistakeQuizNames" class="study-mistakes-names" tabindex="0" aria-label="Full source quiz names"></ul></details>
+            </div>
         </div>
-        <p id="mistakeScopeHelp">Choose folders, quizzes, or both. Either selection includes a question; overlaps count once. Use Ctrl (Command on Mac) to select several items. This manual selection includes hidden and Learning Scope-excluded sources.</p>
-        <button class="library-primary-action" type="submit">Check Study mistakes</button>
+        <p id="mistakeScopeHelp">Include questions from selected folders <strong>plus</strong> selected individual quizzes. Overlaps count once. Browsing filters only the list; it never changes your selection.</p>
+        <p class="study-mistakes-note">Use Ctrl (Command on Mac) for multiple items. This manual selection can include hidden or Learning Scope-excluded sources.</p>
+        <div id="mistakeSelectionSummary" class="study-mistakes-selections" aria-live="polite"></div>
+        <div id="mistakeHiddenSelections"></div>
+        <div class="mixed-builder-bulk-actions"><button class="library-primary-action" type="submit">Check Study mistakes</button><button id="clearMistakeScope" class="dlms-action-control" type="button">Clear selections</button></div>
     </form>
+    <p id="mistakeSelectionChanged" class="study-mistakes-notice" role="status" hidden>Selection changed. Check Study mistakes to update. The results below belong to the previous selection.</p>
 </section>
+<div id="studyMistakeResults">
+<section class="dashboard-panel study-mistakes-panel" aria-labelledby="mistakeCheckedHeading">
+    <h2 id="mistakeCheckedHeading">Checked sources</h2>
+    <p>Folders: {{ sm.scope.folders|join(', ') or 'None' }}. Individual quizzes: {% if sm.scope.quizzes %}{% for id in sm.scope.quizzes %}{% set quiz = sm.options.quizzes|selectattr('id','equalto',id)|first %}{{ quiz.title if quiz else 'Unavailable source' }} (ID {{ id }}){{ '; ' if not loop.last else '.' }}{% endfor %}{% else %}None.{% endif %}</p>
+    {% if sm.pass_report %}
+    <p id="mistakePassSummary" class="study-mistakes-pass-summary"><strong>{{ sm.pass_report.remaining }} remaining in this pass</strong> · {{ sm.pass_report.used }} included in saved mixes.</p>
+    <div id="mistakePassComplete" class="study-mistakes-notice" {% if sm.pass_report.used != sm.pass_report.total %}hidden{% endif %}><strong>Pass complete</strong><p>Start a new pass to use eligible questions again. This permits repeats across passes. Random can repeat between mixes without changing this pass.</p></div>
+    <details id="mistakePassDetails"><summary>Pass details</summary><p>{{ sm.pass_report.total }} questions in this snapshot · {{ sm.pass_report.reserved }} reserved · {{ sm.pass_report.unavailable }} unavailable.</p>{% if sm.pass_report.new %}<p>{{ sm.pass_report.new }} newly eligible questions wait for a new pass.</p>{% endif %}<p>New mistakes wait for an explicit new pass. Creation is not Study completion or mastery.</p></details>
+    {% else %}<p id="mistakePassSummary">Without repeats: start a saved pass for these sources.</p><div id="mistakePassComplete" hidden></div>{% endif %}
+    <p id="mistakeCounts"><strong>{{ sm.pool.eligible|length }} eligible {{ 'question' if sm.pool.eligible|length == 1 else 'questions' }} in these sources</strong>. This total includes questions already used in the current pass.</p>
+    {% if not sm.pool.eligible %}<p>These sources have no currently usable, verified Study mistakes. Check other sources or see unavailable questions below.</p>{% endif %}
+    {% if sm.preview %}
+    <h3 id="mistakePreviewHeading">Eligible source pool preview</h3>
+    <p class="study-mistakes-note">This is the source pool, <strong>not the exact next batch</strong>. It may include questions already used in this pass. Page {{ sm.page }} · up to 20 shown.</p>
+    <ol class="study-mistakes-preview">{% for item in sm.preview %}<li>{{ item.title }} · Question {{ item.number }} — {{ item.question }}</li>{% endfor %}</ol>
+    <nav class="mixed-builder-bulk-actions" aria-label="Question preview pages">{% if sm.page > 1 %}<a class="dlms-action-control" href="{{ sm.page_url('page',sm.page-1) }}">Previous questions</a>{% endif %}{% if sm.has_more %}<a class="dlms-action-control" href="{{ sm.page_url('page',sm.page+1) }}">More questions</a>{% endif %}</nav>
+    {% endif %}
+</section>
+</div>
 <section class="dashboard-panel study-mistakes-panel" id="studyMistakeBuilder" aria-labelledby="mistakeMixHeading">
     <h2 id="mistakeMixHeading">Create your mix</h2>
-    <p id="mistakeCounts"><strong>{{ sm.pool.eligible|length }} available</strong> · {{ sm.pool.recorded }} source questions with recorded mistakes</p>
-    {% if sm.pass_report %}
-    <p id="mistakePassSummary">Current pass: {{ sm.pass_report.remaining }} remaining · {{ sm.pass_report.used }} included in saved mixes · {{ sm.pass_report.reserved }} reserved · {{ sm.pass_report.unavailable }} unavailable.</p>
-    {% if sm.pass_report.new %}<p>{{ sm.pass_report.new }} newly eligible questions are available for the next pass.</p>{% endif %}
-    {% else %}<p id="mistakePassSummary">Without repeats starts a saved pass for this selection.</p>{% endif %}
     <form id="mistakeCreateForm">
         <div class="study-mistakes-fields">
             <label>Quiz name<input id="mistakeTitle" required maxlength="200" placeholder="Example: CISM Study mistakes 1"></label>
-            <label>Questions to include<input id="mistakeCount" type="number" min="1" max="100" required value="{{ [1, [20, sm.pass_report.remaining if sm.pass_report else sm.pool.eligible|length]|min]|max if sm.pool.eligible else 1 }}"></label>
+            <label>Questions to include<input id="mistakeCount" type="number" min="1" max="100" required aria-describedby="mistakeCreationReason" value="{{ [20, sm.pass_report.remaining if sm.pass_report else sm.pool.eligible|length]|min if sm.pool.eligible and (not sm.pass_report or sm.pass_report.remaining) else '' }}"></label>
             <label>Selection mode<select id="mistakeMode"><option value="without-repeats">Without repeats</option><option value="random">Random</option></select></label>
         </div>
-        <p>Choose 1–100 questions. Random can repeat questions between mixes; it leaves your saved pass unchanged. Creating a mix is not Study completion or mastery.</p>
+        <p class="study-mistakes-note">Choose 1–100 questions. Random permits repeats between mixes and leaves your pass unchanged.</p>
+        <p id="mistakeCreationReason" role="status"></p>
         <div class="mixed-builder-bulk-actions">
-            <button id="startMistakePass" type="button" {% if not sm.pool.eligible %}disabled{% endif %}>{{ 'Start new pass' if sm.pass_report else 'Start pass' }}</button>
-            <button class="library-primary-action" id="createMistakeMix" type="submit" {% if not sm.pass_report or not sm.pass_report.remaining %}disabled{% endif %}>Create Mixed Quiz</button>
-            <button id="changeMistakeRequest" type="button" hidden>Change request</button>
-            <button id="retryMistakeMix" type="button" hidden>Retry same request</button>
+            <button id="startMistakePass" class="dlms-action-control" type="button" {% if not sm.pool.eligible %}disabled{% endif %}>{{ 'Start new pass' if sm.pass_report else 'Start pass' }}</button>
+            <button class="library-primary-action" id="createMistakeMix" type="submit" aria-describedby="mistakeCreationReason" {% if not sm.pass_report or not sm.pass_report.remaining %}disabled{% endif %}>Create Mixed Quiz</button>
+            <button id="changeMistakeRequest" class="dlms-action-control" type="button" hidden>Change request</button>
+            <button id="retryMistakeMix" class="dlms-action-control" type="button" hidden>Retry same request</button>
         </div>
     </form>
     <p id="mistakeStatus" role="status" aria-live="polite"></p>
-    <a id="openMistakeMix" class="library-primary-action" hidden>Open saved Mixed Quiz</a>
-    {% if not sm.pool.eligible %}<p>Choose sources with saved, verifiable wrong Study answers. Unavailable evidence is explained below.</p>{% endif %}
-    <details><summary>Unavailable questions and pass details</summary>
-        <p>Passes keep a snapshot. New mistakes wait for an explicit new pass. Source edits, missing evidence or unavailable media cannot be silently substituted. Quiz-wide edits can make an older response unverifiable even if that question appears unchanged.</p>
-        <p>Historical mistakes remain separate from resettable Learning Intelligence estimates. Legacy responses without a verifiable content revision cannot be used automatically. Orphaned generated copies cannot be attributed to a source by their wording. A saved wrong answer can qualify even when earlier saves are missing; it does not prove completion or a first outcome.</p>
-        {% for item in sm.unavailable_preview %}<p>{{ item.title }} (ID {{ item.quiz_id }}), question {{ item.number }}: {{ item.reason }} <a href="/edit_quiz/{{ item.quiz_id }}">Review and edit</a></p>{% endfor %}
-        <nav class="mixed-builder-bulk-actions" aria-label="Unavailable questions pages">
-            {% if sm.unavailable_page > 1 %}<a href="{{ sm.page_url('unavailable_page',sm.unavailable_page-1) }}">Previous unavailable questions</a>{% endif %}
-            {% if sm.unavailable_more %}<a href="{{ sm.page_url('unavailable_page',sm.unavailable_page+1) }}">More unavailable questions</a>{% endif %}
-        </nav>
-        <a href="/help/quizzes">Mixed Quiz Help</a>
+    <div class="mixed-builder-bulk-actions"><a id="openMistakeMix" class="library-primary-action" hidden>Open saved Mixed Quiz</a><button id="nextMistakeMix" class="dlms-action-control" type="button" hidden>Prepare next quiz</button></div>
+    <p id="mistakeRefreshMessage" role="status"></p><button id="refreshMistakeCounts" class="dlms-action-control" type="button" hidden>Refresh counts</button>
+</section>
+<section class="dashboard-panel study-mistakes-panel" id="studyMistakeExclusions">
+    <details id="mistakeUnavailableDetails"{% if request.args.get('show_unavailable') == '1' %} open{% endif %}><summary>Unavailable questions ({{ sm.pool.unavailable|length }})</summary>
+    {% if sm.pool.unavailable %}
+        <p>These recorded mistakes cannot currently be used. Checking or editing content cannot recreate a missing historical revision.</p>
+        <ul class="study-mistakes-reasons">{% for group in sm.pool.unavailable|groupby('reason') %}<li>{{ group.grouper }} ({{ group.list|length }} {{ 'question' if group.list|length == 1 else 'questions' }})</li>{% endfor %}</ul>
+        <table class="study-mistakes-exclusions"><caption>Unavailable source questions — page {{ sm.unavailable_page }}, up to 20 rows</caption><thead><tr><th scope="col">Quiz</th><th scope="col">Question</th><th scope="col">Reason</th></tr></thead><tbody>
+        {% for item in sm.unavailable_preview %}<tr><th scope="row" data-label="Quiz">{{ item.title }} (ID {{ item.quiz_id }})<br><a href="/edit_quiz/{{ item.quiz_id }}">View source</a></th><td data-label="Question">{{ item.number }}</td><td data-label="Reason">{% if item.reason == 'Legacy response has no verifiable content revision.' %}Unverified legacy history{% else %}{{ item.reason }}{% endif %}</td></tr>{% endfor %}
+        </tbody></table>
+        <nav class="mixed-builder-bulk-actions" aria-label="Unavailable questions pages">{% if sm.unavailable_page > 1 %}<a class="dlms-action-control" href="{{ sm.page_url('unavailable_page',sm.unavailable_page-1) }}{% if request.args.get('show_unavailable') != '1' %}&amp;show_unavailable=1{% endif %}#mistakeUnavailableDetails">Previous unavailable questions</a>{% endif %}{% if sm.unavailable_more %}<a class="dlms-action-control" href="{{ sm.page_url('unavailable_page',sm.unavailable_page+1) }}{% if request.args.get('show_unavailable') != '1' %}&amp;show_unavailable=1{% endif %}#mistakeUnavailableDetails">More unavailable questions</a>{% endif %}</nav>
+    {% else %}<p>No questions are excluded from this checked selection.</p>{% endif %}
+    <a href="/help/quizzes#study-mistakes">Study mistakes Help</a>
     </details>
 </section>
-{% if sm.preview %}
-<section class="dashboard-panel study-mistakes-panel" aria-labelledby="mistakePreviewHeading">
-    <h2 id="mistakePreviewHeading">Available question preview</h2>
-    <p>Page {{ sm.page }} · up to 20 questions shown. Creation uses the complete server-side selection.</p>
-    <ol>{% for item in sm.preview %}<li>{{ item.title }} · Question {{ item.number }} — {{ item.question }}</li>{% endfor %}</ol>
-    <nav class="mixed-builder-bulk-actions" aria-label="Question preview pages">
-        {% if sm.page > 1 %}<a href="{{ sm.page_url('page',sm.page-1) }}">Previous questions</a>{% endif %}
-        {% if sm.has_more %}<a href="{{ sm.page_url('page',sm.page+1) }}">More questions</a>{% endif %}
-    </nav>
-</section>
-{% endif %}
-<script id="studyMistakeContext" type="application/json">{{ dict(scope=sm.scope, generation=sm.generation, fingerprint=sm.pool.fingerprint, request_id=sm.request_id, pass_id=sm.pass_report.id if sm.pass_report else none, remaining=sm.pass_report.remaining if sm.pass_report else 0, eligible=sm.pool.eligible|length)|tojson }}</script>
+<script id="studyMistakeContext" type="application/json">{{ dict(scope=sm.scope, generation=sm.generation, fingerprint=sm.pool.fingerprint, request_id=sm.request_id, pass_id=sm.pass_report.id if sm.pass_report else none, remaining=sm.pass_report.remaining if sm.pass_report else 0, eligible=sm.pool.eligible|length, total=sm.pass_report.total if sm.pass_report else 0, used=sm.pass_report.used if sm.pass_report else 0, reserved=sm.pass_report.reserved if sm.pass_report else 0)|tojson }}</script>
+</div>
