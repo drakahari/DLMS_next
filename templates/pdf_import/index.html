@@ -187,7 +187,7 @@
 {% endif %}
 {% endwith %}
 <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button><div><div class="build-eyebrow">PDF &amp; IMAGE IMPORT</div><h1>PDF &amp; Image Import</h1><p>Import structured PDF question banks or terminology sources, or create reviewable quiz drafts from screenshots.</p></div></header>
-<nav class="pdf-import-task-links" aria-label="Import navigation"><a class="build-secondary-link" href="/upload">Build Quiz</a><a class="build-secondary-link" href="#savedBanks">Saved banks</a><a class="build-secondary-link" href="/help/smart-pdf">Import Help</a></nav>
+<nav class="pdf-import-task-links" aria-label="Import navigation"><a class="build-secondary-link page-return-link" href="/upload"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#back"></use></svg><span>Back to Build Quiz</span></a><a class="build-secondary-link" href="#savedBanks">Saved banks</a><a class="build-secondary-link" href="/help/smart-pdf">Import Help</a></nav>
 <section class="dashboard-panel" aria-labelledby="pdfTextHeading">
 <h2 id="pdfTextHeading">Import PDF questions or terminology</h2>
 <form action="/pdf-import/analyze" method="POST" enctype="multipart/form-data" class="pdf-import-upload-form">
@@ -196,7 +196,7 @@
 <label class="build-field"><span>Content type</span><select name="pdf_content_type"><option value="auto">Auto-detect</option><option value="question_bank">Question bank</option><option value="glossary">Glossary / terminology</option></select><small>Choose manually if the PDF has an unusual layout.</small></label>
 <label class="build-field"><span>Exam timer (minutes)</span><input type="number" name="exam_minutes" min="1" max="1440" value="90"></label>
 <label class="pdf-import-rights"><input type="checkbox" name="rights_ok" required><span>I have permission to use this document for my own study. DLMS will treat the imported material as user-provided and not cleared for redistribution.</span></label>
-<div class="build-submit-row"><a class="build-secondary-link" href="/upload">Back to Build Quiz</a><button class="build-primary-button" type="submit">Analyze PDF</button></div>
+<div class="build-submit-row"><button class="build-primary-button" type="submit">Analyze PDF</button></div>
 </form></section>
 <section class="dashboard-panel pdf-ocr-import-panel" aria-labelledby="pdfOcrImportHeading">
 <div class="pdf-bank-panel-heading"><div><span class="build-method-label">LOCAL / OFFLINE OCR</span><h2 id="pdfOcrImportHeading">Import Quiz Screenshots</h2><p>Import up to {{ ocr_max_files }} clear PNG, JPG/JPEG, or WebP screenshots in one ordered batch. DLMS extracts draft questions locally, then requires Review &amp; Repair before saving.</p></div>{% if ocr_available %}<span class="pdf-status complete pdf-ocr-availability">OCR available · Tesseract {{ ocr_version }}</span>{% else %}<span class="pdf-status incomplete pdf-ocr-availability">OCR unavailable</span>{% endif %}</div>

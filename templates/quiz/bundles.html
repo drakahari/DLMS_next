@@ -30,7 +30,7 @@
 
         <section class="dashboard-panel portable-bundle-intro">
             <div><span class="library-eyebrow">CURATED QUIZ PORTABILITY</span><h2>Move your quizzes to another DLMS installation.</h2><p>Includes question text, choices, answer keys and supported images. Results, Study history and review schedules stay in the original profile.</p></div>
-            <div class="portable-bundle-selection-actions"><a class="build-secondary-link" href="#bundleImportHeading">Import a bundle</a><a class="build-secondary-link" href="/library">Back to Quiz Library</a></div>
+            <div class="portable-bundle-selection-actions"><a class="build-secondary-link" href="#bundleImportHeading">Import a bundle</a><a class="build-secondary-link page-return-link" href="/library"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#back"></use></svg><span>Back to Quiz Library</span></a></div>
         </section>
 
         {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="portable-bundle-messages" aria-live="polite">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}

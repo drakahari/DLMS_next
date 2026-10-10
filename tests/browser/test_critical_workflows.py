@@ -376,11 +376,21 @@ def test_regular_study_interrupted_saves_and_finish(browser_stack, interruption)
     browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     session_id = browser.evaluate("learningSessionId")
-    # Intentionally navigate and finish without waiting for any save acknowledgement.
+    # Establish the injected failure's visible state before pointer navigation:
+    # its asynchronous banner otherwise moves Next between pointer move/down.
+    # Successful saves are not awaited; delayed still finishes with its first
+    # response explicitly pending, without waiting for an acknowledgement.
     for number in range(4):
         browser.click("#choices .choice[data-index='1']")
+        if number == 0 and interruption in {"failed_save", "lost_save_ack"}:
+            browser.wait_for(
+                "[...studyLearningEventSaves.values()].some(r=>r.payload.sequence===1 && r.state==='failed') && "
+                "document.getElementById('studyLearningEventStatus').getClientRects().length>0 && "
+                "!document.querySelector('.study-learning-save-retry').disabled"
+            )
         if number < 3:
             browser.click("#nextBtn")
+            browser.wait_for(f"index === {number + 1}")
     browser.click("#finishReviewBtn")
     if interruption == "delayed":
         browser.wait_for("studyCompletionInProgress && studyLearningEventSaves.size === 1")
@@ -17577,3 +17587,101 @@ def test_cleanup_saved_bank_management_counts_and_confirmation(browser_stack):
     with sqlite3.connect(root/'results.db') as c: assert c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0]==quizzes
     b.click('#pdfCollapseBanks'); assert b.evaluate("[...document.querySelectorAll('[data-pdf-bank-section]')].every(n=>!n.open)")
     b.click('#pdfExpandBanks'); assert b.evaluate("[...document.querySelectorAll('[data-pdf-bank-section]')].every(n=>n.open)")
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_topic_preserved_concepts_rendered_visibility_after_reset(browser_stack, theme):
+    """The intended hidden state must hold in the rendered page, not just the DOM."""
+    b, base = browser_stack.browser, browser_stack.base_url
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(base + '/settings/appearance'); _set_theme(b, theme)
+    # Excluding every folder produces a genuine zero-concept API response.
+    b.navigate(base + '/learning-scope'); b.wait_for_page_ready()
+    while b.evaluate("[...document.querySelectorAll('.learning-scope-button')].some(n=>n.textContent==='Exclude folder')"):
+        b.evaluate("window.__scopePage=true;true")
+        b.click(".learning-scope-folder:has([name=included][value='0']) button")
+        b.wait_for_page_ready('window.__scopePage!==true')
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    assert b.evaluate('state.topics.length') == 0
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getClientRects().length") == 0
+    assert b.evaluate("getComputedStyle(document.getElementById('liToggleZeroEvidence')).display") == 'none'
+    # Restore only this fixture's scope, then exercise the real reset boundary.
+    b.navigate(base + '/learning-scope'); b.wait_for_page_ready()
+    while b.evaluate("[...document.querySelectorAll('.learning-scope-button')].some(n=>n.textContent==='Include folder')"):
+        b.evaluate("window.__scopePage=true;true")
+        b.click(".learning-scope-folder:has([name=included][value='1']) button")
+        b.wait_for_page_ready('window.__scopePage!==true')
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as c:
+        question = c.execute('SELECT id FROM questions WHERE quiz_id=? ORDER BY question_number', (browser_stack.metadata['critical_id'],)).fetchone()[0]
+        c.execute("INSERT INTO learning_events(event_type,quiz_id,question_id,attempt_id,mode,was_correct,response_json,occurred_at) VALUES ('exam_answer',?,?,?,'Exam',1,?,?)",
+                  (browser_stack.metadata['critical_id'], question, 'topic-visibility-fixture', '{"selected":["A"]}', '2026-01-01T12:00:00Z'))
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    assert b.evaluate('state.hasEvidence')
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getClientRects().length") == 0
+    reset = b.evaluate("fetch('/api/reset_learning_intelligence',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(async r=>({status:r.status,data:await r.json()}))")
+    assert reset['status'] == 200 and reset['data']['status'] == 'ok'
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    assert b.evaluate('state.topics.length') > 0 and not b.evaluate('state.hasEvidence')
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getClientRects().length") > 0
+    b.activate(); b.wait_for('document.hasFocus()')
+    b.evaluate("document.getElementById('liToggleZeroEvidence').focus();true")
+    b.press_key('\ue007')
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getAttribute('aria-expanded')") == 'true'
+    assert b.evaluate("document.getElementById('liTableWrap').getClientRects().length") > 0
+    assert b.evaluate("document.querySelectorAll('#liRows tr').length") == b.evaluate('state.topics.length')
+    b.press_key('\ue007')
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getAttribute('aria-expanded')") == 'false'
+    assert b.evaluate("document.getElementById('liTableWrap').getClientRects().length") == 0
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_cleanup_return_navigation_and_question_controls(browser_stack, theme):
+    b, base = browser_stack.browser, browser_stack.base_url
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(base + '/settings/appearance'); _set_theme(b, theme)
+    for page, destination in (('/pdf-import', '/upload'), ('/anki/law', '/anki'),
+                              ('/learning-scope', '/learning-intelligence'), ('/quiz-bundles', '/library')):
+        b.navigate(base + page); b.wait_for_page_ready()
+        if page == '/quiz-bundles':
+            # The second download is intentionally rendered only after a
+            # successful preflight. Exercise that actual state before counting.
+            assert b.evaluate("document.querySelectorAll('[data-bundle-download]').length") == 1
+            b.wait_for('window.dlmsCsrfToken')
+            b.click(f'input[name=quiz_ids][value="{browser_stack.metadata["critical_id"]}"]')
+            b.evaluate('window.__beforePreflight=true;true')
+            b.click('button[name=export_action][value=check]')
+            b.wait_for_page_ready('window.__beforePreflight!==true')
+        selector = f'main a[href="{destination}"]:has(use[href="/static/icons.svg#back"])'
+        assert b.evaluate(f'document.querySelectorAll({json.dumps(selector)}).length') == 1
+        b.activate(); b.wait_for('document.hasFocus()')
+        # Enter the link from the preceding control. Tabbing beyond a page's
+        # final link enters browser chrome, outside document-level BiDi input.
+        b.evaluate("""(()=>{const target=document.querySelector(""" + json.dumps(selector) + """);
+          const controls=[...document.querySelectorAll('a[href],button,input,select,textarea,summary')]
+            .filter(n=>!n.disabled && n.tabIndex>=0 && n.getClientRects().length);
+          controls[controls.indexOf(target)-1].focus();return true;})()""")
+        b.press_key('\ue004')
+        b.wait_for('document.activeElement.matches(":focus-visible")')
+        assert b.evaluate(f'document.activeElement===document.querySelector({json.dumps(selector)})')
+        if page == '/pdf-import':
+            assert b.evaluate("document.querySelectorAll('main a[href=\"/upload\"]').length") == 1
+            assert b.evaluate("document.querySelector('.pdf-import-upload-form .build-submit-row a')===null")
+        if page == '/quiz-bundles':
+            assert b.evaluate("document.querySelector('a[href=\"#bundleImportHeading\"]')!==null")
+            assert b.evaluate("document.querySelectorAll('[data-bundle-download]').length") == 2
+        b.press_key('\ue007'); b.wait_for(f'location.pathname==={json.dumps(destination)}')
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    controls = b.evaluate("[...document.querySelectorAll('.learning-intelligence-review-form')].map(f=>({action:new URL(f.action).pathname,name:f.querySelector('select').name,value:f.querySelector('select').value,options:[...f.querySelector('select').options].map(n=>n.value),height:f.querySelector('select').getBoundingClientRect().height}))")
+    assert [c['action'] for c in controls] == ['/adaptive-study/generate', '/smart-review/generate']
+    for control in controls:
+        assert control['name'] == 'question_count' and control['value'] == '20'
+        assert control['options'] == ['10','20','30','50'] and control['height'] >= 44
+    # Use the existing generation path; the selected count reaches the server.
+    qid, _ = _new_regular_study_quiz(browser_stack, 13)
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    b.evaluate("document.querySelector('form[action=\"/adaptive-study/generate\"] select').value='10';true")
+    b.click('#liAdaptiveStudyButton'); b.wait_for("location.pathname.startsWith('/quizzes/adaptive_study_')")
+    registry = json.loads((browser_stack.data_root / 'config/quizzes.json').read_text())
+    generated = next(entry for entry in registry if entry['html'] == b.evaluate('location.pathname.split("/").pop()'))
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as c:
+        assert c.execute('SELECT count(*) FROM questions WHERE quiz_id=?', (generated['id'],)).fetchone()[0] == 10
