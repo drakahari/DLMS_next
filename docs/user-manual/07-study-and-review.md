@@ -20,6 +20,7 @@ other options remain useful when you already know the kind of review you want.
 | **Due Questions** | Question-level spaced review | DLMS selects due or overdue source questions; you choose the batch size | Scheduled per question | Generated Practice |
 | **Topic Retention Schedule** | Concept-level reinforcement | You choose a review window of scheduled topics | Scheduled per concept | Generated Practice |
 | **Missed-question review** | Understanding mistakes from one completed Exam | You choose the attempt | On demand | Review of that saved result |
+| **[Study mistakes](05-quiz-library-and-organization.md#make-a-mix-from-study-mistakes)** | Practicing qualifying saved incorrect Study answers, even after later success | You choose folders/quizzes, a batch size and Without repeats or Random | On demand | Normal saved Mixed Quiz |
 
 *For the current dashboard controls, see the [dashboard illustration](03-interface-and-navigation.md#the-dashboard).*
 

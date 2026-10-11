@@ -46,7 +46,8 @@ canonical manual and must not replace these files.
 2. [Find Study sessions or Exam results](09-history-results-and-progress.md).
 3. [Create an optional Exam Plan](exam-plans.md) when preparing for an exam.
 4. [Record earned certifications and training](certifications-and-training.md) when planning renewals.
-5. [Back up your workspace](17-maintenance-backup-and-data-management.md) before upgrades or destructive actions.
+5. [Practice saved Study mistakes](05-quiz-library-and-organization.md#make-a-mix-from-study-mistakes) in manageable Mixed Quizzes.
+6. [Back up your workspace](17-maintenance-backup-and-data-management.md) before upgrades or destructive actions.
 
 ## Maintainer reference
 

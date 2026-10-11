@@ -166,3 +166,21 @@ Refresh using an isolated sample profile, the real application and the existing
 Firefox screenshot helpers. Use `origin: viewport` for the dashboard, and focused
 control crops for print actions. Check labels, image dimensions, narrow rendering
 and captions before replacing assets. Never use an owner profile.
+
+### Study mistakes tutorial refresh (2026-10-10)
+
+`images/UM-04-study-mistakes.png` and `static/help_assets/study-mistakes.webp`
+are the same actual **1920 × 1080 Firefox viewport** in Purple & Gold, from
+source revision `15c9c7fb4d16196ed6eb4ca11e63fb0e42e7e104`. Fictional sample
+questions show four eligible source questions, two remaining and two included
+following a confirmed saved mix. The image is neither an exact-batch prediction
+nor an owner profile. It replaces the earlier long scrolling capture and retains
+Help's accessible enlargement link.
+
+Capture recipe, neutral fixtures, content comparisons and screenshot hashes:
+`build/demo-video/series/study-mistakes-330-20261010/` (Git-ignored). Regenerate
+only in a disposable profile; capture `two-remaining.png` after an acknowledged
+two-question creation from a four-question pass. Verify source/pool/pass labels,
+full-resolution framing and dimensions before copying either asset. Related Help
+reading checks cover desktop and narrow layouts. These captures support a new
+focused tutorial; prior series assets remain unchanged.

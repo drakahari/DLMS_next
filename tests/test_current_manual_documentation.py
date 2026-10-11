@@ -117,3 +117,33 @@ class CurrentManualDocumentationTests(unittest.TestCase):
         index = (MANUAL / 'README.md').read_text()
         for guide in ('exam-plans.md', 'certifications-and-training.md', 'UPDATE-COVERAGE-3.3.0.md'):
             self.assertIn(guide, index)
+
+    def test_study_mistakes_task_navigation_and_safety_reference(self):
+        chapter = (MANUAL / '05-quiz-library-and-organization.md').read_text()
+        section = chapter.split('### Make a mix from Study mistakes', 1)[1].split('## Review possible duplicates', 1)[0]
+        index = (MANUAL / 'README.md').read_text()
+        help_page = (ROOT / 'static/help-quizzes.html').read_text()
+        help_section = help_page.split('id="study-mistakes"', 1)[1].split('</section>', 1)[0]
+        self.assertIn('05-quiz-library-and-organization.md#make-a-mix-from-study-mistakes', index)
+        self.assertEqual(help_page.count('id="study-mistakes"'), 1)
+        self.assertIn('href="#study-mistakes"', help_page)
+        for text in (section, help_section):
+            text = ' '.join(text.split())
+            self.assertIn('Quiz Library → Mix Questions → Study mistakes', text)
+            for label in ('Include folders', 'Add individual quizzes', 'Browse source quizzes by folder',
+                          'Check Study mistakes', 'Without repeats', 'Start pass', 'Create Mixed Quiz',
+                          'Open saved Mixed Quiz', 'Prepare next quiz', 'Pass complete', 'Start new pass',
+                          'Random', 'Unavailable questions', 'Retry same request'):
+                with self.subTest(label=label):
+                    self.assertIn(label, text)
+        self.assertIn('not the exact next batch', section)
+        self.assertIn('does not erase that historical mistake', help_section)
+        self.assertIn('Creating a quiz does not award Study credit', help_section)
+        self.assertIn('does not return questions to the current pass', help_section)
+        self.assertIn('Replacing an older binary alone does not reverse migration', help_section)
+        self.assertIn('verified full backup', section)
+        image = next(i for i in Page(help_section).images if i.get('src', '').endswith('study-mistakes.webp'))
+        from PIL import Image
+        with Image.open(ROOT / image['src'].lstrip('/')) as captured:
+            self.assertEqual((int(image['width']), int(image['height'])), captured.size)
+        self.assertTrue(image.get('alt'))

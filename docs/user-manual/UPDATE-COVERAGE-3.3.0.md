@@ -87,3 +87,29 @@ capture; the existing ordinary import-preview image remains applicable.
 ### Preservation-first portable transfer / schema 11 candidate
 
 Manual 15 and Taking Quizzes Help explain format-2 receiver requirements, ordered separate choices, transferable Needs review content, complete grouped preflight, selection retention and explicit editor correction. Manual 17 and the portable preservation contract explain schema-11 compatibility and pre-upgrade-backup rollback. Selection/preflight screenshots use disposable samples. The accepted schema-10 package remains a pre-change artifact.
+
+### Study mistakes manual and tutorial follow-up (2026-10-10)
+
+Application behavior verified at `15c9c7fb4d16196ed6eb4ca11e63fb0e42e7e104`,
+matching the owner-reported accepted schema-12 production build. This follow-up
+consolidates chapter 5's Study mistakes instructions, adds task/index and review
+comparison links, updates Taking Quizzes Help and replaces the scrolling
+illustration with a current sample-profile viewport. Chapter 17 clarifies that
+applications limited to schema 10 or 11 cannot open schema-12 data.
+
+Coverage includes union selection versus list browsing, recognized source
+origins, saved historical wrong answers, unavailable revision evidence, fixed
+passes, exact selection scopes, successful-creation counts, retry/count-refresh
+recovery, explicit new passes, deletion, Random, full backups and rollback.
+Disposable browser checks verify four eligible questions → two disjoint mixes
+of two → Pass complete, correction retention, Random isolation and separate
+passes for different explicit selections covering the same pool. The unchanged
+services and storage contract verify backup/reset and compatibility statements;
+this documentation task does not repeat packaged restore acceptance.
+
+The new focused narrated tutorial supplements existing Study/history and Library
+videos. Scripts, actual captures, complete coverage/provenance, failed capture
+recipes and final export checks are retained under ignored
+`build/demo-video/series/study-mistakes-330-20261010/`. Publication status of local
+series files is not inferred. No runtime, schema, scheduling or owner-data change
+is part of this follow-up.
