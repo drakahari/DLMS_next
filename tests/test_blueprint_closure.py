@@ -352,6 +352,7 @@ class BlueprintClosureTests(unittest.TestCase):
                 "validate_unsafe_request_origin",
                 "reject_declared_oversized_workflow_upload",
                 "csrf_protect",
+                "coordinate_profile_snapshot",
                 "protect_critical_operation_from_automatic_shutdown",
             ],
             [
@@ -367,7 +368,7 @@ class BlueprintClosureTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            ["finish_critical_operation_for_automatic_shutdown"],
+            ["release_profile_snapshot", "finish_critical_operation_for_automatic_shutdown"],
             [
                 function.__name__
                 for function in dlms.app.teardown_request_funcs.get(None, [])

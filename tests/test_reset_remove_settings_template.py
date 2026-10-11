@@ -208,7 +208,12 @@ class ResetRemoveSettingsTemplateTests(unittest.TestCase):
 
     def test_displayed_data_directory_is_html_escaped_outside_javascript(self):
         hostile = '</script><img src=x onerror="attack()">&\u2028\u2029'
-        with mock.patch.object(dlms, "APP_DATA_DIR", hostile):
+        # This test injects display-only text, not a usable profile directory.
+        # Keep the real profile gate while rendering the hostile display value.
+        actual_access = dlms._profile_snapshot.access
+        actual_root = dlms.APP_DATA_DIR
+        with mock.patch.object(dlms, "APP_DATA_DIR", hostile), \
+             mock.patch.object(dlms._profile_snapshot, "access", side_effect=lambda *_args, **kwargs: actual_access(actual_root, **kwargs)):
             page = self._page()
 
         self.assertIn(str(escape(hostile)), page)

@@ -31,6 +31,7 @@ from dlms.runtime import (
     _dlms_validate_server_host,
 )
 from dlms.browser_presence import BrowserPresenceManager
+from dlms.persistence import profile_snapshot as _profile_snapshot
 from dlms.persistence import json_files as _json_files
 from dlms.persistence import external_ai_drafts as _external_ai_draft_repository
 from dlms.persistence import portal as _portal_repository
@@ -246,26 +247,27 @@ def _initialize_data_root_ownership(root, *, is_default=False):
         print(f"[DATA ROOT] Unsafe configured directory; destructive operations disabled: {root}")
         return False
     os.makedirs(root, exist_ok=True)
-    marker_path = _data_root_marker_path(root)
-    if os.path.lexists(marker_path):
-        if _read_data_root_marker(root) is None:
-            print(f"[DATA ROOT] Invalid ownership marker; destructive operations disabled: {root}")
-            return False
-        return True
+    with _profile_snapshot.access(root, exclusive=True):
+        marker_path = _data_root_marker_path(root)
+        if os.path.lexists(marker_path):
+            if _read_data_root_marker(root) is None:
+                print(f"[DATA ROOT] Invalid ownership marker; destructive operations disabled: {root}")
+                return False
+            return True
 
-    try:
-        with os.scandir(root) as entries:
-            is_empty = next(entries, None) is None
-    except OSError:
-        return False
-    if not (is_default or is_empty or _looks_like_legacy_dlms_data_root(root)):
-        print(f"[DATA ROOT] Unverified non-empty directory; destructive operations disabled: {root}")
-        return False
-    try:
-        _write_data_root_marker(root)
-        return True
-    except FileExistsError:
-        return _read_data_root_marker(root) is not None
+        try:
+            with os.scandir(root) as entries:
+                is_empty = next(entries, None) is None
+        except OSError:
+            return False
+        if not (is_default or is_empty or _looks_like_legacy_dlms_data_root(root)):
+            print(f"[DATA ROOT] Unverified non-empty directory; destructive operations disabled: {root}")
+            return False
+        try:
+            _write_data_root_marker(root)
+            return True
+        except FileExistsError:
+            return _read_data_root_marker(root) is not None
 
 
 def get_app_data_dir(app_name: str = "DLMS") -> str:
@@ -282,6 +284,10 @@ def get_app_data_dir(app_name: str = "DLMS") -> str:
 APP_NAME = "DLMS"
 APP_VERSION = "3.3.0"
 APP_DATA_DIR = get_app_data_dir(APP_NAME)
+# Before secret/config/bootstrap/recovery writes; released once startup settles.
+_startup_snapshot_access = _profile_snapshot.access(APP_DATA_DIR, exclusive=True)
+_startup_snapshot_access.__enter__()
+_profile_guard = _profile_snapshot.guard(lambda: APP_DATA_DIR)
 
 
 def load_secret_key():
@@ -508,6 +514,36 @@ def reject_declared_oversized_workflow_upload():
 
 
 csrf.init_app(app)
+
+
+@app.before_request
+def coordinate_profile_snapshot():
+    # Backup takes exclusive access only while copying its private snapshot.
+    # All dynamic requests participate, including GET normalization/lazy writes.
+    if request.endpoint in {"static", "maintenance.settings_create_backup"}:
+        return None
+    exclusive = request.endpoint in {
+        "maintenance.settings_confirm_restore", "maintenance.settings_cancel_restore",
+        "maintenance.reset_quiz_library", "maintenance.reset_learning_intelligence",
+        "maintenance.reset_source_content", "maintenance.reset_app_settings",
+        "maintenance.reset_all_data", "maintenance.remove_all_dlms_data",
+        "maintenance.wipe_database", "study.delete_history",
+    }
+    permit = _profile_snapshot.access(APP_DATA_DIR, exclusive=exclusive)
+    permit.__enter__()
+    g._dlms_snapshot_permit = permit
+
+
+@app.teardown_request
+def release_profile_snapshot(_error):
+    permit = g.pop("_dlms_snapshot_permit", None)
+    if permit is not None:
+        permit.__exit__(None, None, None)
+
+
+@app.errorhandler(_profile_snapshot.ProfileBusyError)
+def profile_snapshot_busy(_error):
+    return jsonify(error=_profile_snapshot.BUSY_MESSAGE), 503
 
 
 @app.errorhandler(CSRFError)
@@ -1296,6 +1332,7 @@ def _study_mistake_options():
                 media_source=_portable_quiz_media_source)
 
 
+@_profile_snapshot.guard(lambda: APP_DATA_DIR, exclusive=True)
 def reconcile_quiz_publications():
     result = _quiz_publication_service.reconcile_quiz_publications(
         app_data_dir=APP_DATA_DIR,
@@ -1330,6 +1367,7 @@ def _normalize_quiz_question_ordinals(runtime_questions, db_questions):
     )
 
 
+@_profile_guard
 def _publish_quiz(
     quiz_title,
     runtime_questions,
@@ -2006,6 +2044,8 @@ def _create_dlms_backup(label="manual"):
         now=datetime.now,
         platform=sys.platform,
         sqlite_module=sqlite3,
+        snapshot_guard=lambda: _profile_snapshot.access(APP_DATA_DIR, exclusive=True),
+        validate_snapshot=_backup_service.validate_quiz_relationships,
     )
 
 
@@ -2481,6 +2521,7 @@ def _recover_one_restore_operation(journal_path, journal, paths):
     )
 
 
+@_profile_snapshot.guard(lambda: APP_DATA_DIR, exclusive=True)
 def reconcile_restore_operations():
     return _restore_service.reconcile_restore_operations(
         require_owned_root=_require_owned_app_data_root,
@@ -3234,6 +3275,7 @@ def _stage_content_pack_upload(upload, *, workflow=None):
     )
 
 
+@_profile_guard
 def _install_staged_content_pack(token):
     return _content_pack_mutation_service.install_staged_content_pack(
         token,
@@ -3277,6 +3319,7 @@ def _build_content_pack_export(folder):
 
 
 
+@_profile_guard
 def _delete_content_pack_folder(folder):
     return _content_pack_mutation_service.delete_content_pack_folder(
         folder,
@@ -3601,6 +3644,7 @@ def _restore_quiz_mutation_artifacts(promoted):
     )
 
 
+@_profile_guard
 def _rebuild_registered_quiz_artifacts():
     return _quiz_mutation_service.rebuild_registered_quiz_artifacts(
         registry_lock=registry_lock,
@@ -3626,6 +3670,7 @@ def _remove_new_quiz_logo(filename, original_registry):
     )
 
 
+@_profile_guard
 def _finish_quiz_mutation(
     conn, quiz_id, registry_updates=None, new_logo_filename=None
 ):
@@ -3647,6 +3692,7 @@ def _finish_quiz_mutation(
     )
 
 
+@_profile_guard
 def _rename_quiz_folder_metadata(old_folder, new_folder):
     return _quiz_mutation_service.rename_quiz_folder_metadata(
         old_folder,
@@ -3662,6 +3708,7 @@ def _rename_quiz_folder_metadata(old_folder, new_folder):
     )
 
 
+@_profile_guard
 def _delete_quiz_folder_metadata(folder):
     return _quiz_mutation_service.delete_quiz_folder_metadata(
         folder,
@@ -3776,6 +3823,7 @@ def _cleanup_deleted_quiz_artifacts(quiz_entry, remaining_registry):
     )
 
 
+@_profile_guard
 def _delete_quiz_transaction(quiz_id):
     return _quiz_mutation_service.delete_quiz_transaction(
         quiz_id,
@@ -3859,6 +3907,7 @@ def _full_data_reset_core():
     )
 
 
+@_profile_snapshot.guard(lambda: APP_DATA_DIR, exclusive=True)
 def _run_reset_with_backup(reset_label, reset_callable):
     # Always acquire restore before registry, matching restore confirmation.
     # Keep configuration replacement outside concurrent read/modify/write saves.
@@ -4736,6 +4785,7 @@ def _pdf_targeted_ocr_candidates(pages, question_result):
 
 
 
+@_profile_snapshot.guard(lambda: APP_DATA_DIR, exclusive=True)
 def _complete_staged_restore(token):
     # The route already owns the reentrant restore lock; direct callers use the
     # same ordering. Hold registry until promotion or rollback has completed.
@@ -6963,6 +7013,7 @@ _run_restore_startup_reconciliation()
 _run_restore_staging_startup_cleanup()
 ensure_db_initialized()
 _run_quiz_publication_startup_reconciliation()
+_startup_snapshot_access.__exit__(None, None, None)
 
 
 if __name__ == "__main__":

@@ -64,6 +64,13 @@ DLMS creates a ZIP snapshot and sends it to your browser as a download. The
 backup page may also list up to five recent safety backups retained on the host
 computer.
 
+DLMS briefly holds profile writes while copying the database and persistent
+files into one private snapshot. Compression then uses that copy. If DLMS is
+busy, the request can return a retry message after five seconds without starting
+the operation. Let the current operation finish and retry; do not remove
+recovery files. A pending quiz-publication recovery must settle before backup.
+Snapshot capture also needs temporary disk space, in addition to the final ZIP.
+
 Before offering a download, DLMS checks the finished ZIP against the same
 size and resource limits as Restore: 1 GiB uploaded ZIP, 2 GiB expanded content,
 768 MiB per file, and 20,000 archive entries (including the manifest), plus
@@ -134,6 +141,15 @@ Older backups without a Learning Scope setting restore with all folders included
    leave current data unchanged.
 
 ![Validated DLMS backup staged on the Review backup before restore confirmation page](images/UM-26-backup-restore-confirmation.png)
+
+Validation checks Library references against the saved database and question
+files, including their counts and represented question/answer content. A ZIP
+that opens normally can still be rejected as incomplete or inconsistent. Keep
+that original unchanged and use another verified backup or seek diagnosis;
+do not delete entries or invent missing questions to bypass validation. Rejection
+before confirmation leaves the active profile unchanged. Compatible older
+backups remain supported, including historical database rows without Library
+entries and derived quiz pages that can be rebuilt.
 
 Before applying a confirmed restore, DLMS creates a pre-restore safety backup
 of the current workspace. It then replaces persistent data and rebuilds trusted
@@ -433,3 +449,19 @@ A failed scoped reset may have applied some changes before an error. A safety
 backup is a recovery point, not a promise of automatic rollback. Preserve the
 message and recovery files and use the supported restore flow only after checking
 which workspace is active.
+
+### Administrator note: snapshot coordination
+
+Run one DLMS server process per data profile. Updated processes coordinate
+snapshot capture through a stable hidden lock file beside the data directory;
+the profile's parent must be writable and the filesystem must support file
+locking. Do not delete that lock file while any process may use the profile.
+It contains no learning data and is not restored from the backup. This does not
+make multiple normal writers, older binaries or external file editors safe.
+
+Backups use a private database/file copy before ZIP compression. Snapshot lock
+acquisition is bounded to five seconds; a busy database snapshot has a separate
+30-second deadline. Safety backups inside reset/restore use the same boundary.
+Low space or unsupported hard-link publication fails without replacing earlier
+backups. Keep verified recovery copies outside the live profile. Native package
+and filesystem acceptance are separate from source tests.
