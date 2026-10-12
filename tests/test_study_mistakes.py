@@ -418,7 +418,10 @@ class StudyMistakeTests(unittest.TestCase):
                 conn.execute('INSERT INTO study_responses VALUES(?,?,?,?,?,?,?,?,?)', (payload['eventId'], event['sessionId'], seq, row['id'], row['question_number'], 'response', 0, study.encode(payload), study.utc_now()))
         scope = self.selection([qid]); self.assertEqual(len(self.pool(scope)['eligible']), 230)
         html = self.client.get('/quiz-composer/study-mistakes?quizzes='+str(qid)).get_data(as_text=True)
-        self.assertEqual(html.count('<li>Large pool'), 20)
+        self.assertEqual(html.count('<th scope="row" data-label="Source quiz">Large pool</th>'), 20)
+        self.assertIn('data-label="Question #">1</td><td data-label="Question text">Sample question 1</td>', html)
+        self.assertIn('data-label="Question #">20</td><td data-label="Question text">Sample question 20</td>', html)
+        self.assertNotIn('data-label="Question #">21</td><td data-label="Question text">Sample question 21</td>', html)
         pid = self.start(scope)
         for count, remaining in [(100,130),(100,30),(30,0)]:
             result = self.create(self.create_data(pid, count=count, scope=scope))
@@ -615,14 +618,27 @@ class StudyMistakeTests(unittest.TestCase):
         self.assertEqual(self.create(self.create_data(pid)).status_code,200)
         html=self.client.get('/quiz-composer/study-mistakes?quizzes='+str(self.quiz_id)).get_data(as_text=True)
         self.assertIn('1 eligible question in these sources',html)
-        self.assertIn('0 remaining in this pass',html)
-        self.assertIn('1 included in saved mixes',html)
+        self.assertRegex(html, r'class="study-mistakes-count-card"><strong class="study-mistakes-count-value">0</strong><span>Remaining this pass</span>')
+        self.assertRegex(html, r'class="study-mistakes-count-card"><strong class="study-mistakes-count-value">1</strong><span>Included in saved mixes</span>')
+        self.assertIn('Unavailable questions in this pass',html)
+        self.assertIn('<th scope="col">Source quiz</th><th scope="col">Question #</th><th scope="col">Question text</th>',html)
+        self.assertIn('<th scope="row" data-label="Source quiz">',html)
         self.assertIn('Pass complete',html)
         self.assertIn('not the exact next batch',html)
         self.assertIn('Unavailable questions (0)',html)
         self.assertLess(html.index('id="mistakePreviewHeading"'),html.index('id="mistakeCreateForm"'))
         self.assertIn('aria-describedby="mistakeCreationReason"',html)
         self.assertEqual(self.report()['used'],1)
+
+    def test_eligible_preview_table_escapes_source_and_question_text(self):
+        question = dict(self.choice(), number=1, question='<script>alert(1)</script> & prompt')
+        qid, _ = self.publish(title='Unsafe <source> & title', questions=[question], kind=None)
+        self.save(self.claim_quiz(qid))
+        html = self.client.get('/quiz-composer/study-mistakes?quizzes='+str(qid)).get_data(as_text=True)
+        preview = html.split('<table class="study-mistakes-preview"', 1)[1].split('</table>', 1)[0]
+        self.assertIn('Unsafe &lt;source&gt; &amp; title', preview)
+        self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt; &amp; prompt', preview)
+        self.assertNotIn('<script>', preview)
 
     def test_legacy_exclusion_table_groups_reasons_and_bounds_every_page(self):
         questions=[dict(self.choice(),number=n,question='Legacy exclusion '+str(n)) for n in range(1,26)]
@@ -647,6 +663,6 @@ class StudyMistakeTests(unittest.TestCase):
         self.wrong();pid=self.start();data=self.create_data(pid)
         with dlms.get_db() as c:sm.reserve(c,data,dlms._study_mistake_options())
         html=self.client.get('/quiz-composer/study-mistakes?quizzes='+str(self.quiz_id)).get_data(as_text=True)
-        self.assertIn('1 reserved',html)
+        self.assertRegex(html, r'<strong>1</strong><span>Reserved questions</span>')
         self.assertIn('id="mistakePassComplete" class="study-mistakes-notice" hidden',html)
         self.assertEqual(self.report()['used'],0)

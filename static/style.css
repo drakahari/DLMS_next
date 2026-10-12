@@ -4180,6 +4180,38 @@ a.settings-hub-card:active {
     max-width: 660px;
 }
 
+.history-table-page .history-study-navigation {
+    margin: 1rem 0 0;
+}
+
+.history-table-page .history-study-navigation a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: .6rem .85rem;
+    border: 1px solid var(--semantic-secondary-control-border);
+    border-radius: var(--theme-control-radius, 9px);
+    background: var(--semantic-secondary-control-surface);
+    color: var(--semantic-secondary-control-text);
+    font-weight: 600;
+    font-size: 1rem;
+    line-height: 1.4;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+.history-table-page .history-study-navigation a:hover {
+    background: var(--semantic-secondary-control-hover);
+    border-color: var(--theme-accent-text);
+}
+
+.history-table-page .history-study-navigation a:focus {
+    outline: 3px solid var(--theme-focus-ring, var(--theme-accent-text));
+    outline-offset: 3px;
+}
+
 .history-eyebrow {
     color: #78b8ff;
     font-size: 11px;
@@ -4192,6 +4224,10 @@ a.settings-hub-card:active {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
+}
+
+.history-table-page .history-table-stats {
+    margin-block: 1rem;
 }
 
 .history-table-stat {

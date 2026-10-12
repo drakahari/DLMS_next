@@ -34,16 +34,28 @@
     <h2 id="mistakeCheckedHeading">Checked sources</h2>
     <p>Folders: {{ sm.scope.folders|join(', ') or 'None' }}. Individual quizzes: {% if sm.scope.quizzes %}{% for id in sm.scope.quizzes %}{% set quiz = sm.options.quizzes|selectattr('id','equalto',id)|first %}{{ quiz.title if quiz else 'Unavailable source' }} (ID {{ id }}){{ '; ' if not loop.last else '.' }}{% endfor %}{% else %}None.{% endif %}</p>
     {% if sm.pass_report %}
-    <p id="mistakePassSummary" class="study-mistakes-pass-summary"><strong>{{ sm.pass_report.remaining }} remaining in this pass</strong> · {{ sm.pass_report.used }} included in saved mixes.</p>
+    <div id="mistakePassSummary" class="study-mistakes-pass-summary" role="group" aria-label="Without repeats pass counts">
+        <div class="study-mistakes-count-card"><strong class="study-mistakes-count-value">{{ sm.pass_report.remaining }}</strong><span>Remaining this pass</span></div>
+        <div class="study-mistakes-count-card"><strong class="study-mistakes-count-value">{{ sm.pass_report.used }}</strong><span>Included in saved mixes</span></div>
+    </div>
     <div id="mistakePassComplete" class="study-mistakes-notice" {% if sm.pass_report.used != sm.pass_report.total %}hidden{% endif %}><strong>Pass complete</strong><p>Start a new pass to use eligible questions again. This permits repeats across passes. Random can repeat between mixes without changing this pass.</p></div>
-    <details id="mistakePassDetails"><summary>Pass details</summary><p>{{ sm.pass_report.total }} questions in this snapshot · {{ sm.pass_report.reserved }} reserved · {{ sm.pass_report.unavailable }} unavailable.</p>{% if sm.pass_report.new %}<p>{{ sm.pass_report.new }} newly eligible questions wait for a new pass.</p>{% endif %}<p>New mistakes wait for an explicit new pass. Creation is not Study completion or mastery.</p></details>
+    <details id="mistakePassDetails"><summary>Pass details</summary>
+        <div class="study-mistakes-pass-details-counts">
+            <div><strong>{{ sm.pass_report.total }}</strong><span>Snapshot questions</span></div>
+            <div><strong>{{ sm.pass_report.reserved }}</strong><span>Reserved questions</span></div>
+            <div><strong>{{ sm.pass_report.unavailable }}</strong><span>Unavailable questions in this pass</span></div>
+        </div>
+        {% if sm.pass_report.new %}<p>{{ sm.pass_report.new }} newly eligible questions wait for a new pass.</p>{% endif %}<p>New mistakes wait for an explicit new pass. Creation is not Study completion or mastery.</p>
+    </details>
     {% else %}<p id="mistakePassSummary">Without repeats: start a saved pass for these sources.</p><div id="mistakePassComplete" hidden></div>{% endif %}
-    <p id="mistakeCounts"><strong>{{ sm.pool.eligible|length }} eligible {{ 'question' if sm.pool.eligible|length == 1 else 'questions' }} in these sources</strong>. This total includes questions already used in the current pass.</p>
+    <p id="mistakeCounts" class="study-mistakes-source-count"><strong>{{ sm.pool.eligible|length }} eligible {{ 'question' if sm.pool.eligible|length == 1 else 'questions' }} in these sources</strong><span>This total includes questions already used in the current pass.</span></p>
     {% if not sm.pool.eligible %}<p>These sources have no currently usable, verified Study mistakes. Check other sources or see unavailable questions below.</p>{% endif %}
     {% if sm.preview %}
     <h3 id="mistakePreviewHeading">Eligible source pool preview</h3>
     <p class="study-mistakes-note">This is the source pool, <strong>not the exact next batch</strong>. It may include questions already used in this pass. Page {{ sm.page }} · up to 20 shown.</p>
-    <ol class="study-mistakes-preview">{% for item in sm.preview %}<li>{{ item.title }} · Question {{ item.number }} — {{ item.question }}</li>{% endfor %}</ol>
+    <table class="study-mistakes-preview" aria-labelledby="mistakePreviewHeading"><thead><tr><th scope="col">Source quiz</th><th scope="col">Question #</th><th scope="col">Question text</th></tr></thead><tbody>
+        {% for item in sm.preview %}<tr><th scope="row" data-label="Source quiz">{{ item.title }}</th><td data-label="Question #">{{ item.number }}</td><td data-label="Question text">{{ item.question }}</td></tr>{% endfor %}
+    </tbody></table>
     <nav class="mixed-builder-bulk-actions" aria-label="Question preview pages">{% if sm.page > 1 %}<a class="dlms-action-control" href="{{ sm.page_url('page',sm.page-1) }}">Previous questions</a>{% endif %}{% if sm.has_more %}<a class="dlms-action-control" href="{{ sm.page_url('page',sm.page+1) }}">More questions</a>{% endif %}</nav>
     {% endif %}
 </section>
