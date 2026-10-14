@@ -170,8 +170,8 @@ class OCRPackagingContractTests(unittest.TestCase):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         locked = (ROOT / "requirements-lock.txt").read_text(encoding="utf-8")
         build = (ROOT / "requirements-build.txt").read_text(encoding="utf-8")
-        self.assertRegex(requirements, r"(?m)^pypdfium2>=5\.13\.0,<6$")
-        self.assertRegex(locked, r"(?m)^pypdfium2==5\.13\.0$")
+        self.assertRegex(requirements, r"(?m)^pypdfium2>=5\.14\.0,<6$")
+        self.assertRegex(locked, r"(?m)^pypdfium2==5\.14\.0$")
         self.assertIn("-r requirements-lock.txt", build)
         self.assertNotRegex(requirements, r"(?im)^tesseract")
 
