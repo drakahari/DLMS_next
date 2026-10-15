@@ -4,15 +4,15 @@
 
 Security reports are accepted for the latest published DLMS release and the
 current development branch. The [Releases page](https://github.com/drakahari/DLMS_next/releases)
-identifies the latest published stable release, currently 3.2.2. The 3.3.0
-development target is undergoing release review on `develop/3.3.0`.
+identifies the latest published stable release, currently 3.3.0. The
+`develop/3.3.0` branch is development work, not a separately published release.
 Older releases do not routinely receive separate fixes; a correction may be
 provided only in the next release.
 
 | Version | Status |
 | --- | --- |
-| Latest published release | Supported |
-| `develop/3.3.0` | Pre-release; reports accepted |
+| 3.3.0 (latest published release) | Supported |
+| `develop/3.3.0` | Development branch; reports accepted |
 | Older releases | Not routinely supported |
 
 This policy describes maintenance intent, not a response-time or security

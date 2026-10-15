@@ -3,21 +3,16 @@
 **A private, local-first workspace for building, studying, and improving your
 own learning material.**
 
-**Development target: DLMS 3.3.0 (unreleased)**
+**Latest published release: DLMS 3.3.0** · [Download packaged releases](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0)
 
-**Latest published release: DLMS 3.2.2** · [Download packaged releases](../../releases)
-
-This branch includes durable Study history, optional Exam Plans, earned-certification
-and training records, and 26 manually selected themes for 3.3.0. See the
-[draft release notes](docs/releases/3.3.0.md) and
-[release review checklist](docs/releases/3.3.0-RELEASE-CHECKLIST.md).
-The owner accepted the Ubuntu 24.04 3.3.0 package from commit
-`57d536f9bb20f91e8b275555e8bbfad6f0d6e83d`. That checkpoint does not establish
-Windows, macOS or other native-platform acceptance, or public publication.
-That package predates the later manual and Help refresh.
-
-DLMS 3.2.2 is published. Native package and Linux AppImage release acceptance
-is complete. The [Releases page](../../releases) is authoritative for downloads.
+DLMS 3.3.0 includes durable Study history, optional Exam Plans,
+earned-certification and training records, and 26 manually selected themes.
+See the [release notes](docs/releases/3.3.0.md) and
+[release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md). The five native
+packages were built from commit `af6766a8c59da513870014141c60aaa1edd1d232`.
+All five native builders passed; broader packaged OCR, persistence and restore
+checks ran on Fedora. The additional Ubuntu 24.04 harness was canceled, so
+those broader checks are not claimed for every platform.
 
 DLMS is a single-user learning-management and study application that runs on
 your computer. It combines quiz authoring, document and image import, Study and
@@ -180,27 +175,27 @@ For normal use, download the package for your operating system from the
 [Releases page](../../releases). Every final package contains the native
 application, `README.txt`, and `sample_quiz.txt`.
 
-The six published native 3.2.2 packages are listed below. Published checksums
-are available in `SHA256SUMS.txt` on the Releases page.
-See the [3.2.2 release notes](docs/releases/3.2.2.md) for highlights and upgrade guidance.
+The five published native 3.3.0 packages are listed below. Verify downloads
+with `SHA256SUMS.txt` from the [3.3.0 release](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).
+See the [release notes](docs/releases/3.3.0.md) for upgrade and rollback guidance.
 
-| Platform | Final DLMS 3.2.2 package name |
+| Platform | DLMS 3.3.0 package name |
 | --- | --- |
-| Fedora 44 x86-64 | `DLMS-3.2.2-fedora44-x86_64.tar.gz` |
-| Ubuntu 24.04 x86-64 | `DLMS-3.2.2-ubuntu24.04-x86_64.tar.gz` |
-| Ubuntu 26.04 x86-64 | `DLMS-3.2.2-ubuntu26.04-x86_64.tar.gz` |
-| Omarchy Quattro x86-64 | `DLMS-3.2.2-omarchy-quattro-x86_64.tar.gz` |
-| Windows 11 x86-64 | `DLMS-3.2.2-windows11-x86_64.zip` |
-| macOS Apple Silicon (`arm64`) | `DLMS-3.2.2-macos-arm64.zip` |
+| Fedora 44 x86-64 | `DLMS-3.3.0-fedora44-x86_64.tar.gz` |
+| Ubuntu 24.04 x86-64 | `DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz` |
+| Ubuntu 26.04 x86-64 | `DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz` |
+| Windows 11 x86-64 | `DLMS-3.3.0-windows11-x86_64.zip` |
+| macOS Apple Silicon (`arm64`) | `DLMS-3.3.0-macos-arm64.zip` |
 
 Linux packages are distribution-specific; use the package named for your
 distribution. On Linux or Windows, extract the archive and run the DLMS
 executable inside it.
 
-The additional `DLMS-3.2.2-linux-x86_64.AppImage` is a Linux desktop format.
-It passed cross-distribution acceptance on Ubuntu 24.04, Ubuntu 26.04,
-Fedora 44, and Omarchy Quattro. Native Linux `.tar.gz` packages remain the
-supported server and headless artifacts.
+Omarchy and AppImage packages were not published for 3.3.0. The earlier
+`DLMS-3.2.2-linux-x86_64.AppImage` remains available for that older release;
+it passed cross-distribution acceptance on Ubuntu 24.04, Ubuntu 26.04,
+Fedora 44, and Omarchy Quattro. Native Linux `.tar.gz` packages are the
+published 3.3.0 Linux downloads.
 
 ### Optional Omarchy companion
 
@@ -218,7 +213,7 @@ The macOS release is a native application bundle. The macOS ZIP exposes all thre
 its archive root: `DLMS.app`, `README.txt`, and `sample_quiz.txt`, with no
 wrapper directory around the app.
 
-1. Extract `DLMS-3.2.2-macos-arm64.zip`.
+1. Extract `DLMS-3.3.0-macos-arm64.zip`.
 2. Drag `DLMS.app` into `/Applications`.
 3. Open it from Finder or Applications.
 4. Because the release is not Developer ID-signed or notarized, Gatekeeper may
@@ -293,8 +288,8 @@ Headless/SSH detection affects automatic browser launch, not the network bind.
 
 - [DLMS User Manual](docs/user-manual/README.md) provides the canonical Markdown
   guide; the in-application **Help Center** offers guidance while using DLMS.
-- [3.3.0 release review checklist](docs/releases/3.3.0-RELEASE-CHECKLIST.md) tracks
-  source validation and outstanding platform, packaging, and owner checks.
+- [3.3.0 release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md) records
+  frozen source, approved packages and validation limits.
 - [3.2.2 release checklist](docs/releases/3.2.2-RELEASE-CHECKLIST.md) records the
   source-freeze and native-package gates for maintainers.
 - [OCR setup and frozen packaging](docs/OCR_PACKAGING.md) explains source-mode
@@ -353,7 +348,8 @@ for all six targets and prerequisites. The command creates fresh isolated build
 outputs, runs OCR and version-aware native smoke gates, packages locally, and
 writes checksums and an acceptance summary. It never overwrites earlier packages.
 
-Planned native inputs use these exact names:
+The native builder recognizes these target names; the Omarchy target was not
+published for 3.3.0:
 
 - `DLMS-3.3.0-fedora44-x86_64`
 - `DLMS-3.3.0-ubuntu24.04-x86_64`
@@ -374,7 +370,9 @@ directory around the app or include build/runtime data.
 
 ### Final package gate
 
-The six planned user-facing packages are:
+The native packaging convention names six targets. The 3.3.0 public release
+contains the five packages listed above; the Omarchy package below was not
+published:
 
 - `DLMS-3.3.0-fedora44-x86_64.tar.gz`
 - `DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz`
@@ -397,8 +395,9 @@ a separately assembled source ZIP.
 
 ## Project status
 
-This source targets DLMS 3.3.0 for release review; it is not a published release.
-The latest published release is 3.2.2. The owner-accepted Ubuntu 24.04 checkpoint
-above is separate from public release and cross-platform acceptance. Source tests alone do not establish native-package readiness. The
-[release review checklist](docs/releases/3.3.0-RELEASE-CHECKLIST.md) records the
-remaining gates; the Releases page remains authoritative for downloads.
+DLMS 3.3.0 is published. All five native builders passed, and broader packaged
+OCR, Study/Exam persistence and exact backup/restore checks ran on Fedora with
+synthetic data. The additional Ubuntu 24.04 harness was canceled; those Fedora
+checks do not establish equivalent end-to-end behavior on every other platform.
+The [release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md) records the
+limits, and the [Releases page](../../releases) is authoritative for downloads.

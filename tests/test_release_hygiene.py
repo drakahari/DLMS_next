@@ -12,28 +12,31 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseDocumentationTests(unittest.TestCase):
-    def test_readme_release_and_browser_controls_match_runtime_contract(self):
+    def test_readme_published_release_and_browser_controls_match_runtime_contract(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         app_source = (ROOT / "app.py").read_text(encoding="utf-8")
 
         version = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
         self.assertIsNotNone(version)
         self.assertEqual(version.group(1), "3.3.0")
-        self.assertIn(f"Development target: DLMS {version.group(1)} (unreleased)", readme)
-        self.assertIn("Latest published release: DLMS 3.2.2", readme)
+        self.assertIn(f"Latest published release: DLMS {version.group(1)}", readme)
+        self.assertIn("https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0", readme)
+        self.assertNotIn("Development target: DLMS 3.3.0 (unreleased)", readme)
+        self.assertNotIn("Latest published release: DLMS 3.2.2", readme)
         normalized_readme = " ".join(readme.split())
         self.assertIn(
-            "The owner accepted the Ubuntu 24.04 3.3.0 package from commit "
-            "`57d536f9bb20f91e8b275555e8bbfad6f0d6e83d`.",
+            "The five native packages were built from commit "
+            "`af6766a8c59da513870014141c60aaa1edd1d232`.",
             normalized_readme,
         )
         self.assertIn(
-            "That checkpoint does not establish Windows, macOS or other "
-            "native-platform acceptance, or public publication.",
+            "All five native builders passed; broader packaged OCR, persistence "
+            "and restore checks ran on Fedora.",
             normalized_readme,
         )
         self.assertIn(
-            "That package predates the later manual and Help refresh.",
+            "The additional Ubuntu 24.04 harness was canceled, so those "
+            "broader checks are not claimed for every platform.",
             normalized_readme,
         )
         self.assertNotIn("3.3.0 packages have not been built or accepted", readme)
@@ -61,15 +64,50 @@ class ReleaseDocumentationTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertNotIn("omarchy-dlms", (ROOT / path).read_text(encoding="utf-8"))
 
-    def test_development_release_review_keeps_publication_and_acceptance_separate(self):
+    def test_published_release_keeps_provenance_upgrade_and_acceptance_separate(self):
         notes = (ROOT / "docs/releases/3.3.0.md").read_text(encoding="utf-8")
         checklist = (ROOT / "docs/releases/3.3.0-RELEASE-CHECKLIST.md").read_text(encoding="utf-8")
         security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
-        self.assertIn("unreleased development target", notes)
+        normalized_notes = " ".join(notes.split())
+        normalized_checklist = " ".join(checklist.split())
+        self.assertTrue(notes.startswith("# DLMS 3.3.0\n"))
+        self.assertIn(
+            "built from frozen source commit "
+            "`af6766a8c59da513870014141c60aaa1edd1d232`",
+            normalized_notes,
+        )
+        self.assertIn("af6766a8c59da513870014141c60aaa1edd1d232", checklist)
         self.assertIn("Purple & Gold remains the default", notes)
-        self.assertIn("not ready for publication", checklist)
+        self.assertIn("**Back up your DLMS data before first starting 3.3.0**", notes)
+        self.assertIn("Public 3.2.2 uses database schema 3; 3.3.0 migrates a compatible profile to schema 12", normalized_notes)
+        self.assertIn("Portable quiz bundles exported by 3.3.0 use format 2", normalized_notes)
+        self.assertIn("Rollback requires the older application and a verified pre-upgrade backup", normalized_notes)
+        self.assertIn("All five native release builders passed", normalized_notes)
+        self.assertIn("Broader packaged PDF/image OCR, Study/Exam persistence and exact backup/restore checks ran on Fedora", normalized_notes)
+        self.assertIn("The additional Ubuntu 24.04 packaged harness was canceled and is not counted as a pass", normalized_notes)
+        self.assertIn("Those Fedora checks do not establish equivalent end-to-end behavior on every other platform or browser", normalized_notes)
+        self.assertIn("No signing or notarization is claimed", notes)
+        self.assertIn("The five native release builders passed", normalized_checklist)
+        self.assertIn("it is not a native Ubuntu acceptance result", normalized_checklist)
+        downloads = re.findall(
+            r"https://github\.com/drakahari/DLMS_next/releases/download/v3\.3\.0/([^)\s]+)",
+            notes,
+        )
+        self.assertCountEqual(
+            downloads,
+            [
+                "DLMS-3.3.0-fedora44-x86_64.tar.gz",
+                "DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz",
+                "DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz",
+                "DLMS-3.3.0-windows11-x86_64.zip",
+                "DLMS-3.3.0-macos-arm64.zip",
+                "SHA256SUMS.txt",
+            ],
+        )
         self.assertIn("develop/3.3.0", security)
-        self.assertIn("currently 3.2.2", security)
+        self.assertIn("currently 3.3.0", security)
+        self.assertIn("Development branch; reports accepted", security)
+        self.assertNotIn("Pre-release; reports accepted", security)
         self.assertTrue((ROOT / "docs/releases/3.2.2.md").is_file())
 
     def test_release_metadata_and_help_use_the_final_display_version(self):
@@ -298,9 +336,9 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("console=False", spec)
         self.assertIn('codesign_identity=None', spec)
 
-        macos_zip = "DLMS-3.2.2-macos-arm64.zip"
+        self.assertIn("DLMS-3.3.0-macos-arm64.zip", readme)
+        self.assertIn("DLMS-3.2.2-macos-arm64.zip", getting_started)
         for document in (readme, getting_started):
-            self.assertIn(macos_zip, document)
             self.assertIn("DLMS.app", document)
             self.assertIn("Control-click", document)
             self.assertIn("Open Anyway", document)
