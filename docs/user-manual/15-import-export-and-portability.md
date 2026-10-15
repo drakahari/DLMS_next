@@ -95,7 +95,7 @@ Changing the selection or detected issues requires a new warning review.
 
 The receiving DLMS must support **format 2**. Older applications reject it;
 matching the product version number alone is insufficient. This receiving
-implementation uses database **schema 11**. It still imports supported format-1
+implementation uses database **schema 12**. It still imports supported format-1
 bundles. Collections are never directly importable: extract and import each
 numbered inner ZIP.
 

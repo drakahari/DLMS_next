@@ -118,7 +118,7 @@ time, estimated credit and user-recorded accepted credit are different. AI
 matching copies only reviewed material for manual paste; it does not renew records.
 
 Restore replaces the workspace with the backup, losing subsequent changes.
-Schema 10 cannot be rolled back by replacing the binary. Keep a verified
+Schema 12 cannot be rolled back by replacing the binary. Keep a verified
 pre-upgrade backup and the compatible older application in a separate profile.
 Clear Saved Results and permanent data removal have no automatic safety backup.
 Permanent removal deletes backups inside the data folder, not the executable.

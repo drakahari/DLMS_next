@@ -3308,9 +3308,11 @@ def test_study_feedback_waits_for_deferred_recovery_initialization(browser_stack
         state['held'] = False
 
     def observed_navigate(target):
+        controlled_quiz_navigation = False
         if '/quizzes/' in target:
             state['visits'] += 1
             if state['visits'] == 2:
+                controlled_quiz_navigation = True
                 b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
                 state['interception'] = b.command('network.addIntercept', {
                     'phases': ['beforeRequestSent'], 'contexts': [b.context],
@@ -3318,7 +3320,7 @@ def test_study_feedback_waits_for_deferred_recovery_initialization(browser_stack
                 })['intercept']
                 b._receive_text = record
         result = navigate(target)
-        if state['visits'] == 2 and state['interception']:
+        if controlled_quiz_navigation and state['interception']:
             request_arrived()
             release()  # The initial readiness check succeeds.
             wait('quiz.length === 2')

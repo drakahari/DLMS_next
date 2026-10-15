@@ -161,7 +161,7 @@ originals separately; raster storage can normalize orientation and remove metada
 
 Backups contain records and evidence. Restore is a full-profile snapshot replacement,
 not a merge; old feature-less backups can restore an empty collection. Current
-schema 10 cannot be reversed by replacing the binary. Keep a verified pre-upgrade
+schema 12 cannot be reversed by replacing the binary. Keep a verified pre-upgrade
 backup and follow [rollback guidance](17-maintenance-backup-and-data-management.md#restore-versus-application-rollback).
 Scoped learning, Study-history, quiz-library and source resets preserve certifications;
 fresh-state reset/removal does not. Removal requires confirmation. Failed/stale saves
